@@ -2550,6 +2550,7 @@ fn main() {
             "html-token-list-refusals" => html_token_lists::html_token_lists_preserve_hosted_refusals(),
             "html-token-list-adoption" => html_token_lists::html_token_lists_preserve_adopted_creation_identity(),
             "dataset" => dataset::dataset_observes_and_mutates_canonical_attributes(),
+            "dataset-realm" => dataset::dataset_keeps_the_element_creation_realm(),
             "class-list" => class_list::class_list_observes_and_edits_the_canonical_attribute(),
             "class-list-realm" => class_list::class_list_keeps_its_element_creation_realm(),
             "class-list-reactions" => class_list::class_list_uses_native_attribute_reactions_once(),
@@ -2746,6 +2747,7 @@ fn main() {
     html_token_lists::html_token_lists_preserve_hosted_refusals();
     html_token_lists::html_token_lists_preserve_adopted_creation_identity();
     dataset::dataset_observes_and_mutates_canonical_attributes();
+    dataset::dataset_keeps_the_element_creation_realm();
     document_metadata::metadata_comes_from_the_canonical_document_receiver();
     document_metadata::metadata_getters_read_during_an_original_native_source_reaction();
     document_metadata::borrowed_metadata_getters_read_the_other_live_document();

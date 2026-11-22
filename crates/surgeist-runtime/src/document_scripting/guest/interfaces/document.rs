@@ -26,6 +26,7 @@ mod character_data;
 mod control_validation;
 mod custom_validity;
 mod data_time;
+mod dataset;
 mod default_view;
 mod details;
 mod dialog;

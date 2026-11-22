@@ -543,8 +543,38 @@ pub(in crate::document_scripting::guest::interfaces) fn copy_native_data(
     events: &GuestEvents,
     units: &[u16],
 ) -> Result<(DocumentString, GuestBacking), DocumentGuestEventError> {
-    let backing = events.reserve(owner, native_data_bytes(units)?)?;
+    let backing = events.reserve(owner, native_data_bytes(units.len())?)?;
     Ok((materialize_native_data(events, units)?, backing))
+}
+
+/// Materialize an exactly sized native string whose producer admits each write.
+pub(super) fn build_native_data(
+    owner: &NativeOwner,
+    events: &GuestEvents,
+    length: usize,
+    fill: impl FnOnce(
+        &mut dyn FnMut(u16) -> Result<(), DocumentGuestEventError>,
+    ) -> Result<(), DocumentGuestEventError>,
+) -> Result<(DocumentString, GuestBacking), DocumentGuestEventError> {
+    let backing = events.reserve(owner, native_data_bytes(length)?)?;
+    let mut units = Vec::new();
+    units
+        .try_reserve_exact(length)
+        .map_err(|_| Error::Allocation)?;
+    if units.capacity() != length {
+        return Err(Error::Allocation.into());
+    }
+    fill(&mut |unit| {
+        if units.len() == length {
+            return Err(DocumentScriptNativeError::RepresentationExhausted.into());
+        }
+        units.push(unit);
+        Ok(())
+    })?;
+    if units.len() != length {
+        return Err(DocumentScriptNativeError::RepresentationExhausted.into());
+    }
+    Ok((DocumentString::from_utf16(units), backing))
 }
 
 pub(super) fn copy_native_name_pair(
@@ -553,8 +583,11 @@ pub(super) fn copy_native_name_pair(
     namespace: Option<&[u16]>,
     local_name: &[u16],
 ) -> Result<(Option<DocumentString>, DocumentString, GuestBacking), DocumentGuestEventError> {
-    let namespace_bytes = namespace.map(native_data_bytes).transpose()?.unwrap_or(0);
-    let bytes = native_data_bytes(local_name)?
+    let namespace_bytes = namespace
+        .map(|units| native_data_bytes(units.len()))
+        .transpose()?
+        .unwrap_or(0);
+    let bytes = native_data_bytes(local_name.len())?
         .checked_add(namespace_bytes)
         .ok_or(DocumentScriptNativeError::StorageLimit)?;
     let backing = events.reserve(owner, bytes)?;
@@ -565,10 +598,9 @@ pub(super) fn copy_native_name_pair(
     Ok((namespace, local_name, backing))
 }
 
-fn native_data_bytes(units: &[u16]) -> Result<usize, DocumentScriptNativeError> {
+fn native_data_bytes(length: usize) -> Result<usize, DocumentScriptNativeError> {
     let overhead = size_of::<Vec<u16>>() + 2 * size_of::<usize>();
-    units
-        .len()
+    length
         .checked_mul(size_of::<u16>())
         .and_then(|bytes| bytes.checked_add(overhead))
         .ok_or(DocumentScriptNativeError::StorageLimit)

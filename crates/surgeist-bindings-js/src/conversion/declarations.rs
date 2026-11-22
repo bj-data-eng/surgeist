@@ -2825,6 +2825,50 @@ pub fn html_option_element_option_selected() -> Argument<Type<bool>> {
     )
 }
 
+/// Selected argument `DOMStringMap.operation:0/name` (not overload selection).
+pub fn dom_string_map_operation_0_name() -> Argument<Type<DomString>> {
+    Argument::new(
+        "DOMStringMap.operation:0/name",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `DOMStringMap.operation:1/name` (not overload selection).
+pub fn dom_string_map_operation_1_name() -> Argument<Type<DomString>> {
+    Argument::new(
+        "DOMStringMap.operation:1/name",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `DOMStringMap.operation:1/value` (not overload selection).
+pub fn dom_string_map_operation_1_value() -> Argument<Type<DomString>> {
+    Argument::new(
+        "DOMStringMap.operation:1/value",
+        1,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `DOMStringMap.operation:2/name` (not overload selection).
+pub fn dom_string_map_operation_2_name() -> Argument<Type<DomString>> {
+    Argument::new(
+        "DOMStringMap.operation:2/name",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
 /// Selected setter conversion for `CharacterData.data`.
 pub fn character_data_data_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY

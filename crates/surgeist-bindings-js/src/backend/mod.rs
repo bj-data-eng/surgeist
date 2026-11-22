@@ -120,12 +120,18 @@ pub(crate) enum NativeProjectionSlot<'a> {
         read: &'a Root,
         keys: &'a Root,
         unforgeable_names: &'static [&'static [u16]],
+        mutation: Option<NativeNamedMutation<'a>>,
     },
     Collection {
         read: &'a Root,
         keys: &'a Root,
         kind: NativeCollectionKind<'a>,
     },
+}
+
+pub(crate) struct NativeNamedMutation<'a> {
+    pub(crate) set: &'a Root,
+    pub(crate) delete: &'a Root,
 }
 
 pub(crate) enum NativeCollectionKind<'a> {

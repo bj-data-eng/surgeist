@@ -623,7 +623,15 @@ def mapping_keys(member):
     if member["kind"] == "stringifier":
         return [member["id"] + "/call"]
     if member["kind"] == "operation":
-        if member.get("special") == "setter" and "name" not in member:
+        special = member.get("special")
+        if "name" not in member and special in {"setter", "deleter"}:
+            arguments = member["arguments"]
+            key_type = arguments[0]["type"] if arguments else None
+            if key_type == {"kind": "named", "name": "DOMString"}:
+                suffix = "/name-set" if special == "setter" else "/name-delete"
+                return [member["id"] + suffix]
+            require(special == "setter" and key_type == {"kind": "named", "name": "unsigned long"},
+                    "unnamed special mutation requires the declared Web IDL key type")
             return [member["id"] + "/index-set"]
         return [member["id"] + "/call"]
     if member["kind"] == "attribute":
@@ -720,7 +728,7 @@ def validate(data, root=ROOT):
                  if a["name"] == "LegacyFactoryFunction"}
     expected = factories | {key for member in members.values() for key in mapping_keys(member)}
     require(set(data["access_mappings"]) == expected,
-            "access mappings must cover each accessor/constructor/overload, indexed setter and legacy factory exactly")
+            "access mappings must cover each accessor/constructor/overload, special mutation and legacy factory exactly")
     callback_members = {m["id"] for d in definitions.values() if d["kind"] == "callback_interface" for m in d["members"]}
     for key, mapping in data["access_mappings"].items():
         require(mapping.get("result_view", "value") in {"value", "live", "static", "sequence"}, "invalid result projection")

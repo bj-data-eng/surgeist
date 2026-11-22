@@ -27,6 +27,20 @@ pub(super) fn dataset_observes_and_mutates_canonical_attributes() {
                 !(svg.dataset instanceof DOMStringMap) || !(math.dataset instanceof DOMStringMap) ||
                 detached.createElementNS('urn:other', 'div').dataset !== undefined)
                 return 'dataset exposed on the wrong native interface or with unstable identity';
+            const accessor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'dataset');
+            const svgAccessor = Object.getOwnPropertyDescriptor(SVGElement.prototype, 'dataset');
+            const typeError = action => {
+                try { action(); } catch (error) { return error instanceof TypeError; }
+                return false;
+            };
+            if (!accessor?.enumerable || !accessor.configurable || accessor.set !== undefined ||
+                accessor.get.name !== 'get dataset' || accessor.get.length !== 0 ||
+                accessor.get === svgAccessor.get || !typeError(() => accessor.get.call(svg)) ||
+                !typeError(() => svgAccessor.get.call(element)) ||
+                !typeError(() => new DOMStringMap()) ||
+                Object.getOwnPropertyNames(DOMStringMap.prototype).join() !== 'constructor' ||
+                Object.prototype.toString.call(map) !== '[object DOMStringMap]')
+                return 'incorrect getter brands or anonymous operation descriptors';
             element.setAttributeNS(null, 'data-z-z', 'html');
             element.setAttributeNS(null, 'data-', 'empty suffix');
             element.setAttributeNS(null, 'data-Caps', 'ignore uppercase');
@@ -68,6 +82,10 @@ pub(super) fn dataset_observes_and_mutates_canonical_attributes() {
                 element.getAttributeNS(null, 'data-__proto__') !== 'named own value')
                 return 'named setter was displaced by a prototype accessor';
             delete map.__proto__;
+            map['raw\ud800É'] = '\0\udc00';
+            if (map['raw\ud800É'] !== '\0\udc00' ||
+                element.getAttributeNS(null, 'data-raw\ud800É') !== '\0\udc00')
+                return 'non-ASCII code units were altered';
             const receiver = Object.create(map);
             if (!Reflect.set(map, 'zZ', 'receiver', receiver) || receiver.zZ !== 'receiver' ||
                 map.zZ !== 'html' || element.getAttributeNS(null, 'data-z-z') !== 'html')
@@ -98,6 +116,38 @@ pub(super) fn dataset_observes_and_mutates_canonical_attributes() {
                 if (error.name !== 'SyntaxError' || element.hasAttributeNS(null, 'data-invalid-name'))
                     return 'wrong syntax failure for dash followed by ASCII lowercase';
             }
+            try {
+                map['invalid name'] = 'cannot publish';
+                return 'expected local-name exception';
+            } catch (error) {
+                if (error.name !== 'InvalidCharacterError' ||
+                    element.getAttributeNS(null, 'data-invalid name') !== null)
+                    return 'wrong native failure for a disallowed attribute local name';
+            }
+            const effects = [];
+            class WatchedElement extends HTMLDivElement {
+                static observedAttributes = ['data-current'];
+                attributeChangedCallback(name, before, after, namespace) {
+                    effects.push([name, before, after, namespace, this.dataset.current ?? null]);
+                    if (after === 'first') this.dataset.current = 'reentered';
+                }
+            }
+            customElements.define('x-dataset-edit', WatchedElement, {extends: 'div'});
+            const watched = document.createElement('div', {is: 'x-dataset-edit'});
+            const watchedMap = watched.dataset;
+            watchedMap.current = {toString() {
+                watchedMap.beside = 'converted';
+                return 'first';
+            }};
+            delete watchedMap.current;
+            if (watched.dataset !== watchedMap || watchedMap.current !== undefined ||
+                watchedMap.beside !== 'converted' ||
+                JSON.stringify(effects) !== JSON.stringify([
+                    ['data-current', null, 'first', null, 'first'],
+                    ['data-current', 'first', 'reentered', null, 'reentered'],
+                    ['data-current', 'reentered', null, null, null],
+                ]))
+                return 'dataset did not drain the canonical Source reactions';
             return 'ok';
           } catch (error) {
             return 'unexpected dataset exception: ' + String(error) + '\n' + (error.stack ?? '');
@@ -105,5 +155,98 @@ pub(super) fn dataset_observes_and_mutates_canonical_attributes() {
         })()"#,
     );
     assert_eq!(result, "ok");
+    host.stop().into_session().unwrap();
+}
+
+pub(super) fn dataset_keeps_the_element_creation_realm() {
+    let (mut session, top) = setup();
+    let snapshot = session.snapshot();
+    let html = snapshot.node(top.document().node()).unwrap().children()[0];
+    let body = snapshot.node(html).unwrap().children()[1];
+    let mut batch = DomBatch::new();
+    let detached = batch.create_html_document(top.document(), None);
+    let frame = batch.create_element_ns(&detached, Namespace::html(), "iframe");
+    let frame = session
+        .dom()
+        .apply(batch, &cancel())
+        .unwrap()
+        .created(&frame)
+        .unwrap()
+        .unwrap();
+    let (mut host, _) = attach_event_window_with_limits(
+        session,
+        top,
+        Arc::new(cancel()),
+        (8_000_000, 6_000_000, 220_000),
+        surgeist_ledger::ProfileMode::Off,
+        DomSourceLimits::new(16_000_000, 1_000_000, 200_000, 64, 64, 64, 4),
+        |_, _, _| {},
+    );
+    let permit = host.permit().unwrap();
+    window_length::edit(&mut host, DomSourceEdit::insert_before(frame, body, None));
+    let before = observe(
+        &mut host,
+        &permit,
+        r"(() => {
+            const child = window[0];
+            const first = child.document.createElement('div');
+            const late = child.document.createElement('div');
+            const accessor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'dataset').get;
+            const childAccessor = Object.getOwnPropertyDescriptor(child.HTMLElement.prototype, 'dataset').get;
+            const map = accessor.call(first);
+            if (childAccessor.call(first) !== map || accessor === childAccessor ||
+                Object.getPrototypeOf(map) !== child.DOMStringMap.prototype || map instanceof DOMStringMap)
+                return 'borrowed getter did not use the native creation realm';
+            map.inChild = 'original';
+            if (document.adoptNode(first) !== first || document.adoptNode(late) !== late ||
+                first.dataset !== map || first.ownerDocument !== document)
+                return 'adoption lost the live dataset association';
+            globalThis.datasetProbe = {
+                first, late, map, accessor, prototype: child.DOMStringMap.prototype
+            };
+            return 'ok';
+        })()",
+    );
+    assert_eq!(before, "ok");
+    let snapshot = host.snapshot().unwrap();
+    let child = window_length::content_navigable(&snapshot, frame).unwrap();
+    let document = snapshot
+        .hosted_navigable(child)
+        .unwrap()
+        .active_document()
+        .unwrap();
+    window_length::edit(&mut host, DomSourceEdit::detach(frame));
+    host.with_native(|dom, mut hosted, _| {
+        for _ in 0..128 {
+            if dom
+                .snapshot()
+                .document(document)
+                .unwrap()
+                .navigable()
+                .is_none()
+            {
+                return;
+            }
+            hosted.run_next(dom, top.navigable(), &cancel()).unwrap();
+        }
+        panic!("native child Document was not disassociated");
+    })
+    .unwrap();
+    let after = observe(
+        &mut host,
+        &permit,
+        r"(() => {
+            const {first, late, map, accessor, prototype} = datasetProbe;
+            const lateMap = accessor.call(late);
+            first.setAttribute('data-in-child', 'after retirement');
+            lateMap.afterRetirement = 'live';
+            if (first.dataset !== map || map.inChild !== 'after retirement' ||
+                late.dataset !== lateMap || lateMap === map || Object.getPrototypeOf(lateMap) !== prototype ||
+                late.getAttribute('data-after-retirement') !== 'live')
+                return 'realm retirement lost cached or first-exposed map behavior';
+            return 'ok';
+        })()",
+    );
+    assert_eq!(after, "ok");
     host.stop().into_session().unwrap();
 }
