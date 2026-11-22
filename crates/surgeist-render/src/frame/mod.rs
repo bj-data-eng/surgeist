@@ -17,8 +17,10 @@ mod offset;
 mod selection_stack_tests;
 #[cfg(test)]
 mod test_support;
+mod tile;
 mod turbulence;
 mod validate;
+pub(crate) use tile::TilePassFacts;
 pub(crate) use turbulence::TurbulencePassFacts;
 
 #[cfg(test)]

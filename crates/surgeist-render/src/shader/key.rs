@@ -33,6 +33,25 @@ pub(crate) enum ShaderLightingStageKey {
     Resolve,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum ShaderTileStageKey {
+    Repeat,
+    Transparent,
+}
+
+impl ShaderTileStageKey {
+    pub(crate) const fn reads_source(self) -> bool {
+        matches!(self, Self::Repeat)
+    }
+
+    pub(super) const fn fragment_entry(self) -> &'static str {
+        match self {
+            Self::Repeat => "fs_repeat",
+            Self::Transparent => "fs_transparent",
+        }
+    }
+}
+
 impl ShaderLightingStageKey {
     pub(crate) const fn reads_source(self) -> bool {
         !matches!(self, Self::ShadeZeroBump)
@@ -128,6 +147,7 @@ pub(crate) enum ShaderProgramKey {
     },
     Lighting(ShaderLightingStageKey),
     Turbulence,
+    Tile(ShaderTileStageKey),
     NativeShadow {
         original: ShaderNativeShadowSourceKey,
         shifted_alpha: bool,
@@ -189,6 +209,7 @@ pub(crate) enum ShaderBindingRoleKey {
     MorphologyPreviousQuery,
     OffsetSource,
     LightingSource,
+    TileSource,
     NativeShadowOriginal,
     NativeShadowAlpha,
     ConvolutionAuxiliary,
@@ -316,6 +337,7 @@ pub(crate) enum ShaderDataBindingKey {
     OffsetParameters,
     LightingParameters,
     TurbulenceParameters,
+    TileParameters,
     NativeShadowParameters,
     ConvolutionWeights,
     ColorFilterOperations,

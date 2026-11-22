@@ -948,6 +948,7 @@ pub(crate) enum GraphLoweringPassKind {
     Morphology(MorphologyPassFacts),
     Displacement(DisplacementPassFacts),
     Lighting(super::LightingPassFacts),
+    Tile(super::TilePassFacts),
     Turbulence(super::TurbulencePassFacts),
     NativeShadowMerge(NativeShadowPassFacts),
     BlurHorizontal(Option<GraphLoweringBlur>),
@@ -971,6 +972,7 @@ pub(crate) enum GraphLoweringReadRole {
     MorphologyPreviousQuery,
     DisplacementSource,
     LightingSource,
+    TileSource,
     NativeShadowOriginal,
     NativeShadowAlpha,
     BlurredSourceAlpha,
@@ -1274,6 +1276,11 @@ fn graph_lowering_pass_kind(
                 .filter(|entry| entry.pass == pass.id && entry.facts.stage() == stage)
                 .ok_or(GraphValidationError::InvalidPassArity)?;
             Ok(GraphLoweringPassKind::Displacement(entry.facts.clone()))
+        }
+        SemanticPassIntent::Tile => {
+            let entry = super::validate::tile_for_pass(graph, pass.id, account)?
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            Ok(GraphLoweringPassKind::Tile(entry.facts.clone()))
         }
         SemanticPassIntent::Turbulence => {
             let entry = super::validate::turbulence_for_pass(graph, pass.id, account)?
@@ -1997,6 +2004,22 @@ fn graph_lowering_read_bindings(
                 reads.append_slot()?.write(make(
                     0,
                     GraphLoweringReadRole::DisplacementSource,
+                    GraphLoweringSamplingFilter::Nearest,
+                    GraphLoweringSamplingEdge::TransparentBlack,
+                )?);
+            }
+            reads
+        }
+        GraphLoweringPassKind::Tile(facts) => {
+            let count = usize::from(facts.source_plan().is_some());
+            if pass.reads.len() != count {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            let mut reads = account.temporary(count)?;
+            if count != 0 {
+                reads.append_slot()?.write(make(
+                    0,
+                    GraphLoweringReadRole::TileSource,
                     GraphLoweringSamplingFilter::Nearest,
                     GraphLoweringSamplingEdge::TransparentBlack,
                 )?);

@@ -401,6 +401,7 @@ pub(super) fn reject_future_graph_with_typed_diagnostic(
     let mut has_morphology = false;
     let mut has_displacement = false;
     let mut lighting = None;
+    let mut has_tile = false;
     let mut has_turbulence = false;
 
     for pass in graph.lowering_view(account)?.passes(account)?.iter() {
@@ -418,6 +419,7 @@ pub(super) fn reject_future_graph_with_typed_diagnostic(
             GraphLoweringPassKind::NativeShadowMerge(_) => has_native_shadow = true,
             GraphLoweringPassKind::Morphology(_) => has_morphology = true,
             GraphLoweringPassKind::Displacement(_) => has_displacement = true,
+            GraphLoweringPassKind::Tile(_) => has_tile = true,
             GraphLoweringPassKind::Turbulence(_) => has_turbulence = true,
             GraphLoweringPassKind::Lighting(pass) => {
                 lighting.get_or_insert_with(|| pass.primitive_operation());
@@ -466,6 +468,11 @@ pub(super) fn reject_future_graph_with_typed_diagnostic(
         ))
     } else if let Some(lighting) = lighting {
         Some((PrimitiveFamily::Filters, lighting))
+    } else if has_tile {
+        Some((
+            PrimitiveFamily::Filters,
+            PrimitiveOperation::GpuTileFilterExecution,
+        ))
     } else if has_turbulence {
         Some((
             PrimitiveFamily::Filters,

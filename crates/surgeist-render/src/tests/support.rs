@@ -513,6 +513,17 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
             crate::effect::TurbulenceRegion::try_new(turbulence_bounds, turbulence_bounds).unwrap(),
         )
         .unwrap();
+    let tile_source = Rect::new(11.0, 10.0, 1.0, 1.0);
+    let tile_result = Rect::new(11.0, 10.0, 4.0, 1.0);
+    let mut producer = Scene::new();
+    producer.fill(tile_source, Color::BLACK);
+    scene
+        .tile_layer(
+            Layer::new(),
+            producer,
+            crate::effect::FilterDomains::try_new(tile_source, tile_result, tile_result).unwrap(),
+        )
+        .unwrap();
     scene
         .normalize(
             Capabilities::CURRENT,

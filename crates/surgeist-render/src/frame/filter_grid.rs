@@ -20,10 +20,16 @@ pub(super) enum FilterGridOwner {
     Displacement,
     Lighting,
     Turbulence,
+    Tile,
 }
 impl FilterGridOwner {
     fn mapping_error(self, value: f64) -> Error {
         match self {
+            Self::Tile => Error::invalid_value(
+                "filter tile raster grid",
+                crate::number_text::Number(value),
+                "must be representable in the capture or output raster grid",
+            ),
             Self::Turbulence => Error::invalid_value(
                 "turbulence raster grid",
                 crate::number_text::Number(value),
@@ -52,7 +58,7 @@ impl FilterGridOwner {
     }
     fn index_error(self, value: f64) -> Error {
         match self {
-            Self::Turbulence => self.mapping_error(value),
+            Self::Turbulence | Self::Tile => self.mapping_error(value),
             Self::Lighting => crate::lighting::numeric_error(
                 crate::lighting::LightingNumericPhase::GridIndex,
                 value,
@@ -76,7 +82,7 @@ impl FilterGridOwner {
     }
     fn sampling_error(self, value: f64) -> Error {
         match self {
-            Self::Turbulence => self.mapping_error(value),
+            Self::Turbulence | Self::Tile => self.mapping_error(value),
             Self::Lighting => crate::lighting::numeric_error(
                 crate::lighting::LightingNumericPhase::Sampling,
                 value,

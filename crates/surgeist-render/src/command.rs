@@ -359,6 +359,7 @@ pub(crate) enum NormalizedForegroundEffect {
     Offset(crate::offset::PreparedOffset),
     Gaussian(crate::gaussian::GaussianForeground),
     Lighting(crate::lighting::LightingForeground),
+    Tile(crate::effect::FilterDomains),
     Turbulence(
         crate::turbulence::Turbulence,
         crate::turbulence::TurbulenceRegion,
@@ -1411,6 +1412,14 @@ impl NormalizedLayer {
                         PrimitiveOperation::GpuGaussianFilterExecution,
                     ))?;
                     NormalizedForegroundEffect::Gaussian(*gaussian)
+                }
+                LayerFilter::Tile(domains) => {
+                    account.work(RenderWork::FilterOperationVisits, 1)?;
+                    capabilities.ensure_supported(UnsupportedPrimitive::new(
+                        PrimitiveFamily::Filters,
+                        PrimitiveOperation::GpuTileFilterExecution,
+                    ))?;
+                    NormalizedForegroundEffect::Tile(*domains)
                 }
                 LayerFilter::Turbulence(operation, region) => {
                     account.work(RenderWork::FilterOperationVisits, 1)?;

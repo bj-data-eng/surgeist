@@ -220,7 +220,7 @@ impl PreparedGraph<'_> {
                     SpatialPassTargetForTest::Dedicated
                 },
                 pipeline: objects.render_pipeline(),
-                bind_group: &bindings,
+                bind_group: Some(&bindings),
             },
             region,
             "Surgeist morphology bounded stage",

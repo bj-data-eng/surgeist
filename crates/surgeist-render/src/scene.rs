@@ -252,6 +252,33 @@ impl Scene {
         self
     }
 
+    /// Repeats the supplied producer over its full layer-local primitive subregion.
+    ///
+    /// The source domain defines one tile. The filter domain clips the captured
+    /// producer and the repeated output. The result domain independently clips
+    /// the output. Layer placement and composition apply after repetition.
+    ///
+    /// Returns a typed input error if the layer has a backdrop filter.
+    pub fn tile_layer(
+        &mut self,
+        layer: Layer,
+        producer: Scene,
+        domains: crate::effect::FilterDomains,
+    ) -> Result<&mut Self> {
+        if layer.backdrop_filter().is_some() {
+            return Err(crate::Error::invalid_value(
+                "tile layer backdrop",
+                "present",
+                "must be absent when a resolved producer defines the tile",
+            ));
+        }
+        self.commands.push(Command::Layer {
+            layer: Box::new(layer.with_tile(domains)),
+            children: producer.commands.into(),
+        });
+        Ok(self)
+    }
+
     /// Appends source-free turbulence with an independent primitive and filter region.
     ///
     /// The layer's transform, clip, mask, opacity and composition apply to the
