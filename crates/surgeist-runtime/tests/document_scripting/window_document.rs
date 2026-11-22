@@ -452,3 +452,27 @@ pub(super) fn window_properties_full_assignment_regression() {
         .unwrap();
     assert_eq!(String::from_utf16(&result).unwrap(), "ok");
 }
+
+pub(super) fn window_properties_refuses_alternate_receiver() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let script = r#"(() => {
+        const names = Object.getPrototypeOf(Window.prototype);
+        const key = "newName";
+        if (Object.hasOwn(names, key)) return "expected an absent WindowProperties key";
+        const assigned = Reflect.set({}, key, 17, names);
+        const ownsName = Object.hasOwn(names, key);
+        if (assigned || ownsName) {
+            return "WindowProperties must refuse own property creation through an alternate target"
+                + "; Reflect.set returned " + assigned + ", own name " + ownsName;
+        }
+        return "ok";
+    })()"#;
+    let result = host
+        .in_document(&permit, |scope| {
+            let value = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&value)
+        })
+        .unwrap();
+    assert_eq!(String::from_utf16(&result).unwrap(), "ok");
+}

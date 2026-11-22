@@ -2477,6 +2477,7 @@ fn main() {
         match scenario.as_str() {
             "window-event-target-lookup" => window_document::window_resolves_the_inherited_event_target_operations(),
             "window-properties-full" => window_document::window_properties_full_assignment_regression(),
+            "window-properties-alternate-assignment" => window_document::window_properties_refuses_alternate_receiver(),
             "wpt-window-startup" => wpt_window_startup::starts_unmodified_harness_with_native_timers(),
             "html-collection-indexed-assignment" => wpt_window_startup::refuses_unsupported_html_collection_index_assignment(),
             "standard-window" => standard_window::window_without_host_hooks_uses_standard_globals(),
