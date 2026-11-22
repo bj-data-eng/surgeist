@@ -143,7 +143,11 @@ fn element(payload: &[u8], start: usize, size: usize) -> ProfileResult<Extent> {
     let padded = end
         .checked_next_multiple_of(4)
         .ok_or(ProfileError::Invalid)?;
-    let padding = payload.get(end..padded).ok_or(ProfileError::Invalid)?;
+    // Verify alignment between stages here. Alignment bytes after the
+    // declared tag size belong to the outer tag table.
+    let padding = payload
+        .get(end..padded.min(payload.len()))
+        .ok_or(ProfileError::Invalid)?;
     if padding.iter().any(|&byte| byte != 0) {
         return Err(ProfileError::Invalid);
     }
