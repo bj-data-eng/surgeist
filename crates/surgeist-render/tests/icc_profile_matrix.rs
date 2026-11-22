@@ -405,6 +405,39 @@ fn selected_malformed_gray_curve_has_a_typed_error_in_both_directions() {
     );
 }
 
+#[test]
+fn model_fallback_respects_class_pcs_and_edition() {
+    let mut accounting = RenderAccountingContext::default();
+    for (version, class, device, space, eligible) in [
+        (V2, b"scnr", b"GRAY", b"Lab ", false),
+        (V4, b"prtr", b"GRAY", b"Lab ", true),
+        (V4, b"mntr", b"RGB ", b"Lab ", false),
+        (V2, b"scnr", b"3CLR", b"XYZ ", true),
+        (V2, b"mntr", b"3CLR", b"XYZ ", false),
+        (V4, b"mntr", b"3CLR", b"XYZ ", true),
+        (V4, b"spac", b"RGB ", b"XYZ ", false),
+    ] {
+        let (tags, control, expected) = if device == b"GRAY" {
+            (vec![(b"kTRC", curve(&[512]))], &[0.5][..], [25.0, 0.0, 0.0])
+        } else {
+            (calibrated_rgb_tags(), &[0.5, 0.75, 0.25][..], RGB_PCS)
+        };
+        let bytes = profile(version, class, device, space, D50, tags);
+        let profile = IccProfile::inspect(&bytes, &mut accounting).unwrap();
+        let sample = profile.device_color(control).unwrap();
+        let forward = profile.to_pcs(RELATIVE, &sample, &mut accounting);
+        let pcs = IccPcsColor::try_new(profile.pcs_space(), expected, RELATIVE).unwrap();
+        let reverse = profile.from_pcs(pcs, &mut accounting);
+        if eligible {
+            close(&forward.unwrap().coordinates(), &expected);
+            close(reverse.unwrap().channels(), control);
+        } else {
+            assert_icc_error(forward, IccProfileError::UnsupportedTransform);
+            assert_icc_error(reverse, IccProfileError::UnsupportedTransform);
+        }
+    }
+}
+
 fn lut16_constant(inputs: u8, codes: &[u16]) -> Vec<u8> {
     let mut data = b"mft2\0\0\0\0".to_vec();
     data.extend([inputs, u8::try_from(codes.len()).unwrap(), 2, 0]);
