@@ -3669,6 +3669,7 @@ pub fn surgeist_dom::tree::DomDocument<'_>::is_simple_fullscreen_document(self) 
 pub fn surgeist_dom::tree::DomDocument<'_>::keyboard_lock_active(self) -> core::result::Result<bool, surgeist_dom::DomError>
 impl<'a> surgeist_dom::tree::DomDocument<'a>
 pub fn surgeist_dom::tree::DomDocument<'a>::active_range(self) -> surgeist_dom::range::DomActiveRangeState
+pub fn surgeist_dom::tree::DomDocument<'a>::captured_fully_active_with<E>(self, step: &mut impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E> where E: core::convert::From<surgeist_dom::DomError> + core::convert::From<surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::tree::DomDocument<'a>::focused_area_designation(self) -> surgeist_dom::focus::DomFocusedAreaDesignation
 pub fn surgeist_dom::tree::DomDocument<'a>::id(self) -> surgeist_dom::identity::DocumentId
 pub fn surgeist_dom::tree::DomDocument<'a>::is_fully_active(self) -> core::result::Result<bool, surgeist_dom::hosted::DomHostedError>

@@ -6,9 +6,9 @@ use crate::{
     internal::node_values::DomDocumentType, internal::node_values::DomProcessingInstruction,
 };
 use crate::{
-    internal::identity::DocumentId, internal::identity::DomOwnerId,
-    internal::identity::DomRevision, internal::identity::DomStamp, internal::identity::NodeId,
-    internal::store::DomError,
+    internal::hosted::DomHostedError, internal::identity::DocumentId,
+    internal::identity::DomOwnerId, internal::identity::DomRevision, internal::identity::DomStamp,
+    internal::identity::NodeId, internal::store::DomError,
 };
 use surgeist_html::values::DocumentString;
 
@@ -290,27 +290,41 @@ impl<'a> DomDocument<'a> {
     }
     /// Activity derived from this immutable snapshot's actual published
     /// association. Later issuer retirement never changes this historical read.
-    pub fn is_fully_active(self) -> Result<bool, crate::internal::hosted::DomHostedError> {
+    pub fn is_fully_active(self) -> Result<bool, DomHostedError> {
         self.snapshot.require_complete_source()?;
-        match &self.metadata().document_environment().hosted {
-            Some(association) => {
-                match association.phase {
-                    crate::internal::hosted::DocumentPhase::InitialEntry { navigable, .. } => {
-                        let graph =
-                            self.snapshot.state.hosted_history.as_deref().ok_or(
-                                crate::internal::hosted::DomHostedError::UnsupportedProfile,
-                            )?;
-                        crate::internal::store::hosted::captured_fully_active(
-                            graph,
-                            self.id,
-                            navigable,
-                            || Ok(()),
-                        )
-                    }
-                    crate::internal::hosted::DocumentPhase::Retired { .. } => Ok(false),
-                    _ => Err(crate::internal::hosted::DomHostedError::IncompleteOperation),
+        self.captured_fully_active_with(&mut || Ok(()))
+    }
+
+    /// Observe Document activity within the exact captured Source basis.
+    /// The caller meters the Document and ancestry reads. The captured result
+    /// grants no authority to execute against a later revision.
+    pub fn captured_fully_active_with<E>(
+        self,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
+        let node = self.snapshot.node_with(self.id.node(), &mut *step)?;
+        let DomNodeKind::Document(metadata) = node.kind() else {
+            return Err(DomError::WrongDocument.into());
+        };
+        match &metadata.document_environment().hosted {
+            Some(association) => match association.phase {
+                crate::internal::hosted::DocumentPhase::InitialEntry { navigable, .. } => {
+                    let graph = self
+                        .snapshot
+                        .state
+                        .hosted_history
+                        .as_deref()
+                        .ok_or(DomHostedError::UnsupportedProfile)?;
+                    crate::internal::store::hosted::captured_fully_active(
+                        graph, self.id, navigable, step,
+                    )
                 }
-            }
+                crate::internal::hosted::DocumentPhase::Retired { .. } => Ok(false),
+                _ => Err(DomHostedError::IncompleteOperation.into()),
+            },
             None => Ok(false),
         }
     }

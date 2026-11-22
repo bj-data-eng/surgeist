@@ -61,7 +61,7 @@ impl WindowSite {
             })),
             Self::Child(relations) => {
                 let child = relations.child;
-                Ok(child.is_live(read)?.then_some(Target {
+                Ok(relations.is_live(read)?.then_some(Target {
                     context: Some(child.context),
                     global: child.global,
                     document: child.document,
@@ -88,71 +88,22 @@ impl Child {
         Ok(false)
     }
 
-    fn is_live(mut self, read: &NativeRead<'_>) -> Result<bool, DocumentGuestEventError> {
-        let public = read.events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-        loop {
-            if !self.in_parent(read)? {
-                return Ok(false);
-            }
-            let Some(parent) = self.parent.context else {
-                return Ok(true);
-            };
-            let Some(ancestor) = public
-                .window_children
-                .lookup(parent, read.events, |entry| Ok(entry.relations.child))?
-            else {
-                let Some(record) = read
-                    .snapshot
-                    .hosted_creation_navigable_with(self.parent.document, &mut || read.step())?
-                else {
-                    return Ok(false);
-                };
-                if record.browsing_context() != parent || record.global() != self.parent.global {
-                    return Err(DocumentScriptNativeError::ProjectionCustody.into());
-                }
-                self = describe_child(read, record, self.parent.document)?;
-                continue;
-            };
-            if (ancestor.global, ancestor.document) != (self.parent.global, self.parent.document) {
-                return Err(DocumentScriptNativeError::ProjectionCustody.into());
-            }
-            self = ancestor;
+    fn is_live(self, read: &NativeRead<'_>) -> Result<bool, DocumentGuestEventError> {
+        let record = read
+            .snapshot
+            .captured_hosted_navigable_with(self.navigable, &mut || read.step())?;
+        if (record.global(), record.browsing_context()) != (self.global, self.context) {
+            return Err(DocumentScriptNativeError::ProjectionCustody.into());
         }
-    }
-
-    fn in_parent(self, read: &NativeRead<'_>) -> Result<bool, DocumentGuestEventError> {
-        let dom = read
-            .dom
-            .try_borrow()
-            .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let mut live = false;
-        let result = dom.raw().visit_document_tree_child_navigables(
-            self.parent.document,
-            read.events.limits.work,
-            || read.events.budget.charge_work(read.account_scope, 1),
-            read.cancel,
-            |candidate| {
-                if candidate.browsing_context() == self.context {
-                    if candidate.id() != self.navigable
-                        || candidate.active_document() != Some(self.document)
-                        || candidate.global() != self.global
-                    {
-                        return Err(DocumentScriptNativeError::ProjectionCustody.into());
-                    }
-                    live = true;
-                }
-                Ok(())
-            },
-        );
-        match result {
-            Ok(_) => Ok(live),
-            Err(DocumentGuestEventError::Document(DocumentScriptError::Native(
-                DocumentScriptNativeError::Hosted(DomHostedRuntimeError::Dom(
-                    DomHostedError::StaleIdentity,
-                )),
-            ))) if self.parent.context.is_some() => Ok(false),
-            Err(error) => Err(error),
+        if record.is_retiring()
+            || record.is_retired()
+            || record.active_document() != Some(self.document)
+        {
+            return Ok(false);
         }
+        read.snapshot
+            .document(self.document)?
+            .captured_fully_active_with(&mut || read.step())
     }
 }
 
@@ -231,6 +182,10 @@ impl ChildRelations {
         self.child.document
     }
 
+    fn is_live(&self, read: &NativeRead<'_>) -> Result<bool, DocumentGuestEventError> {
+        Ok(!self.is_retired() && self.child.is_live(read)?)
+    }
+
     fn call<'scope>(
         &self,
         scope: &mut Scope<'scope>,
@@ -250,7 +205,7 @@ impl ChildRelations {
         let proxy = arguments.receiver();
         let result = (|| {
             let (live, count) = callbacks.with_read(&owner, &events, |read, _| {
-                let live = child.is_live(read)?;
+                let live = self.is_live(read)?;
                 let count = if live && !setter && matches!(member.relation, Relation::Length) {
                     child_count(read, child.document)?
                 } else {
@@ -385,7 +340,6 @@ impl PublicEventBindings {
             };
             let mut cursor = record;
             let mut document = document;
-            let mut live = true;
             while cursor.id() != attachment.target.navigable() {
                 let node = read.node(document.node())?;
                 let DomNodeKind::Document(metadata) = node.kind() else {
@@ -394,7 +348,6 @@ impl PublicEventBindings {
                 if metadata.origin() != top.origin() {
                     return Ok(None);
                 }
-                live &= !cursor.is_retiring() && !cursor.is_retired();
                 let parent = cursor
                     .parent()
                     .or(cursor.former_parent())
@@ -409,7 +362,7 @@ impl PublicEventBindings {
             if cursor.global() != attached || document != self.callbacks.permit.document {
                 return Err(DocumentScriptNativeError::ProjectionCustody.into());
             }
-            Ok(Some((child, live)))
+            Ok(Some((child, child.is_live(read)?)))
         })
     }
 
@@ -448,7 +401,7 @@ pub(in crate::document_scripting::guest) fn child_window_event_receiver<'scope>(
     };
     let live = relations
         .callbacks
-        .with_read(owner, events, |read, _| relations.child.is_live(read))?;
+        .with_read(owner, events, |read, _| relations.is_live(read))?;
     Ok(live.then_some(relations))
 }
 
