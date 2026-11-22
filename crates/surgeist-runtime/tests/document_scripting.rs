@@ -127,6 +127,8 @@ mod marquee;
 mod named_node_map;
 #[path = "document_scripting/native_media_status.rs"]
 mod native_media_status;
+#[path = "document_scripting/node_list.rs"]
+mod node_list;
 #[path = "document_scripting/numeric_control_attributes.rs"]
 mod numeric_control_attributes;
 #[path = "document_scripting/option_factory.rs"]
@@ -2520,6 +2522,8 @@ fn main() {
             "html-collection-properties" => tag_collection::reflects_live_tag_collection_properties(),
             "document-all" => document_all::uses_the_canonical_live_document(),
             "document-collections" => document_collections::document_collections_share_live_native_identity(),
+            "node-list" => node_list::node_lists_follow_current_canonical_nodes(),
+            "node-list-retirement" => node_list::retired_child_roots_refuse_cached_and_first_access(),
             "standard-window" => standard_window::window_without_host_hooks_uses_standard_globals(),
             "standard-window-guest" => standard_window::guest_window_without_host_hooks_recovers_from_policy_refusal(),
             "media-removal-stable-state" => standard_window::guest_media_removal_reaches_the_owning_checkpoint(),
@@ -2688,6 +2692,8 @@ fn main() {
     window_properties::named_window_elements_follow_the_live_document();
     document_all::uses_the_canonical_live_document();
     document_collections::document_collections_share_live_native_identity();
+    node_list::node_lists_follow_current_canonical_nodes();
+    node_list::retired_child_roots_refuse_cached_and_first_access();
     named_node_map::follows_the_native_attribute_list();
     named_node_map::verifies_attachment_before_rechecking_ownership();
     window_properties::indexed_window_children_follow_the_live_browsing_contexts();

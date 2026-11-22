@@ -69,7 +69,7 @@ fn indexed<'scope, L: List>(
         state,
         &read,
         &keys,
-        backing,
+        |_| Ok::<_, Error>(backing),
     )?;
     scope.set_native_object_reference::<Rc<L>>(&object, ITEM_READER, Some(&read))?;
     Ok(object)

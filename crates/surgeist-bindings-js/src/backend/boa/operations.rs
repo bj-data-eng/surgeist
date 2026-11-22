@@ -554,8 +554,12 @@ impl Operations for Entered<'_> {
     }
 
     fn intrinsic(&mut self, intrinsic: Intrinsic) -> Result<Root, Error> {
+        let objects = self.context.intrinsics().objects();
         let function = match intrinsic {
-            Intrinsic::ArrayValues => self.context.intrinsics().objects().array_prototype_values(),
+            Intrinsic::ArrayEntries => objects.array_prototype_entries(),
+            Intrinsic::ArrayKeys => objects.array_prototype_keys(),
+            Intrinsic::ArrayValues => objects.array_prototype_values(),
+            Intrinsic::ArrayForEach => objects.array_prototype_for_each(),
         };
         self.root(function.into())
     }

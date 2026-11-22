@@ -12,6 +12,8 @@
 //! settable current node and source-defined navigation in seven directions.
 //! `DomHtmlCollection` retains one exact Document and an element filter.
 //! Qualify a new `DomHtmlCollectionRead` to read its current members.
+//! `DomNodeList` retains a node's ordinary children or a Document name filter.
+//! `DomNodeListRead` provides its current length and indexed members.
 //!
 //! Views are immutable and keep the snapshot lifetime; reading creates no node. A
 //! NodeIterator starts before its root, walks ordinary tree order within the root, and
@@ -33,7 +35,8 @@ pub use crate::internal::snapshot::{
 pub use crate::internal::store::{
     DomHtmlAllCollection, DomHtmlAllCollectionRead, DomHtmlAllNamedValue, DomHtmlCollection,
     DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead,
-    DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest, DomWindowNamedElements,
+    DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest, DomNodeList, DomNodeListRead,
+    DomWindowNamedElements,
 };
 pub use crate::internal::store::{DomTreeWalkerFilterRequest, DomTreeWalkerMatchRequest};
 pub use crate::internal::table_part::DomHtmlTablePart;

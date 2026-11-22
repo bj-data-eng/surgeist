@@ -277,14 +277,26 @@ impl<'scope> Scope<'scope> {
         )
     }
 
-    pub(crate) fn project_native_object_with_indexed_properties<T: 'static, Storage: 'static>(
+    /// Project a native object with live, read-only indexed properties.
+    /// `read` receives an index and an optional presence-only marker. It
+    /// returns the indexed value or `undefined`, or a Boolean for a presence
+    /// probe. `keys` returns the current indices in an Array.
+    ///
+    /// # Errors
+    /// Returns an error for inactive or invalid callback custody, refused
+    /// admission, or engine allocation failure. No projection is published.
+    pub fn project_native_object_with_indexed_properties<
+        T: 'static,
+        Storage: 'static,
+        E: From<Error>,
+    >(
         &mut self,
         prototype: ObjectPrototype<'_, 'scope>,
         payload: T,
         read: &Value<'scope>,
         keys: &Value<'scope>,
-        backing: Storage,
-    ) -> Result<Value<'scope>, Error> {
+        admit: impl FnOnce(usize) -> Result<Storage, E>,
+    ) -> Result<Value<'scope>, E> {
         self.project_payload(
             prototype,
             payload,
@@ -293,7 +305,7 @@ impl<'scope> Scope<'scope> {
                 keys: &keys.root,
                 kind: NativeCollectionKind::Indexed,
             }),
-            |_| Ok(backing),
+            admit,
         )
     }
 

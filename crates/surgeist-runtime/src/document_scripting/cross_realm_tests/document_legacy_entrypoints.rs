@@ -239,6 +239,7 @@ fn legacy_methods_and_alias_keep_registered_realms() {
         foreign_type_error,
         foreign_all_collection,
         foreign_collection,
+        foreign_node_list,
     ) = {
         let engine = host.engine.as_mut().unwrap();
         let realm = engine
@@ -255,12 +256,14 @@ fn legacy_methods_and_alias_keep_registered_realms() {
                 let error = evaluate(scope, "TypeError")?;
                 let all_collection = evaluate(scope, "HTMLAllCollection")?;
                 let collection = evaluate(scope, "HTMLCollection")?;
+                let node_list = evaluate(scope, "NodeList")?;
                 Ok((
                     scope.retain(&document),
                     scope.retain(&alias),
                     scope.retain(&error),
                     scope.retain(&all_collection),
                     scope.retain(&collection),
+                    scope.retain(&node_list),
                 ))
             })
             .unwrap()
@@ -273,7 +276,8 @@ fn legacy_methods_and_alias_keep_registered_realms() {
         for (name, root) in [("foreignLegacyDocument", &foreign_document),
             ("foreignLegacyAlias", &foreign_alias), ("foreignLegacyTypeError", &foreign_type_error),
             ("foreignAllCollection", &foreign_all_collection),
-            ("foreignHTMLCollection", &foreign_collection)] {
+            ("foreignHTMLCollection", &foreign_collection),
+            ("foreignNodeList", &foreign_node_list)] {
             let value = scope.import(root)?;
             scope.set(&global, PropertyKey::String(&name.encode_utf16().collect::<Vec<_>>()), &value)?;
         }
@@ -312,6 +316,21 @@ fn legacy_methods_and_alias_keep_registered_realms() {
                     || registeredForms === document.forms || registeredForms.length !== 0)
                     return 'standard collections follow foreign Document creation and identity';
                 globalThis.originalLegacyForms = registeredForms;
+                const childNodes = Object.getOwnPropertyDescriptor(Node.prototype, 'childNodes').get;
+                const foreignNode = Object.getPrototypeOf(foreignLegacyDocument.prototype);
+                const foreignChildNodes = Object.getOwnPropertyDescriptor(foreignNode, 'childNodes').get;
+                const foreignChildren = childNodes.call(originLegacyDocument);
+                const foreignNames = Document.prototype.getElementsByName.call(originLegacyDocument, 'absent');
+                if (!(foreignChildren instanceof foreignNodeList)
+                    || !(foreignNames instanceof foreignNodeList) || foreignNames.length !== 0
+                    || foreignChildren instanceof NodeList || foreignNames instanceof NodeList
+                    || foreignChildren !== originLegacyDocument.childNodes
+                    || !(foreignChildNodes.call(document) instanceof NodeList)
+                    || !(foreignLegacyDocument.prototype.getElementsByName.call(document, 'absent') instanceof NodeList)
+                    || [...foreignChildren].every(node => node !== originalRoot))
+                    return 'NodeLists follow the exact native receiver and original creation realm';
+                globalThis.originalLegacyChildren = foreignChildren;
+                globalThis.originalLegacyNames = foreignNames;
                 const poison = new Proxy({}, {get() { throw 0; }, ownKeys() { throw 0; }});
                 for (const name of ['clear', 'captureEvents', 'releaseEvents']) {
                     const foreign = Object.getOwnPropertyDescriptor(foreignLegacyDocument.prototype, name).value;
@@ -341,6 +360,13 @@ fn legacy_methods_and_alias_keep_registered_realms() {
             scope.callback_object(&forms)?.associated_realm().identity(),
             scope.callback_object(&value)?.associated_realm().identity()
         );
+        for name in ["originalLegacyChildren", "originalLegacyNames"] {
+            let list = evaluate(scope, name)?;
+            assert_eq!(
+                scope.callback_object(&list)?.associated_realm().identity(),
+                scope.callback_object(&value)?.associated_realm().identity()
+            );
+        }
         Ok(())
     }).unwrap();
     {
@@ -412,7 +438,11 @@ fn legacy_methods_and_alias_keep_registered_realms() {
                     && collection[0] === originalLegacyRoot
                     && Reflect.apply(collection, null, ['0']) === originalLegacyRoot
                     && originLegacyDocument.forms === originalLegacyForms
-                    && originalLegacyForms.length === 0;
+                    && originalLegacyForms.length === 0
+                    && originLegacyDocument.childNodes === originalLegacyChildren
+                    && [...originalLegacyChildren].includes(originalLegacyRoot)
+                    && originalLegacyNames.length === 0
+                    && originLegacyDocument.getElementsByName('absent') instanceof foreignNodeList;
             })()
         "#)?;
         assert!(scope.boolean(&result)?);

@@ -14292,21 +14292,21 @@
       "requirements": []
     },
     "NodeList.item:0/call": {
-      "kind": "derived",
-      "algorithm": "nodelist.item_0.call",
-      "owner": "surgeist-bindings-js",
-      "contract": "Implement NodeList.item as the declared indexed/named or length projection over its actual rooted selection. Reread current members for live selections; static query lists retain only their selected identities. Named HTMLCollection lookup uses exact ID or HTML-only name and empty key returns null.",
-      "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-nodelist",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "children"}],
+      "kind": "native",
+      "adapter": "nodelist.item.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/node_list.rs", "symbol": "read_node_list"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/node_list.rs", "symbol": "item"}
+      ],
       "requirements": []
     },
     "NodeList.length/get": {
-      "kind": "derived",
-      "algorithm": "nodelist.length.get",
-      "owner": "surgeist-bindings-js",
-      "contract": "Implement NodeList.length as the declared indexed/named or length projection over its actual rooted selection. Reread current members for live selections; static query lists retain only their selected identities. Named HTMLCollection lookup uses exact ID or HTML-only name and empty key returns null.",
-      "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-nodelist",
-      "inputs": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "children"}],
+      "kind": "native",
+      "adapter": "nodelist.length.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/node_list.rs", "symbol": "read_node_list"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/node_list.rs", "symbol": "length"}
+      ],
       "requirements": []
     },
     "HTMLCollection.length/get": {
@@ -14393,7 +14393,10 @@
     "Node.childNodes/get": {
       "kind": "native",
       "adapter": "node.childnodes.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "children"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/node_list.rs", "symbol": "child_node_list"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/node_list.rs", "symbol": "child_nodes"}
+      ],
       "requirements": [],
       "result_view": "live"
     },
@@ -16813,15 +16816,11 @@
       "result_view": "live"
     },
     "Document.html.getElementsByName:0/call": {
-      "kind": "derived",
-      "algorithm": "document.html.getelementsbyname_0.call",
-      "owner": "surgeist-dom",
-      "contract": "Project the source live NodeList of matching HTML elements with an exact name attribute, independently of ID and CSS selector semantics.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-document-object",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
+      "kind": "native",
+      "adapter": "document.getelementsbyname.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/node_list.rs", "symbol": "elements_by_name"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/node_list.rs", "symbol": "get_elements_by_name"}
       ],
       "requirements": [],
       "result_view": "live"

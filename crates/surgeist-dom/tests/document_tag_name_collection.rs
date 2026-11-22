@@ -51,6 +51,116 @@ fn query(dom: &Dom, document: DocumentId, tag: &str) -> DomHtmlCollection {
 }
 
 #[test]
+fn node_lists_read_current_members_under_exact_work_and_query_limits() {
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let query = DocumentString::from_utf16(vec![0xd800, 0, 0x4e]);
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let root = batch.create_element(&document, "root");
+    let comment = batch.create_comment(&document, "child but not named HTML");
+    let html = batch.create_element_ns(&document, Namespace::html(), "x-native-name");
+    let svg = batch.create_element_ns(&document, Namespace::svg(), "g");
+    let namespaced = batch.create_element_ns(&document, Namespace::html(), "span");
+    batch.set_attribute(&html, "name", query.clone());
+    batch.set_attribute(&svg, "name", query.clone());
+    batch.set_attribute_ns(
+        &namespaced,
+        Namespace::from_uri("urn:witness"),
+        "p:name",
+        query.clone(),
+    );
+    batch.insert_before(&root, &document, None);
+    for child in [&comment, &html, &svg, &namespaced] {
+        batch.insert_before(child, &root, None);
+    }
+    let receipt = dom.apply(batch, &cancel).unwrap();
+    let document = receipt.document(&document).unwrap();
+    let root = receipt.created(&root).unwrap().unwrap();
+    let comment = receipt.created(&comment).unwrap().unwrap();
+    let html = receipt.created(&html).unwrap().unwrap();
+    let svg = receipt.created(&svg).unwrap().unwrap();
+    let namespaced = receipt.created(&namespaced).unwrap().unwrap();
+    assert!(matches!(
+        dom.get_elements_by_name(document, query.clone(), 2, &cancel),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::NodeListQueryUnits,
+            limit: 2
+        })
+    ));
+    let names = dom
+        .get_elements_by_name(document, query, 3, &cancel)
+        .unwrap();
+    let children = dom.child_nodes(root, &cancel).unwrap();
+    let allow = || Ok::<_, DomError>(());
+    let current = dom
+        .read_node_list(&children, 10_000, allow, &cancel)
+        .unwrap();
+    assert_eq!(current.length().unwrap(), 4);
+    for (index, node) in [comment, html, svg, namespaced].into_iter().enumerate() {
+        assert_eq!(current.item(index).unwrap(), Some(node));
+    }
+    assert_eq!(current.item(4).unwrap(), None);
+    let current = dom.read_node_list(&names, 10_000, allow, &cancel).unwrap();
+    assert_eq!(current.item(0).unwrap(), Some(html));
+    assert_eq!(current.item(1).unwrap(), None);
+    let work = Cell::new(0);
+    let count = |limit| {
+        work.set(0);
+        dom.read_node_list(
+            &names,
+            limit,
+            || {
+                work.set(work.get() + 1);
+                Ok::<_, DomError>(())
+            },
+            &cancel,
+        )?
+        .length()
+    };
+    assert_eq!(count(10_000).unwrap(), 1);
+    let exact = work.get();
+    assert_eq!(count(exact).unwrap(), 1);
+    assert_eq!(work.get(), exact);
+    assert!(matches!(
+        count(exact - 1),
+        Err(DomError::WorkLimit { resource: DomResource::NodeListWork, limit }) if limit == exact - 1
+    ));
+    assert_eq!(work.get(), exact - 1);
+    assert!(matches!(
+        dom.read_node_list(&names, exact, || Err(DomError::AllocationFailed), &cancel),
+        Err(DomError::AllocationFailed)
+    ));
+    assert!(matches!(
+        dom.read_node_list(
+            &children,
+            exact,
+            || Err(DomError::AllocationFailed),
+            &AtomicBool::new(true)
+        ),
+        Err(DomError::Cancelled)
+    ));
+    let foreign = self::dom();
+    assert!(matches!(
+        foreign.read_node_list(&children, exact, allow, &cancel),
+        Err(DomError::ForeignOwner)
+    ));
+
+    let mut update = DomBatch::new();
+    update.detach(html);
+    update.insert_before(svg, root, Some(comment.into()));
+    dom.apply(update, &cancel).unwrap();
+    let current = dom
+        .read_node_list(&children, 10_000, allow, &cancel)
+        .unwrap();
+    assert_eq!(current.length().unwrap(), 3);
+    assert_eq!(current.item(0).unwrap(), Some(svg));
+    let current = dom.read_node_list(&names, 10_000, allow, &cancel).unwrap();
+    assert_eq!(current.length().unwrap(), 0);
+    assert_eq!(current.item(0).unwrap(), None);
+}
+
+#[test]
 fn tag_name_filter_distinguishes_html_spelling_foreign_names_and_ordinary_edges() {
     let mut dom = dom();
     let cancel = AtomicBool::new(false);

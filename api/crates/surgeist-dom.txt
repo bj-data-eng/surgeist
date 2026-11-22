@@ -2425,6 +2425,8 @@ pub surgeist_dom::limits::DomResource::NameRetainedBytes
 pub surgeist_dom::limits::DomResource::NameScratch
 pub surgeist_dom::limits::DomResource::NameWork
 pub surgeist_dom::limits::DomResource::NodeIterators
+pub surgeist_dom::limits::DomResource::NodeListQueryUnits
+pub surgeist_dom::limits::DomResource::NodeListWork
 pub surgeist_dom::limits::DomResource::NodeRetirementCanonicalBytes
 pub surgeist_dom::limits::DomResource::ParsedAssociationBytes
 pub surgeist_dom::limits::DomResource::ParsedAssociationDispatchWork
@@ -3947,6 +3949,13 @@ pub fn surgeist_dom::tree::DomNodeIteratorMatchRequest<A>::iterator(&self) -> su
 pub fn surgeist_dom::tree::DomNodeIteratorMatchRequest<A>::node(&self) -> surgeist_dom::identity::NodeId
 impl<A> core::fmt::Debug for surgeist_dom::tree::DomNodeIteratorMatchRequest<A>
 pub fn surgeist_dom::tree::DomNodeIteratorMatchRequest<A>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_dom::tree::DomNodeList(_)
+pub struct surgeist_dom::tree::DomNodeListRead<'dom, A>
+impl<A, E> surgeist_dom::tree::DomNodeListRead<'_, A> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
+pub fn surgeist_dom::tree::DomNodeListRead<'_, A>::item(&self, index: usize) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
+pub fn surgeist_dom::tree::DomNodeListRead<'_, A>::length(&self) -> core::result::Result<usize, E>
+impl<A> core::fmt::Debug for surgeist_dom::tree::DomNodeListRead<'_, A>
+pub fn surgeist_dom::tree::DomNodeListRead<'_, A>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_dom::tree::DomProcessingInstruction
 impl surgeist_dom::tree::DomProcessingInstruction
 pub fn surgeist_dom::tree::DomProcessingInstruction::attribute(&self, name: &surgeist_html::internal::values::document_string::DocumentString) -> core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>
@@ -4578,6 +4587,10 @@ impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::capture_inline_style(&self, element: surgeist_dom::identity::NodeId) -> core::result::Result<core::option::Option<surgeist_dom::style::inline::DomInlineStyleCapture>, surgeist_dom::style::inline::DomInlineStyleError>
 pub fn surgeist_dom::Dom::configure_inline_styles(&mut self, limits: surgeist_dom::style::inline::DomInlineStyleLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::style::inline::DomInlineStyleError>
 pub fn surgeist_dom::Dom::inline_style(&mut self, element: surgeist_dom::identity::NodeId, inputs: &surgeist_dom::style::inline::DomInlineStyleInputs, limits: surgeist_dom::style::inline::DomInlineStyleRequestLimits, resolver: impl core::ops::function::FnMut(&[surgeist_cssom::declaration_support::CssomDeclarationCandidate], &surgeist_cssom::model::CssomContext) -> core::result::Result<surgeist_cssom::object_declarations::CssomAdmission, surgeist_cssom::model::CssomError>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_cssom::objects::CssStyleProperties, surgeist_dom::style::inline::DomInlineStyleError>
+impl surgeist_dom::Dom
+pub fn surgeist_dom::Dom::child_nodes(&self, node: surgeist_dom::identity::NodeId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomNodeList, surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::get_elements_by_name(&self, document: surgeist_dom::identity::DocumentId, name: surgeist_html::internal::values::document_string::DocumentString, max_retained_query_units: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomNodeList, surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::read_node_list<'dom, A, E>(&'dom self, list: &'dom surgeist_dom::tree::DomNodeList, work_limit: u64, admission: A, cancel: &'dom core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomNodeListRead<'dom, A>, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::complete_select_task(&mut self, task: &surgeist_dom::form::select::DomSelectTask, limits: surgeist_dom::task::DomNativeCheckpointLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::form::select::DomSelectTaskCompletion, surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::native_checkpoint_step(&mut self, limits: surgeist_dom::task::DomNativeCheckpointLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::task::DomNativeCheckpoint, surgeist_dom::DomError>
