@@ -679,3 +679,41 @@ fn numerical_limit_preserves_existing_css_no_value_classification() {
     assert_eq!(recovered[0].classification(), SampleClassification::Active);
     assert!(matches!(recovered[0].value(), SampleValue::Value(_)));
 }
+
+#[test]
+fn model_forward_fill_preserves_the_final_iteration() {
+    let timing = make_effect(EffectTimingOptions {
+        duration_millis: 0.1,
+        iterations: IterationCount::finite(3.0).unwrap(),
+        fill: FillMode::Forwards,
+        ..EffectTimingOptions::default()
+    });
+    let fill = timing.sample(input(Some(1.0), 1.0)).unwrap();
+    assert_eq!(fill.phase(), TimingPhase::After);
+    assert_eq!(progress(fill), Some(1.0));
+    assert_eq!(
+        fill.current_iteration()
+            .and_then(|index| index.finite_index()),
+        Some(2.0)
+    );
+}
+
+#[test]
+fn effect_timing_rejects_incoherent_play_state_and_local_time() {
+    let timing = EffectTiming::default();
+    let rejected = [
+        (
+            EffectPlayState::Idle,
+            Some(AnimationTime::from_millis(10.0).unwrap()),
+        ),
+        (EffectPlayState::Finished, None),
+    ]
+    .map(|(play, local_time)| {
+        let result = timing.sample(EffectTimingInput::Associated {
+            local_time,
+            animation: state(1.0, play, None, AnimationReplaceState::Active),
+        });
+        result.is_err()
+    });
+    assert_eq!(rejected, [true, true]);
+}
