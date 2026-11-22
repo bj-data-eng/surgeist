@@ -10,6 +10,12 @@ mod guest_creation_realm;
 mod holder_custody;
 #[path = "execution/host.rs"]
 mod host;
+#[path = "execution/language_profile.rs"]
+mod language_profile;
+#[path = "execution/microtask_checkpoint.rs"]
+mod microtask_checkpoint;
+#[path = "execution/module_profile.rs"]
+mod module_profile;
 #[path = "execution/native_reachability.rs"]
 mod native_reachability;
 #[path = "execution/panic_preparation.rs"]
@@ -2527,6 +2533,13 @@ fn main() -> Result<(), Error> {
             Some("dom-exception-profile-retirement") => {
                 Some(guest_creation_realm::dom_exception_slots_do_not_pin_a_retired_realm)
             }
+            Some("native-language-profile") => Some(language_profile::native_language_profile),
+            Some("raw-microtask-throw") => {
+                Some(microtask_checkpoint::raw_guest_throw_keeps_microtask_checkpoint_in_fifo)
+            }
+            Some("module-loader-policy") => {
+                Some(module_profile::module_resolution_stays_host_owned)
+            }
             _ => None,
         };
         if let Some(regression) = regression {
@@ -2582,6 +2595,9 @@ fn main() -> Result<(), Error> {
     guest_creation_realm::guest_objects_keep_their_creation_realm(&mut process)?;
     guest_creation_realm::native_type_error_uses_the_throwing_realm(&mut process)?;
     guest_creation_realm::dom_exception_slots_do_not_pin_a_retired_realm(&mut process)?;
+    language_profile::native_language_profile(&mut process)?;
+    microtask_checkpoint::raw_guest_throw_keeps_microtask_checkpoint_in_fifo(&mut process)?;
+    module_profile::module_resolution_stays_host_owned(&mut process)?;
     promise_realm::promise_resolver_rejects_self_resolution_in_its_original_realm(&mut process)?;
     realm_and_root_contracts(&mut process)?;
     utf16_is_code_unit_exact(&mut process)?;
