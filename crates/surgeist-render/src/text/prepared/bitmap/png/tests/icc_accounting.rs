@@ -5,6 +5,33 @@ use crate::{
 };
 
 #[test]
+fn png_phase_counts_profile_name_visits_with_the_other_png_bytes() {
+    let mut iccp = b"Profile\0\0".to_vec();
+    iccp.extend(zlib(&matrix_profile(false)));
+    let png = image(
+        &[128, 128, 128, 5],
+        None,
+        &[(::png::chunk::iCCP, &iccp)],
+        &[],
+    );
+    let mut accounting = RenderAccountingContext::default();
+    decode_in(&png, 1 << 20, &mut accounting).unwrap();
+    let attempt = accounting.last_attempt().unwrap().attempt().unwrap();
+    // Two CRC passes cover type and data of IHDR, iCCP, IDAT and IEND.
+    // Only the first pass inspects the name and its NUL; reconstruction
+    // visits each of the four pixel bytes once.
+    let crc_bytes = 2 * (png.len() - 8 - 4 * 8) as u64;
+    let expected = crc_bytes + 8 + 4;
+    assert_eq!(attempt.usage().work(RenderWork::PngByteVisits), expected);
+    assert_eq!(
+        attempt
+            .phase_usage(RenderPhase::Png)
+            .work(RenderWork::PngByteVisits),
+        expected
+    );
+}
+
+#[test]
 fn exact_inflate_budget_admits_profile_and_smaller_budget_releases_backing() {
     let profile = matrix_profile(false);
     let png = image(&[128, 128, 128, 5], Some(&profile), &[], &[]);

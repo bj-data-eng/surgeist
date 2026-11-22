@@ -120,6 +120,10 @@ fn curve(samples: &[u16]) -> Vec<u8> {
 }
 
 pub(crate) fn lut_profile() -> Vec<u8> {
+    lut_profile_with_transform(lut16_transform(), b"XYZ ")
+}
+
+pub(crate) fn lut16_transform() -> Vec<u8> {
     // ICC.1:2022 §10.10. A 2×2×2 CLUT transforms RGB to PCSXYZ,
     // bracketed by per-channel identity input and output tables.
     let mut transform = fixed(b"mft2", &[0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x10000]);
@@ -139,7 +143,41 @@ pub(crate) fn lut_profile() -> Vec<u8> {
         }
     }
     transform.extend_from_slice(&identity);
-    v4_profile(b"RGB ", "Surgeist RGB fixture", vec![(*b"A2B0", transform)])
+    transform
+}
+
+pub(crate) fn lut8_transform() -> Vec<u8> {
+    // ICC.1:2022 §10.11. Three 256-entry identity input and output tables
+    // surround a 2×2×2 RGB-to-Lab CLUT with neutral chroma and luminance
+    // proportional to the three input components.
+    let mut transform = fixed(b"mft1", &[0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x10000]);
+    transform.splice(8..8, [3, 3, 2, 0]);
+    let identity: Vec<_> = (0..=u8::MAX).collect();
+    transform.extend_from_slice(&identity.repeat(3));
+    for lightness in [0, 85, 85, 170, 85, 170, 170, 255] {
+        transform.extend_from_slice(&[lightness, 128, 128]);
+    }
+    transform.extend_from_slice(&identity.repeat(3));
+    transform
+}
+
+pub(crate) fn lut_a_to_b_transform() -> Vec<u8> {
+    // ICC.1:2022 §10.12 permits a B-curve-only pipeline. With three
+    // input and output channels, all three B curves follow the 32-byte
+    // prefix and no other process elements are present.
+    let mut transform = b"mAB \0\0\0\0\x03\x03\0\0".to_vec();
+    transform.extend(32_u32.to_be_bytes());
+    transform.extend_from_slice(&[0; 16]);
+    for _ in 0..3 {
+        transform.extend(curve(&[]));
+    }
+    transform
+}
+
+pub(crate) fn lut_profile_with_transform(transform: Vec<u8>, pcs: &[u8; 4]) -> Vec<u8> {
+    let mut profile = v4_profile(b"RGB ", "Surgeist RGB fixture", vec![(*b"A2B0", transform)]);
+    profile[20..24].copy_from_slice(pcs);
+    profile
 }
 
 fn fixed(kind: &[u8; 4], values: &[i32]) -> Vec<u8> {
