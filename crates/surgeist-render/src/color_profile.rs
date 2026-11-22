@@ -101,7 +101,7 @@ type ProfileResult<T> = std::result::Result<T, ProfileError>;
 
 fn prepare_transform(bytes: AccountedVec<u8>, account: &Account) -> ProfileResult<Transform> {
     let header = Header::read(&bytes, account)?;
-    let table = read_tag_table(&bytes, header.contiguous_tags(), account)?;
+    let table = read_tag_table(&bytes, header.png_tag_layout(), account)?;
     let version = header.version[0];
     if !matches!(version, 2 | 4) {
         return Err(ProfileError::Unsupported);
@@ -232,8 +232,19 @@ struct Header {
 }
 
 impl Header {
-    fn contiguous_tags(self) -> bool {
-        matches!(self.version, [4, 0x40..=0x49, 0, 0])
+    fn png_tag_layout(self) -> TagLayout {
+        if matches!(self.version, [4, 0x40..=0x49, 0, 0]) {
+            TagLayout::PackedV4
+        } else {
+            TagLayout::Legacy
+        }
+    }
+
+    fn native_tag_layout(self) -> TagLayout {
+        match (self.version[0], self.png_tag_layout()) {
+            (4, TagLayout::Legacy) => TagLayout::AlignedV4,
+            (_, layout) => layout,
+        }
     }
 
     fn read(bytes: &[u8], account: &Account) -> ProfileResult<Self> {
@@ -327,9 +338,16 @@ struct Tag {
     extent: Extent,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TagLayout {
+    Legacy,
+    AlignedV4,
+    PackedV4,
+}
+
 fn read_tag_table(
     bytes: &[u8],
-    contiguous: bool,
+    layout: TagLayout,
     account: &Account,
 ) -> ProfileResult<AccountedVec<Tag>> {
     let count = account.coordinate(|| u32_at(bytes, 128))??;
@@ -364,11 +382,13 @@ fn read_tag_table(
         if previous == Some(tag.extent) {
             continue; // ICC allows exact aliases of tag data.
         }
-        if tag.extent.start < next_start || (contiguous && tag.extent.start != next_start) {
+        let require_next_start =
+            layout == TagLayout::PackedV4 || (layout == TagLayout::AlignedV4 && previous.is_none());
+        if tag.extent.start < next_start || (require_next_start && tag.extent.start != next_start) {
             return Err(ProfileError::Invalid);
         }
         next_start = tag.extent.end;
-        if contiguous {
+        if layout != TagLayout::Legacy {
             next_start = tag
                 .extent
                 .end
@@ -383,7 +403,7 @@ fn read_tag_table(
         }
         previous = Some(tag.extent);
     }
-    if contiguous && next_start != bytes.len() {
+    if layout != TagLayout::Legacy && next_start != bytes.len() {
         return Err(ProfileError::Invalid);
     }
 

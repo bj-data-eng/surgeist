@@ -195,11 +195,12 @@ The caller supplies an accounting context and can reuse it after a refusal.
 
 ## Native ICC profile conversion
 
-`icc::IccProfile::inspect` checks caller-supplied immutable ICC v2 or v4 bytes
-for header and directory framing, common metadata, and an eligible Input,
-Display, Output, or ColorSpace class. The view exposes the device signature,
-channel count, and PCS. Each conversion qualifies the selected transform at
-the point of use. An Input profile can supply only a forward direction.
+`icc::IccProfile::inspect` checks the header and directory framing of
+caller-supplied immutable ICC v2 or v4 bytes, the presence of description and
+copyright tags, the media white point, and an eligible Input, Display, Output,
+or ColorSpace class. The view exposes the device signature, channel count, and
+PCS. Each conversion qualifies the selected transform at the point of use. An
+Input profile may omit the reverse direction.
 
 `to_pcs` requests an explicit rendering intent and returns actual D50 XYZ or
 Lab values tagged with that intent. `from_pcs` uses the incoming PCS value's

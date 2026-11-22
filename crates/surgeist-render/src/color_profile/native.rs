@@ -212,7 +212,7 @@ impl<'a> IccProfile<'a> {
                         b"Lab " => IccPcsSpace::Lab,
                         _ => return Err(IccProfileError::InvalidProfile.into()),
                     };
-                    let table = read_tag_table(bytes, header.contiguous_tags(), &account)
+                    let table = read_tag_table(bytes, header.native_tag_layout(), &account)
                         .map_err(profile_error)?;
                     media_white(&header, &table, bytes, &account).map_err(profile_error)?;
                     Ok(Self {
@@ -338,8 +338,9 @@ impl<'a> IccProfile<'a> {
                     if self.header.version[0] != 4 {
                         return Err(IccProfileError::UnsupportedTransform.into());
                     }
-                    let table = read_tag_table(self.bytes, self.header.contiguous_tags(), &account)
-                        .map_err(profile_error)?;
+                    let table =
+                        read_tag_table(self.bytes, self.header.native_tag_layout(), &account)
+                            .map_err(profile_error)?;
                     let tag = find_tag(&table, intent.tag(direction), &account)?
                         .ok_or(IccProfileError::UnsupportedTransform)?;
                     mpe::prepare_borrowed(self.bytes, tag, input.len(), output.len(), &account)
