@@ -85,7 +85,8 @@ are rejected by the owning constructor before sampling.
 
 `EffectTimingInput::Associated` supplies the animation's current time as
 `Option<AnimationTime>` and coherent `EffectAnimationState` observations. An
-unassociated effect has unresolved local time and is idle. There is at most one
+unassociated effect has unresolved local time and is idle. Sampling rejects
+resolved time for an idle animation and unresolved time for a finished animation. There is at most one
 associated animation and no group-effect hierarchy. The owner supplies playback
 rate, `EffectPlayState` (idle/running/paused/finished), optional timeline monotonicity and
 active/removed/persisted replace state; sampling does not derive host lifecycle.
@@ -110,7 +111,9 @@ does not reject an otherwise valid fill option.
 
 Sampling derives overall progress, simple progress, current iteration, directed
 progress and eased progress in that order. Exact final iteration endpoints hold
-1 rather than wrapping to 0 when count is nonzero. Source-defined infinite
+1 rather than wrapping to 0 when count is nonzero. At the full active duration,
+the configured count preserves the terminal iteration despite product rounding.
+Source-defined infinite
 overall progress uses `iteration_start % 1`; infinite current iteration selects
 forwards direction in both alternating modes. Easing uses the existing easing
 owner and sets its before flag only for before-phase forwards direction or
@@ -129,8 +132,10 @@ observations. Its predicates follow the
 | `is_relevant` | Current or in effect, with an associated animation whose replace state is not removed. |
 
 One private phase/progress kernel serves this millisecond model and the
-seconds-based normalized CSS `TimingParameters`/track samplers. The latter retain
-their nonnegative effective elapsed-time domain, including finite second values
+seconds-based normalized CSS `TimingParameters`/track samplers. CSS compares
+delay-relative time, including at a start where adding a short duration would
+round to the delay. The CSS samplers retain their nonnegative effective
+elapsed-time domain, including finite second values
 too large to convert into a finite millisecond coordinate. Shared observations
 reuse `TimingPhase`, `CurrentIteration`, `PhaseProgress` and `EasedProgress`.
 `TimingSample::is_finished()` describes a normalized forwards elapsed-time track;

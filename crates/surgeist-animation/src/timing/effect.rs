@@ -26,7 +26,7 @@ pub enum TimingOperation {
     Progress,
 }
 
-/// A rejected effect option or finite timing calculation limit.
+/// A rejected effect option or observation, or a finite timing calculation limit.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EffectTimingError {
     kind: EffectTimingErrorKind,
@@ -38,6 +38,10 @@ pub enum EffectTimingErrorKind {
     InvalidOption {
         field: EffectTimingField,
         value: f64,
+    },
+    InconsistentLocalTime {
+        play_state: EffectPlayState,
+        local_time: Option<AnimationTime>,
     },
     Unrepresentable {
         operation: TimingOperation,
@@ -60,6 +64,15 @@ impl core::fmt::Display for EffectTimingError {
         match self.kind {
             EffectTimingErrorKind::InvalidOption { field, value } => {
                 write!(f, "invalid {field:?} effect timing value {value}")
+            }
+            EffectTimingErrorKind::InconsistentLocalTime {
+                play_state,
+                local_time,
+            } => {
+                write!(
+                    f,
+                    "inconsistent effect local time {local_time:?} for {play_state:?} animation"
+                )
             }
             EffectTimingErrorKind::Unrepresentable { operation } => {
                 write!(f, "{operation:?} timing result is not representable")
@@ -237,8 +250,9 @@ impl EffectTiming {
     ///
     /// # Errors
     ///
-    /// Returns a typed finite numeric limit rather than treating overflow as
-    /// infinite progress or unresolved time. Sampling has no frame history.
+    /// Rejects a resolved time for an idle animation or an unresolved time for a
+    /// finished animation. Reports finite numeric limits separately from
+    /// source-defined infinity or unresolved time. Sampling has no frame history.
     pub fn sample(
         &self,
         input: EffectTimingInput,
@@ -250,8 +264,21 @@ impl EffectTiming {
                 animation,
             } => (local_time, Some(animation)),
         };
+        if let Some(state) = animation
+            && matches!(
+                (state.play_state, local_time),
+                (EffectPlayState::Idle, Some(_)) | (EffectPlayState::Finished, None)
+            )
+        {
+            return Err(EffectTimingError {
+                kind: EffectTimingErrorKind::InconsistentLocalTime {
+                    play_state: state.play_state,
+                    local_time,
+                },
+            });
+        }
         let backwards = animation.is_some_and(|state| state.playback_rate.value() < 0.0);
-        let kernel = kernel::sample(
+        let kernel = kernel::sample_model(
             &self.parameters(),
             local_time.map(AnimationTime::as_millis),
             backwards,
@@ -340,6 +367,8 @@ impl EffectAnimationState {
 }
 
 /// Zero or one associated animation supplies the local time for a keyframe effect.
+///
+/// Sampling validates the relationship between the supplied play state and time.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EffectTimingInput {
     Unassociated,

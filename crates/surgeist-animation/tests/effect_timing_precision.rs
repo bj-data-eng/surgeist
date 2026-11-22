@@ -56,6 +56,12 @@ fn css_forward_fill_preserves_configured_progress_for_tiny_fractional_counts() {
     // The multiplied extent rounds to zero, but the configured fractional
     // iteration still determines the result of forward fill.
     let duration = f64::from_bits(1);
+    let before = sample(1.0, duration, 0.25, 0.0);
+    assert_eq!(before.phase(), TimingPhase::Before);
+    assert_eq!(
+        before.simple_progress().map(PhaseProgress::value),
+        Some(0.0)
+    );
     let fill = sample(0.0, duration, 0.25, 0.0);
     assert_eq!(fill.phase(), TimingPhase::After);
     assert_eq!(fill.simple_progress().map(PhaseProgress::value), Some(0.25));

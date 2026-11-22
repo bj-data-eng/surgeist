@@ -359,7 +359,7 @@ impl TimingParameters {
             active_duration: self.active_duration,
         };
         TimingSample {
-            kernel: kernel::sample(&parameters, Some(elapsed.as_secs()), false),
+            kernel: kernel::sample_elapsed(&parameters, elapsed.as_secs()),
             play_state,
             local_time_secs: Some(elapsed.as_secs()),
             active_duration_secs: self.active_duration.representable_secs(),

@@ -531,6 +531,9 @@ pub surgeist_animation::timing::EffectPlayState::Idle
 pub surgeist_animation::timing::EffectPlayState::Paused
 pub surgeist_animation::timing::EffectPlayState::Running
 pub enum surgeist_animation::timing::EffectTimingErrorKind
+pub surgeist_animation::timing::EffectTimingErrorKind::InconsistentLocalTime
+pub surgeist_animation::timing::EffectTimingErrorKind::InconsistentLocalTime::local_time: core::option::Option<surgeist_animation::time::AnimationTime>
+pub surgeist_animation::timing::EffectTimingErrorKind::InconsistentLocalTime::play_state: surgeist_animation::timing::EffectPlayState
 pub surgeist_animation::timing::EffectTimingErrorKind::InvalidOption
 pub surgeist_animation::timing::EffectTimingErrorKind::InvalidOption::field: surgeist_animation::timing::EffectTimingField
 pub surgeist_animation::timing::EffectTimingErrorKind::InvalidOption::value: f64

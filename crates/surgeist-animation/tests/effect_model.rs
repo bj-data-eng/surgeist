@@ -701,19 +701,24 @@ fn model_forward_fill_preserves_the_final_iteration() {
 #[test]
 fn effect_timing_rejects_incoherent_play_state_and_local_time() {
     let timing = EffectTiming::default();
-    let rejected = [
+    for (play, local_time) in [
         (
             EffectPlayState::Idle,
             Some(AnimationTime::from_millis(10.0).unwrap()),
         ),
         (EffectPlayState::Finished, None),
-    ]
-    .map(|(play, local_time)| {
+    ] {
         let result = timing.sample(EffectTimingInput::Associated {
             local_time,
             animation: state(1.0, play, None, AnimationReplaceState::Active),
         });
-        result.is_err()
-    });
-    assert_eq!(rejected, [true, true]);
+        let diagnostic = result.unwrap_err();
+        assert_eq!(
+            diagnostic.kind(),
+            EffectTimingErrorKind::InconsistentLocalTime {
+                play_state: play,
+                local_time,
+            }
+        );
+    }
 }

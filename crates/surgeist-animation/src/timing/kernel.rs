@@ -121,7 +121,7 @@ impl KernelSample {
     }
 }
 
-pub(super) fn sample(
+pub(super) fn sample_model(
     parameters: &Parameters<'_>,
     local: Option<f64>,
     backwards: bool,
@@ -129,28 +129,46 @@ pub(super) fn sample(
     let Some(local) = local else {
         return KernelSample::idle();
     };
+    let phase = Bounds::new(parameters).phase(local, backwards);
+    sample_progress(parameters, phase, local - parameters.delay)
+}
+
+pub(super) fn sample_elapsed(parameters: &Parameters<'_>, elapsed: f64) -> KernelSample {
+    // Compare the delay-relative coordinate so a short active interval is
+    // still active at its start even if delay + duration rounds to delay.
+    let delay_adjusted = elapsed - parameters.delay;
+    let phase = if delay_adjusted < 0.0 {
+        TimingPhase::Before
+    } else {
+        match parameters.active_duration {
+            ActiveDuration::Finite(duration) if delay_adjusted >= duration => TimingPhase::After,
+            _ => TimingPhase::Active,
+        }
+    };
+    sample_progress(parameters, phase, delay_adjusted)
+}
+
+fn sample_progress(
+    parameters: &Parameters<'_>,
+    phase: TimingPhase,
+    delay_adjusted: f64,
+) -> KernelSample {
     let mut sample = KernelSample {
-        phase: Bounds::new(parameters).phase(local, backwards),
+        phase,
         ..KernelSample::idle()
     };
     let result = (|| {
-        if parameters.duration > 0.0
-            && count_value(parameters.iterations) > 0.0
-            && parameters.active_duration == ActiveDuration::Finite(0.0)
-        {
-            return Err(limit(TimingOperation::ActiveDuration));
-        }
-        let active = match sample.phase {
+        let active = match phase {
             TimingPhase::Before
                 if matches!(parameters.fill, FillMode::Backwards | FillMode::Both) =>
             {
-                (local - parameters.delay).max(0.0)
+                delay_adjusted.max(0.0)
             }
-            TimingPhase::Active => local - parameters.delay,
+            TimingPhase::Active => delay_adjusted,
             TimingPhase::After
                 if matches!(parameters.fill, FillMode::Forwards | FillMode::Both) =>
             {
-                (local - parameters.delay)
+                delay_adjusted
                     .min(extent_value(parameters.active_duration))
                     .max(0.0)
             }
@@ -161,12 +179,21 @@ pub(super) fn sample(
         }
         sample.active_time = Some(active);
         let count = count_value(parameters.iterations);
+        let at_active_end = matches!(phase, TimingPhase::Active | TimingPhase::After)
+            && matches!(
+                parameters.active_duration,
+                ActiveDuration::Finite(duration) if active == duration
+            );
         let initial = if parameters.duration == 0.0 {
             if sample.phase == TimingPhase::Before {
                 0.0
             } else {
                 count
             }
+        } else if at_active_end {
+            // Dividing the rounded active duration can move a whole iteration
+            // across its endpoint. The configured count already gives its value.
+            count
         } else {
             let progress = active / parameters.duration;
             if !progress.is_finite() {
@@ -191,11 +218,7 @@ pub(super) fn sample(
         } else {
             overall.fract()
         };
-        if simple == 0.0
-            && matches!(sample.phase, TimingPhase::Active | TimingPhase::After)
-            && active == extent_value(parameters.active_duration)
-            && count != 0.0
-        {
+        if simple == 0.0 && at_active_end && count != 0.0 {
             simple = 1.0;
         }
         let iteration = if (sample.phase == TimingPhase::After
