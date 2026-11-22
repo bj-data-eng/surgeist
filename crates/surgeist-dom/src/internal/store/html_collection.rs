@@ -13,7 +13,10 @@ use crate::internal::{
     snapshot::{DomNode, DomNodeKind},
 };
 
-use surgeist_html::{values::HtmlNameInput, vocabulary::KnownHtmlElement};
+use surgeist_html::{
+    values::HtmlNameInput,
+    vocabulary::{KnownHtmlElement, is_document_all_named_local_name},
+};
 
 const ID: &[u16] = &[0x69, 0x64];
 const NAME: &[u16] = &[0x6e, 0x61, 0x6d, 0x65];
@@ -49,12 +52,30 @@ pub struct DomHtmlCollection {
 enum Filter {
     TagName(DocumentString),
     WindowName(DocumentString),
+    All,
+    AllName(DocumentString),
 }
 
 #[derive(Clone, Copy)]
 enum ElementNameScope {
     Collection,
     Window,
+    All,
+}
+
+/// A live HTMLAllCollection rooted at one exact canonical Document.
+#[derive(Debug)]
+pub struct DomHtmlAllCollection(DomHtmlCollection);
+
+/// The native result of HTMLAllCollection named lookup.
+#[derive(Debug)]
+pub enum DomHtmlAllNamedValue {
+    /// No Element currently matches.
+    Absent,
+    /// One Element currently matches.
+    Element(NodeId),
+    /// Multiple Elements match. The returned HTMLCollection remains live.
+    Collection(DomHtmlCollection),
 }
 
 /// The current native element candidates for an exact Window property name.
@@ -120,6 +141,18 @@ pub struct DomHtmlCollectionRead<'dom, A> {
     limits: DomHtmlCollectionLimits,
 }
 
+/// One qualified current view of a native HTMLAllCollection.
+pub struct DomHtmlAllCollectionRead<'dom, A>(DomHtmlCollectionRead<'dom, A>);
+
+impl<A> std::fmt::Debug for DomHtmlAllCollectionRead<'_, A> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_tuple("DomHtmlAllCollectionRead")
+            .field(&self.0)
+            .finish()
+    }
+}
+
 struct Meter<'dom, A> {
     cancellation: &'dom AtomicBool,
     admission: A,
@@ -169,6 +202,36 @@ impl Dom {
         max_retained_query_units: usize,
         cancel: &AtomicBool,
     ) -> Result<DomHtmlCollection, DomError> {
+        self.validate_collection_document(document, cancel)?;
+        admit(
+            qualified_name.retained_units(),
+            max_retained_query_units,
+            DomResource::HtmlCollectionQueryUnits,
+        )?;
+        Ok(DomHtmlCollection {
+            document,
+            filter: Filter::TagName(qualified_name),
+        })
+    }
+
+    /// Form a live collection of every ordinary Element descendant.
+    pub fn html_all_collection(
+        &self,
+        document: DocumentId,
+        cancel: &AtomicBool,
+    ) -> Result<DomHtmlAllCollection, DomError> {
+        self.validate_collection_document(document, cancel)?;
+        Ok(DomHtmlAllCollection(DomHtmlCollection {
+            document,
+            filter: Filter::All,
+        }))
+    }
+
+    fn validate_collection_document(
+        &self,
+        document: DocumentId,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         if document.node().owner() != self.owner {
             return Err(DomError::ForeignOwner);
         }
@@ -182,15 +245,7 @@ impl Dom {
         if !matches!(view.kind(), DomNodeKind::Document(_)) {
             return Err(DomError::WrongNodeKind);
         }
-        admit(
-            qualified_name.retained_units(),
-            max_retained_query_units,
-            DomResource::HtmlCollectionQueryUnits,
-        )?;
-        Ok(DomHtmlCollection {
-            document,
-            filter: Filter::TagName(qualified_name),
-        })
+        Ok(())
     }
 
     /// Resolve the current ordinary-tree Element candidates for a Window name.
@@ -237,7 +292,7 @@ impl Dom {
             return Ok(DomWindowNamedElements::Absent);
         }
 
-        Ok(match read.first_two_matches()? {
+        Ok(match read.first_two_matches(|_| Ok(true))? {
             ElementMatches::Absent => DomWindowNamedElements::Absent,
             ElementMatches::One(node) => DomWindowNamedElements::Element(node),
             ElementMatches::Multiple => DomWindowNamedElements::Collection(collection),
@@ -336,7 +391,7 @@ impl Dom {
                     .item(0)?
                     .map_or(ElementMatches::Absent, ElementMatches::One)
             } else {
-                elements.first_two_matches()?
+                elements.first_two_matches(|_| Ok(true))?
             };
             // The caller can expire the hosted issuer at any admission step.
             elements.meter.step()?;
@@ -403,6 +458,22 @@ impl Dom {
             limits,
         })
     }
+
+    /// Open a fresh HTMLAllCollection read against the current Document.
+    pub fn read_html_all_collection<'dom, A, E>(
+        &'dom self,
+        collection: &'dom DomHtmlAllCollection,
+        limits: DomHtmlCollectionLimits,
+        admission: A,
+        cancel: &'dom AtomicBool,
+    ) -> Result<DomHtmlAllCollectionRead<'dom, A>, E>
+    where
+        A: Fn() -> Result<(), E>,
+        E: From<DomError>,
+    {
+        self.read_html_collection(&collection.0, limits, admission, cancel)
+            .map(DomHtmlAllCollectionRead)
+    }
 }
 
 impl<A, E> Meter<'_, A>
@@ -468,14 +539,13 @@ where
                                 || self.meter.step(),
                             )?
                     }
-                    Filter::WindowName(name) => matches!(
-                        self.names(node, ElementNameScope::Window, |value| self.name_match(
-                            value,
-                            name,
-                            ()
-                        ))?,
-                        ControlFlow::Break(())
-                    ),
+                    Filter::WindowName(name) => {
+                        self.element_matches_name(node, name, ElementNameScope::Window)?
+                    }
+                    Filter::All => true,
+                    Filter::AllName(name) => {
+                        self.element_matches_name(node, name, ElementNameScope::All)?
+                    }
                 };
                 if matches && let ControlFlow::Break(value) = visit(node)? {
                     return Ok(Some(value));
@@ -489,9 +559,15 @@ where
         Ok(None)
     }
 
-    fn first_two_matches(&self) -> Result<ElementMatches, E> {
+    fn first_two_matches(
+        &self,
+        mut matches: impl FnMut(DomNode<'_>) -> Result<bool, E>,
+    ) -> Result<ElementMatches, E> {
         let mut first = None;
         let second = self.walk(|node| {
+            if !matches(node)? {
+                return Ok(ControlFlow::Continue(()));
+            }
             if first.is_some() {
                 return Ok(ControlFlow::Break(()));
             }
@@ -530,12 +606,20 @@ where
 
     /// Read the first current element with the exact ID or eligible name.
     pub fn named_item(&self, name: &DocumentString) -> Result<Option<NodeId>, E> {
+        self.first_named_match(name, ElementNameScope::Collection)
+    }
+
+    fn first_named_match(
+        &self,
+        name: &DocumentString,
+        scope: ElementNameScope,
+    ) -> Result<Option<NodeId>, E> {
         self.meter.step()?;
         if name.is_empty() {
             return Ok(None);
         }
         self.walk(|node| {
-            self.names(node, ElementNameScope::Collection, |candidate| {
+            self.names(node, scope, |candidate| {
                 self.name_match(candidate, name, node.id())
             })
         })
@@ -554,6 +638,18 @@ where
         } else {
             Ok(ControlFlow::Continue(()))
         }
+    }
+
+    fn element_matches_name(
+        &self,
+        node: DomNode<'_>,
+        name: &DocumentString,
+        scope: ElementNameScope,
+    ) -> Result<bool, E> {
+        Ok(matches!(
+            self.names(node, scope, |value| self.name_match(value, name, ()))?,
+            ControlFlow::Break(())
+        ))
     }
 
     // Borrow the exact ID and eligible name contributions from one Element.
@@ -576,6 +672,14 @@ where
                 in_html_namespace_with(element.name(), || self.meter.step())?
             }
             ElementNameScope::Window => window_name_element(element.name(), || self.meter.step())?,
+            ElementNameScope::All => {
+                if in_html_namespace_with(element.name(), || self.meter.step())? {
+                    self.meter.step()?;
+                    is_document_all_named_local_name(element.name().local_name().code_units())
+                } else {
+                    false
+                }
+            }
         };
         if !eligible {
             return Ok(ControlFlow::Continue(()));
@@ -591,6 +695,10 @@ where
 
     /// Return each nonempty supported name once, in first occurrence order.
     pub fn supported_names(&self) -> Result<DomHtmlCollectionNames, E> {
+        self.names_for(ElementNameScope::Collection)
+    }
+
+    fn names_for(&self, scope: ElementNameScope) -> Result<DomHtmlCollectionNames, E> {
         let mut output = DomHtmlCollectionNames {
             names: Vec::new(),
             vector_backing: None,
@@ -598,7 +706,7 @@ where
             retained_units: 0,
         };
         self.walk::<()>(|node| {
-            self.names(node, ElementNameScope::Collection, |value| {
+            self.names(node, scope, |value| {
                 self.append_supported_name(&mut output, value)?;
                 Ok(ControlFlow::Continue(()))
             })
@@ -709,6 +817,65 @@ where
         output.names = names;
         output.vector_backing = backing;
         Ok(())
+    }
+}
+
+impl<A, E> DomHtmlAllCollectionRead<'_, A>
+where
+    A: Fn() -> Result<(), E>,
+    E: From<DomError>,
+{
+    /// Count represented elements in the current ordinary tree.
+    pub fn length(&self) -> Result<usize, E> {
+        self.0.length()
+    }
+
+    /// Read the current element at the given zero-based index.
+    pub fn item(&self, index: usize) -> Result<Option<NodeId>, E> {
+        self.0.item(index)
+    }
+
+    /// Check current support without retaining a named subcollection.
+    pub fn has_named_item(&self, name: &DocumentString) -> Result<bool, E> {
+        self.0
+            .first_named_match(name, ElementNameScope::All)
+            .map(|item| item.is_some())
+    }
+
+    /// Read the native named result. A returned subcollection retains the
+    /// exact query backing and uses the same Document for later reads.
+    pub fn named_item(
+        &self,
+        name: &DocumentString,
+        max_retained_query_units: usize,
+    ) -> Result<DomHtmlAllNamedValue, E> {
+        self.0.meter.step()?;
+        if name.is_empty() {
+            return Ok(DomHtmlAllNamedValue::Absent);
+        }
+        match self.0.first_two_matches(|node| {
+            self.0
+                .element_matches_name(node, name, ElementNameScope::All)
+        })? {
+            ElementMatches::Absent => Ok(DomHtmlAllNamedValue::Absent),
+            ElementMatches::One(node) => Ok(DomHtmlAllNamedValue::Element(node)),
+            ElementMatches::Multiple => {
+                admit(
+                    name.retained_units(),
+                    max_retained_query_units,
+                    DomResource::HtmlCollectionQueryUnits,
+                )?;
+                Ok(DomHtmlAllNamedValue::Collection(DomHtmlCollection {
+                    document: self.0.collection.document,
+                    filter: Filter::AllName(name.clone()),
+                }))
+            }
+        }
+    }
+
+    /// Return each eligible nonempty ID or name in tree order.
+    pub fn supported_names(&self) -> Result<DomHtmlCollectionNames, E> {
+        self.0.names_for(ElementNameScope::All)
     }
 }
 

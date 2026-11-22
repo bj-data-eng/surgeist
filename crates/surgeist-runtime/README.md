@@ -572,6 +572,12 @@ removal use the native Source operation, including Trusted Types verification
 and custom-element reactions. [Live HTTP response CSP](https://github.com/bj-data-eng/surgeist/issues/2675)
 has its own navigation and reporting requirements.
 
+`Document.all` exposes a stable, callable `HTMLAllCollection` over the
+Document's ordinary Element descendants. The maintained Boa backend applies
+the ECMAScript IsHTMLDDA semantics to this object. Indexed and named reads use
+the current canonical tree, and multiple named matches return a live
+`HTMLCollection`.
+
 An attachment can enable callable Window timers with `WindowTimerLimits`.
 `setTimeout` keeps the callable and arguments in the attached Window's realm.
 `clearTimeout` releases the registration. Runtime orders admitted timers by

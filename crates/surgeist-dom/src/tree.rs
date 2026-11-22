@@ -31,7 +31,8 @@ pub use crate::internal::snapshot::{
     DomTagName, DomTreeOrder, DomTreeScope,
 };
 pub use crate::internal::store::{
-    DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead,
+    DomHtmlAllCollection, DomHtmlAllCollectionRead, DomHtmlAllNamedValue, DomHtmlCollection,
+    DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead,
     DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest, DomWindowNamedElements,
 };
 pub use crate::internal::store::{DomTreeWalkerFilterRequest, DomTreeWalkerMatchRequest};

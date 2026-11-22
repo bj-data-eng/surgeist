@@ -213,6 +213,16 @@
       "entries": ["HTMLCollection"]
     },
     {
+      "id": "HTMLAllCollection.source",
+      "path": "references/html-language-foundations--877d6146487f--b55e73c31978.md",
+      "anchor": "the&#45;htmlallcollection&#45;interface",
+      "block": 0,
+      "sha256": "bc5f9898390d810bc28b1a52284418420877e59c94fe2221619db086d8d29e4c",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-htmlallcollection-interface",
+      "entries": ["HTMLAllCollection"]
+    },
+    {
       "id": "Node.source",
       "path": "references/dom-foundation--editor-capture-20261010--08dff0a4827f.md",
       "anchor": "interface-node",
@@ -2828,6 +2838,47 @@
           "name": "namedItem",
           "special": "getter",
           "id": "HTMLCollection.namedItem:0"
+        }
+      ]
+    },
+    {
+      "id": "HTMLAllCollection",
+      "kind": "interface",
+      "name": "HTMLAllCollection",
+      "attributes": [{"name": "Exposed", "value": "Window"}, {"name": "LegacyUnenumerableNamedProperties"}],
+      "members": [
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "name": "length",
+          "readonly": true,
+          "id": "HTMLAllCollection.length"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "named", "name": "Element"},
+          "arguments": [{"name": "index", "type": {"kind": "named", "name": "unsigned long"}, "presence": "required"}],
+          "special": "getter",
+          "id": "HTMLAllCollection.operation:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "nullable", "inner": {"kind": "union", "members": [{"kind": "named", "name": "HTMLCollection"}, {"kind": "named", "name": "Element"}]}},
+          "arguments": [{"name": "name", "type": {"kind": "named", "name": "DOMString"}, "presence": "required"}],
+          "name": "namedItem",
+          "special": "getter",
+          "id": "HTMLAllCollection.namedItem:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {"kind": "nullable", "inner": {"kind": "union", "members": [{"kind": "named", "name": "HTMLCollection"}, {"kind": "named", "name": "Element"}]}},
+          "arguments": [{"name": "nameOrIndex", "type": {"kind": "named", "name": "DOMString"}, "presence": "optional"}],
+          "name": "item",
+          "id": "HTMLAllCollection.item:0"
         }
       ]
     },
@@ -12970,13 +13021,6 @@
       "owner": "surgeist-runtime",
       "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#windowproxy",
       "requirement": "The HTML-defined WindowProxy exotic-object type and its delegated conversion/realm routing; no ordinary interface brand is assumed."
-    },
-    {
-      "name": "HTMLAllCollection",
-      "kind": "interface",
-      "owner": "surgeist-bindings-js",
-      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlallcollection",
-      "requirement": "Source-qualified HTMLAllCollection legacy platform-object behavior and its native collection provider remain prerequisites; this external type is not installed by declaration retention."
     },
     {
       "name": "ValidityState",
@@ -26372,14 +26416,62 @@
     "Document.obsolete.all/get": {
       "kind": "native",
       "adapter": "document.all.get",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-runtime",
-          "contract": "An admitted same-object HTMLAllCollection and its source-qualified legacy platform-object behavior over the actual canonical Document are required.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-all"
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/all_collection.rs",
+          "symbol": "document_all"
         }
-      ]
+      ],
+      "requirements": []
+    },
+    "HTMLAllCollection.length/get": {
+      "kind": "native",
+      "adapter": "htmlallcollection.length.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/html_collection.rs",
+          "symbol": "length"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLAllCollection.operation:0/call": {
+      "kind": "native",
+      "adapter": "htmlallcollection.index.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/html_collection.rs",
+          "symbol": "item"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLAllCollection.namedItem:0/call": {
+      "kind": "native",
+      "adapter": "htmlallcollection.nameditem.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/html_collection.rs",
+          "symbol": "named_item"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLAllCollection.item:0/call": {
+      "kind": "native",
+      "adapter": "htmlallcollection.item.call",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/all_collection.rs",
+          "symbol": "read_all_collection"
+        }
+      ],
+      "requirements": []
     },
     "Document.obsolete.clear:0/call": {
       "kind": "native",

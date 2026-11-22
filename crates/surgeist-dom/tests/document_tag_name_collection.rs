@@ -7,7 +7,9 @@ use surgeist_dom::{
     identity::DocumentId,
     limits::{DomLimits, DomNameLimits, DomResource},
     shadow::DomShadowRootInit,
-    tree::{DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionRead},
+    tree::{
+        DomHtmlAllNamedValue, DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionRead,
+    },
 };
 use surgeist_html::{
     construction::HtmlShadowRootMode,
@@ -191,6 +193,79 @@ fn named_items_and_supported_names_follow_current_tree_order_and_exact_values() 
             ["same".into(), "first".into(), "revised".into()]
         );
     }
+}
+
+#[test]
+fn all_collection_uses_html_name_eligibility_and_retains_the_full_live_query() {
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let parent = batch.create_element(&document, "root");
+    let frame = batch.create_element_ns(&document, Namespace::html(), "p:frame");
+    let svg = batch.create_element_ns(&document, Namespace::svg(), "input");
+    let div = batch.create_element_ns(&document, Namespace::html(), "div");
+    let exact = DocumentString::from_utf16([0xd800, 0, 0xdc00]);
+    batch.set_attribute(&frame, "id", exact.clone());
+    batch.set_attribute(&frame, "name", "shared");
+    batch.set_attribute(&svg, "id", "shared");
+    batch.set_attribute(&svg, "name", "foreign");
+    batch.set_attribute(&div, "name", "unsupported");
+    batch.insert_before(&parent, &document, None);
+    for child in [&frame, &svg, &div] {
+        batch.insert_before(child, &parent, None);
+    }
+    let created = dom.apply(batch, &cancel).unwrap();
+    let document = created.document(&document).unwrap();
+    let frame = created.created(&frame).unwrap().unwrap();
+    let svg = created.created(&svg).unwrap().unwrap();
+    let all = dom.html_all_collection(document, &cancel).unwrap();
+    let mut units = [0; 32];
+    units[..6].copy_from_slice(&[0x73, 0x68, 0x61, 0x72, 0x65, 0x64]);
+    let block = TextBlock::from_utf16(units);
+    let shared = block.string(0..6).unwrap();
+    assert_eq!(shared.retained_units(), 32);
+    let retained = {
+        let view = dom
+            .read_html_all_collection(&all, COLLECTION, || Ok::<_, DomError>(()), &cancel)
+            .unwrap();
+        assert_eq!(view.length().unwrap(), 4);
+        assert!(view.has_named_item(&shared).unwrap());
+        assert!(!view.has_named_item(&"unsupported".into()).unwrap());
+        assert!(!view.has_named_item(&"foreign".into()).unwrap());
+        assert_eq!(
+            view.supported_names().unwrap().as_slice(),
+            [exact.clone(), shared.clone()]
+        );
+        assert!(
+            matches!(view.named_item(&exact, 0), Ok(DomHtmlAllNamedValue::Element(node)) if node == frame)
+        );
+        assert!(matches!(
+            view.named_item(&shared, 31),
+            Err(DomError::ResourceLimit {
+                resource: DomResource::HtmlCollectionQueryUnits,
+                limit: 31,
+            })
+        ));
+        let DomHtmlAllNamedValue::Collection(retained) = view.named_item(&shared, 32).unwrap()
+        else {
+            panic!("two distinct elements share the name");
+        };
+        retained
+    };
+    assert_eq!(read(&dom, &retained, &cancel).item(1).unwrap(), Some(svg));
+
+    let mut edit = DomBatch::new();
+    edit.detach(svg);
+    dom.apply(edit, &cancel).unwrap();
+    let view = dom
+        .read_html_all_collection(&all, COLLECTION, || Ok::<_, DomError>(()), &cancel)
+        .unwrap();
+    assert!(
+        matches!(view.named_item(&shared, 0), Ok(DomHtmlAllNamedValue::Element(node)) if node == frame)
+    );
+    assert_eq!(read(&dom, &retained, &cancel).length().unwrap(), 1);
+    assert_eq!(read(&dom, &retained, &cancel).item(0).unwrap(), Some(frame));
 }
 
 #[test]

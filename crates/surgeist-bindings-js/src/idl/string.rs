@@ -19,6 +19,24 @@ impl DomString {
         &self.0
     }
 
+    /// Returns the index if this is a Web IDL array index property name.
+    pub fn array_index(&self) -> Option<u32> {
+        let units = self.as_code_units();
+        if units.is_empty()
+            || units.len() > 10
+            || (units.len() > 1 && units.first() == Some(&u16::from(b'0')))
+        {
+            return None;
+        }
+        let index = units.iter().try_fold(0_u32, |index, &unit| {
+            let digit = unit
+                .checked_sub(u16::from(b'0'))
+                .filter(|digit| *digit <= 9)?;
+            index.checked_mul(10)?.checked_add(u32::from(digit))
+        })?;
+        (index < u32::MAX).then_some(index)
+    }
+
     /// Consumes the string and returns its exact UTF-16 code units.
     pub fn into_code_units(self) -> Vec<u16> {
         self.0
@@ -126,6 +144,28 @@ mod tests {
         let string = DomString::new(units.clone());
         assert_eq!(string.as_code_units(), units);
         assert_eq!(string.into_code_units(), units);
+    }
+
+    #[test]
+    fn array_index_requires_a_canonical_nonnegative_name_below_the_limit() {
+        for (source, expected) in [
+            ("0", Some(0)),
+            ("9", Some(9)),
+            ("4294967294", Some(u32::MAX - 1)),
+            ("", None),
+            ("-0", None),
+            ("+1", None),
+            ("01", None),
+            ("1.0", None),
+            ("4294967295", None),
+            ("4294967296", None),
+            ("999999999999", None),
+            ("𝟏", None),
+        ] {
+            let name = DomString::new(source.encode_utf16().collect());
+            assert_eq!(name.array_index(), expected, "{source:?}");
+        }
+        assert_eq!(DomString::new(vec![0xd800]).array_index(), None);
     }
 
     #[test]

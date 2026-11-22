@@ -87,6 +87,28 @@ macro_rules! vocabulary {
 #[cfg(test)]
 mod recognition_tests;
 
+/// Whether an exact HTML local name contributes its name attribute to Document.all.
+pub const fn is_document_all_named_local_name(units: &[u16]) -> bool {
+    matches!(
+        KnownHtmlElement::from_units(units),
+        Some(
+            KnownHtmlElement::A
+                | KnownHtmlElement::Button
+                | KnownHtmlElement::Embed
+                | KnownHtmlElement::Form
+                | KnownHtmlElement::Iframe
+                | KnownHtmlElement::Img
+                | KnownHtmlElement::Input
+                | KnownHtmlElement::Map
+                | KnownHtmlElement::Meta
+                | KnownHtmlElement::Object
+                | KnownHtmlElement::Select
+                | KnownHtmlElement::Textarea
+        )
+    ) || name_hash::units_spell(units, "frame")
+        || name_hash::units_spell(units, "frameset")
+}
+
 impl KnownHtmlElement {
     /// Recognizes an exact HTML namespace and local name, ignoring the prefix.
     ///

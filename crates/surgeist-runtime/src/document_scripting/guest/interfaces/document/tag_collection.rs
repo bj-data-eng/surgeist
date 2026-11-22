@@ -39,18 +39,56 @@ impl CollectionProjection {
         collection: Collection,
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
         let prototype = scope.open_callback_object(&self.prototype)?;
+        self.project_in_realm(scope, &prototype, owner, events, collection)
+            .map(Completion::Return)
+    }
+
+    pub(super) fn project_named_result<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        native: DomHtmlCollection,
+        query: GuestBacking,
+    ) -> Result<Completion<'scope>, DocumentGuestEventError> {
+        let collection = Collection {
+            native,
+            _query: query,
+        };
+        let prototype = scope.open_callback_object(&self.prototype)?;
+        let callback = scope.callback_object(&prototype)?;
+        if callback.associated_realm().identity() == scope.realm_authority()?.identity() {
+            return self
+                .project_in_realm(scope, &prototype, owner, events, collection)
+                .map(Completion::Return);
+        }
+        let value = scope.in_callback_object_realm(&callback, |scope, prototype| {
+            let value = self.project_in_realm(scope, prototype, owner, events, collection)?;
+            Ok::<_, DocumentGuestEventError>(scope.retain(&value))
+        })?;
+        Ok(Completion::Return(scope.import(&value)?))
+    }
+
+    fn project_in_realm<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        prototype: &Value<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        collection: Collection,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let read = scope.open_callback_object(&self.read)?;
         let keys = scope.open_callback_object(&self.keys)?;
         let named_getter = scope.open_callback_object(&self.named_getter)?;
         let value = scope.project_native_object_with_collection_properties(
-            ObjectPrototype::Object(&prototype),
+            ObjectPrototype::Object(prototype),
             collection,
             &read,
             &keys,
             &named_getter,
             |bytes| events.reserve(owner, bytes),
         )?;
-        Ok(Completion::Return(value))
+        Ok(value)
     }
 }
 
@@ -71,9 +109,22 @@ enum Lookup {
     },
 }
 
-enum Keys {
+pub(super) enum Keys {
     Indices(u32),
     Names(DomHtmlCollectionNames),
+}
+
+pub(super) fn key_limits(events: &GuestEvents, named: bool) -> DomHtmlCollectionLimits {
+    if named {
+        let bytes = events.limits.storage_bytes;
+        DomHtmlCollectionLimits::new(
+            events.limits.work,
+            bytes / (size_of::<DocumentString>() + size_of::<Value<'_>>()),
+            bytes / size_of::<u16>(),
+        )
+    } else {
+        DomHtmlCollectionLimits::new(events.limits.work, 0, 0)
+    }
 }
 
 type CollectionView<'dom> =
@@ -449,16 +500,7 @@ impl Capture {
         let (owner, events) = self.active(scope)?;
         let result = (|| {
             let named = !arguments.is_empty();
-            let limits = if named {
-                let bytes = events.limits.storage_bytes;
-                DomHtmlCollectionLimits::new(
-                    events.limits.work,
-                    bytes / (size_of::<DocumentString>() + size_of::<Value<'scope>>()),
-                    bytes / size_of::<u16>(),
-                )
-            } else {
-                DomHtmlCollectionLimits::new(events.limits.work, 0, 0)
-            };
+            let limits = key_limits(&events, named);
             scope.check_active()?;
             let keys =
                 self.with_tag_collection(&owner, &events, collection.payload(), limits, |view| {
@@ -468,38 +510,48 @@ impl Capture {
                         Ok(Keys::Indices(collection_length(&view)?))
                     }
                 })?;
-            let count = match &keys {
-                Keys::Indices(count) => usize::try_from(*count).map_err(|_| Error::ArrayTooLong)?,
-                Keys::Names(names) => names.as_slice().len(),
-            };
-            let bytes = count
-                .checked_mul(size_of::<Value<'scope>>())
-                .ok_or(Error::Allocation)?;
-            let _backing = events.reserve(&owner, bytes)?;
-            let mut projected = Vec::new();
-            projected
-                .try_reserve_exact(count)
-                .map_err(|_| Error::Allocation)?;
-            if projected.capacity() != count {
-                return Err(Error::Allocation.into());
-            }
-            match keys {
-                Keys::Indices(count) => {
-                    for index in 0..count {
-                        events.step()?;
-                        projected.push(scope.primitive(Primitive::Number(f64::from(index)))?);
-                    }
-                }
-                Keys::Names(names) => {
-                    for name in names.as_slice() {
-                        events.step()?;
-                        projected.push(self.copy_dom_units(scope, name.code_units())?);
-                    }
-                }
-            }
-            Ok(Completion::Return(scope.array(&projected)?))
+            self.project_collection_keys(scope, &owner, &events, keys)
         })();
         tree::tree_completion(scope, &events, result)
+    }
+
+    pub(super) fn project_collection_keys<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        keys: Keys,
+    ) -> Result<Completion<'scope>, DocumentGuestEventError> {
+        let count = match &keys {
+            Keys::Indices(count) => usize::try_from(*count).map_err(|_| Error::ArrayTooLong)?,
+            Keys::Names(names) => names.as_slice().len(),
+        };
+        let bytes = count
+            .checked_mul(size_of::<Value<'scope>>())
+            .ok_or(Error::Allocation)?;
+        let _backing = events.reserve(owner, bytes)?;
+        let mut projected = Vec::new();
+        projected
+            .try_reserve_exact(count)
+            .map_err(|_| Error::Allocation)?;
+        if projected.capacity() != count {
+            return Err(Error::Allocation.into());
+        }
+        match keys {
+            Keys::Indices(count) => {
+                for index in 0..count {
+                    events.step()?;
+                    projected.push(scope.primitive(Primitive::Number(f64::from(index)))?);
+                }
+            }
+            Keys::Names(names) => {
+                for name in names.as_slice() {
+                    events.step()?;
+                    projected.push(self.copy_dom_units(scope, name.code_units())?);
+                }
+            }
+        }
+        Ok(Completion::Return(scope.array(&projected)?))
     }
 
     fn with_tag_collection<T>(

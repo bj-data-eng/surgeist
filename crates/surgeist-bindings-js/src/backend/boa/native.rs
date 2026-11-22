@@ -7,14 +7,19 @@ use std::rc::Rc;
 use boa_engine::gc::{Gc, GcRefCell};
 use boa_engine::object::{
     JsPrototype, WeakJsObject,
-    builtins::JsArray,
-    host::{IndexedProperties, readonly_indexed, readonly_indexed_source},
+    builtins::{JsArray, JsFunction},
+    host::{
+        IndexedProperties, readonly_indexed, readonly_indexed_source,
+        readonly_indexed_with_html_dda,
+    },
 };
 use boa_engine::{
     Context, Finalize, JsData, JsNativeError, JsObject, JsResult, JsString, JsValue, Trace,
 };
 
-use crate::backend::{NativeProjectionSlot, ObjectPrototype, validate_array_length};
+use crate::backend::{
+    NativeCollectionKind, NativeProjectionSlot, ObjectPrototype, validate_array_length,
+};
 use crate::callback_object::CallbackObjectIdentity;
 use crate::preparation::Guard;
 use crate::{Error, RealmKey, Root};
@@ -347,33 +352,19 @@ impl Entered<'_> {
             references: GcRefCell::new(references),
         });
         let object = match slot {
-            Some(NativeProjectionSlot::Collection {
-                read,
-                keys,
-                named_getter,
-            }) => {
-                let callable = |root| {
+            Some(NativeProjectionSlot::Collection { read, keys, kind }) => {
+                let function = |root, invalid| {
                     self.state
                         .value(root)?
                         .as_object()
-                        .filter(JsObject::is_callable)
-                        .ok_or(Error::ExpectedObject)
+                        .and_then(JsFunction::from_object)
+                        .ok_or(invalid)
                 };
-                let read = callable(read)?;
-                let keys = callable(keys)?;
-                if let Some(named_getter) = named_getter {
-                    readonly_indexed(
-                        root_shape,
-                        prototype,
-                        Collection::<true> {
-                            native,
-                            read,
-                            keys,
-                            named_getter: Some(callable(named_getter)?),
-                        },
-                    )
-                } else {
-                    readonly_indexed(
+                let callable = |root| function(root, Error::ExpectedObject);
+                let read = callable(read)?.into();
+                let keys = callable(keys)?.into();
+                match kind {
+                    NativeCollectionKind::Indexed => readonly_indexed(
                         root_shape,
                         prototype,
                         Collection::<false> {
@@ -382,7 +373,30 @@ impl Entered<'_> {
                             keys,
                             named_getter: None,
                         },
-                    )
+                    ),
+                    NativeCollectionKind::Named { getter } => readonly_indexed(
+                        root_shape,
+                        prototype,
+                        Collection::<true> {
+                            native,
+                            read,
+                            keys,
+                            named_getter: Some(callable(getter)?.into()),
+                        },
+                    ),
+                    NativeCollectionKind::HtmlAll { getter, call } => {
+                        readonly_indexed_with_html_dda(
+                            root_shape,
+                            prototype,
+                            Collection::<true> {
+                                native,
+                                read,
+                                keys,
+                                named_getter: Some(callable(getter)?.into()),
+                            },
+                            function(call, Error::ExpectedFunction)?,
+                        )
+                    }
                 }
             }
             _ => JsObject::new(root_shape, prototype, NativeCarrier(native)).upcast(),

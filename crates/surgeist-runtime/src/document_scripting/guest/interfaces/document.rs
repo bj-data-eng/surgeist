@@ -31,6 +31,7 @@ mod dialog;
 mod document_type;
 mod dom_implementation;
 pub(super) use character_data::copy_native_data;
+mod all_collection;
 pub(super) mod element;
 mod element_factory;
 mod element_mixin;
@@ -343,6 +344,7 @@ pub(super) struct DocumentPrototypes {
     traversal: traversal::Prototypes,
     character_data: character_data::CharacterBindings,
     collections: tag_collection::CollectionProjection,
+    all: all_collection::Projection,
 }
 
 impl DocumentPrototypes {
@@ -456,6 +458,7 @@ impl DocumentPrototypes {
         html_document::install(scope, &document, funding.capture)?;
         title::install_document(scope, &document, funding.capture)?;
         legacy::install(scope, &document, funding.capture)?;
+        let all = all_collection::install(scope, &global, &document, funding)?;
         let document_names = tree_mutations::unscopables(scope, &document)?;
         parent_node::install(
             scope,
@@ -504,6 +507,7 @@ impl DocumentPrototypes {
                 traversal,
                 character_data,
                 collections,
+                all,
             },
             document,
         ))

@@ -118,8 +118,14 @@ pub(crate) enum NativeProjectionSlot<'a> {
     Collection {
         read: &'a Root,
         keys: &'a Root,
-        named_getter: Option<&'a Root>,
+        kind: NativeCollectionKind<'a>,
     },
+}
+
+pub(crate) enum NativeCollectionKind<'a> {
+    Indexed,
+    Named { getter: &'a Root },
+    HtmlAll { getter: &'a Root, call: &'a Root },
 }
 
 #[derive(Clone, Copy)]

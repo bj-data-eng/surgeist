@@ -131,8 +131,9 @@ use crate::internal::view_transition::*;
 pub(crate) use bank::owned::{EmptyPath, OwnedBank};
 pub(crate) use bank::{Bank, Iter as BankIter};
 pub use html_collection::{
-    DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead,
-    DomWindowNamedElements, DomWindowNamedValue,
+    DomHtmlAllCollection, DomHtmlAllCollectionRead, DomHtmlAllNamedValue, DomHtmlCollection,
+    DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead, DomWindowNamedElements,
+    DomWindowNamedValue,
 };
 pub(crate) use shared::SharedVec;
 pub(crate) use source::AllocationIds as KeyAliases;
