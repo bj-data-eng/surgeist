@@ -269,6 +269,27 @@ fn reverse_lut16_applies_the_xyz_matrix_before_the_channel_tables() {
 }
 
 #[test]
+fn v2_device_xyz_uses_its_legacy_input_matrix() {
+    let half_x = [32768, 0, 0, 0, 65536, 0, 0, 0, 65536];
+    let forward = lut16::<3, 3>(half_x, [65535; 3], |[x, _, _]| [65535 * x, 32768, 32768]);
+    let reverse = lut16::<3, 3>(IDENTITY, [65535; 3], |_| [0; 3]);
+    let bytes = profile_bytes(
+        Version::V2,
+        b"spac",
+        b"XYZ ",
+        b"Lab ",
+        D50,
+        vec![(b"A2B0", forward), (b"B2A0", reverse)],
+    );
+    let mut accounting = RenderAccountingContext::default();
+    let profile = IccProfile::inspect(&bytes, &mut accounting).unwrap();
+    let xyz = profile.device_color(&[0.5, 0.125, 0.9]).unwrap();
+    let lab = profile.to_pcs(PERCEPTUAL, &xyz, &mut accounting).unwrap();
+    // Half the first normalized coordinate, then legacy Lab lightness scaling.
+    close(&lab.coordinates(), &[25.09765625, 0.0, 0.0]);
+}
+
+#[test]
 fn lut8_uses_exact_intent_before_perceptual_fallback_in_both_directions() {
     let bytes = rgb_profile(
         b"Lab ",
@@ -452,6 +473,38 @@ fn indirect_absolute_uses_media_white_and_direct_absolute_bypasses_it() {
         let rel = profile.to_pcs(RELATIVE, &rgb, &mut accounting).unwrap();
         close(&rel.coordinates(), &[0.0, 0.5, 0.0]);
     }
+}
+
+#[test]
+fn indirect_absolute_lab_exposes_absolute_coordinates_at_fixed_d50() {
+    let forward = lut16::<3, 3>(IDENTITY, [65535; 3], |_| [32640, 32768, 32768]);
+    let reverse = lut16::<3, 3>(IDENTITY, [65535; 3], |axes| axes.map(|axis| axis * 65535));
+    let bytes = rgb_profile(
+        b"Lab ",
+        [49152, 32768, 16384],
+        vec![
+            (b"A2B0", forward.clone()),
+            (b"B2A0", reverse.clone()),
+            (b"A2B1", forward),
+            (b"B2A1", reverse),
+        ],
+    );
+    let mut accounting = RenderAccountingContext::default();
+    let profile = IccProfile::inspect(&bytes, &mut accounting).unwrap();
+    let rgb = profile.device_color(&[0.5, 0.5, 0.5]).unwrap();
+    let relative = profile.to_pcs(RELATIVE, &rgb, &mut accounting).unwrap();
+    close(&relative.coordinates(), &[50.0, 0.0, 0.0]);
+    let absolute = profile.to_pcs(ABSOLUTE, &rgb, &mut accounting).unwrap();
+    // For L*=50, Y/Yn=(66/116)^3. Scale the actual XYZ by media
+    // white/D50 and evaluate Lab with the original D50 reference.
+    let expected = [36.38423471495058, 35.83575724934212, 13.882075750077583];
+    close(&absolute.coordinates(), &expected);
+    let destination = IccPcsColor::try_new(IccPcsSpace::Lab, expected, ABSOLUTE).unwrap();
+    let rgb = profile.from_pcs(destination, &mut accounting).unwrap();
+    close(
+        rgb.channels(),
+        &[32640.0 / 65535.0, 32768.0 / 65535.0, 32768.0 / 65535.0],
+    );
 }
 
 fn curves(square_axis: usize) -> Vec<u8> {
