@@ -124,8 +124,16 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
     let root = commit.created(&root).unwrap().unwrap();
     let first = commit.created(&first).unwrap().unwrap();
     let second = commit.created(&second).unwrap().unwrap();
-    let (mut host, _) =
-        attach_event_window_with_work(session, top, Arc::new(cancel()), 160_000, |_, _, _| {});
+    // The attachment also funds one native interface graph per child realm.
+    let (mut host, _) = attach_event_window_with_limits(
+        session,
+        top,
+        Arc::new(cancel()),
+        (8_000_000, 6_000_000, 160_000),
+        surgeist_ledger::ProfileMode::Summary { timing: false },
+        DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2),
+        |_, _, _| {},
+    );
     let permit = host.permit().unwrap();
     edit(&mut host, DomSourceEdit::insert_before(root, body, None));
     let snapshot = host.snapshot().unwrap();
@@ -252,6 +260,13 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
     );
     assert_eq!(nested, "ok");
 
+    let accounting = host.guest_accounting().unwrap();
+    let live_backing = || {
+        accounting.snapshot().unwrap().unwrap().scopes[0]
+            .usage
+            .live(DocumentGuestResource::BackingBytes)
+    };
+    let before_retirement = live_backing();
     edit(&mut host, DomSourceEdit::detach(first));
     let snapshot = host.snapshot().unwrap();
     assert!(
@@ -261,6 +276,11 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
             .is_retiring()
     );
     assert_eq!(content_navigable(&snapshot, second), Some(second_child));
+    let after_retirement = live_backing();
+    assert!(
+        after_retirement < before_retirement,
+        "native removal must release guest Window registry backing before the next guest read ({before_retirement} -> {after_retirement})"
+    );
     let retired = observe(
         &mut host,
         &permit,
@@ -275,4 +295,17 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
             ? 'ok' : 'stale or replaced WindowProxy after child removal')()"#,
     );
     assert_eq!(retired, "ok");
+
+    edit(&mut host, DomSourceEdit::insert_before(first, body, None));
+    let replacement = content_navigable(&host.snapshot().unwrap(), first).unwrap();
+    assert_ne!(replacement, first_child);
+    let reinserted = observe(
+        &mut host,
+        &permit,
+        r#"(() => window.length === 2 && window[0] === originalSecondChild
+            && window[1] === window.firstNativeChild && window[1] !== originalFirstChild
+            && window[1].closed === false && originalFirstChild.closed === true
+            ? 'ok' : 'reinsertion reused the retired proxy')()"#,
+    );
+    assert_eq!(reinserted, "ok");
 }

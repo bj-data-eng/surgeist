@@ -649,10 +649,30 @@ fn attach_event_window_with_work(
 }
 
 fn attach_event_window_with_source_limits(
-    mut session: DomSession,
+    session: DomSession,
     top: DomHostedTopLevel,
     cancellation: Arc<AtomicBool>,
     adapter_work: u64,
+    source_edits: DomSourceLimits,
+    configure: impl FnOnce(&mut DomEventDom<'_>, &mut DomEventDispatcher<()>, DomHostedTopLevel),
+) -> (DocumentScriptHost, DomHostedTopLevel) {
+    attach_event_window_with_limits(
+        session,
+        top,
+        cancellation,
+        (STORAGE, 640 * 1024, adapter_work),
+        surgeist_ledger::ProfileMode::Off,
+        source_edits,
+        configure,
+    )
+}
+
+fn attach_event_window_with_limits(
+    mut session: DomSession,
+    top: DomHostedTopLevel,
+    cancellation: Arc<AtomicBool>,
+    (host_storage, guest_storage, adapter_work): (usize, usize, u64),
+    accounting: surgeist_ledger::ProfileMode,
     source_edits: DomSourceLimits,
     configure: impl FnOnce(&mut DomEventDom<'_>, &mut DomEventDispatcher<()>, DomHostedTopLevel),
 ) -> (DocumentScriptHost, DomHostedTopLevel) {
@@ -667,7 +687,9 @@ fn attach_event_window_with_source_limits(
     registry.bind(&mut session.dom(), &cancellation).unwrap();
     configure(&mut session.dom(), &mut registry, top);
     let mut registry = Some(registry);
-    let host = prepare(session, cancellation)
+    let host = PreparedDocumentScriptHost::prepare(session, host_storage, cancellation)
+        .unwrap()
+        .with_guest_accounting_profile(accounting)
         .enable_with_guest_event_registry(
             top,
             ALLOW,
@@ -676,7 +698,7 @@ fn attach_event_window_with_source_limits(
             DocumentGuestEventLimits {
                 // These interface scenarios include the full native prototype
                 // graph and exercise behavior with guest storage headroom.
-                storage_bytes: 640 * 1024,
+                storage_bytes: guest_storage,
                 work: adapter_work,
                 pending_exception_reports: 16,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
