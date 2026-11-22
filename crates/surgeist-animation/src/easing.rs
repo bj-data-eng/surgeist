@@ -509,9 +509,9 @@ impl CubicBezier {
 
     fn start_tangent_output(&self, input: f64) -> f64 {
         if self.x1 > 0.0 {
-            input * (self.y1 / self.x1)
+            tangent_delta(input, self.x1, self.y1)
         } else if self.x2 > 0.0 {
-            input * (self.y2 / self.x2)
+            tangent_delta(input, self.x2, self.y2)
         } else {
             0.0
         }
@@ -519,12 +519,32 @@ impl CubicBezier {
 
     fn end_tangent_output(&self, input: f64) -> f64 {
         if self.x2 < 1.0 {
-            1.0 + ((input - 1.0) * ((1.0 - self.y2) / (1.0 - self.x2)))
+            1.0 + tangent_delta(input - 1.0, 1.0 - self.x2, 1.0 - self.y2)
         } else if self.x1 < 1.0 {
-            1.0 + ((input - 1.0) * ((1.0 - self.y1) / (1.0 - self.x1)))
+            1.0 + tangent_delta(input - 1.0, 1.0 - self.x1, 1.0 - self.y1)
         } else {
             1.0
         }
+    }
+}
+
+fn tangent_delta(offset: f64, run: f64, rise: f64) -> f64 {
+    let slope = rise / run;
+    if slope.is_normal() || slope == 0.0 {
+        return offset * slope;
+    }
+
+    // A subnormal slope loses significant bits before a large offset scales it.
+    if slope.is_subnormal() && offset.abs() >= 1.0 {
+        return (offset * rise) / run;
+    }
+
+    // A steep tangent can have a finite result close to the endpoint.
+    let distance = offset / run;
+    if distance.is_finite() {
+        distance * rise
+    } else {
+        (offset * rise) / run
     }
 }
 
@@ -582,19 +602,31 @@ impl Steps {
         let count = f64::from(self.count);
         let jumps = self.jump_count();
         let scaled_input = input * count;
-        let mut current_step = scaled_input.floor();
+        if !scaled_input.is_finite() {
+            // At this magnitude the floor and one-step adjustments are below
+            // binary64 precision. Divide the counts before scaling the input.
+            return input * (count / jumps);
+        }
 
+        let floor = scaled_input.floor();
+        let mut correction = 0.0;
+        if scaled_input == floor {
+            // Recover the fractional part when multiplication rounded to an
+            // integer. Only an exact integral product is a discontinuity.
+            let remainder = input.mul_add(count, -scaled_input);
+            correction = remainder.floor();
+            if before_flag && remainder == correction {
+                correction -= 1.0;
+            }
+        }
         if matches!(
             self.position,
             StepPosition::JumpStart | StepPosition::JumpBoth
         ) {
-            current_step += 1.0;
+            correction += 1.0;
         }
 
-        if before_flag && scaled_input.fract() == 0.0 {
-            current_step -= 1.0;
-        }
-
+        let mut current_step = floor + correction;
         if input >= 0.0 && current_step < 0.0 {
             current_step = 0.0;
         }
