@@ -46,7 +46,7 @@ impl<'a> Metadata<'a> {
                 if self.icc.is_some() {
                     return Err(invalid());
                 }
-                self.icc = Some(profile_stream(chunk.data, account)?);
+                self.icc = Some(profile_stream(chunk.data, &account.at(RenderPhase::Png))?);
             }
             b"sRGB" => {
                 if self.srgb.is_some() || chunk.data.len() != 1 {

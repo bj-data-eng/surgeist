@@ -10,6 +10,8 @@ use crate::accounting::{Account, AccountedVec, Hold, RenderResource, RenderWork}
 use crate::error::BackendErrorCode;
 use crate::{Error, Result};
 
+mod lut;
+
 pub(crate) enum Selection {
     Invalid,
     NonRgb,
@@ -106,22 +108,17 @@ fn prepare_matrix(bytes: &[u8], account: &Account) -> ProfileResult<RgbMatrixPro
         }
     }
 
+    // ICC v4 captures the monitor's white in chromatically adapted PCS.
+    if version == 4 && &header.class == b"mntr" && !is_d50(white, account)? {
+        return Err(ProfileError::Invalid);
+    }
+
     // ICC.1:2022 §8.10.2 skips the optional multi-process route when the CMM
     // lacks its operations. The media-relative AToB1 or fallback AToB0 then
     // outranks the matrix and requires a supported lookup-table decoder.
     for signature in [b"A2B1", b"A2B0"] {
         if let Some(tag) = find_tag(&table, signature, account)? {
-            let payload = tag.payload(bytes)?;
-            let kind = tag_kind(payload, account)?;
-            let minimum = match &kind {
-                b"mft1" => 48,
-                b"mft2" => 52,
-                b"mAB " if version == 4 => 32,
-                _ => return Err(ProfileError::Invalid),
-            };
-            if payload.len() < minimum {
-                return Err(ProfileError::Invalid);
-            }
+            lut::validate(tag.payload(bytes)?, version, account)?;
             return Err(ProfileError::Unsupported);
         }
     }
@@ -142,6 +139,13 @@ fn prepare_matrix(bytes: &[u8], account: &Account) -> ProfileResult<RgbMatrixPro
         .zip([b"rXYZ", b"gXYZ", b"bXYZ"])
     {
         *column = xyz_tag(&table, bytes, signature, account)?;
+        if version == 2 {
+            for &component in column.iter() {
+                if account.coordinate(|| component < 0.0)? {
+                    return Err(ProfileError::Invalid);
+                }
+            }
+        }
     }
     for (curve, signature) in transform.curves.iter_mut().zip([b"rTRC", b"gTRC", b"bTRC"]) {
         let tag = required_tag(&table, signature, account)?;
@@ -208,13 +212,12 @@ impl Header {
                 return Err(ProfileError::Invalid);
             }
 
-            // §7.2.16 specifies D50 rounded to four decimal places, not a
-            // single permitted fixed-point encoding of its X and Z values.
-            for (offset, expected) in [(68, 9642.0), (72, 10000.0), (76, 8249.0)] {
-                let component = account.coordinate(|| fixed(header, offset))??;
-                if account.coordinate(|| (component * 10000.0).round() != expected)? {
-                    return Err(ProfileError::Invalid);
-                }
+            let mut illuminant = [0.0; 3];
+            for (component, offset) in illuminant.iter_mut().zip([68, 72, 76]) {
+                *component = account.coordinate(|| fixed(header, offset))??;
+            }
+            if !is_d50(illuminant, account)? {
+                return Err(ProfileError::Invalid);
             }
         }
         Ok(Self {
@@ -224,6 +227,16 @@ impl Header {
             pcs,
         })
     }
+}
+
+// ICC.1:2022 §7.2.16 specifies D50 rounded to four decimal places.
+fn is_d50(components: [f64; 3], account: &Account) -> Result<bool> {
+    for (component, expected) in components.into_iter().zip([9642.0, 10000.0, 8249.0]) {
+        if account.coordinate(|| (component * 10000.0).round() != expected)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn is_color_space(signature: &[u8; 4]) -> bool {
@@ -403,11 +416,7 @@ impl Curve {
         match &tag_kind(payload, account)? {
             b"curv" => {
                 let count = account.coordinate(|| u32_at(payload, 8))??;
-                let size = usize::try_from(count)
-                    .ok()
-                    .and_then(|count| count.checked_mul(2))
-                    .and_then(|size| size.checked_add(12))
-                    .ok_or(ProfileError::Invalid)?;
+                let size = sampled_curve_size(count)?;
                 if payload.len() != size {
                     return Err(ProfileError::Invalid);
                 }
@@ -462,6 +471,14 @@ impl Curve {
     }
 }
 
+fn sampled_curve_size(count: u32) -> ProfileResult<usize> {
+    usize::try_from(count)
+        .ok()
+        .and_then(|count| count.checked_mul(2))
+        .and_then(|size| size.checked_add(12))
+        .ok_or(ProfileError::Invalid)
+}
+
 fn sample_value(bytes: &[u8], index: u64, account: &Account) -> Result<f64> {
     let offset = usize::try_from(index * 2).map_err(|_| sample_invariant())?;
     let value = account
@@ -491,6 +508,18 @@ struct ParametricCurve {
 
 impl ParametricCurve {
     fn read(payload: &[u8], account: &Account) -> ProfileResult<Self> {
+        let (kind, params) = Self::kind_and_count(payload, account)?;
+        if payload.len() != 12 + params * 4 {
+            return Err(ProfileError::Invalid);
+        }
+        let mut values = [0.0; 7];
+        for (index, value) in values[..params].iter_mut().enumerate() {
+            *value = account.coordinate(|| fixed(payload, 12 + index * 4))??;
+        }
+        account.coordinate(|| Self::validated(kind, values))?
+    }
+
+    fn kind_and_count(payload: &[u8], account: &Account) -> ProfileResult<(u16, usize)> {
         let kind = account.coordinate(|| u16_at(payload, 8))??;
         let params = match kind {
             0 => 1,
@@ -500,14 +529,10 @@ impl ParametricCurve {
             4 => 7,
             _ => return Err(ProfileError::Invalid),
         };
-        if payload.len() != 12 + params * 4 || u16_at(payload, 10)? != 0 {
+        if u16_at(payload, 10)? != 0 {
             return Err(ProfileError::Invalid);
         }
-        let mut values = [0.0; 7];
-        for (index, value) in values[..params].iter_mut().enumerate() {
-            *value = account.coordinate(|| fixed(payload, 12 + index * 4))??;
-        }
-        account.coordinate(|| Self::validated(kind, values))?
+        Ok((kind, params))
     }
 
     fn validated(kind: u16, [g, a, b, c, d, e, f]: [f64; 7]) -> ProfileResult<Self> {

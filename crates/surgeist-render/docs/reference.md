@@ -952,8 +952,10 @@ media-relative XYZ D50. The existing Color conversion adapts that PCS to the
 SDR sRGB destination and quantizes with terminal clipping. This native route
 selects media-relative colorimetry independently of the profile's preferred
 intent. ICC precedence skips the optional multi-process route when its
-operations are unavailable. A selected forward lookup table still requires
-a supported decoder. See [ICC.1:2022, §§8.3–8.4, 8.10 and Annex F](https://www.color.org/specifications/ICC.1-2022-05.pdf).
+operations are unavailable. Profile qualification covers the selected
+color transform and profile structure. Non-operative metadata payloads stay
+opaque. A structurally valid selected forward lookup table requires a supported
+decoder. See [ICC.1:2022, §§8.3–8.4, 8.10 and Annex F](https://www.color.org/specifications/ICC.1-2022-05.pdf).
 
 Ledger accounts for the ICC inflater's offered output bytes, reached tag
 records, numeric work and temporary backing. Profile preparation and pixel
@@ -1482,7 +1484,8 @@ readback accounting are outside this preparation contract.
 | `PathElementVisits`, `OutlinePointVisits`, `VariationTupleVisits`, `GlyphComponentVisits` | One raw contour endpoint/provider path element, point-flag record/point/delta, variation tuple or composite child edge inspected. Dependency internals are not reported as Render visits. |
 | `PaintVisits`, `ResourceProbes` | One raw COLRv1 paint node, consumed recorded layer/retained paint (including repeated placement qualification), or shared-font identity comparison. |
 | `PathElementsEmitted` | One retained glyph path element appended, including actual synthesis and clip expansion. This is the existing path-element limit unit. |
-| `SerializedBytes`, `PngByteVisits`, `ImageTexelVisits` | IDAT payload bytes copied; chunk type/payload bytes processed by CRC plus scanline bytes unfiltered; decoded RGBA pixels actually color-converted plus the separate reached transparency scan. |
+| `SerializedBytes`, `PngByteVisits`, `ImageTexelVisits` | IDAT payload bytes copied; chunk type/payload bytes processed by CRC, ICC profile-name bytes inspected and scanline bytes unfiltered; decoded RGBA pixels actually color-converted plus the separate reached transparency scan. |
+| `IccProfileInflateBytes`, `IccProfileTagVisits` | Output bytes offered to the ICC inflater; ICC tags and selected transform records inspected, including repeated extent, ordering and lookup comparisons. |
 | `PreparedTransferredBytes` | Explicit retained backing units transferred only when the complete prepared result returns successfully. This dimension cannot be caller capped. |
 
 `RetainedCpuBytes` covers actual Vec capacities multiplied by element size,
@@ -1496,7 +1499,9 @@ buffer capacities and the fixed inline miniz decoder state and its declared
 Huffman arrays. Selected PNG color compilation and conversion also admit their
 actual fixed numeric workspaces before construction, retaining the compiled
 workspace charge through pixel conversion and its real overlap with inflate and
-pixel buffers. No color LUT or per-image color heap buffer is allocated.
+pixel buffers. ICC qualification also admits the inflated profile bytes and
+tag index. Sampled curves keep the inflated backing until conversion completes.
+Pixel conversion runs in place using the compiled transform.
 Arc allocator headers, hash-table bucket overhead, dependency
 internal allocations and process/RSS usage are outside these units.
 The fixed accounting participant, bounded reserved report/profile storage and
