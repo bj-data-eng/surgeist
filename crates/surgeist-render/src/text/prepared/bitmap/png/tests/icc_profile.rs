@@ -10,6 +10,8 @@ use crate::{
 };
 use ::png::chunk::{cHRM, gAMA, iCCP, sRGB};
 
+mod multi_process;
+
 const SOURCE: [u8; 12] = [128, 128, 128, 0, 230, 128, 64, 128, 200, 160, 80, 255];
 const POWER: [u8; 12] = [197, 135, 162, 0, 255, 130, 89, 128, 240, 165, 107, 255];
 const SAMPLED: [u8; 12] = [197, 135, 136, 0, 255, 130, 89, 128, 240, 165, 99, 255];
@@ -525,9 +527,8 @@ fn selected_icc_piecewise_display_p3_executes_both_transfer_branches() {
 fn icc_matrix_fallback_runs_when_the_optional_multi_process_route_is_unavailable() {
     use crate::tests::icc_png::piecewise_p3_profile;
 
-    // ICC.1:2022 §8.10.2 skips an optional multi-process route when the CMM
-    // cannot execute it. The admitted P3 matrix therefore gives the same
-    // independent oracle as the profile without that optional route.
+    // ICC.1:2022 §§8.10.2 and 10.16.1 skip a multi-process route with an
+    // unknown element signature. This profile falls back to the P3 matrix.
     let png = image(
         &[180, 90, 130, 127],
         Some(&piecewise_p3_profile(true)),
