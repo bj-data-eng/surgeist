@@ -242,7 +242,8 @@ association readiness.
 The [hosted Style custody withdrawal](docs/explanation.md#hosted-style-custody-withdrawal)
 front joins an idle bound root to its original hosted destruction Cleanup.
 
-The optional `document-scripting` feature attaches a bindings process and realm
+The optional `document-scripting` feature provides the Boa-backed profile for
+WPT and related host tests. It attaches a bindings process and realm
 to an authenticated native top-level Document. Before publishing the attachment,
 Runtime installs `window`, `self`, `parent`, `opener`, `length`, `CSS`, and
 `DOMException` on the realm's global object. For this native no-opener top-level, the first

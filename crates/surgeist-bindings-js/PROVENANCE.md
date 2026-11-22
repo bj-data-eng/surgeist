@@ -3,8 +3,9 @@
 Bindings uses [Surgeist's Boa fork](https://github.com/bj-data-eng/surgeist-boa),
 based on [Boa v0.22.0](https://github.com/boa-dev/boa/tree/v0.22). The root Git
 tree pins the exact fork commit under `crates/surgeist-boa`. The Cargo graph
-uses the checked-out `boa_engine` and `boa_gc` packages. The engine enables
-Boa's `experimental` feature for the selected JavaScript surface.
+uses the checked-out `boa_engine` and `boa_gc` packages. The manifest selects
+the engine features explicitly, including bundled ICU4X locale data, Temporal,
+`Float16Array`, `Math.sumPrecise` and Annex B facilities.
 
 Initialize the pinned checkout before building.
 

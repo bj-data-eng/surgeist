@@ -14,6 +14,10 @@ The [Runtime adapter](../surgeist-runtime/README.md) uses this boundary
 for attached Window services and standalone Event dispatch. Native owners
 retain their own interface state and execution authority.
 
+The opt-in scripting profile supports WPT and related host tests. It includes
+Intl with bundled locale data, Temporal, `Float16Array`, `Math.sumPrecise` and
+Annex B. The default Runtime build excludes this profile.
+
 ## Ownership
 
 Bootstrap on the worker's entry thread. Only that thread can reacquire the
