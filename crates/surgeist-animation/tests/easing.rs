@@ -170,3 +170,47 @@ fn steps_classifies_both_sides_of_the_finite_output_limit() {
         Err(EasingError::NonFiniteEasedProgress { .. })
     ));
 }
+
+#[test]
+fn large_step_numbers_preserve_the_before_flag_through_division() {
+    let steps = Steps::new(3, StepPosition::JumpEnd).unwrap();
+    let boundary = 2.0_f64.powi(52);
+    let input = EasingInput::new(boundary).unwrap();
+    assert_eq!(
+        steps.evaluate_unrestricted(input).unwrap().value(),
+        boundary
+    );
+    // The preceding step is 2^52 - 1/3, which rounds to 2^52 - 0.5.
+    assert_eq!(
+        steps
+            .evaluate_unrestricted_with_before_flag(input, true)
+            .unwrap()
+            .value(),
+        boundary - 0.5
+    );
+}
+
+#[test]
+fn a_single_step_can_break_a_rounding_tie_at_a_large_magnitude() {
+    let steps = Steps::new(3, StepPosition::JumpBoth).unwrap();
+    for progress in [
+        f64::from_bits(0x4738_0000_0000_0006),
+        -f64::from_bits(0x4738_0000_0000_0002),
+    ] {
+        let input = EasingInput::new(progress).unwrap();
+        // These binary64 products by 3/4 are exact halfway cases whose
+        // even result is the lower neighbor. The start jump adds 1/4.
+        let before = progress * 0.75;
+        assert_eq!(
+            steps
+                .evaluate_unrestricted_with_before_flag(input, true)
+                .unwrap()
+                .value(),
+            before
+        );
+        assert_eq!(
+            steps.evaluate_unrestricted(input).unwrap().value(),
+            before.next_up()
+        );
+    }
+}
