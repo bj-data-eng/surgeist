@@ -31,6 +31,7 @@ declares these modules:
 | `gradient_stops` | `GradientStopsError`, `GradientPositionComponent` | List/length/component/numerical diagnostics with source indices and expanded-position ordinals, wrapped by `PaintError::GradientStops`. |
 | `radial_gradient` | `resolve_radial_gradient`, `RadialGradientSize`, `RadialGradientExtent` | Concrete box/used-center request with coupled circle/ellipse size and default ellipse/farthest-corner. |
 | `radial_gradient` | `RadialGradientGeometry`, `RadialGradientCase`, `RadialGradientOutcome` | Finite center and positive ellipse axes or ordered ZeroCircle/ZeroWidth/ZeroHeight, plus optional report. |
+| `zero_circle_gradient` | `resolve_zero_circle_gradient_stops`, `ZeroCircleGradientStops` | Authenticated affine stop positions for a zero-radius circle, with the circle's center and exact source associations. |
 | `radial_gradient` | `RadialGradientError` | Native dimension/center/radius and numerical diagnostics, using Layout `PhysicalAxis` where applicable and wrapped by `PaintError::RadialGradient`. |
 | `zero_height_gradient` | `resolve_zero_height_gradient_colors`, `GradientRepeat`, `ZeroHeightGradientColorsOutcome`, `ZeroHeightGradientColors`, `WeightedGradientColor` | Authenticated ordinary/average color measure for the native ZeroHeight case, borrowing exact source payloads. |
 | `zero_height_gradient` | `ZeroHeightGradientError` | Expected-case or normalized color-measure representation failure, wrapped by `PaintError::ZeroHeightGradient`. |
@@ -137,6 +138,30 @@ nonempty destination center contributes full mask coverage. The caller owns
 source eligibility, mask-channel interpretation, and scene lowering.
 
 [CSS Masking Level 1, mask-border slicing](https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#the-mask-border-slice)
+
+## Zero-circle gradient stops
+
+`resolve_zero_circle_gradient_stops` requires `RadialGradientGeometry` in the
+`ZeroCircle` case. The result borrows the exact source slice and every color
+payload. Each expanded record retains its source and position index, including
+coincident records and hints. The outcome carries a typed Paint error or the
+complete list, with an optional Ledger report.
+
+For a small positive substituted radius `r`, a position is `length + fraction * r`.
+The positive-radius limit compares length first and fraction when lengths are
+equal. Omitted endpoints use `(0, 0)` and `(0, 1)`. Fixup clamps each specified
+position to the largest earlier pair, then distributes omitted positions
+componentwise between the surrounding records. Potentially subnormal coefficients
+use exact integer weights and round ties to even. Exact cancellation stays at
+zero. A nonzero coefficient that rounds to zero or a collapsed required
+separation returns a typed refusal.
+
+Ledger uses the `paint zero-circle gradient stops` operation and the shared
+stop-resolution phases. `GradientCoordinate` charges the actual coefficient work,
+including the integer alignment, division and rounding decisions when reached.
+Staged and retained record storage is charged separately. Render uses the
+qualified center and pairs through its
+[zero-circle Paint adapters](../../surgeist-render/docs/reference.md#zero-circle-paint-fields).
 
 ## Zero-height gradient colors
 

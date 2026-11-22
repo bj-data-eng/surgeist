@@ -3842,6 +3842,8 @@ fn commands_require_surface_grid(commands: &[RenderCommand], account: &Account) 
         account.work(RenderWork::PaintVisits, 1)?;
         Ok(match paint.kind() {
             crate::paint::PaintKind::RepeatingGradient(_) => true,
+            #[cfg(feature = "render-paint")]
+            crate::paint::PaintKind::ZeroCircleGradient(_) => true,
             crate::paint::PaintKind::Gradient(gradient) => {
                 !matches!(gradient.kind(), crate::paint::GradientKind::Sweep { .. })
             }
@@ -3858,6 +3860,8 @@ fn commands_require_surface_grid(commands: &[RenderCommand], account: &Account) 
                 account.work(RenderWork::PaintVisits, 1)?;
                 match paint {
                     crate::command::RenderPaint::RepeatingGradient(_) => true,
+                    #[cfg(feature = "render-paint")]
+                    crate::command::RenderPaint::ZeroCircleGradient(_) => true,
                     crate::command::RenderPaint::Gradient(gradient) => {
                         !matches!(gradient.kind(), crate::paint::GradientKind::Sweep { .. })
                     }

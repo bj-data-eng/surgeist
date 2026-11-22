@@ -9,6 +9,8 @@
 //! destination.
 
 mod repeating;
+#[cfg(feature = "render-paint")]
+pub(crate) mod zero_circle;
 
 pub use crate::color_mapping::prepare_sdr_srgb_color;
 pub use crate::error::{GradientHintError, GradientRealizationError};
@@ -240,10 +242,25 @@ pub(crate) enum PaintKind {
     Color(Color),
     Gradient(Gradient),
     RepeatingGradient(RepeatingGradient),
+    #[cfg(feature = "render-paint")]
+    ZeroCircleGradient(zero_circle::ZeroCircleGradient),
     Image(Image),
 }
 
 impl Paint {
+    #[cfg(feature = "render-paint")]
+    pub(crate) fn zero_circle_gradient(
+        center: Point,
+        stops: Vec<zero_circle::ZeroCircleStop>,
+        repeating: bool,
+    ) -> Self {
+        Self {
+            kind: PaintKind::ZeroCircleGradient(zero_circle::ZeroCircleGradient::from_paint(
+                center, stops, repeating,
+            )),
+        }
+    }
+
     #[must_use]
     /// Creates a solid-color paint without changing its numeric-sRGB channels.
     pub const fn color(color: Color) -> Self {
@@ -846,6 +863,11 @@ impl Paint {
             PaintKind::RepeatingGradient(gradient) => {
                 let (gradient, hold) = gradient.try_clone_in(account)?;
                 (PaintKind::RepeatingGradient(gradient), Some(hold))
+            }
+            #[cfg(feature = "render-paint")]
+            PaintKind::ZeroCircleGradient(gradient) => {
+                let (gradient, hold) = gradient.try_clone_in(account)?;
+                (PaintKind::ZeroCircleGradient(gradient), Some(hold))
             }
             PaintKind::Gradient(gradient) => {
                 let (gradient, hold) = gradient.try_clone_in(account)?;

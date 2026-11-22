@@ -406,7 +406,7 @@ pub fn resolve_gradient_stops<'a, C>(
     GradientStopsOutcome { result, report }
 }
 
-fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 6], PaintError> {
+pub(crate) fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 6], PaintError> {
     let mut scopes = [meter.root(); 6];
     for (slot, phase) in scopes.iter_mut().zip([
         PaintPhase::GradientValidation,
@@ -1008,15 +1008,7 @@ pub(crate) fn fill_run<P: ScalarPosition>(
         .checked_add(1)
         .ok_or(PaintError::CapacityOverflow)?;
     let denominator = work.numeric(|| denominator as f64)?;
-    let negative_a = work.numeric(|| a.is_sign_negative())?;
-    let negative_b = work.numeric(|| b.is_sign_negative())?;
-    // Same-sign endpoints have a bounded difference. Opposite-sign endpoints
-    // use bounded convex terms instead, so -MAX to +MAX needs no finite span.
-    let delta = if negative_a == negative_b {
-        Some(work.numeric(|| b - a)?)
-    } else {
-        None
-    };
+    let interpolation = ScalarInterpolation::varying(work, a, b)?;
     for index in start..end {
         let record = work.record_mut(records, index)?;
         let ordinal = (index - start)
@@ -1024,13 +1016,7 @@ pub(crate) fn fill_run<P: ScalarPosition>(
             .ok_or(PaintError::CapacityOverflow)?;
         let ordinal = work.numeric(|| ordinal as f64)?;
         let t = work.numeric(|| ordinal / denominator)?;
-        let position = if let Some(delta) = delta {
-            work.numeric(|| t.mul_add(delta, a))?
-        } else {
-            let complement = work.numeric(|| 1.0 - t)?;
-            let right_part = work.numeric(|| t * b)?;
-            work.numeric(|| complement.mul_add(a, right_part))?
-        };
+        let position = interpolation.at(work, t)?;
         if !work.numeric(|| position.is_finite())? {
             return Err(GradientStopsError::UnrepresentableDistribution {
                 left_source_index: left.source_index,
@@ -1041,6 +1027,41 @@ pub(crate) fn fill_run<P: ScalarPosition>(
         record.position = record.position.with_scalar(position);
     }
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum ScalarInterpolation {
+    Delta { start: f64, delta: f64 },
+    Convex { start: f64, end: f64 },
+}
+impl ScalarInterpolation {
+    pub(crate) fn varying(
+        work: &mut StopWork<'_, '_, '_>,
+        start: f64,
+        end: f64,
+    ) -> Result<Self, PaintError> {
+        let negative_start = work.numeric(|| start.is_sign_negative())?;
+        let negative_end = work.numeric(|| end.is_sign_negative())?;
+        // Like signs have a bounded difference. Convex terms also handle a
+        // span from -MAX to +MAX without forming an infinite difference.
+        if negative_start == negative_end {
+            let delta = work.numeric(|| end - start)?;
+            Ok(Self::Delta { start, delta })
+        } else {
+            Ok(Self::Convex { start, end })
+        }
+    }
+
+    pub(crate) fn at(self, work: &mut StopWork<'_, '_, '_>, t: f64) -> Result<f64, PaintError> {
+        match self {
+            Self::Delta { start, delta } => work.numeric(|| t.mul_add(delta, start)),
+            Self::Convex { start, end } => {
+                let complement = work.numeric(|| 1.0 - t)?;
+                let right = work.numeric(|| t * end)?;
+                work.numeric(|| complement.mul_add(start, right))
+            }
+        }
+    }
 }
 
 fn qualify(

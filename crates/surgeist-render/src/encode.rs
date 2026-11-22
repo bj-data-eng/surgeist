@@ -10,6 +10,8 @@ use super::{
 };
 use crate::accounting::{Account, AccountedVec, DisposalCompletion, Hold, RenderPhase, RenderWork};
 use crate::vello_engine::geometry::{action as coordinate_action, affine_product};
+#[cfg(feature = "render-paint")]
+use crate::vello_engine::gradient_endpoints::{CircleCoordinates, CircleProgram, CircleRecord};
 use crate::vello_engine::gradient_endpoints::{
     GradientProgram, GradientSampling, PadEndpoints, SceneBrush,
 };
@@ -42,6 +44,8 @@ mod ordinary_gradient;
 mod repeating_gradient;
 #[cfg(test)]
 mod stack_tests;
+#[cfg(feature = "render-paint")]
+mod zero_circle_gradient;
 
 pub(crate) fn encode_vello_scene(
     commands: &RenderCommands,
@@ -1030,6 +1034,11 @@ enum PreparedSampling {
     PadRamp(PadEndpoints),
     HorizontalDistanceStep(PadEndpoints),
     Program(hint_program::PreparedProgram),
+    #[cfg(feature = "render-paint")]
+    Circle {
+        records: AccountedVec<CircleRecord>,
+        coordinates: CircleCoordinates,
+    },
 }
 
 pub(crate) struct FrameBrush {
@@ -1089,6 +1098,22 @@ impl FrameBrush {
         };
         let account = account.at(RenderPhase::GradientPrepare);
         account.phase(RenderPhase::GradientPrepare, || {
+            #[cfg(feature = "render-paint")]
+            if let Some(PreparedSampling::Circle {
+                records,
+                coordinates,
+            }) = &self.sampling
+            {
+                return zero_circle_gradient::native_glyph_transform(
+                    brush_transform,
+                    transform,
+                    target_extent,
+                    records,
+                    *coordinates,
+                    &account,
+                )
+                .map(Some);
+            }
             let radial_radii = match &self.brush {
                 peniko::Brush::Gradient(gradient) => match gradient.kind {
                     peniko::GradientKind::Radial(radial) => {
@@ -1170,6 +1195,14 @@ impl FrameBrush {
                 endpoints: program.endpoints,
                 coordinates: program.coordinates,
             }),
+            #[cfg(feature = "render-paint")]
+            PreparedSampling::Circle {
+                records,
+                coordinates,
+            } => GradientSampling::Circle(CircleProgram {
+                records: records.as_slice(),
+                coordinates: *coordinates,
+            }),
         });
         SceneBrush::new(self.as_ref(), sampling, target_extent)
     }
@@ -1196,6 +1229,10 @@ pub(crate) fn glyph_paint_brush(
         PaintKind::RepeatingGradient(gradient) => {
             repeating_gradient::prepare(gradient, transform, target_extent, account)
         }
+        #[cfg(feature = "render-paint")]
+        PaintKind::ZeroCircleGradient(gradient) => {
+            zero_circle_gradient::prepare(gradient, transform, target_extent, account)
+        }
         PaintKind::Image(image) => FrameBrush::image(image, account),
     }
 }
@@ -1213,6 +1250,10 @@ fn render_paint_brush(
         }
         RenderPaint::RepeatingGradient(gradient) => {
             repeating_gradient::prepare(gradient, transform, target_extent, account)
+        }
+        #[cfg(feature = "render-paint")]
+        RenderPaint::ZeroCircleGradient(gradient) => {
+            zero_circle_gradient::prepare(gradient, transform, target_extent, account)
         }
         RenderPaint::Image(image) => FrameBrush::image(image, account),
     }

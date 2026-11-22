@@ -34,6 +34,7 @@ use surgeist_paint::radial_gradient::{
 use surgeist_paint::stacking::{
     BoxFacts, BoxId, ChildOrder, ContextEffect, Participation, Position, ZIndex, plan_stacking,
 };
+use surgeist_paint::zero_circle_gradient::ZeroCircleGradientError;
 use surgeist_paint::zero_height_gradient::ZeroHeightGradientError;
 
 fn options() -> PaintOptions {
@@ -370,6 +371,7 @@ fn paint_row(error: &PaintError) -> usize {
         PaintError::Allocation { .. } => 14,
         PaintError::Budget(_) => 15,
         PaintError::Accounting(_) => 16,
+        PaintError::ZeroCircleGradient(_) => 17,
     }
 }
 
@@ -394,6 +396,10 @@ fn paint_errors_state_what_failed_in_words() {
         (
             PaintError::RadialGradient(RadialGradientError::InvalidWidth),
             "radial gradient geometry is invalid",
+        ),
+        (
+            PaintError::ZeroCircleGradient(ZeroCircleGradientError::ExpectedZeroCircle),
+            "zero-circle gradient stops cannot be resolved",
         ),
         (
             PaintError::ZeroHeightGradient(ZeroHeightGradientError::ExpectedZeroHeight),
@@ -465,7 +471,7 @@ fn paint_errors_state_what_failed_in_words() {
             "paint accounting failed",
         ),
     ];
-    assert_table(&table, paint_row, 17);
+    assert_table(&table, paint_row, 18);
 }
 
 #[test]
@@ -478,6 +484,7 @@ fn wrapping_paint_errors_expose_their_cause_and_the_others_have_none() {
         PaintError::Gradient(GradientGeometryError::InvalidWidth),
         PaintError::GradientStops(GradientStopsError::EmptyList),
         PaintError::RadialGradient(RadialGradientError::InvalidWidth),
+        PaintError::ZeroCircleGradient(ZeroCircleGradientError::ExpectedZeroCircle),
         PaintError::ZeroHeightGradient(ZeroHeightGradientError::ExpectedZeroHeight),
         PaintError::BorderImage(BorderImageGeometryError::InvalidBox),
         PaintError::Budget(refusal()),
@@ -679,6 +686,7 @@ fn every_paint_error_type_is_a_sendable_standard_error() {
     assert_error::<GradientGeometryError>();
     assert_error::<GradientStopsError>();
     assert_error::<RadialGradientError>();
+    assert_error::<ZeroCircleGradientError>();
     assert_error::<ZeroHeightGradientError>();
     assert_error::<AccountingFailure>();
     assert_error::<BudgetRefusal>();
@@ -905,6 +913,37 @@ fn radial_gradient_errors_name_the_axis_and_component_at_fault() {
         ),
     ];
     assert_table(&table, radial_row, 7);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+fn zero_circle_row(error: &ZeroCircleGradientError) -> usize {
+    match error {
+        ZeroCircleGradientError::ExpectedZeroCircle => 0,
+        ZeroCircleGradientError::UnrepresentableDistribution { .. } => 1,
+    }
+}
+
+#[test]
+fn zero_circle_gradient_errors_name_the_case_and_positions_at_fault() {
+    use ZeroCircleGradientError as E;
+    let table = [
+        (
+            E::ExpectedZeroCircle,
+            "gradient geometry must be a zero circle",
+        ),
+        (
+            E::UnrepresentableDistribution {
+                left_source_index: 2,
+                left_position_index: 1,
+                right_source_index: 4,
+                right_position_index: 0,
+            },
+            "the affine distribution between position 1 of gradient item 2 and position 0 of gradient item 4 cannot be represented",
+        ),
+    ];
+    assert_table(&table, zero_circle_row, 2);
     for (error, _) in &table {
         assert!(error.source().is_none());
     }
@@ -1166,6 +1205,10 @@ fn wrapping_errors_expose_the_wrapped_error_as_their_cause() {
     let zero = ZeroHeightGradientError::ExpectedZeroHeight;
     let error = PaintError::from(zero);
     assert_eq!(error.source().unwrap().downcast_ref(), Some(&zero));
+
+    let zero_circle = ZeroCircleGradientError::ExpectedZeroCircle;
+    let error = PaintError::from(zero_circle);
+    assert_eq!(error.source().unwrap().downcast_ref(), Some(&zero_circle));
 
     let gradient = GradientGeometryError::NonFiniteAngle;
     let error = PaintError::Gradient(gradient);

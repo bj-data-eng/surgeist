@@ -409,7 +409,7 @@ fn linear_device_period(transform: kurbo::Affine, account: &Account) -> Result<f
 }
 
 /// Stable smallest singular value, normalized before squaring its axes.
-fn radial_device_period(transform: kurbo::Affine, account: &Account) -> Result<f64> {
+pub(super) fn radial_device_period(transform: kurbo::Affine, account: &Account) -> Result<f64> {
     account.work(RenderWork::CoordinateVisits, 4)?;
     let [a, b, c, d, _, _] = transform.as_coeffs();
     let aa = scalar(account, || a.abs())?;
