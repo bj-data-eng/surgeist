@@ -392,3 +392,44 @@ fn sample_keeps_the_arc_from_a_tiny_negative_hue() {
         .unwrap();
     assert_eq!(sample.channels()[2].map(Finite::get), Some(1.0));
 }
+
+#[test]
+fn ordinary_and_controlled_interpolation_keep_exact_premultiplied_cancellation() {
+    let first = color(SRGB, [Some(-2.0_f64.powi(1022)), None, None], Some(1.0));
+    let second = color(SRGB, [Some(2.0_f64.powi(1023)), None, None], Some(0.5));
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+    let progress = UnitInterval::new(0.5).unwrap();
+    let request = NumericalRequest::Interpolate {
+        first,
+        second,
+        method,
+        progress,
+    };
+    let mut owner = OperationOwner::new();
+    let ordinary = first.interpolated(second, method, progress);
+    let controlled = Computation::new(&mut owner, request).compute();
+    let checked = first
+        .sample_interpolation(second, method, Finite::new(0.5).unwrap())
+        .unwrap();
+
+    // The premultiplied terms have equal magnitude 2^1021 and opposite signs.
+    assert_eq!(ordinary.channels(), [Some(0.0), None, None]);
+    assert_eq!(controlled.channels(), [Some(0.0), None, None]);
+    assert_eq!(checked.channels()[0].map(Finite::get), Some(0.0));
+    assert_eq!(checked.alpha().map(Finite::get), Some(0.75));
+}
+
+#[test]
+fn sample_keeps_exact_cancellation_during_extrapolation() {
+    let first = color(SRGB, [Some(2.0_f64.powi(1023)), None, None], Some(0.5));
+    let second = color(SRGB, [Some(2.0_f64.powi(1021)), None, None], Some(1.0));
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+
+    // At t = 2 the weights are -1/2 and 2. The two terms are equal
+    // and opposite, so their sum is zero before dividing by 3/2.
+    let sample = first
+        .sample_interpolation(second, method, Finite::new(2.0).unwrap())
+        .unwrap();
+    assert_eq!(sample.alpha().map(Finite::get), Some(1.5));
+    assert_eq!(sample.channels()[0].map(Finite::get), Some(0.0));
+}
