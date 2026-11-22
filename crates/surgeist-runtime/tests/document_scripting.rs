@@ -91,6 +91,8 @@ mod document_all;
 mod document_collections;
 #[path = "document_scripting/document_fragment.rs"]
 mod document_fragment;
+#[path = "document_scripting/document_named_properties.rs"]
+mod document_named_properties;
 #[path = "document_scripting/element_mixin.rs"]
 mod element_mixin;
 #[path = "document_scripting/element_projection.rs"]
@@ -2524,6 +2526,9 @@ fn main() {
             "html-collection-properties" => tag_collection::reflects_live_tag_collection_properties(),
             "document-all" => document_all::uses_the_canonical_live_document(),
             "document-collections" => document_collections::document_collections_share_live_native_identity(),
+            "document-named-properties" => document_named_properties::document_names_are_virtual_own_properties(),
+            "document-named-mutation" => document_named_properties::document_names_preserve_ordinary_own_keys_and_current_mutation(),
+            "document-named-iframe" => document_named_properties::document_named_iframe_shares_the_native_window_proxy(),
             "node-list" => node_list::node_lists_follow_current_canonical_nodes(),
             "node-list-retirement" => node_list::retired_child_roots_refuse_cached_and_first_access(),
             "ordinary-element-traversal" => ordinary_element_collections::ordinary_element_traversal(),
@@ -2696,6 +2701,9 @@ fn main() {
     window_properties::named_window_elements_follow_the_live_document();
     document_all::uses_the_canonical_live_document();
     document_collections::document_collections_share_live_native_identity();
+    document_named_properties::document_names_are_virtual_own_properties();
+    document_named_properties::document_names_preserve_ordinary_own_keys_and_current_mutation();
+    document_named_properties::document_named_iframe_shares_the_native_window_proxy();
     node_list::node_lists_follow_current_canonical_nodes();
     node_list::retired_child_roots_refuse_cached_and_first_access();
     ordinary_element_collections::ordinary_element_traversal();
