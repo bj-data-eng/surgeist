@@ -450,3 +450,49 @@ pub(in crate::document_scripting) fn element_methods_return_the_exact_attribute(
     })
     .unwrap();
 }
+
+pub(in crate::document_scripting) fn attributes_getter_requires_a_current_native_element() {
+    for exposed in [false, true] {
+        let mut host = public_node_host(200_000, 2_000_000);
+        let permit = host.permit().unwrap();
+        let element = host
+            .in_document(&permit, |scope| {
+                let holder = scope.evaluate(&units(
+                    "globalThis.retiredAttributeOwner = document.createElement('div')",
+                ))?;
+                if exposed {
+                    assert_guest(
+                        scope,
+                        "(globalThis.retainedAttributeMap = retiredAttributeOwner.attributes) === retiredAttributeOwner.attributes",
+                    )?;
+                }
+                projected_node_id(scope, &holder)
+            })
+            .unwrap();
+        host.with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            batch.destroy(element);
+            dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        })
+        .unwrap();
+        assert!(host.snapshot().unwrap().node(element).is_err());
+
+        let result = host.in_document(&permit, |scope| {
+            scope
+                .evaluate(&units("retiredAttributeOwner.attributes"))
+                .map(drop)
+        });
+        let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+            panic!(
+                "attributes of the destroyed Element must refuse (exposed={exposed}): {result:?}"
+            );
+        };
+        assert!(matches!(
+            failure.cause::<DocumentGuestEventError>(),
+            Some(DocumentGuestEventError::Document(
+                DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::StaleNode))
+            ))
+        ));
+        host.stop().into_session().unwrap();
+    }
+}
