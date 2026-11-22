@@ -13,11 +13,14 @@ use core::fmt;
 ///
 /// Present coordinates and alpha are finite. Alpha can extend beyond the
 /// unit interval. Absence records a missing component.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct InterpolationSample {
     space: Space,
-    channels: [Option<Finite>; 3],
-    alpha: Option<Finite>,
+    channels: [Finite; 3],
+    alpha: Finite,
+    // Three channel bits followed by the alpha bit. Missing components use
+    // one canonical placeholder and need no separate stored discriminant.
+    present: u8,
 }
 
 impl InterpolationSample {
@@ -26,11 +29,33 @@ impl InterpolationSample {
     }
 
     pub const fn channels(self) -> [Option<Finite>; 3] {
-        self.channels
+        [self.channel(0), self.channel(1), self.channel(2)]
     }
 
     pub const fn alpha(self) -> Option<Finite> {
-        self.alpha
+        if self.present & (1 << 3) != 0 {
+            Some(self.alpha)
+        } else {
+            None
+        }
+    }
+
+    const fn channel(self, index: usize) -> Option<Finite> {
+        if self.present & (1 << index) != 0 {
+            Some(self.channels[index])
+        } else {
+            None
+        }
+    }
+}
+
+impl fmt::Debug for InterpolationSample {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("InterpolationSample")
+            .field("space", &self.space)
+            .field("channels", &self.channels())
+            .field("alpha", &self.alpha())
+            .finish()
     }
 }
 
@@ -227,16 +252,19 @@ pub(crate) fn sample(
     let alpha = wide_alpha
         .map(|alpha| checked(alpha, InterpolationComponent::Alpha))
         .transpose()?;
-    let mut channels = [None; 3];
+    let mut channels = [Finite::ZERO; 3];
+    let mut present = if alpha.is_some() { 1 << 3 } else { 0 };
     for (index, (channel, wide)) in channels.iter_mut().zip(wide_channels).enumerate() {
-        *channel = wide
-            .map(|wide| checked(wide, InterpolationComponent::Channel(index)))
-            .transpose()?;
+        if let Some(wide) = wide {
+            *channel = checked(wide, InterpolationComponent::Channel(index))?;
+            present |= 1 << index;
+        }
     }
     Ok(InterpolationSample {
         space: method.space(),
         channels,
-        alpha,
+        alpha: alpha.unwrap_or(Finite::ZERO),
+        present,
     })
 }
 

@@ -261,6 +261,8 @@ impl surgeist_color::InterpolationSample
 pub const fn surgeist_color::InterpolationSample::alpha(self) -> core::option::Option<surgeist_color::Finite>
 pub const fn surgeist_color::InterpolationSample::channels(self) -> [core::option::Option<surgeist_color::Finite>; 3]
 pub const fn surgeist_color::InterpolationSample::space(self) -> surgeist_color::ColorSpace
+impl core::fmt::Debug for surgeist_color::InterpolationSample
+pub fn surgeist_color::InterpolationSample::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_color::InterpolationSampleError
 impl surgeist_color::InterpolationSampleError
 pub const fn surgeist_color::InterpolationSampleError::component(self) -> surgeist_color::InterpolationComponent
