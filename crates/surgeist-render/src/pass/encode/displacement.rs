@@ -248,7 +248,7 @@ impl PreparedGraph<'_> {
                 #[cfg(test)]
                 target_kind_for_test: SpatialPassTargetForTest::Dedicated,
                 pipeline: objects.render_pipeline(),
-                bind_group: &group,
+                bind_group: Some(&group),
             },
             region,
             "Surgeist bounded native displacement",

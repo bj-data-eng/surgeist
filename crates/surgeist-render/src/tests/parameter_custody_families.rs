@@ -21,6 +21,7 @@ use crate::{
     image::ImageFit,
     layer::Layer,
     layer::ResolvedLayerAlphaMask,
+    layer::{LayerComposition, PorterDuffOperator},
     morphology::MorphologyInput,
     morphology::MorphologyOperator,
     native_shadow::DropShadowInput,
@@ -406,6 +407,43 @@ fn turbulence_fixture() -> Fixture {
     fixture
 }
 
+fn repeating_tile_fixture() -> Fixture {
+    let tile = bounds(2, 1);
+    let result = bounds(4, 1);
+    let green = Color::try_rgba(0.0, 1.0, 0.0, 1.0).unwrap();
+    let mut scene = Scene::new();
+    scene
+        .tile_layer(
+            Layer::new(),
+            solid(tile, green),
+            FilterDomains::try_new(tile, result, result).unwrap(),
+        )
+        .unwrap();
+    let mut fixture = Fixture::new("repeating tile", scene, vec![Family::Tile]);
+    fixture.rectangle(4, 1, [0, 255, 0, 255]);
+    fixture
+}
+
+fn transparent_tile_fixture() -> Fixture {
+    let tile = bounds(2, 1);
+    let full = bounds(4, 1);
+    let red = Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap();
+    let mut scene = solid(full, red);
+    scene
+        .tile_layer(
+            Layer::new().with_composition(LayerComposition::normal_porter_duff(
+                PorterDuffOperator::Copy,
+            )),
+            Scene::new(),
+            FilterDomains::try_new(tile, full, tile).unwrap(),
+        )
+        .unwrap();
+    let mut fixture = Fixture::new("transparent tile copy", scene, vec![]);
+    fixture.pixel(2, 0, [255, 0, 0, 255]);
+    fixture.pixel(3, 0, [255, 0, 0, 255]);
+    fixture
+}
+
 fn wait<F: Future>(mut future: Pin<&mut F>, device: &wgpu::Device, reached: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
@@ -494,6 +532,10 @@ fn assert_descriptors(fixture: &Fixture, snapshots: &[ParameterSnapshotForTest])
                 9296,
                 wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             ),
+            Family::Tile => (
+                80,
+                wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            ),
             Family::Composite => (
                 128,
                 wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -539,6 +581,15 @@ fn assert_descriptors(fixture: &Fixture, snapshots: &[ParameterSnapshotForTest])
             1
         );
     }
+    assert_eq!(
+        originals
+            .iter()
+            .filter(|b| b.family == Family::Tile)
+            .count(),
+        usize::from(fixture.required.contains(&Family::Tile)),
+        "{} tile uniform count",
+        fixture.name
+    );
     originals.sort_unstable_by_key(|b| b.native_identity);
     assert!(
         originals
@@ -723,6 +774,14 @@ fn public_native_prepared_families_retain_exact_parameter_descriptors_until_term
         ] {
             exercise(fixture, format);
         }
+    }
+}
+
+#[test]
+fn public_tile_custody_acquires_a_uniform_only_for_textured_repetition() {
+    for format in FORMATS {
+        exercise(repeating_tile_fixture(), format);
+        exercise(transparent_tile_fixture(), format);
     }
 }
 

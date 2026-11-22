@@ -34,6 +34,15 @@ mod test_support;
 
 use encode::CustomSpineEncodingState;
 
+const fn tile_stage(work: &crate::frame::TilePassFacts) -> crate::shader::ShaderTileStageKey {
+    use crate::shader::ShaderTileStageKey;
+    if work.source_plan().is_some() {
+        ShaderTileStageKey::Repeat
+    } else {
+        ShaderTileStageKey::Transparent
+    }
+}
+
 /// A private sorted explicit entry allocation. Callers reserve a graph-derived
 /// upper bound before forward native work; insertion then moves only owned data.
 pub(super) struct PassMap<K, V> {

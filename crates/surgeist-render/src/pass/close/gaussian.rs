@@ -527,6 +527,7 @@ pub(super) fn composite_footprint_is_exact(
         }
         RuntimePassKind::Lighting(_) => return None,
         RuntimePassKind::Turbulence(work) => Some((work.target_plan(), work.output_clip())),
+        RuntimePassKind::Tile(work) => Some((work.target_plan(), work.output_clip())),
         RuntimePassKind::NativeShadowMerge(work) => Some((
             work.mapping().target_spatial(),
             work.mapping().output_clip(),

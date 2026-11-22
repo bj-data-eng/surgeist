@@ -92,6 +92,7 @@ pub(super) fn prepared_pass_spatial_uniform(
                 | RuntimePassKind::NativeShadowMerge(_)
                 | RuntimePassKind::Lighting(_)
                 | RuntimePassKind::Turbulence(_)
+                | RuntimePassKind::Tile(_)
         )
     {
         return Ok(None);
@@ -128,7 +129,8 @@ pub(super) fn prepared_pass_spatial_uniform(
         | RuntimePassKind::Offset(_)
         | RuntimePassKind::NativeShadowMerge(_)
         | RuntimePassKind::Lighting(_)
-        | RuntimePassKind::Turbulence(_) => return Ok(None),
+        | RuntimePassKind::Turbulence(_)
+        | RuntimePassKind::Tile(_) => return Ok(None),
         RuntimePassKind::BlurHorizontal(Some(blur)) | RuntimePassKind::BlurVertical(Some(blur)) => {
             (blur.spatial.source, blur.spatial.result)
         }

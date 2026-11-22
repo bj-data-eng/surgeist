@@ -247,6 +247,7 @@ impl Capabilities {
             gpu_gaussian_filter_execution: true,
             gpu_diffuse_lighting_filter_execution: true,
             gpu_specular_lighting_filter_execution: true,
+            gpu_tile_filter_execution: true,
             gpu_turbulence_filter_execution: true,
             gpu_morphology_filter_execution: true,
             gpu_displacement_filter_execution: true,
@@ -529,6 +530,9 @@ impl Capabilities {
             PrimitiveOperation::GpuSpecularLightingFilterExecution => self
                 .filters
                 .supports_gpu_specular_lighting_filter_execution(),
+            PrimitiveOperation::GpuTileFilterExecution => {
+                self.filters.supports_gpu_tile_filter_execution()
+            }
             PrimitiveOperation::GpuTurbulenceFilterExecution => {
                 self.filters.supports_gpu_turbulence_filter_execution()
             }
@@ -1021,6 +1025,7 @@ pub struct FilterCapabilities {
     gpu_gaussian_filter_execution: bool,
     gpu_diffuse_lighting_filter_execution: bool,
     gpu_specular_lighting_filter_execution: bool,
+    gpu_tile_filter_execution: bool,
     gpu_turbulence_filter_execution: bool,
     gpu_morphology_filter_execution: bool,
     gpu_displacement_filter_execution: bool,
@@ -1103,6 +1108,12 @@ impl FilterCapabilities {
     #[must_use]
     pub const fn supports_gpu_specular_lighting_filter_execution(self) -> bool {
         self.gpu_specular_lighting_filter_execution
+    }
+
+    /// Reports GPU support for repeating a resolved filter producer.
+    #[must_use]
+    pub const fn supports_gpu_tile_filter_execution(self) -> bool {
+        self.gpu_tile_filter_execution
     }
 
     /// Reports GPU support for source-free Perlin turbulence.

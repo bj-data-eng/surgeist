@@ -1139,6 +1139,102 @@ pub(super) fn create_turbulence_render_pipeline(
     })
 }
 
+pub(super) fn create_tile_bind_group_layout(
+    generation: &Generation,
+    account: &Account,
+    device: &wgpu::Device,
+) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
+    let entries = [
+        wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        },
+        wgpu::BindGroupLayoutEntry {
+            binding: 1,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: wgpu::BufferSize::new(super::TileParameterBytes::SIZE as u64),
+            },
+            count: None,
+        },
+    ];
+    account.work(RenderWork::ShaderBindingVisits, entries.len())?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, Some(account), || {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Surgeist tile repeat bindings"),
+            entries: &entries,
+        })
+    })
+}
+
+pub(super) fn create_tile_shader_module(
+    generation: &Generation,
+    account: &Account,
+    device: &wgpu::Device,
+) -> Result<OwnedGpu<wgpu::ShaderModule>> {
+    generation.opaque(GpuObjectKind::ShaderModule, Some(account), || {
+        device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Surgeist tile shader"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("../shaders/tile.wgsl"))),
+        })
+    })
+}
+
+pub(super) fn create_tile_render_pipeline(
+    generation: &Generation,
+    account: &Account,
+    device: &wgpu::Device,
+    description: super::validate::TilePassDescription,
+    layout: Option<&wgpu::BindGroupLayout>,
+    shader: &wgpu::ShaderModule,
+) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
+    let layouts = layout.map(Some);
+    let pipeline_layout =
+        generation.opaque(GpuObjectKind::PipelineLayout, Some(account), || {
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Surgeist tile pipeline layout"),
+                bind_group_layouts: layouts.as_slice(),
+                immediate_size: 0,
+            })
+        })?;
+    let target = wgpu::ColorTargetState {
+        format: texture_format(description.target_format)?,
+        blend: None,
+        write_mask: wgpu::ColorWrites::ALL,
+    };
+    generation.opaque(GpuObjectKind::RenderPipeline, Some(account), || {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Surgeist tile pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: Some(description.stage.fragment_entry()),
+                targets: &[Some(target)],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            multiview_mask: None,
+            cache: None,
+        })
+    })
+}
+
 pub(super) fn create_native_shadow_bind_group_layout(
     generation: &Generation,
     _cpu: &CpuAccount,

@@ -184,6 +184,11 @@ impl Layer {
         self
     }
 
+    pub(crate) fn with_tile(mut self, domains: crate::effect::FilterDomains) -> Self {
+        self.filter = Some(LayerFilter::Tile(domains));
+        self
+    }
+
     pub(crate) fn with_turbulence(
         mut self,
         operation: crate::turbulence::Turbulence,
@@ -352,6 +357,7 @@ impl Layer {
                 | LayerFilter::Offset(_)
                 | LayerFilter::Gaussian(_)
                 | LayerFilter::Lighting(_)
+                | LayerFilter::Tile(_)
                 | LayerFilter::Turbulence(..)
                 | LayerFilter::Morphology(_)
                 | LayerFilter::Displacement(_)
@@ -372,6 +378,7 @@ impl Layer {
                 | LayerFilter::Offset(_)
                 | LayerFilter::Gaussian(_)
                 | LayerFilter::Lighting(_)
+                | LayerFilter::Tile(_)
                 | LayerFilter::Turbulence(..)
                 | LayerFilter::Morphology(_)
                 | LayerFilter::Displacement(_)
@@ -421,6 +428,7 @@ pub(crate) enum LayerFilter {
     Offset(crate::offset::PreparedOffset),
     Gaussian(crate::gaussian::GaussianForeground),
     Lighting(crate::lighting::LightingForeground),
+    Tile(crate::effect::FilterDomains),
     Turbulence(
         crate::turbulence::Turbulence,
         crate::turbulence::TurbulenceRegion,

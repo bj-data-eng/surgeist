@@ -363,6 +363,21 @@ impl TurbulenceParameterBytes {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TileParameterBytes([u8; 80]);
+
+impl TileParameterBytes {
+    pub(crate) const SIZE: usize = 80;
+
+    pub(crate) fn from_facts(facts: &crate::frame::TilePassFacts) -> Self {
+        Self(*facts.uniform_bytes())
+    }
+
+    pub(crate) const fn as_bytes(&self) -> &[u8; Self::SIZE] {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct NativeShadowParameterBytes([u8; 256]);
 
 impl NativeShadowParameterBytes {

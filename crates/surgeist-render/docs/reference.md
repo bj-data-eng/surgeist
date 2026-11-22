@@ -751,6 +751,34 @@ format refusal identifies `RuntimeOperation::DisplacementRendering`.
 The exhaustive `PrimitiveOperation` variant and required `RenderWorkFields<T>`
 fields require downstream exhaustive match/struct updates.
 
+### Native filter tiling
+
+`Scene::tile_layer` repeats the producer scene in layer-local coordinates.
+`FilterDomains::source()` supplies the full primitive subregion of the
+producer. Its intersection with the hard filter region bounds the stored
+source window. Cells outside that window remain transparent, while the full
+subregion still supplies the period and phase. The result region independently
+clips the repeated image before layer placement and composition.
+
+The renderer wraps both neighboring indices on each axis before loading
+producer samples. If the hard filter cuts a fractional source cell, Render
+aligns the physical capture to the clipped producer before rasterization.
+The shader samples that clipped image at each covered cell's centroid in
+the full period lattice and weights the sample by its coverage. This keeps
+outside ink out of the repeat. Reconstructed samples are premultiplied in
+the renderer's numeric sRGB working representation.
+
+An empty producer, tile, or hard-clipped source yields transparent output
+inside the result. An empty result schedules no tile work. Source and output
+geometry that cannot be represented on the reached GPU grids produces a
+typed input diagnostic.
+
+`FilterCapabilities::supports_gpu_tile_filter_execution()` reports semantic
+support. Render accounts for the bounded capture and parameter custody
+through submission. It records four potential source loads per output cell
+on the aligned path and sixteen when a clipped capture needs resampling.
+The transparent path performs no source reads.
+
 ### Native turbulence
 
 `Scene::turbulence_layer` generates a source-free Perlin noise image from

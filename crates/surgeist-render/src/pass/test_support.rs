@@ -1344,6 +1344,7 @@ pub(crate) fn runtime_color_filter_observation_for_test(
             | RuntimePassKind::NativeShadowMerge(_)
             | RuntimePassKind::Lighting(_)
             | RuntimePassKind::Turbulence(_)
+            | RuntimePassKind::Tile(_)
             | RuntimePassKind::BlurHorizontal(_)
             | RuntimePassKind::BlurVertical(_)
             | RuntimePassKind::DropShadowColorize(_)
@@ -3195,6 +3196,7 @@ fn core_pass_class(kind: &RuntimePassKind) -> Option<CorePassClass> {
         | RuntimePassKind::NativeShadowMerge(_)
         | RuntimePassKind::Lighting(_)
         | RuntimePassKind::Turbulence(_)
+        | RuntimePassKind::Tile(_)
         | RuntimePassKind::ColorFilter(_)
         | RuntimePassKind::BlurHorizontal(_)
         | RuntimePassKind::BlurVertical(_)
@@ -4925,6 +4927,13 @@ fn spatial_filter_pass_tags(
             ExecutableFilterStepFacts::Turbulence { .. } => {
                 tags.push(SpatialFilterPassTagForTest::Turbulence);
             }
+            ExecutableFilterStepFacts::Tile { pass, .. } => {
+                let pass = plan.passes.iter().find(|candidate| candidate.id == *pass)?;
+                let RuntimePassKind::Tile(work) = &pass.kind else {
+                    return None;
+                };
+                tags.push(SpatialFilterPassTagForTest::Tile(super::tile_stage(work)));
+            }
             ExecutableFilterStepFacts::Lighting {
                 resample,
                 shade,
@@ -5394,6 +5403,7 @@ fn observe_layer_composition(
             | RuntimeReadRole::NativeShadowOriginal
             | RuntimeReadRole::NativeShadowAlpha
             | RuntimeReadRole::LightingSource
+            | RuntimeReadRole::TileSource
             | RuntimeReadRole::ConvolutionSource
             | RuntimeReadRole::GaussianSource
             | RuntimeReadRole::GaussianAuxiliary
@@ -6236,7 +6246,7 @@ impl<'device> PreparedGraph<'device> {
 
 #[cfg(test)]
 fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
-    let mut vocabulary = [false; 18];
+    let mut vocabulary = [false; 19];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.runtime.kind)] = true;
     }
@@ -6253,6 +6263,7 @@ fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
         && !vocabulary[15]
         && !vocabulary[16]
         && !vocabulary[17]
+        && !vocabulary[18]
         && vocabulary[3..8].iter().all(|present| !present);
     plan.resources
         .iter()
@@ -6639,7 +6650,7 @@ pub(crate) fn runtime_lowering_observation_for_test(
 
 #[cfg(test)]
 fn runtime_vocabulary_is_exact(plan: &LoweredGraphPlan) -> bool {
-    let mut vocabulary = [false; 18];
+    let mut vocabulary = [false; 19];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.kind)] = true;
     }
@@ -6792,6 +6803,13 @@ fn runtime_semantic_pass_facts_are_exact(plan: &LoweredGraphPlan) -> bool {
             && pass.reads.is_empty()
             && pass.dependencies.is_empty()
             && pass.releases.is_empty()
+    }) && plan.passes.iter().any(|pass| {
+        matches!(&pass.kind, RuntimePassKind::Tile(work) if work.source_plan().is_some())
+            && matches!(pass.reads.as_slice(), [read] if read.role == RuntimeReadRole::TileSource
+                && read.sampling_filter == RuntimeSamplingFilter::Nearest
+                && read.sampling_edge == RuntimeSamplingEdge::TransparentBlack)
+            && pass.dependencies.len() == 1
+            && pass.releases.len() == 1
     })
 }
 
@@ -7019,6 +7037,7 @@ fn runtime_pass_kind_index(kind: &RuntimePassKind) -> usize {
         RuntimePassKind::Displacement(_) => 15,
         RuntimePassKind::Lighting(_) => 16,
         RuntimePassKind::Turbulence(_) => 17,
+        RuntimePassKind::Tile(_) => 18,
     }
 }
 

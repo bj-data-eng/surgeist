@@ -238,6 +238,7 @@ fn core_pass_program_sampling(
         | ShaderProgramKey::Offset
         | ShaderProgramKey::Lighting(_)
         | ShaderProgramKey::Turbulence
+        | ShaderProgramKey::Tile(_)
         | ShaderProgramKey::NativeShadow { .. }
         | ShaderProgramKey::ColorFilter
         | ShaderProgramKey::BlurHorizontal { .. }
@@ -853,6 +854,76 @@ pub(super) fn validate_turbulence_pass_keys(
 }
 
 pub(super) fn turbulence_cache_error(message: &'static str) -> Error {
+    Error::new(BackendErrorCode::RenderFailed, message)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct TilePassDescription {
+    pub(super) target_format: ShaderTextureFormatKey,
+    pub(super) stage: super::ShaderTileStageKey,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct TilePassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
+}
+
+pub(super) fn validate_tile_pass_keys(
+    keys: TilePassKeyRefs<'_>,
+    observer: Option<&Account>,
+) -> Result<TilePassDescription> {
+    let ShaderProgramKey::Tile(stage) = keys.layout.program else {
+        return Err(tile_cache_error("tile requires a concrete shader stage"));
+    };
+    let target_format = keys.pipeline.target_format;
+    let source_is_exact = match (
+        stage.reads_source(),
+        keys.layout.sampled_textures.as_slice(),
+    ) {
+        (true, [source]) => {
+            binding_visit(observer)?;
+            source.binding_role == ShaderBindingRoleKey::TileSource
+                && source.source_format == target_format
+        }
+        (false, []) => true,
+        _ => false,
+    };
+    let data_bindings: &[_] = if stage.reads_source() {
+        &[ShaderDataBindingKey::TileParameters]
+    } else {
+        &[]
+    };
+    if !source_is_exact
+        || keys.shader.program != keys.layout.program
+        || !keys.samplers.is_empty()
+        || !keys.shader.samplers.is_empty()
+        || !keys.pipeline.samplers.is_empty()
+        || !binding_eq(
+            keys.layout.data_bindings.as_slice(),
+            data_bindings,
+            observer,
+        )?
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || keys.shader.working_format != Some(target_format)
+        || keys.shader.output_format != Some(target_format)
+        || !is_working_format(target_format)
+    {
+        return Err(tile_cache_error(
+            "tile keys disagree across bindings, programs, or working formats",
+        ));
+    }
+    Ok(TilePassDescription {
+        target_format,
+        stage,
+    })
+}
+
+pub(super) fn tile_cache_error(message: &'static str) -> Error {
     Error::new(BackendErrorCode::RenderFailed, message)
 }
 

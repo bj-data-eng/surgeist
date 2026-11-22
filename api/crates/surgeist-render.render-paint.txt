@@ -336,6 +336,7 @@ pub surgeist_render::accounting::RenderWork::ScheduledLightingResultSamples
 pub surgeist_render::accounting::RenderWork::ScheduledMorphologySamples
 pub surgeist_render::accounting::RenderWork::ScheduledOffsetSamples
 pub surgeist_render::accounting::RenderWork::ScheduledShadowSamples
+pub surgeist_render::accounting::RenderWork::ScheduledTileSamples
 pub surgeist_render::accounting::RenderWork::ScheduledTurbulenceOctaves
 pub surgeist_render::accounting::RenderWork::SerializedBytes
 pub surgeist_render::accounting::RenderWork::ShaderBindingVisits
@@ -631,6 +632,7 @@ pub surgeist_render::accounting::RenderWorkFields::ScheduledLightingResultSample
 pub surgeist_render::accounting::RenderWorkFields::ScheduledMorphologySamples: T
 pub surgeist_render::accounting::RenderWorkFields::ScheduledOffsetSamples: T
 pub surgeist_render::accounting::RenderWorkFields::ScheduledShadowSamples: T
+pub surgeist_render::accounting::RenderWorkFields::ScheduledTileSamples: T
 pub surgeist_render::accounting::RenderWorkFields::ScheduledTurbulenceOctaves: T
 pub surgeist_render::accounting::RenderWorkFields::SerializedBytes: T
 pub surgeist_render::accounting::RenderWorkFields::ShaderBindingVisits: T
@@ -744,6 +746,7 @@ pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_morph
 pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_native_drop_shadow_filter_execution(self) -> bool
 pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_offset_filter_execution(self) -> bool
 pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_specular_lighting_filter_execution(self) -> bool
+pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_tile_filter_execution(self) -> bool
 pub const fn surgeist_render::capability::FilterCapabilities::supports_gpu_turbulence_filter_execution(self) -> bool
 pub const fn surgeist_render::capability::FilterCapabilities::supports_layer_filters(self) -> bool
 pub const fn surgeist_render::capability::FilterCapabilities::supports_ordered_filter_lists(self) -> bool
@@ -947,6 +950,7 @@ pub surgeist_render::diagnostic::PrimitiveOperation::GpuMorphologyFilterExecutio
 pub surgeist_render::diagnostic::PrimitiveOperation::GpuNativeDropShadowFilterExecution
 pub surgeist_render::diagnostic::PrimitiveOperation::GpuOffsetFilterExecution
 pub surgeist_render::diagnostic::PrimitiveOperation::GpuSpecularLightingFilterExecution
+pub surgeist_render::diagnostic::PrimitiveOperation::GpuTileFilterExecution
 pub surgeist_render::diagnostic::PrimitiveOperation::GpuTurbulenceFilterExecution
 pub surgeist_render::diagnostic::PrimitiveOperation::ImageColorProfileConversion
 pub surgeist_render::diagnostic::PrimitiveOperation::ImageOrientationConversion
@@ -1849,6 +1853,7 @@ pub fn surgeist_render::scene::Scene::stroke(&mut self, shape: impl core::conver
 pub fn surgeist_render::scene::Scene::text_decoration_line(&mut self, line: surgeist_render::text::TextDecorationLine) -> &mut Self
 pub fn surgeist_render::scene::Scene::text_run(&mut self, run: surgeist_render::text::TextRun<'_>) -> &mut Self
 pub fn surgeist_render::scene::Scene::text_shadow_run(&mut self, run: surgeist_render::text::TextShadowRun<'_>) -> &mut Self
+pub fn surgeist_render::scene::Scene::tile_layer(&mut self, layer: surgeist_render::scene::Layer, producer: surgeist_render::scene::Scene, domains: surgeist_render::effect::FilterDomains) -> surgeist_render::Result<&mut Self>
 pub fn surgeist_render::scene::Scene::transform(&mut self, transform: surgeist_render::geometry::Transform, children: impl core::ops::function::FnOnce(&mut surgeist_render::scene::Scene)) -> &mut Self
 pub fn surgeist_render::scene::Scene::turbulence_layer(&mut self, layer: surgeist_render::scene::Layer, operation: surgeist_render::effect::Turbulence, region: surgeist_render::effect::TurbulenceRegion) -> surgeist_render::Result<&mut Self>
 pub struct surgeist_render::scene::SceneSummary

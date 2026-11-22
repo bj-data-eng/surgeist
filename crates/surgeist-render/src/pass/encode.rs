@@ -20,6 +20,7 @@ mod morphology;
 mod native_shadow;
 #[path = "encode/offset.rs"]
 mod offset;
+mod tile;
 mod turbulence;
 
 #[cfg(test)]
@@ -38,8 +39,8 @@ use super::super::{
         OffsetParameterBytes, PassCacheCommitPreparation, PassSpatialUniformBytes,
         ProvisionalColorFilterPassObjects, ProvisionalCompositePassObjects,
         ProvisionalCorePassObjects, ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate,
-        ShaderCompositePathKey, ShaderLightingStageKey, TurbulenceParameterBytes,
-        TurbulencePassKeyRefs,
+        ShaderCompositePathKey, ShaderLightingStageKey, ShaderTileStageKey, TileParameterBytes,
+        TilePassKeyRefs, TurbulenceParameterBytes, TurbulencePassKeyRefs,
     },
     vello_engine::{
         ActiveVelloEncodingScope, EncodedVelloCaptureProof, PendingVelloResourceCommit,
@@ -71,7 +72,9 @@ pub(super) fn filter_step_passes<'a>(
 ) -> impl Iterator<Item = Result<RuntimePassId>> + 'a {
     steps.iter().flat_map(move |step| {
         let count = match step {
-            ExecutableFilterStepFacts::Color(_) | ExecutableFilterStepFacts::Turbulence { .. } => 1,
+            ExecutableFilterStepFacts::Color(_)
+            | ExecutableFilterStepFacts::Turbulence { .. }
+            | ExecutableFilterStepFacts::Tile { .. } => 1,
             ExecutableFilterStepFacts::Offset { rebase, .. } => 1 + usize::from(rebase.is_some()),
             ExecutableFilterStepFacts::Lighting { resample, .. } => {
                 2 + usize::from(resample.is_some())
@@ -90,7 +93,8 @@ pub(super) fn filter_step_passes<'a>(
             }
             let pass = match step {
                 ExecutableFilterStepFacts::Color(pass)
-                | ExecutableFilterStepFacts::Turbulence { pass, .. } => Some(*pass),
+                | ExecutableFilterStepFacts::Turbulence { pass, .. }
+                | ExecutableFilterStepFacts::Tile { pass, .. } => Some(*pass),
                 ExecutableFilterStepFacts::Offset { rebase, sample, .. } => {
                     if index == 0 {
                         Some(rebase.unwrap_or(*sample))
@@ -269,6 +273,7 @@ pub(super) enum GraphScheduledEncodingKind {
     NativeShadow,
     Lighting(ShaderLightingStageKey),
     Turbulence,
+    Tile(ShaderTileStageKey),
     Offset,
     BlurHorizontalRgba,
     BlurVerticalRgba,
@@ -292,6 +297,7 @@ pub(crate) enum ScheduledFilterRawFact {
     NativeShadow,
     Lighting(ShaderLightingStageKey),
     Turbulence,
+    Tile(ShaderTileStageKey),
     Offset,
     BlurHorizontalRgba,
     BlurVerticalRgba,
@@ -318,6 +324,7 @@ pub(crate) struct CustomSpineEncodingSummary {
     pub(crate) native_shadow_pass_count: usize,
     lighting_pass_count: usize,
     turbulence_pass_count: usize,
+    tile_pass_count: usize,
     pub(crate) native_shadow_parameters_and_resources_are_exact: bool,
     pub(crate) gaussian_parameters_and_resources_are_exact: bool,
     pub(crate) convolution_pass_count: usize,
@@ -394,6 +401,7 @@ struct CustomSpineEncodingProgress {
     native_shadow_pass_count: usize,
     lighting_pass_count: usize,
     turbulence_pass_count: usize,
+    tile_pass_count: usize,
     native_shadow_parameters_and_resources_are_exact: bool,
     gaussian_parameters_and_resources_are_exact: bool,
     convolution_pass_count: usize,
@@ -468,6 +476,7 @@ impl CustomSpineEncodingProgress {
             native_shadow_pass_count: 0,
             lighting_pass_count: 0,
             turbulence_pass_count: 0,
+            tile_pass_count: 0,
             native_shadow_parameters_and_resources_are_exact: true,
             gaussian_parameters_and_resources_are_exact: true,
             convolution_pass_count: 0,
@@ -566,6 +575,7 @@ impl CustomSpineEncodingProgress {
             native_shadow_pass_count: self.native_shadow_pass_count,
             lighting_pass_count: self.lighting_pass_count,
             turbulence_pass_count: self.turbulence_pass_count,
+            tile_pass_count: self.tile_pass_count,
             native_shadow_parameters_and_resources_are_exact: self
                 .native_shadow_parameters_and_resources_are_exact,
             gaussian_parameters_and_resources_are_exact: self
@@ -725,6 +735,7 @@ fn scheduled_filter_raw_facts(
                 Some(ScheduledFilterRawFact::Lighting(*stage))
             }
             GraphScheduledEncodingKind::Turbulence => Some(ScheduledFilterRawFact::Turbulence),
+            GraphScheduledEncodingKind::Tile(stage) => Some(ScheduledFilterRawFact::Tile(*stage)),
             GraphScheduledEncodingKind::Offset => Some(ScheduledFilterRawFact::Offset),
             GraphScheduledEncodingKind::BlurHorizontalRgba => {
                 Some(ScheduledFilterRawFact::BlurHorizontalRgba)
@@ -929,6 +940,7 @@ impl CustomSpineEncodingSummary {
             .saturating_add(self.native_shadow_pass_count)
             .saturating_add(self.lighting_pass_count)
             .saturating_add(self.turbulence_pass_count)
+            .saturating_add(self.tile_pass_count)
             .saturating_add(self.offset_pass_count);
         let exact_base = self.layer_composite_count == 0
             && self.color_filter_count == 0
@@ -991,6 +1003,7 @@ impl CustomSpineEncodingSummary {
                 || self.native_shadow_pass_count > 0
                 || self.lighting_pass_count > 0
                 || self.turbulence_pass_count > 0
+                || self.tile_pass_count > 0
                 || self.offset_pass_count > 0)
             && exact_layers
             && exact_color_filters
@@ -1051,7 +1064,7 @@ enum SpatialPassTargetForTest {
 }
 struct SpatialPassDrawBindings<'a> {
     pipeline: &'a wgpu::RenderPipeline,
-    bind_group: &'a wgpu::BindGroup,
+    bind_group: Option<&'a wgpu::BindGroup>,
     #[cfg(test)]
     target_kind_for_test: SpatialPassTargetForTest,
 }
@@ -1648,6 +1661,7 @@ struct CompletedReleaseFacts {
     native_shadow_buffer: bool,
     lighting_buffer: bool,
     turbulence_buffer: bool,
+    tile_buffer: bool,
     displacement: bool,
 }
 
@@ -1682,6 +1696,7 @@ impl CompletedPassReleases {
                 && self
                     .consumed_parameters
                     .contains(PassBufferRole::Turbulence),
+            tile_buffer: exact_source && self.consumed_parameters.contains(PassBufferRole::Tile),
             displacement: exact_source
                 && self
                     .consumed_parameters
@@ -2095,7 +2110,9 @@ fn draw_bounded_spatial_filter(
         multiview_mask: None,
     });
     pass.set_pipeline(bindings.pipeline);
-    pass.set_bind_group(0, bindings.bind_group, &[]);
+    if let Some(bind_group) = bindings.bind_group {
+        pass.set_bind_group(0, bind_group, &[]);
+    }
     pass.set_viewport(
         region.viewport_x,
         region.viewport_y,
@@ -2171,6 +2188,9 @@ fn graph_scheduled_encoding_order_is_exact(
                 GraphScheduledEncodingKind::Lighting(super::lighting::shader_stage(work))
             }
             RuntimePassKind::Turbulence(_) => GraphScheduledEncodingKind::Turbulence,
+            RuntimePassKind::Tile(work) => {
+                GraphScheduledEncodingKind::Tile(super::tile_stage(work))
+            }
             RuntimePassKind::Offset(_) => GraphScheduledEncodingKind::Offset,
             RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
                 RuntimeBlurInput::Rgba => GraphScheduledEncodingKind::BlurHorizontalRgba,
@@ -2712,6 +2732,20 @@ impl<'device> PreparedGraph<'device> {
                 }
                 progress.turbulence_pass_count = progress.turbulence_pass_count.saturating_add(1);
                 progress.record_custom_completion(GraphScheduledEncodingKind::Turbulence)
+            }
+            RuntimePassKind::Tile(work) => {
+                self.encode_tile(encoder, request, account)?;
+                let released = self
+                    .complete_custom_spine_pass(request.id, account)?
+                    .prove_for(request);
+                let stage = super::tile_stage(work);
+                if !released.resources || released.tile_buffer != stage.reads_source() {
+                    return Err(preparation_error(
+                        "tile completion did not resolve exact resource and parameter custody",
+                    ));
+                }
+                progress.tile_pass_count = progress.tile_pass_count.saturating_add(1);
+                progress.record_custom_completion(GraphScheduledEncodingKind::Tile(stage))
             }
             RuntimePassKind::NativeShadowMerge(_) => {
                 self.encode_native_shadow(encoder, request, account)?;
@@ -3815,7 +3849,7 @@ impl<'device> PreparedGraph<'device> {
                 #[cfg(test)]
                 target_kind_for_test: SpatialPassTargetForTest::Dedicated,
                 pipeline,
-                bind_group: &bind_group,
+                bind_group: Some(&bind_group),
             },
             region,
             "Surgeist backdrop bounded completed-parent copy",
@@ -4181,7 +4215,7 @@ impl<'device> PreparedGraph<'device> {
                 #[cfg(test)]
                 target_kind_for_test: SpatialPassTargetForTest::Dedicated,
                 pipeline,
-                bind_group: &bind_group,
+                bind_group: Some(&bind_group),
             },
             region,
             "Surgeist spatial-filter Gaussian blur",
@@ -4297,7 +4331,7 @@ impl<'device> PreparedGraph<'device> {
                 #[cfg(test)]
                 target_kind_for_test: SpatialPassTargetForTest::Dedicated,
                 pipeline,
-                bind_group: &bind_group,
+                bind_group: Some(&bind_group),
             },
             region,
             "Surgeist spatial-filter drop-shadow colorize",

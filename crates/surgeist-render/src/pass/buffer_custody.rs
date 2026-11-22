@@ -25,9 +25,10 @@ pub(super) enum PassBufferRole {
     BlurEdge,
     Lighting,
     Turbulence,
+    Tile,
 }
 impl PassBufferRole {
-    pub(super) const COUNT: usize = Self::Turbulence as usize + 1;
+    pub(super) const COUNT: usize = Self::Tile as usize + 1;
 
     pub(super) const fn index(self) -> usize {
         self as usize
@@ -47,6 +48,7 @@ impl PassBufferRole {
             Self::CssShadow => size == 32,
             Self::BlurEdge => size == 16,
             Self::Turbulence => size == crate::shader::TurbulenceParameterBytes::SIZE,
+            Self::Tile => size == crate::shader::TileParameterBytes::SIZE,
             _ => size == 256,
         }
     }
@@ -302,6 +304,33 @@ impl AcquiredGraphBindings {
             }
         }
         match (
+            &request.runtime.kind,
+            self.tile_parameter_bindings
+                .get(&request.runtime.id, account)?,
+        ) {
+            (RuntimePassKind::Tile(work), Some(binding)) if work.source_plan().is_some() => {
+                account.work(RenderWork::ResourceProbes, 1)?;
+                if binding.bytes.as_bytes() != work.uniform_bytes() {
+                    return Err(preparation_error(
+                        "tile binding differs from its admitted bytes",
+                    ));
+                }
+                binding.buffer.active(
+                    request.runtime.id,
+                    PassBufferRole::Tile,
+                    binding.bytes.as_bytes().len(),
+                    generation,
+                )?;
+            }
+            (kind, None) if !matches!(kind, RuntimePassKind::Tile(work) if work.source_plan().is_some()) =>
+                {}
+            _ => {
+                return Err(preparation_error(
+                    "tile binding differs from its admitted pass",
+                ));
+            }
+        }
+        match (
             &request.color_filter_operations,
             self.color_filter_operation_bindings
                 .get(&request.runtime.id, account)?,
@@ -370,6 +399,7 @@ impl AcquiredGraphBindings {
         consume!(native_shadow_parameter_bindings, NativeShadow);
         consume!(lighting_parameter_bindings, Lighting);
         consume!(turbulence_parameter_bindings, Turbulence);
+        consume!(tile_parameter_bindings, Tile);
         consume!(gaussian_parameter_bindings, Gaussian);
         consume!(morphology_parameter_bindings, Morphology);
         consume!(color_filter_operation_bindings, ColorOperation);
@@ -422,6 +452,7 @@ impl AcquiredGraphBindings {
         check!(native_shadow_parameter_bindings, NativeShadow);
         check!(lighting_parameter_bindings, Lighting);
         check!(turbulence_parameter_bindings, Turbulence);
+        check!(tile_parameter_bindings, Tile);
         check!(gaussian_parameter_bindings, Gaussian);
         check!(morphology_parameter_bindings, Morphology);
         check!(color_filter_operation_bindings, ColorOperation);

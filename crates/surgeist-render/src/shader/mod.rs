@@ -30,6 +30,7 @@ pub(crate) use key::{
     ShaderDisplacementStageKey, ShaderLightingStageKey, ShaderMaskExtendKey, ShaderMaskQualityKey,
     ShaderMaskSamplingKey, ShaderModuleKey, ShaderMorphologyStageKey, ShaderNativeShadowSourceKey,
     ShaderProgramKey, ShaderSamplingEdgeKey, ShaderSamplingFilterKey, ShaderTextureFormatKey,
+    ShaderTileStageKey,
 };
 pub(crate) use morphology::{MorphologyParameterBytes, MorphologyParameterFacts};
 pub(crate) use parameters::{
@@ -37,7 +38,8 @@ pub(crate) use parameters::{
     CompositeParameterBytes, ConvolutionParameterBytes, ConvolutionParameterFacts,
     DropShadowParameterBytes, GaussianParameterBytes, GaussianParameterFacts,
     LightingParameterBytes, NativeShadowParameterBytes, NativeShadowParameterFacts,
-    OffsetParameterBytes, OffsetParameterFacts, PassSpatialUniformBytes, TurbulenceParameterBytes,
+    OffsetParameterBytes, OffsetParameterFacts, PassSpatialUniformBytes, TileParameterBytes,
+    TurbulenceParameterBytes,
 };
 #[cfg(all(test, not(target_arch = "wasm32")))]
 pub(crate) use parameters::{
@@ -64,5 +66,5 @@ pub(crate) use validate::{
     BlurPassKeyRefs, ColorFilterPassKeyRefs, CompositePassKeyRefs, ConvolutionPassKeyRefs,
     CopyBackdropPassKeyRefs, CorePassKeyRefs, DisplacementPassKeyRefs,
     DropShadowColorizePassKeyRefs, GaussianPassKeyRefs, LightingPassKeyRefs, MorphologyPassKeyRefs,
-    NativeShadowPassKeyRefs, OffsetPassKeyRefs, TurbulencePassKeyRefs,
+    NativeShadowPassKeyRefs, OffsetPassKeyRefs, TilePassKeyRefs, TurbulencePassKeyRefs,
 };

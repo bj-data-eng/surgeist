@@ -60,6 +60,7 @@ impl SemanticFrameGraphPlanner<'_> {
                 context,
                 parent_locality: CaptureParentLocality::CaptureLocal,
                 span_scope: SemanticVelloSpanScope::LayerSource,
+                bound_spans_to_parent: false,
                 capture_transform,
                 parent_to_surface,
                 capture_space: CaptureBoundsCoordinateSpace::Local,

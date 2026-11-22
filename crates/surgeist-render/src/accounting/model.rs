@@ -82,8 +82,8 @@ dimensions! {
         /// kernels or packed raster streams.
         SerializedBytes,
         /// Output-scissor area scheduled for filter color conversion, resampling,
-        /// convolution accumulation/finalization, lighting, morphology tables/queries, offset,
-        /// raw lattice rebase, blur, colorize or shadow-merge passes.
+        /// convolution, lighting, morphology, offset, raw lattice rebase, blur,
+        /// colorize, shadow merge, tiling or turbulence passes.
         ScheduledFilterTexels,
         /// Actual scheduled convolution result-grid cells multiplied by taps, across all batches.
         ScheduledConvolutionTaps,
@@ -105,6 +105,10 @@ dimensions! {
         ScheduledLightingResultSamples,
         /// Reached turbulence octaves times output-scissor cells, each evaluating RGBA.
         ScheduledTurbulenceOctaves,
+        /// Producer-texel load opportunities per scheduled tile cell: four on
+        /// the aligned path, sixteen for fractional capture reconstruction,
+        /// and zero for the transparent path. Exterior taps are included.
+        ScheduledTileSamples,
         /// Candidate turbulence gradient vectors drawn from the seeded random stream.
         /// Includes vectors discarded before normalization.
         TurbulenceLatticeCandidates,
@@ -387,6 +391,7 @@ impl RenderWork {
                         | Self::ScheduledLightingAlphaSamples
                         | Self::ScheduledLightingEvaluations
                         | Self::ScheduledLightingResultSamples
+                        | Self::ScheduledTileSamples
                         | Self::ScheduledTurbulenceOctaves
                         | Self::TurbulenceLatticeCandidates
                         | Self::ScheduledMorphologySamples
@@ -1142,6 +1147,7 @@ impl RenderWork {
             Self::ScheduledOffsetSamples => "scheduled offset samples",
             Self::ScheduledGaussianSamples => "scheduled gaussian samples",
             Self::ScheduledLightingAlphaSamples => "scheduled lighting alpha samples",
+            Self::ScheduledTileSamples => "scheduled tile samples",
             Self::ScheduledTurbulenceOctaves => "scheduled turbulence octaves",
             Self::TurbulenceLatticeCandidates => "turbulence lattice candidates",
             Self::ScheduledLightingEvaluations => "scheduled lighting evaluations",

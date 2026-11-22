@@ -4,6 +4,7 @@ mod gaussian;
 mod lighting;
 mod morphology;
 mod native_shadow;
+mod tile;
 use super::convolution::{
     ConvolutionMapping, ConvolutionStage, empty_source_spatial, intersection, require_spatial,
     source_domain_is_empty,
@@ -195,6 +196,7 @@ pub(super) enum SemanticPassIntent {
     Morphology(MorphologyStage),
     Displacement(DisplacementStage),
     Lighting(LightingStage),
+    Tile,
     Turbulence,
     NativeShadowMerge,
     Composite,
@@ -774,6 +776,12 @@ pub(super) struct SemanticLightingPlan {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub(super) struct SemanticTilePlan {
+    pub(super) pass: SemanticPassId,
+    pub(super) facts: super::TilePassFacts,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct SemanticTurbulencePlan {
     pub(super) pass: SemanticPassId,
     pub(super) facts: super::TurbulencePassFacts,
@@ -831,6 +839,7 @@ pub(crate) struct GpuRenderGraph {
     pub(super) morphologies: AccountedVec<SemanticMorphologyPlan>,
     pub(super) displacements: AccountedVec<SemanticDisplacementPlan>,
     pub(super) lighting: AccountedVec<SemanticLightingPlan>,
+    pub(super) tile: AccountedVec<SemanticTilePlan>,
     pub(super) turbulence: AccountedVec<SemanticTurbulencePlan>,
     pub(super) native_shadows: AccountedVec<SemanticNativeShadowPlan>,
     pub(super) backdrop_reads: AccountedVec<SemanticBackdropRead>,
@@ -1118,6 +1127,7 @@ impl SemanticGraphBuilder {
             | SemanticPassIntent::Morphology(_)
             | SemanticPassIntent::Displacement(_)
             | SemanticPassIntent::Lighting(_)
+            | SemanticPassIntent::Tile
             | SemanticPassIntent::Turbulence
             | SemanticPassIntent::NativeShadowMerge
             | SemanticPassIntent::Composite => {
@@ -1236,7 +1246,10 @@ impl SemanticGraphBuilder {
                 }
                 DisplacementStage::Displace => reads.len() == 1,
             }
-        } else if intent == SemanticPassIntent::Lighting(LightingStage::Shade) {
+        } else if matches!(
+            intent,
+            SemanticPassIntent::Lighting(LightingStage::Shade) | SemanticPassIntent::Tile
+        ) {
             reads.len() <= 1
         } else if intent == SemanticPassIntent::Turbulence {
             reads.is_empty()
@@ -1270,6 +1283,7 @@ impl SemanticGraphBuilder {
             SemanticPassIntent::Gaussian(_)
             | SemanticPassIntent::Displacement(_)
             | SemanticPassIntent::Lighting(_)
+            | SemanticPassIntent::Tile
             | SemanticPassIntent::Turbulence
             | SemanticPassIntent::NativeShadowMerge => SemanticResourceRole::FilterIntermediate,
             SemanticPassIntent::CopyBackdrop => SemanticResourceRole::BackdropCopy,
@@ -1562,6 +1576,7 @@ impl SemanticGraphBuilder {
             morphologies: self.account.retained(0)?,
             displacements: self.account.retained(0)?,
             lighting: self.account.retained(0)?,
+            tile: self.account.retained(0)?,
             turbulence: self.account.retained(0)?,
             native_shadows: self.account.retained(0)?,
             backdrop_reads: self.account.retained(0)?,
@@ -1658,6 +1673,7 @@ struct SemanticCommandPlanningState {
     context: FrameContext,
     parent_locality: CaptureParentLocality,
     span_scope: SemanticVelloSpanScope,
+    bound_spans_to_parent: bool,
     capture_transform: Transform,
     parent_to_surface: Transform,
     capture_space: CaptureBoundsCoordinateSpace,
@@ -1737,6 +1753,7 @@ struct GroupSourceCompletion {
     source_is_coverage: bool,
     displacement: Option<DisplacementRoute>,
     lighting: Option<SharedValue<LightingOperationPlan>>,
+    tile: Option<super::tile::TilePlan>,
 }
 
 enum BackdropGroupTarget {
@@ -1761,6 +1778,7 @@ pub(super) struct SemanticFrameGraphPlanner<'a> {
     morphologies: AccountedVec<SemanticMorphologyPlan>,
     displacements: AccountedVec<SemanticDisplacementPlan>,
     lighting: AccountedVec<SemanticLightingPlan>,
+    tile: AccountedVec<SemanticTilePlan>,
     turbulence: AccountedVec<SemanticTurbulencePlan>,
     native_shadows: AccountedVec<SemanticNativeShadowPlan>,
     backdrop_reads: AccountedVec<SemanticBackdropRead>,
@@ -1818,6 +1836,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             morphologies: account.retained(0)?,
             displacements: account.retained(0)?,
             lighting: account.retained(0)?,
+            tile: account.retained(0)?,
             turbulence: account.retained(0)?,
             native_shadows: account.retained(0)?,
             backdrop_reads: account.retained(0)?,
@@ -1856,6 +1875,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 context,
                 parent_locality: CaptureParentLocality::External,
                 span_scope: SemanticVelloSpanScope::CurrentParent,
+                bound_spans_to_parent: false,
                 capture_transform: mapping.capture_transform,
                 parent_to_surface: mapping.parent_to_surface,
                 capture_space: mapping.bounds_coordinate_space,
@@ -1887,6 +1907,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         graph.morphologies = planner.morphologies;
         graph.displacements = planner.displacements;
         graph.lighting = planner.lighting;
+        graph.tile = planner.tile;
         graph.turbulence = planner.turbulence;
         graph.native_shadows = planner.native_shadows;
         graph.backdrop_reads = planner.backdrop_reads;
@@ -1933,6 +1954,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             morphologies: account.retained(0)?,
             displacements: account.retained(0)?,
             lighting: account.retained(0)?,
+            tile: account.retained(0)?,
             turbulence: account.retained(0)?,
             native_shadows: account.retained(0)?,
             backdrop_reads: account.retained(0)?,
@@ -2167,6 +2189,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                                     | crate::command::NormalizedForegroundEffect::Morphology(_)
                                     | crate::command::NormalizedForegroundEffect::Displacement(_)
                                     | crate::command::NormalizedForegroundEffect::Lighting(_)
+                                    | crate::command::NormalizedForegroundEffect::Tile(_)
                                     | crate::command::NormalizedForegroundEffect::Turbulence(..)
                                     | crate::command::NormalizedForegroundEffect::NativeShadow(_)
                             )
@@ -2244,7 +2267,8 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 } else {
                     frame.state.capture_space
                 };
-                let finite_source = bounded_domain && layer.foreground_filters.is_none();
+                let finite_source = (bounded_domain || frame.state.bound_spans_to_parent)
+                    && layer.foreground_filters.is_none();
                 let source_is_coverage = layer
                     .mask
                     .as_ref()
@@ -2297,6 +2321,24 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     } else {
                         None
                     };
+                let tile = if let Some(crate::command::NormalizedForegroundEffect::Tile(domains)) =
+                    &layer.foreground_filters
+                {
+                    let Some(plan) = super::tile::TilePlan::try_new(
+                        frame.state.context,
+                        *domains,
+                        layer_to_surface,
+                        !children.is_empty() && !source_forced_empty && !source_is_coverage,
+                        self.account,
+                    )?
+                    else {
+                        frame.state.parent_locality = CaptureParentLocality::External;
+                        continue;
+                    };
+                    Some(plan)
+                } else {
+                    None
+                };
                 let completion = GroupSourceCompletion {
                     layer,
                     layer_transform,
@@ -2307,11 +2349,14 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     source_is_coverage,
                     displacement,
                     lighting,
+                    tile,
                 };
-                let omit_source = matches!(
-                    completion.layer.foreground_filters,
-                    Some(crate::command::NormalizedForegroundEffect::Turbulence(..))
-                ) || (source_is_coverage && completion.lighting.is_some())
+                let omit_source = tile.is_some_and(|plan| plan.capture().is_none())
+                    || matches!(
+                        completion.layer.foreground_filters,
+                        Some(crate::command::NormalizedForegroundEffect::Turbulence(..))
+                    )
+                    || (source_is_coverage && completion.lighting.is_some())
                     || (source_forced_empty
                         && matches!(
                             completion.layer.foreground_filters,
@@ -2332,6 +2377,12 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     )
                 } else {
                     let prepared = match completion.layer.foreground_filters.as_ref() {
+                        Some(crate::command::NormalizedForegroundEffect::Tile(_)) => self
+                            .prepare_tile_source(
+                                children,
+                                tile.and_then(super::tile::TilePlan::capture),
+                            )?,
+
                         Some(crate::command::NormalizedForegroundEffect::Lighting(_)) => self
                             .prepare_lighting_source(
                                 children,
@@ -2408,6 +2459,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                             layer_to_surface,
                             capture_space,
                             finite_source.then_some((frame.parent.spatial, layer_to_destination)),
+                            frame.state.bound_spans_to_parent,
                         )?,
                     };
                     match prepared {
@@ -2492,6 +2544,20 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 parent,
                 next_parent_locality: state.parent_locality,
             });
+        };
+        let logical_bounds = if state.bound_spans_to_parent {
+            let overlap = intersection(logical_bounds.rect(), parent.spatial.logical_bounds.rect());
+            let LogicalBounds::NonEmpty(bounds) =
+                LogicalBounds::try_from_rect(overlap, "bounded period capture span")?
+            else {
+                return Ok(VelloSpanFlush {
+                    parent,
+                    next_parent_locality: state.parent_locality,
+                });
+            };
+            bounds
+        } else {
+            logical_bounds
         };
         let grid_to_surface = if state.capture_space == CaptureBoundsCoordinateSpace::Local {
             state.parent_to_surface
@@ -2588,6 +2654,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             source_is_coverage,
             displacement,
             lighting,
+            tile,
         } = completion;
         let lighting_is_selected = lighting.is_some();
         let empty_filter_source =
@@ -2617,7 +2684,8 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     crate::command::NormalizedForegroundEffect::Lighting(_) => lighting
                         .as_ref()
                         .is_none_or(|plan| plan.grid.capture.is_none()),
-                    crate::command::NormalizedForegroundEffect::Turbulence(..) => true,
+                    crate::command::NormalizedForegroundEffect::Turbulence(..)
+                    | crate::command::NormalizedForegroundEffect::Tile(_) => true,
                     crate::command::NormalizedForegroundEffect::Css(_) => false,
                 });
         if let Some(backdrop) = layer
@@ -2643,6 +2711,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                         |capture| BackdropGroupTarget::ExactLocal(capture.spatial),
                     ),
             )?;
+        }
+        if let Some(tile) = tile {
+            source = Some(self.declare_tile_pass(tile, source)?);
         }
         let turbulence_is_selected = if let Some(
             crate::command::NormalizedForegroundEffect::Turbulence(operation, region),
@@ -2698,6 +2769,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     | crate::command::NormalizedForegroundEffect::Morphology(_)
                     | crate::command::NormalizedForegroundEffect::Displacement(_)
                     | crate::command::NormalizedForegroundEffect::Lighting(_)
+                    | crate::command::NormalizedForegroundEffect::Tile(_)
                     | crate::command::NormalizedForegroundEffect::Turbulence(..)
                     | crate::command::NormalizedForegroundEffect::NativeShadow(_)
             )
@@ -2721,6 +2793,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 | crate::command::NormalizedForegroundEffect::Morphology(_)
                 | crate::command::NormalizedForegroundEffect::Displacement(_)
                 | crate::command::NormalizedForegroundEffect::Lighting(_)
+                | crate::command::NormalizedForegroundEffect::Tile(_)
                 | crate::command::NormalizedForegroundEffect::Turbulence(..)
                 | crate::command::NormalizedForegroundEffect::NativeShadow(_) => Some(group),
             };
@@ -2821,6 +2894,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                     | crate::command::NormalizedForegroundEffect::Morphology(_)
                     | crate::command::NormalizedForegroundEffect::Displacement(_)
                     | crate::command::NormalizedForegroundEffect::Lighting(_)
+                    | crate::command::NormalizedForegroundEffect::Tile(_)
                     | crate::command::NormalizedForegroundEffect::Turbulence(..)
                     | crate::command::NormalizedForegroundEffect::NativeShadow(_)
             )
@@ -2835,12 +2909,14 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 source_space: if (source_forced_empty || source_is_coverage)
                     && !lighting_is_selected
                     && !turbulence_is_selected
+                    && tile.is_none()
                 {
                     state.capture_space.source_space()
                 } else {
                     capture_space.source_space()
                 },
-                opacity: if (lighting_is_selected || turbulence_is_selected) && source_forced_empty
+                opacity: if (lighting_is_selected || turbulence_is_selected || tile.is_some())
+                    && source_forced_empty
                 {
                     0.0
                 } else {
@@ -2860,7 +2936,12 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             true,
         )?;
         if source_bounds_operation {
-            let footprint = if turbulence_is_selected {
+            let footprint = if tile.is_some() {
+                self.tile
+                    .last()
+                    .filter(|entry| Some(entry.pass) == source.producer)
+                    .map(|entry| entry.facts.output_footprint())
+            } else if turbulence_is_selected {
                 self.turbulence
                     .last()
                     .filter(|entry| Some(entry.pass) == source.producer)
@@ -2970,7 +3051,13 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         capture_space: CaptureBoundsCoordinateSpace,
         finite_domain: Option<(NonEmptyFrameSpatialPlan, Transform)>,
     ) -> Result<Option<PlannedGraphResource>> {
-        match self.prepare_layer_source(children, raster_transform, capture_space, finite_domain)? {
+        match self.prepare_layer_source(
+            children,
+            raster_transform,
+            capture_space,
+            finite_domain,
+            false,
+        )? {
             ControlFlow::Break(source) => Ok(source),
             ControlFlow::Continue(frame) => Ok(Some(self.plan_command_frame(frame)?.current)),
         }
@@ -3007,6 +3094,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 context: self.context,
                 parent_locality: CaptureParentLocality::CaptureLocal,
                 span_scope: SemanticVelloSpanScope::LayerSource,
+                bound_spans_to_parent: false,
                 capture_transform: Transform::identity(),
                 parent_to_surface: raster_transform,
                 capture_space: CaptureBoundsCoordinateSpace::Local,
@@ -3047,6 +3135,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 context: self.context,
                 parent_locality: CaptureParentLocality::CaptureLocal,
                 span_scope: SemanticVelloSpanScope::LayerSource,
+                bound_spans_to_parent: false,
                 capture_transform: Transform::identity(),
                 parent_to_surface: raster_transform,
                 capture_space: CaptureBoundsCoordinateSpace::Local,
@@ -3326,6 +3415,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         raster_transform: Transform,
         capture_space: CaptureBoundsCoordinateSpace,
         finite_domain: Option<(NonEmptyFrameSpatialPlan, Transform)>,
+        bound_spans_to_parent: bool,
     ) -> Result<PreparedLayerSource> {
         let domain = match finite_domain {
             Some((spatial, layer_to_destination)) => {
@@ -3395,6 +3485,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 context: self.context,
                 parent_locality: CaptureParentLocality::CaptureLocal,
                 span_scope: SemanticVelloSpanScope::LayerSource,
+                bound_spans_to_parent,
                 capture_transform: if capture_space == CaptureBoundsCoordinateSpace::SurfaceGrid {
                     raster_transform
                 } else {

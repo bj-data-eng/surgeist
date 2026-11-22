@@ -141,7 +141,7 @@ impl PreparedGraph<'_> {
                 #[cfg(test)]
                 target_kind_for_test: SpatialPassTargetForTest::Dedicated,
                 pipeline: objects.render_pipeline(),
-                bind_group: &bindings,
+                bind_group: Some(&bindings),
             },
             region,
             "Surgeist offset bounded sample",

@@ -566,6 +566,7 @@ impl SemanticSourceContribution {
                             | crate::command::NormalizedForegroundEffect::Morphology(_)
                             | crate::command::NormalizedForegroundEffect::Displacement(_)
                             | crate::command::NormalizedForegroundEffect::Lighting(_)
+                            | crate::command::NormalizedForegroundEffect::Tile(_)
                             | crate::command::NormalizedForegroundEffect::Turbulence(..)
                             | crate::command::NormalizedForegroundEffect::NativeShadow(_)
                     )
@@ -618,11 +619,38 @@ impl SemanticSourceContribution {
             } else {
                 false
             };
-        let children = if gaussian_source_unreachable || morphology_unreachable {
-            RenderCommands::new_in(account.retained(0)?, account)?
-        } else {
-            children
+        let tile_domains = match layer.foreground_filters.as_ref() {
+            Some(crate::command::NormalizedForegroundEffect::Tile(domains)) => Some(*domains),
+            _ => None,
         };
+        let tile_source_unreachable = if let Some(domains) = tile_domains {
+            let mut output =
+                SemanticSourceBounds::try_from_rect(super::tile::output_domain(domains))?;
+            if let Some(clip) = layer.clip.as_ref() {
+                output = output.try_intersect(
+                    SemanticSourceBounds::try_for_clip(clip, account)?,
+                    "tile clip intersection",
+                )?;
+            }
+            if let SemanticContributionDomain::RootOutputBounded(parent_bounds) = domain {
+                output = output
+                    .try_transform(layer.transform, "tile output transform")?
+                    .try_intersect(
+                        SemanticSourceBounds::from_logical_bounds(parent_bounds),
+                        "tile output domain",
+                    )?;
+            }
+            output.is_exactly_empty()
+                || super::filter_grid::empty(super::tile::source_domain(domains))
+        } else {
+            false
+        };
+        let children =
+            if gaussian_source_unreachable || morphology_unreachable || tile_source_unreachable {
+                RenderCommands::new_in(account.retained(0)?, account)?
+            } else {
+                children
+            };
         let has_bounded_children = commands_have_bounded_operation(&children, account)?;
         // Only an explicit isolated group starts against transparent black.
         // A default transparent wrapper forwards the actual surrounding image.
@@ -660,7 +688,28 @@ impl SemanticSourceContribution {
         };
         let mut child_context = context;
         let mut child_transform = layer_to_surface;
-        let child_domain = if let Some(source) = layer
+        let child_domain = if let Some(domains) = tile_domains {
+            if !children.is_empty()
+                && layer.opacity > 0.0
+                && !layer
+                    .mask
+                    .as_ref()
+                    .is_some_and(RenderLayerMask::annihilates_source)
+                && let Some((capture_context, capture_transform)) =
+                    super::tile::capture_basis(context, domains, layer_to_surface, account)?
+            {
+                // Producers with device-grid predicates must qualify against
+                // the real capture scale before any nested input is pruned.
+                child_context = capture_context;
+                child_transform = capture_transform;
+                SemanticContributionDomain::RootOutputBounded(LogicalBounds::try_from_rect(
+                    super::tile::source_domain(domains),
+                    "tile producer domain",
+                )?)
+            } else {
+                child_domain
+            }
+        } else if let Some(source) = layer
             .foreground_filters
             .as_ref()
             .and_then(super::bounded_filter_source)
@@ -862,6 +911,13 @@ impl SemanticSourceContribution {
                         "displacement primitive result",
                     )?);
             }
+            Some(crate::command::NormalizedForegroundEffect::Tile(domains)) => {
+                source_bounds =
+                    SemanticSourceBounds::from_logical_bounds(LogicalBounds::try_from_rect(
+                        super::tile::output_domain(*domains),
+                        "tile primitive result",
+                    )?);
+            }
             Some(crate::command::NormalizedForegroundEffect::Turbulence(_, region)) => {
                 source_bounds =
                     SemanticSourceBounds::from_logical_bounds(LogicalBounds::try_from_rect(
@@ -915,6 +971,9 @@ impl SemanticSourceContribution {
             // The parent image fixes operation membership, independently of
             // source support, opacity, masks, or the source transform's rank.
             let operation_region = match layer.foreground_filters.as_ref() {
+                Some(crate::command::NormalizedForegroundEffect::Tile(domains)) => {
+                    Some(super::tile::output_domain(*domains))
+                }
                 Some(crate::command::NormalizedForegroundEffect::Turbulence(_, region)) => {
                     Some(super::turbulence::output_domain(*region))
                 }
@@ -966,6 +1025,13 @@ impl SemanticSourceContribution {
                 }
                 SemanticContributionDomain::LocalUnbounded => children.affected_bounds,
             }
+        } else if matches!(
+            layer.foreground_filters,
+            Some(crate::command::NormalizedForegroundEffect::Tile(_))
+        ) {
+            // The producer is sampled inside the tile; its raw ink never
+            // contributes directly to the surrounding image.
+            source_bounds
         } else {
             source_bounds.try_union(
                 children
@@ -996,6 +1062,7 @@ impl SemanticSourceContribution {
                 layer.foreground_filters,
                 Some(
                     crate::command::NormalizedForegroundEffect::Lighting(_)
+                        | crate::command::NormalizedForegroundEffect::Tile(_)
                         | crate::command::NormalizedForegroundEffect::Turbulence(..)
                 )
             );

@@ -30,8 +30,8 @@ use super::super::{
         LightingParameterBytes, LightingPassKeyRefs, MorphologyParameterBytes,
         MorphologyPassKeyRefs, NativeShadowParameterBytes, NativeShadowPassKeyRefs,
         OffsetParameterBytes, OffsetPassKeyRefs, PassSpatialUniformBytes,
-        ProvisionalCopyBackdropPassObjects, ProvisionalDevicePassCacheUpdate,
-        TurbulenceParameterBytes, TurbulencePassKeyRefs,
+        ProvisionalCopyBackdropPassObjects, ProvisionalDevicePassCacheUpdate, TileParameterBytes,
+        TilePassKeyRefs, TurbulenceParameterBytes, TurbulencePassKeyRefs,
     },
     texture::EffectTextureDescriptor,
     vello_engine::VelloEngineState,
@@ -159,6 +159,10 @@ impl RuntimePassPreparationRequest {
         if matches!(self.runtime.kind, RuntimePassKind::Turbulence(_)) {
             roles.insert(PassBufferRole::Turbulence);
         }
+        if matches!(&self.runtime.kind, RuntimePassKind::Tile(work) if work.source_plan().is_some())
+        {
+            roles.insert(PassBufferRole::Tile);
+        }
         role!(offset_parameters, Offset);
         role!(displacement, Displacement);
         role!(convolution_parameters, Convolution);
@@ -246,6 +250,7 @@ impl RuntimePassPreparationRequest {
                 | RuntimePassKind::NativeShadowMerge(_)
                 | RuntimePassKind::Lighting(_)
                 | RuntimePassKind::Turbulence(_)
+                | RuntimePassKind::Tile(_)
                 | RuntimePassKind::Offset(_)
                 | RuntimePassKind::Displacement(_)
         );
@@ -281,6 +286,9 @@ impl RuntimePassPreparationRequest {
             RuntimePassKind::Lighting(_) => Some((R::Lighting, Some(LightingParameterBytes::SIZE))),
             RuntimePassKind::Turbulence(_) => {
                 Some((R::Turbulence, Some(TurbulenceParameterBytes::SIZE)))
+            }
+            RuntimePassKind::Tile(work) if work.source_plan().is_some() => {
+                Some((R::Tile, Some(TileParameterBytes::SIZE)))
             }
             _ => None,
         };
@@ -1063,6 +1071,7 @@ fn prepare_runtime_pass_requests(
         };
         let lighting = matches!(pass.kind, RuntimePassKind::Lighting(_));
         let turbulence = matches!(pass.kind, RuntimePassKind::Turbulence(_));
+        let tile = matches!(pass.kind, RuntimePassKind::Tile(_));
         let displacement = match &pass.kind {
             RuntimePassKind::Displacement(work) => Some(super::displacement::prepare(
                 work,
@@ -1084,6 +1093,9 @@ fn prepare_runtime_pass_requests(
         if turbulence {
             validate_fixed_uniform_limits(uniform_limits, TurbulenceParameterBytes::SIZE)?;
         }
+        if matches!(&pass.kind, RuntimePassKind::Tile(work) if work.source_plan().is_some()) {
+            validate_fixed_uniform_limits(uniform_limits, TileParameterBytes::SIZE)?;
+        }
         if (spatial_uniform.is_some()
             || convolution_parameters.is_some()
             || gaussian_parameters.is_some()
@@ -1092,6 +1104,7 @@ fn prepare_runtime_pass_requests(
             || native_shadow_parameters.is_some()
             || lighting
             || turbulence
+            || tile
             || displacement.is_some())
             != pass.cache_keys.is_some()
         {
@@ -1614,6 +1627,8 @@ pub(super) struct AcquiredGraphBindings {
         PassMap<RuntimePassId, PreparedPassBuffer<LightingParameterBytes>>,
     pub(super) turbulence_parameter_bindings:
         PassMap<RuntimePassId, PreparedPassBuffer<TurbulenceParameterBytes>>,
+    pub(super) tile_parameter_bindings:
+        PassMap<RuntimePassId, PreparedPassBuffer<TileParameterBytes>>,
     pub(super) native_shadow_parameter_bindings:
         PassMap<RuntimePassId, PreparedPassBuffer<NativeShadowParameterBytes>>,
     pub(super) gaussian_parameter_bindings:
@@ -1755,6 +1770,7 @@ fn acquire_prepared_graph_resources(
                 account,
                 counts[PassBufferRole::Turbulence.index()],
             )?,
+            tile_parameter_bindings: PassMap::new(account, counts[PassBufferRole::Tile.index()])?,
             native_shadow_parameter_bindings: PassMap::new(
                 account,
                 counts[PassBufferRole::NativeShadow.index()],
@@ -1914,6 +1930,12 @@ fn acquire_prepared_graph_resources(
         if let RuntimePassKind::Turbulence(work) = &pass.runtime.kind {
             let bytes = TurbulenceParameterBytes::from_facts(work);
             acquire!(turbulence_parameter_bindings, Some(&bytes), Turbulence);
+        }
+        if let RuntimePassKind::Tile(work) = &pass.runtime.kind
+            && work.source_plan().is_some()
+        {
+            let bytes = TileParameterBytes::from_facts(work);
+            acquire!(tile_parameter_bindings, Some(&bytes), Tile);
         }
         acquire!(
             native_shadow_parameter_bindings,
@@ -2127,6 +2149,20 @@ fn realize_prepared_graph_pass(
                 pass_cache,
                 account,
                 TurbulencePassKeyRefs {
+                    samplers: keys.samplers(),
+                    layout: keys.layout(),
+                    shader: keys.shader(),
+                    pipeline: keys.pipeline(),
+                },
+            )?;
+            Ok(None)
+        }
+        RuntimePassKind::Tile(_) => {
+            update.realize_tile_pass(
+                device,
+                pass_cache,
+                account,
+                TilePassKeyRefs {
                     samplers: keys.samplers(),
                     layout: keys.layout(),
                     shader: keys.shader(),
