@@ -10,9 +10,10 @@ use super::{
     sampling::{Grid, Precision},
 };
 
+const HEADER_BYTES: usize = 32;
 const PCS_CHANNELS: usize = 3;
-const A_CURVES: usize = 2 * PCS_CHANNELS;
-const CURVE_EXTENTS: usize = A_CURVES + MAX_CHANNELS;
+const B_AND_M_CURVES: usize = 2 * PCS_CHANNELS;
+const CURVE_EXTENTS: usize = B_AND_M_CURVES + MAX_CHANNELS;
 const STAGE_EXTENTS: usize = CURVE_EXTENTS + 2;
 
 pub(super) struct Staged {
@@ -65,7 +66,12 @@ impl Staged {
         let matrix = if matrix == 0 {
             None
         } else {
-            let curves = read_curves(payload, m, &mut extents[PCS_CHANNELS..A_CURVES], account)?;
+            let curves = read_curves(
+                payload,
+                m,
+                &mut extents[PCS_CHANNELS..B_AND_M_CURVES],
+                account,
+            )?;
             extents[CURVE_EXTENTS] = Some(element(payload, matrix, 48)?);
             Some(MatrixStage::read(curves, payload, matrix, account)?)
         };
@@ -75,14 +81,14 @@ impl Staged {
             let a = read_curves(
                 payload,
                 a,
-                &mut extents[A_CURVES..A_CURVES + device_channels],
+                &mut extents[B_AND_M_CURVES..B_AND_M_CURVES + device_channels],
                 account,
             )?;
             let grid = clut_grid(payload, clut, input_channels, output_channels, account)?;
             extents[CURVE_EXTENTS + 1] = Some(element(payload, clut, grid.end() - clut)?);
             Some(ClutStage { a, grid })
         };
-        validate_extents(&extents, account)?;
+        validate_extents(&extents, payload.len(), account)?;
         Ok(Self {
             direction,
             device_channels,
@@ -159,7 +165,6 @@ fn stage_offsets(
     output_channels: usize,
     account: &Account,
 ) -> ProfileResult<[usize; 5]> {
-    const HEADER: usize = 32;
     let header = account.coordinate(|| field::<12>(payload, 0))??;
     if header[..8] != *signature
         || usize::from(header[8]) != input_channels
@@ -172,7 +177,8 @@ fn stage_offsets(
     for (index, offset) in offsets.iter_mut().enumerate() {
         let raw = account.coordinate(|| u32_at(payload, 12 + index * 4))??;
         *offset = usize::try_from(raw).map_err(|_| ProfileError::Invalid)?;
-        if *offset != 0 && (!(HEADER..payload.len()).contains(offset) || !offset.is_multiple_of(4))
+        if *offset != 0
+            && (!(HEADER_BYTES..payload.len()).contains(offset) || !offset.is_multiple_of(4))
         {
             return Err(ProfileError::Invalid);
         }
@@ -286,22 +292,33 @@ fn clut_grid(
 
 fn validate_extents(
     stages: &[Option<Extent>; STAGE_EXTENTS],
+    payload_len: usize,
     account: &Account,
 ) -> ProfileResult<()> {
-    // Exact aliases may share whole embedded curves. Reject partial or
-    // differently typed overlap while admitting all four legal stage sets.
+    // Unique aligned extents, plus the header, cover the complete tag.
+    // Only exact whole-curve aliases can share bytes.
+    let mut covered = HEADER_BYTES;
     for (index, extent) in stages.iter().enumerate() {
         let Some(extent) = extent else { continue };
+        let mut aliased = false;
         for (other_index, other) in stages[..index].iter().enumerate() {
             let Some(other) = other else { continue };
             account.work(RenderWork::IccProfileTagVisits, 2)?;
-            if extent.start < other.end
-                && other.start < extent.end
-                && !(index < CURVE_EXTENTS && other_index < CURVE_EXTENTS && extent == other)
-            {
-                return Err(ProfileError::Invalid);
+            if extent.start < other.end && other.start < extent.end {
+                if !(index < CURVE_EXTENTS && other_index < CURVE_EXTENTS && extent == other) {
+                    return Err(ProfileError::Invalid);
+                }
+                aliased = true;
             }
         }
+        if !aliased {
+            covered = covered
+                .checked_add(extent.end - extent.start)
+                .ok_or(ProfileError::Invalid)?;
+        }
+    }
+    if Some(covered) != payload_len.checked_next_multiple_of(4) {
+        return Err(ProfileError::Invalid);
     }
     Ok(())
 }
@@ -312,6 +329,9 @@ fn element(payload: &[u8], start: usize, size: usize) -> ProfileResult<Extent> {
         .checked_next_multiple_of(4)
         .ok_or(ProfileError::Invalid)?;
     // Alignment after the declared tag size belongs to the outer tag table.
+    if (end + 1..padded).contains(&payload.len()) {
+        return Err(ProfileError::Invalid);
+    }
     let padding = payload
         .get(end..padded.min(payload.len()))
         .ok_or(ProfileError::Invalid)?;

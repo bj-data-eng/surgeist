@@ -129,8 +129,9 @@ impl<B: TagBacking> Lut<B> {
                     Precision::Sixteen
                 };
                 let matrix_rule = match (version, direction, device, pcs) {
-                    (_, Direction::FromPcs, _, b"XYZ ") => LegacyMatrixRule::PcsXyz,
-                    (2, Direction::ToPcs, b"XYZ ", _) => LegacyMatrixRule::DeviceXyz,
+                    (_, Direction::FromPcs, _, b"XYZ ") | (2, Direction::ToPcs, b"XYZ ", _) => {
+                        LegacyMatrixRule::XyzInput
+                    }
                     _ => LegacyMatrixRule::Identity,
                 };
                 let legacy = Legacy::read(
@@ -326,8 +327,7 @@ struct Legacy {
 #[derive(Clone, Copy)]
 enum LegacyMatrixRule {
     Identity,
-    PcsXyz,
-    DeviceXyz,
+    XyzInput,
 }
 
 impl Legacy {
@@ -376,11 +376,6 @@ impl Legacy {
         )?;
         if output.end() != length {
             return Err(ProfileError::Invalid);
-        }
-        // ICC v2 also uses the matrix with device XYZ. This route executes
-        // only the defined PCSXYZ case, where the input codes have a PCS scale.
-        if matrix.is_some() && matches!(matrix_rule, LegacyMatrixRule::DeviceXyz) {
-            return Err(ProfileError::Unsupported);
         }
         Ok(Self {
             matrix,

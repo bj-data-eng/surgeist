@@ -214,9 +214,9 @@ requested intent. It then tries the matching integer `A2B` or `B2A` tag
 and the directional index-zero fallback. Integer routes support `mft1`,
 `mft2`, and v4 `mAB` or `mBA` with normalized device controls and
 actual XYZ or Lab PCS values. Eight-bit `mft1` requires Lab PCS.
-Indirect absolute conversion uses the profile's media white and the
-fixed D50 PCS reference. Direct absolute float routes supply their own
-mapping.
+Indirect absolute conversion uses the profile's media white to adjust
+XYZ. The Lab API expresses those absolute tristimulus values as CIELAB
+referenced to PCS D50. Direct absolute float routes supply their own mapping.
 
 Unavailable routes return `IccProfileError::UnsupportedTransform`.
 Malformed selected data and numerical output failures have separate
