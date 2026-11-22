@@ -585,31 +585,38 @@ composite interpolation, produces `SampleClassification::Unsupported` and
 supported interpolation produces `SampleClassification::Failed` and
 `SampleValue::Error`, and later endpoint samples can recover.
 
-## Resolved 2D transforms
+## Resolved transforms
 
 [`transform`](../src/transform.rs) owns `ResolvedTransformList`, `TransformFunction`,
-`TransformMatrix`, `CssPixels`, `ScaleFactor`, `TransformAngle` and their numeric
+`TransformMatrix`, `TransformMatrix3d`, `RotationAxis`, `CssPixels`, `ScaleFactor`,
+`TransformAngle` and their numeric
 diagnostics. Scalars and matrix coefficients are finite and immutable. Finite
 negative lengths/scales, zero scales and singular matrices are valid. Matrices
-use CSS column-major `[a,b,c,d,e,f]` order. Lengths are resolved CSS pixels;
+use CSS column-major order: `[a,b,c,d,e,f]` for affine matrices, or 16
+coefficients indexed as `column * 4 + row` for homogeneous matrices. Lengths are resolved CSS pixels;
 angles have explicit radians, degrees or turns constructors and retain turns.
 Function variants preserve CSS names and optional argument arity.
 
 `TransformValue::resolved(list)` enters the normal interpolation, transition and
 keyframe sampling paths. `resolved_list()` borrows the immutable payload.
-Unsupported marker constructors never parse their text: even `resolved-2d`
+Unsupported marker constructors never parse their text: even `resolved-2d` or `resolved-3d`
 remains an unsupported marker. `kind()` is descriptive text; it does not certify
 a concrete payload. Both endpoints must carry resolved lists for interpolation.
 
 An empty list represents `none`. Sampling pads the shorter list with matching
 identity functions. Functions with matching name/arity interpolate numerically;
-translate/scale derivatives normalize to their common 2D primitives. Different
+translate/scale derivatives normalize to their common primitive, promoting to
+3D when either operand is a 3D function. Different
 skew axes have no shared primitive. At the first unmatched pair, each remaining
 suffix is post-multiplied into a matrix and interpolated as one matrix. Matching
 prefixes retain their function semantics, including full rotation turns.
-`matrix()` pairs use decomposition even when their names match.
+`matrix()`, `matrix3d()` and `perspective()` pairs use decomposition even when
+their names match. Matching rotate3d primitives normalize their axes: equal axes
+or a zero angle retain direct angle interpolation; different nonzero axes use
+one matrix pair while following matching functions remain separate. A zero
+rotation axis is a valid no-op. Direct matching rotation angles retain turns.
 
-Matrix sampling follows the pinned [Transforms 1 algorithm](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#interpolation-of-2d-matrices):
+Matrices that both have actual 2D coefficients use the pinned [Transforms 1 algorithm](../../../references/css-transforms-1--CR-css-transforms-1-20190214--4672e86844bf.md#interpolation-of-2d-matrices):
 decompose translation, signed scales, angle and residual; normalize flipped axes;
 adjust matrix rotations to the shorter arc; interpolate components and recompose.
 [#552](https://github.com/bj-data-eng/surgeist/issues/552) selects direct placement
@@ -618,12 +625,41 @@ translation does not reconstruct matrices with shear. The selected midpoint of
 `matrix(1,0,1,1,10,20)` and `matrix(1,0,1,1,30,40)` is
 `matrix(1,0,1,1,20,30)`, independently witnessed in Firefox 152 and corroborated
 by [pinned WebKit affine recomposition](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/platform/graphics/transforms/TransformationMatrix.cpp#L1878-L1893).
-This bounded selection does not adopt newer 3D algorithms.
+
+Other matrices follow the pinned [Transforms 2 decomposition and recomposition](../../../references/css-transforms-2--WD-css-transforms-2-20211109--f1ada2510670.md#interpolation-of-3d-matrices).
+Normalize by the homogeneous W coefficient; isolate perspective and translation;
+extract signed scales, XY/XZ/YZ skew and a unit quaternion. Recompose in
+perspective, translation, rotation, YZ/XZ/XY skew and scale order. Stable unit
+rotation extraction preserves mixed-sign half-turn axes. The selected
+column-major quaternion signs reconstruct positive quarter turns rather than
+transposing them. These bounded source repairs are recorded in
+[#552](https://github.com/bj-data-eng/surgeist/issues/552), with
+[CSSWG #3230](https://github.com/w3c/csswg-drafts/issues/3230),
+[CSSWG #3710](https://github.com/w3c/csswg-drafts/issues/3710) and
+[pinned WebKit matrix signs](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/platform/graphics/transforms/TransformationMatrix.cpp#L640-L654).
+
+Extracted quaternions use positive W whenever W is nonzero. At exact W=0,
+the dominant vector component is positive, with X, then Y, then Z breaking
+magnitude ties. Interpolation retains the pinned unadjusted SLERP arc; it does
+not align endpoint signs to choose a shorter arc. The half-sum/half-difference
+angular basis handles distinct near-antipodal or near-identical rotations even
+when their dot product rounds to -1 or 1. Exactly equivalent rotations remain
+constant. Thus spatial matrix Z rotations +170° and -170° pass through identity,
+while direct matching rotation functions continue to interpolate their angles.
+
+`perspective(none)` is identity under the selected §16 rule, superseding the
+conflicting neutral-element note. Endpoint depths are floored to 1 CSS pixel
+when matrices are formed. Reciprocal depth interpolates through the matrix's
+perspective coefficients: none to 400px has coefficient -0.00125 halfway and
++0.00125 at progress -0.5. Finite extrapolated coefficients remain unrestricted.
+See the [perspective resolution](https://github.com/w3c/csswg-drafts/issues/6488#issuecomment-896962025).
 
 Exact singularity of finite matrix endpoints selects whole-value discrete
 fallback: the original from value below progress `0.5`, the to value otherwise.
-The determinant sign compares exact binary significand products, without an
-epsilon or overflowing/underflowing floating determinant products. A singular
+Determinant signs compare exact binary significand products, without an
+epsilon or overflowing/underflowing floating determinant products. Spatial
+decomposition additionally requires nonzero homogeneous W and an invertible
+perspective base; failure selects the same discrete fallback. A singular
 intermediate sample remains a value for caller-owned visibility. Column
 directions are normalized at unit magnitude before restoring scale, so
 rounded subnormal lengths cannot distort the other axis. An established singular
@@ -634,11 +670,35 @@ Exact zero/one progress returns the original concrete endpoint. Finite eased
 progress outside the unit interval is preserved; output is never clipped.
 
 `ResolvedTransformList::added_to` concatenates lists in operand order, retaining
-all function identities. `to_matrix()` performs checked CSS post-multiplication.
-Parameter accumulation, 3D values, authored calculations, percentage/reference-box
-resolution, transform origins and visibility decisions are outside this
-increment. Callers resolve context before construction and refresh the immutable
-endpoints when it changes; no percentage basis is guessed.
+all function identities. `to_matrix3d()` performs checked CSS post-multiplication.
+`to_matrix()` returns an affine result or `TransformErrorKind::NotTwoDimensional`
+when a spatial result cannot be represented without loss. Numeric failures use
+`TransformErrorKind::NonFinite` and identify the component and list position.
+
+`accumulated_with(effect)` combines an underlying list with an effect using the
+same matching, padding and suffix rules. Direct parameters add, using a+b−1
+for scale parameters. Checked compensated sums retain cancellation and identity
+cases, including subnormal underlying values. Decomposed affine residual diagonal
+and scale parameters also use one-based accumulation. Spatial scale and perspective W are one-based;
+translation, skew and the other perspective components add. Decomposed rotations
+use the underlying × effect quaternion product. A failed decomposition selects
+the complete effect value; checked arithmetic failure returns an error without
+publishing partial output. These choices follow the selected
+[pinned quaternion accumulation](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/platform/graphics/transforms/Quaternion.cpp#L61-L73)
+and [operand order](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/platform/graphics/transforms/TransformationMatrix.cpp#L1801-L1828).
+
+`neutral_for_addition()` preserves each function's kind and arity with the
+pin-selected scalar-zero parameters: scales are zero, matrices are zero matrices,
+rotation angles and translations are zero, and perspective is none. These values
+are distinct from identity padding (scale one and identity matrices) and the
+empty list used as the concatenation identity. Animation with a zero matrix
+neutral selects discrete fallback because decomposition fails; neutral
+perspective is the identity case described above.
+
+Authored calculations, percentage/reference-box resolution, transform origins
+and visibility decisions remain caller-owned. Callers resolve context before
+construction and refresh the immutable endpoints when it changes; no percentage
+basis is guessed.
 
 ## Capability table
 
@@ -655,8 +715,8 @@ endpoints when it changes; no percentage basis is guessed.
 | Number, unrestricted percentage, and explicit premultiplied color interpolation | `supported` | `surgeist-animation` interpolates finite values with checked arithmetic and explicit color spaces. |
 | Discrete value switching | `supported` | `surgeist-animation` switches discrete values at the interpolation midpoint. |
 | Computed numeric records, normalized positions, ratios and symbolic math | `supported` | Typed computed components combine without contextual evaluation or early clamping. |
-| Resolved 2D transform interpolation and list addition | `supported` | Typed native lists, identity padding, common primitives, matrix suffixes, whole-value singular fallback and checked arithmetic. |
-| 3D transforms, transform accumulation, diagnostic transform markers and composite interpolation | `typed-unsupported` | Markers retain explicit unsupported outcomes; no authored or 3D lowering is implied. |
+| Resolved 2D/3D transform interpolation, list addition and accumulation | `supported` | Typed native lists, contextual primitive promotion, checked matrix decomposition, quaternion SLERP/accumulation and whole-value singular fallback. |
+| Diagnostic transform markers and composite interpolation | `typed-unsupported` | Explicit markers retain unsupported outcomes; authored lowering and rendering are separate capabilities. |
 | CSS parsing, cascade, transition generation, keyframe lookup, endpoint synthesis, property transitionability, allow-discrete policy, and shorthand/list expansion | `deferred/root-owned` | Root/style normalize authored declarations into this crate's typed tracks. |
 | Runtime clocks, scheduling, lifecycle, invalidation, pause bookkeeping, and external input changes | `deferred/root-owned` | Runtime/root decide when to sample and pass `ElapsedTime` plus play state. |
 | Color-space conversion, gamut mapping, clipping, and final property range clamping | `root-owned` | Root/consumers prepare interpolation-space values and apply downstream output policy. |

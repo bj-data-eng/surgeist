@@ -36,7 +36,7 @@
 //! | [`interpolation`] | Interpolable values, property keys and pairs. |
 //! | [`computed`] | Canonical computed atoms, symbolic math and property combination. |
 //! | [`composition`] | Pure underlying-first endpoint composition and property operations. |
-//! | [`transform`] | Resolved 2D functions, list addition and affine interpolation. |
+//! | [`transform`] | Resolved transform functions, matrix interpolation and list combination. |
 //! | [`sample`] | Sampled property results and next-frame hints. |
 //! | [`transition`] | Transition tracks, lifecycle decisions, and current values. |
 //! | [`keyframe`] | Normalized tracks and caller-computed keyframe effect sampling. |

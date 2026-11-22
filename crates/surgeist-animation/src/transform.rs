@@ -1,10 +1,10 @@
-//! Resolved two-dimensional transform values and checked CSS list algebra.
+//! Resolved transform values and checked CSS list algebra.
 //!
 //! Inputs contain finite CSS-pixel lengths, scale factors and explicit angles.
 //! Callers resolve percentages, reference boxes and authored calculations before
 //! construction and refresh these immutable inputs when that context changes.
-//! Function kind and arity remain available for list interpolation. Three-
-//! dimensional transforms and accumulation are outside this module's capability.
+//! Function kind and arity remain available for 2D/3D list interpolation,
+//! addition and accumulation. Geometry visibility and execution remain caller-owned.
 //!
 //! Pixel lengths and scale factors cannot be substituted for one another:
 //!
@@ -26,27 +26,45 @@ use core::fmt;
 use std::sync::Arc;
 
 mod math;
+mod spatial;
 
 /// The transform component rejected by construction or checked arithmetic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransformComponent {
     TranslationX,
     TranslationY,
+    TranslationZ,
     ScaleX,
     ScaleY,
+    ScaleZ,
+    RotationAxis(usize),
+    Quaternion(usize),
+    Perspective(usize),
+    Skew(usize),
     Angle,
     MatrixCoefficient(usize),
 }
 
-/// A non-finite transform input or derived arithmetic component.
+/// The reason a transform input or conversion was rejected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransformErrorKind {
+    NonFinite,
+    NotTwoDimensional,
+}
+
+/// A rejected transform input, conversion or derived arithmetic component.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TransformError {
+    kind: TransformErrorKind,
     component: TransformComponent,
     value: f64,
     function_index: Option<usize>,
 }
 
 impl TransformError {
+    pub const fn kind(&self) -> TransformErrorKind {
+        self.kind
+    }
     pub const fn component(&self) -> TransformComponent {
         self.component
     }
@@ -66,11 +84,18 @@ impl TransformError {
 
 impl fmt::Display for TransformError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "transform {:?} must be finite, got {}",
-            self.component, self.value
-        )?;
+        match self.kind {
+            TransformErrorKind::NonFinite => write!(
+                f,
+                "transform {:?} must be finite, got {}",
+                self.component, self.value
+            )?,
+            TransformErrorKind::NotTwoDimensional => write!(
+                f,
+                "transform {:?} prevents two-dimensional conversion: {}",
+                self.component, self.value
+            )?,
+        }
         if let Some(index) = self.function_index {
             write!(f, " at function {index}")?;
         }
@@ -84,6 +109,7 @@ fn finite(value: f64, component: TransformComponent) -> Result<f64, TransformErr
         Ok(value)
     } else {
         Err(TransformError {
+            kind: TransformErrorKind::NonFinite,
             component,
             value,
             function_index: None,
@@ -112,6 +138,7 @@ pub struct ScaleFactor(f64);
 impl Eq for ScaleFactor {}
 impl ScaleFactor {
     pub const ONE: Self = Self(1.0);
+    pub const ZERO: Self = Self(0.0);
     pub fn new(value: f64) -> Result<Self, TransformError> {
         finite(value, TransformComponent::ScaleX).map(Self)
     }
@@ -161,10 +188,108 @@ impl TransformMatrix {
     }
 }
 
-/// A resolved 2D function retaining its CSS name and optional argument arity.
+/// A finite homogeneous 4×4 matrix, stored column first, then row.
+/// Singular matrices and finite extrapolated perspective coefficients are valid.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TransformMatrix3d([f64; 16]);
+impl Eq for TransformMatrix3d {}
+impl TransformMatrix3d {
+    pub const IDENTITY: Self = Self([
+        1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
+    ]);
+    pub fn new(coefficients: [f64; 16]) -> Result<Self, TransformError> {
+        for (index, value) in coefficients.into_iter().enumerate() {
+            finite(value, TransformComponent::MatrixCoefficient(index))?;
+        }
+        Ok(Self(coefficients))
+    }
+    pub const fn coefficients(self) -> [f64; 16] {
+        self.0
+    }
+    fn as_affine(self) -> Option<TransformMatrix> {
+        self.require_affine().ok()
+    }
+    fn require_affine(self) -> Result<TransformMatrix, TransformError> {
+        for (index, expected) in [
+            (2, 0.),
+            (3, 0.),
+            (6, 0.),
+            (7, 0.),
+            (8, 0.),
+            (9, 0.),
+            (10, 1.),
+            (11, 0.),
+            (14, 0.),
+            (15, 1.),
+        ] {
+            if self.0[index] != expected {
+                return Err(TransformError {
+                    kind: TransformErrorKind::NotTwoDimensional,
+                    component: TransformComponent::MatrixCoefficient(index),
+                    value: self.0[index],
+                    function_index: None,
+                });
+            }
+        }
+        let m = self.0;
+        Ok(TransformMatrix([m[0], m[1], m[4], m[5], m[12], m[13]]))
+    }
+}
+impl From<TransformMatrix> for TransformMatrix3d {
+    fn from(value: TransformMatrix) -> Self {
+        let [a, b, c, d, e, f] = value.0;
+        Self([a, b, 0., 0., c, d, 0., 0., 0., 0., 1., 0., e, f, 0., 1.])
+    }
+}
+
+/// A normalized finite rotation direction; the zero direction is a valid no-op.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RotationAxis([f64; 3]);
+impl Eq for RotationAxis {}
+impl RotationAxis {
+    pub fn new(values: [f64; 3]) -> Result<Self, TransformError> {
+        for (index, value) in values.into_iter().enumerate() {
+            finite(value, TransformComponent::RotationAxis(index))?;
+        }
+        let magnitude = values.into_iter().map(f64::abs).fold(0., f64::max);
+        if magnitude == 0. {
+            return Ok(Self([0.; 3]));
+        }
+        let scaled = values.map(|value| value / magnitude);
+        let norm = scaled[0].hypot(scaled[1]).hypot(scaled[2]);
+        Ok(Self(scaled.map(|value| value / norm)))
+    }
+    pub const fn components(self) -> [f64; 3] {
+        self.0
+    }
+}
+
+/// A resolved transform function retaining its CSS name and argument arity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransformFunction {
     Matrix(TransformMatrix),
+    Matrix3d(TransformMatrix3d),
+    Translate3d {
+        x: CssPixels,
+        y: CssPixels,
+        z: CssPixels,
+    },
+    TranslateZ(CssPixels),
+    Scale3d {
+        x: ScaleFactor,
+        y: ScaleFactor,
+        z: ScaleFactor,
+    },
+    ScaleZ(ScaleFactor),
+    RotateX(TransformAngle),
+    RotateY(TransformAngle),
+    RotateZ(TransformAngle),
+    Rotate3d {
+        axis: RotationAxis,
+        angle: TransformAngle,
+    },
+    /// `None` is perspective(none); finite depths are floored to 1px on formation.
+    Perspective(Option<CssPixels>),
     Translate {
         x: CssPixels,
         y: Option<CssPixels>,
@@ -189,6 +314,27 @@ pub enum TransformFunction {
 impl TransformFunction {
     fn identity(self) -> Self {
         match self {
+            Self::Matrix3d(_) => Self::Matrix3d(TransformMatrix3d::IDENTITY),
+            Self::Translate3d { .. } => Self::Translate3d {
+                x: CssPixels::ZERO,
+                y: CssPixels::ZERO,
+                z: CssPixels::ZERO,
+            },
+            Self::TranslateZ(_) => Self::TranslateZ(CssPixels::ZERO),
+            Self::Scale3d { .. } => Self::Scale3d {
+                x: ScaleFactor::ONE,
+                y: ScaleFactor::ONE,
+                z: ScaleFactor::ONE,
+            },
+            Self::ScaleZ(_) => Self::ScaleZ(ScaleFactor::ONE),
+            Self::RotateX(_) => Self::RotateX(TransformAngle::ZERO),
+            Self::RotateY(_) => Self::RotateY(TransformAngle::ZERO),
+            Self::RotateZ(_) => Self::RotateZ(TransformAngle::ZERO),
+            Self::Rotate3d { axis, .. } => Self::Rotate3d {
+                axis,
+                angle: TransformAngle::ZERO,
+            },
+            Self::Perspective(_) => Self::Perspective(None),
             Self::Matrix(_) => Self::Matrix(TransformMatrix::IDENTITY),
             Self::Translate { y, .. } => Self::Translate {
                 x: CssPixels::ZERO,
@@ -212,6 +358,43 @@ impl TransformFunction {
         }
     }
 
+    /// Returns the pin-selected additive neutral with this function's shape.
+    /// This differs from identity padding for scale and matrix functions.
+    pub fn neutral_for_addition(self) -> Self {
+        match self {
+            Self::Matrix(_) => Self::Matrix(TransformMatrix([0.; 6])),
+            Self::Matrix3d(_) => Self::Matrix3d(TransformMatrix3d([0.; 16])),
+            Self::Scale { x: _, y } => Self::Scale {
+                x: ScaleFactor::ZERO,
+                y: y.map(|_| ScaleFactor::ZERO),
+            },
+            Self::ScaleX(_) => Self::ScaleX(ScaleFactor::ZERO),
+            Self::ScaleY(_) => Self::ScaleY(ScaleFactor::ZERO),
+            Self::ScaleZ(_) => Self::ScaleZ(ScaleFactor::ZERO),
+            Self::Scale3d { .. } => Self::Scale3d {
+                x: ScaleFactor::ZERO,
+                y: ScaleFactor::ZERO,
+                z: ScaleFactor::ZERO,
+            },
+            _ => self.identity(),
+        }
+    }
+    fn is_spatial(self) -> bool {
+        matches!(
+            self,
+            Self::Matrix3d(_)
+                | Self::Translate3d { .. }
+                | Self::TranslateZ(_)
+                | Self::Scale3d { .. }
+                | Self::ScaleZ(_)
+                | Self::RotateX(_)
+                | Self::RotateY(_)
+                | Self::RotateZ(_)
+                | Self::Rotate3d { .. }
+                | Self::Perspective(_)
+        )
+    }
+
     fn translation(self) -> Option<(CssPixels, CssPixels)> {
         match self {
             Self::Translate { x, y } => Some((x, y.unwrap_or(CssPixels::ZERO))),
@@ -230,7 +413,7 @@ impl TransformFunction {
     }
 }
 
-/// An immutable resolved 2D list; an empty list represents CSS `none`.
+/// An immutable resolved transform list; an empty list represents CSS `none`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedTransformList {
     functions: Arc<[TransformFunction]>,
@@ -263,7 +446,36 @@ impl ResolvedTransformList {
     ///
     /// Reports arithmetic overflow without changing the list or clipping values.
     pub fn to_matrix(&self) -> Result<TransformMatrix, TransformError> {
-        math::list_matrix(&self.functions, 0)
+        if self.is_spatial() {
+            self.to_matrix3d()?.require_affine()
+        } else {
+            math::list_matrix(&self.functions, 0)
+        }
+    }
+    /// Forms a checked column-major homogeneous matrix without 2D narrowing.
+    pub fn to_matrix3d(&self) -> Result<TransformMatrix3d, TransformError> {
+        spatial::list_matrix(&self.functions, 0)
+    }
+    /// Accumulates this underlying value with an effect using CSS list matching.
+    /// Non-decomposable endpoints select the complete effect value.
+    pub fn accumulated_with(&self, effect: &Self) -> Result<Self, TransformError> {
+        match combine(self, effect, Combination::Accumulate)? {
+            TransformInterpolation::Value(value) => Ok(value),
+            TransformInterpolation::Discrete => Ok(effect.clone()),
+        }
+    }
+    /// Maps each function to its pin-selected scalar-zero additive neutral.
+    /// Padding identities and the empty concatenation identity remain distinct.
+    pub fn neutral_for_addition(&self) -> Self {
+        Self::new(
+            self.functions
+                .iter()
+                .map(|function| function.neutral_for_addition())
+                .collect(),
+        )
+    }
+    pub(crate) fn is_spatial(&self) -> bool {
+        self.functions.iter().any(|function| function.is_spatial())
     }
 }
 
@@ -272,17 +484,98 @@ pub(crate) enum TransformInterpolation {
     Discrete,
 }
 
-enum PairPart {
-    Functions(math::FunctionPair, usize),
-    Matrix(TransformMatrix, TransformMatrix, usize),
+#[derive(Clone, Copy)]
+enum Combination {
+    Interpolate(f64),
+    Accumulate,
+}
+fn combine_number(
+    a: f64,
+    b: f64,
+    operation: Combination,
+    one_based: bool,
+    component: TransformComponent,
+) -> Result<f64, TransformError> {
+    match operation {
+        Combination::Interpolate(p) => {
+            let delta = finite(b - a, component)?;
+            finite(a + finite(delta * p, component)?, component)
+        }
+        Combination::Accumulate if one_based => {
+            let (sum, roundoff) = two_sum(a, b, component)?;
+            let (shifted, shift_roundoff) = two_sum(sum, -1., component)?;
+            finite(
+                shifted + finite(roundoff + shift_roundoff, component)?,
+                component,
+            )
+        }
+        Combination::Accumulate => finite(a + b, component),
+    }
 }
 
-/// Check each matrix pair for singularity as soon as it is available, before
-/// processing any later suffix. Defer decomposition until matching is complete.
+// Keep both rounding tails when evaluating a+b-1. Subtracting one before a
+// large cancellation loses it; subtracting it only after a rounded sum loses a
+// subnormal underlying value when the effect is exactly the identity.
+fn two_sum(a: f64, b: f64, component: TransformComponent) -> Result<(f64, f64), TransformError> {
+    let sum = finite(a + b, component)?;
+    let b_virtual = finite(sum - a, component)?;
+    let a_virtual = finite(sum - b_virtual, component)?;
+    let a_roundoff = finite(a - a_virtual, component)?;
+    let b_roundoff = finite(b - b_virtual, component)?;
+    Ok((sum, finite(a_roundoff + b_roundoff, component)?))
+}
+
+enum MatrixPair {
+    Affine(TransformMatrix, TransformMatrix, bool),
+    Spatial(TransformMatrix3d, TransformMatrix3d),
+}
+impl MatrixPair {
+    fn prepare(a: TransformMatrix3d, b: TransformMatrix3d, output_3d: bool) -> Option<Self> {
+        if let (Some(a), Some(b)) = (a.as_affine(), b.as_affine()) {
+            if math::singular(a) || math::singular(b) {
+                None
+            } else {
+                Some(Self::Affine(a, b, output_3d))
+            }
+        } else if spatial::decomposable(a) && spatial::decomposable(b) {
+            Some(Self::Spatial(a, b))
+        } else {
+            None
+        }
+    }
+    fn sample(self, operation: Combination) -> Result<TransformFunction, TransformError> {
+        match self {
+            Self::Affine(a, b, output_3d) => {
+                let result =
+                    math::combine_matrix(math::decompose(a)?, math::decompose(b)?, operation)?;
+                Ok(if output_3d {
+                    TransformFunction::Matrix3d(result.into())
+                } else {
+                    TransformFunction::Matrix(result)
+                })
+            }
+            Self::Spatial(a, b) => {
+                spatial::combine_matrix(a, b, operation).map(TransformFunction::Matrix3d)
+            }
+        }
+    }
+}
+enum PairPart {
+    Functions(math::FunctionPair, usize),
+    SpatialFunctions(spatial::FunctionPair, usize),
+    Matrix(MatrixPair, usize),
+}
 pub(crate) fn interpolate(
     from: &ResolvedTransformList,
     to: &ResolvedTransformList,
     progress: f64,
+) -> Result<TransformInterpolation, TransformError> {
+    combine(from, to, Combination::Interpolate(progress))
+}
+fn combine(
+    from: &ResolvedTransformList,
+    to: &ResolvedTransformList,
+    operation: Combination,
 ) -> Result<TransformInterpolation, TransformError> {
     let mut parts = Vec::new();
     for index in 0..from.functions.len().max(to.functions.len()) {
@@ -294,22 +587,42 @@ pub(crate) fn interpolate(
         };
         let matrices = if let (TransformFunction::Matrix(a), TransformFunction::Matrix(b)) = (a, b)
         {
-            Some((a, b, false))
+            Some((a.into(), b.into(), false, false))
         } else if let Some(pair) = math::function_pair(a, b) {
             parts.push(PairPart::Functions(pair, index));
             None
-        } else {
+        } else if let Some(pair) = spatial::function_pair(a, b) {
+            parts.push(PairPart::SpatialFunctions(pair, index));
+            None
+        } else if spatial::matching_matrix_functions(a, b) {
             Some((
-                math::list_matrix(from.functions.get(index..).unwrap_or_default(), index)?,
-                math::list_matrix(to.functions.get(index..).unwrap_or_default(), index)?,
+                spatial::function_matrix(a)?,
+                spatial::function_matrix(b)?,
                 true,
+                false,
             ))
+        } else {
+            let from = from.functions.get(index..).unwrap_or_default();
+            let to = to.functions.get(index..).unwrap_or_default();
+            let output_3d = from.iter().chain(to).any(|function| function.is_spatial());
+            let (a, b) = if output_3d {
+                (
+                    spatial::list_matrix(from, index)?,
+                    spatial::list_matrix(to, index)?,
+                )
+            } else {
+                (
+                    math::list_matrix(from, index)?.into(),
+                    math::list_matrix(to, index)?.into(),
+                )
+            };
+            Some((a, b, output_3d, true))
         };
-        if let Some((a, b, suffix)) = matrices {
-            if math::singular(a) || math::singular(b) {
+        if let Some((a, b, output_3d, suffix)) = matrices {
+            let Some(pair) = MatrixPair::prepare(a, b, output_3d) else {
                 return Ok(TransformInterpolation::Discrete);
-            }
-            parts.push(PairPart::Matrix(a, b, index));
+            };
+            parts.push(PairPart::Matrix(pair, index));
             if suffix {
                 break;
             }
@@ -319,16 +632,9 @@ pub(crate) fn interpolate(
         .into_iter()
         .map(|part| {
             let (result, index) = match part {
-                PairPart::Functions(pair, index) => (pair.sample(progress), index),
-                PairPart::Matrix(a, b, index) => (
-                    math::decompose(a)
-                        .and_then(|a| {
-                            math::decompose(b)
-                                .and_then(|b| math::interpolate_matrix(a, b, progress))
-                        })
-                        .map(TransformFunction::Matrix),
-                    index,
-                ),
+                PairPart::Functions(pair, index) => (pair.sample(operation), index),
+                PairPart::SpatialFunctions(pair, index) => (pair.sample(operation), index),
+                PairPart::Matrix(pair, index) => (pair.sample(operation), index),
             };
             result.map_err(|error| error.at_index(index))
         })
