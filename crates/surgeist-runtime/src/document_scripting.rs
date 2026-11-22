@@ -522,6 +522,14 @@ impl NativeOwner {
             if native.traversal_retirements.reap(dom.raw_mut()).is_err() {
                 return Err(owner);
             }
+            let cleanup = AtomicBool::new(false);
+            if dom
+                .raw_mut()
+                .reap_released_ranges(&cleanup)
+                .is_err_and(|error| error != DomError::SourceOperationPending)
+            {
+                return Err(owner);
+            }
             native
                 .session
                 .get_mut()
@@ -1291,6 +1299,10 @@ impl ScriptEngine {
         self.comments.drain_retirements(&mut self.process);
         if let Some(events) = &self.guest_events {
             events.reap_retired_targets(&mut self.process, native);
+            if let Ok(mut session) = native.session.try_borrow_mut() {
+                let cleanup = AtomicBool::new(false);
+                let _ = session.dom().raw_mut().reap_released_ranges(&cleanup);
+            }
         }
         if realm.check_owner_active().is_err() {
             native.discard_media_removals();

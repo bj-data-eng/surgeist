@@ -13,6 +13,15 @@ pub struct DomOwnedRange {
     release: Option<Box<Release>>,
 }
 
+impl std::fmt::Debug for DomOwnedRange {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DomOwnedRange")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
 impl DomOwnedRange {
     /// The exact live Range created for this owner.
     pub fn id(&self) -> DomRangeId {

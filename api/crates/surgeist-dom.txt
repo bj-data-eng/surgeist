@@ -2746,6 +2746,8 @@ pub fn surgeist_dom::range::DomRangeOperand::from(ticket: &surgeist_dom::range::
 pub struct surgeist_dom::range::DomOwnedRange
 impl surgeist_dom::range::DomOwnedRange
 pub fn surgeist_dom::range::DomOwnedRange::id(&self) -> surgeist_dom::range::DomRangeId
+impl core::fmt::Debug for surgeist_dom::range::DomOwnedRange
+pub fn surgeist_dom::range::DomOwnedRange::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::ops::drop::Drop for surgeist_dom::range::DomOwnedRange
 pub fn surgeist_dom::range::DomOwnedRange::drop(&mut self)
 pub struct surgeist_dom::range::DomRange<'a>
@@ -4841,6 +4843,7 @@ pub fn surgeist_dom::DomSnapshot::nodes(&self) -> impl core::iter::traits::itera
 pub fn surgeist_dom::DomSnapshot::owner(&self) -> surgeist_dom::identity::DomOwnerId
 pub fn surgeist_dom::DomSnapshot::pending_details_toggle_intentions(&self) -> usize
 pub fn surgeist_dom::DomSnapshot::range(&self, id: surgeist_dom::range::DomRangeId) -> core::result::Result<surgeist_dom::range::DomRange<'_>, surgeist_dom::DomError>
+pub fn surgeist_dom::DomSnapshot::range_common_ancestor_with<E: core::convert::From<surgeist_dom::DomError>>(&self, id: surgeist_dom::range::DomRangeId, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_dom::identity::NodeId, E>
 pub fn surgeist_dom::DomSnapshot::retarget_node_with<E: core::convert::From<surgeist_dom::DomError>>(&self, source: surgeist_dom::identity::NodeId, against: core::option::Option<surgeist_dom::identity::NodeId>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_dom::identity::NodeId, E>
 pub fn surgeist_dom::DomSnapshot::revision(&self) -> surgeist_dom::identity::DomRevision
 pub fn surgeist_dom::DomSnapshot::stamp(&self) -> surgeist_dom::identity::DomStamp

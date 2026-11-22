@@ -65,6 +65,7 @@ mod param;
 mod parent_node;
 mod pre;
 mod processing_instruction;
+mod range;
 mod range_indicator;
 mod reflected_element;
 mod reflection;
@@ -347,6 +348,7 @@ pub(super) struct DocumentPrototypes {
     shadow: RetainedCallbackObject,
     attr: RetainedCallbackObject,
     traversal: traversal::Prototypes,
+    range: range::Prototypes,
     character_data: character_data::CharacterBindings,
     collections: tag_collection::CollectionProjection,
     all: all_collection::Projection,
@@ -504,6 +506,7 @@ impl DocumentPrototypes {
         let attr = attr::install(scope, node, constructor, funding)?;
         let document_type = document_type::install(scope, node, constructor, &document, funding)?;
         let implementation = dom_implementation::install(scope, &document, funding)?;
+        let range = range::install(scope, &document, funding)?;
         let traversal = traversal::install(scope, &document, funding)?;
         let observed = scope.callback_object(&document)?;
         let retained_document = scope.retain_callback_object(observed, funding.retain)?;
@@ -523,6 +526,7 @@ impl DocumentPrototypes {
                 shadow: retained_shadow,
                 attr,
                 traversal,
+                range,
                 character_data,
                 collections,
                 all,
@@ -1004,6 +1008,20 @@ pub(super) fn install_derived_interface<'scope>(
     metadata: FunctionMetadata<'_>,
     callback: &ConstructorCallback,
 ) -> Result<(Value<'scope>, Value<'scope>), Error> {
+    let (constructor, prototype) =
+        prepare_derived_interface(scope, parent, parent_constructor, metadata, callback)?;
+    let global = scope.global()?;
+    install_interface(scope, &global, metadata.name, &constructor, &prototype)?;
+    Ok((constructor, prototype))
+}
+
+fn prepare_derived_interface<'scope>(
+    scope: &mut Scope<'scope>,
+    parent: &Value<'scope>,
+    parent_constructor: &Value<'scope>,
+    metadata: FunctionMetadata<'_>,
+    callback: &ConstructorCallback,
+) -> Result<(Value<'scope>, Value<'scope>), Error> {
     let prototype = scope.object(ObjectPrototype::Object(parent))?;
     let constructor = scope.constructor(callback, metadata)?;
     scope.set_prototype(&constructor, ObjectPrototype::Object(parent_constructor))?;
@@ -1017,8 +1035,6 @@ pub(super) fn install_derived_interface<'scope>(
             configurable: false,
         },
     )?;
-    let global = scope.global()?;
-    install_interface(scope, &global, metadata.name, &constructor, &prototype)?;
     Ok((constructor, prototype))
 }
 

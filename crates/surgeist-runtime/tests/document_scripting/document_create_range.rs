@@ -37,6 +37,13 @@ pub(super) fn document_range_keeps_canonical_live_boundaries() {
                 other.startContainer !== detached || other.endContainer !== detached ||
                 range.startOffset !== 0 || range.endOffset !== 0 || !range.collapsed)
                 return 'fresh native Range initial boundaries and brands';
+            if (range.commonAncestorContainer !== document || Range.START_TO_START !== 0 ||
+                Range.START_TO_END !== 1 || Range.END_TO_END !== 2 || Range.END_TO_START !== 3 ||
+                range.END_TO_START !== 3) return 'native Range members and constants';
+            const SubRange = class extends Range {};
+            const subclassed = new SubRange();
+            if (Object.getPrototypeOf(subclassed) !== SubRange.prototype ||
+                subclassed.startContainer !== document) return 'native Range NewTarget prototype';
             for (const name of ['startContainer', 'endContainer', 'startOffset', 'endOffset', 'collapsed']) {
                 const {get, set, enumerable, configurable} = Object.getOwnPropertyDescriptor(AbstractRange.prototype, name);
                 if (typeof get !== 'function' || set !== undefined || !enumerable || !configurable ||
@@ -76,6 +83,14 @@ pub(super) fn document_range_keeps_canonical_live_boundaries() {
             if (range.startContainer !== parent || range.endContainer !== parent ||
                 range.startOffset !== 1 || range.endOffset !== 1 || !range.collapsed)
                 return 'native removal moves both boundaries to the same exact parent';
+            const sibling = document.createTextNode('sibling');
+            parent.appendChild(sibling);
+            range.setStart(text, 0);
+            range.setEnd(sibling, 2);
+            if (range.detach() !== undefined || range.startContainer !== text ||
+                range.endContainer !== sibling || range.commonAncestorContainer !== parent ||
+                range.collapsed || !rejects(() => Range.prototype.detach.call({}), 'TypeError'))
+                return 'nearest common ordinary ancestor and branded detach';
             return 'ok';
         })()"#,
     );
@@ -132,9 +147,21 @@ pub(super) fn borrowed_range_factory_uses_the_receiving_document_realm() {
             if (childRange.startContainer !== document.body || childRange.endContainer !== document.body ||
                 childRange.constructor !== child.Range || !childRange.collapsed)
                 return 'changing both boundaries must preserve the Range creation identity';
+            globalThis.escapedChildRange = childRange;
             return 'ok';
         })()",
     );
     assert_eq!(observed, "ok");
+    window_length::edit(&mut host, DomSourceEdit::detach(iframe));
+    let after_retirement = observe(
+        &mut host,
+        &permit,
+        r"(() => {
+            const get = Object.getOwnPropertyDescriptor(AbstractRange.prototype, 'startContainer').get;
+            return window.length === 0 && get.call(escapedChildRange) === document.body ? 'ok' :
+                'retiring the child lost the escaped Range or its endpoint';
+        })()",
+    );
+    assert_eq!(after_retirement, "ok");
     host.stop().into_session().unwrap();
 }

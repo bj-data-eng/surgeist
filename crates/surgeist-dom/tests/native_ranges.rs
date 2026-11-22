@@ -188,6 +188,62 @@ fn failed_creation_and_stale_ownership_leave_reused_generations_untouched() {
 }
 
 #[test]
+fn common_ancestor_is_ordinary_and_does_not_walk_past_refusal() {
+    let mut dom = dom();
+    let (document, parent) = document_and_parent(&mut dom);
+    let mut batch = DomBatch::new();
+    let branch = batch.create_element_ns(document, Namespace::html(), "div");
+    let first = batch.create_text(document, "first");
+    let last = batch.create_text(document, "last");
+    batch.insert_before(&first, &branch, None);
+    batch.insert_before(&branch, parent, None);
+    batch.insert_before(&last, parent, None);
+    let receipt = apply(&mut dom, batch);
+    let first = receipt.created(&first).unwrap().unwrap();
+    let last = receipt.created(&last).unwrap().unwrap();
+    let id = at(&mut dom, document, (first, 1), (last, 2));
+    let snapshot = dom.snapshot();
+    let mut steps = 0;
+    assert_eq!(
+        snapshot
+            .range_common_ancestor_with(id, || {
+                steps += 1;
+                Ok::<_, DomError>(())
+            })
+            .unwrap(),
+        parent
+    );
+    assert!(steps > 1);
+    let mut calls = 0;
+    assert_eq!(
+        snapshot.range_common_ancestor_with(id, || {
+            calls += 1;
+            if calls == 2 {
+                Err(DomError::Cancelled)
+            } else {
+                Ok(())
+            }
+        }),
+        Err(DomError::Cancelled)
+    );
+    assert_eq!(calls, 2);
+    let mut retire = DomBatch::new();
+    retire.retire_range(id);
+    apply(&mut dom, retire);
+    assert_eq!(
+        dom.snapshot()
+            .range_common_ancestor_with(id, || Ok::<_, DomError>(())),
+        Err(DomError::StaleRange)
+    );
+    assert_eq!(
+        snapshot
+            .range_common_ancestor_with(id, || Ok::<_, DomError>(()))
+            .unwrap(),
+        parent
+    );
+}
+
+#[test]
 fn native_creation_publishes_document_zero_and_complete_change_evidence_without_implicit_association()
  {
     let mut dom = dom();
