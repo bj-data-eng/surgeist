@@ -35,6 +35,14 @@ snapshots keep queue-time conversion inputs coherent while callers later change
 timeline or playback state. Play-control lifecycle and effect sampling consume
 these values separately. See [model time](reference.md#model-time-and-timeline-conversions).
 
+`EffectTiming` consumes the associated animation's optional signed local time and
+observations of playback, timeline monotonicity and replace state. Its phase,
+fill and iteration calculations share one kernel with normalized CSS elapsed
+sampling, using milliseconds for the model and seconds for existing track
+inputs. Relevance is an Animation-owned predicate over those supplied facts;
+consumers own target enumeration, lifecycle changes and invalidation. See
+[effect timing](reference.md#effect-timing-and-relevance).
+
 Native keyframe inputs have a separate normalization boundary in
 `keyframe_input`. It owns offset validation, property-track merging, list
 repetition, and missing-offset calculation. Callers supply parsed property

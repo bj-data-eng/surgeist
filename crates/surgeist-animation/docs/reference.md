@@ -72,6 +72,81 @@ overflowing division or subtraction intermediates. Unrepresentable results retur
 and decreasing document reports have separate typed categories. These errors are
 distinct from a normal unresolved result. Arithmetic uses floating-point rounding.
 
+## Effect timing and relevance
+
+`timing::EffectTiming::try_new(EffectTimingOptions)` validates a Web Animations
+Level 1 keyframe effect. Numeric delays and iteration duration use milliseconds;
+iteration start is finite and nonnegative. Duration is initially zero and may be
+positive infinity. `IterationCount` accepts nonnegative finite counts or explicit
+infinity. Either zero factor makes active duration zero, including zero times
+infinity. Iteration start offsets progress without extending active duration.
+Defaults use normal direction, no fill and linear easing. Invalid numeric options
+are rejected by the owning constructor before sampling.
+
+`EffectTimingInput::Associated` supplies the animation's current time as
+`Option<AnimationTime>` and coherent `EffectAnimationState` observations. An
+unassociated effect has unresolved local time and is idle. There is at most one
+associated animation and no group-effect hierarchy. The owner supplies playback
+rate, `EffectPlayState` (idle/running/paused/finished), optional timeline monotonicity and
+active/removed/persisted replace state; sampling does not derive host lifecycle.
+
+The active duration is duration times count. End time is
+`max(start_delay + active_duration + end_delay, 0)`. The before-active boundary is
+`max(min(start_delay, end_time), 0)` and the active-after boundary is
+`max(min(start_delay + active_duration, end_time), 0)`. Negative animation playback
+rate gives backwards boundary direction: equality is before at the lower bound
+and active at the upper bound. Forwards direction includes zero rate, with
+equality active at the lower bound and after at the upper bound. Unresolved local
+time is idle.
+
+Fill resolves active time without moving those boundaries. Backwards/both fill
+before the interval gives `max(local - start_delay, 0)`; the active phase gives
+`local - start_delay`. Forwards/both fill after the interval gives
+`max(min(local - start_delay, active_duration), 0)`. Other cases are unresolved.
+Negative end delay can end the active phase before full iteration progress: with
+delay 100 ms, duration 200 ms and end delay -50 ms, forwards fill at local time
+250 ms yields active time 150 ms and progress 0.75. The indefinite-fill advice
+does not reject an otherwise valid fill option.
+
+Sampling derives overall progress, simple progress, current iteration, directed
+progress and eased progress in that order. Exact final iteration endpoints hold
+1 rather than wrapping to 0 when count is nonzero. Source-defined infinite
+overall progress uses `iteration_start % 1`; infinite current iteration selects
+forwards direction in both alternating modes. Easing uses the existing easing
+owner and sets its before flag only for before-phase forwards direction or
+after-phase reverse direction. The [model example](../src/timing/effect.rs)
+demonstrates construction and sampling.
+
+`EffectTimingSample` exposes the supplied typed local time and read-only derived
+observations. Its predicates follow the
+[selected timing clauses](../../../references/web-animations-1--WD-web-animations-1-20230605--e814a799ef24.md#animation-effect-phases-and-states):
+
+| Predicate | Required observations |
+| --- | --- |
+| `is_in_play` | Active phase with an associated animation that is not finished. A paused animation can meet this predicate. |
+| `is_current` | In play, forward-before, backward-after, or a nonidle animation with an associated nonmonotonic timeline. |
+| `is_in_effect` | Resolved active time, including applicable fill. |
+| `is_relevant` | Current or in effect, with an associated animation whose replace state is not removed. |
+
+One private phase/progress kernel serves this millisecond model and the
+seconds-based normalized CSS `TimingParameters`/track samplers. The latter retain
+their nonnegative effective elapsed-time domain, including finite second values
+too large to convert into a finite millisecond coordinate. Shared observations
+reuse `TimingPhase`, `CurrentIteration`, `PhaseProgress` and `EasedProgress`.
+`TimingSample::is_finished()` describes a normalized forwards elapsed-time track;
+the general effect predicates use the supplied animation play state instead.
+
+Finite arithmetic limits remain distinct from source-defined infinity.
+`EffectTiming` returns a canonical `EffectTimingError` carrying
+`EffectTimingErrorKind::Unrepresentable` and its operation; invalid options have
+a separate category. The CSS timing observation exposes the diagnostic through
+`timing_error()` while actual CSS tracks preserve their existing phase-based
+classification and no-value result when progress is unavailable. A later
+representable input can recover. In particular, overflow of finite
+`active_time / duration` is a typed numeric limit, not infinite overall progress.
+Sampling has no frame history: seeks and cadence do not accumulate error, while
+new timing options and supplied play observations explicitly affect new results.
+
 ## Sampling contracts
 
 `KeyframeTrack::sample_into(elapsed, play_state, &mut output)` replaces an
@@ -241,6 +316,7 @@ supported interpolation produces `SampleClassification::Failed` and
 | Time intake, finite durations, delays, and effective elapsed time | `supported` | `surgeist-animation` validates finite typed time values; runtime/root supplies elapsed time. |
 | Signed nullable model time, immutable conversion snapshots and fixed-origin document time | `supported` | `surgeist-animation` owns pure coordinate arithmetic and checked document reports; callers supply clocks, activity and timeline identities. |
 | Timing phases, fill modes, direction, iteration counts, play state, and next-frame hints | `supported` | `surgeist-animation` samples validated timing and reports stable or may-change hints. |
+| Web Animations effect timing, signed local time, end delay, iteration start and relevance | `supported` | `EffectTiming` samples supplied animation observations through the shared phase/progress kernel without owning animation lifecycle or target queries. |
 | Typed native keyframe inputs and missing-offset computation | `supported` | `keyframe_input` normalizes sequences and property-indexed inputs while preserving specified offsets and caller payloads. |
 | Cubic-bezier, steps, linear keyword, and CSS `linear()` easing | `supported` | `surgeist-animation` evaluates typed easing, including canonical linear control points. |
 | Number, unrestricted percentage, and explicit premultiplied color interpolation | `supported` | `surgeist-animation` interpolates finite values with checked arithmetic and explicit color spaces. |

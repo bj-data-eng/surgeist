@@ -10,6 +10,9 @@
 //! conversion snapshots. Document timelines use a caller-supplied frame timestamp
 //! with a fixed origin offset; they never read a clock or own document lifecycle.
 //! Animation play control and effect sampling consume this model separately.
+//! [`timing::EffectTiming`] samples optional signed model local time and derives
+//! effect phases, fill, iteration progress and relevance from supplied animation
+//! observations. Normalized CSS elapsed tracks use the same timing kernel.
 //!
 //! Callers pass effective [`time::ElapsedTime`] values that already account for
 //! the runtime clock and track start time. Paused sampling is explicit through
