@@ -4,8 +4,10 @@
 pub mod surgeist_html_parser
 pub mod surgeist_html_parser::live
 pub enum surgeist_html_parser::live::HtmlLiveAttribute
+pub surgeist_html_parser::live::HtmlLiveAttribute::Charset
 pub surgeist_html_parser::live::HtmlLiveAttribute::Class
 pub surgeist_html_parser::live::HtmlLiveAttribute::Id
+pub surgeist_html_parser::live::HtmlLiveAttribute::Src
 impl surgeist_html_parser::live::HtmlLiveAttribute
 pub const fn surgeist_html_parser::live::HtmlLiveAttribute::as_str(self) -> &'static str
 pub enum surgeist_html_parser::live::HtmlLiveElement
@@ -13,7 +15,10 @@ pub surgeist_html_parser::live::HtmlLiveElement::Body
 pub surgeist_html_parser::live::HtmlLiveElement::Div
 pub surgeist_html_parser::live::HtmlLiveElement::Head
 pub surgeist_html_parser::live::HtmlLiveElement::Html
+pub surgeist_html_parser::live::HtmlLiveElement::Meta
+pub surgeist_html_parser::live::HtmlLiveElement::Script
 pub surgeist_html_parser::live::HtmlLiveElement::Span
+pub surgeist_html_parser::live::HtmlLiveElement::Title
 impl surgeist_html_parser::live::HtmlLiveElement
 pub const fn surgeist_html_parser::live::HtmlLiveElement::as_str(self) -> &'static str
 pub enum surgeist_html_parser::live::HtmlLiveParseError<E>
@@ -29,6 +34,7 @@ pub fn surgeist_html_parser::live::HtmlLiveParseError<E>::from(value: surgeist_h
 pub enum surgeist_html_parser::live::HtmlLiveParseProgress
 pub surgeist_html_parser::live::HtmlLiveParseProgress::AwaitingEof
 pub surgeist_html_parser::live::HtmlLiveParseProgress::Paused
+pub surgeist_html_parser::live::HtmlLiveParseProgress::Script
 pub surgeist_html_parser::live::HtmlLiveParseProgress::StopParsing
 pub enum surgeist_html_parser::live::HtmlLiveUnsupported
 pub surgeist_html_parser::live::HtmlLiveUnsupported::Attribute
@@ -46,17 +52,21 @@ pub fn surgeist_html_parser::live::HtmlLiveParser<'source, N>::abort(&mut self) 
 pub fn surgeist_html_parser::live::HtmlLiveParser<'source, N>::accept_eof(&mut self)
 pub fn surgeist_html_parser::live::HtmlLiveParser<'source, N>::advance<H: surgeist_html_parser::live::HtmlLiveTree<Node = N>>(&mut self, host: &mut H, token_limit: core::num::nonzero::NonZeroUsize) -> core::result::Result<surgeist_html_parser::live::HtmlLiveParseProgress, surgeist_html_parser::live::HtmlLiveParseError<<H as surgeist_html_parser::live::HtmlLiveTree>::Error>>
 pub fn surgeist_html_parser::live::HtmlLiveParser<'source, N>::cancellation(&self) -> &surgeist_html_parser::HtmlParseCancellation
+pub fn surgeist_html_parser::live::HtmlLiveParser<'source, N>::complete_script(&mut self, script: N) -> core::result::Result<bool, surgeist_html_parser::live::HtmlLiveParseError<core::convert::Infallible>>
 pub fn surgeist_html_parser::live::HtmlLiveParser<'source, N>::document(&self) -> N
 pub fn surgeist_html_parser::live::HtmlLiveParser<'source, N>::first_host_refusal(&self) -> core::option::Option<&surgeist_html_parser::HtmlSourceRange>
 pub fn surgeist_html_parser::live::HtmlLiveParser<'source, N>::new(source: &'source surgeist_html_parser::HtmlSource, document: N, limits: surgeist_html_parser::HtmlParseLimits) -> core::result::Result<Self, surgeist_html_parser::live::HtmlLiveParseError<core::convert::Infallible>>
+pub fn surgeist_html_parser::live::HtmlLiveParser<'source, N>::pending_script(&self) -> core::option::Option<N>
 pub fn surgeist_html_parser::live::HtmlLiveParser<'source, N>::take_stop_parsing(&mut self) -> core::result::Result<core::option::Option<surgeist_html_parser::live::HtmlLiveStopParsing<N>>, surgeist_html_parser::live::HtmlLiveParseError<core::convert::Infallible>>
 pub fn surgeist_html_parser::live::HtmlLiveParser<'source, N>::usage(&self) -> core::option::Option<surgeist_html_parser::HtmlParseUsage>
+pub fn surgeist_html_parser::live::HtmlLiveParser<'source, N>::with_classic_scripts(source: &'source surgeist_html_parser::HtmlSource, document: N, limits: surgeist_html_parser::HtmlParseLimits) -> core::result::Result<Self, surgeist_html_parser::live::HtmlLiveParseError<core::convert::Infallible>>
 impl<N: core::fmt::Debug> core::fmt::Debug for surgeist_html_parser::live::HtmlLiveParser<'_, N>
 pub fn surgeist_html_parser::live::HtmlLiveParser<'_, N>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html_parser::live::HtmlLiveStopParsing<N>
 impl<N: core::marker::Copy> surgeist_html_parser::live::HtmlLiveStopParsing<N>
 pub fn surgeist_html_parser::live::HtmlLiveStopParsing<N>::document(&self) -> N
 pub fn surgeist_html_parser::live::HtmlLiveStopParsing<N>::eof(&self) -> &surgeist_html_parser::HtmlSourceRange
+pub fn surgeist_html_parser::live::HtmlLiveStopParsing<N>::finish_open_elements(&mut self) -> core::result::Result<(), surgeist_html_parser::HtmlParseStop>
 pub fn surgeist_html_parser::live::HtmlLiveStopParsing<N>::open_elements(&self) -> impl core::iter::traits::double_ended::DoubleEndedIterator<Item = N> + '_
 pub fn surgeist_html_parser::live::HtmlLiveStopParsing<N>::parser_scripts_are_absent(&self) -> bool
 pub fn surgeist_html_parser::live::HtmlLiveStopParsing<N>::usage(&self) -> surgeist_html_parser::HtmlParseUsage
@@ -69,6 +79,7 @@ pub fn surgeist_html_parser::live::HtmlLiveTree::insert_comment(&mut self, paren
 pub fn surgeist_html_parser::live::HtmlLiveTree::insert_doctype(&mut self, document: Self::Node) -> core::result::Result<(), Self::Error>
 pub fn surgeist_html_parser::live::HtmlLiveTree::insert_element(&mut self, parent: Self::Node, name: surgeist_html_parser::live::HtmlLiveElement, attributes: surgeist_html_parser::live::HtmlLiveAttributes<'_>) -> core::result::Result<Self::Node, Self::Error>
 pub fn surgeist_html_parser::live::HtmlLiveTree::insert_text(&mut self, parent: Self::Node, text: &surgeist_html::internal::values::document_string::DocumentString) -> core::result::Result<(), Self::Error>
+pub fn surgeist_html_parser::live::HtmlLiveTree::prepare_classic_script(&mut self, script: Self::Node) -> core::result::Result<bool, Self::Error>
 pub enum surgeist_html_parser::HtmlColorProcessingError
 pub surgeist_html_parser::HtmlColorProcessingError::Facts(surgeist_css::color::bounded::CssColorFactDefect)
 pub surgeist_html_parser::HtmlColorProcessingError::Unavailable(surgeist_css::color::bounded::CssColorUnavailable)

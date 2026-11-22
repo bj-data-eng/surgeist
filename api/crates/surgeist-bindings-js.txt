@@ -200,6 +200,9 @@ pub fn surgeist_bindings_js::conversion::declarations::node_list_item_0_index() 
 pub fn surgeist_bindings_js::conversion::declarations::node_lookup_namespace_uri_0_prefix() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Nullable<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>>
 pub fn surgeist_bindings_js::conversion::declarations::node_lookup_prefix_0_namespace() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Nullable<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>>
 pub fn surgeist_bindings_js::conversion::declarations::non_element_parent_node_get_element_by_id_0_element_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::page_transition_event_constructor_0_event_init_dict() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::PageTransitionEventInit>>
+pub fn surgeist_bindings_js::conversion::declarations::page_transition_event_constructor_0_type() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::page_transition_event_init() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::PageTransitionEventInit>
 pub fn surgeist_bindings_js::conversion::declarations::parent_node_query_selector_0_selectors() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::parent_node_query_selector_all_0_selectors() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::processing_instruction_constructor_0_data() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
@@ -588,6 +591,11 @@ pub surgeist_bindings_js::declarations::GetRootNodeOptions::composed: bool
 pub struct surgeist_bindings_js::declarations::ImportNodeOptions
 pub surgeist_bindings_js::declarations::ImportNodeOptions::custom_element_registry: core::option::Option<surgeist_bindings_js::CustomElementRegistryIdentity>
 pub surgeist_bindings_js::declarations::ImportNodeOptions::self_only: bool
+pub struct surgeist_bindings_js::declarations::PageTransitionEventInit
+pub surgeist_bindings_js::declarations::PageTransitionEventInit::bubbles: bool
+pub surgeist_bindings_js::declarations::PageTransitionEventInit::cancelable: bool
+pub surgeist_bindings_js::declarations::PageTransitionEventInit::composed: bool
+pub surgeist_bindings_js::declarations::PageTransitionEventInit::persisted: bool
 pub struct surgeist_bindings_js::declarations::ShadowRootInit
 pub surgeist_bindings_js::declarations::ShadowRootInit::clonable: bool
 pub surgeist_bindings_js::declarations::ShadowRootInit::custom_element_registry: core::option::Option<core::option::Option<surgeist_bindings_js::CustomElementRegistryIdentity>>

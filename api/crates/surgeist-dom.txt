@@ -412,6 +412,10 @@ pub surgeist_dom::document::DomDocumentCreationCause::ParsedTemplateOwner
 pub enum surgeist_dom::document::DomDocumentInterface
 pub surgeist_dom::document::DomDocumentInterface::Document
 pub surgeist_dom::document::DomDocumentInterface::XmlDocument
+pub enum surgeist_dom::document::DomDocumentReadiness
+pub surgeist_dom::document::DomDocumentReadiness::Complete
+pub surgeist_dom::document::DomDocumentReadiness::Interactive
+pub surgeist_dom::document::DomDocumentReadiness::Loading
 pub struct surgeist_dom::document::DomDocumentEnvironment
 impl surgeist_dom::document::DomDocumentEnvironment
 pub fn surgeist_dom::document::DomDocumentEnvironment::browsing_context(&self) -> surgeist_html::internal::security::nonce::HtmlBrowsingContextPresence
@@ -431,12 +435,14 @@ pub fn surgeist_dom::document::DomDocumentMetadata::encoding(&self) -> &surgeist
 pub fn surgeist_dom::document::DomDocumentMetadata::hosted_referrer(&self) -> core::option::Option<core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>>
 pub fn surgeist_dom::document::DomDocumentMetadata::initial_permissions_policy(&self) -> core::option::Option<surgeist_dom::hosted::DomInitialPermissionsPolicy>
 pub const fn surgeist_dom::document::DomDocumentMetadata::interface(&self) -> surgeist_dom::document::DomDocumentInterface
+pub fn surgeist_dom::document::DomDocumentMetadata::local_html_load_timing(&self) -> core::option::Option<surgeist_dom::hosted::DomHostedHtmlLoadTiming>
 pub fn surgeist_dom::document::DomDocumentMetadata::meta_color_scheme(&self) -> surgeist_dom::meta::DomMetaColorSchemeState<'_>
 pub fn surgeist_dom::document::DomDocumentMetadata::meta_state(&self) -> core::option::Option<&surgeist_dom::meta::DomMetaDocumentState>
 pub fn surgeist_dom::document::DomDocumentMetadata::meta_theme_color(&self) -> &surgeist_dom::meta::DomMetaThemeColorState
 pub fn surgeist_dom::document::DomDocumentMetadata::mode(&self) -> surgeist_html::internal::construction::HtmlDocumentMode
 pub fn surgeist_dom::document::DomDocumentMetadata::origin(&self) -> &surgeist_dom::document::DomOpaqueOrigin
 pub fn surgeist_dom::document::DomDocumentMetadata::policy_container(&self) -> &surgeist_dom::meta::DomDocumentPolicyContainer
+pub fn surgeist_dom::document::DomDocumentMetadata::readiness(&self) -> surgeist_dom::document::DomDocumentReadiness
 pub fn surgeist_dom::document::DomDocumentMetadata::referrer(&self) -> core::result::Result<core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>, surgeist_dom::DomError>
 pub fn surgeist_dom::document::DomDocumentMetadata::require_cookie_averse(&self) -> core::result::Result<(), surgeist_dom::DomError>
 pub fn surgeist_dom::document::DomDocumentMetadata::url(&self) -> &surgeist_html::internal::values::document_string::DocumentString
@@ -1332,6 +1338,15 @@ impl core::error::Error for surgeist_dom::hosted::DomHostedError
 pub fn surgeist_dom::hosted::DomHostedError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_dom::hosted::DomHostedError
 pub fn surgeist_dom::hosted::DomHostedError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_dom::hosted::DomHostedHtmlLoadStep
+pub surgeist_dom::hosted::DomHostedHtmlLoadStep::Complete
+pub surgeist_dom::hosted::DomHostedHtmlLoadStep::ContentLoadedEnd
+pub surgeist_dom::hosted::DomHostedHtmlLoadStep::ContentLoadedStart
+pub surgeist_dom::hosted::DomHostedHtmlLoadStep::Finished
+pub surgeist_dom::hosted::DomHostedHtmlLoadStep::Interactive
+pub surgeist_dom::hosted::DomHostedHtmlLoadStep::LoadEnd
+pub surgeist_dom::hosted::DomHostedHtmlLoadStep::LoadStart
+pub surgeist_dom::hosted::DomHostedHtmlLoadStep::PageShowing
 pub enum surgeist_dom::hosted::DomHostedResource
 pub surgeist_dom::hosted::DomHostedResource::BrowsingContexts
 pub surgeist_dom::hosted::DomHostedResource::Entries
@@ -1404,6 +1419,10 @@ pub fn surgeist_dom::event::DomEventRecipientTarget::from(value: surgeist_dom::h
 pub struct surgeist_dom::hosted::DomHostedHostId
 impl surgeist_dom::hosted::DomHostedHostId
 pub const fn surgeist_dom::hosted::DomHostedHostId::source(self) -> surgeist_dom::hosted::DomHostedSourceId
+pub struct surgeist_dom::hosted::DomHostedHtmlLoadTiming
+impl surgeist_dom::hosted::DomHostedHtmlLoadTiming
+pub const fn surgeist_dom::hosted::DomHostedHtmlLoadTiming::microseconds(self, step: surgeist_dom::hosted::DomHostedHtmlLoadStep) -> core::option::Option<u64>
+pub const fn surgeist_dom::hosted::DomHostedHtmlLoadTiming::step(self) -> surgeist_dom::hosted::DomHostedHtmlLoadStep
 pub struct surgeist_dom::hosted::DomHostedLimits
 impl surgeist_dom::hosted::DomHostedLimits
 pub const fn surgeist_dom::hosted::DomHostedLimits::new(records: surgeist_dom::hosted::DomHostedRecordLimits, retained_bytes: usize, scratch_bytes: usize, work: u64) -> Self
@@ -1471,6 +1490,8 @@ pub fn surgeist_dom::hosted::DomHostedSource::observe_document_scripting(&self, 
 pub fn surgeist_dom::hosted::DomHostedSource::qualify_hosted_local_html_parser(&self, dom: &surgeist_dom::Dom, document: surgeist_dom::identity::DocumentId, global: surgeist_dom::hosted::DomHostedGlobalId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::hosted::DomHostedError>
 impl surgeist_dom::hosted::DomHostedSource
 pub fn surgeist_dom::hosted::DomHostedSource::begin_local_html_edits(&self, dom: &surgeist_dom::Dom, document: surgeist_dom::identity::DocumentId, global: surgeist_dom::hosted::DomHostedGlobalId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedLocalHtmlEdits, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::hosted::DomHostedSource::local_html_resource_free_changes_since(&self, dom: &surgeist_dom::Dom, document: surgeist_dom::identity::DocumentId, global: surgeist_dom::hosted::DomHostedGlobalId, checkpoint: surgeist_dom::identity::DomStamp, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<bool, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::hosted::DomHostedSource::local_html_script_changes_since(&self, dom: &surgeist_dom::Dom, edits: &surgeist_dom::hosted::DomHostedLocalHtmlEdits, checkpoint: surgeist_dom::identity::DomStamp, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<bool, surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::hosted::DomHostedSource::local_html_tree<'a>(&self, dom: &'a mut surgeist_dom::Dom, edits: &'a surgeist_dom::hosted::DomHostedLocalHtmlEdits, cancel: &'a core::sync::atomic::AtomicBool) -> core::result::Result<impl surgeist_html_parser::parser::tree_builder::live::HtmlLiveTree<Node = surgeist_dom::identity::NodeId, Error = surgeist_dom::DomError> + 'a, surgeist_dom::hosted::DomHostedError>
 impl surgeist_dom::hosted::DomHostedSource
 pub fn surgeist_dom::hosted::DomHostedSource::document_constructor_context(&self, dom: &surgeist_dom::Dom, global: surgeist_dom::hosted::DomHostedGlobalId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::script::DomDocumentConstructorContext, surgeist_dom::hosted::DomHostedError>
@@ -1493,6 +1514,8 @@ pub fn surgeist_dom::hosted::DomHostedSource::prepare_top_level(&mut self, host:
 pub fn surgeist_dom::hosted::DomHostedSource::seal_top_level(&self, preparation: &mut core::option::Option<surgeist_dom::hosted::DomHostedTopLevelPreparation>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedPreparedTopLevel, surgeist_dom::hosted::DomHostedError>
 impl surgeist_dom::hosted::DomHostedSource
 pub fn surgeist_dom::hosted::DomHostedSource::prepare_document_sheet<'d, 'r>(&'d self, dom: &'d mut surgeist_dom::Dom, global: surgeist_dom::hosted::DomHostedGlobalId, document: surgeist_dom::identity::DocumentId, root: &'r surgeist_dom::style::DomStyleCssomRoot, init: surgeist_cssom::sheet_operations::CssomSheetInit<'_>, cancel: &'d core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::sheet::DomHostedSheetConstruction<'d, 'r>, surgeist_dom::hosted::sheet::DomHostedSheetConstructionError>
+impl surgeist_dom::hosted::DomHostedSource
+pub fn surgeist_dom::hosted::DomHostedSource::publish_local_html_load(&self, dom: &mut surgeist_dom::Dom, document: surgeist_dom::identity::DocumentId, global: surgeist_dom::hosted::DomHostedGlobalId, step: surgeist_dom::hosted::DomHostedHtmlLoadStep, microseconds: u64, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::hosted::DomHostedError>
 impl surgeist_dom::hosted::DomHostedSource
 pub fn surgeist_dom::hosted::DomHostedSource::retain_runtime_payload(&self, dom: &mut surgeist_dom::Dom, bytes: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedRuntimeRetention, surgeist_dom::DomError>
 impl surgeist_dom::hosted::DomHostedSource
