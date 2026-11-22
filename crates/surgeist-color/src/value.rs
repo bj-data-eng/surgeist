@@ -72,8 +72,9 @@ impl Alpha {
 /// lightness and axes/chroma, and Oklab/Oklch use their native normalized units.
 /// Missing components and missing alpha remain explicit. Extended finite color
 /// channels are not gamut-clamped. Only actual byte construction or an explicit
-/// quantization can establish byte-backed sRGB. Every operation is total: a
-/// result beyond binary64 is the signed closest finite value.
+/// quantization can establish byte-backed sRGB. Operations returning `Color`
+/// use the signed closest finite value on numeric overflow. Checked
+/// interpolation returns a distinct sample or an out-of-range error.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Color {
     space: Space,

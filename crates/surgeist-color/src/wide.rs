@@ -93,6 +93,20 @@ impl Wide {
         )
     }
 
+    /// Retains the low word of a sum for use in a later cancellation.
+    pub(super) fn add_with_error(self, other: Self) -> (Self, Self) {
+        // FastTwoSum needs the larger magnitude first. The wide exponent also
+        // lets the correction hold an operand too small to affect the sum.
+        let (large, small) = if self.magnitude_order(other).is_lt() {
+            (other, self)
+        } else {
+            (self, other)
+        };
+        let sum = large.add(small);
+        let rounded_small = sum.add(large.negated());
+        (sum, small.add(rounded_small.negated()))
+    }
+
     pub(super) fn add_fixed(self, value: f64) -> Self {
         self.add(Self::from_f64(value))
     }

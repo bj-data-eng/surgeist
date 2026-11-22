@@ -200,8 +200,8 @@ and applies no gamut mapping.
 rejects a hue strategy on a rectangular space with
 `InterpolationError::HueRequiresPolarSpace` and defaults polar omission to
 `Shorter`; its `hue()` returns the effective strategy. Ordinary and controlled
-interpolation take `UnitInterval` progress. The two-color operation prepares the first and second operands in
-that order, carries analogous missing components, uses the existing
+interpolation take `UnitInterval` progress. The two-color operation prepares
+the first and second operands in that order, carries analogous missing components, uses the existing
 premultiplied-alpha calculation with hue excluded, preserves both-missing
 components, applies the selected hue arc and keeps the interpolated alpha in
 `[0,1]`. `Color::sample_interpolation` accepts `Finite` progress and uses the

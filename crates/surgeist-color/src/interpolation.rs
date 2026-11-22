@@ -172,20 +172,29 @@ pub(crate) fn prepare(value: Color, destination: Space) -> Color {
     Color::new(destination, channels, value.unit_alpha())
 }
 
-fn hue_pair(mut first: f64, mut second: f64, method: Hue) -> (f64, f64) {
-    first = first.rem_euclid(360.0);
-    second = second.rem_euclid(360.0);
-    let difference = second - first;
+fn hue_turn(first: f64, second: f64, method: Hue) -> f64 {
+    let (difference, correction) = Wide::from_f64(second).add_with_error(Wide::from_f64(-first));
+    let difference = difference.to_f64();
+    let half_turn = difference.abs().total_cmp(&180.0).then_with(|| {
+        let correction = if difference.is_sign_negative() {
+            correction.negated()
+        } else {
+            correction
+        };
+        if correction.is_zero() {
+            core::cmp::Ordering::Equal
+        } else {
+            correction.to_f64().total_cmp(&0.0)
+        }
+    });
     match method {
-        Hue::Shorter if difference > 180.0 => first += 360.0,
-        Hue::Shorter if difference < -180.0 => second += 360.0,
-        Hue::Longer if difference > 0.0 && difference < 180.0 => first += 360.0,
-        Hue::Longer if difference > -180.0 && difference <= 0.0 => second += 360.0,
-        Hue::Increasing if second < first => second += 360.0,
-        Hue::Decreasing if first < second => first += 360.0,
-        _ => {}
+        Hue::Shorter if half_turn.is_gt() => 360.0_f64.copysign(-difference),
+        Hue::Longer if half_turn.is_lt() && difference > 0.0 => -360.0,
+        Hue::Longer if half_turn.is_lt() => 360.0,
+        Hue::Increasing if second < first => 360.0,
+        Hue::Decreasing if first < second => -360.0,
+        _ => 0.0,
     }
-    (first, second)
 }
 
 /// The unit-interval operation uses the closest-finite result policy.
@@ -248,9 +257,11 @@ fn interpolate_components(
         if in_unit_interval {
             first.multiply(complement).add(second.multiply(t))
         } else {
-            // An affine form keeps the offset when 1 - progress rounds to
-            // -progress. Fusion also avoids rounding a near-cancellation to zero.
-            first.add_product(second.add(first.negated()), t)
+            // The affine form keeps the offset at large progress. Retain
+            // the low word of the slope, which can determine a near-zero
+            // result after the rounded slope cancels the first endpoint.
+            let (slope, correction) = second.add_with_error(first.negated());
+            first.add_product(slope, t).add_product(correction, t)
         }
     };
     let alpha = aa
@@ -266,13 +277,27 @@ fn interpolate_components(
         if let Some((hue_index, strategy)) = hue
             && index == hue_index
         {
-            let (start, end) = hue_pair(x, y, strategy);
+            let start = x.rem_euclid(360.0);
+            let end = y.rem_euclid(360.0);
+            let turn = hue_turn(start, end, strategy);
             let angle = if in_unit_interval {
+                let start = if turn < 0.0 { start - turn } else { start };
+                let end = if turn > 0.0 { end + turn } else { end };
                 start * (1.0 - progress) + end * progress
             } else {
-                start + hue_product_remainder(end - start, progress)
+                // Evaluate each term before reducing the whole angle. An
+                // endpoint can be too small to survive subtraction or a
+                // full-turn adjustment and still affect the final angle.
+                start
+                    + (hue_product_remainder(end, progress)
+                        - hue_product_remainder(start, progress))
+                    + hue_product_remainder(turn, progress)
             };
             return Some(Wide::from_f64(angle.rem_euclid(360.0)));
+        }
+        if x.to_bits() == y.to_bits() && alpha.is_none_or(|alpha| !alpha.is_zero()) {
+            // A common coordinate factors out of the premultiplied sum.
+            return Some(Wide::from_f64(x));
         }
         let value = interpolate(
             Wide::from_f64(x).multiply_fixed(aa.unwrap_or(1.0)),
