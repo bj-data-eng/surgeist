@@ -521,6 +521,34 @@ pub surgeist_animation::timing::AnimationDirection::Reverse
 pub enum surgeist_animation::timing::AnimationPlayState
 pub surgeist_animation::timing::AnimationPlayState::Paused
 pub surgeist_animation::timing::AnimationPlayState::Running
+pub enum surgeist_animation::timing::AnimationReplaceState
+pub surgeist_animation::timing::AnimationReplaceState::Active
+pub surgeist_animation::timing::AnimationReplaceState::Persisted
+pub surgeist_animation::timing::AnimationReplaceState::Removed
+pub enum surgeist_animation::timing::EffectPlayState
+pub surgeist_animation::timing::EffectPlayState::Finished
+pub surgeist_animation::timing::EffectPlayState::Idle
+pub surgeist_animation::timing::EffectPlayState::Paused
+pub surgeist_animation::timing::EffectPlayState::Running
+pub enum surgeist_animation::timing::EffectTimingErrorKind
+pub surgeist_animation::timing::EffectTimingErrorKind::InconsistentLocalTime
+pub surgeist_animation::timing::EffectTimingErrorKind::InconsistentLocalTime::local_time: core::option::Option<surgeist_animation::time::AnimationTime>
+pub surgeist_animation::timing::EffectTimingErrorKind::InconsistentLocalTime::play_state: surgeist_animation::timing::EffectPlayState
+pub surgeist_animation::timing::EffectTimingErrorKind::InvalidOption
+pub surgeist_animation::timing::EffectTimingErrorKind::InvalidOption::field: surgeist_animation::timing::EffectTimingField
+pub surgeist_animation::timing::EffectTimingErrorKind::InvalidOption::value: f64
+pub surgeist_animation::timing::EffectTimingErrorKind::Unrepresentable
+pub surgeist_animation::timing::EffectTimingErrorKind::Unrepresentable::operation: surgeist_animation::timing::TimingOperation
+pub enum surgeist_animation::timing::EffectTimingField
+pub surgeist_animation::timing::EffectTimingField::Duration
+pub surgeist_animation::timing::EffectTimingField::EndDelay
+pub surgeist_animation::timing::EffectTimingField::IterationStart
+pub surgeist_animation::timing::EffectTimingField::StartDelay
+pub enum surgeist_animation::timing::EffectTimingInput
+pub surgeist_animation::timing::EffectTimingInput::Associated
+pub surgeist_animation::timing::EffectTimingInput::Associated::animation: surgeist_animation::timing::EffectAnimationState
+pub surgeist_animation::timing::EffectTimingInput::Associated::local_time: core::option::Option<surgeist_animation::time::AnimationTime>
+pub surgeist_animation::timing::EffectTimingInput::Unassociated
 pub enum surgeist_animation::timing::FillMode
 pub surgeist_animation::timing::FillMode::Backwards
 pub surgeist_animation::timing::FillMode::Both
@@ -537,6 +565,12 @@ pub surgeist_animation::timing::TimingError::UnrepresentableActiveDuration::iter
 impl core::error::Error for surgeist_animation::timing::TimingError
 impl core::fmt::Display for surgeist_animation::timing::TimingError
 pub fn surgeist_animation::timing::TimingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_animation::timing::TimingOperation
+pub surgeist_animation::timing::TimingOperation::ActiveDuration
+pub surgeist_animation::timing::TimingOperation::ActiveTime
+pub surgeist_animation::timing::TimingOperation::EndTime
+pub surgeist_animation::timing::TimingOperation::OverallProgress
+pub surgeist_animation::timing::TimingOperation::Progress
 pub enum surgeist_animation::timing::TimingPhase
 pub surgeist_animation::timing::TimingPhase::Active
 pub surgeist_animation::timing::TimingPhase::After
@@ -546,6 +580,56 @@ pub struct surgeist_animation::timing::CurrentIteration
 impl surgeist_animation::timing::CurrentIteration
 pub const fn surgeist_animation::timing::CurrentIteration::finite_index(self) -> core::option::Option<f64>
 pub const fn surgeist_animation::timing::CurrentIteration::is_infinite(self) -> bool
+pub struct surgeist_animation::timing::EffectAnimationState
+impl surgeist_animation::timing::EffectAnimationState
+pub const fn surgeist_animation::timing::EffectAnimationState::new(playback_rate: surgeist_animation::time::PlaybackRate, play_state: surgeist_animation::timing::EffectPlayState, timeline: core::option::Option<surgeist_animation::timeline::TimelineMonotonicity>, replace_state: surgeist_animation::timing::AnimationReplaceState) -> Self
+pub const fn surgeist_animation::timing::EffectAnimationState::play_state(self) -> surgeist_animation::timing::EffectPlayState
+pub const fn surgeist_animation::timing::EffectAnimationState::playback_rate(self) -> surgeist_animation::time::PlaybackRate
+pub const fn surgeist_animation::timing::EffectAnimationState::replace_state(self) -> surgeist_animation::timing::AnimationReplaceState
+pub const fn surgeist_animation::timing::EffectAnimationState::timeline(self) -> core::option::Option<surgeist_animation::timeline::TimelineMonotonicity>
+pub struct surgeist_animation::timing::EffectTiming
+impl surgeist_animation::timing::EffectTiming
+pub const fn surgeist_animation::timing::EffectTiming::active_after_boundary_millis(&self) -> f64
+pub const fn surgeist_animation::timing::EffectTiming::active_duration_millis(&self) -> f64
+pub const fn surgeist_animation::timing::EffectTiming::before_active_boundary_millis(&self) -> f64
+pub const fn surgeist_animation::timing::EffectTiming::end_time_millis(&self) -> f64
+pub const fn surgeist_animation::timing::EffectTiming::options(&self) -> &surgeist_animation::timing::EffectTimingOptions
+pub fn surgeist_animation::timing::EffectTiming::sample(&self, input: surgeist_animation::timing::EffectTimingInput) -> core::result::Result<surgeist_animation::timing::EffectTimingSample, surgeist_animation::timing::EffectTimingError>
+pub fn surgeist_animation::timing::EffectTiming::try_new(options: surgeist_animation::timing::EffectTimingOptions) -> core::result::Result<Self, surgeist_animation::timing::EffectTimingError>
+impl core::default::Default for surgeist_animation::timing::EffectTiming
+pub fn surgeist_animation::timing::EffectTiming::default() -> Self
+pub struct surgeist_animation::timing::EffectTimingError
+impl surgeist_animation::timing::EffectTimingError
+pub const fn surgeist_animation::timing::EffectTimingError::kind(self) -> surgeist_animation::timing::EffectTimingErrorKind
+impl core::error::Error for surgeist_animation::timing::EffectTimingError
+impl core::fmt::Display for surgeist_animation::timing::EffectTimingError
+pub fn surgeist_animation::timing::EffectTimingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::timing::EffectTimingOptions
+pub surgeist_animation::timing::EffectTimingOptions::direction: surgeist_animation::timing::AnimationDirection
+pub surgeist_animation::timing::EffectTimingOptions::duration_millis: f64
+pub surgeist_animation::timing::EffectTimingOptions::easing: surgeist_animation::easing::Easing
+pub surgeist_animation::timing::EffectTimingOptions::end_delay_millis: f64
+pub surgeist_animation::timing::EffectTimingOptions::fill: surgeist_animation::timing::FillMode
+pub surgeist_animation::timing::EffectTimingOptions::iteration_start: f64
+pub surgeist_animation::timing::EffectTimingOptions::iterations: surgeist_animation::timing::IterationCount
+pub surgeist_animation::timing::EffectTimingOptions::start_delay_millis: f64
+impl core::default::Default for surgeist_animation::timing::EffectTimingOptions
+pub fn surgeist_animation::timing::EffectTimingOptions::default() -> Self
+pub struct surgeist_animation::timing::EffectTimingSample
+impl surgeist_animation::timing::EffectTimingSample
+pub const fn surgeist_animation::timing::EffectTimingSample::active_time_millis(self) -> core::option::Option<f64>
+pub const fn surgeist_animation::timing::EffectTimingSample::current_iteration(self) -> core::option::Option<surgeist_animation::timing::CurrentIteration>
+pub const fn surgeist_animation::timing::EffectTimingSample::directed_progress(self) -> core::option::Option<surgeist_animation::timing::PhaseProgress>
+pub const fn surgeist_animation::timing::EffectTimingSample::eased_progress(self) -> core::option::Option<surgeist_animation::easing::EasedProgress>
+pub const fn surgeist_animation::timing::EffectTimingSample::easing_before_flag(self) -> bool
+pub fn surgeist_animation::timing::EffectTimingSample::is_current(self) -> bool
+pub const fn surgeist_animation::timing::EffectTimingSample::is_in_effect(self) -> bool
+pub fn surgeist_animation::timing::EffectTimingSample::is_in_play(self) -> bool
+pub fn surgeist_animation::timing::EffectTimingSample::is_relevant(self) -> bool
+pub const fn surgeist_animation::timing::EffectTimingSample::local_time(self) -> core::option::Option<surgeist_animation::time::AnimationTime>
+pub const fn surgeist_animation::timing::EffectTimingSample::overall_progress(self) -> core::option::Option<f64>
+pub const fn surgeist_animation::timing::EffectTimingSample::phase(self) -> surgeist_animation::timing::TimingPhase
+pub const fn surgeist_animation::timing::EffectTimingSample::simple_progress(self) -> core::option::Option<surgeist_animation::timing::PhaseProgress>
 pub struct surgeist_animation::timing::IterationCount
 impl surgeist_animation::timing::IterationCount
 pub fn surgeist_animation::timing::IterationCount::finite(value: f64) -> core::result::Result<Self, surgeist_animation::timing::TimingError>
@@ -566,6 +650,7 @@ pub fn surgeist_animation::timing::TimingParameters::try_new(delay: surgeist_ani
 pub struct surgeist_animation::timing::TimingSample
 impl surgeist_animation::timing::TimingSample
 pub const fn surgeist_animation::timing::TimingSample::active_duration_secs(self) -> core::option::Option<f64>
+pub const fn surgeist_animation::timing::TimingSample::active_time_secs(self) -> core::option::Option<f64>
 pub const fn surgeist_animation::timing::TimingSample::current_iteration(self) -> core::option::Option<surgeist_animation::timing::CurrentIteration>
 pub const fn surgeist_animation::timing::TimingSample::directed_progress(self) -> core::option::Option<surgeist_animation::timing::PhaseProgress>
 pub const fn surgeist_animation::timing::TimingSample::eased_progress(self) -> core::option::Option<surgeist_animation::easing::EasedProgress>
@@ -576,6 +661,7 @@ pub const fn surgeist_animation::timing::TimingSample::local_time_secs(self) -> 
 pub const fn surgeist_animation::timing::TimingSample::phase(self) -> surgeist_animation::timing::TimingPhase
 pub const fn surgeist_animation::timing::TimingSample::play_state(self) -> surgeist_animation::timing::AnimationPlayState
 pub const fn surgeist_animation::timing::TimingSample::simple_progress(self) -> core::option::Option<surgeist_animation::timing::PhaseProgress>
+pub const fn surgeist_animation::timing::TimingSample::timing_error(self) -> core::option::Option<surgeist_animation::timing::EffectTimingError>
 pub mod surgeist_animation::transition
 pub enum surgeist_animation::transition::TransitionError
 pub surgeist_animation::transition::TransitionError::EquivalentEndpoints

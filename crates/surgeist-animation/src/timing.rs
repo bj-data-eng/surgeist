@@ -1,8 +1,18 @@
 //! Timing parameters and phase sampling.
 //!
-//! Timing accepts validated delays, durations, iteration counts, directions,
-//! fill modes, play state, and easing. It derives phase, progress, directed
-//! progress, eased progress, and before-flag data from effective elapsed time.
+//! [`EffectTiming`] samples signed optional model time and supplied animation
+//! observations. [`TimingParameters`] supplies normalized CSS elapsed-time
+//! tracks in seconds. Both use one phase/fill/iteration/direction/easing kernel;
+//! local time is retained before subtracting the start delay.
+
+mod effect;
+mod kernel;
+
+pub use effect::{
+    AnimationReplaceState, EffectAnimationState, EffectPlayState, EffectTiming, EffectTimingError,
+    EffectTimingErrorKind, EffectTimingField, EffectTimingInput, EffectTimingOptions,
+    EffectTimingSample, TimingOperation,
+};
 
 use core::fmt;
 
@@ -159,15 +169,10 @@ pub struct TimingParameters {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TimingSample {
-    phase: TimingPhase,
+    kernel: kernel::KernelSample,
     play_state: AnimationPlayState,
     local_time_secs: Option<f64>,
     active_duration_secs: Option<f64>,
-    current_iteration: Option<CurrentIteration>,
-    simple_progress: Option<PhaseProgress>,
-    directed_progress: Option<PhaseProgress>,
-    eased_progress: Option<EasedProgress>,
-    easing_before_flag: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -342,192 +347,73 @@ impl TimingParameters {
     }
 
     pub fn sample(&self, elapsed: ElapsedTime, play_state: AnimationPlayState) -> TimingSample {
-        let active_duration = self.active_duration;
-        let active_duration_secs = active_duration.representable_secs();
-        let local_time = checked_local_time_secs(elapsed, self.delay);
-
-        let Some(local_time_secs) = local_time else {
-            return TimingSample::new(
-                active_duration.phase_for_positive_overflow(),
-                play_state,
-                None,
-                active_duration_secs,
-            )
-            .with_timing_progress(self);
+        let parameters = kernel::Parameters {
+            delay: self.delay.as_secs(),
+            end_delay: 0.0,
+            duration: self.duration.as_secs(),
+            iterations: self.iterations,
+            iteration_start: 0.0,
+            direction: self.direction,
+            fill: self.fill_mode,
+            easing: &self.easing,
+            active_duration: self.active_duration,
         };
-
-        TimingSample::new(
-            active_duration.phase_for_local_time(local_time_secs),
+        TimingSample {
+            kernel: kernel::sample_elapsed(&parameters, elapsed.as_secs()),
             play_state,
-            Some(local_time_secs),
-            active_duration_secs,
-        )
-        .with_timing_progress(self)
+            local_time_secs: Some(elapsed.as_secs()),
+            active_duration_secs: self.active_duration.representable_secs(),
+        }
     }
 }
 
 impl TimingSample {
     pub const fn idle(play_state: AnimationPlayState) -> Self {
         Self {
-            phase: TimingPhase::Idle,
+            kernel: kernel::KernelSample::idle(),
             play_state,
             local_time_secs: None,
             active_duration_secs: None,
-            current_iteration: None,
-            simple_progress: None,
-            directed_progress: None,
-            eased_progress: None,
-            easing_before_flag: false,
         }
     }
-
-    const fn new(
-        phase: TimingPhase,
-        play_state: AnimationPlayState,
-        local_time_secs: Option<f64>,
-        active_duration_secs: Option<f64>,
-    ) -> Self {
-        Self {
-            phase,
-            play_state,
-            local_time_secs,
-            active_duration_secs,
-            current_iteration: None,
-            simple_progress: None,
-            directed_progress: None,
-            eased_progress: None,
-            easing_before_flag: false,
-        }
-    }
-
     pub const fn phase(self) -> TimingPhase {
-        self.phase
+        self.kernel.phase
     }
-
     pub const fn play_state(self) -> AnimationPlayState {
         self.play_state
     }
-
+    /// Returns the supplied local time in seconds before applying the delay.
     pub const fn local_time_secs(self) -> Option<f64> {
         self.local_time_secs
     }
-
     pub const fn active_duration_secs(self) -> Option<f64> {
         self.active_duration_secs
     }
-
+    pub const fn active_time_secs(self) -> Option<f64> {
+        self.kernel.active_time
+    }
     pub const fn current_iteration(self) -> Option<CurrentIteration> {
-        self.current_iteration
+        self.kernel.current_iteration
     }
-
     pub const fn simple_progress(self) -> Option<PhaseProgress> {
-        self.simple_progress
+        self.kernel.simple_progress
     }
-
     pub const fn directed_progress(self) -> Option<PhaseProgress> {
-        self.directed_progress
+        self.kernel.directed_progress
     }
-
     pub const fn eased_progress(self) -> Option<EasedProgress> {
-        self.eased_progress
+        self.kernel.eased_progress
     }
-
     pub const fn easing_before_flag(self) -> bool {
-        self.easing_before_flag
+        self.kernel.before_flag
     }
-
+    /// Reports an unrepresentable timing calculation separately from unfilled progress.
+    pub const fn timing_error(self) -> Option<EffectTimingError> {
+        self.kernel.error
+    }
+    /// Reports the end of this normalized, forwards elapsed-time track.
     pub const fn is_finished(self) -> bool {
-        matches!(self.phase, TimingPhase::After)
-    }
-
-    fn with_timing_progress(self, timing: &TimingParameters) -> Self {
-        match self.phase {
-            TimingPhase::Before => self.with_before_fill_progress(timing),
-            TimingPhase::Active => self.with_active_progress(timing),
-            TimingPhase::After => self.with_after_fill_progress(timing),
-            TimingPhase::Idle => self,
-        }
-    }
-
-    fn with_active_progress(mut self, timing: &TimingParameters) -> Self {
-        let Some(local_time_secs) = self.local_time_secs else {
-            return self;
-        };
-
-        let duration_secs = timing.duration.as_secs();
-        if duration_secs == 0.0 || timing.iterations.finite_value() == Some(0.0) {
-            return self;
-        }
-
-        let overall_progress = local_time_secs / duration_secs;
-        if !overall_progress.is_finite() {
-            return self;
-        }
-
-        let current_iteration_index = overall_progress.floor();
-        let simple_progress_value = overall_progress - current_iteration_index;
-        let Ok(simple_progress) = PhaseProgress::new(simple_progress_value) else {
-            return self;
-        };
-
-        let current_iteration = CurrentIteration::new(current_iteration_index);
-        let (directed_progress, _) =
-            directed_progress(timing.direction, current_iteration, simple_progress);
-        let eased_progress = timing
-            .easing
-            .evaluate_with_before_flag(directed_progress.normalized(), false);
-
-        self.current_iteration = Some(current_iteration);
-        self.simple_progress = Some(simple_progress);
-        self.directed_progress = Some(directed_progress);
-        self.eased_progress = Some(eased_progress);
-        self
-    }
-
-    fn with_before_fill_progress(mut self, timing: &TimingParameters) -> Self {
-        if !matches!(timing.fill_mode, FillMode::Backwards | FillMode::Both) {
-            return self;
-        }
-
-        let current_iteration = CurrentIteration::new(0.0);
-        let simple_progress = PhaseProgress::from_normalized(NormalizedProgress::ZERO);
-        let (directed_progress, current_direction) =
-            directed_progress(timing.direction, current_iteration, simple_progress);
-        let before_flag = current_direction == CurrentDirection::Forwards;
-        let eased_progress = timing
-            .easing
-            .evaluate_with_before_flag(directed_progress.normalized(), before_flag);
-
-        self.current_iteration = Some(current_iteration);
-        self.simple_progress = Some(simple_progress);
-        self.directed_progress = Some(directed_progress);
-        self.eased_progress = Some(eased_progress);
-        self.easing_before_flag = before_flag;
-        self
-    }
-
-    fn with_after_fill_progress(mut self, timing: &TimingParameters) -> Self {
-        if !matches!(timing.fill_mode, FillMode::Forwards | FillMode::Both) {
-            return self;
-        }
-
-        let Some((current_iteration, simple_progress)) = final_iteration_progress(timing) else {
-            return self;
-        };
-
-        let (directed_progress, current_direction) =
-            directed_progress(timing.direction, current_iteration, simple_progress);
-        let before_flag = current_direction == CurrentDirection::Reverse;
-        let eased_progress = timing
-            .easing
-            .evaluate_with_before_flag(directed_progress.normalized(), before_flag);
-
-        self.current_iteration = Some(current_iteration);
-        self.simple_progress = Some(simple_progress);
-        self.directed_progress = Some(directed_progress);
-        self.eased_progress = Some(eased_progress);
-        self.easing_before_flag = before_flag;
-        self
+        matches!(self.kernel.phase, TimingPhase::After)
     }
 }
 
@@ -559,38 +445,6 @@ impl ActiveDuration {
             Self::Finite(secs) => Some(secs),
             Self::Unbounded => None,
         }
-    }
-
-    const fn phase_for_local_time(self, local_time_secs: f64) -> TimingPhase {
-        if local_time_secs < 0.0 {
-            return TimingPhase::Before;
-        }
-
-        match self {
-            Self::Finite(0.0) => TimingPhase::After,
-            Self::Finite(active_duration_secs) if local_time_secs < active_duration_secs => {
-                TimingPhase::Active
-            }
-            Self::Finite(_) => TimingPhase::After,
-            Self::Unbounded => TimingPhase::Active,
-        }
-    }
-
-    const fn phase_for_positive_overflow(self) -> TimingPhase {
-        match self {
-            Self::Finite(_) => TimingPhase::After,
-            Self::Unbounded => TimingPhase::Active,
-        }
-    }
-}
-
-fn checked_local_time_secs(elapsed: ElapsedTime, delay: AnimationDelay) -> Option<f64> {
-    let local_time_secs = elapsed.as_secs() - delay.as_secs();
-
-    if local_time_secs.is_finite() {
-        Some(local_time_secs)
-    } else {
-        None
     }
 }
 
@@ -635,33 +489,6 @@ fn is_odd_iteration(iteration: CurrentIteration) -> bool {
     match iteration.finite_index() {
         Some(index) => index.rem_euclid(2.0) == 1.0,
         None => false,
-    }
-}
-
-fn final_iteration_progress(
-    timing: &TimingParameters,
-) -> Option<(CurrentIteration, PhaseProgress)> {
-    match timing.iterations.value {
-        IterationCountValue::Finite(0.0) => Some((
-            CurrentIteration::new(0.0),
-            PhaseProgress::from_normalized(NormalizedProgress::ZERO),
-        )),
-        IterationCountValue::Finite(iterations) => {
-            let simple_progress_value = iterations.fract();
-            let (iteration_index, simple_progress_value) = if simple_progress_value == 0.0 {
-                (iterations - 1.0, 1.0)
-            } else {
-                (iterations.floor(), simple_progress_value)
-            };
-
-            let simple_progress = PhaseProgress::new(simple_progress_value).ok()?;
-            Some((CurrentIteration::new(iteration_index), simple_progress))
-        }
-        IterationCountValue::Infinite if timing.duration.is_zero() => Some((
-            CurrentIteration::infinite(),
-            PhaseProgress::from_normalized(NormalizedProgress::ONE),
-        )),
-        IterationCountValue::Infinite => None,
     }
 }
 
@@ -893,7 +720,7 @@ mod tests {
         );
 
         assert_eq!(sample.phase(), TimingPhase::After);
-        assert_eq!(sample.local_time_secs(), None);
+        assert_eq!(sample.local_time_secs(), Some(f64::MAX));
         assert_eq!(sample.active_duration_secs(), Some(f64::MAX));
     }
 
