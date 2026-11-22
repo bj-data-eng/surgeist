@@ -62,7 +62,8 @@ impl<'a> DomButton<'a> {
             .button_state()
             .expect("checked Button")
     }
-    /// Raw weak slot. HTML's scoped associated-element getter is a semantic query.
+    /// Stored weak reference. Use `DomNode::html_command_for_with` for the
+    /// scoped associated Element.
     pub fn explicit_command_for(self) -> Option<NodeId> {
         self.node
             .node

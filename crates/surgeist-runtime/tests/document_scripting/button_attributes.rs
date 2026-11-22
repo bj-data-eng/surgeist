@@ -311,6 +311,95 @@ fn units(prefix: &str, suffix: &[u16]) -> DocumentString {
     )
 }
 
+pub(super) fn attached_button_resolves_its_live_command_target() {
+    let (session, top) = setup();
+    let (mut host, _) =
+        attach_event_window_with_work(session, top, Arc::new(cancel()), 160_000, |_, _, _| {});
+    let permit = host.permit().unwrap();
+    observe(
+        &mut host,
+        &permit,
+        r#"(() => {
+        const proto = HTMLButtonElement.prototype;
+        const d = Object.getOwnPropertyDescriptor(proto, 'commandForElement');
+        if (typeof d?.get !== 'function') return 'missing native Button commandForElement';
+        if (!d.enumerable || !d.configurable || d.get.name !== 'get commandForElement' ||
+            d.get.length !== 0 || typeof d.set !== 'function' ||
+            d.set.name !== 'set commandForElement' || d.set.length !== 1) return 'accessor metadata';
+        if (Object.getOwnPropertyNames(proto).filter(name =>
+            ['command', 'commandForElement', 'disabled'].includes(name)).join() !==
+            'command,commandForElement,disabled') return 'Button declaration order';
+        const zone = document.body.appendChild(document.createElement('section'));
+        const button = zone.appendChild(document.createElementNS('http://www.w3.org/1999/xhtml', 'p:button'));
+        const input = zone.appendChild(document.createElement('input'));
+        const first = zone.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+        const second = zone.appendChild(document.createElement('div'));
+        const reject = f => {
+            try { f(); } catch (error) { return error instanceof TypeError; }
+            return false;
+        };
+        for (const receiver of [input, Object.create(proto), new Proxy(button, {}), null]) {
+            if (!reject(() => d.get.call(receiver)) ||
+                !reject(() => d.set.call(receiver, first))) return 'native Button receiver';
+        }
+        if (!reject(() => { button.commandForElement = document; }) ||
+            !reject(() => { button.commandForElement = new Proxy(first, {}); }) ||
+            button.hasAttribute('commandfor')) return 'native nullable Element operand';
+        const id = 'Target\ud800\0';
+        first.id = id;
+        second.id = id;
+        button.setAttributeNS('urn:foreign', 'p:commandfor', id);
+        if (button.commandForElement !== null) return 'namespace is exact';
+        button.setAttribute('commandfor', id);
+        if (button.commandForElement !== first) return 'first exact Element ID';
+        zone.insertBefore(second, first);
+        if (button.commandForElement !== second) return 'live tree order';
+        button.popoverTargetElement = first;
+        button.commandForElement = second;
+        if (button.getAttribute('commandfor') !== '' || button.popoverTargetElement !== first ||
+            button.commandForElement !== second) return 'separate native weak slots';
+        second.remove();
+        if (button.commandForElement !== null) return 'explicit target is now out of scope';
+        zone.appendChild(second);
+        if (button.commandForElement !== second) return 'reconnected explicit target';
+        button.setAttribute('commandfor', 'target\ud800\0');
+        if (button.commandForElement !== null) return 'raw change clears explicit target and preserves exact case';
+        const shadowHost = zone.appendChild(document.createElement('div'));
+        const shadow = shadowHost.attachShadow({mode: 'open'});
+        const inside = shadow.appendChild(document.createElement('button'));
+        inside.commandForElement = first;
+        button.commandForElement = inside;
+        if (inside.commandForElement !== first || button.commandForElement !== null) {
+            return 'reflected target scope uses ordinary target and shadow-including source ancestry';
+        }
+        button.commandForElement = undefined;
+        if (button.hasAttribute('commandfor') || button.commandForElement !== null ||
+            button.popoverTargetElement !== first) return 'nullable removal leaves popover intact';
+        const changes = [];
+        class CommandProbe extends HTMLButtonElement {
+            static observedAttributes = ['commandfor', 'popovertarget'];
+            attributeChangedCallback(name, previous, current) {
+                changes.push([name, previous, current, this.commandForElement]);
+                if (name === 'commandfor' && current === '') this.popoverTargetElement = first;
+            }
+        }
+        customElements.define('x-command-probe', CommandProbe, {extends: 'button'});
+        const observed = zone.appendChild(document.createElement('button', {is: 'x-command-probe'}));
+        observed.commandForElement = second;
+        if (changes.length !== 2 || changes[0][0] !== 'commandfor' || changes[0][1] !== null ||
+            changes[0][2] !== '' || changes[0][3] !== second || changes[1][0] !== 'popovertarget' ||
+            changes[1][3] !== second || observed.popoverTargetElement !== first) {
+            return 'native command association and nested popover reaction';
+        }
+        zone.remove();
+        return 'ok';
+    })()"#,
+    );
+    host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
+        .unwrap();
+    host.stop().into_session().unwrap();
+}
+
 fn observe(host: &mut DocumentScriptHost, permit: &DocumentScriptPermit, script: &str) {
     let result = host
         .in_document(permit, |scope| {

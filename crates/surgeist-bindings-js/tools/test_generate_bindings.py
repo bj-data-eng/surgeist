@@ -820,11 +820,21 @@ class DescriptionTests(unittest.TestCase):
                 read = mappings[f"HTMLButtonElement.{name}/get"]
                 self.assertFalse(read["requirements"])
                 self.assertIn(producer, [item["symbol"] for item in read["producers"]])
-        for name in ["commandForElement", "formAction", "validity", "labels"]:
+        for operation, native, runtime in [
+            ("get", "html_command_for_with", "read_reflected_element"),
+            ("set", "set_command_for_element", "write_reflected_element"),
+        ]:
+            with self.subTest(operation=operation):
+                access = mappings[f"HTMLButtonElement.commandForElement/{operation}"]
+                self.assertEqual(access["kind"], "native")
+                self.assertFalse(access["requirements"])
+                self.assertEqual({(item["owner"], item["symbol"]) for item in access["producers"]},
+                                 {("surgeist-dom", native), ("surgeist-runtime", runtime)})
+        for name in ["formAction", "validity", "labels"]:
             with self.subTest(member=name):
                 read = mappings[f"HTMLButtonElement.{name}/get"]
                 self.assertTrue(read.get("requirements") or read.get("requirement"))
-        for name, producer in [("commandForElement", "associated_element"), ("labels", "control_labels"),
+        for name, producer in [("labels", "control_labels"),
                                ("willValidate", "constraint_validation_candidate")]:
             with self.subTest(member=name):
                 read = mappings[f"HTMLButtonElement.{name}/get"]
