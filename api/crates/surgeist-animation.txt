@@ -31,6 +31,7 @@ pub enum surgeist_animation::composition::PropertyOperationErrorKind
 pub surgeist_animation::composition::PropertyOperationErrorKind::Capacity
 pub surgeist_animation::composition::PropertyOperationErrorKind::Computed(surgeist_animation::computed::ComputedError)
 pub surgeist_animation::composition::PropertyOperationErrorKind::Filter(alloc::boxed::Box<surgeist_animation::filter::FilterError>)
+pub surgeist_animation::composition::PropertyOperationErrorKind::Grid(alloc::boxed::Box<surgeist_animation::grid::GridError>)
 pub surgeist_animation::composition::PropertyOperationErrorKind::Interpolation(alloc::boxed::Box<surgeist_animation::interpolation::InterpolationError>)
 pub surgeist_animation::composition::PropertyOperationErrorKind::Shadow(alloc::boxed::Box<surgeist_animation::shadow::ShadowError>)
 pub surgeist_animation::composition::PropertyOperationErrorKind::Transform(alloc::boxed::Box<surgeist_animation::transform::TransformError>)
@@ -108,6 +109,8 @@ impl surgeist_animation::composition::PropertyOperationError
 pub const fn surgeist_animation::composition::PropertyOperationError::kind(&self) -> &surgeist_animation::composition::PropertyOperationErrorKind
 impl core::convert::From<surgeist_animation::computed::ComputedError> for surgeist_animation::composition::PropertyOperationError
 pub fn surgeist_animation::composition::PropertyOperationError::from(error: surgeist_animation::computed::ComputedError) -> Self
+impl core::convert::From<surgeist_animation::grid::GridError> for surgeist_animation::composition::PropertyOperationError
+pub fn surgeist_animation::composition::PropertyOperationError::from(error: surgeist_animation::grid::GridError) -> Self
 impl core::convert::From<surgeist_animation::interpolation::InterpolationError> for surgeist_animation::composition::PropertyOperationError
 pub fn surgeist_animation::composition::PropertyOperationError::from(error: surgeist_animation::interpolation::InterpolationError) -> Self
 impl core::error::Error for surgeist_animation::composition::PropertyOperationError
@@ -589,6 +592,9 @@ pub fn surgeist_animation::filter::FilterList::functions(&self) -> &[surgeist_an
 pub fn surgeist_animation::filter::FilterList::interpolate(&self, other: &Self, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<Self, surgeist_animation::filter::FilterError>
 pub fn surgeist_animation::filter::FilterList::new(inputs: alloc::vec::Vec<surgeist_animation::filter::FilterInput>) -> core::result::Result<Self, surgeist_animation::filter::FilterError>
 pub mod surgeist_animation::grid
+pub enum surgeist_animation::grid::AutomaticRepeatKind
+pub surgeist_animation::grid::AutomaticRepeatKind::AutoFill
+pub surgeist_animation::grid::AutomaticRepeatKind::AutoFit
 pub enum surgeist_animation::grid::GridComponent
 pub surgeist_animation::grid::GridComponent::Breadth
 pub surgeist_animation::grid::GridComponent::FitContentLimit
@@ -598,15 +604,26 @@ pub enum surgeist_animation::grid::GridErrorKind
 pub surgeist_animation::grid::GridErrorKind::Capacity
 pub surgeist_animation::grid::GridErrorKind::EmptyList
 pub surgeist_animation::grid::GridErrorKind::FlexibleMinimum
+pub surgeist_animation::grid::GridErrorKind::InvalidAutomaticTrack
 pub surgeist_animation::grid::GridErrorKind::InvalidNumericType
+pub surgeist_animation::grid::GridErrorKind::MultipleAutomaticRepeats
 pub surgeist_animation::grid::GridErrorKind::Numeric
 pub surgeist_animation::grid::GridErrorKind::ZeroRepeatCount
 pub enum surgeist_animation::grid::GridValue
 pub surgeist_animation::grid::GridValue::Implicit(surgeist_animation::grid::ImplicitTrackList)
 pub surgeist_animation::grid::GridValue::None
+pub surgeist_animation::grid::GridValue::Subgrid(surgeist_animation::grid::SubgridTrackList)
 pub surgeist_animation::grid::GridValue::Template(surgeist_animation::grid::TemplateTrackList)
 impl surgeist_animation::grid::GridValue
+pub fn surgeist_animation::grid::GridValue::accumulate(&self, effect: &Self) -> core::result::Result<Self, surgeist_animation::grid::GridError>
+pub fn surgeist_animation::grid::GridValue::add(&self, effect: &Self) -> core::result::Result<Self, surgeist_animation::grid::GridError>
 pub fn surgeist_animation::grid::GridValue::interpolate(&self, other: &Self, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<Self, surgeist_animation::grid::GridError>
+pub enum surgeist_animation::grid::NameRepeatCount
+pub surgeist_animation::grid::NameRepeatCount::AutoFill
+pub surgeist_animation::grid::NameRepeatCount::Fixed(usize)
+pub enum surgeist_animation::grid::SubgridSection
+pub surgeist_animation::grid::SubgridSection::Names(surgeist_animation::grid::LineNames)
+pub surgeist_animation::grid::SubgridSection::Repeat(surgeist_animation::grid::NameRepeat)
 pub enum surgeist_animation::grid::TrackBreadthKind
 pub surgeist_animation::grid::TrackBreadthKind::Auto
 pub surgeist_animation::grid::TrackBreadthKind::Flex
@@ -614,8 +631,15 @@ pub surgeist_animation::grid::TrackBreadthKind::LengthPercentage
 pub surgeist_animation::grid::TrackBreadthKind::MaxContent
 pub surgeist_animation::grid::TrackBreadthKind::MinContent
 pub enum surgeist_animation::grid::TrackSection
+pub surgeist_animation::grid::TrackSection::AutomaticRepeat(surgeist_animation::grid::AutomaticRepeat)
 pub surgeist_animation::grid::TrackSection::Repeat(surgeist_animation::grid::FixedRepeat)
 pub surgeist_animation::grid::TrackSection::Single(surgeist_animation::grid::TrackSize)
+pub struct surgeist_animation::grid::AutomaticRepeat
+impl surgeist_animation::grid::AutomaticRepeat
+pub const fn surgeist_animation::grid::AutomaticRepeat::kind(&self) -> surgeist_animation::grid::AutomaticRepeatKind
+pub const fn surgeist_animation::grid::AutomaticRepeat::leading_names(&self) -> &surgeist_animation::grid::LineNames
+pub fn surgeist_animation::grid::AutomaticRepeat::new(kind: surgeist_animation::grid::AutomaticRepeatKind, leading: surgeist_animation::grid::LineNames, tracks: alloc::vec::Vec<(surgeist_animation::grid::TrackSize, surgeist_animation::grid::LineNames)>) -> core::result::Result<Self, surgeist_animation::grid::GridError>
+pub fn surgeist_animation::grid::AutomaticRepeat::tracks(&self) -> &[(surgeist_animation::grid::TrackSize, surgeist_animation::grid::LineNames)]
 pub struct surgeist_animation::grid::FixedRepeat
 impl surgeist_animation::grid::FixedRepeat
 pub const fn surgeist_animation::grid::FixedRepeat::count(&self) -> usize
@@ -630,6 +654,8 @@ pub const fn surgeist_animation::grid::GridError::kind(&self) -> surgeist_animat
 pub const fn surgeist_animation::grid::GridError::numeric_error(&self) -> core::option::Option<&surgeist_animation::computed::ComputedError>
 pub const fn surgeist_animation::grid::GridError::repeat_index(&self) -> core::option::Option<usize>
 pub const fn surgeist_animation::grid::GridError::section_index(&self) -> core::option::Option<usize>
+impl core::convert::From<surgeist_animation::grid::GridError> for surgeist_animation::composition::PropertyOperationError
+pub fn surgeist_animation::composition::PropertyOperationError::from(error: surgeist_animation::grid::GridError) -> Self
 impl core::error::Error for surgeist_animation::grid::GridError
 pub fn surgeist_animation::grid::GridError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_animation::grid::GridError
@@ -642,6 +668,15 @@ pub struct surgeist_animation::grid::LineNames
 impl surgeist_animation::grid::LineNames
 pub fn surgeist_animation::grid::LineNames::names(&self) -> &[surgeist_animation::interpolation::DiscreteValue]
 pub fn surgeist_animation::grid::LineNames::new(names: alloc::vec::Vec<surgeist_animation::interpolation::DiscreteValue>) -> Self
+pub struct surgeist_animation::grid::NameRepeat
+impl surgeist_animation::grid::NameRepeat
+pub const fn surgeist_animation::grid::NameRepeat::count(&self) -> surgeist_animation::grid::NameRepeatCount
+pub fn surgeist_animation::grid::NameRepeat::groups(&self) -> &[surgeist_animation::grid::LineNames]
+pub fn surgeist_animation::grid::NameRepeat::new(count: surgeist_animation::grid::NameRepeatCount, groups: alloc::vec::Vec<surgeist_animation::grid::LineNames>) -> core::result::Result<Self, surgeist_animation::grid::GridError>
+pub struct surgeist_animation::grid::SubgridTrackList
+impl surgeist_animation::grid::SubgridTrackList
+pub fn surgeist_animation::grid::SubgridTrackList::new(sections: alloc::vec::Vec<surgeist_animation::grid::SubgridSection>) -> core::result::Result<Self, surgeist_animation::grid::GridError>
+pub fn surgeist_animation::grid::SubgridTrackList::sections(&self) -> &[surgeist_animation::grid::SubgridSection]
 pub struct surgeist_animation::grid::TemplateTrackList
 impl surgeist_animation::grid::TemplateTrackList
 pub fn surgeist_animation::grid::TemplateTrackList::leading_names(&self) -> &surgeist_animation::grid::LineNames

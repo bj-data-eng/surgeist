@@ -682,6 +682,390 @@ fn native_running_transition_returns_grid_errors_and_retains_its_snapshot() {
     );
 }
 
+#[test]
+fn automatic_repeats_switch_complete_templates_even_for_the_same_keyword() {
+    use surgeist_animation::grid::AutomaticRepeatKind::{AutoFill, AutoFit};
+    for from_kind in [AutoFill, AutoFit] {
+        for to_kind in [AutoFill, AutoFit] {
+            let from = automatic_template(from_kind, 8.0, 10.0);
+            let to = automatic_template(to_kind, 24.0, 30.0);
+            let track = track("grid-template-columns", from.clone(), to.clone());
+            assert_sample(&track, 0.5_f64.next_down(), from.clone());
+            assert_sample(&track, 0.5, to.clone());
+            assert_eq!(
+                pair(from.clone(), to.clone()).sample(progress(-2.0)),
+                InterpolationOutcome::Value(wrapped(from))
+            );
+            assert_eq!(
+                pair(to.clone(), GridValue::None).sample(progress(0.25)),
+                InterpolationOutcome::Value(wrapped(to))
+            );
+        }
+    }
+}
+
+#[test]
+fn automatic_repeat_guards_fixed_size_bodies_and_the_complete_template() {
+    use surgeist_animation::grid::{AutomaticRepeat, AutomaticRepeatKind::AutoFill};
+    assert_eq!(
+        AutomaticRepeat::new(AutoFill, names(&[]), vec![])
+            .unwrap_err()
+            .kind(),
+        GridErrorKind::EmptyList
+    );
+    for invalid in [flex(1.0), plain(TrackBreadth::auto()), fit(10.0)] {
+        assert_eq!(
+            AutomaticRepeat::new(AutoFill, names(&[]), vec![(invalid.clone(), names(&[]))])
+                .unwrap_err()
+                .kind(),
+            GridErrorKind::InvalidAutomaticTrack
+        );
+        let error = TemplateTrackList::new(
+            names(&[]),
+            vec![
+                (single(invalid), names(&[])),
+                (automatic(AutoFill, 10.0), names(&[])),
+            ],
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), GridErrorKind::InvalidAutomaticTrack);
+        assert_eq!(error.section_index(), Some(0));
+    }
+    let error = TemplateTrackList::new(
+        names(&[]),
+        vec![
+            (repeated(2, vec![(flex(1.0), names(&[]))]), names(&[])),
+            (automatic(AutoFill, 10.0), names(&[])),
+        ],
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), GridErrorKind::InvalidAutomaticTrack);
+    assert_eq!(error.repeat_index(), Some(0));
+    let error = TemplateTrackList::new(
+        names(&[]),
+        vec![
+            (automatic(AutoFill, 10.0), names(&[])),
+            (automatic(AutoFill, 20.0), names(&[])),
+        ],
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), GridErrorKind::MultipleAutomaticRepeats);
+}
+
+#[test]
+fn automatic_fixed_size_alternatives_retain_names_and_do_not_resolve_counts() {
+    use surgeist_animation::grid::{AutomaticRepeat, AutomaticRepeatKind::AutoFit};
+    let fixed_max = TrackSize::minmax(
+        TrackBreadth::min_content(),
+        TrackBreadth::length_percentage(lp(20.0)).unwrap(),
+    )
+    .unwrap();
+    let body = vec![
+        (percentage(0.25), names(&["percent"])),
+        (minmax(8.0, flex_breadth(1.0)), names(&["minimum"])),
+        (fixed_max, names(&["maximum"])),
+    ];
+    let repeat = AutomaticRepeat::new(AutoFit, names(&["leading"]), body.clone()).unwrap();
+    assert_eq!(repeat.kind(), AutoFit);
+    assert_eq!(repeat.leading_names(), &names(&["leading"]));
+    assert_eq!(repeat.tracks(), body);
+    let value = template(
+        &["outer"],
+        vec![
+            (
+                repeated(usize::MAX, vec![(length(4.0), names(&[]))]),
+                names(&[]),
+            ),
+            (TrackSection::AutomaticRepeat(repeat), names(&["trailing"])),
+        ],
+    );
+    assert_eq!(
+        value.interpolate(&GridValue::None, progress(0.25)).unwrap(),
+        value
+    );
+}
+
+#[test]
+fn subgrid_preserves_anchors_fixed_and_automatic_name_repeats_as_a_distinct_form() {
+    use surgeist_animation::grid::{NameRepeat, NameRepeatCount, SubgridSection, SubgridTrackList};
+    let fixed = NameRepeat::new(
+        NameRepeatCount::Fixed(usize::MAX),
+        vec![names(&[]), names(&["a", "b"])],
+    )
+    .unwrap();
+    assert_eq!(fixed.count(), NameRepeatCount::Fixed(usize::MAX));
+    assert_eq!(fixed.groups(), &[names(&[]), names(&["a", "b"])]);
+    let sections = vec![
+        SubgridSection::Names(names(&["anchor"])),
+        SubgridSection::Repeat(fixed),
+        SubgridSection::Repeat(
+            NameRepeat::new(NameRepeatCount::AutoFill, vec![names(&["fill"])]).unwrap(),
+        ),
+        SubgridSection::Names(names(&[])),
+    ];
+    let subgrid = SubgridTrackList::new(sections.clone()).unwrap();
+    assert_eq!(subgrid.sections(), sections);
+    let from = GridValue::Subgrid(subgrid);
+    let bare = GridValue::Subgrid(SubgridTrackList::new(vec![]).unwrap());
+    for to in [bare, list(vec![length(30.0)]), GridValue::None] {
+        let track = track("grid-template-rows", from.clone(), to.clone());
+        assert_sample(&track, 0.25, from.clone());
+        assert_sample(&track, 0.5, to);
+    }
+}
+
+#[test]
+fn name_repeat_guards_positive_counts_nonempty_groups_and_one_auto_fill() {
+    use surgeist_animation::grid::{NameRepeat, NameRepeatCount, SubgridSection, SubgridTrackList};
+    assert_eq!(
+        NameRepeat::new(NameRepeatCount::Fixed(0), vec![names(&[])])
+            .unwrap_err()
+            .kind(),
+        GridErrorKind::ZeroRepeatCount
+    );
+    assert_eq!(
+        NameRepeat::new(NameRepeatCount::AutoFill, vec![])
+            .unwrap_err()
+            .kind(),
+        GridErrorKind::EmptyList
+    );
+    let automatic = NameRepeat::new(NameRepeatCount::AutoFill, vec![names(&[])]).unwrap();
+    assert_eq!(
+        SubgridTrackList::new(vec![
+            SubgridSection::Repeat(automatic.clone()),
+            SubgridSection::Names(names(&["between"])),
+            SubgridSection::Repeat(automatic)
+        ])
+        .unwrap_err()
+        .kind(),
+        GridErrorKind::MultipleAutomaticRepeats
+    );
+}
+
+#[test]
+fn grid_addition_and_default_accumulation_keep_independent_numeric_terms() {
+    let underlying = list(vec![length(40.0), percentage(0.125), flex(0.5)]);
+    let effect = list(vec![length(80.0), length(60.0), flex(1.5)]);
+    let expected = list(vec![length(120.0), mixed(60.0, 0.125), flex(2.0)]);
+    assert_eq!(underlying.add(&effect).unwrap(), expected);
+    assert_eq!(underlying.accumulate(&effect).unwrap(), expected);
+    assert_eq!(
+        underlying,
+        list(vec![length(40.0), percentage(0.125), flex(0.5)])
+    );
+    assert_eq!(effect, list(vec![length(80.0), length(60.0), flex(1.5)]));
+}
+
+#[test]
+fn grid_composition_is_local_for_ordinary_items_and_explicit_minmax_bounds() {
+    let underlying = implicit(vec![
+        length(8.0),
+        flex(1.0),
+        minmax(6.0, flex_breadth(1.0)),
+        fit(5.0),
+        length(2.0),
+    ]);
+    let effect = implicit(vec![
+        length(24.0),
+        plain(TrackBreadth::auto()),
+        minmax(10.0, TrackBreadth::auto()),
+        fit(15.0),
+        minmax(7.0, flex_breadth(2.0)),
+    ]);
+    let expected = implicit(vec![
+        length(32.0),
+        plain(TrackBreadth::auto()),
+        minmax(16.0, TrackBreadth::auto()),
+        fit(20.0),
+        minmax(7.0, flex_breadth(2.0)),
+    ]);
+    assert_eq!(underlying.add(&effect).unwrap(), expected);
+    assert_eq!(underlying.accumulate(&effect).unwrap(), expected);
+}
+
+#[test]
+fn fixed_repeat_composition_keeps_count_and_takes_all_effect_line_groups() {
+    let value = |px, factor, name: &str| {
+        template(
+            &[name],
+            vec![(
+                TrackSection::Repeat(
+                    FixedRepeat::new(
+                        3,
+                        names(&[name]),
+                        vec![(length(px), names(&[name])), (flex(factor), names(&[]))],
+                    )
+                    .unwrap(),
+                ),
+                names(&[name]),
+            )],
+        )
+    };
+    assert_eq!(
+        value(8.0, 1.0, "base")
+            .add(&value(24.0, 2.0, "effect"))
+            .unwrap(),
+        value(32.0, 3.0, "effect")
+    );
+    assert_eq!(
+        value(8.0, 1.0, "base")
+            .accumulate(&value(24.0, 2.0, "effect"))
+            .unwrap(),
+        value(32.0, 3.0, "effect")
+    );
+}
+
+#[test]
+fn incompatible_composition_selects_complete_effect_before_numeric_work() {
+    use surgeist_animation::grid::{AutomaticRepeatKind::AutoFill, SubgridTrackList};
+    let underlying = list(vec![length(f64::MAX), length(10.0)]);
+    for effect in [
+        list(vec![length(f64::MAX)]),
+        GridValue::None,
+        automatic_template(AutoFill, 20.0, 30.0),
+        GridValue::Subgrid(SubgridTrackList::new(vec![]).unwrap()),
+        list_sections(vec![
+            single(length(f64::MAX)),
+            repeated(2, vec![(length(30.0), names(&[]))]),
+        ]),
+    ] {
+        assert_eq!(underlying.add(&effect).unwrap(), effect);
+        assert_eq!(underlying.accumulate(&effect).unwrap(), effect);
+    }
+    let auto = automatic_template(AutoFill, 10.0, 20.0);
+    let effect = automatic_template(AutoFill, 30.0, 40.0);
+    assert_eq!(auto.add(&effect).unwrap(), effect);
+}
+
+#[test]
+fn grid_composition_errors_retain_operation_and_nested_numeric_position() {
+    use surgeist_animation::computed::ComputedOperation;
+    use surgeist_animation::grid::GridComponent;
+    let value = list_sections(vec![
+        single(length(1.0)),
+        repeated(
+            2,
+            vec![
+                (length(2.0), names(&[])),
+                (minmax(3.0, flex_breadth(f64::MAX)), names(&[])),
+            ],
+        ),
+    ]);
+    for (result, operation) in [
+        (value.add(&value), ComputedOperation::Add),
+        (value.accumulate(&value), ComputedOperation::Accumulate),
+    ] {
+        let error = result.unwrap_err();
+        assert_eq!(error.kind(), GridErrorKind::Numeric);
+        assert_eq!(error.section_index(), Some(1));
+        assert_eq!(error.repeat_index(), Some(1));
+        assert_eq!(error.component(), Some(GridComponent::Maximum));
+        assert_eq!(error.numeric_error().unwrap().operation(), Some(operation));
+    }
+    assert_eq!(value.interpolate(&value, progress(0.0)).unwrap(), value);
+}
+
+#[test]
+fn grid_composition_retains_symbolic_sources_and_unclamped_intermediates() {
+    use surgeist_animation::computed::{ComputedOperation, MathContext, MathNode, NumericType};
+    let context = MathContext::new();
+    let source = context.source(NumericType::DimensionPercentage(DimensionKind::Length));
+    let underlying = implicit(vec![plain(
+        TrackBreadth::length_percentage(ComputedNumeric::source(source.clone())).unwrap(),
+    )]);
+    for (result, expected_operation) in [
+        (
+            underlying.add(&implicit(vec![percentage(0.25)])),
+            ComputedOperation::Add,
+        ),
+        (
+            underlying.accumulate(&implicit(vec![percentage(0.25)])),
+            ComputedOperation::Accumulate,
+        ),
+    ] {
+        let GridValue::Implicit(list) = result.unwrap() else {
+            panic!("expected implicit tracks")
+        };
+        let nodes = list.tracks()[0]
+            .as_breadth()
+            .unwrap()
+            .numeric()
+            .unwrap()
+            .math_nodes()
+            .unwrap();
+        assert!(nodes.iter().any(|node| matches!(node, MathNode::Source(actual) if actual == &source && actual.context() == &context)));
+        assert!(
+            matches!(nodes.last(), Some(MathNode::Combine { operation, .. }) if *operation == expected_operation)
+        );
+    }
+    let negative = list(vec![length(-10.0), flex(-1.0)]);
+    assert_eq!(
+        negative.add(&list(vec![length(6.0), flex(0.5)])).unwrap(),
+        list(vec![length(-4.0), flex(-0.5)])
+    );
+}
+
+#[test]
+fn automatic_template_fallback_precedes_overflow_and_composition_selects_effect() {
+    use surgeist_animation::grid::AutomaticRepeatKind::AutoFill;
+    let from = automatic_template(AutoFill, f64::MAX, 10.0);
+    let to = automatic_template(AutoFill, f64::MAX / 2.0, 30.0);
+    assert_eq!(from.interpolate(&to, progress(-2.0)).unwrap(), from);
+    assert_eq!(from.add(&from).unwrap(), from);
+    assert_eq!(from.accumulate(&to).unwrap(), to);
+}
+
+#[test]
+fn compose_then_sample_uses_real_grid_pairs_for_add_and_replace_endpoints() {
+    let underlying = list(vec![length(40.0), percentage(0.125)]);
+    let added_from = underlying
+        .add(&list(vec![length(80.0), length(60.0)]))
+        .unwrap();
+    let added_to = underlying
+        .accumulate(&list(vec![length(160.0), percentage(0.25)]))
+        .unwrap();
+    let sampled_track = track("grid-template-columns", added_from, added_to);
+    assert_sample(
+        &sampled_track,
+        0.5,
+        list(vec![length(160.0), mixed(30.0, 0.25)]),
+    );
+    let from = underlying
+        .add(&list(vec![length(80.0), percentage(0.125)]))
+        .unwrap();
+    let replaced = list(vec![length(200.0), percentage(0.5)]);
+    assert_sample(
+        &track("grid-template-rows", from, replaced),
+        0.5,
+        list(vec![length(160.0), percentage(0.375)]),
+    );
+}
+
+fn automatic(kind: surgeist_animation::grid::AutomaticRepeatKind, px: f64) -> TrackSection {
+    use surgeist_animation::grid::AutomaticRepeat;
+    TrackSection::AutomaticRepeat(
+        AutomaticRepeat::new(
+            kind,
+            names(&["body-start"]),
+            vec![(minmax(px, flex_breadth(1.0)), names(&["body-end"]))],
+        )
+        .unwrap(),
+    )
+}
+fn automatic_template(
+    kind: surgeist_animation::grid::AutomaticRepeatKind,
+    before: f64,
+    px: f64,
+) -> GridValue {
+    template(
+        &["outer-start"],
+        vec![
+            (single(length(before)), names(&["before-auto"])),
+            (automatic(kind, px), names(&["outer-end"])),
+        ],
+    )
+}
+
 fn lp(px: f64) -> ComputedNumeric {
     ComputedNumeric::dimension(ComputedDimension::new(DimensionKind::Length, px).unwrap())
 }

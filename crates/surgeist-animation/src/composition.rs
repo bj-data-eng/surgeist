@@ -27,8 +27,8 @@ pub use stack::{
 ///
 /// Implementations preserve whole-property discrete fallback and typed failures
 /// according to the selected animation type. Unsupported accumulation must not
-/// silently use addition. Existing computed and transform APIs supply their
-/// implemented operations; this interface does not invent missing algorithms.
+/// silently use addition. Existing computed, transform, shadow and Grid APIs
+/// supply their operations; this interface does not invent missing algorithms.
 pub trait PropertyValueOperations {
     type Error;
     fn interpolate(

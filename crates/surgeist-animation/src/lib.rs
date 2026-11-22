@@ -38,7 +38,7 @@
 //! | [`computed`] | Canonical computed atoms, symbolic math and property combination. |
 //! | [`composition`] | Pure underlying-first endpoint composition and property operations. |
 //! | [`filter`] | Normalized filter lists and native filter-image specialization. |
-//! | [`grid`] | Structured computed Grid tracks and fixed-repeat interpolation. |
+//! | [`grid`] | Computed Grid tracks, repeats, subgrid names and composition. |
 //! | [`palette`] | Symbolic computed font-palette operands and Oklab mix plans. |
 //! | [`shadow`] | Resolved box/text shadows, padding and ordered list combination. |
 //! | [`shape`] | Computed circle, ellipse, inset and polygon interpolation. |
