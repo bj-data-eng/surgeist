@@ -121,6 +121,8 @@ mod get_element_by_id;
 mod hidden_reflection;
 #[path = "document_scripting/html_prototype_order.rs"]
 mod html_prototype_order;
+#[path = "document_scripting/html_token_lists.rs"]
+mod html_token_lists;
 #[path = "document_scripting/input_attributes.rs"]
 mod input_attributes;
 #[path = "document_scripting/input_list.rs"]
@@ -2542,6 +2544,7 @@ fn main() {
             "document-create-event" => document_create_event::document_create_event_exposes_the_native_uninitialized_event(),
             "document-create-event-realm" => document_create_event::borrowed_create_event_uses_the_receiving_document_realm(),
             "document-create-range" => document_create_range::document_range_keeps_canonical_live_boundaries(),
+            "html-token-lists" => html_token_lists::html_token_lists_share_the_native_ordered_set_surface(),
             "class-list" => class_list::class_list_observes_and_edits_the_canonical_attribute(),
             "class-list-realm" => class_list::class_list_keeps_its_element_creation_realm(),
             "class-list-reactions" => class_list::class_list_uses_native_attribute_reactions_once(),
@@ -2734,6 +2737,7 @@ fn main() {
     class_list::class_list_observes_and_edits_the_canonical_attribute();
     class_list::class_list_uses_native_attribute_reactions_once();
     class_list::class_list_keeps_its_element_creation_realm();
+    html_token_lists::html_token_lists_share_the_native_ordered_set_surface();
     document_metadata::metadata_comes_from_the_canonical_document_receiver();
     document_metadata::metadata_getters_read_during_an_original_native_source_reaction();
     document_metadata::borrowed_metadata_getters_read_the_other_live_document();
