@@ -11,6 +11,8 @@ use super::callback_object::creation_context;
 use super::{Entered, ObjectPrototype, Roots, prototype_value};
 use crate::backend::NativeProjectionSlot;
 
+mod collection;
+
 struct Entry {
     object: v8::Weak<v8::Object>,
     retired: Rc<Cell<bool>>,
@@ -27,31 +29,6 @@ struct PreparedObject {
     index: u32,
     root: Root,
     entry: Rc<Entry>,
-}
-
-fn indexed_read<'scope>(
-    scope: &mut v8::PinScope<'scope, '_>,
-    index: u32,
-    arguments: v8::PropertyCallbackArguments<'scope>,
-    mut result: v8::ReturnValue<'_>,
-) -> v8::Intercepted {
-    let holder = arguments.holder();
-    let Some(getter) = holder
-        .get_internal_field(scope, 2)
-        .and_then(|data| v8::Local::<v8::Value>::try_from(data).ok())
-        .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
-    else {
-        return v8::Intercepted::kNo;
-    };
-    let index = v8::Integer::new_from_unsigned(scope, index);
-    match getter.call(scope, holder.into(), &[index.into()]) {
-        Some(value) if value.is_undefined() => v8::Intercepted::kNo,
-        Some(value) => {
-            result.set(value);
-            v8::Intercepted::kYes
-        }
-        None => v8::Intercepted::kYes,
-    }
 }
 
 fn prepare_payload<'s>(
@@ -75,11 +52,9 @@ fn prepare_payload<'s>(
         .ok_or(Error::IdentityExhausted)?;
     bank.next.set(index);
     let template = v8::ObjectTemplate::new(scope);
-    let fields = if matches!(slot, Some(NativeProjectionSlot::IndexedRead(_))) {
-        template.set_indexed_property_handler(
-            v8::IndexedPropertyHandlerConfiguration::new().getter(indexed_read),
-        );
-        3
+    let fields = if matches!(slot, Some(NativeProjectionSlot::Collection { .. })) {
+        collection::install(template);
+        collection::FIELD_COUNT
     } else {
         2
     };
@@ -110,10 +85,14 @@ fn prepare_payload<'s>(
                 return Err(Error::BackendUnavailable);
             }
         }
-        Some(NativeProjectionSlot::IndexedRead(getter)) => {
-            let getter = v8::Local::<v8::Function>::try_from(roots.local(scope, getter)?)
+        Some(NativeProjectionSlot::Collection { read, keys }) => {
+            let read = v8::Local::<v8::Function>::try_from(roots.local(scope, read)?)
                 .map_err(|_| Error::ExpectedObject)?;
-            if !object.set_internal_field(2, getter.into()) {
+            let keys = v8::Local::<v8::Function>::try_from(roots.local(scope, keys)?)
+                .map_err(|_| Error::ExpectedObject)?;
+            if !object.set_internal_field(collection::READ_FIELD, read.into())
+                || !object.set_internal_field(collection::KEYS_FIELD, keys.into())
+            {
                 return Err(Error::BackendUnavailable);
             }
         }

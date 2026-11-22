@@ -2480,6 +2480,33 @@ fn declared_constructor_host_refusals_are_terminal() -> Result<(), Error> {
     Ok(())
 }
 
+fn native_collection_rejects_invalid_key_results(process: &mut Process) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        let global = scope.global()?;
+        let read = scope.evaluate(&units("() => undefined"))?;
+        for source in ["named => named ? [42] : []", "named => named ? [] : [{}]"] {
+            let keys = scope.evaluate(&units(source))?;
+            let collection = scope.project_native_object_with_collection_properties(
+                ObjectPrototype::Default,
+                (),
+                &read,
+                &keys,
+                |_| Ok::<_, Error>(()),
+            )?;
+            let key = units("testCollection");
+            scope.set(&global, PropertyKey::String(&key), &collection)?;
+            let checked = scope.evaluate(&units(
+                "(() => { try { Object.keys(testCollection); } catch (error) {\
+                    return error instanceof TypeError; } return false; })()",
+            ))?;
+            assert!(scope.boolean(&checked)?);
+        }
+        Ok(())
+    })
+}
+
 fn main() -> Result<(), Error> {
     v8::V8::set_flags_from_string("--expose-gc");
     let mut process = Process::bootstrap(EngineKind::V8)?;
@@ -2529,6 +2556,7 @@ fn main() -> Result<(), Error> {
     utf16_is_code_unit_exact(&mut process)?;
     exceptions_preserve_values_without_diagnostics(&mut process)?;
     properties_and_calls_refuse_invalid_values(&mut process)?;
+    native_collection_rejects_invalid_key_results(&mut process)?;
     checkpoints_are_explicit_and_shared(&mut process)?;
     web_idl_integer_conversion_preserves_coercion_and_exact_modulo(&mut process)?;
     web_idl_boolean_is_noncoercive(&mut process)?;

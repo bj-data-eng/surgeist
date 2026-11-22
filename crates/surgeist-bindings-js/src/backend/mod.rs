@@ -115,7 +115,7 @@ pub(crate) trait Engine {
 
 pub(crate) enum NativeProjectionSlot<'a> {
     Traced(u32, &'a Root),
-    IndexedRead(&'a Root),
+    Collection { read: &'a Root, keys: &'a Root },
 }
 
 #[derive(Clone, Copy)]

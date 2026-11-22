@@ -143,6 +143,8 @@ mod table_legacy_reflections;
 mod table_parts;
 #[path = "document_scripting/table_row_indexes.rs"]
 mod table_row_indexes;
+#[path = "document_scripting/tag_collection.rs"]
+mod tag_collection;
 #[path = "document_scripting/text_comment.rs"]
 mod text_comment;
 #[path = "document_scripting/textarea_values.rs"]
@@ -157,8 +159,6 @@ mod window_length;
 mod window_timers;
 #[path = "document_scripting/wpt_window_startup.rs"]
 mod wpt_window_startup;
-#[path = "document_scripting/tag_collection.rs"]
-mod tag_collection;
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -2683,6 +2683,9 @@ fn main() {
     window_document::native_document_retirement_releases_registered_callbacks();
     window_document::document_dispatch_preserves_native_observer_and_refusal();
     window_document::window_uses_the_real_global_event_target();
+    window_document::window_resolves_the_inherited_event_target_operations();
+    window_document::window_properties_direct_assignment_preserves_storage_and_inheritance();
+    tag_collection::reflects_live_tag_collection_properties();
     native_window_exposes_dom_exception();
     native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion();
     native_window_dom_exception_admission_and_hook_collision();

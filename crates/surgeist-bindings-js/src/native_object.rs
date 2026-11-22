@@ -164,11 +164,15 @@ impl<'scope> Scope<'scope> {
         )
     }
 
-    /// Project a native object with provider-backed indexed reads.
+    /// Project a native object with live, readonly indexed and named properties.
     ///
-    /// The getter receives the actual holder and a numeric index. Undefined
-    /// leaves the property unhandled. This selects an indexed read handler.
-    pub fn project_native_object_with_indexed_reads<
+    /// Both callbacks receive the actual holder. The read callback receives a
+    /// numeric index or string name and returns the property value or undefined.
+    /// When a second argument is present, it instead returns whether the key is
+    /// supported. The keys callback returns a dense array of numeric indices
+    /// without arguments, or a dense array of string names with one argument.
+    /// Use the ordinary prototype provided by the native interface.
+    pub fn project_native_object_with_collection_properties<
         T: 'static,
         Storage: 'static,
         E: From<Error>,
@@ -176,15 +180,17 @@ impl<'scope> Scope<'scope> {
         &mut self,
         prototype: ObjectPrototype<'_, 'scope>,
         payload: T,
-        getter: &Value<'scope>,
+        read: &Value<'scope>,
+        keys: &Value<'scope>,
         admit: impl FnOnce(usize) -> Result<Storage, E>,
     ) -> Result<Value<'scope>, E> {
         self.project_payload(
             prototype,
             payload,
-            Some(crate::backend::NativeProjectionSlot::IndexedRead(
-                &getter.root,
-            )),
+            Some(crate::backend::NativeProjectionSlot::Collection {
+                read: &read.root,
+                keys: &keys.root,
+            }),
             admit,
         )
     }
