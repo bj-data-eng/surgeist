@@ -334,3 +334,61 @@ fn longer_hue_distinguishes_a_near_semicircle_from_a_tie() {
         .unwrap();
     assert_eq!(sample.channels()[2].map(Finite::get), Some(90.0));
 }
+
+#[test]
+fn sample_preserves_a_channel_slope_smaller_than_the_premultiplied_spacing() {
+    let first = color(SRGB, [Some(1.0), None, None], Some(1.0));
+    let second = color(
+        SRGB,
+        [Some(1.0_f64.next_up()), None, None],
+        Some(1.0_f64.next_down()),
+    );
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+
+    // The exact second premultiplied endpoint is 1 + 2^-53 - 2^-105.
+    // Multiplying that slope by 2^54 and adding 1 gives 3 - 2^-51.
+    let sample = first
+        .sample_interpolation(second, method, Finite::new(2.0_f64.powi(54)).unwrap())
+        .unwrap();
+    assert_eq!(sample.alpha().map(Finite::get), Some(-1.0));
+    assert_eq!(
+        sample.channels()[0].map(Finite::get),
+        Some(-3.0_f64.next_down())
+    );
+}
+
+#[test]
+fn sample_recovers_a_nonconstant_maximum_channel_after_division() {
+    let max = f64::MAX;
+    let ulp = 2.0_f64.powi(971);
+    let first = color(SRGB, [Some(max - 4.0 * ulp), None, None], Some(1.0 / 16.0));
+    let second = color(SRGB, [Some(max - 2.0 * ulp), None, None], Some(3.0 / 16.0));
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+
+    // The exact normalized channel weights at t = -2 are -1 and 2.
+    let sample = first
+        .sample_interpolation(second, method, Finite::new(-2.0).unwrap())
+        .unwrap();
+    assert_eq!(sample.alpha().map(Finite::get), Some(-3.0 / 16.0));
+    assert_eq!(sample.channels()[0].map(Finite::get), Some(max));
+}
+
+#[test]
+fn sample_keeps_the_arc_from_a_tiny_negative_hue() {
+    let space = ColorSpace::Oklch;
+    let progress = 2.0_f64.powi(1023);
+    let first = color(
+        space,
+        [Some(0.5), Some(0.25), Some(-1.0 / progress)],
+        Some(1.0),
+    );
+    let second = color(space, [Some(0.5), Some(0.25), Some(0.0)], Some(1.0));
+    let method = InterpolationMethod::try_new(space, Some(HueInterpolation::Increasing)).unwrap();
+
+    // The increasing arc crosses zero with a positive step of 2^-1023.
+    // Advancing by progress adds exactly one degree to the tiny negative hue.
+    let sample = first
+        .sample_interpolation(second, method, Finite::new(progress).unwrap())
+        .unwrap();
+    assert_eq!(sample.channels()[2].map(Finite::get), Some(1.0));
+}
