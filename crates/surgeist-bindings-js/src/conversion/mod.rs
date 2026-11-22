@@ -245,6 +245,27 @@ impl<'scope> Conversion<'_, 'scope> {
         self.core(result)
     }
 
+    /// Copy native UTF-16 to JavaScript as a USVString.
+    ///
+    /// Admit temporary storage and the copy, normalization and submission
+    /// passes. Preserve valid surrogate pairs and replace unmatched surrogates.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first representation, admission or backend failure.
+    pub fn copy_usv_to_js(&mut self, units: &[u16]) -> Result<Value<'scope>, Failure> {
+        self.core(self.scope.operations.validate_string_length(units.len()))?;
+        let length = u64::try_from(units.len()).map_err(|_| self.host(Error::StringTooLong))?;
+        let (mut output, storage) = self.string_buffer(units.len())?;
+        output.extend_from_slice(units);
+        self.work(Work::CodeUnit, length).map_err(Failure)?;
+        let normalized = Converted {
+            value: UsvString::normalize(output),
+            storage,
+        };
+        self.copy_to_js(normalized.get().as_code_units())
+    }
+
     /// Copies a known native payload using current-context owned root backing.
     /// Code-unit charging remains in this conversion account, without a second
     /// output-buffer allocation or a native loan across guest entry.

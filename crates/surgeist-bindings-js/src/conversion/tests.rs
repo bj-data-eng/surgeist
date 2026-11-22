@@ -682,9 +682,56 @@ fn hidden_union_keeps_selected_value_and_string_storage() -> TestResult {
     Ok(())
 }
 
+fn native_usv_copy_accounts_for_each_pass_and_releases_scratch() -> TestResult {
+    let raw = [0xd800, 0, 0xdc00, 0xd83d, 0xde42];
+    let expected = [0xfffd, 0, 0xfffd, 0xd83d, 0xde42];
+    for (work_cap, scratch_cap, accepted_work) in [(15, 10, 15), (14, 10, 10), (15, 9, 0)] {
+        let (mut process, realm, ledger, account) = setup()?;
+        let (_, conversion_scope) = shared(&account);
+        ledger.set_limits(
+            conversion_scope,
+            Limits::from_fn(
+                |kind| {
+                    if kind == Work::CodeUnit {
+                        work_cap
+                    } else {
+                        u64::MAX
+                    }
+                },
+                |kind| {
+                    if kind == Resource::BufferBytes {
+                        scratch_cap
+                    } else {
+                        u64::MAX
+                    }
+                },
+            ),
+        )?;
+        let result = process.execution().in_realm(&realm, |scope| {
+            let value = account.run(scope, |cx| cx.copy_usv_to_js(&raw))?;
+            assert_eq!(&*scope.to_utf16(&value)?, &expected);
+            Ok(())
+        });
+        if work_cap == 15 && scratch_cap == 10 {
+            result?;
+        } else {
+            assert!(matches!(result, Err(Error::ConversionLedger(_))));
+        }
+        let usage = ledger.usage(conversion_scope)?;
+        assert_eq!(usage.work(Work::CodeUnit), accepted_work);
+        assert_eq!(usage.live(Resource::BufferBytes), 0);
+        assert_eq!(
+            usage.peak(Resource::BufferBytes),
+            if scratch_cap == 10 { 10 } else { 0 }
+        );
+    }
+    Ok(())
+}
+
 pub(crate) fn run() -> TestResult {
     super::hosted_execution::run()?;
     hidden_union_keeps_selected_value_and_string_storage()?;
+    native_usv_copy_accounts_for_each_pass_and_releases_scratch()?;
     installed_dom_exception_charges_the_retained_account_body()?;
     foreign_native_error_is_refused_during_cleanup()?;
     selected_native_error_survives_local_cleanup(false)?;

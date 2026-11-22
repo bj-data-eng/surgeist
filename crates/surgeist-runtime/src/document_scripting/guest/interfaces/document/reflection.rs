@@ -7,7 +7,9 @@ use super::{
     *,
 };
 use std::fmt::Write;
-use surgeist_bindings_js::conversion::types::{BOOLEAN, DOM_STRING, DOM_STRING_NULL_TO_EMPTY};
+use surgeist_bindings_js::conversion::types::{
+    BOOLEAN, DOM_STRING, DOM_STRING_NULL_TO_EMPTY, USV_STRING,
+};
 use surgeist_bindings_js::conversion::{HiddenAttributeValue, IntegerType, declarations};
 use surgeist_bindings_js::{
     IntegerKind, IntegerMode, IntegerValue, dom_exception::DomExceptionName,
@@ -26,8 +28,9 @@ use surgeist_html::bounded::attributes::{
     form_enctype_keyword_with, form_enctype_override_keyword_with, form_method_keyword_with,
     form_method_override_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
     hidden_processing_with, hidden_setter_action_with, inputmode_keyword_with,
-    popover_keyword_with, popover_target_action_with, table_cell_scope_keyword_with,
-    template_shadow_root_mode_keyword_with, template_shadow_root_slot_assignment_keyword_with,
+    popover_keyword_with, popover_target_action_with, referrerpolicy_processing_with,
+    table_cell_scope_keyword_with, template_shadow_root_mode_keyword_with,
+    template_shadow_root_slot_assignment_keyword_with,
 };
 use surgeist_html::bounded::input::input_colorspace_with;
 use surgeist_html::bounded::marquee::{
@@ -49,6 +52,8 @@ use surgeist_html_semantics::HtmlTranslationMode;
 pub(super) enum Reflection {
     String,
     StringNullToEmpty,
+    UsvString,
+    ReferrerPolicy,
     Boolean,
     Mode,
     SlotAssignment,
@@ -118,6 +123,7 @@ pub(super) enum Receiver {
     Svg,
     Mathml,
     Template,
+    Anchor,
     Body,
     Button,
     Canvas,
@@ -190,6 +196,10 @@ impl Receiver {
                 })
             }
             Self::Template => node.as_template().is_some(),
+            Self::Anchor => {
+                step()?;
+                html_element_is(node, "HTMLAnchorElement")
+            }
             Self::Body => {
                 step()?;
                 html_element_is(node, "HTMLBodyElement")
@@ -325,6 +335,7 @@ impl Receiver {
             Self::Svg => const { &ascii(b"SVGElement required") },
             Self::Mathml => const { &ascii(b"MathMLElement required") },
             Self::Template => const { &ascii(b"HTMLTemplateElement required") },
+            Self::Anchor => const { &ascii(b"HTMLAnchorElement required") },
             Self::Body => const { &ascii(b"HTMLBodyElement required") },
             Self::Button => const { &ascii(b"HTMLButtonElement required") },
             Self::Canvas => const { &ascii(b"HTMLCanvasElement required") },
@@ -532,9 +543,12 @@ impl Capture {
                 let units = stored.map(|value| value.value().code_units());
                 Ok(Some(match reflection {
                     Reflection::Boolean => Reflected::Boolean(stored.is_some()),
-                    Reflection::String | Reflection::StringNullToEmpty => {
+                    Reflection::String | Reflection::StringNullToEmpty | Reflection::UsvString => {
                         Reflected::String(stored.map(|value| value.value().clone()))
                     }
+                    Reflection::ReferrerPolicy => Reflected::Keyword(Some(
+                        referrerpolicy_processing_with(units, |_| read.step())?.canonical_keyword(),
+                    )),
                     Reflection::Mode => Reflected::Keyword(Some(
                         template_shadow_root_mode_keyword_with(units, |_| read.step())?,
                     )),
@@ -725,10 +739,18 @@ impl Capture {
                 Reflected::Signed(value) => {
                     Some(scope.primitive(Primitive::Number(f64::from(value)))?)
                 }
-                Reflected::String(value) => Some(self.copy_dom_units(
-                    scope,
-                    value.as_ref().map_or(&[], DocumentString::code_units),
-                )?),
+                Reflected::String(value) => {
+                    let units = value.as_ref().map_or(&[][..], DocumentString::code_units);
+                    let output = if matches!(reflection, Reflection::UsvString) {
+                        self.callbacks
+                            .conversion
+                            .run(scope, |conversion| conversion.copy_usv_to_js(units))
+                            .map_err(Error::from)?
+                    } else {
+                        self.copy_dom_units(scope, units)?
+                    };
+                    Some(output)
+                }
                 Reflected::Autocomplete(value) => {
                     Some(self.copy_dom_units(scope, value.code_units())?)
                 }
@@ -918,6 +940,26 @@ impl Capture {
                     &events,
                     NumericAttribute::SignedLong(value),
                 )?)
+            } else if matches!(reflection, Reflection::UsvString) {
+                let converted = self
+                    .callbacks
+                    .conversion
+                    .run(scope, |cx| cx.value(&USV_STRING, input))
+                    .map_err(Error::from)?;
+                scope.check_active()?;
+                let current = self.callbacks.with_read(&owner, &events, |read, _| {
+                    receiver.matches(read.node(id)?, || read.step())
+                })?;
+                if !current {
+                    return Ok(Completion::Throw(
+                        scope.type_error(receiver.error_message())?,
+                    ));
+                }
+                Some(copy_native_data(
+                    &owner,
+                    &events,
+                    converted.get().as_code_units(),
+                )?)
             } else {
                 let descriptor = if matches!(reflection, Reflection::StringNullToEmpty) {
                     &DOM_STRING_NULL_TO_EMPTY
@@ -952,7 +994,8 @@ impl Capture {
                 } else {
                     if matches!(
                         receiver,
-                        Receiver::Body
+                        Receiver::Anchor
+                            | Receiver::Body
                             | Receiver::Button
                             | Receiver::Dialog
                             | Receiver::Fieldset
