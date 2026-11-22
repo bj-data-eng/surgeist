@@ -2,6 +2,8 @@
 mod callback_object;
 #[path = "execution/capture.rs"]
 mod capture;
+#[path = "execution/collection_visibility.rs"]
+mod collection_visibility;
 #[path = "execution/dom_exception.rs"]
 mod dom_exception;
 #[path = "execution/guest_creation_realm.rs"]
@@ -22,6 +24,8 @@ mod native_reachability;
 mod panic_preparation;
 #[path = "execution/promise_realm.rs"]
 mod promise_realm;
+#[path = "execution/result_admission.rs"]
+mod result_admission;
 #[path = "execution/root_custody.rs"]
 mod root_custody;
 #[path = "execution/setup_preparation.rs"]
@@ -2521,6 +2525,9 @@ fn native_collection_rejects_invalid_key_results(process: &mut Process) -> Resul
 }
 
 fn main() -> Result<(), Error> {
+    if std::env::args().nth(1).as_deref() == Some("result-admission") {
+        return result_admission::results_admit_before_backend_preparation();
+    }
     {
         type Regression = fn(&mut Process) -> Result<(), Error>;
         let regression: Option<Regression> = match std::env::args().nth(1).as_deref() {
@@ -2539,6 +2546,9 @@ fn main() -> Result<(), Error> {
             }
             Some("module-loader-policy") => {
                 Some(module_profile::module_resolution_stays_host_owned)
+            }
+            Some("collection-visibility") => {
+                Some(collection_visibility::collection_names_follow_prototype_own_descriptors)
             }
             _ => None,
         };
@@ -2598,6 +2608,7 @@ fn main() -> Result<(), Error> {
     language_profile::native_language_profile(&mut process)?;
     microtask_checkpoint::raw_guest_throw_keeps_microtask_checkpoint_in_fifo(&mut process)?;
     module_profile::module_resolution_stays_host_owned(&mut process)?;
+    collection_visibility::collection_names_follow_prototype_own_descriptors(&mut process)?;
     promise_realm::promise_resolver_rejects_self_resolution_in_its_original_realm(&mut process)?;
     realm_and_root_contracts(&mut process)?;
     utf16_is_code_unit_exact(&mut process)?;
@@ -2681,6 +2692,7 @@ fn main() -> Result<(), Error> {
     host_refusals_are_sticky_and_prevent_native_effects()?;
     new_object_paths_preserve_the_first_host_failure()?;
     native_reachability::native_references_follow_only_guest_reachability()?;
+    result_admission::results_admit_before_backend_preparation()?;
     declared_constructor_host_refusals_are_terminal()?;
     scalar_operations_preserve_the_first_host_failure()?;
     host::refusal_preserves_actual_native_error_and_expiry()?;
