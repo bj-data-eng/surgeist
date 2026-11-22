@@ -33,7 +33,9 @@ mod setup_preparation;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use surgeist_bindings_js::{ConstructorCallback, ConstructorCompletion, FunctionMetadata};
+use surgeist_bindings_js::{
+    ConstructorCallback, ConstructorCompletion, FunctionMetadata, HtmlAllCollectionCallbacks,
+};
 use surgeist_bindings_js::{
     Intrinsic, ObjectPrototype, PropertyDescriptor, PropertyKey, WellKnownSymbol,
 };
@@ -2525,6 +2527,31 @@ fn native_collection_rejects_invalid_key_results(process: &mut Process) -> Resul
     })
 }
 
+fn native_all_collection_refuses_invalid_call_custody(process: &mut Process) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        let read = scope.evaluate(&units("() => undefined"))?;
+        let keys = scope.evaluate(&units("() => []"))?;
+        let call = scope.object(ObjectPrototype::Default)?;
+        let drops = Rc::new(Cell::new(0));
+        let result = scope.project_html_all_collection(
+            ObjectPrototype::Default,
+            (),
+            HtmlAllCollectionCallbacks {
+                read: &read,
+                keys: &keys,
+                named_getter: &read,
+                call: &call,
+            },
+            |_| Ok::<_, Error>(DropReceipt(drops.clone())),
+        );
+        assert!(matches!(result, Err(Error::ExpectedFunction)));
+        assert_eq!(drops.get(), 1);
+        Ok(())
+    })
+}
+
 fn main() -> Result<(), Error> {
     if std::env::args().nth(1).as_deref() == Some("result-admission") {
         return result_admission::results_admit_before_backend_preparation();
@@ -2616,6 +2643,7 @@ fn main() -> Result<(), Error> {
     exceptions_preserve_values_without_diagnostics(&mut process)?;
     properties_and_calls_refuse_invalid_values(&mut process)?;
     native_collection_rejects_invalid_key_results(&mut process)?;
+    native_all_collection_refuses_invalid_call_custody(&mut process)?;
     checkpoints_are_explicit_and_shared(&mut process)?;
     web_idl_integer_conversion_preserves_coercion_and_exact_modulo(&mut process)?;
     web_idl_boolean_is_noncoercive(&mut process)?;

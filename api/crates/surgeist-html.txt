@@ -7544,3 +7544,4 @@ pub const surgeist_html::vocabulary::SVG_TAG_NAME_ADJUSTMENTS: &[(&str, surgeist
 pub const surgeist_html::vocabulary::VOCABULARY_SOURCE: surgeist_html::vocabulary::VocabularySource
 pub fn surgeist_html::vocabulary::attribute_inventory() -> &'static [surgeist_html::vocabulary::AttributeInventoryRow]
 pub fn surgeist_html::vocabulary::element_inventory() -> &'static [surgeist_html::vocabulary::ElementInventoryRow]
+pub const fn surgeist_html::vocabulary::is_document_all_named_local_name(units: &[u16]) -> bool

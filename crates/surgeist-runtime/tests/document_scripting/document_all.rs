@@ -60,8 +60,20 @@ pub(super) fn uses_the_canonical_live_document() {
             const keys = Reflect.ownKeys(all);
             if (keys.join() !== "0,1,2,3,4,5,unique,shared,99"
                 || Object.keys(all).join() !== "0,1,2,3,4,5") return "legacy keys";
+            if (HTMLAllCollection.prototype[Symbol.iterator] !== Array.prototype.values
+                || Array.from(all)[3] !== input || HTMLAllCollection.prototype.item.length !== 0
+                || HTMLAllCollection.prototype.namedItem.length !== 1) return "interface surface";
             if (Reflect.apply(all, {}, ["unique"]) !== input || all("shared").length !== 2)
                 return "callable collection ignores the supplied receiver";
+            let conversions = 0;
+            const coercion = {toString() {
+                ++conversions;
+                input.setAttribute("id", "coerced");
+                return "coerced";
+            }};
+            if (all(coercion) !== input || conversions !== 1 || all.unique !== undefined)
+                return "call reads the current tree after conversion";
+            input.setAttribute("id", "unique");
             const marker = {};
             const abrupt = {toString() { throw marker; }};
             try { all(abrupt); return "call swallowed the original exception"; }

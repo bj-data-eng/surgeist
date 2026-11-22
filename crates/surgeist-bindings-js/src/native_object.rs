@@ -1,7 +1,9 @@
 use std::any::{Any, TypeId};
+use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
+use crate::backend::{NativeCollectionKind, NativeProjectionSlot};
 use crate::callback_object::CallbackObjectIdentity;
 use crate::{Error, ObjectPrototype, RealmAuthority, RetainedCallbackObject, Scope, Value};
 
@@ -46,6 +48,26 @@ pub enum NativeProjectionPrototype<'value, 'scope> {
     Current(ObjectPrototype<'value, 'scope>),
     /// Create the object in the retained prototype's own realm.
     Creation(&'value RetainedCallbackObject),
+}
+
+/// Callbacks for one live HTMLAllCollection projection.
+pub struct HtmlAllCollectionCallbacks<'value, 'scope> {
+    /// Reads an indexed or named property or, with a second argument, its support.
+    pub read: &'value Value<'scope>,
+    /// Returns indexed keys without arguments and named keys with one argument.
+    pub keys: &'value Value<'scope>,
+    /// Runs the original interface named getter after prototype reentry.
+    pub named_getter: &'value Value<'scope>,
+    /// Handles the original argument list with the actual collection as receiver.
+    pub call: &'value Value<'scope>,
+}
+
+impl fmt::Debug for HtmlAllCollectionCallbacks<'_, '_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HtmlAllCollectionCallbacks")
+            .finish_non_exhaustive()
+    }
 }
 
 struct ProjectedNativeObject {
@@ -206,10 +228,43 @@ impl<'scope> Scope<'scope> {
         self.project_payload(
             prototype,
             payload,
-            Some(crate::backend::NativeProjectionSlot::Collection {
+            Some(NativeProjectionSlot::Collection {
                 read: &read.root,
                 keys: &keys.root,
-                named_getter: Some(&named_getter.root),
+                kind: NativeCollectionKind::Named {
+                    getter: &named_getter.root,
+                },
+            }),
+            admit,
+        )
+    }
+
+    /// Project a live HTMLAllCollection with an engine-owned IsHTMLDDA slot.
+    ///
+    /// Callbacks receive the exact holder. The read, keys, and named getter
+    /// follow [the collection property contract](Self::project_native_object_with_collection_properties).
+    /// The call callback receives the original operands and supplies the
+    /// interface's Web IDL behavior. The holder has no constructor operation.
+    ///
+    /// Returns an error if a callback is foreign, expired, or not callable,
+    /// or if the caller refuses admission. No native projection is published.
+    pub fn project_html_all_collection<T: 'static, Storage: 'static, E: From<Error>>(
+        &mut self,
+        prototype: ObjectPrototype<'_, 'scope>,
+        payload: T,
+        callbacks: HtmlAllCollectionCallbacks<'_, 'scope>,
+        admit: impl FnOnce(usize) -> Result<Storage, E>,
+    ) -> Result<Value<'scope>, E> {
+        self.project_payload(
+            prototype,
+            payload,
+            Some(NativeProjectionSlot::Collection {
+                read: &callbacks.read.root,
+                keys: &callbacks.keys.root,
+                kind: NativeCollectionKind::HtmlAll {
+                    getter: &callbacks.named_getter.root,
+                    call: &callbacks.call.root,
+                },
             }),
             admit,
         )
@@ -226,10 +281,10 @@ impl<'scope> Scope<'scope> {
         self.project_payload(
             prototype,
             payload,
-            Some(crate::backend::NativeProjectionSlot::Collection {
+            Some(NativeProjectionSlot::Collection {
                 read: &read.root,
                 keys: &keys.root,
-                named_getter: None,
+                kind: NativeCollectionKind::Indexed,
             }),
             |_| Ok(backing),
         )

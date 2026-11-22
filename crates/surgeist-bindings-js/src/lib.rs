@@ -99,8 +99,8 @@ pub use error::{Error, Exception, ExceptionPhase};
 pub use host::{HostFailure, HostFailureSlot, RealmAuthority, RealmId, RecordFailure};
 pub use idl::{ByteString, DomString, IntegerKind, IntegerMode, IntegerValue, UsvString};
 pub use native_object::{
-    NativeObject, NativeObjectToken, NativeProjectionFunding, NativeProjectionPrototype,
-    PreparedNativeProjection,
+    HtmlAllCollectionCallbacks, NativeObject, NativeObjectToken, NativeProjectionFunding,
+    NativeProjectionPrototype, PreparedNativeProjection,
 };
 use preparation::{Admitted, ArgumentValues};
 pub use promise::PromiseResolver;

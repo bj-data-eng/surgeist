@@ -599,6 +599,39 @@ pub fn html_collection_named_item_0_name() -> Argument<Type<DomString>> {
     )
 }
 
+/// Selected argument `HTMLAllCollection.operation:0/index` (not overload selection).
+pub fn html_all_collection_operation_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "HTMLAllCollection.operation:0/index",
+        0,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `HTMLAllCollection.namedItem:0/name` (not overload selection).
+pub fn html_all_collection_named_item_0_name() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLAllCollection.namedItem:0/name",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `HTMLAllCollection.item:0/nameOrIndex` (not overload selection).
+pub fn html_all_collection_item_0_name_or_index() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLAllCollection.item:0/nameOrIndex",
+        0,
+        true,
+        types::DOM_STRING,
+        None,
+    )
+}
+
 fn default_node_get_root_node_0_options(
     cx: &mut Conversion<'_, '_>,
 ) -> Result<Converted<GetRootNodeOptions>, Failure> {
