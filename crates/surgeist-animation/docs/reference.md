@@ -164,8 +164,8 @@ notification per animation is deduplicated. These rules retain the selected WA1
 coordinate, captured conversion snapshot, creation order and a separate scheduled
 origin-relative sorting key. Finish converts associated-effect end through the
 #588 animation-to-origin wrapper; cancel converts timeline time directly. An
-inactive/missing timeline gives unresolved timeline time and sorting key; genuine
-zero remains distinct. Runtime owns document routing, native event metadata,
+inactive or missing timeline gives unresolved timeline time and sorting key.
+A resolved zero remains distinct. Runtime owns document routing, native event metadata,
 stable sorting, dispatch and completion adapters under #594/#595/#596. Model
 commands and timing edits do not manufacture a new document frame.
 
