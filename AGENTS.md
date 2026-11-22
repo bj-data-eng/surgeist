@@ -112,7 +112,8 @@ Source remains authoritative; never hand-edit generated artifacts.
 | CSS/browser corpora | [surgeist-generator](crates/surgeist-generator/README.md) and each consuming crate's corpus guide |
 
 API generation scans `crates/surgeist-*` manifests independently of workspace
-membership, including support tooling. Its source owns the pinned rustdoc
+membership, including support tooling. The separate Boa workspace under
+`crates/surgeist-boa` has its own APIs and is skipped. The generator owns the pinned rustdoc
 toolchain and profiles. Keep it at root; no external publication/pointer update
 is required. Reflection reproducibility and API freshness are separate checks.
 API auditing is explicit maintenance, separate from normal product tests.

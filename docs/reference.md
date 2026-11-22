@@ -133,8 +133,8 @@ provides them.
 
 The generator supports `--all`, `--root`, or `--crate` target selection and
 `--list` or `--check` actions. Without flags it generates all artifacts. Targets
-are root plus `crates/surgeist-*` directories containing a manifest, independent
-of Cargo workspace membership. Source is authoritative; the generated root
+are root plus the Surgeist packages in `crates/surgeist-*`, independent of
+Cargo workspace membership. The Boa fork has its own API. The generated root
 audit retains wildcard reexport placeholders, and audit headers may report
 missing rustdoc item IDs. Consult current public source for detailed APIs.
 
