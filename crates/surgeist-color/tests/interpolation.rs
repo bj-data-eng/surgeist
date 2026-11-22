@@ -1,6 +1,7 @@
 use surgeist_color::{
     Color, ColorSpace, Computation, Finite, HueInterpolation, InterpolationComponent,
-    InterpolationMethod, NumericalRequest, OperationOwner, PredefinedColorSpace, UnitInterval,
+    InterpolationEndpoint, InterpolationMethod, NumericalRequest, OperationOwner,
+    PredefinedColorSpace, UnitInterval,
 };
 
 const SRGB: ColorSpace = ColorSpace::Predefined(PredefinedColorSpace::Srgb);
@@ -11,6 +12,306 @@ fn color(space: ColorSpace, channels: [Option<f64>; 3], alpha: Option<f64>) -> C
         channels.map(|value| value.map(|value| Finite::new(value).unwrap())),
         alpha.map(|value| UnitInterval::new(value).unwrap()),
     )
+}
+
+#[test]
+fn sampled_endpoint_distinguishes_zero_alpha_residue_from_rounded_zero() {
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+    let residue = color(SRGB, [Some(0.75), None, None], Some(0.5))
+        .sample_interpolation(
+            color(SRGB, [Some(0.5), None, None], Some(1.0)),
+            method,
+            Finite::new(-1.0).unwrap(),
+        )
+        .unwrap();
+    let transparent = color(SRGB, [Some(0.25), None, None], Some(0.0));
+    let rounded_zero = color(SRGB, [Some(0.25), None, None], Some(f64::from_bits(1)))
+        .sample_interpolation(transparent, method, Finite::new(0.5).unwrap())
+        .unwrap();
+    let target = color(SRGB, [Some(0.5), None, None], Some(1.0));
+
+    // The first alpha is exactly zero and leaves a numerator of 1/4.
+    // The second alpha is half the minimum subnormal and rounds to zero
+    // after division has already returned a straight coordinate of 1/4.
+    assert_eq!(residue.channels(), rounded_zero.channels());
+    assert_eq!(residue.alpha(), Finite::new(0.0));
+    assert_eq!(rounded_zero.alpha(), Finite::new(0.0));
+    assert!(!residue.equivalent_to_resolved(transparent));
+    assert!(rounded_zero.equivalent_to_resolved(transparent));
+    for (sample, expected) in [(residue, 0.75), (rounded_zero, 0.5)] {
+        let output = InterpolationEndpoint::Sampled(sample)
+            .sample_interpolation(
+                InterpolationEndpoint::Resolved(target),
+                method,
+                Finite::new(0.5).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(output.alpha(), Finite::new(0.5));
+        assert_eq!(output.channels(), [Finite::new(expected), None, None]);
+    }
+}
+
+#[test]
+fn sampled_endpoint_at_exact_progress_keeps_its_original_space_and_missing_components() {
+    let source_method = InterpolationMethod::try_new(SRGB, None).unwrap();
+    let source = color(SRGB, [Some(-0.0), None, Some(0.5)], None);
+    let sample = source
+        .sample_interpolation(source, source_method, Finite::new(0.5).unwrap())
+        .unwrap();
+    let space = ColorSpace::Oklch;
+    let target_method =
+        InterpolationMethod::try_new(space, Some(HueInterpolation::Longer)).unwrap();
+    let target = color(space, [Some(0.5), Some(0.25), Some(180.0)], Some(1.0));
+    let sample_endpoint = InterpolationEndpoint::Sampled(sample);
+    let resolved_endpoint = InterpolationEndpoint::Resolved(target);
+
+    for (first, second, progress) in [
+        (sample_endpoint, resolved_endpoint, -0.0),
+        (resolved_endpoint, sample_endpoint, 1.0),
+    ] {
+        let result = first
+            .sample_interpolation(second, target_method, Finite::new(progress).unwrap())
+            .unwrap();
+        assert_eq!(result.space(), SRGB);
+        assert_eq!(result.alpha(), None);
+        assert_eq!(
+            result.channels(),
+            [Finite::new(-0.0), None, Finite::new(0.5)]
+        );
+        assert_eq!(
+            result.channels()[0].unwrap().get().to_bits(),
+            (-0.0_f64).to_bits()
+        );
+    }
+}
+
+#[test]
+fn sampled_endpoint_carries_missing_alpha_and_channels_into_the_new_pair() {
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+    let first = color(SRGB, [Some(0.25), None, None], None);
+    let sample = first
+        .sample_interpolation(first, method, Finite::new(0.5).unwrap())
+        .unwrap();
+
+    for alpha in [None, Some(0.5)] {
+        let second = color(SRGB, [Some(0.75), Some(0.25), None], alpha);
+        let result = InterpolationEndpoint::Sampled(sample)
+            .sample_interpolation(
+                InterpolationEndpoint::Resolved(second),
+                method,
+                Finite::new(0.5).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            result.channels(),
+            [Finite::new(0.5), Finite::new(0.25), None]
+        );
+        assert_eq!(result.alpha(), alpha.and_then(Finite::new));
+    }
+}
+
+#[test]
+fn sampled_endpoint_converts_extended_alpha_and_uses_the_new_hue_arc() {
+    let source_method = InterpolationMethod::try_new(ColorSpace::Oklab, None).unwrap();
+    let channels = [Some(0.5), Some(0.125), Some(0.0)];
+    let sample = color(ColorSpace::Oklab, channels, Some(0.0))
+        .sample_interpolation(
+            color(ColorSpace::Oklab, channels, Some(1.0)),
+            source_method,
+            Finite::new(2.0).unwrap(),
+        )
+        .unwrap();
+    let space = ColorSpace::Oklch;
+    let method = InterpolationMethod::try_new(space, Some(HueInterpolation::Longer)).unwrap();
+    let target = color(space, [Some(0.75), Some(0.5), Some(90.0)], Some(1.0));
+    let result = InterpolationEndpoint::Sampled(sample)
+        .sample_interpolation(
+            InterpolationEndpoint::Resolved(target),
+            method,
+            Finite::new(0.5).unwrap(),
+        )
+        .unwrap();
+
+    // The conversion gives Oklch (1/2, 1/8, 0) at alpha 2. Weighted
+    // lightness is (2*1/2 + 3/4)/3 and chroma is (2*1/8 + 1/2)/3.
+    // Hue takes the 270-degree arc from 0 toward 90 independently of alpha.
+    assert_eq!(result.space(), space);
+    assert_eq!(result.alpha(), Finite::new(1.5));
+    assert_eq!(
+        result.channels(),
+        [
+            Finite::new(7.0 / 12.0),
+            Finite::new(0.25),
+            Finite::new(225.0)
+        ]
+    );
+}
+
+#[test]
+fn sampled_endpoint_converts_zero_alpha_residue_and_retains_its_contribution() {
+    let source_method = InterpolationMethod::try_new(ColorSpace::Oklab, None).unwrap();
+    let first = color(
+        ColorSpace::Oklab,
+        [Some(0.75), Some(0.25), Some(0.0)],
+        Some(0.5),
+    );
+    let second = color(
+        ColorSpace::Oklab,
+        [Some(0.5), Some(0.125), Some(0.0)],
+        Some(1.0),
+    );
+    let sample = first
+        .sample_interpolation(second, source_method, Finite::new(-1.0).unwrap())
+        .unwrap();
+    let space = ColorSpace::Oklch;
+    let method = InterpolationMethod::try_new(space, None).unwrap();
+    let target = color(space, [Some(0.5), Some(0.125), Some(90.0)], Some(1.0));
+    let result = InterpolationEndpoint::Sampled(sample)
+        .sample_interpolation(
+            InterpolationEndpoint::Resolved(target),
+            method,
+            Finite::new(0.5).unwrap(),
+        )
+        .unwrap();
+
+    // The Oklab residue (1/4, 1/8, 0) converts to the same Oklch tuple.
+    // The half weights and divisor of 1/2 leave the sum of the two
+    // non-hue endpoint contributions.
+    assert_eq!(result.alpha(), Finite::new(0.5));
+    assert_eq!(
+        result.channels(),
+        [Finite::new(0.75), Finite::new(0.25), Finite::new(45.0)]
+    );
+}
+
+#[test]
+fn converting_a_zero_alpha_sample_without_residue_adds_no_premultiplied_blackness() {
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+    let transparent = color(SRGB, [Some(0.0); 3], Some(0.0));
+    let sample = transparent
+        .sample_interpolation(transparent, method, Finite::new(0.5).unwrap())
+        .unwrap();
+
+    let space = ColorSpace::Hwb;
+    let method = InterpolationMethod::try_new(space, None).unwrap();
+    let target = color(space, [Some(120.0), Some(25.0), Some(50.0)], Some(1.0));
+    let result = InterpolationEndpoint::Sampled(sample)
+        .sample_interpolation(
+            InterpolationEndpoint::Resolved(target),
+            method,
+            Finite::new(0.5).unwrap(),
+        )
+        .unwrap();
+
+    // RGB black converts to 100% blackness. Its coordinates are straight
+    // and alpha zero multiplies that blackness away before interpolation.
+    assert_eq!(result.alpha(), Finite::new(0.5));
+    assert_eq!(result.channels(), target.finite_channels());
+}
+
+#[test]
+fn sampled_endpoint_blends_signed_alpha_through_zero_and_back_to_positive() {
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+    let channels = [Some(0.25), None, None];
+    let negative = color(SRGB, channels, Some(1.0))
+        .sample_interpolation(
+            color(SRGB, channels, Some(0.0)),
+            method,
+            Finite::new(2.0).unwrap(),
+        )
+        .unwrap();
+    let from = InterpolationEndpoint::Sampled(negative);
+    let to = InterpolationEndpoint::Resolved(color(SRGB, [Some(0.75), None, None], Some(1.0)));
+
+    // Alpha is -1+2p, and the premultiplied coordinate is -1/4+p.
+    // At alpha zero the sample keeps the numerator. At 1/2 it divides.
+    for (progress, alpha, coordinate) in [(0.5, 0.0, 0.25), (0.75, 0.5, 1.0)] {
+        let result = from
+            .sample_interpolation(to, method, Finite::new(progress).unwrap())
+            .unwrap();
+        assert_eq!(result.alpha(), Finite::new(alpha));
+        assert_eq!(result.channels(), [Finite::new(coordinate), None, None]);
+    }
+}
+
+#[test]
+fn sampled_endpoint_rejects_true_channel_overflow_inside_unit_progress() {
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+    let channels = [Some(f64::MAX), None, None];
+    let negative = color(SRGB, channels, Some(1.0))
+        .sample_interpolation(
+            color(SRGB, channels, Some(0.0)),
+            method,
+            Finite::new(2.0).unwrap(),
+        )
+        .unwrap();
+    let target = color(SRGB, [Some(f64::MAX.next_down()), None, None], Some(1.0));
+
+    // The normalized weights are 7/6 and -1/6. The result exceeds MAX
+    // by 1/6 ULP even though binary64 rounding would return MAX.
+    let error = InterpolationEndpoint::Sampled(negative)
+        .sample_interpolation(
+            InterpolationEndpoint::Resolved(target),
+            method,
+            Finite::new(0.125).unwrap(),
+        )
+        .unwrap_err();
+    assert_eq!(error.component(), InterpolationComponent::Channel(0));
+}
+
+#[test]
+fn zero_alpha_residue_uses_separate_channel_and_divisor_weights() {
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+    let black = color(SRGB, [Some(0.0), None, None], Some(1.0));
+    let sample = color(SRGB, [Some(f64::MAX), None, None], Some(0.5))
+        .sample_interpolation(black, method, Finite::new(-1.0).unwrap())
+        .unwrap();
+    let from = InterpolationEndpoint::Sampled(sample);
+    let to = InterpolationEndpoint::Resolved(black);
+
+    // The sample has alpha zero and residue MAX. At progress p, the
+    // straight channel is (1 - p) * MAX / p. It is MAX at the midpoint
+    // and above the finite bound one representable step earlier.
+    let result = from
+        .sample_interpolation(to, method, Finite::new(0.5).unwrap())
+        .unwrap();
+    assert_eq!(result.channels(), [Finite::new(f64::MAX), None, None]);
+    let error = from
+        .sample_interpolation(to, method, Finite::new(0.5_f64.next_down()).unwrap())
+        .unwrap_err();
+    assert_eq!(error.component(), InterpolationComponent::Channel(0));
+}
+
+#[test]
+fn sampled_endpoint_checks_range_with_three_large_factors() {
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+    let maximum = Finite::new(f64::MAX).unwrap();
+    let sample = |coordinate| {
+        let channels = [Some(coordinate), None, None];
+        let value = color(SRGB, channels, Some(0.0))
+            .sample_interpolation(color(SRGB, channels, Some(1.0)), method, maximum)
+            .unwrap();
+        InterpolationEndpoint::Sampled(value)
+    };
+    let high = 2.0_f64.powi(1023);
+
+    // The shared alpha stays MAX. The channel increases by 2^971 * MAX,
+    // so the numerator has three large factors and the result exceeds MAX.
+    let error = sample(high)
+        .sample_interpolation(sample(high.next_up()), method, maximum)
+        .unwrap_err();
+    assert_eq!(error.component(), InterpolationComponent::Channel(0));
+
+    // Alpha is MAX + MAX * 2^-1074. Its true range fails even though the
+    // excess is tiny compared to the spacing around MAX.
+    let error = sample(high)
+        .sample_interpolation(
+            InterpolationEndpoint::Resolved(color(SRGB, [Some(high), None, None], Some(0.0))),
+            method,
+            Finite::new(-f64::from_bits(1)).unwrap(),
+        )
+        .unwrap_err();
+    assert_eq!(error.component(), InterpolationComponent::Alpha);
 }
 
 #[test]

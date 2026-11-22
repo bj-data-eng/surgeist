@@ -163,7 +163,11 @@ impl Color {
         method: crate::InterpolationMethod,
         progress: Finite,
     ) -> Result<crate::InterpolationSample, crate::InterpolationSampleError> {
-        crate::interpolation::sample(self, second, method, progress)
+        crate::InterpolationEndpoint::Resolved(self).sample_interpolation(
+            crate::InterpolationEndpoint::Resolved(second),
+            method,
+            progress,
+        )
     }
 
     /// Executes one fixed transformation after the caller's work admission.
@@ -320,74 +324,8 @@ impl Color {
         if self.space == destination {
             return self;
         }
-        let coordinates = self.rectangular();
-        let alpha = self.alpha.unit();
-        let value = match destination {
-            Space::Predefined(space) => Self::new(
-                destination,
-                coordinates
-                    .convert_to(Rectangular::Predefined(space))
-                    .channels(),
-                alpha,
-            ),
-            Space::Lab | Space::Oklab => {
-                let target = if destination == Space::Lab {
-                    Rectangular::Lab
-                } else {
-                    Rectangular::Oklab
-                };
-                Self::new(
-                    destination,
-                    coordinates.convert_to(target).channels(),
-                    alpha,
-                )
-            }
-            Space::Lch | Space::Oklch => {
-                let target = if destination == Space::Lch {
-                    Rectangular::Lab
-                } else {
-                    Rectangular::Oklab
-                };
-                let channels = present(coordinates.convert_to(target).channels());
-                let polar = if destination == Space::Lch {
-                    convert_lab_to_lch(channels)
-                } else {
-                    convert_oklab_to_oklch(channels)
-                };
-                Self::new(
-                    destination,
-                    [
-                        Some(polar.lightness()),
-                        Some(polar.chroma()),
-                        polar.hue_degrees(),
-                    ],
-                    alpha,
-                )
-            }
-            Space::Hsl | Space::Hwb => {
-                let channels = present(
-                    coordinates
-                        .convert_to(Rectangular::Predefined(Predefined::Srgb))
-                        .channels(),
-                );
-                let channels = if destination == Space::Hsl {
-                    let value = convert_srgb_to_hsl(channels);
-                    [
-                        value.hue_degrees(),
-                        Some(value.saturation()),
-                        Some(value.lightness()),
-                    ]
-                } else {
-                    let value = convert_srgb_to_hwb(channels);
-                    [
-                        value.hue_degrees(),
-                        Some(value.whiteness()),
-                        Some(value.blackness()),
-                    ]
-                };
-                Self::new(destination, channels, alpha)
-            }
-        };
+        let channels = converted_channels(self.space, self.finite_channels(), destination);
+        let value = Self::new(destination, channels, None);
         // Preserve the source-selected modern family through fixed channel
         // conversions. A target predefined space also selects color(...).
         Self {
@@ -395,59 +333,6 @@ impl Color {
             color_function: self.color_function || value.color_function,
             ..value
         }
-    }
-
-    fn rectangular(self) -> RectangularCoordinates {
-        let channels = self.finite_channels();
-        let zero = closest_finite(0.0);
-        let (space, channels) = match self.space {
-            Space::Predefined(space) => (Rectangular::Predefined(space), channels),
-            Space::Lab => (Rectangular::Lab, channels),
-            Space::Oklab => (Rectangular::Oklab, channels),
-            Space::Lch | Space::Oklch => {
-                // Signed polar radius is the same Cartesian point at the
-                // opposite hue; the carrier applies that rotation.
-                let polar = PolarCoordinates::new(
-                    channels[0].unwrap_or(zero),
-                    channels[1].unwrap_or(zero),
-                    channels[2],
-                );
-                let channels = if self.space == Space::Lch {
-                    convert_lch_to_lab(&polar)
-                } else {
-                    convert_oklch_to_oklab(&polar)
-                };
-                let space = if self.space == Space::Lch {
-                    Rectangular::Lab
-                } else {
-                    Rectangular::Oklab
-                };
-                (space, channels.map(Some))
-            }
-            Space::Hsl => {
-                let hsl = HslCoordinates::new(
-                    channels[0],
-                    channels[1].unwrap_or(zero),
-                    channels[2].unwrap_or(zero),
-                );
-                (
-                    Rectangular::Predefined(Predefined::Srgb),
-                    convert_hsl_to_srgb(&hsl).map(Some),
-                )
-            }
-            Space::Hwb => {
-                let hwb = HwbCoordinates::new(
-                    channels[0],
-                    channels[1].unwrap_or(zero),
-                    channels[2].unwrap_or(zero),
-                );
-                (
-                    Rectangular::Predefined(Predefined::Srgb),
-                    convert_hwb_to_srgb(&hwb).map(Some),
-                )
-            }
-        };
-        RectangularCoordinates::new(space, channels)
     }
 
     /// Converts to sRGB when needed, then quantizes present channels.
@@ -481,6 +366,114 @@ impl Color {
             [0, 0, 0, 255]
         })
     }
+}
+
+/// Converts coordinates independently of alpha and representation metadata.
+pub(crate) fn converted_channels(
+    space: Space,
+    channels: [Option<Finite>; 3],
+    destination: Space,
+) -> [Option<Finite>; 3] {
+    let coordinates = rectangular(space, channels);
+    match destination {
+        Space::Predefined(space) => coordinates
+            .convert_to(Rectangular::Predefined(space))
+            .channels(),
+        Space::Lab => coordinates.convert_to(Rectangular::Lab).channels(),
+        Space::Oklab => coordinates.convert_to(Rectangular::Oklab).channels(),
+        Space::Lch | Space::Oklch => {
+            let target = if destination == Space::Lch {
+                Rectangular::Lab
+            } else {
+                Rectangular::Oklab
+            };
+            let channels = present(coordinates.convert_to(target).channels());
+            let polar = if destination == Space::Lch {
+                convert_lab_to_lch(channels)
+            } else {
+                convert_oklab_to_oklch(channels)
+            };
+            [
+                Some(polar.lightness()),
+                Some(polar.chroma()),
+                polar.hue_degrees(),
+            ]
+        }
+        Space::Hsl | Space::Hwb => {
+            let channels = present(
+                coordinates
+                    .convert_to(Rectangular::Predefined(Predefined::Srgb))
+                    .channels(),
+            );
+            if destination == Space::Hsl {
+                let value = convert_srgb_to_hsl(channels);
+                [
+                    value.hue_degrees(),
+                    Some(value.saturation()),
+                    Some(value.lightness()),
+                ]
+            } else {
+                let value = convert_srgb_to_hwb(channels);
+                [
+                    value.hue_degrees(),
+                    Some(value.whiteness()),
+                    Some(value.blackness()),
+                ]
+            }
+        }
+    }
+}
+
+fn rectangular(space: Space, channels: [Option<Finite>; 3]) -> RectangularCoordinates {
+    let zero = closest_finite(0.0);
+    let (space, channels) = match space {
+        Space::Predefined(space) => (Rectangular::Predefined(space), channels),
+        Space::Lab => (Rectangular::Lab, channels),
+        Space::Oklab => (Rectangular::Oklab, channels),
+        Space::Lch | Space::Oklch => {
+            // Signed polar radius is the same Cartesian point at the
+            // opposite hue; the carrier applies that rotation.
+            let polar = PolarCoordinates::new(
+                channels[0].unwrap_or(zero),
+                channels[1].unwrap_or(zero),
+                channels[2],
+            );
+            let channels = if space == Space::Lch {
+                convert_lch_to_lab(&polar)
+            } else {
+                convert_oklch_to_oklab(&polar)
+            };
+            let space = if space == Space::Lch {
+                Rectangular::Lab
+            } else {
+                Rectangular::Oklab
+            };
+            (space, channels.map(Some))
+        }
+        Space::Hsl => {
+            let hsl = HslCoordinates::new(
+                channels[0],
+                channels[1].unwrap_or(zero),
+                channels[2].unwrap_or(zero),
+            );
+            (
+                Rectangular::Predefined(Predefined::Srgb),
+                convert_hsl_to_srgb(&hsl).map(Some),
+            )
+        }
+        Space::Hwb => {
+            let hwb = HwbCoordinates::new(
+                channels[0],
+                channels[1].unwrap_or(zero),
+                channels[2].unwrap_or(zero),
+            );
+            (
+                Rectangular::Predefined(Predefined::Srgb),
+                convert_hwb_to_srgb(&hwb).map(Some),
+            )
+        }
+    };
+    RectangularCoordinates::new(space, channels)
 }
 
 /// Missing channels of a converted value locally read as zero.

@@ -5,26 +5,92 @@
 
 use crate::Color;
 use crate::finite::{Finite, UnitInterval, closest_finite};
+use crate::value::converted_channels;
 use crate::wide::{Wide, power_of_two};
 use crate::{ColorSpace as Space, HueInterpolation as Hue, InterpolationMethod as Method};
 use core::fmt;
 mod range;
 
+/// A resolved color or a prior checked sample used for numerical interpolation.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum InterpolationEndpoint {
+    /// A resolved color with missing or unit alpha.
+    Resolved(Color),
+    /// A prior checked interpolation result.
+    Sampled(InterpolationSample),
+}
+
+impl InterpolationEndpoint {
+    /// Samples two endpoints at any finite progress using the selected method.
+    ///
+    /// At exact progress zero or one, a selected sampled endpoint is returned
+    /// directly, including its original space and missing components. Otherwise
+    /// the pair is prepared in the selected space and uses its hue strategy.
+    /// Preparation converts the exposed coordinate tuple under the ordinary
+    /// closest-finite conversion policy, including a zero-alpha residue. It
+    /// retains the source alpha and whether those coordinates are a residue.
+    ///
+    /// # Errors
+    ///
+    /// Returns the component whose final value exceeds the finite range.
+    pub fn sample_interpolation(
+        self,
+        second: Self,
+        method: Method,
+        progress: Finite,
+    ) -> Result<InterpolationSample, InterpolationSampleError> {
+        if progress.get() == 0.0
+            && let Self::Sampled(sample) = self
+        {
+            return Ok(sample);
+        }
+        if progress.get() == 1.0
+            && let Self::Sampled(sample) = second
+        {
+            return Ok(sample);
+        }
+        sample(self, second, method, progress.get())
+    }
+
+    fn prepare(self, destination: Space) -> PreparedEndpoint {
+        let (space, channels, alpha, residue) = match self {
+            Self::Resolved(color) => (color.space(), color.finite_channels(), color.alpha(), false),
+            Self::Sampled(sample) => (
+                sample.space(),
+                sample.channels(),
+                sample.alpha().map(Finite::get),
+                sample.has_residue(),
+            ),
+        };
+        PreparedEndpoint {
+            channels: prepare_channels(space, channels, destination),
+            alpha,
+            residue,
+        }
+    }
+}
+
 /// A numerical interpolation result in the selected interpolation space.
 ///
 /// Present coordinates and alpha are finite. Alpha can extend beyond the
-/// unit interval. Absence records a missing component.
+/// unit interval. Absence records a missing component. At exact zero alpha,
+/// non-hue coordinates keep any premultiplied residue. When nonzero alpha
+/// rounds to zero after division, the coordinates still represent straight
+/// color and re-entry uses the rounded alpha.
 #[derive(Clone, Copy, PartialEq)]
 pub struct InterpolationSample {
     space: Space,
     channels: [Finite; 3],
     alpha: Finite,
-    // Three channel bits followed by the alpha bit. Missing components use
-    // one canonical placeholder and need no separate stored discriminant.
-    present: u8,
+    // Three channel bits, the alpha bit, then the zero-alpha residue bit.
+    // Missing components use one canonical placeholder.
+    flags: u8,
 }
 
 impl InterpolationSample {
+    const ALPHA_PRESENT: u8 = 1 << 3;
+    const ZERO_ALPHA_RESIDUE: u8 = 1 << 4;
+
     pub const fn space(self) -> Space {
         self.space
     }
@@ -34,15 +100,32 @@ impl InterpolationSample {
     }
 
     pub const fn alpha(self) -> Option<Finite> {
-        if self.present & (1 << 3) != 0 {
+        if self.flags & Self::ALPHA_PRESENT != 0 {
             Some(self.alpha)
         } else {
             None
         }
     }
 
+    /// Tests for an exact same-space numerical match with a resolved color.
+    ///
+    /// Missing components must match. Signed zeros compare equal. Byte and
+    /// serialization families do not affect the comparison. A nonzero
+    /// premultiplied residue at zero alpha cannot match a resolved color.
+    #[must_use]
+    pub fn equivalent_to_resolved(self, color: Color) -> bool {
+        self.space == color.space()
+            && !self.has_residue()
+            && self.channels() == color.finite_channels()
+            && self.alpha().map(Finite::get) == color.alpha()
+    }
+
+    const fn has_residue(self) -> bool {
+        self.flags & Self::ZERO_ALPHA_RESIDUE != 0
+    }
+
     const fn channel(self, index: usize) -> Option<Finite> {
-        if self.present & (1 << index) != 0 {
+        if self.flags & (1 << index) != 0 {
             Some(self.channels[index])
         } else {
             None
@@ -56,6 +139,7 @@ impl fmt::Debug for InterpolationSample {
             .field("space", &self.space)
             .field("channels", &self.channels())
             .field("alpha", &self.alpha())
+            .field("zero_alpha_residue", &self.has_residue())
             .finish()
     }
 }
@@ -117,10 +201,10 @@ fn hue_index(space: Space) -> Option<usize> {
         _ => None,
     }
 }
-fn carried(value: Color, destination: Space) -> [bool; 3] {
-    let source = categories(value.space());
+fn carried(space: Space, channels: [Option<Finite>; 3], destination: Space) -> [bool; 3] {
+    let source = categories(space);
     let target = categories(destination);
-    let missing = value.channels().map(|value| value.is_none());
+    let missing = channels.map(|value| value.is_none());
     let mut result = [false; 3];
     let mut unmatched_all_missing = true;
     let mut unmatched = false;
@@ -145,11 +229,9 @@ fn carried(value: Color, destination: Space) -> [bool; 3] {
 // Color4§4.4.1: apply only in the conversion phase. Missing hue is not
 // replaced with zero. Tiny positive colorfulness is zeroed when powerless;
 // negative extended values are not gamut-clamped here.
-fn powerless(value: Color) -> Color {
-    let space = value.space();
-    let mut channels = value.finite_channels();
+fn powerless(space: Space, mut channels: [Option<Finite>; 3]) -> [Option<Finite>; 3] {
     let Some(index) = hue_index(space) else {
-        return value;
+        return channels;
     };
     let plain = |channel: Option<Finite>| channel.map_or(0.0, Finite::get);
     let (component, epsilon, powerless) = match space {
@@ -157,10 +239,10 @@ fn powerless(value: Color) -> Color {
         Space::Lch => (1, 0.0015, plain(channels[1]) <= 0.0015),
         Space::Oklch => (1, 0.000004, plain(channels[1]) <= 0.000004),
         Space::Hwb => (1, 99.999, plain(channels[1]) + plain(channels[2]) >= 99.999),
-        _ => return value,
+        _ => return channels,
     };
     if !powerless {
-        return value;
+        return channels;
     }
     channels[index] = None;
     if space == Space::Hwb {
@@ -179,23 +261,37 @@ fn powerless(value: Color) -> Color {
     {
         channels[component] = Some(closest_finite(0.0));
     }
-    // Rebuilding resets byte backing and the family, as Color::new specifies.
-    Color::new(space, channels, value.unit_alpha())
+    channels
 }
 
 pub(crate) fn prepare(value: Color, destination: Space) -> Color {
     if value.space() == destination {
         return value;
     }
-    let carry = carried(value, destination);
-    let converted = powerless(powerless(value).converted(destination));
-    let mut channels = converted.finite_channels();
+    Color::new(
+        destination,
+        prepare_channels(value.space(), value.finite_channels(), destination),
+        value.unit_alpha(),
+    )
+}
+
+fn prepare_channels(
+    space: Space,
+    channels: [Option<Finite>; 3],
+    destination: Space,
+) -> [Option<Finite>; 3] {
+    if space == destination {
+        return channels;
+    }
+    let carry = carried(space, channels, destination);
+    let converted = converted_channels(space, powerless(space, channels), destination);
+    let mut channels = powerless(destination, converted);
     for i in 0..3 {
         if carry[i] {
             channels[i] = None;
         }
     }
-    Color::new(destination, channels, value.unit_alpha())
+    channels
 }
 
 fn hue_turn(first: f64, second: f64, normalization: f64, method: Hue) -> f64 {
@@ -232,6 +328,8 @@ pub(crate) fn interpolate(
     method: Method,
     progress: UnitInterval,
 ) -> Color {
+    let first = InterpolationEndpoint::Resolved(first).prepare(method.space());
+    let second = InterpolationEndpoint::Resolved(second).prepare(method.space());
     let (channels, alpha) = interpolate_components(first, second, method, progress.get());
     Color::new(
         method.space(),
@@ -240,23 +338,25 @@ pub(crate) fn interpolate(
     )
 }
 
-pub(crate) fn sample(
-    first: Color,
-    second: Color,
+fn sample(
+    first: InterpolationEndpoint,
+    second: InterpolationEndpoint,
     method: Method,
-    progress: Finite,
+    progress: f64,
 ) -> Result<InterpolationSample, InterpolationSampleError> {
-    let (wide_channels, wide_alpha) = interpolate_components(first, second, method, progress.get());
+    let first = first.prepare(method.space());
+    let second = second.prepare(method.space());
+    let (wide_channels, wide_alpha) = interpolate_components(first, second, method, progress);
     let checked = |value: Wide, component| {
         Finite::new(value.to_f64()).ok_or(InterpolationSampleError { component })
     };
     let alpha = wide_alpha
         .map(|alpha| {
             if alpha.near_finite_limit() {
-                let a = first.alpha().or(second.alpha());
-                let b = second.alpha().or(first.alpha());
+                let a = first.alpha.or(second.alpha);
+                let b = second.alpha.or(first.alpha);
                 if let Some((a, b)) = a.zip(b)
-                    && range::exceeds((1.0, a), (1.0, b), progress.get(), None)
+                    && range::exceeds((1.0, a), (1.0, b), progress, None)
                 {
                     return Err(InterpolationSampleError {
                         component: InterpolationComponent::Alpha,
@@ -267,57 +367,74 @@ pub(crate) fn sample(
         })
         .transpose()?;
     let mut channels = [Finite::ZERO; 3];
-    let mut present = if alpha.is_some() { 1 << 3 } else { 0 };
+    let mut flags = if alpha.is_some() {
+        InterpolationSample::ALPHA_PRESENT
+    } else {
+        0
+    };
+    let at_zero_alpha = wide_alpha.is_some_and(Wide::is_zero);
+    let hue = hue_index(method.space());
     for (index, (channel, wide)) in channels.iter_mut().zip(wide_channels).enumerate() {
         if let Some(wide) = wide {
             *channel = checked(wide, InterpolationComponent::Channel(index))?;
-            present |= 1 << index;
+            flags |= 1 << index;
+            if at_zero_alpha && hue != Some(index) && channel.get() != 0.0 {
+                flags |= InterpolationSample::ZERO_ALPHA_RESIDUE;
+            }
         }
     }
     Ok(InterpolationSample {
         space: method.space(),
         channels,
         alpha: alpha.unwrap_or(Finite::ZERO),
-        present,
+        flags,
     })
+}
+
+#[derive(Clone, Copy)]
+struct PreparedEndpoint {
+    channels: [Option<Finite>; 3],
+    alpha: Option<f64>,
+    residue: bool,
 }
 
 /// Color 4 §13. Interpolate with the premultiplied coordinates and alpha
 /// still widened so division sees their sign and range before narrowing.
 fn interpolate_components(
-    first: Color,
-    second: Color,
+    first: PreparedEndpoint,
+    second: PreparedEndpoint,
     method: Method,
     progress: f64,
 ) -> ([Option<Wide>; 3], Option<Wide>) {
-    let first = prepare(first, method.space());
-    let second = prepare(second, method.space());
-    let aa = first.alpha().or(second.alpha());
-    let ba = second.alpha().or(first.alpha());
+    let aa = first.alpha.or(second.alpha);
+    let ba = second.alpha.or(first.alpha);
     let in_unit_interval = (0.0..=1.0).contains(&progress);
+    let unit_alpha = |alpha: f64| (0.0..=1.0).contains(&alpha);
+    let bounded_unit_blend = in_unit_interval
+        && aa.is_none_or(unit_alpha)
+        && ba.is_none_or(unit_alpha)
+        && !first.residue
+        && !second.residue;
     let t = Wide::from_f64(progress);
     let complement = Wide::from_f64(1.0 - progress);
     let interpolate = |first: Wide, second: Wide| {
-        if in_unit_interval {
+        if bounded_unit_blend {
             first.multiply(complement).add(second.multiply(t))
         } else {
-            // The affine form keeps the offset at large progress. Retain
-            // the low word of the slope, which can determine a near-zero
-            // result after the rounded slope cancels the first endpoint.
+            // The affine form keeps the offset at large progress and retains
+            // the low word of the slope for cancellation with signed alpha.
             affine(first, second, t)
         }
     };
-    let alphas = aa
-        .zip(ba)
-        .map(|(a, b)| (Wide::from_f64(a), Wide::from_f64(b)));
-    let alpha = alphas.map(|(a, b)| interpolate(a, b));
+    let alphas = aa.zip(ba);
+    let alpha = alphas.map(|(a, b)| interpolate(Wide::from_f64(a), Wide::from_f64(b)));
 
-    let a = first.channels();
-    let b = second.channels();
+    let a = first.channels;
+    let b = second.channels;
     let hue = hue_index(method.space()).zip(method.hue());
     let channels = core::array::from_fn(|index| {
-        let x = a[index].or(b[index])?;
-        let y = b[index].or(a[index])?;
+        let x = a[index].or(b[index])?.get();
+        let y = b[index].or(a[index])?.get();
         if let Some((hue_index, strategy)) = hue
             && index == hue_index
         {
@@ -352,18 +469,33 @@ fn interpolate_components(
             };
             return Some(Wide::from_f64(angle.rem_euclid(360.0)));
         }
-        if x.to_bits() == y.to_bits() && alpha.is_none_or(|alpha| !alpha.is_zero()) {
+        // A missing lane borrows a coordinate, but has no residue of its own.
+        let left_residue = first.residue && a[index].is_some();
+        let right_residue = second.residue && b[index].is_some();
+        if !left_residue
+            && !right_residue
+            && x.to_bits() == y.to_bits()
+            && alpha.is_none_or(|alpha| !alpha.is_zero())
+        {
             // A common coordinate factors out of the premultiplied sum.
             return Some(Wide::from_f64(x));
         }
+        let left_weight = if left_residue { 1.0 } else { aa.unwrap_or(1.0) };
+        let right_weight = if right_residue {
+            1.0
+        } else {
+            ba.unwrap_or(1.0)
+        };
         let left = Wide::from_f64(x);
         let right = Wide::from_f64(y);
+        let a = Wide::from_f64(left_weight);
+        let b = Wide::from_f64(right_weight);
         let numerator = match alphas {
             None => interpolate(left, right),
-            Some((a, b)) if in_unit_interval => interpolate(left.multiply(a), right.multiply(b)),
-            Some((a, b)) => {
-                // Retain the product residuals so endpoint premultiplication
-                // preserves a lane's slope before extrapolation.
+            Some(_) if bounded_unit_blend => interpolate(left.multiply(a), right.multiply(b)),
+            Some(_) => {
+                // Retain the product residuals for signed and extended alpha
+                // blending as well as extrapolation.
                 let (first, first_low) = left.multiply_with_error(a);
                 let (second, second_low) = right.multiply_with_error(b);
                 interpolate(first, second).add(interpolate(first_low, second_low))
@@ -377,18 +509,18 @@ fn interpolate_components(
         // Rounding the numerator and divisor can misclassify samples on
         // either side of the range boundary. Test the exact weighted ratio
         // before committing to a finite sample or an overflow diagnostic.
-        if !in_unit_interval
+        if !bounded_unit_blend
             && range::exceeds(
-                (x, aa.unwrap_or(1.0)),
-                (y, ba.unwrap_or(1.0)),
+                (x, left_weight),
+                (y, right_weight),
                 progress,
-                divisor.map(Wide::to_f64),
+                alphas.zip(divisor),
             )
         {
             return Some(result.multiply_fixed(2.0));
         }
-        // A unit blend is bounded by its finite input components. The exact
-        // comparison gives the same guarantee for this extrapolated lane.
+        // Unit progress with unit alpha and straight endpoints is bounded by
+        // the inputs. The exact comparison established the other cases.
         Some(if result.exceeds_finite_range() {
             Wide::from_f64(result.to_finite().get())
         } else {
@@ -550,17 +682,23 @@ mod tests {
         let zero = color(Space::Lch, [Some(50.0), Some(0.0), Some(123.0)], Some(1.0));
         assert_eq!(prepare(zero, Space::Lch).channels()[2], Some(123.0));
         assert_eq!(prepare(zero, Space::Oklch).channels()[2], None);
-        let tiny = powerless(color(
+        let tiny = color(
             Space::Oklch,
             [Some(0.5), Some(0.000004), Some(42.0)],
             Some(1.0),
-        ));
-        assert_eq!(tiny.channels(), [Some(0.5), Some(0.0), None]);
-        let hwb = powerless(color(
+        );
+        assert_eq!(
+            powerless(tiny.space(), tiny.finite_channels()).map(|channel| channel.map(Finite::get)),
+            [Some(0.5), Some(0.0), None]
+        );
+        let hwb = color(
             Space::Hwb,
             [Some(42.0), Some(50.0), Some(49.999)],
             Some(1.0),
-        ));
-        assert_eq!(hwb.channels(), [None, Some(50.0), Some(50.0)]);
+        );
+        assert_eq!(
+            powerless(hwb.space(), hwb.finite_channels()).map(|channel| channel.map(Finite::get)),
+            [None, Some(50.0), Some(50.0)]
+        );
     }
 }
