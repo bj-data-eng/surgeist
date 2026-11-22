@@ -72,6 +72,187 @@ fn local_html_limits() -> surgeist_html_parser::HtmlParseLimits {
 }
 
 #[test]
+fn classic_script_pause_accepts_inert_guest_edits_and_refuses_dynamic_script() {
+    use surgeist_dom::{
+        DomBatch,
+        script::{DomDocumentScriptRegistration, DomDocumentScriptingFacts},
+    };
+    use surgeist_html::{
+        scripting::{HtmlScriptingEngine, HtmlScriptingPolicy},
+        values::DocumentString,
+    };
+
+    let html = HtmlSource::utf8(
+        "<!doctype html><meta charset=utf-8><div id=before></div><script>x()</script><div id=after></div>",
+    );
+    let cancel = AtomicBool::new(false);
+    for dynamic_script in [false, true] {
+        let mut session = session(limits());
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let limits = dom.raw().limits().with_meta_processing_work(1_024);
+        dom.raw_mut().set_limits(limits).unwrap();
+        let host = hosted.create_host(&mut dom, &cancel).unwrap();
+        let top = hosted
+            .create_local_html_top_level(&mut dom, host, &cancel)
+            .unwrap();
+        let mut parser = hosted
+            .begin_local_classic_html_parser(&mut dom, top, &html, local_html_limits(), &cancel)
+            .unwrap();
+        parser.accept_eof();
+        let limit = NonZeroUsize::new(128).unwrap();
+
+        assert!(matches!(
+            parser.advance(&hosted, &mut dom, limit, &cancel),
+            Err(DomHostedHtmlError::Parse(HtmlLiveParseError::Host(
+                DomError::ScriptPreparationRequired
+            )))
+        ));
+        let (_, _registration) = hosted
+            .with_current_top_level(&mut dom, top, &cancel, |source, dom| {
+                let backing = source
+                    .retain_runtime_payload(
+                        dom.raw_mut(),
+                        DomDocumentScriptRegistration::storage_bytes(),
+                        &cancel,
+                    )
+                    .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
+                source
+                    .attach_document_script_host(
+                        dom.raw_mut(),
+                        top.global(),
+                        top.document(),
+                        DomDocumentScriptingFacts {
+                            engine: HtmlScriptingEngine::Supported,
+                            policy: HtmlScriptingPolicy {
+                                user_allows: true,
+                                automation_allows: true,
+                            },
+                        },
+                        backing,
+                        &cancel,
+                    )
+                    .map_err(DomHostedRuntimeError::Dom)
+            })
+            .unwrap();
+
+        assert_eq!(
+            parser.advance(&hosted, &mut dom, limit, &cancel).unwrap(),
+            HtmlLiveParseProgress::Script
+        );
+        let script = parser.pending_script().unwrap();
+        let paused = dom.snapshot();
+        let script_node = paused.node(script).unwrap();
+        let body = script_node.parent().unwrap();
+        let canonical = script_node.as_html_script().unwrap();
+        assert_eq!(canonical.parser_document(), Some(top.document()));
+        assert_eq!(canonical.preparation_document(), Some(top.document()));
+        assert!(canonical.flags().already_started());
+        assert_eq!(script_node.children().len(), 1);
+        let preceding = paused.node(body).unwrap().children()[0];
+        assert_eq!(
+            paused
+                .node(preceding)
+                .unwrap()
+                .attribute(&DocumentString::from("id")),
+            Some(&DocumentString::from("before"))
+        );
+        assert_eq!(paused.node(body).unwrap().children(), [preceding, script]);
+        assert!(
+            parser
+                .take_stop_parsing(&hosted, &mut dom, &cancel)
+                .unwrap()
+                .is_none()
+        );
+        assert!(matches!(
+            parser.complete_script(&hosted, &mut dom, preceding, &cancel),
+            Err(DomHostedHtmlError::UnexpectedScript)
+        ));
+
+        if dynamic_script {
+            let mut edit = DomBatch::new();
+            let ticket = edit.create_element(top.document(), "script");
+            edit.set_attribute(&ticket, "src", "/unplanned.js");
+            let node = dom
+                .apply(edit, &cancel)
+                .unwrap()
+                .created(&ticket)
+                .unwrap()
+                .unwrap();
+            let mut edit = DomBatch::new();
+            edit.destroy(node);
+            dom.apply(edit, &cancel).unwrap();
+            assert!(dom.snapshot().node(node).is_err());
+        } else {
+            let mut edit = DomBatch::new();
+            let ticket = edit.create_element(top.document(), "p");
+            let paragraph = dom
+                .apply(edit, &cancel)
+                .unwrap()
+                .created(&ticket)
+                .unwrap()
+                .unwrap();
+            let mut edit = DomBatch::new();
+            edit.set_attribute(paragraph, "id", "named");
+            edit.insert_before(paragraph, body, None);
+            dom.apply(edit, &cancel).unwrap();
+            let mut edit = DomBatch::new();
+            edit.detach(paragraph);
+            dom.apply(edit, &cancel).unwrap();
+        }
+
+        assert_eq!(
+            parser.advance(&hosted, &mut dom, limit, &cancel).unwrap(),
+            HtmlLiveParseProgress::Script
+        );
+        if dynamic_script {
+            assert!(matches!(
+                parser.complete_script(&hosted, &mut dom, script, &cancel),
+                Err(DomHostedHtmlError::LoadProfileChanged)
+            ));
+            assert!(
+                parser
+                    .take_stop_parsing(&hosted, &mut dom, &cancel)
+                    .unwrap()
+                    .is_none()
+            );
+            parser.abort().unwrap();
+            continue;
+        }
+        parser
+            .complete_script(&hosted, &mut dom, script, &cancel)
+            .unwrap();
+        assert_eq!(
+            parser.advance(&hosted, &mut dom, limit, &cancel).unwrap(),
+            HtmlLiveParseProgress::StopParsing
+        );
+        let finished = dom.snapshot();
+        let children = finished.node(body).unwrap().children();
+        assert_eq!(&children[..2], [preceding, script]);
+        assert_eq!(
+            finished
+                .node(children[2])
+                .unwrap()
+                .attribute(&DocumentString::from("id")),
+            Some(&DocumentString::from("after"))
+        );
+        let stop = parser
+            .take_stop_parsing(&hosted, &mut dom, &cancel)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stop.parser_continuation().eof().source(), html.identity());
+        assert!(stop.parser_continuation().parser_scripts_are_absent());
+        assert_eq!(stop.load_checkpoint(), finished.stamp());
+        assert!(
+            parser
+                .take_stop_parsing(&hosted, &mut dom, &cancel)
+                .unwrap()
+                .is_none()
+        );
+    }
+}
+
+#[test]
 fn local_html_prefix_and_later_text_use_the_current_canonical_node() {
     use std::num::NonZeroUsize;
     use surgeist_dom::{DomBatch, tree::DomNodeKind};

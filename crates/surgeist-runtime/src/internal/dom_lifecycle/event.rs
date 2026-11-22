@@ -105,7 +105,7 @@ impl HostedState {
         creation_observation(association.global, origin, occurrence).map(EventCreation)
     }
 
-    fn sample_admitted_clock(
+    pub(super) fn sample_admitted_clock(
         &mut self,
         dom: &DomEventDom<'_>,
         cancel: &AtomicBool,
@@ -451,6 +451,29 @@ impl HostedRuntime {
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         let association = state.event_global(dom, global, cancel)?;
         state.sample_event_creation(dom, &association, cancel)
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn create_page_transition_event(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        global: DomHostedGlobalId,
+        event_type: &[u16],
+        init: DomEventInit,
+        persisted: bool,
+        cancel: &AtomicBool,
+    ) -> Result<NativeDomEvent, DomEventConstructionError> {
+        let creation = self.authored_event_creation(dom, global, cancel)?;
+        NativeDomEvent::authored_page_transition(
+            dom,
+            self.event_storage.clone(),
+            creation,
+            event_type,
+            init,
+            persisted,
+            cancel,
+        )
+        .map_err(Into::into)
     }
 
     #[cfg(feature = "document-scripting")]

@@ -28,6 +28,7 @@ pub struct DomHostedHtmlParser<'source> {
     latest_refusal: Option<DomHostedHtmlError>,
     checkpoint: DomStamp,
     load_profile: bool,
+    classic_scripts: bool,
     progress: Progress,
 }
 
@@ -62,6 +63,8 @@ pub enum DomHostedHtmlError {
     NonEmptyDocument,
     /// An unqualified publication prevents an empty load-delay determination.
     LoadProfileChanged,
+    /// The acknowledgement does not identify the current blocking script.
+    UnexpectedScript,
 }
 
 impl From<DomHostedRuntimeError> for DomHostedHtmlError {
@@ -79,6 +82,31 @@ impl HostedRuntime {
         top: DomHostedTopLevel,
         html: &'source HtmlSource,
         limits: HtmlParseLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedHtmlParser<'source>, DomHostedHtmlError> {
+        self.begin_local_parser(dom, top, html, limits, false, cancel)
+    }
+
+    /// Admit a parser that can pause for local classic scripts. Attach the
+    /// ordinary script host before reaching the first script closing tag.
+    pub fn begin_local_classic_html_parser<'source>(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        top: DomHostedTopLevel,
+        html: &'source HtmlSource,
+        limits: HtmlParseLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedHtmlParser<'source>, DomHostedHtmlError> {
+        self.begin_local_parser(dom, top, html, limits, true, cancel)
+    }
+
+    fn begin_local_parser<'source>(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        top: DomHostedTopLevel,
+        html: &'source HtmlSource,
+        limits: HtmlParseLimits,
+        classic_scripts: bool,
         cancel: &AtomicBool,
     ) -> Result<DomHostedHtmlParser<'source>, DomHostedHtmlError> {
         let edits = self.with_current_top_level(dom, top, cancel, |source, dom| {
@@ -119,8 +147,12 @@ impl HostedRuntime {
                 if snapshot.stamp() != checkpoint {
                     return Err(DomHostedHtmlError::LoadProfileChanged);
                 }
-                let parser = HtmlLiveParser::new(html, top.document().node(), limits)
-                    .map_err(DomHostedHtmlError::Start)?;
+                let parser = if classic_scripts {
+                    HtmlLiveParser::with_classic_scripts(html, top.document().node(), limits)
+                } else {
+                    HtmlLiveParser::new(html, top.document().node(), limits)
+                }
+                .map_err(DomHostedHtmlError::Start)?;
                 current.local_parser_checkpoint = None;
                 return Ok(DomHostedHtmlParser {
                     top,
@@ -130,6 +162,7 @@ impl HostedRuntime {
                     latest_refusal: None,
                     checkpoint,
                     load_profile: true,
+                    classic_scripts,
                     progress: Progress::Input,
                 });
             }
@@ -169,15 +202,21 @@ impl DomHostedHtmlParser<'_> {
         let document = self.top.document();
         let global = self.top.global();
         let result = hosted.with_current_top_level(dom, self.top, cancel, |source, dom| {
-            self.load_profile &= source
-                .local_html_load_profile_continues(
-                    dom.raw(),
-                    document,
-                    global,
-                    self.checkpoint,
-                    cancel,
-                )
-                .map_err(DomHostedRuntimeError::Dom)?;
+            let script_pending = self.parser.pending_script().is_some();
+            if !script_pending {
+                self.load_profile &= source
+                    .local_html_load_profile_continues(
+                        dom.raw(),
+                        document,
+                        global,
+                        self.checkpoint,
+                        cancel,
+                    )
+                    .map_err(DomHostedRuntimeError::Dom)?;
+                if self.classic_scripts && !self.load_profile {
+                    return Err(DomHostedHtmlError::LoadProfileChanged);
+                }
+            }
             let Some(edits) = &self.edits else {
                 return Err(DomHostedHtmlError::Parse(match self.progress {
                     Progress::Transferred => HtmlLiveParseError::HandedOff,
@@ -192,11 +231,56 @@ impl DomHostedHtmlParser<'_> {
                     .advance(&mut tree, token_limit)
                     .map_err(DomHostedHtmlError::Parse)
             };
-            self.checkpoint = dom.snapshot().stamp();
+            if !script_pending {
+                self.checkpoint = dom.snapshot().stamp();
+            }
             if matches!(progress, Ok(HtmlLiveParseProgress::StopParsing)) {
                 self.progress = Progress::Eof;
             }
             progress
+        });
+        result.map_err(|error| self.retain_refusal(error))
+    }
+
+    /// The original canonical script ready for synchronous local evaluation.
+    /// Its `src` and text are visible on the live DOM at this pause.
+    pub fn pending_script(&self) -> Option<NodeId> {
+        self.parser.pending_script()
+    }
+
+    /// Acknowledge that the trusted host finished evaluating this exact
+    /// blocking script. Resource resolution or execution refusal leaves the
+    /// pause outstanding. All native publications since it must qualify.
+    pub fn complete_script(
+        &mut self,
+        hosted: &HostedRuntime,
+        dom: &mut DomEventDom<'_>,
+        script: NodeId,
+        cancel: &AtomicBool,
+    ) -> Result<(), &DomHostedHtmlError> {
+        let result = hosted.with_current_top_level(dom, self.top, cancel, |source, dom| {
+            if self.parser.pending_script() != Some(script) {
+                return Err(DomHostedHtmlError::UnexpectedScript);
+            }
+            let edits = self
+                .edits
+                .as_ref()
+                .ok_or(DomHostedHtmlError::UnexpectedScript)?;
+            self.load_profile &= source
+                .local_html_script_changes_since(dom.raw(), edits, self.checkpoint, cancel)
+                .map_err(DomHostedRuntimeError::Dom)?;
+            if !self.load_profile {
+                return Err(DomHostedHtmlError::LoadProfileChanged);
+            }
+            if !self
+                .parser
+                .complete_script(script)
+                .map_err(DomHostedHtmlError::Start)?
+            {
+                return Err(DomHostedHtmlError::UnexpectedScript);
+            }
+            self.checkpoint = dom.snapshot().stamp();
+            Ok(())
         });
         result.map_err(|error| self.retain_refusal(error))
     }
@@ -231,9 +315,16 @@ impl DomHostedHtmlParser<'_> {
             if !self.load_profile {
                 return Err(DomHostedHtmlError::LoadProfileChanged);
             }
+            let load_checkpoint = dom.snapshot().stamp();
             self.parser
                 .take_stop_parsing()
-                .map(|parser| parser.map(|parser| DomHostedHtmlStopParsing { top, parser }))
+                .map(|parser| {
+                    parser.map(|parser| DomHostedHtmlStopParsing {
+                        top,
+                        parser,
+                        load_checkpoint,
+                    })
+                })
                 .map_err(DomHostedHtmlError::Start)
         });
         if matches!(result, Ok(Some(_))) {
@@ -257,6 +348,7 @@ impl DomHostedHtmlParser<'_> {
 pub struct DomHostedHtmlStopParsing {
     top: DomHostedTopLevel,
     parser: HtmlLiveStopParsing<NodeId>,
+    load_checkpoint: DomStamp,
 }
 
 impl DomHostedHtmlStopParsing {
@@ -268,5 +360,13 @@ impl DomHostedHtmlStopParsing {
     /// Borrow the original EOF, open elements and parser accounting.
     pub fn parser_continuation(&self) -> &HtmlLiveStopParsing<NodeId> {
         &self.parser
+    }
+
+    pub(crate) fn finish_open_elements(&mut self) -> Result<(), HtmlParseStop> {
+        self.parser.finish_open_elements()
+    }
+
+    pub(crate) fn load_checkpoint(&self) -> DomStamp {
+        self.load_checkpoint
     }
 }

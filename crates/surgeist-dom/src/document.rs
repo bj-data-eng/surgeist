@@ -14,5 +14,5 @@
 
 pub use crate::internal::document::{
     DomDocumentClass, DomDocumentCreationCause, DomDocumentEnvironment, DomDocumentInterface,
-    DomDocumentMetadata, DomNativeInputPlatform, DomOpaqueOrigin,
+    DomDocumentMetadata, DomDocumentReadiness, DomNativeInputPlatform, DomOpaqueOrigin,
 };

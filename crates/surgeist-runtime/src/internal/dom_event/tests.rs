@@ -26,6 +26,18 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::{DomBatch, DomCommit, identity::DocumentId, limits::DomLimits};
 use surgeist_html::values::Namespace;
 
+#[cfg(all(
+    feature = "document-scripting",
+    any(
+        target_os = "macos",
+        target_os = "linux",
+        target_os = "windows",
+        target_os = "android",
+        target_os = "ios"
+    )
+))]
+mod parsing;
+
 impl<C> DomEventDispatcher<C> {
     fn dispatch(
         &mut self,

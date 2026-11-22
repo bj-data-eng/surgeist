@@ -6,6 +6,7 @@ mod document;
 pub(in crate::document_scripting) use document::missing_pins_refuse_without_native_publication;
 mod listener_methods;
 mod operations;
+mod page_transition_event;
 mod security_policy_violation;
 mod toggle_event;
 mod trusted_policy;
@@ -164,6 +165,7 @@ pub(super) struct PublicEventBindings {
     window: RetainedCallbackObject,
     trusted_types: RetainedCallbackObject,
     event: RetainedCallbackObject,
+    page_transition_event: RetainedCallbackObject,
     toggle_event: RetainedCallbackObject,
     security_policy_violation: RetainedCallbackObject,
     target: RetainedCallbackObject,
@@ -412,6 +414,9 @@ impl PublicEventBindings {
         install_target_operations(scope, target, &capture_origin)?;
 
         install_event_interface(scope, Interface::Event, &event, &capture)?;
+        let page_transition_event = page_transition_event::install(scope, &event, &capture)?;
+        let page_transition_event = scope.callback_object(&page_transition_event)?;
+        let page_transition_event = scope.retain_callback_object(page_transition_event, fund)?;
         let toggle_event = toggle_event::install(scope, &event, &capture)?;
         let toggle_event = scope.callback_object(&toggle_event)?;
         let toggle_event = scope.retain_callback_object(toggle_event, fund)?;
@@ -501,6 +506,7 @@ impl PublicEventBindings {
                 window,
                 trusted_types,
                 event,
+                page_transition_event,
                 toggle_event,
                 security_policy_violation,
                 target,
@@ -678,6 +684,9 @@ impl PublicEventBindings {
     ) -> Result<Value<'scope>, Error> {
         if event.csp_violation().is_some() {
             return scope.open_callback_object(&self.security_policy_violation);
+        }
+        if event.page_transition_persisted().is_some() {
+            return scope.open_callback_object(&self.page_transition_event);
         }
         match event.toggle_event() {
             Some(_) => scope.open_callback_object(&self.toggle_event),

@@ -273,7 +273,13 @@ fn pinned_html_collection_fixture_completes_with_both_subtests_passing() {
     let subtests: Vec<_> = completion
         .subtests
         .iter()
-        .map(|test| (test.index, String::from_utf16(&test.name).unwrap(), test.status))
+        .map(|test| {
+            (
+                test.index,
+                String::from_utf16(&test.name).unwrap(),
+                test.status,
+            )
+        })
         .collect();
     assert_eq!(
         subtests,

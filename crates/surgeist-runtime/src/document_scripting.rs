@@ -45,7 +45,9 @@ pub use guest::{
     DocumentGuestListenerException, DocumentGuestResource, DocumentGuestWork,
     EnableDocumentGuestEventsFailure,
 };
+mod html_completion;
 mod media_stable_state;
+pub use html_completion::{DocumentHtmlCompletionError, DocumentHtmlCompletionProgress};
 mod source;
 mod window_event;
 mod window_relations;
@@ -756,6 +758,7 @@ impl PreparedDocumentScriptHost {
             retirement: None,
             guest_exception_reports,
             guest_accounting: None,
+            html_completion: None,
         }
     }
 
@@ -1274,6 +1277,7 @@ pub struct DocumentScriptHost {
     retirement: Option<ScriptRetirement>,
     guest_exception_reports: Option<Rc<guest::GuestExceptionReports>>,
     guest_accounting: Option<DocumentGuestAccounting>,
+    html_completion: Option<Rc<RefCell<html_completion::HtmlCompletion>>>,
 }
 
 struct NativeLoanExit<'a> {
@@ -1345,6 +1349,7 @@ impl DocumentScriptHost {
             self.native.discard_media_removals();
             drop(self.engine.take());
             self.native.trusted_types_reports.borrow_mut().take();
+            self.html_completion.take();
         }
     }
 

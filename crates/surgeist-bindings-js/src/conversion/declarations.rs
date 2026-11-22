@@ -18,6 +18,7 @@ use crate::declarations::EventListenerOptions;
 use crate::declarations::GetRootNodeOptions;
 use crate::declarations::ImportNodeArgument;
 use crate::declarations::ImportNodeOptions;
+use crate::declarations::PageTransitionEventInit;
 use crate::declarations::SelectionMode;
 use crate::declarations::ShadowRootInit;
 use crate::declarations::ShadowRootMode;
@@ -278,6 +279,48 @@ fn convert_assigned_nodes_options<'s>(
         None => false,
     };
     Ok(cx.plain(AssignedNodesOptions { flatten }))
+}
+
+/// Complete dictionary conversion for `PageTransitionEventInit`.
+pub fn page_transition_event_init() -> Type<PageTransitionEventInit> {
+    Type::scalar(convert_page_transition_event_init)
+}
+
+fn convert_page_transition_event_init<'s>(
+    cx: &mut Conversion<'_, 's>,
+    input: &Value<'s>,
+) -> Result<Converted<PageTransitionEventInit>, Failure> {
+    let object = cx.dictionary("PageTransitionEventInit", input)?;
+    let bubbles = match cx.member(input, object, &[98, 117, 98, 98, 108, 101, 115])? {
+        Some(value) => *cx.value(&types::BOOLEAN, &value)?.get(),
+        None => false,
+    };
+    let cancelable = match cx.member(
+        input,
+        object,
+        &[99, 97, 110, 99, 101, 108, 97, 98, 108, 101],
+    )? {
+        Some(value) => *cx.value(&types::BOOLEAN, &value)?.get(),
+        None => false,
+    };
+    let composed = match cx.member(input, object, &[99, 111, 109, 112, 111, 115, 101, 100])? {
+        Some(value) => *cx.value(&types::BOOLEAN, &value)?.get(),
+        None => false,
+    };
+    let persisted = match cx.member(
+        input,
+        object,
+        &[112, 101, 114, 115, 105, 115, 116, 101, 100],
+    )? {
+        Some(value) => *cx.value(&types::BOOLEAN, &value)?.get(),
+        None => false,
+    };
+    Ok(cx.plain(PageTransitionEventInit {
+        bubbles,
+        cancelable,
+        composed,
+        persisted,
+    }))
 }
 
 pub(crate) const WINDOW_CSS_NAME: &[u16] = &[67, 83, 83];
@@ -2290,6 +2333,35 @@ pub fn toggle_event_constructor_0_type() -> Argument<Type<DomString>> {
         false,
         types::DOM_STRING,
         None,
+    )
+}
+
+/// Selected argument `PageTransitionEvent.constructor:0/type` (not overload selection).
+pub fn page_transition_event_constructor_0_type() -> Argument<Type<DomString>> {
+    Argument::new(
+        "PageTransitionEvent.constructor:0/type",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+fn default_page_transition_event_constructor_0_event_init_dict(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<PageTransitionEventInit>, Failure> {
+    Ok(cx.plain(PageTransitionEventInit::default()))
+}
+
+/// Selected argument `PageTransitionEvent.constructor:0/eventInitDict` (not overload selection).
+pub fn page_transition_event_constructor_0_event_init_dict()
+-> Argument<Type<PageTransitionEventInit>> {
+    Argument::new(
+        "PageTransitionEvent.constructor:0/eventInitDict",
+        1,
+        true,
+        page_transition_event_init(),
+        Some(default_page_transition_event_constructor_0_event_init_dict),
     )
 }
 

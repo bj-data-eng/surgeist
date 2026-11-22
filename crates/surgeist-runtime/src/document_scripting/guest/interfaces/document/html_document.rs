@@ -11,8 +11,10 @@ use surgeist_bindings_js::{
         },
         types::{DOM_STRING, USV_STRING},
     },
+    declarations::DocumentReadyState,
     dom_exception::DomExceptionName,
 };
+use surgeist_dom::document::DomDocumentReadiness;
 use surgeist_dom::source::DomSourceEdit;
 use surgeist_html::values::Namespace;
 use surgeist_html::{
@@ -166,6 +168,15 @@ pub(super) fn install<'scope>(
         true,
         Callback::new(move |scope, arguments| handler.document_referrer(scope, arguments)),
     )?;
+    let handler = capture(size_of::<Capture>())?;
+    install_getter(
+        scope,
+        prototype,
+        &ascii(b"readyState"),
+        &ascii(b"get readyState"),
+        true,
+        Callback::new(move |scope, arguments| handler.document_readiness(scope, arguments)),
+    )?;
     Ok(())
 }
 
@@ -256,6 +267,37 @@ enum BodyPlan {
 }
 
 impl Capture {
+    fn document_readiness<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let Some(GuestNode::Document(document)) =
+            tree::projected_node(scope, arguments.receiver())?
+        else {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"Document required"))?,
+            ));
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            let value = self.callbacks.with_read(&owner, &events, |read, _| {
+                let DomNodeKind::Document(metadata) = read.node(document.node())?.kind() else {
+                    return Err(DomError::WrongNodeKind.into());
+                };
+                Ok(match metadata.readiness() {
+                    DomDocumentReadiness::Loading => DocumentReadyState::Loading,
+                    DomDocumentReadiness::Interactive => DocumentReadyState::Interactive,
+                    DomDocumentReadiness::Complete => DocumentReadyState::Complete,
+                })
+            })?;
+            Ok(Completion::Return(
+                self.copy_dom_units(scope, value.as_code_units())?,
+            ))
+        })();
+        tree::tree_completion(scope, &events, result)
+    }
+
     fn document_referrer<'scope>(
         &self,
         scope: &mut Scope<'scope>,

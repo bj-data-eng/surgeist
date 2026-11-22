@@ -1310,7 +1310,8 @@ class ValueLoweringTests(unittest.TestCase):
         model = g.lower_values(g.load())
         self.assertEqual([d["name"] for d in model["dictionaries"]],
                          ["GetRootNodeOptions", "ElementCreationOptions", "ImportNodeOptions",
-                          "ShadowRootInit", "EventInit", "EventListenerOptions", "AssignedNodesOptions"])
+                          "ShadowRootInit", "EventInit", "EventListenerOptions", "AssignedNodesOptions",
+                          "PageTransitionEventInit"])
         self.assertEqual([d["name"] for d in model["enumerations"]],
                          ["ShadowRootMode", "SlotAssignmentMode", "DocumentReadyState",
                           "DocumentVisibilityState", "CanPlayTypeResult", "SelectionMode"])

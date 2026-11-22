@@ -10,6 +10,7 @@ use std::{
 use surgeist_bindings_js::{Error, Exception, ExceptionPhase, Primitive, Scope, ValueKind};
 use surgeist_dom::{DomError, hosted::DomHostedError};
 use surgeist_html::scripting::HtmlScriptingPolicy;
+use surgeist_html_parser::HtmlSource;
 use surgeist_js_wpt::{
     BoaHeapSample, EngineResourceEvidence, GuestDiagnostic, HarnessResult, HarnessStatus,
     NativeLedgerUsage, NativeResourceEvidence, Subtest, SubtestStatus, WorkerFailure, WorkerReport,
@@ -30,6 +31,8 @@ use surgeist_runtime::{
 
 mod fixtures;
 mod policy;
+mod wpt_completion;
+mod wpt_window;
 
 const REQUEST_PAYLOAD_BYTES: u32 = 4_092;
 const RESPONSE_PAYLOAD_BYTES: u32 = 32_764;
@@ -47,16 +50,20 @@ fn main() -> ExitCode {
 
 fn serve() -> Result<(), Box<dyn StdError>> {
     let identity = read_request(&mut io::stdin().lock(), REQUEST_PAYLOAD_BYTES)?;
-    let report = match fixtures::resolve(&identity) {
-        Some(fixture) => run_case(fixture)?,
-        None if fixtures::is_pinned_window(&identity)? => without_attachment(
+    let report = if let Some(fixture) = fixtures::resolve(&identity) {
+        run_case(Case::Qualification(fixture))?
+    } else if let Some(fixture) = fixtures::resolve_html(&identity)? {
+        run_case(Case::Html(fixture))?
+    } else if fixtures::is_pinned_window(&identity)? {
+        without_attachment(
             unavailable("native Window WPT environment"),
             EngineResourceEvidence::Unavailable {},
-        ),
-        None => without_attachment(
+        )
+    } else {
+        without_attachment(
             unavailable("fixture identity absent from worker inventory"),
             EngineResourceEvidence::Unavailable {},
-        ),
+        )
     };
     let mut output = io::stdout().lock();
     write_report(&mut output, &identity, &report, RESPONSE_PAYLOAD_BYTES)?;
@@ -64,13 +71,46 @@ fn serve() -> Result<(), Box<dyn StdError>> {
     Ok(())
 }
 
-fn run_case(fixture: fixtures::Fixture) -> Result<WorkerReport, Box<dyn StdError>> {
+enum Case {
+    Qualification(fixtures::Fixture),
+    Html(fixtures::HtmlFixture),
+}
+
+fn run_case(case: Case) -> Result<WorkerReport, Box<dyn StdError>> {
     let selected_heap = EngineResourceEvidence::BoaCollector { sample: None };
     let cancellation = Arc::new(AtomicBool::new(false));
-    let mut session = DomSession::new(policy::dom()?, policy::session())?;
+    let local_html = matches!(&case, Case::Html(_));
+    let mut session = DomSession::new(policy::dom(local_html)?, policy::session())?;
     let mut hosted = session.hosted_execution();
     let host = hosted.create_host(&mut session.dom(), &cancellation)?;
-    let top = hosted.create_top_level(&mut session.dom(), host, &cancellation)?;
+    let document = match &case {
+        Case::Qualification(_) => None,
+        Case::Html(fixture) => Some(HtmlSource::utf16(fixture.document.into())),
+    };
+    let (top, parser) = if let Some(document) = &document {
+        let top = hosted.create_local_html_top_level(&mut session.dom(), host, &cancellation)?;
+        let parser = match hosted.begin_local_classic_html_parser(
+            &mut session.dom(),
+            top,
+            document,
+            policy::html_parser()?,
+            &cancellation,
+        ) {
+            Ok(parser) => parser,
+            Err(error) => {
+                return Ok(without_attachment(
+                    wpt_window::parser_failure(&error),
+                    selected_heap,
+                ));
+            }
+        };
+        (top, Some(parser))
+    } else {
+        (
+            hosted.create_top_level(&mut session.dom(), host, &cancellation)?,
+            None,
+        )
+    };
     let mut registry = DomEventDispatcher::new(policy::REGISTRY)?;
     registry.bind(&mut session.dom(), &cancellation)?;
     let mut registry = Some(registry);
@@ -78,7 +118,7 @@ fn run_case(fixture: fixtures::Fixture) -> Result<WorkerReport, Box<dyn StdError
     let prepared = match PreparedDocumentScriptHost::prepare(
         session,
         policy::SCRIPT_STORAGE_BYTES,
-        cancellation,
+        Arc::clone(&cancellation),
     ) {
         Ok(prepared) => {
             prepared.with_guest_accounting_profile(ProfileMode::Summary { timing: false })
@@ -90,15 +130,24 @@ fn run_case(fixture: fixtures::Fixture) -> Result<WorkerReport, Box<dyn StdError
             ));
         }
     };
+    let prepared = if parser.is_some() {
+        prepared.with_window_timer_limits(policy::WINDOW_TIMERS)
+    } else {
+        prepared
+    };
+    let admission = match &case {
+        Case::Qualification(fixture) => fixture.admission,
+        Case::Html(_) => fixtures::Admission::Standard,
+    };
     let mut script = match prepared.enable_with_guest_event_registry(
         top,
         HtmlScriptingPolicy {
-            user_allows: !matches!(fixture.admission, fixtures::Admission::ScriptingDisabled),
+            user_allows: !matches!(admission, fixtures::Admission::ScriptingDisabled),
             automation_allows: true,
         },
         None,
         &mut registry,
-        policy::guest(fixture.admission),
+        policy::guest(admission),
     ) {
         Ok(script) => script,
         Err(failure) => match failure.error {
@@ -116,14 +165,16 @@ fn run_case(fixture: fixtures::Fixture) -> Result<WorkerReport, Box<dyn StdError
     };
 
     let accounting = script.guest_accounting();
-    let result = match evaluate(&mut script, fixture.source) {
-        Ok(Some(result)) => Ok(result),
-        Ok(None) => Err(io::Error::new(
+    let result = match (case, parser) {
+        (Case::Qualification(fixture), _) => run_qualification(&mut script, fixture.source),
+        (Case::Html(fixture), Some(parser)) => {
+            wpt_window::run(&mut script, parser, &fixture, &cancellation)
+        }
+        (Case::Html(_), None) => Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "qualification source must return a callable with a Boolean result",
+            "pinned HTML fixture requires the original live parser",
         )
         .into()),
-        Err(error) => script_failure(error),
     };
     let engine = heap_evidence(&mut script);
     drop(script.stop());
@@ -134,6 +185,21 @@ fn run_case(fixture: fixtures::Fixture) -> Result<WorkerReport, Box<dyn StdError
             engine,
         },
     })
+}
+
+fn run_qualification(
+    script: &mut DocumentScriptHost,
+    source: &str,
+) -> Result<WorkerResult, Box<dyn StdError>> {
+    match evaluate(script, source) {
+        Ok(Some(result)) => Ok(result),
+        Ok(None) => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "qualification source must return a callable with a Boolean result",
+        )
+        .into()),
+        Err(error) => script_failure(error),
+    }
 }
 
 fn without_attachment(result: WorkerResult, engine: EngineResourceEvidence) -> WorkerReport {

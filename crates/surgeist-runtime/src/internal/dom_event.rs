@@ -2,7 +2,8 @@
 //!
 //! Implements the pinned DOM3071 dispatch/invoke and parent algorithms for the
 //! ordinary Node, Global and standalone dispatch, and selected Style, Details
-//! and Dialog delivery, and attached CSP violation delivery.
+//! and Dialog delivery, attached CSP violation delivery, and HTML stop-parsing
+//! events.
 //! Authored Event bodies retain their exact UTF-16 type and creation observation.
 //! The affine dispatch owns one invocation's path, cursor and admission. Details
 //! preserves its queued state and Dialog supplies its source-selected cancelability.
@@ -1440,7 +1441,7 @@ impl<C> DomEventDispatcher<C> {
             (path, clear_target, Some(custody))
         } else {
             (
-                build_direct_path(dom, state.origin.target(), &mut budget)?,
+                build_direct_path(dom, &state.origin, &mut budget)?,
                 false,
                 None,
             )
@@ -2162,7 +2163,20 @@ enum EventPayload {
     Toggle(DomToggleEvent),
     #[cfg(feature = "document-scripting")]
     CspViolation(Rc<csp::CspEventData>),
+    #[cfg(feature = "document-scripting")]
+    PageTransition {
+        persisted: bool,
+    },
 }
+#[cfg(feature = "document-scripting")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ParsingEvent {
+    ReadyStateChange,
+    DomContentLoaded,
+    WindowLoad,
+    PageShow,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NativeEventCause {
     StyleLoad,
@@ -2175,6 +2189,8 @@ pub(crate) enum NativeEventCause {
     SignalAbort,
     #[cfg(feature = "document-scripting")]
     CspViolation,
+    #[cfg(feature = "document-scripting")]
+    Parsing(ParsingEvent),
 }
 impl NativeEventCause {
     fn event_type(self) -> DomEventType {
@@ -2188,6 +2204,13 @@ impl NativeEventCause {
             Self::SignalAbort => DomEventType::ABORT,
             #[cfg(feature = "document-scripting")]
             Self::CspViolation => DomEventType::CSP_VIOLATION,
+            #[cfg(feature = "document-scripting")]
+            Self::Parsing(event) => match event {
+                ParsingEvent::ReadyStateChange => DomEventType::READY_STATE_CHANGE,
+                ParsingEvent::DomContentLoaded => DomEventType::DOM_CONTENT_LOADED,
+                ParsingEvent::WindowLoad => DomEventType::LOAD,
+                ParsingEvent::PageShow => DomEventType::PAGE_SHOW,
+            },
         }
     }
 }
@@ -2615,12 +2638,20 @@ enum NativeDispatchOrigin {
         cause: NativeEventCause,
     },
     SignalAbort(DomStandaloneEventTarget),
+    #[cfg(feature = "document-scripting")]
+    WindowParsing {
+        global: surgeist_dom::hosted::DomHostedGlobalId,
+        document: surgeist_dom::identity::DocumentId,
+        event: ParsingEvent,
+    },
 }
 impl NativeDispatchOrigin {
     fn owner(&self) -> surgeist_dom::identity::DomOwnerId {
         match self {
             Self::Node { node, .. } => node.owner(),
             Self::SignalAbort(target) => target.document().node().owner(),
+            #[cfg(feature = "document-scripting")]
+            Self::WindowParsing { document, .. } => document.node().owner(),
         }
     }
 
@@ -2628,6 +2659,8 @@ impl NativeDispatchOrigin {
         match self {
             Self::Node { cause, .. } => *cause,
             Self::SignalAbort(_) => NativeEventCause::SignalAbort,
+            #[cfg(feature = "document-scripting")]
+            Self::WindowParsing { event, .. } => NativeEventCause::Parsing(*event),
         }
     }
 }
@@ -2649,6 +2682,8 @@ impl DispatchOrigin {
                 (*node).into()
             }
             Self::Global(global) => (*global).into(),
+            #[cfg(feature = "document-scripting")]
+            Self::Native(NativeDispatchOrigin::WindowParsing { global, .. }) => (*global).into(),
             Self::Standalone(target) | Self::Native(NativeDispatchOrigin::SignalAbort(target)) => {
                 target.clone().into()
             }
@@ -2661,6 +2696,16 @@ impl DispatchOrigin {
             Self::Global(_)
             | Self::Standalone(_)
             | Self::Native(NativeDispatchOrigin::SignalAbort(_)) => None,
+            #[cfg(feature = "document-scripting")]
+            Self::Native(NativeDispatchOrigin::WindowParsing { .. }) => None,
+        }
+    }
+
+    fn legacy_target_override(&self) -> Option<surgeist_dom::identity::DocumentId> {
+        match self {
+            #[cfg(feature = "document-scripting")]
+            Self::Native(NativeDispatchOrigin::WindowParsing { document, .. }) => Some(*document),
+            _ => None,
         }
     }
 
@@ -3228,6 +3273,13 @@ impl NativeDomEvent {
     pub(crate) fn csp_violation(&self) -> Option<&csp::CspEventData> {
         if let EventPayload::CspViolation(report) = &self.0.payload {
             return Some(report.as_ref());
+        }
+        None
+    }
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn page_transition_persisted(&self) -> Option<bool> {
+        if let EventPayload::PageTransition { persisted } = &self.0.payload {
+            return Some(*persisted);
         }
         None
     }
@@ -3800,7 +3852,7 @@ fn root(
 }
 fn build_direct_path(
     dom: &Dom,
-    target: DomEventTarget,
+    origin: &DispatchOrigin,
     budget: &mut Budget<'_>,
 ) -> Result<Vec<PathItem>, DomEventDispatchError> {
     if budget.limits.path_items == 0 {
@@ -3808,9 +3860,19 @@ fn build_direct_path(
             DomEventResource::PathItems,
         ));
     }
-    if let DomEventTarget::Global(global) = &target {
-        dom.dispatch_global_document_with(*global, budget.cancel, &mut || source_tick(budget))?;
-    }
+    let invocation = origin.target();
+    let target = if let DomEventTarget::Global(global) = &invocation {
+        let document =
+            dom.dispatch_global_document_with(*global, budget.cancel, &mut || source_tick(budget))?;
+        // HTML's legacy override adjusts target without adding a Document invocation.
+        match origin.legacy_target_override() {
+            Some(expected) if expected == document => document.node().into(),
+            Some(_) => return Err(DomError::WrongDocument.into()),
+            None => invocation.clone(),
+        }
+    } else {
+        invocation.clone()
+    };
     source_tick(budget)?;
     let mut path = Vec::new();
     path.try_reserve_exact(1)
@@ -3821,7 +3883,7 @@ fn build_direct_path(
         ));
     }
     path.push(PathItem {
-        invocation: target.clone(),
+        invocation,
         target,
         at_target: true,
         closed_root: false,

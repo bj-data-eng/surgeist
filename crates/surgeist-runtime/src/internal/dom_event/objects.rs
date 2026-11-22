@@ -225,6 +225,31 @@ impl NativeDomEvent {
     }
 
     #[cfg(feature = "document-scripting")]
+    pub(crate) fn authored_page_transition(
+        dom: &mut DomEventDom<'_>,
+        storage: EventStorage,
+        creation: EventCreation,
+        event_type: &[u16],
+        init: DomEventInit,
+        persisted: bool,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomEventDispatchError> {
+        storage.step(1, cancel)?;
+        let event_type = DomEventType::retain(&storage, dom, event_type, cancel)?;
+        Self::allocate(
+            dom,
+            storage,
+            creation,
+            Some(InitializedEvent {
+                event_type,
+                init,
+                payload: EventPayload::PageTransition { persisted },
+            }),
+            cancel,
+        )
+    }
+
+    #[cfg(feature = "document-scripting")]
     pub(crate) fn authored_csp_violation(
         dom: &mut DomEventDom<'_>,
         storage: EventStorage,

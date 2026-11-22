@@ -584,6 +584,9 @@ impl DocumentScriptHost {
         permit: &DocumentScriptPermit,
     ) -> Result<WindowTimerProgress, DocumentScriptError> {
         self.check_permit(permit)?;
+        if self.has_retained_html_completion_task()? {
+            return Err(DocumentScriptNativeError::Busy.into());
+        }
         self.observe()?;
         let attachment = self
             .native

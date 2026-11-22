@@ -11,7 +11,7 @@ provides the detail types and readers; a build that turns it off refuses a
 non-empty selection with `HtmlParseDetailUnavailable`.
 
 The `live` module drives bounded decoded input into a host's canonical tree.
-The local profile requires a plain HTML doctype, explicit `html`, `head` and
+The default local profile requires a plain HTML doctype, explicit `html`, `head` and
 `body` starts, and an explicit `head` end. It admits balanced `div` and `span`,
 `id` and `class` attributes, text and comments. The parser retains the original
 tokenizer, input position and open-element identities across a pause. The host
@@ -20,12 +20,20 @@ between advances. A refused edit stays pending with its original token.
 Parser limits govern decoded input, tokenization, open elements and parser work.
 The host independently admits canonical tree storage and native edit work.
 
-Explicit EOF allows the original end token to reach stop parsing. The one-shot
-continuation gives the host the EOF anchor and pending stack pops. The profile
-refuses markup that would introduce parser scripts, and the hosted caller
-supplies the independent load-delay qualification before handoff. After
-cancellation or abandonment, abort releases parser custody and preserves edits
-the host already published.
+`HtmlLiveParser::with_classic_scripts` also admits implied `html`, `head` and
+`body`, UTF-8 `meta`, `title`, and synchronous classic scripts with inline text
+or a root-relative resource path. At each reached executable script end tag,
+the parser pauses with the canonical Script identity. The host reads the live
+prefix, supplies any local resource and acknowledges that script after
+evaluation. Script preparation can end without execution for an empty inline
+script. The profile reports ordinary unsupported markup and script attributes
+such as `async`, `defer` and `type`.
+
+Explicit EOF allows the original end token to reach stop parsing after all
+script pauses have been acknowledged. The one-shot continuation gives the
+host the EOF anchor and pending stack pops. The hosted caller supplies the
+load-delay qualification before handoff. After cancellation or abandonment,
+abort releases parser custody and preserves edits the host already published.
 
 The [detailed parsing guide](../../docs/reference/html-operations.md#decoded-unicode-parsing)
 records supported profiles, explicit external facts, bounded ownership and

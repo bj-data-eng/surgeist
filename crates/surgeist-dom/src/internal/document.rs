@@ -136,6 +136,18 @@ pub struct DomDocumentMetadata {
     policy: crate::internal::meta::DomDocumentPolicyContainer,
     meta_ui: NoAssociatedMetaThemeConsumer,
     pub(crate) hosted_inputs: Option<HostedDocumentInputs>,
+    local_html_load_timing: Option<crate::hosted::DomHostedHtmlLoadTiming>,
+}
+
+/// The Document's current readiness as exposed by the HTML Document interface.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomDocumentReadiness {
+    /// The original live parser has not completed.
+    Loading,
+    /// Parsing ended and the Document's loading steps are in progress.
+    Interactive,
+    /// The Document's loading steps reached complete readiness.
+    Complete,
 }
 
 /// One constructor-owned graph, shared unchanged by the original request and
@@ -337,6 +349,29 @@ impl DomDocumentEnvironment {
 }
 
 impl DomDocumentMetadata {
+    /// Current HTML readiness at the same canonical revision as the tree.
+    pub fn readiness(&self) -> DomDocumentReadiness {
+        match self.local_html_load_timing {
+            Some(timing) => timing.readiness(),
+            None if matches!(self.cause, DomDocumentCreationCause::HostedLocalHtml { .. }) => {
+                DomDocumentReadiness::Loading
+            }
+            None => DomDocumentReadiness::Complete,
+        }
+    }
+
+    /// Timing of the reached native steps for a live local HTML Document.
+    pub fn local_html_load_timing(&self) -> Option<crate::hosted::DomHostedHtmlLoadTiming> {
+        self.local_html_load_timing
+    }
+
+    pub(crate) fn set_local_html_load_timing(
+        &mut self,
+        timing: crate::hosted::DomHostedHtmlLoadTiming,
+    ) {
+        self.local_html_load_timing = Some(timing);
+    }
+
     pub(crate) fn fresh_opaque_origin() -> DomOpaqueOrigin {
         DomOpaqueOrigin(OpaqueOriginBacking::Native(Arc::new(OpaqueOriginIdentity)))
     }
@@ -471,6 +506,7 @@ impl DomDocumentMetadata {
             policy: crate::internal::meta::DomDocumentPolicyContainer::native(),
             meta_ui: NoAssociatedMetaThemeConsumer,
             hosted_inputs: None,
+            local_html_load_timing: None,
         }
     }
     pub(crate) fn xml_factory(
@@ -766,6 +802,7 @@ impl DomDocumentMetadata {
             && self.policy == other.policy
             && self.meta_ui == other.meta_ui
             && self.hosted_inputs == other.hosted_inputs
+            && self.local_html_load_timing == other.local_html_load_timing
     }
     pub fn allow_declarative_shadow_roots(&self) -> bool {
         self.allow_declarative_shadow_roots

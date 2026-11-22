@@ -14,7 +14,7 @@ use crate::{
         control::{OwnedVec, ParseControl},
         tokenizer::{
             Tokenizer, TokenizerPull,
-            states::HtmlTokenizerState,
+            states::{HtmlTokenizerRawState, HtmlTokenizerState},
             token::{Event, Tag, TagKind, Token, TokenKind},
         },
     },
@@ -30,6 +30,9 @@ pub enum HtmlLiveElement {
     Body,
     Div,
     Span,
+    Meta,
+    Title,
+    Script,
 }
 
 impl HtmlLiveElement {
@@ -40,6 +43,9 @@ impl HtmlLiveElement {
             Self::Body => "body",
             Self::Div => "div",
             Self::Span => "span",
+            Self::Meta => "meta",
+            Self::Title => "title",
+            Self::Script => "script",
         }
     }
 }
@@ -49,6 +55,8 @@ impl HtmlLiveElement {
 pub enum HtmlLiveAttribute {
     Id,
     Class,
+    Charset,
+    Src,
 }
 
 impl HtmlLiveAttribute {
@@ -56,6 +64,8 @@ impl HtmlLiveAttribute {
         match self {
             Self::Id => "id",
             Self::Class => "class",
+            Self::Charset => "charset",
+            Self::Src => "src",
         }
     }
 }
@@ -101,6 +111,11 @@ pub trait HtmlLiveTree {
     /// Text node. The preceding-child read belongs to the same atomic edit.
     fn insert_text(&mut self, parent: Self::Node, text: &DocumentString)
     -> Result<(), Self::Error>;
+
+    /// Apply preparation to the original canonical parser-inserted classic
+    /// script, returning whether the host must execute it before parsing resumes.
+    /// False represents an applicable preparation step that ends without execution.
+    fn prepare_classic_script(&mut self, script: Self::Node) -> Result<bool, Self::Error>;
 }
 
 /// The first reached tokenizer result outside the admitted construction profile.
@@ -137,6 +152,8 @@ impl<E> From<HtmlParseStop> for HtmlLiveParseError<E> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlLiveParseProgress {
     Paused,
+    /// The canonical script at its closing tag requires host completion.
+    Script,
     AwaitingEof,
     StopParsing,
 }
@@ -151,6 +168,9 @@ enum Mode {
     InBody,
     AfterBody,
     AfterAfterBody,
+    InTitle,
+    InHeadScript,
+    InBodyScript,
 }
 
 struct OpenElement<N> {
@@ -164,7 +184,19 @@ enum Edit<N> {
     None,
     Pop,
     Doctype,
-    Element { parent: N, names: AttributeNames },
+    Element {
+        parent: N,
+        names: AttributeNames,
+    },
+    ImpliedElement {
+        parent: N,
+    },
+    VoidElement {
+        parent: N,
+        name: HtmlLiveElement,
+        names: AttributeNames,
+    },
+    PrepareClassicScript(N),
     Comment(N),
     Text(N),
 }
@@ -172,6 +204,7 @@ enum Edit<N> {
 struct Plan<N> {
     edit: Edit<N>,
     next: Mode,
+    reprocess: bool,
 }
 
 struct Input<N> {
@@ -188,6 +221,8 @@ struct State<'source, N> {
     open: OwnedVec<OpenElement<N>>,
     accept_eof: bool,
     end: Option<end::EndPhase>,
+    classic_scripts: bool,
+    script: Option<N>,
 }
 
 /// One source-established parser for an exact hosted Document root.
@@ -227,6 +262,25 @@ impl<'source, N: Copy + Eq> HtmlLiveParser<'source, N> {
         document: N,
         limits: HtmlParseLimits,
     ) -> Result<Self, HtmlLiveParseError<Infallible>> {
+        Self::with_profile(source, document, limits, false)
+    }
+
+    /// Admit the local classic-script profile. It uses the same canonical
+    /// provider and decoded input, with synchronous pauses at script end tags.
+    pub fn with_classic_scripts(
+        source: &'source HtmlSource,
+        document: N,
+        limits: HtmlParseLimits,
+    ) -> Result<Self, HtmlLiveParseError<Infallible>> {
+        Self::with_profile(source, document, limits, true)
+    }
+
+    fn with_profile(
+        source: &'source HtmlSource,
+        document: N,
+        limits: HtmlParseLimits,
+        classic_scripts: bool,
+    ) -> Result<Self, HtmlLiveParseError<Infallible>> {
         let cancellation = HtmlParseCancellation::new();
         let mut control =
             ParseControl::with_accounting(limits, cancellation.clone(), None, DetailSet::NONE);
@@ -255,6 +309,8 @@ impl<'source, N: Copy + Eq> HtmlLiveParser<'source, N> {
                 open,
                 accept_eof: false,
                 end: None,
+                classic_scripts,
+                script: None,
             }),
             unsupported: None,
             first_host_refusal: None,
@@ -277,6 +333,29 @@ impl<'source, N: Copy + Eq> HtmlLiveParser<'source, N> {
 
     pub fn first_host_refusal(&self) -> Option<&HtmlSourceRange> {
         self.first_host_refusal.as_ref()
+    }
+
+    /// The exact canonical script waiting at the original closing tag.
+    pub fn pending_script(&self) -> Option<N> {
+        self.state.as_ref()?.script
+    }
+
+    /// Acknowledge successful completion through the host of this exact script.
+    /// A different identity leaves the same pause pending.
+    pub fn complete_script(&mut self, script: N) -> Result<bool, HtmlLiveParseError<Infallible>> {
+        if let Some(error) = self.refusal() {
+            return Err(error);
+        }
+        let state = self.state.as_mut().ok_or(HtmlLiveParseError::Aborted)?;
+        if state.script != Some(script) {
+            return Ok(false);
+        }
+        if let Err(stop) = state.control.checkpoint() {
+            self.terminal_stop = Some(stop);
+            return Err(stop.into());
+        }
+        state.script = None;
+        Ok(true)
     }
 
     /// Allow the actual source EOF token to enter stop parsing on an advance.
@@ -359,7 +438,7 @@ impl<'source, N: Copy + Eq> HtmlLiveParser<'source, N> {
         Ok(Some(HtmlLiveStopParsing {
             document: self.document,
             eof: input.token,
-            open: state.open,
+            open: Some(state.open),
             control: state.control,
             phase,
         }))
@@ -385,7 +464,7 @@ impl<'source, N: Copy + Eq> HtmlLiveParser<'source, N> {
 pub struct HtmlLiveStopParsing<N> {
     document: N,
     eof: Token,
-    open: OwnedVec<OpenElement<N>>,
+    open: Option<OwnedVec<OpenElement<N>>>,
     control: ParseControl,
     phase: end::EndPhase,
 }
@@ -401,13 +480,31 @@ impl<N: Copy> HtmlLiveStopParsing<N> {
 
     /// The canonical nodes awaiting the original stop-parsing stack pops.
     pub fn open_elements(&self) -> impl DoubleEndedIterator<Item = N> + '_ {
-        self.open.as_slice().iter().filter_map(|entry| entry.node)
+        self.open
+            .iter()
+            .flat_map(|open| open.as_slice())
+            .filter_map(|entry| entry.node)
     }
 
-    /// No reached token could create a pending parser-inserted script in this
-    /// profile. Independent host load-delay producers require qualification.
+    /// No parser-inserted script is pending at this handoff. The parser cannot
+    /// reach EOF until each admitted blocking script is acknowledged.
     pub fn parser_scripts_are_absent(&self) -> bool {
         true
+    }
+
+    /// Pop the original open elements in stop-parsing order and release the stack.
+    /// The caller drives readiness before this step.
+    pub fn finish_open_elements(&mut self) -> Result<(), HtmlParseStop> {
+        self.control.checkpoint()?;
+        if let Some(open) = &mut self.open {
+            while open.try_pop(&mut self.control)?.is_some() {}
+            write(size_of::<end::EndPhase>(), 1, &mut self.control)?;
+            if let Some(open) = self.open.take() {
+                open.release(&mut self.control)?;
+            }
+            self.phase = end::EndPhase::DeferredScriptsAbsent;
+        }
+        Ok(())
     }
 
     pub fn usage(&self) -> HtmlParseUsage {
@@ -486,6 +583,10 @@ impl<N: Copy + Eq> State<'_, N> {
         token_limit: NonZeroUsize,
     ) -> Result<HtmlLiveParseProgress, HtmlLiveParseError<H::Error>> {
         self.control.require_source(source)?;
+        self.control.checkpoint()?;
+        if self.script.is_some() {
+            return Ok(HtmlLiveParseProgress::Script);
+        }
         if self.end.is_some() {
             return Ok(HtmlLiveParseProgress::StopParsing);
         }
@@ -499,42 +600,53 @@ impl<N: Copy + Eq> State<'_, N> {
                 if end::eof_is_held(true, self.accept_eof) {
                     return Ok(HtmlLiveParseProgress::AwaitingEof);
                 }
-                if !matches!(
+                if matches!(
                     self.mode,
                     Mode::InBody | Mode::AfterBody | Mode::AfterAfterBody
                 ) {
-                    return Err(unsupported(
-                        HtmlLiveUnsupported::DocumentStructure,
-                        &input.token,
-                    ));
+                    if self.open.len() != 2 {
+                        return Err(unsupported(
+                            HtmlLiveUnsupported::DocumentStructure,
+                            &input.token,
+                        ));
+                    }
+                    let phase = end::admit_stop_parsing(&mut self.control)?;
+                    self.release_lexical()?;
+                    self.end = Some(phase);
+                    return Ok(HtmlLiveParseProgress::StopParsing);
                 }
-                if self.open.len() != 2 {
-                    return Err(unsupported(
-                        HtmlLiveUnsupported::DocumentStructure,
-                        &input.token,
-                    ));
-                }
-                let phase = end::admit_stop_parsing(&mut self.control)?;
-                self.release_lexical()?;
-                self.end = Some(phase);
-                return Ok(HtmlLiveParseProgress::StopParsing);
             }
 
             if input.plan.is_none() {
-                input.plan = Some(prepare(
+                let plan = prepare(
                     input,
                     document,
                     self.mode,
+                    self.classic_scripts,
                     &mut self.open,
                     &mut self.control,
-                )?);
+                )?;
+                let raw = match plan.next {
+                    Mode::InTitle => Some(HtmlTokenizerRawState::Rcdata),
+                    Mode::InHeadScript | Mode::InBodyScript => Some(HtmlTokenizerRawState::Script),
+                    _ => None,
+                };
+                if self.mode != plan.next
+                    && let Some(raw) = raw
+                {
+                    self.tokenizer
+                        .as_mut()
+                        .ok_or_else(|| invalid_state(&mut self.control))?
+                        .set_state(HtmlTokenizerState::Raw(raw), &mut self.control)?;
+                }
+                input.plan = Some(plan);
             }
             let Some(plan) = &input.plan else {
                 return Err(invalid_state(&mut self.control).into());
             };
             self.control
                 .charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-            apply(
+            self.script = apply(
                 plan,
                 &mut input.token,
                 document,
@@ -543,8 +655,13 @@ impl<N: Copy + Eq> State<'_, N> {
                 host,
             )?;
             self.mode = plan.next;
-            if let Some(input) = self.pending.take() {
+            if plan.reprocess {
+                input.plan = None;
+            } else if let Some(input) = self.pending.take() {
                 input.token.release(&mut self.control)?;
+            }
+            if self.script.is_some() {
+                return Ok(HtmlLiveParseProgress::Script);
             }
         }
         Ok(HtmlLiveParseProgress::Paused)
@@ -562,11 +679,13 @@ fn classify<E>(
     token: &Token,
     mode: Mode,
     current: Option<HtmlLiveElement>,
+    classic_scripts: bool,
     control: &mut ParseControl,
 ) -> Result<Rule, HtmlLiveParseError<E>> {
-    use HtmlLiveElement::{Body, Div, Head, Html, Span};
+    use HtmlLiveElement::{Body, Div, Head, Html, Meta, Script, Span, Title};
     use Mode::{
-        AfterAfterBody, AfterBody, AfterHead, BeforeHead, BeforeHtml, InBody, InHead, Initial,
+        AfterAfterBody, AfterBody, AfterHead, BeforeHead, BeforeHtml, InBody, InBodyScript, InHead,
+        InHeadScript, InTitle, Initial,
     };
 
     let rule = match &token.kind {
@@ -593,14 +712,17 @@ fn classify<E>(
             }
             match mode {
                 Initial | BeforeHtml | BeforeHead if whitespace => Rule::Ignore,
-                InBody => Rule::Text,
+                InBody | InTitle | InHeadScript | InBodyScript => Rule::Text,
                 InHead | AfterHead | AfterBody | AfterAfterBody if whitespace => Rule::Text,
+                BeforeHtml | BeforeHead | InHead | AfterHead if classic_scripts => {
+                    implied_structure(mode).ok_or_else(|| invalid_state(control))?
+                }
                 _ => return Err(unsupported(HtmlLiveUnsupported::DocumentStructure, token)),
             }
         }
         TokenKind::Comment(_) => Rule::Comment,
         TokenKind::Tag(tag) => {
-            let Some(name) = element_name(tag, control)? else {
+            let Some(name) = element_name(tag, classic_scripts, control)? else {
                 return Err(unsupported(HtmlLiveUnsupported::Element, token));
             };
             if tag.self_closing {
@@ -611,10 +733,28 @@ fn classify<E>(
                 (BeforeHead, TagKind::Start, Head) => Rule::Push(Head, InHead),
                 (InHead, TagKind::End, Head) => Rule::Pop(AfterHead),
                 (AfterHead, TagKind::Start, Body) => Rule::Push(Body, InBody),
+                (InHead, TagKind::Start, Meta) => Rule::Void(Meta),
+                (InHead, TagKind::Start, Title) => Rule::Push(Title, InTitle),
+                (InTitle, TagKind::End, Title) => Rule::Pop(InHead),
+                (InHead, TagKind::Start, Script) => Rule::Push(Script, InHeadScript),
+                (InBody, TagKind::Start, Script) => Rule::Push(Script, InBodyScript),
+                (InHeadScript, TagKind::End, Script) => Rule::Script(InHead),
+                (InBodyScript, TagKind::End, Script) => Rule::Script(InBody),
                 (InBody, TagKind::Start, Div | Span) => Rule::Push(name, InBody),
                 (InBody, TagKind::End, Div | Span) if current == Some(name) => Rule::Pop(InBody),
                 (InBody, TagKind::End, Body) if current == Some(Body) => Rule::Set(AfterBody),
                 (AfterBody, TagKind::End, Html) => Rule::Set(AfterAfterBody),
+                (
+                    BeforeHtml | BeforeHead,
+                    TagKind::Start,
+                    Meta | Title | Script | Div | Span | Body,
+                )
+                | (InHead, TagKind::Start, Body | Div | Span)
+                | (AfterHead, TagKind::Start, Div | Span)
+                    if classic_scripts =>
+                {
+                    implied_structure(mode).ok_or_else(|| invalid_state(control))?
+                }
                 _ => return Err(unsupported(HtmlLiveUnsupported::DocumentStructure, token)),
             }
         }
@@ -624,7 +764,9 @@ fn classify<E>(
                 token,
             ));
         }
-        TokenKind::Eof => return Err(invalid_state(control).into()),
+        TokenKind::Eof if classic_scripts => implied_structure(mode)
+            .ok_or_else(|| unsupported(HtmlLiveUnsupported::DocumentStructure, token))?,
+        TokenKind::Eof => return Err(unsupported(HtmlLiveUnsupported::DocumentStructure, token)),
     };
     Ok(rule)
 }
@@ -633,18 +775,39 @@ enum Rule {
     Ignore,
     Doctype,
     Push(HtmlLiveElement, Mode),
+    ImpliedPush(HtmlLiveElement, Mode),
+    Void(HtmlLiveElement),
+    Script(Mode),
     Pop(Mode),
+    ImpliedPop(Mode),
     Set(Mode),
     Comment,
     Text,
 }
 
+fn implied_structure(mode: Mode) -> Option<Rule> {
+    match mode {
+        Mode::BeforeHtml => Some(Rule::ImpliedPush(HtmlLiveElement::Html, Mode::BeforeHead)),
+        Mode::BeforeHead => Some(Rule::ImpliedPush(HtmlLiveElement::Head, Mode::InHead)),
+        Mode::InHead => Some(Rule::ImpliedPop(Mode::AfterHead)),
+        Mode::AfterHead => Some(Rule::ImpliedPush(HtmlLiveElement::Body, Mode::InBody)),
+        _ => None,
+    }
+}
+
 fn element_name(
     tag: &Tag,
+    classic_scripts: bool,
     control: &mut ParseControl,
 ) -> Result<Option<HtmlLiveElement>, HtmlParseStop> {
-    use HtmlLiveElement::{Body, Div, Head, Html, Span};
-    for name in [Html, Head, Body, Div, Span] {
+    use HtmlLiveElement::{Body, Div, Head, Html, Meta, Script, Span, Title};
+    let names = [Html, Head, Body, Div, Span, Meta, Title, Script];
+    let names = if classic_scripts {
+        &names[..]
+    } else {
+        &names[..5]
+    };
+    for &name in names {
         if tag_sets::ascii_eq(tag.name.value.text(), name.as_str(), control)? {
             return Ok(Some(name));
         }
@@ -655,6 +818,7 @@ fn element_name(
 fn attributes<E>(
     tag: &Tag,
     token: &Token,
+    element: HtmlLiveElement,
     control: &mut ParseControl,
 ) -> Result<AttributeNames, HtmlLiveParseError<E>> {
     let mut names = [None, None];
@@ -665,21 +829,59 @@ fn attributes<E>(
     for (attribute, destination) in source.iter().zip(&mut names) {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let name = attribute.name.value.text();
-        *destination = Some(if tag_sets::ascii_eq(name, "id", control)? {
-            HtmlLiveAttribute::Id
-        } else if tag_sets::ascii_eq(name, "class", control)? {
-            HtmlLiveAttribute::Class
-        } else {
-            return Err(unsupported(HtmlLiveUnsupported::Attribute, token));
-        });
+        *destination = Some(
+            if element == HtmlLiveElement::Meta
+                && tag_sets::ascii_eq(name, "charset", control)?
+                && tag_sets::ascii_eq(attribute.value.value.text(), "utf-8", control)?
+            {
+                HtmlLiveAttribute::Charset
+            } else if element == HtmlLiveElement::Script
+                && tag_sets::ascii_eq(name, "src", control)?
+                && local_script_path(attribute.value.value.text(), control)?
+            {
+                HtmlLiveAttribute::Src
+            } else if matches!(element, HtmlLiveElement::Meta | HtmlLiveElement::Script) {
+                return Err(unsupported(HtmlLiveUnsupported::Attribute, token));
+            } else if tag_sets::ascii_eq(name, "id", control)? {
+                HtmlLiveAttribute::Id
+            } else if tag_sets::ascii_eq(name, "class", control)? {
+                HtmlLiveAttribute::Class
+            } else {
+                return Err(unsupported(HtmlLiveUnsupported::Attribute, token));
+            },
+        );
     }
     Ok(names)
+}
+
+fn local_script_path(
+    value: &DocumentString,
+    control: &mut ParseControl,
+) -> Result<bool, HtmlParseStop> {
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+    let [0x2f, path @ ..] = value.code_units() else {
+        return Ok(false);
+    };
+    control.charge_unit_inspection()?;
+    if path.first().is_none_or(|&first| first == 0x2f) {
+        return Ok(false);
+    }
+    for &unit in path {
+        control.charge_unit_inspection()?;
+        if !u8::try_from(unit).is_ok_and(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'.' | b'_' | b'-')
+        }) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn prepare<N: Copy, E>(
     input: &Input<N>,
     document: N,
     mode: Mode,
+    classic_scripts: bool,
     open: &mut OwnedVec<OpenElement<N>>,
     control: &mut ParseControl,
 ) -> Result<Plan<N>, HtmlLiveParseError<E>> {
@@ -687,30 +889,73 @@ fn prepare<N: Copy, E>(
     control.charge(HtmlParseWorkCategory::StateStep, 1)?;
     control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
     let top = open.as_slice().last();
-    let rule = classify(token, mode, top.map(|entry| entry.name), control)?;
+    let rule = classify(
+        token,
+        mode,
+        top.map(|entry| entry.name),
+        classic_scripts,
+        control,
+    )?;
     // Admit the transition and output identity before any provider call.
     write(size_of::<Option<Plan<N>>>(), 3, control)?;
     let current = || top.and_then(|entry| entry.node);
+    let mut reprocess = false;
     let (edit, next) = match rule {
         Rule::Ignore => (Edit::None, mode),
         Rule::Set(next) => (Edit::None, next),
         Rule::Doctype => (Edit::Doctype, Mode::BeforeHtml),
-        Rule::Push(name, next) => {
+        Rule::Push(name, next) | Rule::ImpliedPush(name, next) => {
             let parent = if name == HtmlLiveElement::Html {
                 document
             } else {
                 current().ok_or_else(|| invalid_state(control))?
             };
-            let TokenKind::Tag(tag) = &token.kind else {
-                return Err(invalid_state(control).into());
+            let edit = if matches!(rule, Rule::ImpliedPush(..)) {
+                reprocess = true;
+                Edit::ImpliedElement { parent }
+            } else {
+                let TokenKind::Tag(tag) = &token.kind else {
+                    return Err(invalid_state(control).into());
+                };
+                Edit::Element {
+                    parent,
+                    names: attributes(tag, token, name, control)?,
+                }
             };
-            let names = attributes(tag, token, control)?;
             control.observe_tree_depth((open.len() as u64).saturating_add(1))?;
             write(size_of::<Option<N>>(), 1, control)?;
             open.try_push_geometric(control, OpenElement { name, node: None })?;
-            (Edit::Element { parent, names }, next)
+            (edit, next)
+        }
+        Rule::Void(name) => {
+            let TokenKind::Tag(tag) = &token.kind else {
+                return Err(invalid_state(control).into());
+            };
+            let parent = current().ok_or_else(|| invalid_state(control))?;
+            (
+                Edit::VoidElement {
+                    parent,
+                    name,
+                    names: attributes(tag, token, name, control)?,
+                },
+                mode,
+            )
+        }
+        Rule::Script(next) => {
+            let script = current().ok_or_else(|| invalid_state(control))?;
+            // Admit recording the pause and later acknowledging it before
+            // the provider publishes preparation or the host executes code.
+            write(size_of::<Option<N>>(), 1, control)?;
+            write(size_of::<Option<N>>(), 1, control)?;
+            open.try_pop(control)?
+                .ok_or_else(|| invalid_state(control))?;
+            (Edit::PrepareClassicScript(script), next)
         }
         Rule::Pop(next) => (Edit::Pop, next),
+        Rule::ImpliedPop(next) => {
+            reprocess = true;
+            (Edit::Pop, next)
+        }
         Rule::Comment => {
             let parent = match mode {
                 Mode::Initial | Mode::BeforeHtml | Mode::AfterAfterBody => document,
@@ -728,7 +973,11 @@ fn prepare<N: Copy, E>(
             mode,
         ),
     };
-    Ok(Plan { edit, next })
+    Ok(Plan {
+        edit,
+        next,
+        reprocess,
+    })
 }
 
 fn apply<H: HtmlLiveTree>(
@@ -738,57 +987,92 @@ fn apply<H: HtmlLiveTree>(
     open: &mut OwnedVec<OpenElement<H::Node>>,
     control: &mut ParseControl,
     host: &mut H,
-) -> Result<(), HtmlLiveParseError<H::Error>> {
+) -> Result<Option<H::Node>, HtmlLiveParseError<H::Error>> {
     match (&plan.edit, &mut token.kind) {
-        (Edit::None, _) => Ok(()),
+        (Edit::None, _) => (),
         (Edit::Pop, _) => {
             open.try_pop(control)?
                 .ok_or_else(|| invalid_state(control))?;
-            Ok(())
         }
         (Edit::Doctype, TokenKind::Doctype(_)) => host
             .insert_doctype(document)
-            .map_err(HtmlLiveParseError::Host),
+            .map_err(HtmlLiveParseError::Host)?,
         (Edit::Text(parent), TokenKind::Text(text)) => {
             write(size_of::<bool>(), 1, control)?;
             host.insert_text(*parent, text.value.text())
                 .map_err(HtmlLiveParseError::Host)?;
             text.value.mark_shared();
-            Ok(())
         }
         (Edit::Comment(parent), TokenKind::Comment(text)) => {
             write(size_of::<bool>(), 1, control)?;
             host.insert_comment(*parent, text.value.text())
                 .map_err(HtmlLiveParseError::Host)?;
             text.value.mark_shared();
-            Ok(())
         }
         (Edit::Element { parent, names }, TokenKind::Tag(tag)) => {
-            let attributes = tag.attributes.as_mut_slice_prepaid(control)?;
-            write(attributes.len(), attributes.len(), control)?;
-            let mut values = [None, None];
-            for ((name, attribute), value) in names
-                .iter()
-                .flatten()
-                .zip(attributes.iter())
-                .zip(&mut values)
-            {
-                *value = Some((*name, attribute.value.value.text()));
-            }
+            let Some(open) = open.as_mut_slice_prepaid(control)?.last_mut() else {
+                return Err(invalid_state(control).into());
+            };
+            open.node = Some(insert_element(
+                host, *parent, open.name, tag, names, control,
+            )?);
+        }
+        (Edit::ImpliedElement { parent }, _) => {
             let Some(open) = open.as_mut_slice_prepaid(control)?.last_mut() else {
                 return Err(invalid_state(control).into());
             };
             let node = host
-                .insert_element(*parent, open.name, HtmlLiveAttributes { values })
+                .insert_element(*parent, open.name, HtmlLiveAttributes { values: [None; 2] })
                 .map_err(HtmlLiveParseError::Host)?;
-            for attribute in attributes {
-                attribute.value.value.mark_shared();
-            }
             open.node = Some(node);
-            Ok(())
         }
-        _ => Err(invalid_state(control).into()),
+        (
+            Edit::VoidElement {
+                parent,
+                name,
+                names,
+            },
+            TokenKind::Tag(tag),
+        ) => {
+            insert_element(host, *parent, *name, tag, names, control)?;
+        }
+        (Edit::PrepareClassicScript(script), _) => {
+            let execute = host
+                .prepare_classic_script(*script)
+                .map_err(HtmlLiveParseError::Host)?;
+            return Ok(execute.then_some(*script));
+        }
+        _ => return Err(invalid_state(control).into()),
     }
+    Ok(None)
+}
+
+fn insert_element<H: HtmlLiveTree>(
+    host: &mut H,
+    parent: H::Node,
+    name: HtmlLiveElement,
+    tag: &mut Tag,
+    names: &AttributeNames,
+    control: &mut ParseControl,
+) -> Result<H::Node, HtmlLiveParseError<H::Error>> {
+    let attributes = tag.attributes.as_mut_slice_prepaid(control)?;
+    write(attributes.len(), attributes.len(), control)?;
+    let mut values = [None, None];
+    for ((name, attribute), value) in names
+        .iter()
+        .flatten()
+        .zip(attributes.iter())
+        .zip(&mut values)
+    {
+        *value = Some((*name, attribute.value.value.text()));
+    }
+    let node = host
+        .insert_element(parent, name, HtmlLiveAttributes { values })
+        .map_err(HtmlLiveParseError::Host)?;
+    for attribute in attributes {
+        attribute.value.value.mark_shared();
+    }
+    Ok(node)
 }
 
 #[cfg(test)]

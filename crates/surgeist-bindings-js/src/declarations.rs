@@ -257,6 +257,19 @@ pub struct AssignedNodesOptions {
     pub flatten: bool,
 }
 
+/// Complete brand-free `PageTransitionEventInit` dictionary value.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PageTransitionEventInit {
+    /// The declared `bubbles` member.
+    pub bubbles: bool,
+    /// The declared `cancelable` member.
+    pub cancelable: bool,
+    /// The declared `composed` member.
+    pub composed: bool,
+    /// The declared `persisted` member.
+    pub persisted: bool,
+}
+
 /// The declared string or dictionary input to the Document element factories.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ElementCreationArgument {

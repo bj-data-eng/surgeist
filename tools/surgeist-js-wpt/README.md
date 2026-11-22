@@ -32,10 +32,17 @@ the entry thread. The worker runs Boa with finite native and report limits.
 Its supervisor enforces the process deadline.
 
 The [upstream inventory](fixtures/wpt/README.md) uses the WPT commit as the
-revision. For the exact Window variant, the worker verifies the embedded case
-and harness bytes and reports the native Window WPT environment as unavailable.
-A request outside the inventory reports an unknown fixture. A source integrity
-failure stops the worker before it emits a terminal report.
+revision. The worker verifies the exact HTMLCollection page and its two
+embedded support scripts, attaches before EOF, and advances the live parser.
+The worker resolves each external script from the verified local inventory and
+executes it at the parser's blocking pause. It observes the public
+`add_completion_callback` report after the native Window load and timer
+tasks. The harness's public `output: false` setting disables its optional DOM
+status table, which uses selector APIs outside this native profile.
+
+The two EventTarget Window variants report their execution environment as
+unavailable. A request outside the inventory reports an unknown fixture. A
+source integrity failure stops the worker before it emits a terminal report.
 
 A qualified native response reports cumulative Runtime guest adapter work,
 live backing after teardown, and peak backing for the same Ledger. The Boa
@@ -59,6 +66,5 @@ Boa checkout initialized.
 cargo test --offline --locked -j 1 -p surgeist-js-wpt --features native-worker
 ```
 
-The native qualification runs authored assertions. The upstream harness
-execution and additional platform capabilities are tracked in
+Further upstream harness and platform capabilities are tracked in
 [#2260](https://github.com/bj-data-eng/surgeist/issues/2260).

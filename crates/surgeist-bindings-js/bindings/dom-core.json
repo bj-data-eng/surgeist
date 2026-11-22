@@ -1175,6 +1175,16 @@
       ]
     },
     {
+      "id": "PageTransitionEvent.source",
+      "path": "references/html-page-transition-event--877d6146487f.md",
+      "anchor": "",
+      "block": 0,
+      "sha256": "0d3aa8840181d9680da98dbc7e64924b98ee479ea653ec36ffb9acf5dea3954b",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L104699-L104708",
+      "entries": ["PageTransitionEvent", "PageTransitionEventInit"]
+    },
+    {
       "id": "HTMLOListElement.source",
       "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
       "anchor": "htmlolistelement",
@@ -10935,6 +10945,61 @@
             "kind": "null"
           },
           "id": "ToggleEventInit.source"
+        }
+      ],
+      "inherits": "EventInit"
+    },
+    {
+      "id": "PageTransitionEvent",
+      "kind": "interface",
+      "name": "PageTransitionEvent",
+      "attributes": [
+        {"name": "Exposed", "value": "Window"}
+      ],
+      "members": [
+        {
+          "attributes": [],
+          "kind": "constructor",
+          "arguments": [
+            {
+              "name": "type",
+              "type": {"kind": "named", "name": "DOMString"},
+              "presence": "required"
+            },
+            {
+              "name": "eventInitDict",
+              "type": {"kind": "named", "name": "PageTransitionEventInit"},
+              "presence": "optional",
+              "default": {"kind": "empty_dictionary"}
+            }
+          ],
+          "id": "PageTransitionEvent.constructor:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "persisted",
+          "readonly": true,
+          "id": "PageTransitionEvent.persisted"
+        }
+      ],
+      "inherits": "Event"
+    },
+    {
+      "id": "PageTransitionEventInit",
+      "kind": "dictionary",
+      "name": "PageTransitionEventInit",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [],
+          "kind": "dictionary_member",
+          "type": {"kind": "named", "name": "boolean"},
+          "name": "persisted",
+          "required": false,
+          "default": {"kind": "boolean", "value": false},
+          "id": "PageTransitionEventInit.persisted"
         }
       ],
       "inherits": "EventInit"
@@ -24840,6 +24905,22 @@
           "issue": 2634
         }
       ]
+    },
+    "PageTransitionEvent.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "pagetransitionevent.constructor.construct",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/internal/dom_lifecycle/event.rs", "symbol": "create_page_transition_event"}
+      ],
+      "requirements": []
+    },
+    "PageTransitionEvent.persisted/get": {
+      "kind": "native",
+      "adapter": "pagetransitionevent.persisted.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/internal/dom_event.rs", "symbol": "page_transition_persisted"}
+      ],
+      "requirements": []
     },
     "HTMLOListElement.constructor:0/construct": {
       "kind": "native",
