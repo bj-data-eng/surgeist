@@ -69,6 +69,9 @@ impl PropertyValueOperations for Operations {
             InterpolationOutcome::ComputedFailure(error) => {
                 Err(InterpolationError::Computed(error).into())
             }
+            InterpolationOutcome::ShapeFailure(error) => {
+                Err(InterpolationError::Shape(error).into())
+            }
             InterpolationOutcome::Unsupported(error) => Err(error.into()),
         }
     }

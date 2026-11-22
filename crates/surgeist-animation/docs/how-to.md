@@ -98,6 +98,29 @@ caller-owned map from those handles to the original calculations. A
 `ComputedNumeric::source(handle)` participates in the same operations, producing
 the typed postorder plan described in the [reference](reference.md#computed-numeric-combination).
 
+## Sample computed basic shapes
+
+Prepare a `shape::ShapeValue` with an explicit already-selected `ReferenceBox`.
+Construct the desired `BasicShape` from validated `LengthPercentage` values and
+normalized `computed::ComputedPosition` coordinates. The
+[module example](../src/shape.rs) constructs a centered circle and checks its
+midpoint radius.
+
+For transition/keyframe sampling, wrap each endpoint with
+`InterpolableValue::shape(shape_value)` and use the ordinary track constructors
+shown above. For an inset, supply exactly four expanded offsets and four
+horizontal plus four vertical corner radii. For a polygon, supply a nonempty
+vertex list, effective fill rule and computed rounding length; use an explicit
+zero length when authored rounding was omitted.
+
+Keep the caller's numeric source map alive for symbolic endpoints and results.
+Do not resolve percentages just to construct these values. After sampling,
+inspect the complete shape or the typed `InterpolationError::Shape` diagnostic.
+Only the final consuming owner applies range/overlap constraints and executes
+geometry. Different boxes, function kinds, radius keywords or polygon metadata
+produce whole-shape discrete fallback. The [reference](reference.md#computed-basic-shapes)
+distinguishes these pair rules from caller-owned transition applicability.
+
 ## Reuse keyframe sample storage
 
 Keep one output buffer across samples. Given the `track` above:

@@ -8,8 +8,9 @@ dependencies, features, or explicit minimum Rust version. The dev-only
 `stats_alloc` dependency instruments allocation measurements.
 
 [src/lib.rs](../src/lib.rs) declares the public modules `computed`, `diagnostics`,
-`composition`, `easing`, `interpolation`, `keyframe`, `keyframe_input`, `playback`, `progress`,
-`sample`, `time`, `timeline`, `timing`, `transform`, and `transition`, and the
+`composition`, `easing`, `interpolation`, `keyframe`, `keyframe_input`, `playback`,
+`progress`, `sample`, `shape`, `time`, `timeline`, `timing`, `transform`, and
+`transition`, and the
 constant `CRATE_NAME`. Each public type has one path through its owning module,
 such as `surgeist_animation::easing::Easing`. The crate forbids unsafe code. Tests live in
 source modules and the external consumer targets under
@@ -212,8 +213,8 @@ new timing options and supplied play observations explicitly affect new results.
 existing `Vec<SampledPropertyResult>` with one owned result per property, in
 first-appearance order. It retains the buffer's capacity and allocates nothing
 during primitive sampling when capacity is sufficient, including unsupported
-and failed results. Computed component records and symbolic plans allocate their
-new immutable result storage; they do not share the primitive zero-allocation
+and failed results. Computed component records, shape payloads and symbolic plans
+allocate new immutable result storage; they do not share the primitive zero-allocation
 promise. `sample()` returns the same ordered results in a newly allocated vector.
 Tracks retain their original `segments()` order independently of their lookup
 index. Sampling remains stateless; retained results do not borrow their track.
@@ -527,6 +528,51 @@ and `InterpolationError::Computed`, retaining both endpoints and a semantic
 ratio underflow and capacity refusal are distinct error kinds. Later endpoint
 samples can recover. See [the computed-value example](how-to.md#combine-computed-property-values).
 
+## Computed basic shapes
+
+`shape::ShapeValue` combines a guarded `BasicShape` with an explicit semantic
+`ReferenceBox`. The caller selects the applicable box, resolves SVG box aliases,
+normalizes centers and polygon coordinates to top-left x/y offsets, and expands
+inset offsets and corner radii. No used box dimensions or geometry revisions are
+read or inferred by Animation. `InterpolableValue::shape(value)` enters the same
+pair, transition, keyframe and native running-transition sampling paths as other
+computed endpoints.
+
+| Shape | Supplied computed components | Compatibility |
+| --- | --- | --- |
+| `Circle` | One `Radius`, normalized center | Both radii must be numeric. |
+| `Ellipse` | Independent horizontal/vertical `Radius`, normalized center | All four endpoint radius branches must be numeric. |
+| `Inset` | Four top/right/bottom/left offsets, eight corner radii | Already expanded fixed arrays; corners run top-left, top-right, bottom-right, bottom-left independently for each axis. |
+| `Polygon` | Nonempty ordered vertices, effective fill rule, rounding length | Equal vertex counts and fill rules; rounding lengths interpolate. One and two vertices are valid. |
+
+`LengthPercentage::new` accepts only the existing computed Length, Percentage
+and LengthPercentage numeric domains, including symbolic sources. Other numeric
+roots are rejected with `ShapeErrorKind::InvalidNumericType`. Polygon rounding
+must have the pure Length domain. The caller supplies a computed zero length
+when rounding was omitted, and an effective fill rule when none was authored.
+The records do not preserve optional authored grammar or calculate defaults.
+
+Reference boxes, function kinds, polygon metadata and all radius keyword
+branches are preflighted for the complete pair before any arithmetic. A conflict
+switches the entire shape at progress 0.5. Circle/ellipse radius keywords remain
+discrete even when identical; Animation does not invent their radius geometry.
+Compatible pairs interpolate every numeric component through the computed
+numeric owner, retaining percentages and contextual source identities. Exact
+endpoints preserve the supplied complete shape. Negative sampled radii, inset
+overlap, corner overlap and polygon-rounding geometry remain caller-owned.
+
+Arithmetic failures retain a `ShapeError` identifying the component and its
+underlying `ComputedError`. Polygon result-vertex storage uses checked reservation
+and reports a separate `Capacity` error. `InterpolationOutcome::ShapeFailure` and
+`InterpolationError::Shape` retain the property, progress and complete endpoints;
+track sampling classifies the sample as `Failed`, and native running-transition
+sampling returns a typed interpolation error. A later exact endpoint can recover.
+
+These rules follow the pinned [Shapes 1 combination clause](../../../references/css-shapes-1--CRD-css-shapes-1-20250612--f7e528fad309.md#basic-shape-interpolation).
+`shape()`/`path()` command-list interpolation and shape addition/accumulation are
+outside this capability. Property animation metadata and transition applicability
+remain caller policy. See [sampling a basic shape](how-to.md#sample-computed-basic-shapes).
+
 ## Integration boundary
 
 Use the public module paths for API access. The modules expose typed time,
@@ -715,6 +761,8 @@ basis is guessed.
 | Number, unrestricted percentage, and explicit premultiplied color interpolation | `supported` | `surgeist-animation` interpolates finite values with checked arithmetic and explicit color spaces. |
 | Discrete value switching | `supported` | `surgeist-animation` switches discrete values at the interpolation midpoint. |
 | Computed numeric records, normalized positions, ratios and symbolic math | `supported` | Typed computed components combine without contextual evaluation or early clamping. |
+| Computed circle, ellipse, inset and polygon interpolation | `supported` | Explicit reference boxes, guarded numeric domains, whole-shape compatibility and typed sample-local errors. |
+| Shape/path commands and shape addition/accumulation | `deferred` | Not part of the current basic-shape value model. |
 | Resolved 2D/3D transform interpolation, list addition and accumulation | `supported` | Typed native lists, contextual primitive promotion, checked matrix decomposition, quaternion SLERP/accumulation and whole-value singular fallback. |
 | Diagnostic transform markers and composite interpolation | `typed-unsupported` | Explicit markers retain unsupported outcomes; authored lowering and rendering are separate capabilities. |
 | CSS parsing, cascade, transition generation, keyframe lookup, endpoint synthesis, property transitionability, allow-discrete policy, and shorthand/list expansion | `deferred/root-owned` | Root/style normalize authored declarations into this crate's typed tracks. |
