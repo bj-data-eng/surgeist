@@ -4,7 +4,7 @@ use crate::document_scripting::guest::tests::{attach_public_nodes, projected_nod
 // Independent oracles: HTML877d §4.12.4 (HTMLSlotElement and assign),
 // DOM3071 §4.2.2 (fresh find/flatten versus stored assigned nodes), and
 // Web IDL's interface receiver, dictionary, union and sequence conversion rules.
-// These run on the existing V8 entry thread, never individual Rust test threads.
+// These cases share the existing Runtime scripting entry thread.
 pub(super) fn slot_family_observes_native_assignment_and_web_idl_boundaries() {
     slot_reflection_and_brands_validate_before_conversion();
     slot_dictionary_conversion_precedes_native_observation();

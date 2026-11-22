@@ -194,7 +194,8 @@ pub fn discover_targets(root: &Path) -> Result<Vec<ApiTarget>, String> {
             if !name.starts_with("surgeist-") {
                 continue;
             }
-            if !path.is_dir() {
+            // The Boa submodule is a separate Cargo workspace with its own public APIs.
+            if !path.is_dir() || name == "surgeist-boa" {
                 continue;
             }
             let manifest = path.join("Cargo.toml");

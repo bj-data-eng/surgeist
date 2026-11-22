@@ -908,7 +908,7 @@ fn document_tree_getter_projection_refusal_keeps_native_state() {
         assert_eq!(guest_backing_used(&host), backing);
         host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
             .unwrap();
-        // A host error escaping a V8 callback terminally refuses its owner,
+        // A host error escaping a guest callback terminally refuses its owner,
         // even though the projection-injection hook itself is one-shot.
         let entered = Cell::new(false);
         let result = host.in_document(&permit, |scope| {

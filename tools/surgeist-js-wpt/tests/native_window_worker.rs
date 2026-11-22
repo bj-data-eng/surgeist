@@ -285,7 +285,7 @@ fn canonical_source_refusal_keeps_a_qualified_native_result() {
     );
     assert_eq!(
         report.resources.engine,
-        EngineResourceEvidence::V8Default { sample: None }
+        EngineResourceEvidence::BoaCollector { sample: None }
     );
     let NativeResourceEvidence::Measured(usage) = &report.resources.native else {
         panic!("expected native accounting after refusal: {report:?}");
@@ -347,8 +347,8 @@ fn native_resource_evidence_reports_actual_work_and_teardown() {
     assert!(peak_backing_bytes > 0);
     assert_eq!(live_backing_bytes, 0);
     assert!(
-        matches!(&engine, EngineResourceEvidence::V8Default { sample: Some(sample) }
-            if sample.used_bytes > 0 && sample.limit_bytes > 0),
+        matches!(&engine, EngineResourceEvidence::BoaCollector { sample: Some(sample) }
+            if sample.used_bytes > 0),
         "{engine:?}"
     );
 
@@ -361,5 +361,8 @@ fn native_resource_evidence_reports_actual_work_and_teardown() {
         matches!(refused, NativeEvidence::NotAttached),
         "{refused:?}"
     );
-    assert_eq!(engine, EngineResourceEvidence::V8Default { sample: None });
+    assert_eq!(
+        engine,
+        EngineResourceEvidence::BoaCollector { sample: None }
+    );
 }

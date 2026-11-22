@@ -106,6 +106,9 @@ members = [
 ]
 exclude = [
     "api/generator",
+    "crates/surgeist-boa",
+    "crates/surgeist-boa/core/*",
+    "crates/surgeist-boa/utils/*",
     "crates/surgeist-layout/tools/surgeist-layout-audits",
 ]
 

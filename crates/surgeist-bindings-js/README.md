@@ -1,8 +1,7 @@
 # Surgeist JavaScript bindings
 
 `surgeist-bindings-js` owns the safe embedding boundary and native JavaScript
-bindings. The initial backend is external [`rusty_v8`](https://github.com/denoland/rusty_v8).
-It does not own a JavaScript VM, garbage collector or replacement DOM.
+bindings. It uses the [maintained Boa fork](https://github.com/bj-data-eng/surgeist-boa) for guest execution and the canonical native producers for live objects.
 
 The current core supplies one thread-affine `Process`, borrowed `Execution`,
 multiple realms, scoped values, explicitly retained roots, exact UTF-16 strings,
@@ -18,12 +17,9 @@ retain their own interface state and execution authority.
 ## Ownership
 
 Bootstrap on the worker's entry thread. Only that thread can reacquire the
-backend, and only after the prior process token has dropped. One token owns one
-entered isolate until teardown; execution guards only borrow it. This avoids
-unsupported isolate switching and destruction order, including when a caller
-forgets a guard. Multiple realms share the isolate and explicit job queue.
-The platform remains initialized for the lifetime of the operating-system
-process. Do not independently initialize or enter the same V8 dependency.
+engine after the prior process token has dropped. One token owns the context
+until teardown. Execution guards borrow it, and all of its realms share the
+explicit job queue.
 
 `in_realm` accepts a fallible closure and returns its flattened `Result`, including
 cleanup at the host exit. Scoped values cannot escape that closure. Explicit
@@ -39,7 +35,7 @@ registrations retain their creation context and pristine intrinsics through
 guest heap edges, allowing unreachable context/function cycles to be collected.
 Guest references and pending jobs can retain their objects after Rust roots
 are released.
-Dropping the process releases its handles and isolate without running jobs.
+Dropping the process releases its context and handles without running jobs.
 
 GC finalizers only mark callback registrations for retirement. The owner releases
 their Rust captures at a host boundary after SDK calls and registry borrows end.
@@ -48,11 +44,10 @@ panic refusal is a separate contract.
 
 Callback scopes share the production root registry through short checked
 borrows. No registry borrow crosses SDK allocation, coercion or a guest call.
-An internal registry conflict permanently refuses the owner and requests V8
-termination. V8 observes termination at interrupt checks; every native entry
-and continuation after guest coercion must also check the sticky failure before
-accepting native work. Refusal preserves the original host error and still
-permits required resource cleanup.
+An internal registry conflict permanently refuses the owner. Each native
+entry and continuation after guest coercion checks the sticky failure before
+accepting native work. Refusal preserves the original host error and permits
+required resource cleanup.
 
 Native host adapters may observe the entered realm and weak process liveness
 through `Scope::realm_authority`. In a callback this observes its creation realm;
@@ -88,13 +83,14 @@ Exception capture never invokes a guest `toString` or `stack` getter. Explicit
 `to_utf16` conversion follows JavaScript ToString and can itself throw.
 Checkpoints are shared across realms. The current SDK checkpoint swallows job
 callback exceptions; promise rejection reporting requires the host adapter.
-Heap exhaustion/native fatal errors remain dependency-level process failures;
-this core does not claim to bound guest CPU or native heap allocation.
+The engine owns guest execution, allocation and collection. A heap observation
+reports shallow collector bytes for the current thread. It excludes separate
+buffers and process memory. The isolated WPT worker enforces its deadline
+through process supervision.
 
 The private [`backend::Engine`](src/backend/mod.rs) trait isolates rooted values,
 conversions, invocation, exception capture, job entry and destruction from binding
-algorithms. It is an intentional engine replacement boundary, not a claim that a
-second backend or live heap migration is supported.
+algorithms.
 
 Integer conversion follows the complete pinned
 [Web IDL/ECMAScript clauses](../../references/js-bindings-standards.md).
@@ -214,11 +210,11 @@ Native identifier limits bound each call, and a native refusal retains the
 original typed cause.
 
 The same attachment installs the Web IDL `DOMException` interface. Its
-instances and interface prototype use V8's native Error allocation and stack
+instances and interface prototype use Boa's native Error allocation and stack
 state. Getters read private instance data. The generated constructor converts
 both optional DOMStrings before reading NewTarget's prototype. Each installed
 realm has its own constructor, prototype and conversion limits. Its account
-charges each explicit UTF-16 copy between V8 and Rust, including outbound
+charges each explicit UTF-16 copy between Boa and Rust, including outbound
 copies when a native callback creates a typed diagnostic.
 `Scope::dom_exception` creates a guest exception value for a standard
 `DomExceptionName` using the entered realm's private prototype. A native
@@ -226,11 +222,9 @@ callback can return the value as `Completion::Throw`.
 
 ## Verification
 
-Use the exact native artifact and offline environment described in
-[PROVENANCE.md](PROVENANCE.md). Cargo's offline mode alone does not prevent the
-dependency's build script from fetching a native library. The execution test is
-a dedicated worker-process executable, so it exercises bootstrap and all realms
-on one entry thread rather than unrelated test-pool threads.
+Initialize the engine submodule as described in [PROVENANCE.md](PROVENANCE.md).
+The execution test uses a dedicated executable to exercise bootstrap and all
+realms on one entry thread.
 Capture-disposal tests use isolated workers to check GC and owner teardown,
 including destructor unwinds and preservation of prior host refusal.
 The conversion executable exercises real callbacks, admission, retained storage,
@@ -239,7 +233,7 @@ reentry and profiling equivalence; private fault tests exercise cleanup failures
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-bindings-js
 cargo clippy --offline --locked -j 1 -p surgeist-bindings-js --all-targets --no-deps -- -F unsafe-code -D warnings
-cargo fmt --all -- --check
+cargo fmt -p surgeist-bindings-js -- --check
 python3 -B crates/surgeist-bindings-js/tools/generate_bindings.py --check
 python3 -B crates/surgeist-bindings-js/tools/test_generate_bindings.py --rustc
 ```

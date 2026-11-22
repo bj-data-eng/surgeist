@@ -78,7 +78,7 @@ pub(in crate::document_scripting) fn numeric_getters_admit_raw_units_and_large_l
         result.unwrap();
         let empty_work = events.budget.work().unwrap() - before.0;
         // HTML's documented raw-unit envelope is 8*n+16. The same authentic
-        // native family/attribute lookup and V8 observation add fixed overhead.
+        // native family/attribute lookup and guest observation add fixed overhead.
         let overhead = empty_work.checked_sub(16).unwrap();
         let temporary_bytes = peak - before.1;
         assert!(overhead > 0 && temporary_bytes > 0);
@@ -338,7 +338,7 @@ pub(in crate::document_scripting) fn numeric_queries_preserve_cancellation_and_o
     let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
         panic!("numeric cancellation must refuse: {result:?}")
     };
-    // Cancellation is already set before V8 enters the width callback. Its
+    // Cancellation is already set before the engine enters the width callback. Its
     // frame backing reaches hosted retention's guard before NativeRead.
     assert!(matches!(
         failure.cause::<DocumentGuestEventError>(),

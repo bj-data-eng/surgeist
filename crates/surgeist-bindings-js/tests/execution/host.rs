@@ -3,7 +3,7 @@ use std::num::TryFromIntError;
 use std::rc::Rc;
 
 use surgeist_bindings_js::{
-    Callback, Completion, ConstructorCallback, EngineKind, Error, FunctionMetadata, HostFailure,
+    Callback, Completion, ConstructorCallback, Error, FunctionMetadata, HostFailure,
     HostFailureSlot, IntegerKind, IntegerMode, IntegerValue, ObjectPrototype, Primitive, Process,
     PropertyKey, Realm, RecordFailure,
 };
@@ -135,7 +135,7 @@ impl Drop for Debit {
 }
 
 pub(super) fn refusal_preserves_actual_native_error_and_expiry() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let authority = process
         .execution()
@@ -258,7 +258,7 @@ pub(super) fn refusal_preserves_actual_native_error_and_expiry() -> Result<(), E
         bytes
     );
 
-    let mut next = Process::bootstrap(EngineKind::V8)?;
+    let mut next = Process::bootstrap()?;
     let next_realm = next.execution().create_realm()?;
     let result = next.execution().in_realm(&next_realm, |scope| {
         assert_ne!(scope.realm_authority()?.identity(), authority.identity());
@@ -286,7 +286,7 @@ pub(super) fn refusal_preserves_actual_native_error_and_expiry() -> Result<(), E
 }
 
 pub(super) fn prepared_slot_cannot_replace_an_earlier_failure() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let authority = process
         .execution()
@@ -375,7 +375,7 @@ fn return_failure(
 }
 
 fn old_failure<Storage: 'static>(storage: Storage) -> Result<Error, Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let authority = process
         .execution()
@@ -396,7 +396,7 @@ pub(super) fn direct_failure_returns_validate_owner() -> Result<(), Error> {
         DirectBoundary::Host,
     ] {
         let old = old_failure(())?;
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         let realm = process.execution().create_realm()?;
         let result = return_failure(&mut process, &realm, boundary, old);
         assert!(matches!(result, Err(Error::ForeignOwner)), "{result:?}");
@@ -410,7 +410,7 @@ pub(super) fn direct_failure_returns_validate_owner() -> Result<(), Error> {
     }
 
     for boundary in [DirectBoundary::Callable, DirectBoundary::Constructor] {
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         let realm = process.execution().create_realm()?;
         let authority = process
             .execution()
@@ -448,7 +448,7 @@ pub(super) fn rejected_failure_drop_stays_in_callback_guard() -> Result<(), Erro
 
     let dropped = Rc::new(Cell::new(0));
     let old = old_failure(PanickingDebit(dropped.clone()))?;
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let result = return_failure(&mut process, &realm, DirectBoundary::Callable, old);
     assert!(matches!(result, Err(Error::CallbackPanicked)));

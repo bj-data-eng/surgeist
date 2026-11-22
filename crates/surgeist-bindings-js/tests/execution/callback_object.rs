@@ -1,10 +1,10 @@
-use super::{DropReceipt, evaluate, units};
+use super::{DropReceipt, units};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use surgeist_bindings_js::conversion::{Resource, Work};
 use surgeist_bindings_js::{
-    Callback, Completion, EngineKind, Error, Execution, ObjectPrototype, Primitive, Process,
-    PropertyKey, Realm, RetainedCallbackObject, Root, Scope,
+    Callback, Completion, Error, Execution, ObjectPrototype, Primitive, Process, PropertyKey,
+    Realm, RetainedCallbackObject, Root, Scope,
 };
 use surgeist_ledger::{Change, Limits, Operation};
 
@@ -198,7 +198,7 @@ pub(super) fn native_projection_uses_the_retained_prototype_realm(
         assert_eq!(live(&charged), payload_bytes);
         Ok(())
     })?;
-    evaluate(&mut execution, &receiver, "gc()")?;
+
     execution.memory_pressure();
     assert_eq!(live(&charged), 0);
     Ok(())
@@ -206,7 +206,7 @@ pub(super) fn native_projection_uses_the_retained_prototype_realm(
 
 pub(super) fn native_projection_refuses_foreign_prototype_before_admission() -> Result<(), Error> {
     let prototype = {
-        let mut owner = Process::bootstrap(EngineKind::V8)?;
+        let mut owner = Process::bootstrap()?;
         let mut execution = owner.execution();
         let realm = execution.create_realm()?;
         execution.in_realm(&realm, |scope| {
@@ -215,7 +215,7 @@ pub(super) fn native_projection_refuses_foreign_prototype_before_admission() -> 
             scope.retain_callback_object(observed, |_| Ok::<(), Error>(()))
         })?
     };
-    let mut owner = Process::bootstrap(EngineKind::V8)?;
+    let mut owner = Process::bootstrap()?;
     let mut execution = owner.execution();
     let realm = execution.create_realm()?;
     execution.in_realm(&realm, |scope| {
@@ -295,7 +295,7 @@ pub(super) fn associated_realm_and_exact_custody(process: &mut Process) -> Resul
         Ok(holder)
     })?;
     drop((function, function_in_b, object, object_in_a, a));
-    evaluate(&mut execution, &b, "gc()")?;
+
     execution.memory_pressure();
     assert_eq!(drops.get(), 0);
     execution.in_realm(&b, |scope| {
@@ -317,7 +317,7 @@ pub(super) fn associated_realm_and_exact_custody(process: &mut Process) -> Resul
         0,
         "the owning boundary must reap the backing"
     );
-    evaluate(&mut execution, &b, "gc()")?;
+
     execution.memory_pressure();
     assert_eq!(drops.get(), 1);
     Ok(())
@@ -418,7 +418,7 @@ pub(super) fn proxy_objects_use_their_own_associated_realm(
 }
 
 pub(super) fn terminal_cleanup() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let mut execution = process.execution();
     let realm = execution.create_realm()?;
     let first = account(u64::MAX);
@@ -448,7 +448,7 @@ pub(super) fn terminal_cleanup() -> Result<(), Error> {
     drop(process);
     assert!(live(&second) > 0);
 
-    let mut other = Process::bootstrap(EngineKind::V8)?;
+    let mut other = Process::bootstrap()?;
     let mut execution = other.execution();
     let realm = execution.create_realm()?;
     execution.in_realm(&realm, |scope| {

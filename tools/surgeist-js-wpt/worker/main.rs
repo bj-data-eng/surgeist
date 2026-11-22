@@ -11,7 +11,7 @@ use surgeist_bindings_js::{Error, Exception, ExceptionPhase, Primitive, Scope, V
 use surgeist_dom::{DomError, hosted::DomHostedError};
 use surgeist_html::scripting::HtmlScriptingPolicy;
 use surgeist_js_wpt::{
-    EngineResourceEvidence, GuestDiagnostic, HarnessResult, HarnessStatus, HeapSample,
+    BoaHeapSample, EngineResourceEvidence, GuestDiagnostic, HarnessResult, HarnessStatus,
     NativeLedgerUsage, NativeResourceEvidence, Subtest, SubtestStatus, WorkerFailure, WorkerReport,
     WorkerResources, WorkerResult, read_request, write_report,
 };
@@ -65,7 +65,7 @@ fn serve() -> Result<(), Box<dyn StdError>> {
 }
 
 fn run_case(fixture: fixtures::Fixture) -> Result<WorkerReport, Box<dyn StdError>> {
-    let selected_heap = EngineResourceEvidence::V8Default { sample: None };
+    let selected_heap = EngineResourceEvidence::BoaCollector { sample: None };
     let cancellation = Arc::new(AtomicBool::new(false));
     let mut session = DomSession::new(policy::dom()?, policy::session())?;
     let mut hosted = session.hosted_execution();
@@ -166,15 +166,13 @@ fn native_evidence(accounting: Option<&DocumentGuestAccounting>) -> NativeResour
 }
 
 fn heap_evidence(host: &mut DocumentScriptHost) -> EngineResourceEvidence {
-    let sample = (|| {
-        let permit = host.permit().ok()?;
-        let observation = host.observe_engine_heap(&permit).ok()?;
-        Some(HeapSample {
-            used_bytes: u64::try_from(observation.used_bytes).ok()?,
-            limit_bytes: u64::try_from(observation.limit_bytes).ok()?,
-        })
-    })();
-    EngineResourceEvidence::V8Default { sample }
+    let sample = host
+        .permit()
+        .ok()
+        .and_then(|permit| host.observe_engine_heap(&permit).ok())
+        .and_then(|observation| u64::try_from(observation.used_bytes).ok())
+        .map(|used_bytes| BoaHeapSample { used_bytes });
+    EngineResourceEvidence::BoaCollector { sample }
 }
 
 fn evaluate(

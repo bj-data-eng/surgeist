@@ -251,16 +251,15 @@ impl NativeLedgerUsage {
 pub enum EngineResourceEvidence {
     /// No engine policy was selected for this result.
     Unavailable {},
-    /// V8's default policy was selected. Refusal may preclude an observation.
-    V8Default { sample: Option<HeapSample> },
+    /// Boa's thread-local collector was selected. Refusal may preclude a sample.
+    BoaCollector { sample: Option<BoaHeapSample> },
 }
 
-/// Bytes reported by the managed heap. Process memory has separate custody.
+/// Bytes in Boa's shallow, thread-local GC and ephemeron box accounting.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct HeapSample {
+pub struct BoaHeapSample {
     pub used_bytes: u64,
-    pub limit_bytes: u64,
 }
 
 /// Complete worker evidence, subject to supervisor qualification.

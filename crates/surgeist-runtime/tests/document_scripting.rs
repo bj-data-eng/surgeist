@@ -7,7 +7,7 @@ use std::sync::{
 use surgeist_bindings_js::css::CssNamespaceLimits;
 use surgeist_bindings_js::dom_exception::{DomExceptionLimits, DomExceptionName};
 use surgeist_bindings_js::{
-    Callback, Completion, EngineKind, Error, Primitive, Process, PropertyKey, Scope, ValueKind,
+    Callback, Completion, Error, Primitive, Process, PropertyKey, Scope, ValueKind,
 };
 use surgeist_css::{
     query::media::CssMediaScripting,
@@ -1719,7 +1719,7 @@ fn failed_enable_preserves_original_owner() {
     prepared = refused.owner;
     drop(foreign);
 
-    let occupied = Process::bootstrap(EngineKind::V8).unwrap();
+    let occupied = Process::bootstrap().unwrap();
     let refused = prepared.enable(target, ALLOW, hooks(&hook())).unwrap_err();
     assert!(matches!(
         refused.error,
@@ -2002,7 +2002,7 @@ fn assert_immediate_retirement(host: &DocumentScriptHost, queued_calls: &Arc<Ato
     let revoked = matches!(host.permit(), Err(DocumentScriptNativeError::Revoked));
     let calls = queued_calls.load(Ordering::Relaxed);
     let captures = Arc::strong_count(queued_calls);
-    let replacement = Process::bootstrap(EngineKind::V8);
+    let replacement = Process::bootstrap();
     let available = replacement.is_ok();
     drop(replacement);
     assert!(
@@ -2058,7 +2058,7 @@ fn retirement_refusals_follow_actual_canonical_publication() {
     assert!(host.permit().is_ok());
     assert_eq!(before.load(Ordering::Relaxed), 0);
     assert!(matches!(
-        Process::bootstrap(EngineKind::V8),
+        Process::bootstrap(),
         Err(Error::OwnerAlreadyActive)
     ));
     host.checkpoint().unwrap();
@@ -2125,7 +2125,7 @@ fn real_retirement_revokes_and_abandons(foreign: &DocumentScriptPermit) {
     ));
     assert_eq!(queued_calls.load(Ordering::Relaxed), 0);
     assert_eq!(Arc::strong_count(&queued_calls), 1);
-    let replacement = Process::bootstrap(EngineKind::V8).unwrap();
+    let replacement = Process::bootstrap().unwrap();
     drop(replacement);
     let snapshot = host.snapshot().unwrap();
     assert_eq!(

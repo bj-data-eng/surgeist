@@ -105,7 +105,7 @@ fn install_account(
 }
 
 fn probe_limit(limit: usize, refusal: bool) -> Result<usize, Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let calls = Rc::new(Cell::new(0));
     let called = calls.clone();
@@ -152,7 +152,7 @@ fn exact_frame_budget_admits_and_one_short_refuses_before_handler() -> Result<()
 }
 
 fn completed_frames_wait_until_the_owned_boundary() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let account = Account::new(usize::MAX, None);
     install(
@@ -186,7 +186,7 @@ fn completed_frames_wait_until_the_owned_boundary() -> Result<(), Error> {
 fn nested_handler_panics_keep_both_payloads_until_teardown(
     panic_on_drop: bool,
 ) -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let account = Account::new(usize::MAX, None);
     let dropped = account.dropped.clone();
@@ -257,7 +257,7 @@ impl Drop for SetupReceipt {
 fn admission_panic_uses_emergency_and_outer_frame_keeps_its_own_payload() -> Result<(), Error> {
     let account = Account::new(usize::MAX, Some(2));
     let released = Rc::new(Cell::new(false));
-    let mut process = Process::bootstrap_funded(EngineKind::V8, |request| {
+    let mut process = Process::bootstrap_funded(|request| {
         assert!(matches!(request, Request::Process { bytes } if bytes > 0));
         Ok::<_, Error>(SetupReceipt {
             dropped: account.dropped.clone(),
@@ -320,7 +320,7 @@ fn admission_panic_uses_emergency_and_outer_frame_keeps_its_own_payload() -> Res
 }
 
 fn later_panic_preserves_the_original_host_failure() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let account = Account::new(usize::MAX, None);
     install(

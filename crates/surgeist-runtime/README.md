@@ -262,7 +262,7 @@ Entry releases native loans before running guest code and leaves queued jobs for
 an explicit checked
 checkpoint. Stop disposes of the queue and returns custody of the native Session,
 including any original pending native work. It closes the canonical engine
-registration before V8 teardown. A fresh recovered snapshot reports scripting
+registration before engine teardown. A fresh recovered snapshot reports scripting
 Disabled, even when cancellation prevents other native work.
 
 The attached Document exposes native `NodeIterator` and `TreeWalker` cursors.
@@ -479,7 +479,7 @@ covers native hooks and timers, then attaches the original guest operation when
 a registry is enabled. Native preparation, live Source projection/report bodies
 and the reserved guest allowance share the host storage cap. Source and native
 retirement also retain their domain work limits. Reports describe Rust adapter
-work and backing. V8 owns its execution and heap behavior. Conversion policies
+work and backing. Boa owns guest execution and heap behavior. Conversion policies
 installed during native setup join the original guest budget on activation.
 The `Text` and `Comment` constructors and Document factories use the same
 creation and retirement boundary. The factories use the receiver Document's

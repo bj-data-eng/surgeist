@@ -9,8 +9,8 @@ use std::process::{Command, Output};
 use std::rc::{Rc, Weak};
 
 use surgeist_bindings_js::{
-    Callback, Completion, ConstructorCallback, ConstructorCompletion, EngineKind, Error,
-    FunctionMetadata, ObjectPrototype, Primitive, Process, PropertyKey, Realm,
+    Callback, Completion, ConstructorCallback, ConstructorCompletion, Error, FunctionMetadata,
+    ObjectPrototype, Primitive, Process, PropertyKey, Realm,
 };
 
 type TestResult = Result<(), Box<dyn StdError>>;
@@ -204,10 +204,8 @@ fn verify_usable_owner(process: &mut Process, realm: &Realm) -> Result<(), Error
 }
 
 fn worker(case: Case) -> TestResult {
-    // Test-only GC flags precede the production owner's platform bootstrap.
-    v8::V8::set_flags_from_string("--expose-gc");
     let observations = Rc::new(Observations::default());
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let (realm, weak) = register_capture(&mut process, case.registration, &observations)?;
     match case.boundary {
         Boundary::GarbageCollection => {
@@ -247,21 +245,28 @@ fn worker(case: Case) -> TestResult {
         Boundary::GarbageCollectionWithFirstRefusal => {
             let mut execution = process.execution();
             let fail = Callback::new(|_, _| Err(Error::IntegerOutOfRange));
+            let collect = Callback::new(|_, _| {
+                boa_gc::force_collect();
+                Ok(Completion::Undefined)
+            });
             execution.in_realm(&realm, |scope| {
-                let function = scope.function(&fail)?;
                 let global = scope.global()?;
-                scope.set(
-                    &global,
-                    PropertyKey::String(&"failHost".encode_utf16().collect::<Vec<_>>()),
-                    &function,
-                )
+                for (name, callback) in [("failHost", &fail), ("collectGuest", &collect)] {
+                    let function = scope.function(callback)?;
+                    scope.set(
+                        &global,
+                        PropertyKey::String(&name.encode_utf16().collect::<Vec<_>>()),
+                        &function,
+                    )?;
+                }
+                Ok::<_, Error>(())
             })?;
-            drop(fail);
+            drop((fail, collect));
             let result = catch_unwind(AssertUnwindSafe(|| {
                 let result = execution.in_realm(&realm, |scope| {
                     scope
                         .evaluate(
-                            &"heldCapture = undefined; gc(); try { failHost() } catch (_) {}"
+                            &"heldCapture = undefined; collectGuest(); try { failHost() } catch (_) {}"
                                 .encode_utf16()
                                 .collect::<Vec<_>>(),
                         )
@@ -292,7 +297,7 @@ fn worker(case: Case) -> TestResult {
             assert_released(&observations, &weak);
             // Ordinary Rust owner destruction must still release the native heap
             // and singleton even when a user's capture destructor unwinds.
-            let mut next = Process::bootstrap(EngineKind::V8)?;
+            let mut next = Process::bootstrap()?;
             let realm = next.execution().create_realm()?;
             verify_usable_owner(&mut next, &realm)?;
             drop(next);

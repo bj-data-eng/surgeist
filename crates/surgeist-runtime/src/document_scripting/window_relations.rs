@@ -157,8 +157,8 @@ impl Access {
         arguments: Arguments<'scope>,
         setter: bool,
     ) -> Result<Completion<'scope>, Error> {
-        // V8 gives API callbacks their creation realm's global proxy for a
-        // null or undefined this value, matching the Web IDL accessor default.
+        // Bindings supplies the callback realm's global for a null or undefined
+        // receiver, matching the Web IDL accessor default.
         let global = scope.global()?;
         if !scope.strict_equals(arguments.receiver(), &global)? {
             return Ok(Completion::Throw(

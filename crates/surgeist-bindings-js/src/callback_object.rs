@@ -217,9 +217,9 @@ impl Process {
 
 #[cfg(test)]
 pub(crate) fn retired_prototype_refuses_before_native_allocation() -> Result<(), Error> {
-    use crate::{EngineKind, ObjectPrototype};
+    use crate::ObjectPrototype;
 
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let mut execution = process.execution();
     let realm = execution.create_realm()?;
     execution.in_realm(&realm, |scope| {

@@ -4,12 +4,18 @@ mod callback_object;
 mod capture;
 #[path = "execution/dom_exception.rs"]
 mod dom_exception;
+#[path = "execution/guest_creation_realm.rs"]
+mod guest_creation_realm;
 #[path = "execution/holder_custody.rs"]
 mod holder_custody;
 #[path = "execution/host.rs"]
 mod host;
+#[path = "execution/native_reachability.rs"]
+mod native_reachability;
 #[path = "execution/panic_preparation.rs"]
 mod panic_preparation;
+#[path = "execution/promise_realm.rs"]
+mod promise_realm;
 #[path = "execution/root_custody.rs"]
 mod root_custody;
 #[path = "execution/setup_preparation.rs"]
@@ -23,8 +29,8 @@ use surgeist_bindings_js::{
 };
 
 use surgeist_bindings_js::{
-    Callback, Completion, EngineKind, Error, ExceptionPhase, Execution, IntegerKind, IntegerMode,
-    IntegerValue, Primitive, Process, Realm, Scope, Value, ValueKind,
+    Callback, Completion, Error, ExceptionPhase, Execution, IntegerKind, IntegerMode, IntegerValue,
+    Primitive, Process, Realm, Scope, Value, ValueKind,
 };
 
 fn units(source: &str) -> Vec<u16> {
@@ -696,7 +702,7 @@ fn native_callbacks_preserve_arguments_completions_and_creation_realm(
             for source in ["undefined", "null"] {
                 let receiver = scope.evaluate(&units(source))?;
                 let normalized = scope.call(&function, &receiver, &[])?;
-                // Equality checks the receiver itself without crossing V8's
+                // Equality checks the receiver itself without crossing the engine's
                 // separate security boundary for foreign global properties.
                 assert!(scope.strict_equals(&normalized, &creation_global)?);
             }
@@ -754,7 +760,7 @@ fn native_callbacks_preserve_arguments_completions_and_creation_realm(
     );
     assert_eq!(drops.get(), 0);
     evaluate(&mut execution, &b, "fromA = null")?;
-    evaluate(&mut execution, &b, "gc()")?;
+
     execution.memory_pressure();
     assert_eq!(
         drops.get(),
@@ -791,7 +797,8 @@ fn native_callbacks_recurse_and_release_self_cleared_roots(
                 .try_borrow_mut()
                 .map_err(|_| Error::RegistryConflict)?
                 .take();
-            scope.evaluate(&units("recursive = null; gc()"))?;
+            scope.evaluate(&units("recursive = null"))?;
+            boa_gc::force_collect();
             return Ok(Completion::Return(scope.string(&units("done"))?));
         }
         let root = captured
@@ -827,7 +834,7 @@ fn native_callbacks_recurse_and_release_self_cleared_roots(
             .map_err(|_| Error::RegistryConflict)?
             .is_none()
     );
-    evaluate(&mut execution, &realm, "gc()")?;
+
     execution.memory_pressure();
     assert_eq!(drops.get(), 1);
     Ok(())
@@ -899,7 +906,7 @@ fn native_callback_capture_collection_and_owner_teardown(
     install(&mut execution, &realm, "unreachable", &callback)?;
     drop(callback);
     evaluate(&mut execution, &realm, "unreachable = null")?;
-    evaluate(&mut execution, &realm, "gc()")?;
+
     execution.memory_pressure();
     assert_eq!(drops.get(), 1);
     Ok(())
@@ -910,7 +917,7 @@ fn css_escape_backing_retires_with_the_engine() -> Result<(), Error> {
 
     let callback_drops = Rc::new(Cell::new(0));
     let failure_drops = Rc::new(Cell::new(0));
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = {
         let mut execution = process.execution();
         let realm = execution.create_realm()?;
@@ -949,7 +956,7 @@ fn host_refusals_are_sticky_and_prevent_native_effects() -> Result<(), Error> {
         "firstThenThrow()",
         "firstThenError()",
     ] {
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         let mut execution = process.execution();
         let realm = execution.create_realm()?;
         let effects = Rc::new(Cell::new(0));
@@ -1032,7 +1039,7 @@ fn host_refusals_are_sticky_and_prevent_native_effects() -> Result<(), Error> {
     }
     let drops = Rc::new(Cell::new(0));
     {
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         let mut execution = process.execution();
         let realm = execution.create_realm()?;
         let receipt = DropReceipt(drops.clone());
@@ -1057,7 +1064,7 @@ fn host_refusals_are_sticky_and_prevent_native_effects() -> Result<(), Error> {
     }
     let payload_drops = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     {
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         let mut execution = process.execution();
         let realm = execution.create_realm()?;
         let captured_payload_drops = payload_drops.clone();
@@ -1349,7 +1356,7 @@ fn scalar_and_classification_operations_work_in_native_callbacks(
 }
 
 fn scalar_operations_preserve_the_first_host_failure() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let mut execution = process.execution();
     let realm = execution.create_realm()?;
     install(
@@ -1674,7 +1681,7 @@ fn captured_intrinsics_survive_guest_replacement_and_realm_lease_release(
     );
     assert_eq!(drops.get(), 0);
     evaluate(&mut execution, &b, "fromAIntrinsic = null")?;
-    evaluate(&mut execution, &b, "gc()")?;
+
     execution.memory_pressure();
     assert_eq!(drops.get(), 1);
     Ok(())
@@ -1702,7 +1709,7 @@ fn managed_holder_preserves_object_and_creation_realm_until_release(
     })?;
     drop(callback);
     drop(a);
-    evaluate(&mut execution, &b, "gc()")?;
+
     execution.memory_pressure();
     assert_eq!(drops.get(), 0);
     execution.in_realm(&b, |scope| {
@@ -1718,14 +1725,14 @@ fn managed_holder_preserves_object_and_creation_realm_until_release(
     drop(execution);
     process.release_managed_object(holder)?;
     let mut execution = process.execution();
-    evaluate(&mut execution, &b, "gc()")?;
+
     execution.memory_pressure();
     assert_eq!(drops.get(), 1);
     Ok(())
 }
 
 fn new_object_paths_preserve_the_first_host_failure() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let mut execution = process.execution();
     let realm = execution.create_realm()?;
     let checks = Rc::new(Cell::new(0));
@@ -2342,7 +2349,7 @@ fn declared_constructor_cross_realm_fallback_is_once_and_guest_intrinsic_indepen
     assert_eq!(effects.get(), 3);
     assert_eq!(drops.get(), 0);
     evaluate(&mut execution, &driver, "launchB = plainB = poisonB = null")?;
-    evaluate(&mut execution, &driver, "gc()")?;
+
     execution.memory_pressure();
     assert_eq!(drops.get(), 1);
     Ok(())
@@ -2400,7 +2407,7 @@ fn declared_constructor_revocation_stops_before_fallback_and_native_action(
 
 fn declared_constructor_host_refusals_are_terminal() -> Result<(), Error> {
     for invalid_return in [false, true] {
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         let mut execution = process.execution();
         let realm = execution.create_realm()?;
         let effects = Rc::new(Cell::new(0));
@@ -2454,7 +2461,7 @@ fn declared_constructor_host_refusals_are_terminal() -> Result<(), Error> {
     }
     let drops = Rc::new(Cell::new(0));
     {
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         let mut execution = process.execution();
         let realm = execution.create_realm()?;
         evaluate(
@@ -2508,8 +2515,29 @@ fn native_collection_rejects_invalid_key_results(process: &mut Process) -> Resul
 }
 
 fn main() -> Result<(), Error> {
-    v8::V8::set_flags_from_string("--expose-gc");
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    {
+        type Regression = fn(&mut Process) -> Result<(), Error>;
+        let regression: Option<Regression> = match std::env::args().nth(1).as_deref() {
+            Some("guest-creation-realm") => {
+                Some(guest_creation_realm::guest_objects_keep_their_creation_realm)
+            }
+            Some("native-error-creation-realm") => {
+                Some(guest_creation_realm::native_type_error_uses_the_throwing_realm)
+            }
+            Some("dom-exception-profile-retirement") => {
+                Some(guest_creation_realm::dom_exception_slots_do_not_pin_a_retired_realm)
+            }
+            _ => None,
+        };
+        if let Some(regression) = regression {
+            let mut process = Process::bootstrap()?;
+            return regression(&mut process);
+        }
+    }
+    if std::env::args().nth(1).as_deref() == Some("native-reachability") {
+        return native_reachability::native_references_follow_only_guest_reachability();
+    }
+    let mut process = Process::bootstrap()?;
     if std::env::args().nth(1).as_deref() == Some("proxy-callback-object") {
         return callback_object::proxy_objects_use_their_own_associated_realm(&mut process);
     }
@@ -2543,15 +2571,18 @@ fn main() -> Result<(), Error> {
         return root_custody::root_custody_contracts();
     }
     assert!(matches!(
-        Process::bootstrap(EngineKind::V8),
+        Process::bootstrap(),
         Err(Error::OwnerAlreadyActive)
     ));
-    let foreign_thread_refused = std::thread::spawn(|| {
-        matches!(Process::bootstrap(EngineKind::V8), Err(Error::WrongThread))
-    })
-    .join()
-    .expect("bootstrap probe thread");
+    let foreign_thread_refused =
+        std::thread::spawn(|| matches!(Process::bootstrap(), Err(Error::WrongThread)))
+            .join()
+            .expect("bootstrap probe thread");
     assert!(foreign_thread_refused);
+    guest_creation_realm::guest_objects_keep_their_creation_realm(&mut process)?;
+    guest_creation_realm::native_type_error_uses_the_throwing_realm(&mut process)?;
+    guest_creation_realm::dom_exception_slots_do_not_pin_a_retired_realm(&mut process)?;
+    promise_realm::promise_resolver_rejects_self_resolution_in_its_original_realm(&mut process)?;
     realm_and_root_contracts(&mut process)?;
     utf16_is_code_unit_exact(&mut process)?;
     exceptions_preserve_values_without_diagnostics(&mut process)?;
@@ -2613,7 +2644,7 @@ fn main() -> Result<(), Error> {
         1,
         "the retired profile retained its backing"
     );
-    let mut next = Process::bootstrap(EngineKind::V8)?;
+    let mut next = Process::bootstrap()?;
     let mut execution = next.execution();
     assert!(matches!(
         execution.in_realm(&old_realm, |_| Ok(())),
@@ -2624,7 +2655,7 @@ fn main() -> Result<(), Error> {
         assert!(matches!(scope.import(&old_value), Err(Error::ForeignOwner)));
         Ok(())
     })?;
-    // Forgetting a temporary borrow cannot lose ownership of the isolate.
+    // Forgetting a temporary borrow cannot lose ownership of the context.
     std::mem::forget(execution);
     let mut execution = next.execution();
     assert_eq!(evaluate(&mut execution, &realm, "42")?, units("42"));
@@ -2633,6 +2664,7 @@ fn main() -> Result<(), Error> {
     css_escape_backing_retires_with_the_engine()?;
     host_refusals_are_sticky_and_prevent_native_effects()?;
     new_object_paths_preserve_the_first_host_failure()?;
+    native_reachability::native_references_follow_only_guest_reachability()?;
     declared_constructor_host_refusals_are_terminal()?;
     scalar_operations_preserve_the_first_host_failure()?;
     host::refusal_preserves_actual_native_error_and_expiry()?;
