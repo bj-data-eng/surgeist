@@ -648,7 +648,7 @@ impl super::Engine for Engine {
             return Err(Error::Terminated);
         }
         let stats = self.isolate.get_heap_statistics();
-        Ok(crate::HeapObservation {
+        Ok(crate::HeapObservation::V8 {
             used_bytes: stats.used_heap_size(),
             limit_bytes: stats.heap_size_limit(),
         })

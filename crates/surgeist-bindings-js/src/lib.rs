@@ -253,13 +253,22 @@ impl Process {
     }
 }
 
-/// A point-in-time observation of the engine's managed heap in bytes.
+/// A point-in-time observation of the selected engine's memory accounting.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HeapObservation {
-    /// Bytes in use by the managed heap at observation time.
-    pub used_bytes: usize,
-    /// The current heap size limit reported by the engine.
-    pub limit_bytes: usize,
+#[non_exhaustive]
+pub enum HeapObservation {
+    /// Managed heap sample from an active V8 isolate.
+    V8 {
+        /// Bytes in use by the managed heap.
+        used_bytes: usize,
+        /// The isolate's reported heap-size limit.
+        limit_bytes: usize,
+    },
+    /// Shallow allocations counted by Boa's thread-local garbage collector.
+    BoaCollector {
+        /// Bytes in garbage-collected boxes and ephemerons.
+        used_bytes: usize,
+    },
 }
 
 /// Exclusive access to an execution owner's heap.

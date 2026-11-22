@@ -28,8 +28,9 @@ Enable `native-worker` to build the `surgeist-js-wpt-worker` executable.
 It matches the request's full identity against the compiled fixture inventory.
 For an [authored qualification fixture](fixtures/qualification/), the revision
 is its Git blob ID and the worker attaches to a native Runtime-owned Window on
-the entry thread. The worker uses finite native and report limits and V8's
-default heap. Its supervisor enforces the process deadline.
+the entry thread. The worker uses finite native and report limits. It uses V8
+by default and Boa with `boa-qualification`. Its supervisor enforces the
+process deadline.
 
 The [upstream inventory](fixtures/wpt/README.md) uses the WPT commit as the
 revision. For the exact Window variant, the worker verifies the embedded case
@@ -40,9 +41,13 @@ failure stops the worker before it emits a terminal report.
 A qualified native response reports cumulative Runtime guest adapter work,
 live backing after teardown, and peak backing for the same Ledger. The V8
 observation records used managed heap and its reported limit before teardown
-when the engine can supply the sample. Setup refusal can leave the account
-unattached and the selected engine policy without a sample. After a deadline
-or crash, the supervisor reports the process outcome and memory capabilities.
+when the engine can supply the sample. The Boa observation records the current
+thread's shallow GC and ephemeron box bytes before teardown, including boxes
+awaiting collection. This counter excludes separate buffers, allocator
+overhead, and other process memory. Boa supplies no heap limit in this report.
+Setup refusal can leave the account unattached and the selected engine policy
+without a sample. After a deadline or crash, the supervisor reports the process
+outcome and memory capabilities.
 
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-js-wpt
@@ -54,6 +59,7 @@ supported process host.
 
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-js-wpt --features native-worker
+cargo test --offline --locked -j 1 -p surgeist-js-wpt --features boa-qualification
 ```
 
 The native qualification runs authored assertions. The upstream harness

@@ -460,8 +460,10 @@ impl super::Engine for Engine {
 
     fn observe_heap(&mut self) -> Result<HeapObservation, Error> {
         self.state.owner.available()?;
-        // Boa's thread-local collector has no hard per-heap size limit.
-        Err(Error::BackendUnavailable)
+        let sample = boa_gc::heap_statistics().ok_or(Error::BackendUnavailable)?;
+        Ok(HeapObservation::BoaCollector {
+            used_bytes: sample.bytes_allocated,
+        })
     }
 
     fn prepare_realm(&mut self) -> Result<(), Error> {
