@@ -580,6 +580,19 @@ fn direct_accumulation_is_additive_with_one_based_scales_and_padding() {
             .unwrap(),
         maximum
     );
+    let tiny = list(vec![F::ScaleX(sf(f64::from_bits(1)))]);
+    assert_eq!(
+        tiny.accumulated_with(&list(vec![F::ScaleX(sf(1.))]))
+            .unwrap(),
+        tiny
+    );
+    assert_eq!(
+        maximum
+            .accumulated_with(&list(vec![F::ScaleX(sf(-f64::MAX))]))
+            .unwrap()
+            .functions(),
+        &[F::ScaleX(sf(-1.))]
+    );
 }
 
 #[test]
