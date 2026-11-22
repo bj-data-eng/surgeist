@@ -2558,6 +2558,7 @@ fn main() {
             "window-document-retirement" => window_document::native_document_retirement_releases_registered_callbacks(),
             "window-document-native-observer" => window_document::document_dispatch_preserves_native_observer_and_refusal(),
             "window-global-event-target" => window_document::window_uses_the_real_global_event_target(),
+            "window-native-oracle" => window_document::qualification_window_oracle(),
             "window-local-html-prefix" => local_html::window_listener_attaches_to_the_visible_prefix_before_eof(),
             "window-timer-scheduling" => window_timers::window_schedules_and_cancels_after_guest_entry(),
             "native_window_exposes_dom_exception" => native_window_exposes_dom_exception(),

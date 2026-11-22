@@ -510,6 +510,11 @@ mod tests {
             "[package]\nname = \"not-surgeist\"\n",
         );
 
+        fixture.file(
+            "crates/surgeist-boa/Cargo.toml",
+            "[workspace]\nmembers = [\"core/engine\"]\n",
+        );
+
         let targets = discover_targets(fixture.path()).unwrap();
         let names = targets.iter().map(ApiTarget::name).collect::<Vec<_>>();
 
