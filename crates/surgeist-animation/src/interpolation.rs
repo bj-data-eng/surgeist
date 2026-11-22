@@ -13,7 +13,7 @@
 use core::fmt;
 use std::sync::Arc;
 
-use crate::computed::{ComputedError, ComputedValue};
+use crate::computed::{ComputedError, ComputedValue, RepeatableList};
 use crate::diagnostics::{NumericError, NumericInput};
 use crate::easing::EasedProgress;
 use crate::grid::{GridError, GridValue};
@@ -36,6 +36,7 @@ pub enum ValueFamily {
     Transform,
     Composite,
     Computed,
+    RepeatableList,
     Shape,
     Shadow,
     Grid,
@@ -96,6 +97,7 @@ pub enum InterpolableValue {
     Transform(TransformValue),
     Composite(CompositeValue),
     Computed(ComputedValue),
+    RepeatableList(RepeatableList),
     Shape(ShapeValue),
     Shadow(ShadowList),
     Grid(GridValue),
@@ -399,6 +401,7 @@ fn value_family_name(family: ValueFamily) -> &'static str {
         ValueFamily::Transform => "transform",
         ValueFamily::Composite => "composite",
         ValueFamily::Computed => "computed",
+        ValueFamily::RepeatableList => "repeatable list",
         ValueFamily::Shape => "shape",
         ValueFamily::Shadow => "shadow",
         ValueFamily::Grid => "grid",
@@ -710,6 +713,10 @@ impl InterpolableValue {
         Self::Grid(value)
     }
 
+    pub fn repeatable_list(value: RepeatableList) -> Self {
+        Self::RepeatableList(value)
+    }
+
     pub const fn family(&self) -> ValueFamily {
         match self {
             Self::Number(_) => ValueFamily::Number,
@@ -719,6 +726,7 @@ impl InterpolableValue {
             Self::Transform(_) => ValueFamily::Transform,
             Self::Composite(_) => ValueFamily::Composite,
             Self::Computed(_) => ValueFamily::Computed,
+            Self::RepeatableList(_) => ValueFamily::RepeatableList,
             Self::Shape(_) => ValueFamily::Shape,
             Self::Shadow(_) => ValueFamily::Shadow,
             Self::Grid(_) => ValueFamily::Grid,
@@ -897,6 +905,20 @@ impl InterpolationPair {
                         progress,
                         error,
                     }),
+                }
+            }
+            (InterpolableValue::RepeatableList(from), InterpolableValue::RepeatableList(to)) => {
+                match from.interpolate(to, progress) {
+                    Ok(value) => {
+                        InterpolationOutcome::Value(InterpolableValue::RepeatableList(value))
+                    }
+                    Err(error) => {
+                        InterpolationOutcome::ComputedFailure(ComputedInterpolationFailure {
+                            property: self.property.clone(),
+                            endpoints: Arc::clone(&self.endpoints),
+                            error,
+                        })
+                    }
                 }
             }
             (from, to) => InterpolationOutcome::Unsupported(mismatched_families(

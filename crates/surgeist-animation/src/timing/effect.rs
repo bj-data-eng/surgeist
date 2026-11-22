@@ -326,6 +326,15 @@ pub enum AnimationReplaceState {
     Persisted,
 }
 
+impl AnimationReplaceState {
+    /// Persists this animation, including a previously removed animation.
+    ///
+    /// The caller publishes the changed state and any resulting invalidation.
+    pub const fn persist(&mut self) {
+        *self = Self::Persisted;
+    }
+}
+
 /// Animation facts needed by effect-phase, currentness and relevance predicates.
 ///
 /// Callers supply coherent observations from one update; this model does not

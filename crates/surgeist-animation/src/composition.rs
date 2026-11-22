@@ -1,11 +1,27 @@
-//! Pure property-value operations shared by keyframe endpoint composition.
+//! Property operations, immutable effect stacks, and replacement decisions.
 //!
 //! The caller selects the property's animation type and its owned algorithms.
-//! Operations consume computed values; contextual conversion, final clamping,
-//! effect ordering, publication, and lifecycle remain separate boundaries.
+//! Operations consume computed values. Stack snapshots validate caller-supplied
+//! ordering facts and fold keyframe effects against evolving underlying values.
+//! Contextual conversion, final clamping, state publication and dispatch remain
+//! caller-owned.
 
 use crate::interpolation::{InterpolableValue, InterpolationProgress, PropertyKey};
 use crate::keyframe_input::CompositeOperation;
+
+mod operations;
+mod stack;
+
+#[doc(inline)]
+pub use operations::{
+    AnimationType, AnimationTypeOperations, PropertyOperationError, PropertyOperationErrorKind,
+};
+#[doc(inline)]
+pub use stack::{
+    AnimationClass, AnimationOrder, AnimationStackInput, CompositedProperty, EffectStackEffect,
+    EffectStackError, EffectStackErrorKind, EffectStackSampleError, EffectStackSnapshot,
+    EffectTargetId, ReplacementDecision,
+};
 
 /// Supplies deterministic property-specific operations without publishing state.
 ///

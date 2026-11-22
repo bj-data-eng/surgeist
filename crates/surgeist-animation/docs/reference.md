@@ -194,6 +194,62 @@ be retired.
 
 See the [module example](../src/playback.rs) for context-aware creation and play.
 
+## Effect stacks and replacement
+
+`composition::EffectStackSnapshot::new` validates one immutable set of supplied
+animation/effect observations against an `AnimationRecords` owner. It checks
+identity, association, registered effect-end facts, timeline monotonicity
+agreement and effect timing's state/time rules. Adapters supply the truth of
+target identities (including pseudo-elements), CSS ownership, document membership,
+and class-specific ordering. Playback owners supply coherent current time and
+`EffectAnimationState`; this boundary does not implement playback control.
+
+`AnimationClass` identifies the creating interface, independently of CSS owning
+elements. `AnimationOrder` first compares applicable inter-class ranks, then
+common-class ranks, then checked creation positions. Missing or equal ranks fall
+through. CSS adapters supply only ranks admitted by their selected clauses;
+orphan CSS animations do not retain owning-element precedence. Undefined orphan
+idle order is accepted outside the ordered stack. Every defined pair is checked
+after bounded insertion; cyclic or inconsistent facts return a typed error.
+No arbitrary caller comparator is passed to library sorting.
+
+`sample` folds represented, animatable, in-effect, nonremoved property effects
+from lower to higher order. Each `ComputedKeyframes::sample_timing` receives the
+current underlying value and performs endpoint composition before interpolation.
+There is no second composition of its returned result. A missing property never
+claims contribution, even though the isolated keyframe sampler can return
+underlying for an empty property track. The result retains the top contributing
+animation and its class for caller-owned cascade insertion. No contribution,
+inapplicable target, and typed sampling failure remain distinct.
+
+`EffectStackEffect::not_animatable` excludes represented properties from target
+values while retaining their effect timing. Unlisted represented properties are
+animatable by default. `AnimationTypeOperations` implements selected discrete,
+by-computed-value and repeatable-list operations; property-specific algorithms
+can instead implement `PropertyValueOperations`. Unsupported accumulation does
+not silently become addition. Property-definition and applicable Appendix A
+selection remain with the caller, without another CSS property registry.
+
+`replacements` selects Active, non-markup-prescribed, finished animations with a
+monotonic timeline and associated in-effect targeted effect in the supplied
+document. Every targeted property must be covered on the exact same target by
+higher replaceable effects; several effects may jointly cover the set. Persisted
+effects can cover lower effects but are not removal candidates. Removed effects
+do not cover or contribute. Empty targeted-property coverage is universally
+satisfied. All decisions come from the original snapshot in ascending composite
+order and retain current and timeline times for Runtime publication and events.
+`AnimationReplaceState::persist` unconditionally sets Persisted, including after
+removal. Registration retirement remains a separate operation.
+
+`computed::RepeatableList` owns nonempty generic lists of computed items, distinct
+from property-specific shadow/transform lists. Combination repeats to the
+positive least-common-multiple length with checked arithmetic and reservation.
+The complete item structure is checked before arithmetic; any discrete component
+or incompatible pair selects an original whole endpoint. This includes equal
+discrete components, unlike ordinary by-computed-value combination. Arithmetic,
+expansion and capacity failures remain typed errors without partial output.
+Final property clamping stays caller-owned.
+
 ## Effect timing and relevance
 
 `timing::EffectTiming::try_new(EffectTimingOptions)` validates a Web Animations
