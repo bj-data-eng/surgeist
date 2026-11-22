@@ -364,6 +364,7 @@ pub surgeist_animation::interpolation::InterpolableValue::Computed(surgeist_anim
 pub surgeist_animation::interpolation::InterpolableValue::Discrete(surgeist_animation::interpolation::DiscreteValue)
 pub surgeist_animation::interpolation::InterpolableValue::Number(surgeist_animation::interpolation::InterpolableNumber)
 pub surgeist_animation::interpolation::InterpolableValue::Percentage(surgeist_animation::interpolation::InterpolablePercentage)
+pub surgeist_animation::interpolation::InterpolableValue::Shadow(surgeist_animation::shadow::ShadowList)
 pub surgeist_animation::interpolation::InterpolableValue::Shape(surgeist_animation::shape::ShapeValue)
 pub surgeist_animation::interpolation::InterpolableValue::Transform(surgeist_animation::interpolation::TransformValue)
 impl surgeist_animation::interpolation::InterpolableValue
@@ -374,6 +375,7 @@ pub fn surgeist_animation::interpolation::InterpolableValue::discrete(value: sur
 pub const fn surgeist_animation::interpolation::InterpolableValue::family(&self) -> surgeist_animation::interpolation::ValueFamily
 pub const fn surgeist_animation::interpolation::InterpolableValue::number(value: surgeist_animation::interpolation::InterpolableNumber) -> Self
 pub const fn surgeist_animation::interpolation::InterpolableValue::percentage(value: surgeist_animation::interpolation::InterpolablePercentage) -> Self
+pub fn surgeist_animation::interpolation::InterpolableValue::shadow(value: surgeist_animation::shadow::ShadowList) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::shape(value: surgeist_animation::shape::ShapeValue) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::transform(value: surgeist_animation::interpolation::TransformValue) -> Self
 pub enum surgeist_animation::interpolation::InterpolationComponent
@@ -408,6 +410,7 @@ pub surgeist_animation::interpolation::InterpolationError::NonFiniteNumber::valu
 pub surgeist_animation::interpolation::InterpolationError::NonFiniteProgress
 pub surgeist_animation::interpolation::InterpolationError::NonFiniteProgress::value: f64
 pub surgeist_animation::interpolation::InterpolationError::Numeric(surgeist_animation::diagnostics::NumericError)
+pub surgeist_animation::interpolation::InterpolationError::Shadow(surgeist_animation::interpolation::ShadowInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationError::Shape(surgeist_animation::interpolation::ShapeInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationError::UnsupportedFamily
 pub surgeist_animation::interpolation::InterpolationError::UnsupportedFamily::family: surgeist_animation::interpolation::ValueFamily
@@ -424,6 +427,7 @@ pub fn surgeist_animation::interpolation::InterpolationError::fmt(&self, f: &mut
 pub enum surgeist_animation::interpolation::InterpolationOutcome
 pub surgeist_animation::interpolation::InterpolationOutcome::ArithmeticFailure(surgeist_animation::interpolation::NonFiniteInterpolationResult)
 pub surgeist_animation::interpolation::InterpolationOutcome::ComputedFailure(surgeist_animation::interpolation::ComputedInterpolationFailure)
+pub surgeist_animation::interpolation::InterpolationOutcome::ShadowFailure(surgeist_animation::interpolation::ShadowInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationOutcome::ShapeFailure(surgeist_animation::interpolation::ShapeInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationOutcome::Unsupported(surgeist_animation::interpolation::InterpolationError)
 pub surgeist_animation::interpolation::InterpolationOutcome::Value(surgeist_animation::interpolation::InterpolableValue)
@@ -434,6 +438,7 @@ pub surgeist_animation::interpolation::ValueFamily::Computed
 pub surgeist_animation::interpolation::ValueFamily::Discrete
 pub surgeist_animation::interpolation::ValueFamily::Number
 pub surgeist_animation::interpolation::ValueFamily::Percentage
+pub surgeist_animation::interpolation::ValueFamily::Shadow
 pub surgeist_animation::interpolation::ValueFamily::Shape
 pub surgeist_animation::interpolation::ValueFamily::Transform
 pub struct surgeist_animation::interpolation::CompositeValue
@@ -495,6 +500,13 @@ pub fn surgeist_animation::interpolation::PropertyKey::as_str(&self) -> &str
 pub fn surgeist_animation::interpolation::PropertyKey::from_shared(name: alloc::sync::Arc<str>) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::PropertyKey::from_text(name: &str) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::PropertyKey::new(name: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
+pub struct surgeist_animation::interpolation::ShadowInterpolationFailure
+impl surgeist_animation::interpolation::ShadowInterpolationFailure
+pub const fn surgeist_animation::interpolation::ShadowInterpolationFailure::error(&self) -> &surgeist_animation::shadow::ShadowError
+pub fn surgeist_animation::interpolation::ShadowInterpolationFailure::from(&self) -> &surgeist_animation::interpolation::InterpolableValue
+pub const fn surgeist_animation::interpolation::ShadowInterpolationFailure::progress(&self) -> surgeist_animation::interpolation::InterpolationProgress
+pub const fn surgeist_animation::interpolation::ShadowInterpolationFailure::property(&self) -> &surgeist_animation::interpolation::PropertyKey
+pub fn surgeist_animation::interpolation::ShadowInterpolationFailure::to(&self) -> &surgeist_animation::interpolation::InterpolableValue
 pub struct surgeist_animation::interpolation::ShapeInterpolationFailure
 impl surgeist_animation::interpolation::ShapeInterpolationFailure
 pub const fn surgeist_animation::interpolation::ShapeInterpolationFailure::error(&self) -> &surgeist_animation::shape::ShapeError
@@ -924,6 +936,52 @@ pub const fn surgeist_animation::sample::SampledPropertyResult::completion(&self
 pub fn surgeist_animation::sample::SampledPropertyResult::from_timing_and_pair(timing: surgeist_animation::timing::TimingSample, pair: &surgeist_animation::interpolation::InterpolationPair) -> Self
 pub const fn surgeist_animation::sample::SampledPropertyResult::next_frame(&self) -> surgeist_animation::sample::NextFrameHint
 pub const fn surgeist_animation::sample::SampledPropertyResult::value(&self) -> &surgeist_animation::sample::SampleValue
+pub mod surgeist_animation::shadow
+pub enum surgeist_animation::shadow::ShadowComponent
+pub surgeist_animation::shadow::ShadowComponent::BlurRadius
+pub surgeist_animation::shadow::ShadowComponent::Color(surgeist_animation::interpolation::InterpolationComponent)
+pub surgeist_animation::shadow::ShadowComponent::OffsetX
+pub surgeist_animation::shadow::ShadowComponent::OffsetY
+pub surgeist_animation::shadow::ShadowComponent::Spread
+pub enum surgeist_animation::shadow::ShadowErrorKind
+pub surgeist_animation::shadow::ShadowErrorKind::Capacity
+pub surgeist_animation::shadow::ShadowErrorKind::InvalidInputAlpha
+pub surgeist_animation::shadow::ShadowErrorKind::MismatchedColorSpaces
+pub surgeist_animation::shadow::ShadowErrorKind::MismatchedKinds
+pub surgeist_animation::shadow::ShadowErrorKind::NegativeInput
+pub surgeist_animation::shadow::ShadowErrorKind::NonFinite
+pub enum surgeist_animation::shadow::ShadowKind
+pub surgeist_animation::shadow::ShadowKind::Box
+pub surgeist_animation::shadow::ShadowKind::Text
+pub struct surgeist_animation::shadow::Shadow
+impl surgeist_animation::shadow::Shadow
+pub const fn surgeist_animation::shadow::Shadow::color(&self) -> surgeist_animation::interpolation::InterpolableColor
+pub const fn surgeist_animation::shadow::Shadow::geometry(&self) -> surgeist_animation::shadow::ShadowGeometry
+pub const fn surgeist_animation::shadow::Shadow::inset(&self) -> bool
+pub struct surgeist_animation::shadow::ShadowError
+impl surgeist_animation::shadow::ShadowError
+pub const fn surgeist_animation::shadow::ShadowError::failed_component(&self) -> core::option::Option<surgeist_animation::shadow::ShadowComponent>
+pub const fn surgeist_animation::shadow::ShadowError::kind(&self) -> surgeist_animation::shadow::ShadowErrorKind
+pub const fn surgeist_animation::shadow::ShadowError::shadow_index(&self) -> core::option::Option<usize>
+pub const fn surgeist_animation::shadow::ShadowError::value(&self) -> core::option::Option<f64>
+impl core::error::Error for surgeist_animation::shadow::ShadowError
+impl core::fmt::Display for surgeist_animation::shadow::ShadowError
+pub fn surgeist_animation::shadow::ShadowError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::shadow::ShadowGeometry(_)
+impl surgeist_animation::shadow::ShadowGeometry
+pub const fn surgeist_animation::shadow::ShadowGeometry::components(self) -> [f64; 4]
+pub fn surgeist_animation::shadow::ShadowGeometry::new(components: [f64; 4]) -> core::result::Result<Self, surgeist_animation::shadow::ShadowError>
+pub struct surgeist_animation::shadow::ShadowInput
+impl surgeist_animation::shadow::ShadowInput
+pub fn surgeist_animation::shadow::ShadowInput::new(kind: surgeist_animation::shadow::ShadowKind, geometry: surgeist_animation::shadow::ShadowGeometry, color: surgeist_animation::interpolation::InterpolableColor, inset: bool) -> core::result::Result<Self, surgeist_animation::shadow::ShadowError>
+pub struct surgeist_animation::shadow::ShadowList
+impl surgeist_animation::shadow::ShadowList
+pub fn surgeist_animation::shadow::ShadowList::accumulated_with(&self, effect: &Self) -> core::result::Result<Self, surgeist_animation::shadow::ShadowError>
+pub fn surgeist_animation::shadow::ShadowList::added_to(&self, other: &Self) -> core::result::Result<Self, surgeist_animation::shadow::ShadowError>
+pub fn surgeist_animation::shadow::ShadowList::interpolate(&self, other: &Self, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<Self, surgeist_animation::shadow::ShadowError>
+pub const fn surgeist_animation::shadow::ShadowList::kind(&self) -> surgeist_animation::shadow::ShadowKind
+pub fn surgeist_animation::shadow::ShadowList::new(kind: surgeist_animation::shadow::ShadowKind, inputs: alloc::vec::Vec<surgeist_animation::shadow::ShadowInput>) -> core::result::Result<Self, surgeist_animation::shadow::ShadowError>
+pub fn surgeist_animation::shadow::ShadowList::shadows(&self) -> &[surgeist_animation::shadow::Shadow]
 pub mod surgeist_animation::shape
 pub enum surgeist_animation::shape::BasicShape
 pub surgeist_animation::shape::BasicShape::Circle(surgeist_animation::shape::Circle)

@@ -17,6 +17,7 @@ use crate::computed::{ComputedError, ComputedValue};
 use crate::diagnostics::{NumericError, NumericInput};
 use crate::easing::EasedProgress;
 use crate::progress::UnitRatio;
+use crate::shadow::{ShadowError, ShadowList};
 use crate::shape::{ShapeError, ShapeValue};
 use crate::transform::{ResolvedTransformList, TransformComponent, TransformInterpolation};
 
@@ -35,6 +36,7 @@ pub enum ValueFamily {
     Composite,
     Computed,
     Shape,
+    Shadow,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -93,6 +95,7 @@ pub enum InterpolableValue {
     Composite(CompositeValue),
     Computed(ComputedValue),
     Shape(ShapeValue),
+    Shadow(ShadowList),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -118,6 +121,7 @@ pub enum InterpolationOutcome {
     ArithmeticFailure(NonFiniteInterpolationResult),
     ComputedFailure(ComputedInterpolationFailure),
     ShapeFailure(ShapeInterpolationFailure),
+    ShadowFailure(ShadowInterpolationFailure),
     Unsupported(InterpolationError),
 }
 
@@ -195,6 +199,32 @@ impl ShapeInterpolationFailure {
     }
 }
 
+/// A failed whole-shadow sample retaining its inputs and eased progress.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShadowInterpolationFailure {
+    property: PropertyKey,
+    endpoints: Arc<InterpolationEndpoints>,
+    progress: InterpolationProgress,
+    error: ShadowError,
+}
+impl ShadowInterpolationFailure {
+    pub const fn property(&self) -> &PropertyKey {
+        &self.property
+    }
+    pub fn from(&self) -> &InterpolableValue {
+        &self.endpoints.from
+    }
+    pub fn to(&self) -> &InterpolableValue {
+        &self.endpoints.to
+    }
+    pub const fn progress(&self) -> InterpolationProgress {
+        self.progress
+    }
+    pub const fn error(&self) -> &ShadowError {
+        &self.error
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum InterpolationError {
     EmptyPropertyKey,
@@ -206,6 +236,7 @@ pub enum InterpolationError {
     NonFiniteInterpolationResult(NonFiniteInterpolationResult),
     Computed(ComputedInterpolationFailure),
     Shape(ShapeInterpolationFailure),
+    Shadow(ShadowInterpolationFailure),
     MismatchedFamilies {
         property: PropertyKey,
         from: ValueFamily,
@@ -243,6 +274,13 @@ impl fmt::Display for InterpolationError {
             Self::Numeric(error) => {
                 write!(f, "numeric interpolation input is invalid: {error}")
             }
+            Self::Shadow(result) => write!(
+                f,
+                "interpolating {} failed at {}: {}",
+                result.property.as_str(),
+                result.progress.value(),
+                result.error
+            ),
             Self::Computed(result) => write!(
                 f,
                 "interpolating {} failed: {}",
@@ -306,6 +344,7 @@ impl std::error::Error for InterpolationError {
             Self::Numeric(error) => Some(error),
             Self::Computed(result) => Some(&result.error),
             Self::Shape(result) => Some(&result.error),
+            Self::Shadow(result) => Some(&result.error),
             _ => None,
         }
     }
@@ -321,6 +360,7 @@ fn value_family_name(family: ValueFamily) -> &'static str {
         ValueFamily::Composite => "composite",
         ValueFamily::Computed => "computed",
         ValueFamily::Shape => "shape",
+        ValueFamily::Shadow => "shadow",
     }
 }
 
@@ -613,6 +653,10 @@ impl InterpolableValue {
         Self::Composite(value)
     }
 
+    pub fn shadow(value: ShadowList) -> Self {
+        Self::Shadow(value)
+    }
+
     pub fn computed(value: ComputedValue) -> Self {
         Self::Computed(value)
     }
@@ -631,6 +675,7 @@ impl InterpolableValue {
             Self::Composite(_) => ValueFamily::Composite,
             Self::Computed(_) => ValueFamily::Computed,
             Self::Shape(_) => ValueFamily::Shape,
+            Self::Shadow(_) => ValueFamily::Shadow,
         }
     }
 }
@@ -763,6 +808,17 @@ impl InterpolationPair {
             (InterpolableValue::Composite(_), InterpolableValue::Composite(_)) => {
                 self.unsupported(ValueFamily::Composite, "composite interpolation deferred")
             }
+            (InterpolableValue::Shadow(from), InterpolableValue::Shadow(to)) => {
+                match from.interpolate(to, progress) {
+                    Ok(value) => InterpolationOutcome::Value(InterpolableValue::Shadow(value)),
+                    Err(error) => InterpolationOutcome::ShadowFailure(ShadowInterpolationFailure {
+                        property: self.property.clone(),
+                        endpoints: Arc::clone(&self.endpoints),
+                        progress,
+                        error,
+                    }),
+                }
+            }
             (InterpolableValue::Computed(from), InterpolableValue::Computed(to)) => {
                 match from.interpolate(to, progress) {
                     Ok(value) => InterpolationOutcome::Value(InterpolableValue::Computed(value)),
@@ -838,54 +894,9 @@ impl InterpolationPair {
             return endpoint;
         }
 
-        let (from_red, from_green, from_blue) = from.premultiplied_components();
-        let (to_red, to_green, to_blue) = to.premultiplied_components();
-        let red = match checked_color_component(
-            from_red,
-            to_red,
-            progress,
-            InterpolationComponent::ColorPremultipliedRed,
-        ) {
-            Ok(value) => value,
-            Err((component, value)) => return self.arithmetic_failure(progress, component, value),
-        };
-        let green = match checked_color_component(
-            from_green,
-            to_green,
-            progress,
-            InterpolationComponent::ColorPremultipliedGreen,
-        ) {
-            Ok(value) => value,
-            Err((component, value)) => return self.arithmetic_failure(progress, component, value),
-        };
-        let blue = match checked_color_component(
-            from_blue,
-            to_blue,
-            progress,
-            InterpolationComponent::ColorPremultipliedBlue,
-        ) {
-            Ok(value) => value,
-            Err((component, value)) => return self.arithmetic_failure(progress, component, value),
-        };
-        let alpha = match checked_color_component(
-            from.alpha(),
-            to.alpha(),
-            progress,
-            InterpolationComponent::ColorAlpha,
-        ) {
-            Ok(value) => value,
-            Err((component, value)) => return self.arithmetic_failure(progress, component, value),
-        };
-
-        match InterpolableColor::from_sampled_premultiplied_components(
-            from.space(),
-            red,
-            green,
-            blue,
-            alpha,
-        ) {
+        match interpolate_color(from, to, progress) {
             Ok(value) => InterpolationOutcome::Value(InterpolableValue::color(value)),
-            Err(_) => self.arithmetic_failure(progress, InterpolationComponent::ColorAlpha, alpha),
+            Err((component, value)) => self.arithmetic_failure(progress, component, value),
         }
     }
 
@@ -1049,6 +1060,43 @@ fn checked_color_component(
     component: InterpolationComponent,
 ) -> Result<f64, (InterpolationComponent, f64)> {
     checked_interpolate(from, to, progress.value()).map_err(|value| (component, value))
+}
+
+// Shared explicit-space numerical kernel. Callers verify common space first;
+// conversion, missing components and interpolation-method policy stay outside.
+pub(crate) fn interpolate_color(
+    from: InterpolableColor,
+    to: InterpolableColor,
+    progress: InterpolationProgress,
+) -> Result<InterpolableColor, (InterpolationComponent, f64)> {
+    let (ar, ag, ab) = from.premultiplied_components();
+    let (br, bg, bb) = to.premultiplied_components();
+    let red = checked_color_component(
+        ar,
+        br,
+        progress,
+        InterpolationComponent::ColorPremultipliedRed,
+    )?;
+    let green = checked_color_component(
+        ag,
+        bg,
+        progress,
+        InterpolationComponent::ColorPremultipliedGreen,
+    )?;
+    let blue = checked_color_component(
+        ab,
+        bb,
+        progress,
+        InterpolationComponent::ColorPremultipliedBlue,
+    )?;
+    let alpha = checked_color_component(
+        from.alpha(),
+        to.alpha(),
+        progress,
+        InterpolationComponent::ColorAlpha,
+    )?;
+    InterpolableColor::from_sampled_premultiplied_components(from.space(), red, green, blue, alpha)
+        .map_err(|_| (InterpolationComponent::ColorAlpha, alpha))
 }
 
 #[cfg(test)]

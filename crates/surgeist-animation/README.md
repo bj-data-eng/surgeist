@@ -9,11 +9,14 @@ decisions, typed native keyframe normalization and computed interval sampling,
 timing, easing, computed numeric composition,
 logarithmic ratio interpolation, normalized positions, premultiplied colors,
 computed circle, ellipse, inset and polygon shapes, resolved 2D/3D transforms,
-and discrete switching. Basic shapes retain explicit reference boxes and use
-whole-value fallback for incompatible pairs. Contextual calculations retain
+box/text shadow lists, and discrete switching. Basic shapes retain explicit
+reference boxes and use whole-value fallback for incompatible pairs. Contextual
+calculations retain
 source identity in symbolic combination plans. Transform lists support identity
 padding, common primitives, suffix matrix interpolation, list addition and
-accumulation. Explicit transform/composite diagnostic markers retain typed
+accumulation. Shadow lists preserve inset matching, transparent padding,
+ordered addition and component-based accumulation of supplied computed values.
+Explicit transform/composite diagnostic markers retain typed
 unsupported outcomes. CSS lowering, contextual evaluation, final
 clamping, runtime scheduling, and root integration belong to their respective
 owners. Shape/path command interpolation and shape addition/accumulation are
