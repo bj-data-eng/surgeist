@@ -29,7 +29,10 @@ fn trusted_window_load_uses_the_document_target_and_resumes_its_window_path() {
             assert_eq!(event.target(), Some(document.clone()));
             assert_eq!(event.current_target(), Some(window.clone()));
             assert_eq!(event.phase(), DomEventPhase::AtTarget);
-            assert_eq!(event.composed_path().collect::<Vec<_>>(), [window.clone()]);
+            assert_eq!(
+                event.composed_path().collect::<Vec<_>>().as_slice(),
+                std::slice::from_ref(&window)
+            );
             event.prevent_default();
             assert!(!event.default_prevented());
             observed.push(event.clone());
