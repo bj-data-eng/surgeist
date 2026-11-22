@@ -284,6 +284,39 @@ fn input_display_and_color_space_profiles_run_ordered_xyz_matrices() {
 }
 
 #[test]
+fn input_profile_executes_a_forward_route_without_a_reverse_route() {
+    let forward = mpe(
+        3,
+        3,
+        &[matrix(
+            [[1.0, 0.0, 0.5], [0.0, 0.5, 0.0], [0.0, 0.25, 1.0]],
+            [0.125, 0.25, 0.0],
+        )],
+    );
+    // ICC.1 §8.3.2 requires A2B0 for a LUT-based Input profile. Both reverse
+    // tag families are optional.
+    let bytes = profile_bytes(
+        b"scnr",
+        b"RGB ",
+        b"XYZ ",
+        &D50,
+        vec![(b"A2B0", legacy_lut(3, 3, 128)), (b"D2B1", forward)],
+    );
+    let mut accounting = RenderAccountingContext::default();
+    let profile = IccProfile::inspect(&bytes, &mut accounting).unwrap();
+    let rgb = profile.device_color(&[0.25, 0.5, 0.75]).unwrap();
+    let intent = IccRenderingIntent::MediaRelativeColorimetric;
+    let xyz = profile.to_pcs(intent, &rgb, &mut accounting).unwrap();
+    assert_eq!(xyz.space(), IccPcsSpace::XyzD50);
+    assert_eq!(xyz.coordinates(), [0.75, 0.5, 0.875]);
+    assert_eq!(xyz.intent(), intent);
+    assert_icc_error(
+        profile.from_pcs(xyz, &mut accounting),
+        IccProfileError::UnsupportedTransform,
+    );
+}
+
+#[test]
 fn excluded_classes_and_other_versions_are_rejected_at_inspection() {
     let mut accounting = RenderAccountingContext::default();
     let mut bytes = perceptual_cmyk_profile();
@@ -300,6 +333,35 @@ fn excluded_classes_and_other_versions_are_rejected_at_inspection() {
     assert_icc_error(
         IccProfile::inspect(&bytes, &mut accounting),
         IccProfileError::UnsupportedVersion,
+    );
+}
+
+#[test]
+fn historical_v4_input_requires_its_final_alignment_padding() {
+    let mut bytes = profile_bytes(
+        b"scnr",
+        b"RGB ",
+        b"Lab ",
+        &D50,
+        vec![(b"A2B0", legacy_lut(3, 3, 128)), (b"dmnd", localized("x"))],
+    );
+    bytes[9] = 0x20;
+    let mut accounting = RenderAccountingContext::default();
+    assert_eq!(
+        IccProfile::inspect(&bytes, &mut accounting)
+            .unwrap()
+            .class(),
+        IccProfileClass::Input
+    );
+
+    // A one-character mluc payload has 30 bytes. ICC.1:2004-10 §7.4
+    // includes two final alignment bytes in the profile's total extent.
+    bytes.truncate(bytes.len() - 2);
+    let size = u32::try_from(bytes.len()).unwrap();
+    bytes[..4].copy_from_slice(&size.to_be_bytes());
+    assert_icc_error(
+        IccProfile::inspect(&bytes, &mut accounting),
+        IccProfileError::InvalidProfile,
     );
 }
 
@@ -426,4 +488,83 @@ fn inspection_caps_report_a_typed_refusal_and_release_custody_for_retry() {
         assert_eq!(report.phase_count(RenderPhase::IccProfileConvert), 1);
         assert_eq!(report.usage().live(scratch), 0);
     }
+}
+
+#[test]
+fn conversion_refusal_releases_pipeline_custody_without_publishing() {
+    let options =
+        RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false });
+    let mut accounting = RenderAccountingContext::new(options);
+    // Table 63, two grid points per CMYK axis. K varies fastest.
+    let mut clut = b"clut\0\0\0\0\0\x04\0\x03".to_vec();
+    clut.extend([2, 2, 2, 2]);
+    clut.extend([0; 12]);
+    for corner in 0..16 {
+        let [c, m, y, k] = [8, 4, 2, 1].map(|bit| if corner & bit == 0 { 0.0 } else { 1.0 });
+        for value in [
+            20.0_f32 + 8.0 * c + 16.0 * k + 4.0 * y,
+            -20.0 + 16.0 * m - 8.0 * k,
+            4.0 + 8.0 * y - 4.0 * c,
+        ] {
+            clut.extend(value.to_be_bytes());
+        }
+    }
+    let bytes = cmyk_profile(vec![(b"D2B0", mpe(4, 3, &[clut]))]);
+    let profile = IccProfile::inspect(&bytes, &mut accounting).unwrap();
+    let cmyk = profile.device_color(&[0.25, 0.5, 0.75, 0.5]).unwrap();
+    // Multilinear interpolation reproduces the affine Lab ramps exactly.
+    // L* = 20 + 2 + 8 + 3, a* = -20 + 8 - 4, b* = 4 + 6 - 1.
+    let expected = [33.0, -16.0, 9.0];
+    let baseline = profile.to_pcs(PERCEPTUAL, &cmyk, &mut accounting).unwrap();
+    assert_eq!(baseline.coordinates(), expected);
+
+    let work = RenderWork::CoordinateVisits;
+    let preparation = RenderPhase::IccProfilePrepare;
+    let conversion = RenderPhase::IccProfileConvert;
+    let baseline = accounting.take_last_attempt().unwrap();
+    let prepared = baseline
+        .attempt()
+        .unwrap()
+        .phase_usage(preparation)
+        .work(work);
+    // Leave enough for the observed preparation, but only one visit for
+    // conversion of a four-channel device input.
+    let limit = prepared + 1;
+    accounting.set_options(
+        options.with_limits(RenderLimits::new().with_work_limit(work, limit).unwrap()),
+    );
+
+    let error = profile
+        .to_pcs(PERCEPTUAL, &cmyk, &mut accounting)
+        .unwrap_err();
+    let terminal = accounting.take_last_attempt().unwrap();
+    let report = terminal.attempt().unwrap();
+    let refusal = report.refusal().unwrap();
+    assert!(
+        matches!(error.accounting_diagnostic(), Some(RenderAccountingError::Refused(detail)) if detail == refusal)
+    );
+    assert_eq!(report.kind(), RenderAttemptKind::IccProfile);
+    assert_eq!(report.status(), RenderAttemptStatus::Refused);
+    assert_eq!(refusal.quantity(), RenderQuantity::Work(work));
+    // RenderLimits puts this cap on Attempt. The phase observations below
+    // establish that preparation completed and conversion reached the cap.
+    assert_eq!(refusal.phase(), RenderPhase::Attempt);
+    assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit });
+    assert_eq!(refusal.current(), prepared);
+    assert!(refusal.amount() > 1);
+    assert_eq!(report.phase_usage(preparation).work(work), prepared);
+    assert_eq!(report.phase_count(conversion), 1);
+    let scratch = RenderResource::ScratchCpuBytes;
+    assert!(report.usage().peak(scratch) > 0);
+    assert_eq!(report.usage().live(scratch), 0);
+    assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
+    assert_eq!(terminal.cleanup_fault(), None);
+
+    accounting.set_options(options);
+    let retry = profile.to_pcs(PERCEPTUAL, &cmyk, &mut accounting).unwrap();
+    assert_eq!(retry.coordinates(), expected);
+    assert_eq!(
+        accounting.last_attempt().unwrap().status(),
+        RenderAttemptStatus::Succeeded
+    );
 }
