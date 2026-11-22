@@ -14369,7 +14369,10 @@
     "Node.baseURI/get": {
       "kind": "native",
       "adapter": "node.baseuri.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/base.rs", "symbol": "document_base_url"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document.rs", "symbol": "node_base_uri"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/base.rs", "symbol": "read_node_base_url_with"}
+      ],
       "requirements": []
     },
     "Node.isConnected/get": {

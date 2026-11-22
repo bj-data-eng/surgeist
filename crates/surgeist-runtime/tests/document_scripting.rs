@@ -131,6 +131,8 @@ mod marquee;
 mod named_node_map;
 #[path = "document_scripting/native_media_status.rs"]
 mod native_media_status;
+#[path = "document_scripting/node_base_uri.rs"]
+mod node_base_uri;
 #[path = "document_scripting/node_list.rs"]
 mod node_list;
 #[path = "document_scripting/numeric_control_attributes.rs"]
@@ -2535,6 +2537,7 @@ fn main() {
             "document-named-mutation" => document_named_properties::document_names_preserve_ordinary_own_keys_and_current_mutation(),
             "document-named-iframe" => document_named_properties::document_named_iframe_shares_the_native_window_proxy(),
             "node-list" => node_list::node_lists_follow_current_canonical_nodes(),
+            "node-base-uri" => node_base_uri::node_base_uri_exposes_the_actual_node_document(),
             "node-list-retirement" => node_list::retired_child_roots_refuse_cached_and_first_access(),
             "ordinary-element-traversal" => ordinary_element_collections::ordinary_element_traversal(),
             "ordinary-element-queries" => ordinary_element_collections::ordinary_element_descendant_queries(),
@@ -2713,6 +2716,7 @@ fn main() {
     document_named_properties::document_names_preserve_ordinary_own_keys_and_current_mutation();
     document_named_properties::document_named_iframe_shares_the_native_window_proxy();
     node_list::node_lists_follow_current_canonical_nodes();
+    node_base_uri::node_base_uri_exposes_the_actual_node_document();
     node_list::retired_child_roots_refuse_cached_and_first_access();
     ordinary_element_collections::ordinary_element_traversal();
     ordinary_element_collections::ordinary_element_descendant_queries();

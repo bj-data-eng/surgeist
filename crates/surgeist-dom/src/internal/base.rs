@@ -1,10 +1,16 @@
 //! Canonical Base history, native qualified observations and Link history.
-use crate::{
-    internal::identity::DocumentId, internal::identity::NodeId, internal::snapshot::DomNode,
+use crate::internal::{
+    document::DomDocumentMetadata,
+    identity::{DocumentId, DomOwnerId, NodeId},
+    snapshot::{DomNode, DomNodeKind},
+    store::{DomError, Node, State},
 };
 use surgeist_html::elements::link::{HtmlLinkFlags, HtmlLinkHistory};
+use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::{
-    HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseUrlRecord, HtmlParseBaseFacts,
+    HtmlBaseDocumentFacts, HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseUrlRecord,
+    HtmlDocumentFirstBase, HtmlParseBaseFacts, select_document_base,
+    select_document_base_serialization,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -249,6 +255,70 @@ impl<'a> DomNode<'a> {
         Some(DomLink { node: self })
     }
 }
+
+pub(crate) struct DocumentBaseRead<'a> {
+    metadata: &'a DomDocumentMetadata,
+    facts: Option<&'a HtmlBaseDocumentFacts>,
+    first: HtmlDocumentFirstBase<'a>,
+}
+
+impl<'a> DocumentBaseRead<'a> {
+    pub(crate) fn open<E: From<DomError>>(
+        state: &'a State,
+        owner: DomOwnerId,
+        document: &'a Node,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Self, E> {
+        step()?;
+        let DomNodeKind::Document(metadata) = document.kind() else {
+            return Err(DomError::WrongDocument.into());
+        };
+        let fields = document.base_document().ok_or(DomError::WrongDocument)?;
+        let facts = metadata
+            .hosted_inputs
+            .as_ref()
+            .map(|inputs| &inputs.0.facts)
+            .or_else(|| fields.facts.map(HtmlParseBaseFacts::document));
+        let first = match fields.first {
+            None => HtmlDocumentFirstBase::Absent,
+            Some(id) => HtmlDocumentFirstBase::Present(
+                state
+                    .node_with(owner, id, step)?
+                    .base()
+                    .and_then(|state| state.frozen.as_ref())
+                    .map(|frozen| &frozen.value),
+            ),
+        };
+        Ok(Self {
+            metadata,
+            facts,
+            first,
+        })
+    }
+
+    fn record(self) -> Result<&'a HtmlBaseUrlRecord, DomError> {
+        select_document_base(self.facts, self.first)
+            .map_err(|missing| DomError::BaseFacts(DomBaseFactsError::Missing(missing)))
+    }
+
+    pub(crate) fn serialization(self) -> Result<&'a DocumentString, DomError> {
+        if self.facts.is_some() || matches!(self.first, HtmlDocumentFirstBase::Present(_)) {
+            return self.record().map(HtmlBaseUrlRecord::serialization);
+        }
+        if self
+            .metadata
+            .document_environment()
+            .has_ever_had_navigable()
+            || self.metadata.url().code_units()
+                != [97, 98, 111, 117, 116, 58, 98, 108, 97, 110, 107]
+        {
+            return Err(DomError::NotSupported);
+        }
+        select_document_base_serialization(self.metadata.url(), self.first)
+            .map_err(|missing| DomError::BaseFacts(DomBaseFactsError::Missing(missing)))
+    }
+}
+
 impl<'a> crate::internal::snapshot::DomDocument<'a> {
     /// Constructor-established opener policy in the admitted hosted profile.
     /// This is neither a general parsed policy bank nor a currentness proof.
@@ -262,67 +332,26 @@ impl<'a> crate::internal::snapshot::DomDocument<'a> {
     pub fn base_document_facts(self) -> Option<&'a surgeist_html_semantics::HtmlBaseDocumentFacts> {
         Some(&self.metadata().hosted_inputs.as_ref()?.0.facts)
     }
-    fn selected_first_base(
-        self,
-    ) -> Result<surgeist_html_semantics::HtmlDocumentFirstBase<'a>, crate::internal::store::DomError>
-    {
+    fn document_base_read(self) -> Result<DocumentBaseRead<'a>, DomError> {
         self.snapshot.require_complete_source()?;
-        let node = self
-            .snapshot
-            .state
-            .node(self.snapshot.owner, self.id.node())?;
-        Ok(
-            match node
-                .base_document()
-                .ok_or(crate::internal::store::DomError::WrongDocument)?
-                .first
-            {
-                None => surgeist_html_semantics::HtmlDocumentFirstBase::Absent,
-                Some(base) => surgeist_html_semantics::HtmlDocumentFirstBase::Present(
-                    self.snapshot
-                        .state
-                        .node(self.snapshot.owner, base)?
-                        .base()
-                        .and_then(|state| state.frozen.as_ref())
-                        .map(|frozen| &frozen.value),
-                ),
-            },
-        )
+        let state = &self.snapshot.state;
+        let owner = self.snapshot.owner;
+        let document = state.node(owner, self.id.node())?;
+        DocumentBaseRead::open(state, owner, document, &mut || Ok(()))
     }
-    /// Actual selected record using constructor facts and the maintained first
+    /// Actual selected record using published facts and the maintained first
     /// frozen Base (O(1)). Missing facts or an unfrozen first Base stay missing.
     pub fn document_base_record(
         self,
     ) -> Result<&'a HtmlBaseUrlRecord, crate::internal::store::DomError> {
-        let first = self.selected_first_base()?;
-        surgeist_html_semantics::select_document_base(self.base_document_facts(), first).map_err(
-            |missing| {
-                crate::internal::store::DomError::BaseFacts(DomBaseFactsError::Missing(missing))
-            },
-        )
+        self.document_base_read()?.record()
     }
     /// Current base selection through the maintained first-Base index (O(1));
     /// this never scans descendants or substitutes URL parsing for an observation.
     pub fn document_base_url(
         self,
     ) -> Result<&'a surgeist_html::values::DocumentString, crate::internal::store::DomError> {
-        if self.base_document_facts().is_some() {
-            return self
-                .document_base_record()
-                .map(HtmlBaseUrlRecord::serialization);
-        }
-        let first = self.selected_first_base()?;
-        let metadata = self.metadata();
-        if metadata.document_environment().has_ever_had_navigable()
-            || metadata.url().code_units() != [97, 98, 111, 117, 116, 58, 98, 108, 97, 110, 107]
-        {
-            return Err(crate::internal::store::DomError::NotSupported);
-        }
-        surgeist_html_semantics::select_document_base_serialization(metadata.url(), first).map_err(
-            |missing| {
-                crate::internal::store::DomError::BaseFacts(DomBaseFactsError::Missing(missing))
-            },
-        )
+        self.document_base_read()?.serialization()
     }
     pub fn base_facts(self) -> Option<&'a HtmlParseBaseFacts> {
         self.snapshot

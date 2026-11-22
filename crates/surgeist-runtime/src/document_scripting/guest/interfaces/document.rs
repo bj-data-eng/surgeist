@@ -785,17 +785,44 @@ pub(super) fn install_node<'scope>(
             configurable: false,
         },
     )?;
+    let install_member = |scope: &mut Scope<'scope>,
+                          member: NodeMember,
+                          key: &[u16],
+                          name: &[u16]|
+     -> Result<(), DocumentGuestEventError> {
+        let handler = capture(size_of::<(Capture, NodeMember)>())?;
+        install_getter(
+            scope,
+            &node,
+            key,
+            name,
+            true,
+            Callback::new(move |scope, arguments| handler.node_member(scope, arguments, member)),
+        )?;
+        Ok(())
+    };
+    install_member(
+        scope,
+        NodeMember::Type,
+        &ascii(b"nodeType"),
+        &ascii(b"get nodeType"),
+    )?;
+    install_member(
+        scope,
+        NodeMember::Name,
+        &ascii(b"nodeName"),
+        &ascii(b"get nodeName"),
+    )?;
+    let handler = capture(size_of::<Capture>())?;
+    install_getter(
+        scope,
+        &node,
+        &ascii(b"baseURI"),
+        &ascii(b"get baseURI"),
+        true,
+        Callback::new(move |scope, arguments| handler.node_base_uri(scope, arguments)),
+    )?;
     for (member, key, name) in [
-        (
-            NodeMember::Type,
-            &ascii(b"nodeType")[..],
-            &ascii(b"get nodeType")[..],
-        ),
-        (
-            NodeMember::Name,
-            &ascii(b"nodeName")[..],
-            &ascii(b"get nodeName")[..],
-        ),
         (
             NodeMember::Connected,
             &ascii(b"isConnected")[..],
@@ -837,15 +864,7 @@ pub(super) fn install_node<'scope>(
             &ascii(b"get nextSibling")[..],
         ),
     ] {
-        let handler = capture(size_of::<(Capture, NodeMember)>())?;
-        install_getter(
-            scope,
-            &node,
-            key,
-            name,
-            true,
-            Callback::new(move |scope, arguments| handler.node_member(scope, arguments, member)),
-        )?;
+        install_member(scope, member, key, name)?;
     }
     node_list::install_children(scope, &node, capture)?;
     let handler = capture(size_of::<Capture>())?;
@@ -1114,6 +1133,42 @@ impl Capture {
                 .open_document(scope, bindings.attached_id.node(), || admission.step())?
                 .ok_or(DocumentScriptNativeError::ProjectionCustody.into())
         });
+        complete(scope, &events, result)
+    }
+
+    fn node_base_uri<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let Some(node) = tree::projected_node(scope, arguments.receiver())? else {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"Node required"))?,
+            ));
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            let url = self.callbacks.with_read(&owner, &events, |read, _| {
+                let dom = read
+                    .dom
+                    .try_borrow()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                dom.raw()
+                    .read_node_base_url_with(
+                        node.node(),
+                        || events.budget.charge_work(read.account_scope, 1),
+                        read.cancel,
+                    )
+                    .cloned()
+            })?;
+            Ok(self
+                .callbacks
+                .conversion
+                .run(scope, |conversion| {
+                    conversion.copy_usv_to_js(url.code_units())
+                })
+                .map_err(Error::from)?)
+        })();
         complete(scope, &events, result)
     }
 

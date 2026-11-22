@@ -53,6 +53,14 @@ pub(in crate::document_scripting) fn translation_queries_consume_the_enclosing_a
     );
 }
 
+pub(in crate::document_scripting) fn base_uri_reads_consume_the_enclosing_attribute_source() {
+    queries_consume_the_enclosing_attribute_source(
+        "sourceReadProbe.baseURI === 'about:blank'",
+        4_000,
+        |batch, document| batch.create_element_ns(document, Namespace::html(), "div"),
+    );
+}
+
 fn queries_consume_the_enclosing_attribute_source(
     predicate: &str,
     source_work: u64,
@@ -167,9 +175,12 @@ fn queries_consume_the_enclosing_attribute_source(
         matches!(
             failure.cause::<DocumentGuestEventError>(),
             Some(DocumentGuestEventError::Document(
-                DocumentScriptError::Native(DocumentScriptNativeError::Dom(
-                    DomError::SourceWorkLimit { limit }
-                ))
+                DocumentScriptError::Native(
+                    DocumentScriptNativeError::Dom(DomError::SourceWorkLimit { limit })
+                    | DocumentScriptNativeError::Hosted(DomHostedRuntimeError::Dom(
+                        DomHostedError::Dom(DomError::SourceWorkLimit { limit })
+                    ))
+                )
             )) if *limit == source_work
         ),
         "original Source cause: {:?}",
