@@ -233,3 +233,61 @@ pub(in crate::document_scripting) fn token_edit_preserves_the_original_source_re
     host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
         .unwrap();
 }
+
+pub(in crate::document_scripting) fn indexed_membership_admits_the_native_descriptor_read() {
+    const DESCRIPTOR: &str = "Object.getOwnPropertyDescriptor(classProbe, '1')";
+    const HAS: &str = "Reflect.has(classProbe, '1')";
+    const IN: &str = "'1' in classProbe";
+    let (mut host, permit) = fixture();
+    open_list(&mut host, &permit);
+    let events = host.guest_events().unwrap();
+    let before = events.budget.work().unwrap();
+    host.in_document(&permit, |scope| {
+        scope.evaluate(&units(DESCRIPTOR)).map(drop)
+    })
+    .unwrap();
+    let descriptor_work = events.budget.work().unwrap() - before;
+    assert!(descriptor_work > 0);
+    drop(events);
+    host.stop().into_session().unwrap();
+
+    for expression in [DESCRIPTOR, HAS, IN] {
+        let (mut host, permit) = fixture();
+        open_list(&mut host, &permit);
+        host.in_document(&permit, |scope| {
+            assert_guest(
+                scope,
+                "Object.getOwnPropertyDescriptor(classProbe, '1').value === 'two'",
+            )?;
+            assert_guest(scope, "Reflect.has(classProbe, '1') && '1' in classProbe")
+        })
+        .unwrap();
+        let events = host.guest_events().unwrap();
+        let before = (host.snapshot().unwrap().stamp(), events.budget.used());
+        events.budget.set_work_remaining(descriptor_work - 1);
+        let observed = host.in_document(&permit, |scope| {
+            scope.evaluate(&units(expression)).map(drop)
+        });
+        let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = observed else {
+            panic!(
+                "{expression} must propagate the indexed descriptor's one-short refusal: {observed:?}"
+            );
+        };
+        assert!(matches!(
+            failure.cause::<DocumentGuestEventError>(),
+            Some(DocumentGuestEventError::WorkLimit)
+        ));
+        assert_eq!(host.snapshot().unwrap().stamp(), before.0);
+        assert_eq!(events.budget.used(), before.1);
+        drop(events);
+        host.stop().into_session().unwrap();
+    }
+    let (mut host, permit) = fixture();
+    open_list(&mut host, &permit);
+    let events = host.guest_events().unwrap();
+    events.budget.set_work_remaining(descriptor_work - 1);
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "Reflect.deleteProperty(classProbe, '1') === false")
+    })
+    .unwrap();
+}
