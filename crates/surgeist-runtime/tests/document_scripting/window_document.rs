@@ -485,9 +485,18 @@ pub(super) fn window_properties_direct_assignment_preserves_storage_and_inherita
         const target = EventTarget.prototype;
         for (const key of ["newName", "0", Symbol("name"), "constructor"]) {
             const assigned = Reflect.set(names, key, 17);
-            if (Object.hasOwn(names, key)) {
-                return "direct assignment must not create " + String(key)
+            if (assigned || Object.hasOwn(names, key)) {
+                return "direct assignment must refuse storage of " + String(key)
                     + " on WindowProperties; Reflect.set returned " + assigned;
+            }
+            let refused = false;
+            try {
+                (function () { "use strict"; names[key] = 17; })();
+            } catch (error) {
+                refused = error instanceof TypeError;
+            }
+            if (!refused || Object.hasOwn(names, key)) {
+                return "strict direct assignment must refuse storage of " + String(key);
             }
             const ordinary = Object.create(names);
             if (!Reflect.set(names, key, 17, ordinary)

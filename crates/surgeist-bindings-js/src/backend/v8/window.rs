@@ -23,11 +23,13 @@ impl<'scope> Templates<'scope> {
         names.set_immutable_proto();
         names.set_named_property_handler(
             v8::NamedPropertyHandlerConfiguration::new()
+                .setter(reject_named_assignment)
                 .definer(reject_definition)
                 .deleter(reject_deletion),
         );
         names.set_indexed_property_handler(
             v8::IndexedPropertyHandlerConfiguration::new()
+                .setter(reject_indexed_assignment)
                 .definer(reject_index_definition)
                 .deleter(reject_index_deletion),
         );
@@ -208,6 +210,71 @@ fn reject_construction<'scope>(
         let exception = v8::Exception::type_error(scope, message);
         scope.throw_exception(exception);
     }
+}
+
+fn reject_named_assignment<'scope>(
+    scope: &mut v8::PinScope<'scope, '_>,
+    key: v8::Local<'scope, v8::Name>,
+    _: v8::Local<'scope, v8::Value>,
+    arguments: v8::PropertyCallbackArguments<'scope>,
+    result: v8::ReturnValue<'_, v8::Boolean>,
+) -> v8::Intercepted {
+    reject_assignment(scope, arguments.holder(), key, result)
+}
+
+fn reject_indexed_assignment<'scope>(
+    scope: &mut v8::PinScope<'scope, '_>,
+    index: u32,
+    _: v8::Local<'scope, v8::Value>,
+    arguments: v8::PropertyCallbackArguments<'scope>,
+    result: v8::ReturnValue<'_, v8::Boolean>,
+) -> v8::Intercepted {
+    let index = v8::Integer::new_from_unsigned(scope, index);
+    let Some(key) = index.to_string(scope) else {
+        return v8::Intercepted::kYes;
+    };
+    reject_assignment(scope, arguments.holder(), key.into(), result)
+}
+
+fn reject_assignment<'scope>(
+    scope: &mut v8::PinScope<'scope, '_>,
+    holder: v8::Local<'scope, v8::Object>,
+    key: v8::Local<'scope, v8::Name>,
+    mut result: v8::ReturnValue<'_, v8::Boolean>,
+) -> v8::Intercepted {
+    match assignment_would_store(scope, holder, key) {
+        Some(false) => v8::Intercepted::kNo,
+        Some(true) => {
+            // Alternate-receiver CreateDataProperty can skip this setter
+            // after its property-attributes lookup advances the iterator.
+            result.set_bool(false);
+            v8::Intercepted::kYes
+        }
+        None => v8::Intercepted::kYes,
+    }
+}
+
+fn assignment_would_store<'scope>(
+    scope: &mut v8::PinScope<'scope, '_>,
+    holder: v8::Local<'scope, v8::Object>,
+    key: v8::Local<'scope, v8::Name>,
+) -> Option<bool> {
+    // WindowProperties has a fixed ordinary prototype chain. Inspect the
+    // first descriptor without reading the property, and let the engine
+    // perform ordinary accessor calls and read-only refusals.
+    let mut current = Some(holder);
+    while let Some(object) = current {
+        let descriptor = object.get_own_property_descriptor(scope, key)?;
+        if let Ok(descriptor) = v8::Local::<v8::Object>::try_from(descriptor) {
+            let writable: v8::Local<v8::Name> = v8::String::new(scope, "writable")?.into();
+            return Some(
+                descriptor.has_own_property(scope, writable)?
+                    && descriptor.get(scope, writable.into())?.is_true(),
+            );
+        }
+        current = v8::Local::<v8::Object>::try_from(object.get_prototype(scope)?).ok();
+    }
+    Some(true)
 }
 
 fn reject_definition<'scope>(
