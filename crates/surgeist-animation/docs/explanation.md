@@ -52,6 +52,15 @@ and metadata. Style supplies target-context computed property values. The
 [reference](reference.md#native-keyframe-normalization) describes the phases
 and failure semantics.
 
+CSS transition lifecycle decisions use a separate immutable snapshot boundary in
+`transition`. Style provides atomic endpoint and matching facts; Animation
+promotes due records and decides creation, cancellation, and reversal using the
+same supplied property policy as current-value sampling. The resulting candidate
+separates completion promotion from subsequent style outcomes so Runtime can
+publish state before dispatching events. Keeping these decisions independent of
+DOM mutation and clocks permits replay and failure without partial publication.
+See [transition decisions](reference.md#css-transition-lifecycle-decisions).
+
 ## Values and failure semantics
 
 Unrestricted finite percentages and eased progress preserve values outside the

@@ -33,7 +33,7 @@
 //! | [`interpolation`] | Interpolable values, property keys and pairs. |
 //! | [`computed`] | Canonical computed atoms, symbolic math and property combination. |
 //! | [`sample`] | Sampled property results and next-frame hints. |
-//! | [`transition`] | Transition tracks, the entry point for transitions. |
+//! | [`transition`] | Transition tracks, lifecycle decisions, and current values. |
 //! | [`keyframe`] | Keyframe tracks, the entry point for keyframe animations. |
 //! | [`keyframe_input`] | Native typed keyframe normalization and computed offsets. |
 //! | [`diagnostics`] | Numeric diagnostics shared by the typed constructors. |

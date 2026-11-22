@@ -597,8 +597,6 @@ impl NonFiniteInterpolationResult {
 }
 
 impl InterpolationProgress {
-    pub(crate) const ZERO: Self = Self { value: 0.0 };
-
     pub fn new(value: f64) -> Result<Self, InterpolationError> {
         if !value.is_finite() {
             return Err(InterpolationError::NonFiniteProgress { value });

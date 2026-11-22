@@ -5,9 +5,10 @@ This supplement records crate facts and grants no additional authority.
 
 ## Product Boundary
 
-This crate owns timing, easing, keyframes, interpolation, sampled values, and animation
-diagnostics. Consumers supply normalized tracks, computed endpoints, and
-property support policy. Authored CSS, clocks, scheduling, lifecycle, invalidation,
+This crate owns timing, easing, keyframes, interpolation, sampled values,
+transition decisions over supplied snapshots, and animation diagnostics.
+Consumers supply normalized tracks, computed endpoints, and property support
+policy. Authored CSS, clocks, scheduling, lifecycle publication/dispatch, invalidation,
 color conversion, gamut mapping, and final property clamping remain caller-owned.
 
 ## Discover The Current Structure

@@ -3,16 +3,33 @@
 //! A transition track contains root-supplied endpoints, one validated duration,
 //! one delay, and one easing function. Sampling uses effective elapsed time and
 //! play state; this crate does not generate transitions from authored CSS.
+//!
+//! [`TransitionSnapshot`] decides CSS transition creation, cancellation,
+//! reversal, and completion from caller-supplied computed style facts.
+//! [`RunningTransition::sample`] uses signed document-origin-relative time and
+//! a supplied [`TransitionPropertyPolicy`]. It keeps the old timing output
+//! separate from the current value. Style owns atomic endpoint formation and
+//! property policy; Runtime owns publication, document removal order, and events.
 
 use core::fmt;
 
 use crate::easing::Easing;
 use crate::interpolation::{
-    InterpolableValue, InterpolationError, InterpolationPair, InterpolationProgress, PropertyKey,
+    InterpolableValue, InterpolationError, InterpolationOutcome, InterpolationPair, PropertyKey,
 };
 use crate::sample::SampledPropertyResult;
 use crate::time::{AnimationDelay, AnimationDuration, ElapsedTime};
 use crate::timing::{AnimationPlayState, TimingParameters, TimingPhase};
+
+mod lifecycle;
+
+#[doc(inline)]
+pub use lifecycle::{
+    CompletedTransition, RunningTransition, TransitionChange, TransitionCurrentSample,
+    TransitionDecisionError, TransitionDecisionErrorKind, TransitionKey, TransitionOutcome,
+    TransitionPropertyPolicy, TransitionSamplePhase, TransitionSnapshot, TransitionState,
+    TransitionTiming, TransitionUpdate, Transitionability,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TransitionTrackId {
@@ -132,7 +149,7 @@ impl TransitionTrack {
             return SampledPropertyResult::from_timing_and_interpolation_outcome(
                 timing,
                 self.property(),
-                Some(self.pair.sample(InterpolationProgress::ZERO)),
+                Some(InterpolationOutcome::Value(self.from().clone())),
             );
         }
         SampledPropertyResult::from_timing_and_pair(timing, &self.pair)
