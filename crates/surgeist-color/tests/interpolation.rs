@@ -315,3 +315,22 @@ fn sample_keeps_a_tiny_hue_endpoint_at_extreme_progress() {
         .unwrap();
     assert_eq!(sample.channels()[2].map(Finite::get), Some(347.0));
 }
+
+#[test]
+fn longer_hue_distinguishes_a_near_semicircle_from_a_tie() {
+    let space = ColorSpace::Oklch;
+    let first = color(
+        space,
+        [Some(0.5), Some(0.25), Some(2.0_f64.powi(-54))],
+        Some(1.0),
+    );
+    let second = color(space, [Some(0.5), Some(0.25), Some(180.0)], Some(1.0));
+    let method = InterpolationMethod::try_new(space, Some(HueInterpolation::Longer)).unwrap();
+
+    // The forward arc is just under 180 degrees, so the longer arc goes
+    // backwards. One and a half negative semicircles wraps to 90 degrees.
+    let sample = first
+        .sample_interpolation(second, method, Finite::new(1.5).unwrap())
+        .unwrap();
+    assert_eq!(sample.channels()[2].map(Finite::get), Some(90.0));
+}
