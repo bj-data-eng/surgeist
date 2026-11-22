@@ -594,10 +594,18 @@ impl Steps {
         let count = f64::from(self.count);
         let jumps = self.jump_count();
         let scaled_input = input * count;
-        if !scaled_input.is_finite() {
-            // At this magnitude the floor and one-step adjustments are below
-            // binary64 precision. Round only after division by the jump count.
-            return rounded_scaled_ratio(input, count, jumps);
+        let increments_at_start = matches!(
+            self.position,
+            StepPosition::JumpStart | StepPosition::JumpBoth
+        );
+        if scaled_input.abs() >= BINARY64_IMPLICIT_BIT as f64 {
+            return large_step_output(
+                input,
+                self.count,
+                jumps as u64,
+                increments_at_start,
+                before_flag,
+            );
         }
 
         let floor = scaled_input.floor();
@@ -611,10 +619,7 @@ impl Steps {
                 correction -= 1.0;
             }
         }
-        if matches!(
-            self.position,
-            StepPosition::JumpStart | StepPosition::JumpBoth
-        ) {
+        if increments_at_start {
             correction += 1.0;
         }
 
@@ -641,26 +646,90 @@ impl Steps {
 
 const BINARY64_FRACTION_BITS: i32 = 52;
 const BINARY64_IMPLICIT_BIT: u64 = 1 << BINARY64_FRACTION_BITS;
+const BINARY64_SIGN_BIT: u64 = 1 << 63;
 const BINARY64_EXPONENT_BIAS: i32 = 1023;
 const BINARY64_MIN_NORMAL_EXPONENT: i32 = f64::MIN_EXP - 1;
 const BINARY64_MIN_EXPONENT: i32 = BINARY64_MIN_NORMAL_EXPONENT - BINARY64_FRACTION_BITS;
 
+fn large_step_output(
+    input: f64,
+    count: u32,
+    jumps: u64,
+    increments_at_start: bool,
+    before_flag: bool,
+) -> f64 {
+    let sign = input.to_bits() & BINARY64_SIGN_BIT;
+    let (significand, scale) = binary64_parts(input);
+    let product = u128::from(significand) * u128::from(count);
+    let (mut floor_magnitude, scale, is_integral) = if scale < 0 {
+        // This path receives products near 2^52 or larger. An 85-bit product
+        // therefore needs at most 33 fractional bits to recover its floor.
+        let unit = 1_u128 << scale.unsigned_abs();
+        let is_integral = product % unit == 0;
+        let floor_magnitude = product / unit + u128::from(sign != 0 && !is_integral);
+        (floor_magnitude, 0, is_integral)
+    } else if scale < u32::BITS as i32 {
+        // At most 85 significand bits plus 31 exponent bits fit in u128.
+        (product << scale, 0, true)
+    } else {
+        (product, scale, true)
+    };
+
+    let adjustment = i8::from(increments_at_start) - i8::from(before_flag && is_integral);
+    let magnitude_adjustment = if sign == 0 { adjustment } else { -adjustment };
+    let mut midpoint_shift = std::cmp::Ordering::Equal;
+    if scale == 0 {
+        if magnitude_adjustment > 0 {
+            floor_magnitude += 1;
+        } else if magnitude_adjustment < 0 {
+            floor_magnitude -= 1;
+        }
+    } else {
+        // The exact step number and rounding midpoints here are both spaced
+        // by more than one unit. A single-step adjustment only breaks ties.
+        midpoint_shift = magnitude_adjustment.cmp(&0);
+    }
+
+    round_binary_ratio(
+        floor_magnitude,
+        u128::from(jumps),
+        scale,
+        sign,
+        midpoint_shift,
+    )
+}
+
 /// Round `value * factor / divisor` once. The operands are finite and the
 /// divisor is strictly positive. This path handles numerical range boundaries.
 fn rounded_scaled_ratio(value: f64, factor: f64, divisor: f64) -> f64 {
-    let sign = (value.to_bits() ^ factor.to_bits()) & (1 << 63);
-    let with_sign = |bits| f64::from_bits(sign | bits);
+    let sign = (value.to_bits() ^ factor.to_bits()) & BINARY64_SIGN_BIT;
     let (value_bits, value_scale) = binary64_parts(value);
     let (factor_bits, factor_scale) = binary64_parts(factor);
     let (divisor_bits, divisor_scale) = binary64_parts(divisor);
     let product = u128::from(value_bits) * u128::from(factor_bits);
     if product == 0 {
-        return with_sign(0);
+        return f64::from_bits(sign);
     }
 
-    let divisor = u128::from(divisor_bits);
     let scale = value_scale + factor_scale - divisor_scale;
-    // The product has at most 106 bits and the divisor at most 53. The
+    round_binary_ratio(
+        product,
+        u128::from(divisor_bits),
+        scale,
+        sign,
+        std::cmp::Ordering::Equal,
+    )
+}
+
+fn round_binary_ratio(
+    product: u128,
+    divisor: u128,
+    scale: i32,
+    sign: u64,
+    midpoint_shift: std::cmp::Ordering,
+) -> f64 {
+    let with_sign = |bits| f64::from_bits(sign | bits);
+    // The numerator has at most 116 bits and the divisor at most 53. The
     // comparison shifts the smaller operand only up to the larger one's width.
     let bit_difference = divisor.leading_zeros() as i32 - product.leading_zeros() as i32;
     let below_power = if bit_difference < 0 {
@@ -688,8 +757,8 @@ fn rounded_scaled_ratio(value: f64, factor: f64, divisor: f64) -> f64 {
     };
     let quotient = numerator / denominator;
     let twice_remainder = (numerator % denominator) * 2;
-    let round_up =
-        twice_remainder > denominator || (twice_remainder == denominator && quotient % 2 != 0);
+    let remainder_order = twice_remainder.cmp(&denominator).then(midpoint_shift);
+    let round_up = remainder_order.is_gt() || (remainder_order.is_eq() && quotient % 2 != 0);
     let rounded_significand = (quotient + u128::from(round_up)) as u64;
     let exponent_bits = if exponent < BINARY64_MIN_NORMAL_EXPONENT {
         0
