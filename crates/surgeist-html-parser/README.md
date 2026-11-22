@@ -17,6 +17,8 @@ The local profile requires a plain HTML doctype, explicit `html`, `head` and
 tokenizer, input position and open-element identities across a pause. The host
 publishes each reached tree edit atomically and can borrow the active Document
 between advances. A refused edit stays pending with its original token.
+Parser limits govern decoded input, tokenization, open elements and parser work.
+The host independently admits canonical tree storage and native edit work.
 
 Explicit EOF allows the original end token to reach stop parsing. The one-shot
 continuation gives the host the EOF anchor and pending stack pops. The profile

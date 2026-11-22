@@ -9,6 +9,8 @@ mod destruction;
 mod focus;
 mod fullscreen;
 mod history;
+mod local_html;
+pub use local_html::{DomHostedHtmlError, DomHostedHtmlParser, DomHostedHtmlStopParsing};
 mod policy;
 mod records;
 mod uuid;
@@ -205,7 +207,7 @@ impl DomHostedTopLevel {
     pub const fn global(self) -> DomHostedGlobalId {
         self.global
     }
-    /// Actual canonically created initial about:blank Document.
+    /// Canonical active Document at creation.
     pub const fn document(self) -> surgeist_dom::identity::DocumentId {
         self.document
     }
@@ -525,12 +527,18 @@ impl fmt::Debug for HostedRuntime {
     }
 }
 
-// These are original partially established values, not a second phase machine:
-// the canonical lease alone selects the next source phase. Every successful
+#[derive(Clone, Copy)]
+enum TopLevelCreation {
+    InitialAboutBlank,
+    LocalHtml,
+}
+
+// The canonical lease alone selects the next source phase. Every successful
 // external operation is retained here before any subsequent fallible step.
 struct Creation {
     host: DomHostedHostId,
     composition: usize,
+    kind: TopLevelCreation,
     preparation: Option<DomHostedTopLevelPreparation>,
     prepared: Option<DomHostedPreparedTopLevel>,
     context: Option<records::BrowsingContext>,
@@ -546,10 +554,11 @@ struct Creation {
     finished_sample: Option<clock::CoarsenedSample>,
 }
 impl Creation {
-    fn new(host: DomHostedHostId, composition: usize) -> Self {
+    fn new(host: DomHostedHostId, composition: usize, kind: TopLevelCreation) -> Self {
         Self {
             host,
             composition,
+            kind,
             preparation: None,
             prepared: None,
             context: None,
@@ -1519,10 +1528,17 @@ fn drive_creation(
                     .map_err(DomHostedRuntimeError::Dom)?,
             );
         }
-        let lease = dom
-            .raw_mut()
-            .begin_hosted_top_level(source, &mut creation.prepared, cancel)
-            .map_err(DomHostedRuntimeError::Dom)?;
+        let lease = match creation.kind {
+            TopLevelCreation::InitialAboutBlank => {
+                dom.raw_mut()
+                    .begin_hosted_top_level(source, &mut creation.prepared, cancel)
+            }
+            TopLevelCreation::LocalHtml => {
+                dom.raw_mut()
+                    .begin_hosted_top_level_html(source, &mut creation.prepared, cancel)
+            }
+        }
+        .map_err(DomHostedRuntimeError::Dom)?;
         creation.lease = Some(lease);
     }
     loop {
@@ -1818,16 +1834,20 @@ fn drive_creation(
                     host.top = Some(records::Top {
                         id: navigable,
                         closing: false,
+                        local_parser_checkpoint: None,
                     });
                 }
             }
             DomHostedCreationStep::Complete(document) => {
-                let top = host.top.as_ref().ok_or(DomHostedRuntimeError::Protocol)?;
+                let top = host.top.as_mut().ok_or(DomHostedRuntimeError::Protocol)?;
                 let complete = lease
                     .finish(dom.raw_mut(), source, cancel)
                     .map_err(DomHostedRuntimeError::Dom)?;
                 if complete.document() != document || complete.navigable() != top.id {
                     return Err(DomHostedRuntimeError::Protocol);
+                }
+                if matches!(creation.kind, TopLevelCreation::LocalHtml) {
+                    top.local_parser_checkpoint = Some(dom.snapshot().stamp());
                 }
                 return Ok(DomHostedTopLevel {
                     host: complete.host(),
@@ -1861,6 +1881,25 @@ impl HostedRuntime {
         host: DomHostedHostId,
         cancel: &AtomicBool,
     ) -> Result<DomHostedTopLevel, DomHostedRuntimeError> {
+        self.create_top_level_for(dom, host, TopLevelCreation::InitialAboutBlank, cancel)
+    }
+    /// Establish a native loading Document for a bounded local HTML parse.
+    /// The original creation operation can be resumed on refusal.
+    pub fn create_local_html_top_level(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        host: DomHostedHostId,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedTopLevel, DomHostedRuntimeError> {
+        self.create_top_level_for(dom, host, TopLevelCreation::LocalHtml, cancel)
+    }
+    fn create_top_level_for(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        host: DomHostedHostId,
+        kind: TopLevelCreation,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedTopLevel, DomHostedRuntimeError> {
         let owner = self.state()?;
         let mut state = owner
             .try_borrow_mut()
@@ -1884,7 +1923,7 @@ impl HostedRuntime {
             group: None,
             top: None,
         });
-        state.creation = Some(Creation::new(host, composition));
+        state.creation = Some(Creation::new(host, composition, kind));
         state.resume_creation(dom, cancel)
     }
     /// Resume the original retained lifecycle operation. No permission owns or
@@ -2324,7 +2363,7 @@ mod constructor_settings_tests {
     use surgeist_css::source::CssUtf16InputLimits;
     use surgeist_dom::{hosted::DomHostedRecordLimits, limits::DomLimits};
 
-    fn limits() -> DomHostedRuntimeLimits {
+    pub(super) fn limits() -> DomHostedRuntimeLimits {
         DomHostedRuntimeLimits {
             canonical: DomHostedLimits::new(
                 DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
@@ -2339,7 +2378,7 @@ mod constructor_settings_tests {
         }
     }
 
-    fn session(limits: DomHostedRuntimeLimits) -> DomSession {
+    pub(super) fn session(limits: DomHostedRuntimeLimits) -> DomSession {
         DomSession::new(
             Dom::new(
                 DomLimits::new(

@@ -218,6 +218,10 @@ impl<N: fmt::Debug> fmt::Debug for HtmlLiveParser<'_, N> {
 }
 
 impl<'source, N: Copy + Eq> HtmlLiveParser<'source, N> {
+    /// Admit the input, tokenizer and open-element stack. The canonical
+    /// provider owns tree storage and native work admission. The parser limits
+    /// for report nodes, edges, attributes and string data apply to offline
+    /// construction and do not cap the host's live tree.
     pub fn new(
         source: &'source HtmlSource,
         document: N,

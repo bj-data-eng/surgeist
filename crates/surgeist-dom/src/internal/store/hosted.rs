@@ -4,6 +4,7 @@ pub(super) mod constructed_sheet;
 pub(in crate::internal::store) mod containers;
 mod destruction;
 pub(crate) mod history;
+pub(crate) mod local_html;
 pub(in crate::internal::store) mod operations;
 pub(in crate::internal::store) mod queue;
 pub(super) mod style_root_withdrawal;
@@ -2385,6 +2386,41 @@ impl DomHostedSource {
             return Err(DomHostedError::StaleIdentity);
         }
         Ok(())
+    }
+
+    /// Establish whether a local parser's load-delay profile remains closed
+    /// since its last canonical checkpoint. The ordinary script registration
+    /// may publish once between parser advances.
+    pub fn local_html_load_profile_continues(
+        &self,
+        dom: &Dom,
+        document: DocumentId,
+        global: DomHostedGlobalId,
+        checkpoint: DomStamp,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomHostedError> {
+        self.qualify_hosted_local_html_parser(dom, document, global, cancel)?;
+        let work = self.work(cancel)?;
+        work.step(cancel)?;
+        if checkpoint.owner != dom.owner {
+            return Err(DomHostedError::ForeignSource);
+        }
+        if checkpoint.revision == dom.revision {
+            return Ok(true);
+        }
+        if checkpoint.revision.0.checked_add(1) != Some(dom.revision.0) {
+            return Ok(false);
+        }
+        let (_, metadata, _) = dom.dispatch_global_document_metadata(
+            global,
+            &mut || work.step(cancel),
+            AssociationReadWork::Pages,
+        )?;
+        // Registration exclusively sets its generation to this publication's
+        // actual revision. Equality here proves it was the sole publication.
+        Ok(metadata
+            .script_host_generation()
+            .is_some_and(|generation| generation.get() == dom.revision.0))
     }
 
     /// Publish one exact engine registration for this canonical owner.
