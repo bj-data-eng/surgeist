@@ -4,7 +4,8 @@ use surgeist_animation::computed::{
 };
 use surgeist_animation::easing::Easing;
 use surgeist_animation::interpolation::{
-    DiscreteValue, InterpolableNumber, InterpolableValue, PropertyKey,
+    DiscreteValue, InterpolableNumber, InterpolableValue, InterpolationOutcome, InterpolationPair,
+    InterpolationProgress, PropertyKey,
 };
 use surgeist_animation::keyframe::{
     KeyframeAnimationId, KeyframeSegment, KeyframeTiming, KeyframeTrack,
@@ -275,6 +276,256 @@ fn bookmark_levels_interpolate_integers_and_switch_none_discretely() {
     assert_frame(&from_none, 0.5, [("bookmark-level", integer(4.0))]);
 }
 
+#[test]
+fn discrete_text_longhands_keep_their_effective_keywords() {
+    // The caller supplies effective longhands from the text-align, text-wrap,
+    // white-space and text-spacing shorthands.
+    let endpoints = [
+        ("hanging-punctuation", "none", "first last"),
+        ("hyphenate-character", "auto", r#""~""#),
+        ("hyphenate-limit-last", "none", "page"),
+        ("hyphens", "manual", "auto"),
+        ("line-break", "loose", "strict"),
+        ("overflow-wrap", "normal", "anywhere"),
+        ("text-align-all", "start", "justify"),
+        ("text-align-last", "auto", "center"),
+        ("text-autospace", "normal", "auto"),
+        ("text-group-align", "none", "end"),
+        ("text-justify", "auto", "inter-word"),
+        ("text-spacing-trim", "auto", "space-all"),
+        ("text-transform", "none", "uppercase full-width"),
+        ("text-wrap-mode", "wrap", "nowrap"),
+        ("text-wrap-style", "auto", "balance"),
+        ("white-space-collapse", "collapse", "preserve"),
+        ("white-space-trim", "none", "discard-before"),
+        ("word-break", "normal", "keep-all"),
+        ("word-space-transform", "none", "ideographic-space"),
+        ("wrap-after", "auto", "avoid-line"),
+        ("wrap-before", "auto", "line"),
+        ("wrap-inside", "auto", "avoid"),
+    ];
+    let track = track(endpoints.map(|(property, from, to)| (property, keyword(from), keyword(to))));
+
+    assert_frame(
+        &track,
+        0.5_f64.next_down(),
+        endpoints.map(|(property, from, _)| (property, keyword(from))),
+    );
+    assert_frame(
+        &track,
+        0.5,
+        endpoints.map(|(property, _, to)| (property, keyword(to))),
+    );
+}
+
+#[test]
+fn computed_text_components_sample_lengths_percentages_numbers_and_integers() {
+    let hyphenate_chars = |word, after| {
+        record(vec![
+            integer_component(word),
+            token_component("auto"),
+            integer_component(after),
+        ])
+    };
+    let indent = |value, flags| {
+        record(vec![
+            ComputedComponent::Numeric(value),
+            token_component(flags),
+        ])
+    };
+    let track = track([
+        (
+            "hyphenate-limit-chars",
+            hyphenate_chars(5.0, 2.0),
+            hyphenate_chars(9.0, 4.0),
+        ),
+        ("hyphenate-limit-lines", integer(2.0), integer(6.0)),
+        ("hyphenate-limit-zone", length(6.0), percentage(0.25)),
+        ("letter-spacing", length(-2.0), percentage(0.125)),
+        ("line-padding", length(2.0), length(6.0)),
+        ("tab-size", computed_number(2.0), computed_number(5.0)),
+        (
+            "text-indent",
+            indent(mixed_length(20.0, 0.0), "hanging"),
+            indent(mixed_length(0.0, 0.5), "hanging"),
+        ),
+        ("word-spacing", length(-4.0), percentage(0.5)),
+    ]);
+
+    assert_frame(
+        &track,
+        0.5,
+        [
+            ("hyphenate-limit-chars", hyphenate_chars(7.0, 3.0)),
+            ("hyphenate-limit-lines", integer(4.0)),
+            ("hyphenate-limit-zone", length_percentage(3.0, 0.125)),
+            ("letter-spacing", length_percentage(-1.0, 0.0625)),
+            ("line-padding", length(4.0)),
+            ("tab-size", computed_number(3.5)),
+            ("text-indent", indent(mixed_length(10.0, 0.25), "hanging")),
+            ("word-spacing", length_percentage(-2.0, 0.25)),
+        ],
+    );
+}
+
+#[test]
+fn incomparable_text_components_switch_the_whole_value() {
+    let indent = |pixels, flags| {
+        record(vec![
+            ComputedComponent::Numeric(mixed_length(pixels, 0.0)),
+            token_component(flags),
+        ])
+    };
+    let track = track([
+        (
+            "hyphenate-limit-lines",
+            computed_keyword("no-limit"),
+            integer(5.0),
+        ),
+        ("tab-size", computed_number(4.0), length(20.0)),
+        (
+            "text-indent",
+            indent(10.0, "hanging"),
+            indent(30.0, "each-line"),
+        ),
+    ]);
+    assert_frame(
+        &track,
+        0.5_f64.next_down(),
+        [
+            ("hyphenate-limit-lines", computed_keyword("no-limit")),
+            ("tab-size", computed_number(4.0)),
+            ("text-indent", indent(10.0, "hanging")),
+        ],
+    );
+    assert_frame(
+        &track,
+        0.5,
+        [
+            ("hyphenate-limit-lines", integer(5.0)),
+            ("tab-size", length(20.0)),
+            ("text-indent", indent(30.0, "each-line")),
+        ],
+    );
+}
+
+#[test]
+fn corresponding_font_variation_axes_interpolate_with_finite_extrapolation() {
+    let from = variation_axes([("GRAD", 5.0), ("wdth", 80.0), ("wght", 200.0)]);
+    let to = variation_axes([("GRAD", -15.0), ("wdth", 100.0), ("wght", 350.0)]);
+    let property = "font-variation-settings";
+    let track = track([(property, from.clone(), to.clone())]);
+    assert_frame(
+        &track,
+        0.5,
+        [(
+            property,
+            variation_axes([("GRAD", -5.0), ("wdth", 90.0), ("wght", 275.0)]),
+        )],
+    );
+    let pair = InterpolationPair::new(PropertyKey::from_text(property).unwrap(), from, to).unwrap();
+    assert_eq!(
+        pair.sample(InterpolationProgress::new(-0.5).unwrap()),
+        InterpolationOutcome::Value(variation_axes([
+            ("GRAD", 15.0),
+            ("wdth", 70.0),
+            ("wght", 125.0)
+        ])),
+    );
+    assert_eq!(
+        pair.sample(InterpolationProgress::new(1.5).unwrap()),
+        InterpolationOutcome::Value(variation_axes([
+            ("GRAD", -25.0),
+            ("wdth", 110.0),
+            ("wght", 425.0)
+        ])),
+    );
+}
+
+#[test]
+fn incompatible_variation_maps_and_feature_settings_switch_discretely() {
+    let property = "font-variation-settings";
+    let from = variation_axes([("wght", 300.0)]);
+    for to in [
+        variation_axes([("WGHT", 700.0)]),
+        variation_axes([("wdth", 100.0), ("wght", 700.0)]),
+        computed_keyword("normal"),
+    ] {
+        let track = track([
+            (property, from.clone(), to.clone()),
+            (
+                "font-feature-settings",
+                keyword(r#""liga" 0"#),
+                keyword(r#""liga" 1"#),
+            ),
+        ]);
+        assert_frame(
+            &track,
+            0.5_f64.next_down(),
+            [
+                (property, from.clone()),
+                ("font-feature-settings", keyword(r#""liga" 0"#)),
+            ],
+        );
+        assert_frame(
+            &track,
+            0.5,
+            [
+                (property, to),
+                ("font-feature-settings", keyword(r#""liga" 1"#)),
+            ],
+        );
+    }
+}
+
+#[test]
+fn comparable_font_style_angles_and_fractional_weights_are_preserved() {
+    let angle = |degrees| {
+        numeric(ComputedNumeric::dimension(
+            ComputedDimension::new(DimensionKind::Angle, degrees).unwrap(),
+        ))
+    };
+    // Style supplies normal as the comparable oblique zero-degree input.
+    let track = track([
+        ("font-style", angle(0.0), angle(20.0)),
+        (
+            "font-weight",
+            computed_number(380.0),
+            computed_number(465.0),
+        ),
+    ]);
+    assert_frame(
+        &track,
+        0.5,
+        [
+            ("font-style", angle(10.0)),
+            ("font-weight", computed_number(422.5)),
+        ],
+    );
+}
+
+fn variation_axes<const N: usize>(axes: [(&str, f64); N]) -> InterpolableValue {
+    // The computed map is already deduplicated and sorted by the caller.
+    record(
+        axes.into_iter()
+            .flat_map(|(tag, value)| {
+                [
+                    token_component(tag),
+                    ComputedComponent::Numeric(ComputedNumeric::number(value).unwrap()),
+                ]
+            })
+            .collect(),
+    )
+}
+
+fn record(components: Vec<ComputedComponent>) -> InterpolableValue {
+    InterpolableValue::computed(ComputedValue::new(components).unwrap())
+}
+
+fn token_component(value: &str) -> ComputedComponent {
+    ComputedComponent::Discrete(DiscreteValue::from_text(value).unwrap())
+}
+
 fn track<const N: usize>(
     endpoints: [(&str, InterpolableValue, InterpolableValue); N],
 ) -> KeyframeTrack {
@@ -332,7 +583,11 @@ fn assert_frame<const N: usize>(
 }
 
 fn integer(value: f64) -> InterpolableValue {
-    numeric(ComputedNumeric::integer(
+    InterpolableValue::computed(ComputedValue::single(integer_component(value)))
+}
+
+fn integer_component(value: f64) -> ComputedComponent {
+    ComputedComponent::Numeric(ComputedNumeric::integer(
         ComputedInteger::new(value).unwrap(),
     ))
 }
@@ -356,13 +611,17 @@ fn percentage(ratio: f64) -> InterpolableValue {
 }
 
 fn length_percentage(pixels: f64, ratio: f64) -> InterpolableValue {
-    numeric(ComputedNumeric::mix(
+    numeric(mixed_length(pixels, ratio))
+}
+
+fn mixed_length(pixels: f64, ratio: f64) -> ComputedNumeric {
+    ComputedNumeric::mix(
         DimensionPercentage::new(
             ComputedDimension::new(DimensionKind::Length, pixels).unwrap(),
             ratio,
         )
         .unwrap(),
-    ))
+    )
 }
 
 fn numeric(value: ComputedNumeric) -> InterpolableValue {
