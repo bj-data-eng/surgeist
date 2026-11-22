@@ -7,7 +7,6 @@ use super::{
     gradient_field::{self as field, ShaderScalar as Bound, scalar},
     hint_program::{self, Logarithms},
     ordinary_gradient::{capacity_error, geometry_error},
-    repeating_gradient::radial_device_period,
 };
 use crate::{
     Result,
@@ -64,13 +63,28 @@ pub(super) fn prepare(
             // The underresolved branch needs only the linear map and stops.
             // In particular, it never constructs a transformed center or hint program.
             field::check_finite(transform, account).map_err(geometry_error)?;
-            let singular_value = radial_device_period(transform, account)?;
-            let side = length.device_threshold(
+            let singular_value =
+                minimum_device_scale(transform, account).map_err(capacity_error)?;
+            let lower = length.device_threshold(
                 first_position.length,
                 last_position.length,
-                singular_value,
+                singular_value.lower,
                 account,
             )?;
+            let side = if scalar(account, || singular_value.lower == singular_value.upper)? {
+                lower
+            } else {
+                let upper = length.device_threshold(
+                    first_position.length,
+                    last_position.length,
+                    singular_value.upper,
+                    account,
+                )?;
+                if lower != upper {
+                    return Err(Refusal::InsufficientNativeCapacity.into());
+                }
+                lower
+            };
             if side == Ordering::Less
                 || (side == Ordering::Equal
                     && scalar(account, || last_position.fraction < first_position.fraction)?)
@@ -122,6 +136,63 @@ pub(super) fn prepare(
 fn solid(color: Color, account: &Account) -> Result<FrameBrush> {
     account.work(RenderWork::CoordinateVisits, 4)?;
     Ok(FrameBrush::solid(color.to_peniko()))
+}
+
+/// The smallest singular value determines the narrowest device-space cycle.
+/// The axis branches also authenticate exact equality at the two-pixel tie.
+fn minimum_device_scale(transform: kurbo::Affine, account: &Account) -> Result<Bound> {
+    account.work(RenderWork::CoordinateVisits, 4)?;
+    let [a, b, c, d, _, _] = transform.as_coeffs();
+    let aa = scalar(account, || a.abs())?;
+    let ba = scalar(account, || b.abs())?;
+    let ca = scalar(account, || c.abs())?;
+    let da = scalar(account, || d.abs())?;
+    if scalar(account, || b == 0.0)? && scalar(account, || c == 0.0)? {
+        return Ok(Bound::exact(scalar(account, || aa.min(da))?));
+    }
+    if scalar(account, || a == 0.0)? && scalar(account, || d == 0.0)? {
+        return Ok(Bound::exact(scalar(account, || ba.min(ca))?));
+    }
+    let scale = scalar(account, || aa.max(ba))?;
+    let scale = scalar(account, || scale.max(ca))?;
+    let scale = scalar(account, || scale.max(da))?;
+    let scale = Bound::exact(scale);
+    let a = Bound::exact(a).real_div(scale, account)?;
+    let b = Bound::exact(b).real_div(scale, account)?;
+    let c = Bound::exact(c).real_div(scale, account)?;
+    let d = Bound::exact(d).real_div(scale, account)?;
+    // In contrast to the squared trace discriminant, the sum/difference
+    // formula keeps the first-order contribution of a small shear.
+    let hypot = |u: Bound, v: Bound| -> Result<Bound> {
+        let u = u.abs(account)?;
+        let v = v.abs(account)?;
+        u.real_mul(u, account)?
+            .real_add(v.real_mul(v, account)?, account)?
+            .abs(account)?
+            .real_sqrt(account)
+    };
+    let first = hypot(
+        a.real_add(d, account)?,
+        b.real_add(c.neg(account)?, account)?,
+    )?;
+    let second = hypot(
+        a.real_add(d.neg(account)?, account)?,
+        b.real_add(c, account)?,
+    )?;
+    let largest = first
+        .real_add(second, account)?
+        .real_mul(Bound::exact(0.5), account)?;
+    // Using the determinant quotient also avoids subtracting two nearly
+    // equal norms near singularity. An interval crossing zero makes the
+    // minimum's lower bound zero, so it cannot authenticate a pattern.
+    let determinant = a
+        .real_mul(d, account)?
+        .real_add(b.real_mul(c, account)?.neg(account)?, account)?
+        .abs(account)?;
+    determinant
+        .real_div(largest, account)?
+        .real_mul(scale, account)?
+        .abs(account)
 }
 
 /// A span stays usable for weighting even when direct endpoint subtraction
@@ -799,8 +870,8 @@ mod tests {
             span_fraction,
         };
         assert!(qualify_repeat(coordinates(16.0, 1.0), 8.0, &account).is_ok());
-        let Err(folded) = qualify_repeat(coordinates(16_000_000.0, 0.0), 8.0, &account)
-            .map_err(capacity_error)
+        let Err(folded) =
+            qualify_repeat(coordinates(16_000_000.0, 0.0), 8.0, &account).map_err(capacity_error)
         else {
             panic!("the quotient can drift by a complete cycle");
         };
@@ -866,6 +937,48 @@ mod tests {
                 expected
             );
         }
+    }
+
+    #[test]
+    fn minor_singular_value_encloses_small_shear_and_ambiguous_rotation() {
+        let account = Account::for_test();
+        let shear = kurbo::Affine::new([1.0, 0.0, 2.0_f64.powi(-27), 1.0, 0.0, 0.0]);
+        let minimum = minimum_device_scale(shear, &account).unwrap();
+        // For the unit shear, sigma_min is sqrt(1+k²/4)−k/2.
+        // The square root rounds to one here, far inside the enclosure.
+        let expected = 1.0 - 2.0_f64.powi(-28);
+        assert!(minimum.lower <= expected && minimum.upper >= expected);
+        assert!(minimum.upper < 1.0);
+
+        let sine = 2.0_f64.powi(-30);
+        let nearly_unit = kurbo::Affine::new([1.0, sine, -sine, 1.0, 0.0, 0.0]);
+        let minimum = minimum_device_scale(nearly_unit, &account).unwrap();
+        assert!(minimum.lower < 1.0 && minimum.upper > 1.0);
+    }
+
+    #[test]
+    fn normal_forward_translation_can_have_an_unqualified_subnormal_inverse() {
+        let account = Account::for_test();
+        let scale = 2.0_f64.powi(62);
+        let translation = 3.0 * 2.0_f64.powi(-66);
+        let device = kurbo::Affine::new([scale, 0.0, 0.0, scale, translation, translation]);
+        let forward = crate::vello_engine::geometry::qualify_transform(device, &account).unwrap();
+        // At device sample (0,0), both local axes equal -3*2^-128,
+        // a nonzero native subnormal that may flush in the shader.
+        let Err(error) = field::qualify_zero_circle(
+            device,
+            forward.native(),
+            PhysicalSize::new(1, 1),
+            true,
+            &account,
+        )
+        .map_err(capacity_error) else {
+            panic!("the inverse translation must preserve a nonzero sample");
+        };
+        assert_eq!(
+            error.gradient_realization_diagnostic(),
+            Some(&Refusal::InsufficientNativeCapacity),
+        );
     }
 
     #[test]

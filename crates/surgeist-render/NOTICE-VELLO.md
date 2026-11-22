@@ -111,8 +111,8 @@ and subnormal step thresholds. No upstream license text or source hash changes.
 
 The zero-circle Paint path adds a checked replacement in the same pinned
 `draw_leaf.wgsl`. The marked private radial draw uses a concentric unit carrier
-and the native inverse transform with its center intact. The fine program
-uses the existing circular norm. Its eight-word stop records carry length and
+and the native inverse transform with its center intact. The marked fine path
+uses a scaled circular norm. Its eight-word stop records carry length and
 percentage coordinates, four premultiplied channels, and an outgoing segment
 kind and operand. The Surgeist-owned descriptor and sampler preserve both
 coordinates during signed-period reduction and ring selection. Unmarked draws

@@ -299,7 +299,7 @@ impl ShaderScalar {
         ];
         Self::corner_bounds(quotients, account)
     }
-    fn real_sqrt(self, account: &Account) -> Result<Self> {
+    pub(super) fn real_sqrt(self, account: &Account) -> Result<Self> {
         if scalar(account, || self.lower < 0.0)? {
             return Err(invalid_geometry("uncertain native gradient square root"));
         }
@@ -822,6 +822,7 @@ pub(super) fn qualify_zero_circle(
     // has no perturbed center, focal offset, or noncircular term.
     account.work(RenderWork::CoordinateVisits, 6)?;
     let field = circular_device_inverse(native_device, account)?;
+    let field = qualify_circle_lattice(ideal_device, native_device, field, account)?;
     let field = flush_circular_field(field, account)?;
     let coordinates = target_coordinates(target_extent, account)?;
     let ideal = reference_inverse(ideal_device, account)?;
@@ -833,6 +834,54 @@ pub(super) fn qualify_zero_circle(
     finite_fine_bound(native_norm, account)?;
     qualify_radial_phase(native_norm, norm_error, comparison_only, account)?;
     Ok(native_norm.upper)
+}
+
+#[cfg(feature = "render-paint")]
+fn qualify_circle_lattice(
+    ideal_device: kurbo::Affine,
+    native_device: vello_encoding::Transform,
+    mut field: [ShaderScalar; 6],
+    account: &Account,
+) -> Result<[ShaderScalar; 6]> {
+    account.work(RenderWork::CoordinateVisits, 12)?;
+    let mut native_zeros = [false; 6];
+    let mut ideal_zeros = [false; 6];
+    for (output, value) in native_zeros.iter_mut().zip(
+        native_device
+            .matrix
+            .into_iter()
+            .chain(native_device.translation),
+    ) {
+        *output = scalar(account, || value == 0.0)?;
+    }
+    for (output, value) in ideal_zeros.iter_mut().zip(ideal_device.as_coeffs()) {
+        *output = scalar(account, || value == 0.0)?;
+    }
+    let inverse_zeros = |[a, b, c, d, tx, ty]: [bool; 6]| {
+        [d, b, c, a, (d || tx) && (c || ty), (b || tx) && (a || ty)]
+    };
+    // Binary32 coefficients of magnitude >=2^-103 lie on a 2^-126
+    // lattice. Products by integer device coordinates and their sums
+    // preserve that lattice under either separate or fused evaluation.
+    // Therefore a nonzero local coordinate cannot flush into a false
+    // center. A zero needs proof from inverse operands in both maps.
+    const MIN_COEFFICIENT: f64 = f64::from_bits(920_u64 << 52); // 2^-103
+    for ((bound, native_zero), ideal_zero) in field
+        .iter_mut()
+        .zip(inverse_zeros(native_zeros))
+        .zip(inverse_zeros(ideal_zeros))
+    {
+        if native_zero && ideal_zero {
+            *bound = ShaderScalar::ZERO;
+        } else if !scalar(account, || bound.lower >= MIN_COEFFICIENT)?
+            && !scalar(account, || bound.upper <= -MIN_COEFFICIENT)?
+        {
+            return Err(invalid_geometry(
+                "circle inverse lacks a normal receiving lattice",
+            ));
+        }
+    }
+    Ok(field)
 }
 
 fn flush_circular_field(

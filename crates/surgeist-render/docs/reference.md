@@ -503,8 +503,8 @@ sides, using premultiplied numeric sRGBA.
 For a positive leading period, repetition stores the first stop as the origin
 and translates both coefficients before sampling. Comparisons account for the
 full signed translation at seams and rings, where even a small rounded phase
-error can select a different color. A zero leading period uses fraction-distance weights, or the existing
-uniform replacement weights if the full span is zero. Positive periods below
+error can select a different color. A zero leading period uses fraction-distance
+weights, or the existing uniform replacement weights if the full span is zero. Positive periods below
 two device pixels use length-distance weights. At exactly two leading device
 pixels, a negative fraction puts the positive-radius period below the threshold.
 All averages use the actual color stops, excluding hints from the color measure.
@@ -512,9 +512,11 @@ All averages use the actual color stops, excluding hints from the color measure.
 Ledger tracks gradient conversion and output custody in the standalone
 `PaintGradient` attempt. Native preparation qualifies the field for the actual
 device transform and target. The circular carrier keeps its center, and ring
-ties are determined in qualified native coordinates. Native representations
-that lose required coefficient or interval distinctions return typed gradient
-diagnostics. Average selection happens before materializing a sampling program.
+ties are determined in qualified native coordinates. It checks whether the
+native inverse can preserve the distinction between a nonzero offset and the
+center. Unrepresentable coefficients, intervals or device-period classifications
+return typed diagnostics. Average selection happens before materializing a
+sampling program.
 
 ## Zero-height Paint colors
 
