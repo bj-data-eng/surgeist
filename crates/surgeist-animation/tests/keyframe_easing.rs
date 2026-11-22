@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
-use surgeist_animation::easing::{Easing, LinearControlPoint, LinearEasing, StepPosition, Steps};
+use surgeist_animation::easing::{
+    Easing, LinearControlPointInput, LinearEasing, StepPosition, Steps,
+};
 use surgeist_animation::interpolation::{InterpolableNumber, InterpolableValue, PropertyKey};
 use surgeist_animation::keyframe::{
     KeyframeAnimationId, KeyframeSegment, KeyframeTiming, KeyframeTrack,
@@ -92,9 +94,18 @@ fn each_property_uses_its_interval_easing_after_direction() {
 fn reverse_play_traverses_the_same_asymmetric_easing_backwards() {
     let easing = Easing::linear_function(
         LinearEasing::new(vec![
-            LinearControlPoint::new(0.0, 0.0),
-            LinearControlPoint::new(0.5, 0.25),
-            LinearControlPoint::new(1.0, 1.0),
+            LinearControlPointInput {
+                input: 0.0,
+                output: 0.0,
+            },
+            LinearControlPointInput {
+                input: 0.5,
+                output: 0.25,
+            },
+            LinearControlPointInput {
+                input: 1.0,
+                output: 1.0,
+            },
         ])
         .unwrap(),
     );
@@ -125,8 +136,14 @@ fn final_interval_easing_reaches_the_caller_supplied_endpoint() {
 fn shifted_linear() -> Easing {
     Easing::linear_function(
         LinearEasing::new(vec![
-            LinearControlPoint::new(0.0, 0.25),
-            LinearControlPoint::new(1.0, 0.75),
+            LinearControlPointInput {
+                input: 0.0,
+                output: 0.25,
+            },
+            LinearControlPointInput {
+                input: 1.0,
+                output: 0.75,
+            },
         ])
         .unwrap(),
     )

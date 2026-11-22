@@ -107,15 +107,17 @@ pub const fn surgeist_animation::easing::EasedProgress::value(self) -> f64
 pub struct surgeist_animation::easing::LinearControlPoint
 impl surgeist_animation::easing::LinearControlPoint
 pub const fn surgeist_animation::easing::LinearControlPoint::input(self) -> f64
-pub const fn surgeist_animation::easing::LinearControlPoint::new(input: f64, output: f64) -> Self
 pub const fn surgeist_animation::easing::LinearControlPoint::output(self) -> f64
+pub struct surgeist_animation::easing::LinearControlPointInput
+pub surgeist_animation::easing::LinearControlPointInput::input: f64
+pub surgeist_animation::easing::LinearControlPointInput::output: f64
 pub struct surgeist_animation::easing::LinearEasing
 impl surgeist_animation::easing::LinearEasing
 pub fn surgeist_animation::easing::LinearEasing::evaluate(&self, progress: surgeist_animation::progress::NormalizedProgress) -> surgeist_animation::easing::EasedProgress
 pub fn surgeist_animation::easing::LinearEasing::evaluate_unrestricted(&self, input: surgeist_animation::progress::EasingInput) -> core::result::Result<surgeist_animation::easing::EasedProgress, surgeist_animation::easing::EasingError>
 pub fn surgeist_animation::easing::LinearEasing::evaluate_unrestricted_with_before_flag(&self, input: surgeist_animation::progress::EasingInput, before_flag: bool) -> core::result::Result<surgeist_animation::easing::EasedProgress, surgeist_animation::easing::EasingError>
 pub fn surgeist_animation::easing::LinearEasing::evaluate_with_before_flag(&self, progress: surgeist_animation::progress::NormalizedProgress, before_flag: bool) -> surgeist_animation::easing::EasedProgress
-pub fn surgeist_animation::easing::LinearEasing::new(points: alloc::vec::Vec<surgeist_animation::easing::LinearControlPoint>) -> core::result::Result<Self, surgeist_animation::easing::EasingError>
+pub fn surgeist_animation::easing::LinearEasing::new(points: alloc::vec::Vec<surgeist_animation::easing::LinearControlPointInput>) -> core::result::Result<Self, surgeist_animation::easing::EasingError>
 pub fn surgeist_animation::easing::LinearEasing::points(&self) -> &[surgeist_animation::easing::LinearControlPoint]
 pub struct surgeist_animation::easing::Steps
 impl surgeist_animation::easing::Steps

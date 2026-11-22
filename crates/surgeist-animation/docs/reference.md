@@ -91,9 +91,19 @@ choose transition generation, keyframe lookup, endpoint synthesis, property
 support policy, and list pairing before constructing transition or keyframe
 tracks here.
 
-Canonical linear control points model CSS `linear()` easing with finite typed
-points, duplicate input selection, interpolation, and extrapolation. Easing can
-also be evaluated with unrestricted finite `EasingInput` values.
+`LinearControlPointInput` holds raw input/output coordinates for CSS `linear()`.
+`LinearEasing::new` validates their finiteness, input ordering, and normalized
+boundary outputs before publishing read-only `LinearControlPoint` values through
+`points()`. Rejection retains the input index and component in its typed error.
+Accepted coordinates retain their exact values, including signed zero and
+duplicates. Linear easing supports duplicate input selection, interpolation,
+and extrapolation, including unrestricted finite `EasingInput` values.
+
+`TimingSample` and `SampledPropertyResult` expose read-only sampling observations;
+callers cannot independently replace their coupled fields. Standalone value and
+diagnostic enums remain available for inspection and comparison. Finite progress,
+property keys, and value-family markers express their documented generic
+contracts; property support, lifecycle, and clock policy remain consumer-owned.
 
 Unrestricted percentages are finite computed ratios, where `1.0` means 100
 percent but values below 0 or above 1 remain valid. Property-specific percentage

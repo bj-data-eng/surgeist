@@ -680,7 +680,7 @@ mod tests {
     use super::{
         KeyframeAnimationId, KeyframeError, KeyframeSegment, KeyframeTiming, KeyframeTrack,
     };
-    use crate::easing::{Easing, LinearControlPoint, LinearEasing};
+    use crate::easing::{Easing, LinearControlPointInput, LinearEasing};
     use crate::interpolation::{
         InterpolableNumber, InterpolablePercentage, InterpolableValue, InterpolationError,
         PropertyKey, TransformValue, ValueFamily,
@@ -1024,8 +1024,14 @@ mod tests {
     #[test]
     fn keyframe_segment_samples_owned_linear_function_through_public_front_door() {
         let linear = LinearEasing::new(vec![
-            LinearControlPoint::new(0.0, 0.0),
-            LinearControlPoint::new(1.0, 0.5),
+            LinearControlPointInput {
+                input: 0.0,
+                output: 0.0,
+            },
+            LinearControlPointInput {
+                input: 1.0,
+                output: 0.5,
+            },
         ])
         .unwrap();
         let track = KeyframeTrack::new(

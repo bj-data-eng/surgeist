@@ -68,9 +68,18 @@ fn public_front_door_exposes_explicit_color_space_interpolation() {
 #[test]
 fn linear_easing_samples_through_public_modules() {
     let linear = animation::easing::LinearEasing::new(vec![
-        animation::easing::LinearControlPoint::new(0.0, 0.0),
-        animation::easing::LinearControlPoint::new(0.5, 0.25),
-        animation::easing::LinearControlPoint::new(1.0, 1.0),
+        animation::easing::LinearControlPointInput {
+            input: 0.0,
+            output: 0.0,
+        },
+        animation::easing::LinearControlPointInput {
+            input: 0.5,
+            output: 0.25,
+        },
+        animation::easing::LinearControlPointInput {
+            input: 1.0,
+            output: 1.0,
+        },
     ])
     .unwrap();
     let easing = animation::easing::Easing::linear_function(linear);
