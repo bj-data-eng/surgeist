@@ -10,6 +10,7 @@ pub(super) fn anchor_text_and_scalar_attributes_use_live_native_source() {
     let result = host
         .in_document(&permit, |scope| {
             let source = r#"(() => {
+              try {
                 const proto = HTMLAnchorElement.prototype;
                 const text = Object.getOwnPropertyDescriptor(proto, 'text');
                 if (typeof text?.get !== 'function') return 'missing HTMLAnchorElement.text getter';
@@ -63,7 +64,7 @@ pub(super) fn anchor_text_and_scalar_attributes_use_live_native_source() {
                     anchor.appendChild(earlier);
                     return literal;
                 }};
-                if (hint !== 'string' || anchor.childNodes.length !== 1 ||
+                if (hint !== 'string' || anchor.firstChild?.nextSibling !== null ||
                     anchor.firstChild.data !== literal || anchor.text !== literal ||
                     nested.parentNode !== null || earlier.parentNode !== null) return 'canonical replacement after conversion';
                 anchor.text = null;
@@ -92,8 +93,38 @@ pub(super) fn anchor_text_and_scalar_attributes_use_live_native_source() {
                     anchor.referrerPolicy !== 'no-referrer') return 'known policy reflection';
                 anchor.setAttributeNS(null, 'referrerpolicy', ' no-referrer ');
                 if (anchor.referrerPolicy !== '') return 'invalid policy reflection';
+
+                const download = Object.getOwnPropertyDescriptor(proto, 'download');
+                Object.setPrototypeOf(anchor, HTMLElement.prototype);
+                download.set.call(anchor, {toString() {
+                    anchor.setAttribute('download', 'earlier');
+                    return literal;
+                }});
+                text.set.call(anchor, 'native receiver');
+                if (download.get.call(anchor) !== literal || text.get.call(anchor) !== 'native receiver') {
+                    return 'native Anchor survives prototype changes and scalar coercion reentry';
+                }
+                Object.setPrototypeOf(anchor, proto);
+                const lifecycle = [];
+                class AnchorChild extends HTMLElement {
+                    connectedCallback() { lifecycle.push('connected'); }
+                    disconnectedCallback() {
+                        lifecycle.push(this.parentNode === null ? anchor.text : 'still attached');
+                    }
+                }
+                customElements.define('x-anchor-child', AnchorChild);
+                detached.body.appendChild(anchor);
+                const custom = document.createElement('x-anchor-child');
+                anchor.appendChild(custom);
+                anchor.text = 'replacement';
+                if (lifecycle.join() !== 'connected,replacement' || custom.parentNode !== null) {
+                    return 'text Source drains native removal reactions after publication: ' + lifecycle;
+                }
                 globalThis.hostedAnchor = document.createElement('a');
                 return 'ok';
+              } catch (error) {
+                return "unexpected guest exception: " + (error.stack ?? String(error));
+              }
             })()"#;
             let value = scope.evaluate(&source.encode_utf16().collect::<Vec<_>>())?;
             scope.to_utf16(&value)

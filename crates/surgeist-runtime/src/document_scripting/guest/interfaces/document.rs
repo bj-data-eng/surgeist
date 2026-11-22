@@ -14,6 +14,7 @@ use surgeist_html::values::DocumentString;
 
 const NODE: &[u16] = &ascii(b"Node");
 const DOCUMENT: &[u16] = &ascii(b"Document");
+mod anchor;
 mod attr;
 mod attr_factory;
 mod barred_control;
