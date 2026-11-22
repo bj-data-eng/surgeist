@@ -7,10 +7,12 @@
 use core::fmt;
 
 use crate::easing::Easing;
-use crate::interpolation::{InterpolableValue, InterpolationError, InterpolationPair, PropertyKey};
+use crate::interpolation::{
+    InterpolableValue, InterpolationError, InterpolationPair, InterpolationProgress, PropertyKey,
+};
 use crate::sample::SampledPropertyResult;
 use crate::time::{AnimationDelay, AnimationDuration, ElapsedTime};
-use crate::timing::{AnimationPlayState, TimingParameters};
+use crate::timing::{AnimationPlayState, TimingParameters, TimingPhase};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TransitionTrackId {
@@ -123,10 +125,17 @@ impl TransitionTrack {
         elapsed: ElapsedTime,
         play_state: AnimationPlayState,
     ) -> SampledPropertyResult {
-        SampledPropertyResult::from_timing_and_pair(
-            self.timing.sample(elapsed, play_state),
-            &self.pair,
-        )
+        let timing = self.timing.sample(elapsed, play_state);
+        if elapsed.as_secs() <= self.delay().as_secs()
+            && matches!(timing.phase(), TimingPhase::Before | TimingPhase::Active)
+        {
+            return SampledPropertyResult::from_timing_and_interpolation_outcome(
+                timing,
+                self.property(),
+                Some(self.pair.sample(InterpolationProgress::ZERO)),
+            );
+        }
+        SampledPropertyResult::from_timing_and_pair(timing, &self.pair)
     }
 }
 
@@ -334,7 +343,7 @@ mod tests {
     }
 
     #[test]
-    fn delayed_running_arithmetic_failure_next_frame_may_change_and_later_recovers() {
+    fn active_arithmetic_failure_after_delay_may_change_and_later_recovers() {
         let track = opacity_track(
             InterpolableNumber::new(0.0).unwrap(),
             InterpolableNumber::new(f64::MAX).unwrap(),
@@ -344,6 +353,10 @@ mod tests {
         );
 
         let delayed = track.sample(
+            ElapsedTime::from_secs(0.5).unwrap(),
+            AnimationPlayState::Running,
+        );
+        let failed = track.sample(
             ElapsedTime::from_secs(1.5).unwrap(),
             AnimationPlayState::Running,
         );
@@ -352,10 +365,14 @@ mod tests {
             AnimationPlayState::Running,
         );
 
-        assert_eq!(delayed.classification(), SampleClassification::Failed);
-        assert_eq!(delayed.completion(), CompletionStatus::Running);
+        assert_eq!(delayed.classification(), SampleClassification::Filling);
+        assert_eq!(delayed.completion(), CompletionStatus::NotStarted);
         assert_eq!(delayed.next_frame(), NextFrameHint::MayChange);
-        assert_arithmetic_error(&delayed, "opacity", ValueFamily::Number);
+        assert_sampled_number(&delayed, "opacity", 0.0);
+        assert_eq!(failed.classification(), SampleClassification::Failed);
+        assert_eq!(failed.completion(), CompletionStatus::Running);
+        assert_eq!(failed.next_frame(), NextFrameHint::MayChange);
+        assert_arithmetic_error(&failed, "opacity", ValueFamily::Number);
         assert_eq!(recovered.classification(), SampleClassification::Active);
         assert_eq!(recovered.completion(), CompletionStatus::Running);
         assert_eq!(recovered.next_frame(), NextFrameHint::MayChange);
