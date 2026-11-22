@@ -12,8 +12,7 @@ use surgeist_html_semantics::{
     HtmlBaseUrlScheme,
 };
 
-#[test]
-fn projected_parsed_documents_keep_original_metadata() {
+pub(super) fn projected_parsed_documents_keep_original_metadata() {
     let cancel = Arc::new(AtomicBool::new(false));
     let mut dom = Dom::new(scripting_dom_limits(200_000, 0)).unwrap();
     let mut batch = DomBatch::new();

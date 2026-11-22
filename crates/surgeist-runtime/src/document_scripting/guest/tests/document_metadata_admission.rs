@@ -23,8 +23,7 @@ fn observe(
     })
 }
 
-#[test]
-fn metadata_getter_admits_its_native_observation_and_copy() {
+pub(in crate::document_scripting) fn metadata_getter_admits_its_native_observation_and_copy() {
     let (mut host, permit) = fixture();
     let events = host.guest_events().unwrap();
     let baseline = events.budget.used();

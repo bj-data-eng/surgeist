@@ -451,6 +451,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     document_title::document_title_observes_ordinary_names_and_creation_boundaries();
     document_title::document_title_preserves_coercion_and_native_reaction_order();
     document_referrer::document_referrer_reads_the_canonical_known_empty_value();
+    document_metadata::projected_parsed_documents_keep_original_metadata();
+    super::guest::tests::document_metadata_admission::metadata_getter_admits_its_native_observation_and_copy();
     document_cookie::cookie_averse_documents_read_empty_and_ignore_assignment();
     document_cookie::cookie_assignment_preserves_conversion_reentry_and_abrupt_completion();
     super::guest::tests::conversion_admission::cookie_access_refuses_unfunded_native_observations();

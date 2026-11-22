@@ -14684,43 +14684,64 @@
     "Document.URL/get": {
       "kind": "native",
       "adapter": "document.url.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "url"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/metadata.rs", "symbol": "document_metadata"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "url"}
+      ],
       "requirements": []
     },
     "Document.documentURI/get": {
       "kind": "native",
       "adapter": "document.documenturi.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "url"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/metadata.rs", "symbol": "document_metadata"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "url"}
+      ],
       "requirements": []
     },
     "Document.compatMode/get": {
       "kind": "native",
       "adapter": "document.compatmode.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/metadata.rs", "symbol": "document_metadata"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
+      ],
       "requirements": []
     },
     "Document.characterSet/get": {
       "kind": "native",
       "adapter": "document.characterset.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "encoding"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/metadata.rs", "symbol": "document_metadata"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "encoding"}
+      ],
       "requirements": []
     },
     "Document.charset/get": {
       "kind": "native",
       "adapter": "document.charset.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "encoding"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/metadata.rs", "symbol": "document_metadata"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "encoding"}
+      ],
       "requirements": []
     },
     "Document.inputEncoding/get": {
       "kind": "native",
       "adapter": "document.inputencoding.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "encoding"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/metadata.rs", "symbol": "document_metadata"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "encoding"}
+      ],
       "requirements": []
     },
     "Document.contentType/get": {
       "kind": "native",
       "adapter": "document.contenttype.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "content_type"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/metadata.rs", "symbol": "document_metadata"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "content_type"}
+      ],
       "requirements": []
     },
     "Document.doctype/get": {
@@ -16523,12 +16544,13 @@
       }
     },
     "Document.html.readyState/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "The Document loading/readiness state and lifecycle transitions; native inactive/never-navigable proof is not an invented complete/loading value.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-readystate"
-      }
+      "kind": "native",
+      "adapter": "document.readystate.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/html_document.rs", "symbol": "document_readiness"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "readiness"}
+      ],
+      "requirements": []
     },
     "Document.html.operation:0/call": {
       "kind": "native",

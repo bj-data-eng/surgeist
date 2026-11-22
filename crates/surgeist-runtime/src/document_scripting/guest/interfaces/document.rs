@@ -54,6 +54,7 @@ mod lists;
 mod marquee;
 mod media;
 mod meta;
+mod metadata;
 mod node_list;
 mod non_element_parent;
 mod optgroup;
@@ -465,6 +466,7 @@ impl DocumentPrototypes {
         element_factory::install(scope, &document, &funding.capture)?;
         tree::install_adoption(scope, &document, funding.capture)?;
         tree::install_import(scope, &document, funding.capture)?;
+        metadata::install(scope, &document, funding.capture)?;
         element::install_document_root(scope, &document, &funding.capture)?;
         html_document::install(scope, &document, funding.capture)?;
         tag_collection::install_document_element_collections(scope, &document, funding.capture)?;
