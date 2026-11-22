@@ -30,6 +30,7 @@ pub surgeist_animation::composition::EffectStackErrorKind::UndefinedOrder
 pub enum surgeist_animation::composition::PropertyOperationErrorKind
 pub surgeist_animation::composition::PropertyOperationErrorKind::Capacity
 pub surgeist_animation::composition::PropertyOperationErrorKind::Computed(surgeist_animation::computed::ComputedError)
+pub surgeist_animation::composition::PropertyOperationErrorKind::Filter(alloc::boxed::Box<surgeist_animation::filter::FilterError>)
 pub surgeist_animation::composition::PropertyOperationErrorKind::Interpolation(alloc::boxed::Box<surgeist_animation::interpolation::InterpolationError>)
 pub surgeist_animation::composition::PropertyOperationErrorKind::Shadow(alloc::boxed::Box<surgeist_animation::shadow::ShadowError>)
 pub surgeist_animation::composition::PropertyOperationErrorKind::Transform(alloc::boxed::Box<surgeist_animation::transform::TransformError>)

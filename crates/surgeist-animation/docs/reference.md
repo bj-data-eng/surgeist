@@ -237,8 +237,11 @@ by-computed-value and repeatable-list operations; property-specific algorithms
 can instead implement `PropertyValueOperations`. Guarded Transform payloads use
 the transform owner's checked concatenation and accumulation; guarded Shadow
 payloads use their encoded box/text kind and the shadow owner's list algorithms.
-Shadow lists never enter generic repeatable-list expansion. Owning Transform and
-Shadow failures retain their typed diagnostics. Unsupported operations do not
+Guarded Filter payloads delegate ordered concatenation and effect-B accumulation
+to `FilterList`, including through default effect-stack endpoint composition.
+Shadow and Filter lists never enter generic repeatable-list expansion. Owning
+Transform, Shadow and Filter failures retain their typed diagnostics. Unsupported
+operations do not
 silently become addition. Property-definition and applicable Appendix A
 selection remain with the caller, without another CSS property registry.
 
