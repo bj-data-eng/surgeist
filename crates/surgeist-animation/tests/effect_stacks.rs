@@ -1250,3 +1250,115 @@ fn integration_list_failures_preserve_their_owning_typed_diagnostics() {
     assert_eq!(error.kind(), ShadowErrorKind::NonFinite);
     assert_eq!(error.shadow_index(), Some(0));
 }
+
+#[test]
+fn palette_nonadditive_addition_returns_the_effect_operand() {
+    use surgeist_animation::composition::PropertyValueOperations;
+    use surgeist_animation::palette::{PaletteSource, PaletteValue};
+    let underlying = InterpolableValue::palette(PaletteValue::source(PaletteSource::new()));
+    let effect = InterpolableValue::palette(PaletteValue::source(PaletteSource::new()));
+    let operations = AnimationTypeOperations::new(AnimationType::ByComputedValue);
+    // Font-palette is nonadditive. The selected Values 4 operation retains B.
+    assert_eq!(
+        operations.add(&key("font-palette"), &underlying, &effect),
+        Ok(effect.clone())
+    );
+    assert_eq!(
+        operations.add(&key("font-palette"), &effect, &underlying),
+        Ok(underlying)
+    );
+}
+
+#[test]
+fn palette_unspecified_accumulation_uses_the_nonadditive_effect_operand() {
+    use surgeist_animation::composition::PropertyValueOperations;
+    use surgeist_animation::palette::{PaletteSource, PaletteValue};
+    let underlying = InterpolableValue::palette(PaletteValue::source(PaletteSource::new()));
+    let effect = InterpolableValue::palette(PaletteValue::source(PaletteSource::new()));
+    let operations = AnimationTypeOperations::new(AnimationType::ByComputedValue);
+    // Values 4 delegates unspecified accumulation to the addition operation.
+    assert_eq!(
+        operations.accumulate(&key("font-palette"), &underlying, &effect),
+        Ok(effect.clone())
+    );
+    assert_eq!(
+        operations.accumulate(&key("font-palette"), &effect, &underlying),
+        Ok(underlying)
+    );
+}
+
+#[test]
+fn palette_default_addition_samples_through_the_effect_stack() {
+    assert_palette_stack_fallback(CompositeOperation::Add);
+}
+
+#[test]
+fn palette_default_accumulation_samples_through_the_effect_stack() {
+    assert_palette_stack_fallback(CompositeOperation::Accumulate);
+}
+
+fn assert_palette_stack_fallback(operation: CompositeOperation) {
+    use surgeist_animation::interpolation::InterpolationProgress;
+    use surgeist_animation::palette::{PaletteNode, PaletteSource, PaletteValue};
+    let mut records = AnimationRecords::new();
+    let normal = InterpolableValue::palette(PaletteValue::source(PaletteSource::new()));
+    let light = PaletteSource::new();
+    let dark = PaletteSource::new();
+    let lower = input(
+        &mut records,
+        &[("font-palette", normal.clone())],
+        CompositeOperation::Replace,
+    );
+    let mut higher = input(&mut records, &[], operation);
+    higher.effect.as_mut().unwrap().keyframes = ComputedKeyframes::new(
+        [light.clone(), dark.clone()]
+            .into_iter()
+            .enumerate()
+            .map(|(index, source)| ComputedKeyframeInput {
+                specified_offset: None,
+                computed_offset: UnitRatio::new(index as f64).unwrap(),
+                easing: Easing::linear(),
+                composite: None,
+                properties: vec![(
+                    key("font-palette"),
+                    InterpolableValue::palette(PaletteValue::source(source)),
+                )],
+            })
+            .collect(),
+        KeyframeEndpointSource::Native,
+    )
+    .unwrap();
+    state(
+        &mut records,
+        &mut higher,
+        EffectPlayState::Running,
+        AnimationReplaceState::Active,
+    );
+    let higher_id = higher.animation.clone();
+    let snapshot = EffectStackSnapshot::new(&records, vec![higher, lower]).unwrap();
+    let result = snapshot
+        .sample(
+            EffectTargetId::new(1),
+            &key("font-palette"),
+            KeyframeTarget::Available(&normal),
+            &AnimationTypeOperations::new(AnimationType::ByComputedValue),
+        )
+        .expect("nonadditive palette composition returns a value")
+        .unwrap();
+    assert_eq!(result.animation(), &higher_id);
+    let InterpolableValue::Palette(value) = result.value() else {
+        panic!("expected palette mix")
+    };
+    assert_eq!(
+        value.nodes(),
+        &[
+            PaletteNode::Source(light),
+            PaletteNode::Source(dark),
+            PaletteNode::MixOklab {
+                first: 0,
+                second: 1,
+                progress: InterpolationProgress::new(0.5).unwrap()
+            },
+        ]
+    );
+}
