@@ -338,6 +338,18 @@ class DescriptionTests(unittest.TestCase):
     def test_option_factory_preserves_omitted_value_without_a_default(self):
         option = self.definition("HTMLOptionElement")
         factory = next(a["value"] for a in option["attributes"] if a["name"] == "LegacyFactoryFunction")
+        lowered = [
+            entry for entry in g.lower_arguments(self.data, g.lower_values(self.data))
+            if entry["id"].startswith("HTMLOptionElement.Option/")
+        ]
+        self.assertEqual([(entry["index"], entry["argument"]["name"],
+                           entry["argument"]["presence"], entry["info"][0],
+                           entry["argument"].get("default")) for entry in lowered], [
+            (0, "text", "optional", "DomString", {"kind": "string", "value": ""}),
+            (1, "value", "optional", "DomString", None),
+            (2, "defaultSelected", "optional", "bool", {"kind": "boolean", "value": False}),
+            (3, "selected", "optional", "bool", {"kind": "boolean", "value": False}),
+        ])
         value = next(argument for argument in factory["arguments"] if argument["name"] == "value")
         value["default"] = {"kind": "string", "value": ""}
         self.rejected("source declaration mismatch: HTMLOptionElement.source")

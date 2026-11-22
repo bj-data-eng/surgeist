@@ -464,6 +464,12 @@ pub(in crate::internal::store) fn commands(
                 }
                 payload.string(qualified_name)?;
             }
+            Command::CreateHtmlOption { text, value, .. } => {
+                payload.string(text)?;
+                if let Some(value) = value {
+                    payload.string(value)?;
+                }
+            }
             Command::RequestCloseDialog {
                 result: Some(value),
                 ..

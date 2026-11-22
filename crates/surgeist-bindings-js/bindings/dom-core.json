@@ -12766,12 +12766,21 @@
       "requirements": []
     },
     "HTMLOptionElement.Option/factory": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Install the Window legacy Option factory with its own defaults and omission handling, constructing the actual native Option and initializing its text, value, default selection, and live selectedness.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option"
-      }
+      "kind": "native",
+      "adapter": "htmloptionelement.option.factory",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/option_factory.rs",
+          "symbol": "construct_option"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/select.rs",
+          "symbol": "create_html_option"
+        }
+      ],
+      "requirements": []
     },
     "TreeWalker.root/get": {
       "kind": "native",

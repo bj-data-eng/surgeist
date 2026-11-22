@@ -148,6 +148,10 @@ pub fn surgeist_bindings_js::conversion::declarations::html_media_element_add_te
 pub fn surgeist_bindings_js::conversion::declarations::html_media_element_add_text_track_0_language() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::html_media_element_can_play_type_0_type() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::html_media_element_fast_seek_0_time() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<f64>>
+pub fn surgeist_bindings_js::conversion::declarations::html_option_element_option_default_selected() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<bool>>
+pub fn surgeist_bindings_js::conversion::declarations::html_option_element_option_selected() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<bool>>
+pub fn surgeist_bindings_js::conversion::declarations::html_option_element_option_text() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::html_option_element_option_value() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::html_option_element_selected_setter() -> surgeist_bindings_js::conversion::Type<bool>
 pub fn surgeist_bindings_js::conversion::declarations::html_output_element_set_custom_validity_0_error() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::html_select_element_item_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>

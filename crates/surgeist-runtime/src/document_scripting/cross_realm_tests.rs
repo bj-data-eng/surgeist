@@ -409,7 +409,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     processing_instruction::authored_instruction_wrapper_refusal_is_atomic();
     processing_instruction::pseudo_attributes_and_data_synchronize();
     super::guest::tests::registered_origin::native_processing_instruction_uses_its_creation_realm();
-    super::guest::tests::registered_origin::authored_instruction_separates_document_and_prototype_realms();
+    super::guest::tests::registered_origin::authored_nodes_separate_document_and_prototype_realms();
     node_relations::node_relations_follow_the_live_ordinary_tree();
     node_relations::node_relations_project_native_processing_instructions();
     node_iterator::iterator_tracks_the_native_pointer_through_removal();

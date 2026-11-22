@@ -115,6 +115,8 @@ mod marquee;
 mod native_media_status;
 #[path = "document_scripting/numeric_control_attributes.rs"]
 mod numeric_control_attributes;
+#[path = "document_scripting/option_factory.rs"]
+mod option_factory;
 #[path = "document_scripting/output_values.rs"]
 mod output_values;
 #[path = "document_scripting/popover_target.rs"]
@@ -614,10 +616,28 @@ fn attach_event_window(
 }
 
 fn attach_event_window_with_work(
+    session: DomSession,
+    top: DomHostedTopLevel,
+    cancellation: Arc<AtomicBool>,
+    adapter_work: u64,
+    configure: impl FnOnce(&mut DomEventDom<'_>, &mut DomEventDispatcher<()>, DomHostedTopLevel),
+) -> (DocumentScriptHost, DomHostedTopLevel) {
+    attach_event_window_with_source_limits(
+        session,
+        top,
+        cancellation,
+        adapter_work,
+        DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2),
+        configure,
+    )
+}
+
+fn attach_event_window_with_source_limits(
     mut session: DomSession,
     top: DomHostedTopLevel,
     cancellation: Arc<AtomicBool>,
     adapter_work: u64,
+    source_edits: DomSourceLimits,
     configure: impl FnOnce(&mut DomEventDom<'_>, &mut DomEventDispatcher<()>, DomHostedTopLevel),
 ) -> (DocumentScriptHost, DomHostedTopLevel) {
     let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
@@ -644,7 +664,7 @@ fn attach_event_window_with_work(
                 work: adapter_work,
                 pending_exception_reports: 16,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
-                source_edits: DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2),
+                source_edits,
                 dispatch: DomEventDispatchLimits {
                     path_items: 4,
                     snapshot_listeners: 16,
@@ -2482,6 +2502,8 @@ fn main() {
             "input-state" => input_state::attached_input_exposes_canonical_value_modes_and_checkedness(),
             "input-attributes" => input_attributes::attached_input_reflections_use_canonical_attributes(),
             "numeric-control-attributes" => numeric_control_attributes::attached_controls_reflect_native_integer_attributes(),
+            "option-factory" => option_factory::attached_option_factory_creates_clean_native_selectedness(),
+            "option-factory-admission" => option_factory::attached_option_factory_uses_its_original_source_limits(),
             "range-indicator-bindings" => range_indicator_bindings::attached_range_indicators_reflect_native_numbers(),
             "control-autocomplete" => control_autocomplete::attached_controls_project_live_autocomplete(),
             "control-custom-validity" => control_custom_validity::attached_controls_store_native_custom_validity(),
@@ -2604,6 +2626,8 @@ fn main() {
     input_state::attached_input_exposes_canonical_value_modes_and_checkedness();
     input_attributes::attached_input_reflections_use_canonical_attributes();
     numeric_control_attributes::attached_controls_reflect_native_integer_attributes();
+    option_factory::attached_option_factory_creates_clean_native_selectedness();
+    option_factory::attached_option_factory_uses_its_original_source_limits();
     range_indicator_bindings::attached_range_indicators_reflect_native_numbers();
     control_autocomplete::attached_controls_project_live_autocomplete();
     control_custom_validity::attached_controls_store_native_custom_validity();

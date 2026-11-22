@@ -1406,6 +1406,7 @@ impl OrdinaryBindings {
                         | DomDetachedNodeCreation::AttributeNs(..) => GuestNode::Attr,
                         DomDetachedNodeCreation::Fragment => GuestNode::Fragment,
                         DomDetachedNodeCreation::Text(_) => GuestNode::Text,
+                        DomDetachedNodeCreation::HtmlOption { .. } => GuestNode::Element,
                         DomDetachedNodeCreation::CdataSection { .. } => GuestNode::CdataSection,
                         DomDetachedNodeCreation::Comment(_) => GuestNode::Comment,
                         DomDetachedNodeCreation::ProcessingInstruction { .. } => {
@@ -1416,7 +1417,11 @@ impl OrdinaryBindings {
                     let mut dom = session.dom();
                     let dom = dom.raw_mut();
                     let cancel = &owner.cancellation;
-                    let watched = if matches!(admission.route, AdmissionRoute::Ordinary) {
+                    // The Option factory composes a Source-limited subtree
+                    // publication even when wrapper admission is ordinary.
+                    let watched = if matches!(admission.route, AdmissionRoute::Ordinary)
+                        && !matches!(&creation, DomDetachedNodeCreation::HtmlOption { .. })
+                    {
                         let mut batch = DomBatch::new();
                         let ticket = batch.create_detached(document, creation);
                         dom.apply_with_node_retirement_watch(
