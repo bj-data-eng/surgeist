@@ -175,6 +175,81 @@ During the delay, backwards fill holds the first iteration's directed starting
 value without applying easing. At the start of the active phase, interval easing
 applies normally. CSS endpoint synthesis and CSS keyframe assembly remain caller-owned.
 
+## CSS transition lifecycle decisions
+
+`transition::TransitionSnapshot<T>` holds immutable records keyed by a caller's
+target identity and canonical longhand `PropertyKey`. Its private record
+collection contains one `TransitionState::Running` or `Completed` per key;
+`new(records)` rejects duplicates across both kinds. Running records are created
+only by successful decisions and retain original used timing, effective timing,
+signed start/end coordinates, start/end values, reversing-adjusted start value,
+and shortening factor. Completed records preserve the end target to suppress
+unrelated retriggering, plus completion-event timing metadata.
+
+`snapshot.update(now, changes, policy)` first promotes every run whose end time
+has been reached, then evaluates the supplied atomic style-change batch against
+that promoted state. An empty batch advances completion alone. The result's
+`after_completion()` and `completions()` let Runtime publish all promotions
+before a same-time style event or completion dispatch. `state()` and `outcomes()`
+carry the final candidate and ordered cancellation, creation, and completed
+removal outcomes. This crate neither publishes state nor dispatches events.
+Runtime owns revision checks and application of the captured candidates.
+
+Style supplies `TransitionChange` eligibility, coherent before/after computed
+values, and an optional last-match `TransitionTiming`. Duration and delay list
+matching, shorthand expansion, document presence, and declarative-animation
+advancement belong to Style. `eligible` means the element has both applicable
+style snapshots; ineligible entries do not initiate or retarget transitions.
+Declarative-animation-only changes do not initiate transitions because Style's
+before snapshot already advances those animations to the same time.
+
+The supplied `TransitionPropertyPolicy` determines compatibility of the actual
+value pair and performs interpolation using the selected property animation
+type. A generally continuous property can have a discrete particular pair;
+neither discrete nor not-animatable pairs initiate transitions. The decision
+engine samples a changed running target internally at the event time, then asks
+the same policy about current-to-after compatibility. External stale samples
+cannot be substituted. Policy operations must be deterministic and must not
+publish state. Existing `InterpolationPair` algorithms may implement supported
+property types; unsupported interpolation remains a typed capability failure,
+distinct from declaring a property not animatable. This boundary does not add
+ratio, position, integer, transform, or other deferred property algorithms.
+
+New timing applies to creation, restart, and reversal. A matching running target
+that remains unchanged retains its original timing even if new duration/delay
+would prohibit creation. Removing its matching item cancels it. Changed targets
+equal to the current value, incompatible pairs, and nonpositive combined duration
+cancel the old run. Ordinary restarts begin at the old current value with factor
+one. Reversal preserves the old end as its new reversing-adjusted start and uses
+the absolute, clamped expression `oldOutput * oldFactor + (1 - oldFactor)` as
+the new factor. Duration is shortened; only negative delay is shortened.
+
+`RunningTransition::sample(now, policy)` is stateless. Signed
+`OriginRelativeTime` coordinates use milliseconds; duration and delay use their
+existing second-based types, with checked conversion. Through exact start time,
+sampling returns the raw start value without interpolation. During duration it
+applies easing once to `(now-start)/(end-start)` before property interpolation.
+Old timing-function output is retained separately from current value for
+reversal, including delay samples. At or after end, the record contributes no
+value; completion promotion retains its target separately. Zero-duration runs
+with positive delay hold their start until the coincident start/end, then complete
+without division. Property values and easing overshoot are not clamped here.
+
+Unresolved `now` returns `Ok(None)` from update and an unresolved sample from
+sampling. It never means zero and makes no time-dependent decisions. Duplicate
+keys or changes, numeric limits, collapsed positive timing, and interpolation
+failures return `TransitionDecisionError`; no partial update or promotion is
+exposed. Previous snapshots remain unchanged and usable. Document removal is a
+separate pure `remove_targets` operation that cancels runs and removes completed
+records even without a resolved clock. Runtime supplies removal/update order,
+retains event-dispatch bookkeeping, and applies the outcomes before dispatch.
+
+The [pinned transition algorithm](../../../references/css-transitions-1--WD-css-transitions-1-20260108--969d35d13ee4.md#starting),
+[current-value rules](../../../references/css-transitions-1--WD-css-transitions-1-20260108--969d35d13ee4.md#application),
+and [completion order](../../../references/css-transitions-1--WD-css-transitions-1-20260108--969d35d13ee4.md#complete)
+govern these decisions. CSS cascade insertion and Animation suppression remain
+Style-owned; event construction, dispatch, and host scheduling remain Runtime-owned.
+
 ## Native keyframe normalization
 
 `keyframe_input::KeyframesInput<V, E>::normalize()` consumes an absent,
@@ -326,6 +401,9 @@ Use the public module paths for API access. The modules expose typed time,
 progress, easing, timing, interpolation, transition, keyframe, sample, and
 diagnostic contracts; `transition::TransitionTrack` and `keyframe::KeyframeTrack`
 are the entry points for sampling.
+`transition::TransitionSnapshot` owns immutable CSS transition decisions, and
+its `RunningTransition` records sample absolute document-origin-relative time
+with an explicit property interpolation policy.
 
 Effective elapsed time is the non-negative finite `ElapsedTime` supplied by
 runtime/root after clocks and track start times have already been resolved. This
@@ -383,6 +461,7 @@ supported interpolation produces `SampleClassification::Failed` and
 | Signed nullable model time, immutable conversion snapshots and fixed-origin document time | `supported` | `surgeist-animation` owns pure coordinate arithmetic and checked document reports; callers supply clocks, activity and timeline identities. |
 | Timing phases, fill modes, direction, iteration counts, play state, and next-frame hints | `supported` | `surgeist-animation` samples validated timing and reports stable or may-change hints. |
 | Web Animations effect timing, signed local time, end delay, iteration start and relevance | `supported` | `EffectTiming` samples supplied animation observations through the shared phase/progress kernel without owning animation lifecycle or target queries. |
+| CSS transition creation, cancellation, reversal, and completion decisions | `supported` | `transition::TransitionSnapshot` consumes coherent caller facts and returns immutable candidates and lifecycle outcomes. |
 | Typed native keyframe inputs and missing-offset computation | `supported` | `keyframe_input` normalizes sequences and property-indexed inputs while preserving specified offsets and caller payloads. |
 | Cubic-bezier, steps, linear keyword, and CSS `linear()` easing | `supported` | `surgeist-animation` evaluates typed easing, including canonical linear control points. |
 | Number, unrestricted percentage, and explicit premultiplied color interpolation | `supported` | `surgeist-animation` interpolates finite values with checked arithmetic and explicit color spaces. |

@@ -162,6 +162,8 @@ pub const fn surgeist_animation::diagnostics::NumericError::kind(self) -> surgei
 pub const fn surgeist_animation::diagnostics::NumericError::negative(input: surgeist_animation::diagnostics::NumericInput, actual: f64) -> Self
 pub const fn surgeist_animation::diagnostics::NumericError::non_finite(input: surgeist_animation::diagnostics::NumericInput) -> Self
 pub const fn surgeist_animation::diagnostics::NumericError::out_of_range(input: surgeist_animation::diagnostics::NumericInput, min: f64, max: f64, actual: f64) -> Self
+impl core::convert::From<surgeist_animation::diagnostics::NumericError> for surgeist_animation::transition::TransitionDecisionError
+pub fn surgeist_animation::transition::TransitionDecisionError::from(error: surgeist_animation::diagnostics::NumericError) -> Self
 impl core::error::Error for surgeist_animation::diagnostics::NumericError
 impl core::fmt::Display for surgeist_animation::diagnostics::NumericError
 pub fn surgeist_animation::diagnostics::NumericError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -318,6 +320,8 @@ pub surgeist_animation::interpolation::InterpolationError::UnsupportedFamily::fr
 pub surgeist_animation::interpolation::InterpolationError::UnsupportedFamily::property: surgeist_animation::interpolation::PropertyKey
 pub surgeist_animation::interpolation::InterpolationError::UnsupportedFamily::reason: &'static str
 pub surgeist_animation::interpolation::InterpolationError::UnsupportedFamily::to: surgeist_animation::interpolation::InterpolableValue
+impl core::convert::From<surgeist_animation::interpolation::InterpolationError> for surgeist_animation::transition::TransitionDecisionError
+pub fn surgeist_animation::transition::TransitionDecisionError::from(error: surgeist_animation::interpolation::InterpolationError) -> Self
 impl core::error::Error for surgeist_animation::interpolation::InterpolationError
 pub fn surgeist_animation::interpolation::InterpolationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_animation::interpolation::InterpolationError
@@ -808,6 +812,12 @@ pub const fn surgeist_animation::timing::TimingSample::play_state(self) -> surge
 pub const fn surgeist_animation::timing::TimingSample::simple_progress(self) -> core::option::Option<surgeist_animation::timing::PhaseProgress>
 pub const fn surgeist_animation::timing::TimingSample::timing_error(self) -> core::option::Option<surgeist_animation::timing::EffectTimingError>
 pub mod surgeist_animation::transition
+pub enum surgeist_animation::transition::TransitionDecisionErrorKind
+pub surgeist_animation::transition::TransitionDecisionErrorKind::DuplicateChange
+pub surgeist_animation::transition::TransitionDecisionErrorKind::DuplicateKey
+pub surgeist_animation::transition::TransitionDecisionErrorKind::Interpolation
+pub surgeist_animation::transition::TransitionDecisionErrorKind::InvalidProgress
+pub surgeist_animation::transition::TransitionDecisionErrorKind::UnrepresentableTime
 pub enum surgeist_animation::transition::TransitionError
 pub surgeist_animation::transition::TransitionError::EquivalentEndpoints
 pub surgeist_animation::transition::TransitionError::EquivalentEndpoints::property: surgeist_animation::interpolation::PropertyKey
@@ -817,6 +827,97 @@ impl core::error::Error for surgeist_animation::transition::TransitionError
 pub fn surgeist_animation::transition::TransitionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_animation::transition::TransitionError
 pub fn surgeist_animation::transition::TransitionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_animation::transition::TransitionOutcome<T>
+pub surgeist_animation::transition::TransitionOutcome::Cancelled(surgeist_animation::transition::RunningTransition<T>)
+pub surgeist_animation::transition::TransitionOutcome::CompletedRemoved(surgeist_animation::transition::CompletedTransition<T>)
+pub surgeist_animation::transition::TransitionOutcome::Started(surgeist_animation::transition::RunningTransition<T>)
+pub enum surgeist_animation::transition::TransitionSamplePhase
+pub surgeist_animation::transition::TransitionSamplePhase::Active
+pub surgeist_animation::transition::TransitionSamplePhase::Delay
+pub surgeist_animation::transition::TransitionSamplePhase::Finished
+pub surgeist_animation::transition::TransitionSamplePhase::Unresolved
+pub enum surgeist_animation::transition::TransitionState<T>
+pub surgeist_animation::transition::TransitionState::Completed(surgeist_animation::transition::CompletedTransition<T>)
+pub surgeist_animation::transition::TransitionState::Running(surgeist_animation::transition::RunningTransition<T>)
+impl<T> surgeist_animation::transition::TransitionState<T>
+pub fn surgeist_animation::transition::TransitionState<T>::key(&self) -> &surgeist_animation::transition::TransitionKey<T>
+pub enum surgeist_animation::transition::Transitionability
+pub surgeist_animation::transition::Transitionability::Continuous
+pub surgeist_animation::transition::Transitionability::Discrete
+pub surgeist_animation::transition::Transitionability::NotAnimatable
+pub struct surgeist_animation::transition::CompletedTransition<T>
+impl<T> surgeist_animation::transition::CompletedTransition<T>
+pub const fn surgeist_animation::transition::CompletedTransition<T>::delay(&self) -> surgeist_animation::time::AnimationDelay
+pub const fn surgeist_animation::transition::CompletedTransition<T>::duration(&self) -> surgeist_animation::time::AnimationDuration
+pub const fn surgeist_animation::transition::CompletedTransition<T>::end_time(&self) -> surgeist_animation::time::OriginRelativeTime
+pub const fn surgeist_animation::transition::CompletedTransition<T>::end_value(&self) -> &surgeist_animation::interpolation::InterpolableValue
+pub const fn surgeist_animation::transition::CompletedTransition<T>::id(&self) -> surgeist_animation::transition::TransitionTrackId
+pub const fn surgeist_animation::transition::CompletedTransition<T>::key(&self) -> &surgeist_animation::transition::TransitionKey<T>
+pub struct surgeist_animation::transition::RunningTransition<T>
+impl<T: core::clone::Clone> surgeist_animation::transition::RunningTransition<T>
+pub fn surgeist_animation::transition::RunningTransition<T>::sample<P: surgeist_animation::transition::TransitionPropertyPolicy + ?core::marker::Sized>(&self, time: core::option::Option<surgeist_animation::time::OriginRelativeTime>, policy: &P) -> core::result::Result<surgeist_animation::transition::TransitionCurrentSample<T>, surgeist_animation::transition::TransitionDecisionError>
+impl<T> surgeist_animation::transition::RunningTransition<T>
+pub fn surgeist_animation::transition::RunningTransition<T>::created_at(&self) -> surgeist_animation::time::OriginRelativeTime
+pub fn surgeist_animation::transition::RunningTransition<T>::delay(&self) -> surgeist_animation::time::AnimationDelay
+pub fn surgeist_animation::transition::RunningTransition<T>::duration(&self) -> surgeist_animation::time::AnimationDuration
+pub fn surgeist_animation::transition::RunningTransition<T>::end_time(&self) -> surgeist_animation::time::OriginRelativeTime
+pub fn surgeist_animation::transition::RunningTransition<T>::end_value(&self) -> &surgeist_animation::interpolation::InterpolableValue
+pub fn surgeist_animation::transition::RunningTransition<T>::id(&self) -> surgeist_animation::transition::TransitionTrackId
+pub fn surgeist_animation::transition::RunningTransition<T>::key(&self) -> &surgeist_animation::transition::TransitionKey<T>
+pub fn surgeist_animation::transition::RunningTransition<T>::reversing_adjusted_start_value(&self) -> &surgeist_animation::interpolation::InterpolableValue
+pub fn surgeist_animation::transition::RunningTransition<T>::shortening_factor(&self) -> surgeist_animation::progress::UnitRatio
+pub fn surgeist_animation::transition::RunningTransition<T>::start_time(&self) -> surgeist_animation::time::OriginRelativeTime
+pub fn surgeist_animation::transition::RunningTransition<T>::start_value(&self) -> &surgeist_animation::interpolation::InterpolableValue
+pub fn surgeist_animation::transition::RunningTransition<T>::timing(&self) -> &surgeist_animation::transition::TransitionTiming
+pub struct surgeist_animation::transition::TransitionChange<T>
+pub surgeist_animation::transition::TransitionChange::after: surgeist_animation::interpolation::InterpolableValue
+pub surgeist_animation::transition::TransitionChange::before: surgeist_animation::interpolation::InterpolableValue
+pub surgeist_animation::transition::TransitionChange::eligible: bool
+pub surgeist_animation::transition::TransitionChange::key: surgeist_animation::transition::TransitionKey<T>
+pub surgeist_animation::transition::TransitionChange::matching: core::option::Option<surgeist_animation::transition::TransitionTiming>
+pub surgeist_animation::transition::TransitionChange::new_id: surgeist_animation::transition::TransitionTrackId
+pub struct surgeist_animation::transition::TransitionCurrentSample<T>
+impl<T> surgeist_animation::transition::TransitionCurrentSample<T>
+pub const fn surgeist_animation::transition::TransitionCurrentSample<T>::easing_output(&self) -> core::option::Option<surgeist_animation::easing::EasedProgress>
+pub const fn surgeist_animation::transition::TransitionCurrentSample<T>::id(&self) -> surgeist_animation::transition::TransitionTrackId
+pub const fn surgeist_animation::transition::TransitionCurrentSample<T>::key(&self) -> &surgeist_animation::transition::TransitionKey<T>
+pub const fn surgeist_animation::transition::TransitionCurrentSample<T>::phase(&self) -> surgeist_animation::transition::TransitionSamplePhase
+pub const fn surgeist_animation::transition::TransitionCurrentSample<T>::time(&self) -> core::option::Option<surgeist_animation::time::OriginRelativeTime>
+pub const fn surgeist_animation::transition::TransitionCurrentSample<T>::value(&self) -> core::option::Option<&surgeist_animation::interpolation::InterpolableValue>
+pub struct surgeist_animation::transition::TransitionDecisionError
+impl surgeist_animation::transition::TransitionDecisionError
+pub const fn surgeist_animation::transition::TransitionDecisionError::duplicate_indices(&self) -> core::option::Option<(usize, usize)>
+pub fn surgeist_animation::transition::TransitionDecisionError::interpolation_error(&self) -> core::option::Option<&surgeist_animation::interpolation::InterpolationError>
+pub const fn surgeist_animation::transition::TransitionDecisionError::kind(&self) -> surgeist_animation::transition::TransitionDecisionErrorKind
+impl core::convert::From<surgeist_animation::diagnostics::NumericError> for surgeist_animation::transition::TransitionDecisionError
+pub fn surgeist_animation::transition::TransitionDecisionError::from(error: surgeist_animation::diagnostics::NumericError) -> Self
+impl core::convert::From<surgeist_animation::interpolation::InterpolationError> for surgeist_animation::transition::TransitionDecisionError
+pub fn surgeist_animation::transition::TransitionDecisionError::from(error: surgeist_animation::interpolation::InterpolationError) -> Self
+impl core::error::Error for surgeist_animation::transition::TransitionDecisionError
+pub fn surgeist_animation::transition::TransitionDecisionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_animation::transition::TransitionDecisionError
+pub fn surgeist_animation::transition::TransitionDecisionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::transition::TransitionKey<T>
+impl<T> surgeist_animation::transition::TransitionKey<T>
+pub fn surgeist_animation::transition::TransitionKey<T>::new(target: T, property: surgeist_animation::interpolation::PropertyKey) -> Self
+pub const fn surgeist_animation::transition::TransitionKey<T>::property(&self) -> &surgeist_animation::interpolation::PropertyKey
+pub const fn surgeist_animation::transition::TransitionKey<T>::target(&self) -> &T
+pub struct surgeist_animation::transition::TransitionSnapshot<T>
+impl<T: core::clone::Clone + core::cmp::Eq> surgeist_animation::transition::TransitionSnapshot<T>
+pub fn surgeist_animation::transition::TransitionSnapshot<T>::remove_targets(&self, targets: &[T]) -> surgeist_animation::transition::TransitionUpdate<T>
+pub fn surgeist_animation::transition::TransitionSnapshot<T>::update<P: surgeist_animation::transition::TransitionPropertyPolicy + ?core::marker::Sized>(&self, now: core::option::Option<surgeist_animation::time::OriginRelativeTime>, changes: &[surgeist_animation::transition::TransitionChange<T>], policy: &P) -> core::result::Result<core::option::Option<surgeist_animation::transition::TransitionUpdate<T>>, surgeist_animation::transition::TransitionDecisionError>
+impl<T: core::cmp::Eq> surgeist_animation::transition::TransitionSnapshot<T>
+pub fn surgeist_animation::transition::TransitionSnapshot<T>::get(&self, key: &surgeist_animation::transition::TransitionKey<T>) -> core::option::Option<&surgeist_animation::transition::TransitionState<T>>
+pub fn surgeist_animation::transition::TransitionSnapshot<T>::new(records: alloc::vec::Vec<surgeist_animation::transition::TransitionState<T>>) -> core::result::Result<Self, surgeist_animation::transition::TransitionDecisionError>
+pub fn surgeist_animation::transition::TransitionSnapshot<T>::records(&self) -> &[surgeist_animation::transition::TransitionState<T>]
+impl<T> core::default::Default for surgeist_animation::transition::TransitionSnapshot<T>
+pub fn surgeist_animation::transition::TransitionSnapshot<T>::default() -> Self
+pub struct surgeist_animation::transition::TransitionTiming
+impl surgeist_animation::transition::TransitionTiming
+pub const fn surgeist_animation::transition::TransitionTiming::delay(&self) -> surgeist_animation::time::AnimationDelay
+pub const fn surgeist_animation::transition::TransitionTiming::duration(&self) -> surgeist_animation::time::AnimationDuration
+pub const fn surgeist_animation::transition::TransitionTiming::easing(&self) -> &surgeist_animation::easing::Easing
+pub fn surgeist_animation::transition::TransitionTiming::new(duration: surgeist_animation::time::AnimationDuration, delay: surgeist_animation::time::AnimationDelay, easing: surgeist_animation::easing::Easing) -> Self
 pub struct surgeist_animation::transition::TransitionTrack
 impl surgeist_animation::transition::TransitionTrack
 pub const fn surgeist_animation::transition::TransitionTrack::delay(&self) -> surgeist_animation::time::AnimationDelay
@@ -832,4 +933,13 @@ pub struct surgeist_animation::transition::TransitionTrackId
 impl surgeist_animation::transition::TransitionTrackId
 pub const fn surgeist_animation::transition::TransitionTrackId::new(value: u64) -> Self
 pub const fn surgeist_animation::transition::TransitionTrackId::value(self) -> u64
+pub struct surgeist_animation::transition::TransitionUpdate<T>
+impl<T> surgeist_animation::transition::TransitionUpdate<T>
+pub const fn surgeist_animation::transition::TransitionUpdate<T>::after_completion(&self) -> &surgeist_animation::transition::TransitionSnapshot<T>
+pub fn surgeist_animation::transition::TransitionUpdate<T>::completions(&self) -> &[surgeist_animation::transition::CompletedTransition<T>]
+pub fn surgeist_animation::transition::TransitionUpdate<T>::outcomes(&self) -> &[surgeist_animation::transition::TransitionOutcome<T>]
+pub const fn surgeist_animation::transition::TransitionUpdate<T>::state(&self) -> &surgeist_animation::transition::TransitionSnapshot<T>
+pub trait surgeist_animation::transition::TransitionPropertyPolicy
+pub fn surgeist_animation::transition::TransitionPropertyPolicy::interpolate(&self, property: &surgeist_animation::interpolation::PropertyKey, from: &surgeist_animation::interpolation::InterpolableValue, to: &surgeist_animation::interpolation::InterpolableValue, progress: surgeist_animation::interpolation::InterpolationProgress) -> surgeist_animation::interpolation::InterpolationOutcome
+pub fn surgeist_animation::transition::TransitionPropertyPolicy::transitionability(&self, property: &surgeist_animation::interpolation::PropertyKey, from: &surgeist_animation::interpolation::InterpolableValue, to: &surgeist_animation::interpolation::InterpolableValue) -> surgeist_animation::transition::Transitionability
 pub const surgeist_animation::CRATE_NAME: &str

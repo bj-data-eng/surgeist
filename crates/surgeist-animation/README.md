@@ -4,10 +4,11 @@ CSS animation and transition timing contracts for Surgeist integrators. This
 Rust library samples normalized tracks into typed property values, completion
 states, and next-frame hints.
 
-Version 0.1.0 supports typed native keyframe normalization, timing, easing,
-computed numeric composition, logarithmic ratio interpolation, normalized
-positions, premultiplied colors, and discrete switching. Contextual calculations retain typed source identity in symbolic
-combination plans. Transform and opaque composite markers return typed
+Version 0.1.0 supports snapshot-based CSS transition decisions, typed native
+keyframe normalization, timing, easing, computed numeric composition,
+logarithmic ratio interpolation, normalized positions, premultiplied colors,
+and discrete switching. Contextual calculations retain source identity in
+symbolic combination plans. Transform and opaque composite markers return typed
 unsupported outcomes. CSS lowering, contextual evaluation, final clamping,
 runtime scheduling, and root integration belong to their respective owners.
 
