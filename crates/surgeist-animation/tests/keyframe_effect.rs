@@ -75,6 +75,7 @@ impl PropertyValueOperations for Operations {
             InterpolationOutcome::ShadowFailure(error) => {
                 Err(InterpolationError::Shadow(error).into())
             }
+            InterpolationOutcome::GridFailure(error) => Err(InterpolationError::Grid(error).into()),
             InterpolationOutcome::Unsupported(error) => Err(error.into()),
         }
     }

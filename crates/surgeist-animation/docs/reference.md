@@ -775,6 +775,62 @@ point or the indexed command operand, retain complete endpoints through existing
 shape diagnostics, and allow later successful samples. No command parser, shape
 addition, accumulation or geometry engine is introduced.
 
+## Computed Grid tracks
+
+`grid::GridValue` represents template `None`, a nonempty `TemplateTrackList`, or
+a nonempty `ImplicitTrackList`. CSS/Style supplies effective longhands and
+validated, decoded custom identifiers. It expands the `grid`, `grid-template`,
+`grid-row`, `grid-column` and `grid-area` shorthands. Template lists retain a
+leading `LineNames` group and a trailing group after each `TrackSection`;
+fixed-repeat bodies preserve the same grouping. Animation preserves supplied
+group order and case, without parsing or validating authored identifiers.
+
+`TrackSize` preserves plain breadth, explicit `minmax()` and `fit-content()`
+tags. `TrackBreadth` distinguishes length-percentage, flex, `auto`, `min-content`
+and `max-content`. Numeric roles use the computed numeric owner; lengths and
+percentages retain independent terms and contextual source identity. Flex is
+typed separately from length and accepts a finite numeric factor. A `minmax()`
+minimum cannot be flex. Signed intermediate numbers remain available for final
+caller-owned range handling; no percentage basis or intrinsic geometry is used.
+
+Equal outer lists combine corresponding items, without repeating either list to
+a least common multiple. Unequal lists switch the whole value at progress 0.5.
+Fixed repeats combine only when corresponding repeat sections have the same
+positive integer count and body track count. Any incompatible repeat structure,
+including a repeat opposite an ordinary track, switches the whole template.
+Compatible lists combine numeric leaves and switch line-name groups or
+incompatible leaf kinds locally. Two explicit `minmax()` functions combine their
+minimum and maximum independently. A plain track opposite explicit `minmax()`,
+or `fit-content()` opposite another function kind, switches that track item.
+
+These first-increment rules use the pinned [Grid 2 property animation tables](../../../references/css-grid-2--CRD-css-grid-2-20250326--05aa64853c44.md#propdef-grid-template-columns)
+and [repeat combination clause](../../../references/css-grid-2--CRD-css-grid-2-20250326--05aa64853c44.md#repeat-interpolation),
+with the [CSSWG integer-repeat resolution](https://github.com/w3c/csswg-drafts/issues/3503)
+and the explicit-minmax/local-item and incompatible-repeat whole-value cases in
+the [WPT interpolation source](https://github.com/web-platform-tests/wpt/blob/master/css/css-grid/animation/grid-template-columns-interpolation.html).
+The pinned repeat prose says that differing repeat structure combines
+discretely, without specifying that surrounding tracks switch too; this API
+selects the whole-value WPT behavior. The generic by-computed-value rule would
+switch a whole incompatible `minmax()` record; this API instead selects WPT's
+independent-bound behavior. These are explicit source determinations, not
+claims of complete Grid or browser parity.
+
+`FixedRepeat` requires a positive count and nonempty, nonnested body. Automatic
+repeat keywords and Grid 2 subgrid/name-repeat are unrepresented, so this
+capability makes no interpolation promise for them. Used repeat expansion,
+subgrid adoption, masonry and layout are outside this increment. Supplied
+`grid-template-areas`, `grid-auto-flow` and placement longhands use the existing
+discrete value path; Animation does not derive those values from track geometry.
+
+`InterpolableValue::grid` enters pair, transition and keyframe sampling.
+`InterpolationOutcome::GridFailure` and `InterpolationError::Grid` retain the
+complete endpoints, property and progress. `GridError` identifies the outer
+section, repeat item and numeric role when applicable. Result storage uses
+checked reservation, and a failed sample publishes no interpolated prefix.
+Track samples classify these failures as `Failed`; a later valid progress can
+recover. Property applicability, transitionability, addition and accumulation
+remain outside this capability.
+
 ## Integration boundary
 
 Use the public module paths for API access. The modules expose typed time,

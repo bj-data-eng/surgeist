@@ -170,6 +170,12 @@ impl SampledPropertyResult {
                 next_frame: next_frame_for_timing(timing),
                 value: SampleValue::Error(InterpolationError::Shadow(result)),
             },
+            InterpolationOutcome::GridFailure(result) => Self {
+                classification: SampleClassification::Failed,
+                completion: failed_completion(timing.phase()),
+                next_frame: next_frame_for_timing(timing),
+                value: SampleValue::Error(InterpolationError::Grid(result)),
+            },
             InterpolationOutcome::Unsupported(error) => Self::unsupported(error),
         }
     }

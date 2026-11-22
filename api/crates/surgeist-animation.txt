@@ -353,6 +353,82 @@ pub fn surgeist_animation::easing::Steps::evaluate_unrestricted_with_before_flag
 pub fn surgeist_animation::easing::Steps::evaluate_with_before_flag(&self, progress: surgeist_animation::progress::NormalizedProgress, before_flag: bool) -> surgeist_animation::easing::EasedProgress
 pub fn surgeist_animation::easing::Steps::new(count: u32, position: surgeist_animation::easing::StepPosition) -> core::result::Result<Self, surgeist_animation::easing::EasingError>
 pub const fn surgeist_animation::easing::Steps::position(self) -> surgeist_animation::easing::StepPosition
+pub mod surgeist_animation::grid
+pub enum surgeist_animation::grid::GridComponent
+pub surgeist_animation::grid::GridComponent::Breadth
+pub surgeist_animation::grid::GridComponent::FitContentLimit
+pub surgeist_animation::grid::GridComponent::Maximum
+pub surgeist_animation::grid::GridComponent::Minimum
+pub enum surgeist_animation::grid::GridErrorKind
+pub surgeist_animation::grid::GridErrorKind::Capacity
+pub surgeist_animation::grid::GridErrorKind::EmptyList
+pub surgeist_animation::grid::GridErrorKind::FlexibleMinimum
+pub surgeist_animation::grid::GridErrorKind::InvalidNumericType
+pub surgeist_animation::grid::GridErrorKind::Numeric
+pub surgeist_animation::grid::GridErrorKind::ZeroRepeatCount
+pub enum surgeist_animation::grid::GridValue
+pub surgeist_animation::grid::GridValue::Implicit(surgeist_animation::grid::ImplicitTrackList)
+pub surgeist_animation::grid::GridValue::None
+pub surgeist_animation::grid::GridValue::Template(surgeist_animation::grid::TemplateTrackList)
+impl surgeist_animation::grid::GridValue
+pub fn surgeist_animation::grid::GridValue::interpolate(&self, other: &Self, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<Self, surgeist_animation::grid::GridError>
+pub enum surgeist_animation::grid::TrackBreadthKind
+pub surgeist_animation::grid::TrackBreadthKind::Auto
+pub surgeist_animation::grid::TrackBreadthKind::Flex
+pub surgeist_animation::grid::TrackBreadthKind::LengthPercentage
+pub surgeist_animation::grid::TrackBreadthKind::MaxContent
+pub surgeist_animation::grid::TrackBreadthKind::MinContent
+pub enum surgeist_animation::grid::TrackSection
+pub surgeist_animation::grid::TrackSection::Repeat(surgeist_animation::grid::FixedRepeat)
+pub surgeist_animation::grid::TrackSection::Single(surgeist_animation::grid::TrackSize)
+pub struct surgeist_animation::grid::FixedRepeat
+impl surgeist_animation::grid::FixedRepeat
+pub const fn surgeist_animation::grid::FixedRepeat::count(&self) -> usize
+pub const fn surgeist_animation::grid::FixedRepeat::leading_names(&self) -> &surgeist_animation::grid::LineNames
+pub fn surgeist_animation::grid::FixedRepeat::new(count: usize, leading: surgeist_animation::grid::LineNames, tracks: alloc::vec::Vec<(surgeist_animation::grid::TrackSize, surgeist_animation::grid::LineNames)>) -> core::result::Result<Self, surgeist_animation::grid::GridError>
+pub fn surgeist_animation::grid::FixedRepeat::tracks(&self) -> &[(surgeist_animation::grid::TrackSize, surgeist_animation::grid::LineNames)]
+pub struct surgeist_animation::grid::GridError
+impl surgeist_animation::grid::GridError
+pub const fn surgeist_animation::grid::GridError::actual_type(&self) -> core::option::Option<surgeist_animation::computed::NumericType>
+pub const fn surgeist_animation::grid::GridError::component(&self) -> core::option::Option<surgeist_animation::grid::GridComponent>
+pub const fn surgeist_animation::grid::GridError::kind(&self) -> surgeist_animation::grid::GridErrorKind
+pub const fn surgeist_animation::grid::GridError::numeric_error(&self) -> core::option::Option<&surgeist_animation::computed::ComputedError>
+pub const fn surgeist_animation::grid::GridError::repeat_index(&self) -> core::option::Option<usize>
+pub const fn surgeist_animation::grid::GridError::section_index(&self) -> core::option::Option<usize>
+impl core::error::Error for surgeist_animation::grid::GridError
+pub fn surgeist_animation::grid::GridError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_animation::grid::GridError
+pub fn surgeist_animation::grid::GridError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::grid::ImplicitTrackList
+impl surgeist_animation::grid::ImplicitTrackList
+pub fn surgeist_animation::grid::ImplicitTrackList::new(tracks: alloc::vec::Vec<surgeist_animation::grid::TrackSize>) -> core::result::Result<Self, surgeist_animation::grid::GridError>
+pub fn surgeist_animation::grid::ImplicitTrackList::tracks(&self) -> &[surgeist_animation::grid::TrackSize]
+pub struct surgeist_animation::grid::LineNames
+impl surgeist_animation::grid::LineNames
+pub fn surgeist_animation::grid::LineNames::names(&self) -> &[surgeist_animation::interpolation::DiscreteValue]
+pub fn surgeist_animation::grid::LineNames::new(names: alloc::vec::Vec<surgeist_animation::interpolation::DiscreteValue>) -> Self
+pub struct surgeist_animation::grid::TemplateTrackList
+impl surgeist_animation::grid::TemplateTrackList
+pub fn surgeist_animation::grid::TemplateTrackList::leading_names(&self) -> &surgeist_animation::grid::LineNames
+pub fn surgeist_animation::grid::TemplateTrackList::new(leading: surgeist_animation::grid::LineNames, sections: alloc::vec::Vec<(surgeist_animation::grid::TrackSection, surgeist_animation::grid::LineNames)>) -> core::result::Result<Self, surgeist_animation::grid::GridError>
+pub fn surgeist_animation::grid::TemplateTrackList::sections(&self) -> &[(surgeist_animation::grid::TrackSection, surgeist_animation::grid::LineNames)]
+pub struct surgeist_animation::grid::TrackBreadth
+impl surgeist_animation::grid::TrackBreadth
+pub const fn surgeist_animation::grid::TrackBreadth::auto() -> Self
+pub fn surgeist_animation::grid::TrackBreadth::flex(factor: f64) -> core::result::Result<Self, surgeist_animation::grid::GridError>
+pub const fn surgeist_animation::grid::TrackBreadth::kind(&self) -> surgeist_animation::grid::TrackBreadthKind
+pub fn surgeist_animation::grid::TrackBreadth::length_percentage(numeric: surgeist_animation::computed::ComputedNumeric) -> core::result::Result<Self, surgeist_animation::grid::GridError>
+pub const fn surgeist_animation::grid::TrackBreadth::max_content() -> Self
+pub const fn surgeist_animation::grid::TrackBreadth::min_content() -> Self
+pub const fn surgeist_animation::grid::TrackBreadth::numeric(&self) -> core::option::Option<&surgeist_animation::computed::ComputedNumeric>
+pub struct surgeist_animation::grid::TrackSize
+impl surgeist_animation::grid::TrackSize
+pub const fn surgeist_animation::grid::TrackSize::as_breadth(&self) -> core::option::Option<&surgeist_animation::grid::TrackBreadth>
+pub const fn surgeist_animation::grid::TrackSize::breadth(value: surgeist_animation::grid::TrackBreadth) -> Self
+pub fn surgeist_animation::grid::TrackSize::fit_content(limit: surgeist_animation::computed::ComputedNumeric) -> core::result::Result<Self, surgeist_animation::grid::GridError>
+pub const fn surgeist_animation::grid::TrackSize::fit_content_limit(&self) -> core::option::Option<&surgeist_animation::computed::ComputedNumeric>
+pub fn surgeist_animation::grid::TrackSize::minmax(minimum: surgeist_animation::grid::TrackBreadth, maximum: surgeist_animation::grid::TrackBreadth) -> core::result::Result<Self, surgeist_animation::grid::GridError>
+pub const fn surgeist_animation::grid::TrackSize::minmax_bounds(&self) -> core::option::Option<(&surgeist_animation::grid::TrackBreadth, &surgeist_animation::grid::TrackBreadth)>
 pub mod surgeist_animation::interpolation
 pub enum surgeist_animation::interpolation::ColorInterpolationSpace
 pub surgeist_animation::interpolation::ColorInterpolationSpace::Oklab
@@ -362,6 +438,7 @@ pub surgeist_animation::interpolation::InterpolableValue::Color(surgeist_animati
 pub surgeist_animation::interpolation::InterpolableValue::Composite(surgeist_animation::interpolation::CompositeValue)
 pub surgeist_animation::interpolation::InterpolableValue::Computed(surgeist_animation::computed::ComputedValue)
 pub surgeist_animation::interpolation::InterpolableValue::Discrete(surgeist_animation::interpolation::DiscreteValue)
+pub surgeist_animation::interpolation::InterpolableValue::Grid(surgeist_animation::grid::GridValue)
 pub surgeist_animation::interpolation::InterpolableValue::Number(surgeist_animation::interpolation::InterpolableNumber)
 pub surgeist_animation::interpolation::InterpolableValue::Percentage(surgeist_animation::interpolation::InterpolablePercentage)
 pub surgeist_animation::interpolation::InterpolableValue::Shadow(surgeist_animation::shadow::ShadowList)
@@ -373,6 +450,7 @@ pub fn surgeist_animation::interpolation::InterpolableValue::composite(value: su
 pub fn surgeist_animation::interpolation::InterpolableValue::computed(value: surgeist_animation::computed::ComputedValue) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::discrete(value: surgeist_animation::interpolation::DiscreteValue) -> Self
 pub const fn surgeist_animation::interpolation::InterpolableValue::family(&self) -> surgeist_animation::interpolation::ValueFamily
+pub fn surgeist_animation::interpolation::InterpolableValue::grid(value: surgeist_animation::grid::GridValue) -> Self
 pub const fn surgeist_animation::interpolation::InterpolableValue::number(value: surgeist_animation::interpolation::InterpolableNumber) -> Self
 pub const fn surgeist_animation::interpolation::InterpolableValue::percentage(value: surgeist_animation::interpolation::InterpolablePercentage) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::shadow(value: surgeist_animation::shadow::ShadowList) -> Self
@@ -392,6 +470,7 @@ pub enum surgeist_animation::interpolation::InterpolationError
 pub surgeist_animation::interpolation::InterpolationError::Computed(surgeist_animation::interpolation::ComputedInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationError::EmptyDiscreteValue
 pub surgeist_animation::interpolation::InterpolationError::EmptyPropertyKey
+pub surgeist_animation::interpolation::InterpolationError::Grid(surgeist_animation::interpolation::GridInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationError::MismatchedColorSpaces
 pub surgeist_animation::interpolation::InterpolationError::MismatchedColorSpaces::from: surgeist_animation::interpolation::ColorInterpolationSpace
 pub surgeist_animation::interpolation::InterpolationError::MismatchedColorSpaces::from_value: surgeist_animation::interpolation::InterpolableColor
@@ -427,6 +506,7 @@ pub fn surgeist_animation::interpolation::InterpolationError::fmt(&self, f: &mut
 pub enum surgeist_animation::interpolation::InterpolationOutcome
 pub surgeist_animation::interpolation::InterpolationOutcome::ArithmeticFailure(surgeist_animation::interpolation::NonFiniteInterpolationResult)
 pub surgeist_animation::interpolation::InterpolationOutcome::ComputedFailure(surgeist_animation::interpolation::ComputedInterpolationFailure)
+pub surgeist_animation::interpolation::InterpolationOutcome::GridFailure(surgeist_animation::interpolation::GridInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationOutcome::ShadowFailure(surgeist_animation::interpolation::ShadowInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationOutcome::ShapeFailure(surgeist_animation::interpolation::ShapeInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationOutcome::Unsupported(surgeist_animation::interpolation::InterpolationError)
@@ -436,6 +516,7 @@ pub surgeist_animation::interpolation::ValueFamily::Color
 pub surgeist_animation::interpolation::ValueFamily::Composite
 pub surgeist_animation::interpolation::ValueFamily::Computed
 pub surgeist_animation::interpolation::ValueFamily::Discrete
+pub surgeist_animation::interpolation::ValueFamily::Grid
 pub surgeist_animation::interpolation::ValueFamily::Number
 pub surgeist_animation::interpolation::ValueFamily::Percentage
 pub surgeist_animation::interpolation::ValueFamily::Shadow
@@ -459,6 +540,13 @@ pub fn surgeist_animation::interpolation::DiscreteValue::from_shared(token: allo
 pub fn surgeist_animation::interpolation::DiscreteValue::from_text(token: &str) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::DiscreteValue::new(token: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::DiscreteValue::token(&self) -> &str
+pub struct surgeist_animation::interpolation::GridInterpolationFailure
+impl surgeist_animation::interpolation::GridInterpolationFailure
+pub const fn surgeist_animation::interpolation::GridInterpolationFailure::error(&self) -> &surgeist_animation::grid::GridError
+pub fn surgeist_animation::interpolation::GridInterpolationFailure::from(&self) -> &surgeist_animation::interpolation::InterpolableValue
+pub const fn surgeist_animation::interpolation::GridInterpolationFailure::progress(&self) -> surgeist_animation::interpolation::InterpolationProgress
+pub const fn surgeist_animation::interpolation::GridInterpolationFailure::property(&self) -> &surgeist_animation::interpolation::PropertyKey
+pub fn surgeist_animation::interpolation::GridInterpolationFailure::to(&self) -> &surgeist_animation::interpolation::InterpolableValue
 pub struct surgeist_animation::interpolation::InterpolableColor
 impl surgeist_animation::interpolation::InterpolableColor
 pub const fn surgeist_animation::interpolation::InterpolableColor::alpha(self) -> f64

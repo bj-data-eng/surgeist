@@ -16,6 +16,7 @@ use std::sync::Arc;
 use crate::computed::{ComputedError, ComputedValue};
 use crate::diagnostics::{NumericError, NumericInput};
 use crate::easing::EasedProgress;
+use crate::grid::{GridError, GridValue};
 use crate::progress::UnitRatio;
 use crate::shadow::{ShadowError, ShadowList};
 use crate::shape::{ShapeError, ShapeValue};
@@ -37,6 +38,7 @@ pub enum ValueFamily {
     Computed,
     Shape,
     Shadow,
+    Grid,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -96,6 +98,7 @@ pub enum InterpolableValue {
     Computed(ComputedValue),
     Shape(ShapeValue),
     Shadow(ShadowList),
+    Grid(GridValue),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -122,6 +125,7 @@ pub enum InterpolationOutcome {
     ComputedFailure(ComputedInterpolationFailure),
     ShapeFailure(ShapeInterpolationFailure),
     ShadowFailure(ShadowInterpolationFailure),
+    GridFailure(GridInterpolationFailure),
     Unsupported(InterpolationError),
 }
 
@@ -225,6 +229,33 @@ impl ShadowInterpolationFailure {
     }
 }
 
+/// A sample-local Grid failure retaining its property, progress and complete endpoints.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GridInterpolationFailure {
+    property: PropertyKey,
+    endpoints: Arc<InterpolationEndpoints>,
+    progress: InterpolationProgress,
+    error: GridError,
+}
+
+impl GridInterpolationFailure {
+    pub const fn property(&self) -> &PropertyKey {
+        &self.property
+    }
+    pub fn from(&self) -> &InterpolableValue {
+        &self.endpoints.from
+    }
+    pub fn to(&self) -> &InterpolableValue {
+        &self.endpoints.to
+    }
+    pub const fn progress(&self) -> InterpolationProgress {
+        self.progress
+    }
+    pub const fn error(&self) -> &GridError {
+        &self.error
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum InterpolationError {
     EmptyPropertyKey,
@@ -237,6 +268,7 @@ pub enum InterpolationError {
     Computed(ComputedInterpolationFailure),
     Shape(ShapeInterpolationFailure),
     Shadow(ShadowInterpolationFailure),
+    Grid(GridInterpolationFailure),
     MismatchedFamilies {
         property: PropertyKey,
         from: ValueFamily,
@@ -294,6 +326,13 @@ impl fmt::Display for InterpolationError {
                 result.progress.value(),
                 result.error
             ),
+            Self::Grid(result) => write!(
+                f,
+                "interpolating {} at progress {} failed: {}",
+                result.property.as_str(),
+                result.progress.value(),
+                result.error
+            ),
             Self::NonFiniteInterpolationResult(result) => write!(
                 f,
                 "interpolating {} produced non-finite {} component at progress {}: {}",
@@ -345,6 +384,7 @@ impl std::error::Error for InterpolationError {
             Self::Computed(result) => Some(&result.error),
             Self::Shape(result) => Some(&result.error),
             Self::Shadow(result) => Some(&result.error),
+            Self::Grid(result) => Some(&result.error),
             _ => None,
         }
     }
@@ -361,6 +401,7 @@ fn value_family_name(family: ValueFamily) -> &'static str {
         ValueFamily::Computed => "computed",
         ValueFamily::Shape => "shape",
         ValueFamily::Shadow => "shadow",
+        ValueFamily::Grid => "grid",
     }
 }
 
@@ -665,6 +706,10 @@ impl InterpolableValue {
         Self::Shape(value)
     }
 
+    pub fn grid(value: GridValue) -> Self {
+        Self::Grid(value)
+    }
+
     pub const fn family(&self) -> ValueFamily {
         match self {
             Self::Number(_) => ValueFamily::Number,
@@ -676,6 +721,7 @@ impl InterpolableValue {
             Self::Computed(_) => ValueFamily::Computed,
             Self::Shape(_) => ValueFamily::Shape,
             Self::Shadow(_) => ValueFamily::Shadow,
+            Self::Grid(_) => ValueFamily::Grid,
         }
     }
 }
@@ -835,6 +881,17 @@ impl InterpolationPair {
                 match from.interpolate(to, progress) {
                     Ok(value) => InterpolationOutcome::Value(InterpolableValue::Shape(value)),
                     Err(error) => InterpolationOutcome::ShapeFailure(ShapeInterpolationFailure {
+                        property: self.property.clone(),
+                        endpoints: Arc::clone(&self.endpoints),
+                        progress,
+                        error,
+                    }),
+                }
+            }
+            (InterpolableValue::Grid(from), InterpolableValue::Grid(to)) => {
+                match from.interpolate(to, progress) {
+                    Ok(value) => InterpolationOutcome::Value(InterpolableValue::Grid(value)),
+                    Err(error) => InterpolationOutcome::GridFailure(GridInterpolationFailure {
                         property: self.property.clone(),
                         endpoints: Arc::clone(&self.endpoints),
                         progress,
