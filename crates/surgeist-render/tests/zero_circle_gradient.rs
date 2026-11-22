@@ -285,6 +285,32 @@ fn zero_circle_refuses_a_native_carrier_that_could_invent_center_coincidence() {
 }
 
 #[test]
+fn zero_circle_does_not_invent_a_center_sample_after_surface_scaling() {
+    let subnormal = 3.0 * 2.0_f64.powi(-128);
+    let paint = paint_for(
+        &geometry_at(layout::Point::new(subnormal, subnormal)),
+        &[stop(RED, 0.0, -1.0), stop(BLUE, 0.0, 1.0)],
+        false,
+    );
+    let (mut renderer, _) = target();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::try_new(2.0, 2.0).unwrap(), 16.0))
+            .unwrap();
+    let mut scene = Scene::new();
+    scene.fill(Rect::try_new(0.0, 0.0, 2.0, 2.0).unwrap(), paint);
+    match pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())) {
+        Ok(_) => {
+            let image = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+            pixel(&image, 0, 0, [0, 0, 255], false);
+        }
+        Err(error) => assert!(
+            error.gradient_realization_diagnostic().is_some(),
+            "{error:?}"
+        ),
+    }
+}
+
+#[test]
 fn zero_circle_hint_limits_preserve_rings_at_both_sides_of_a_nonzero_span() {
     let left = field(
         &[stop(RED, 4.0, -2.0), hint(4.0, -1.0), stop(BLUE, 9.0, 0.0)],
@@ -374,6 +400,26 @@ fn repeating_zero_circle_averages_collapsed_periods_and_the_negative_threshold_t
         let image = read(&mut renderer, &mut surface, paint, false);
         pixel(&image, CENTER_X + 2, CENTER_Y, rgb, false);
     }
+}
+
+#[test]
+fn repeating_zero_circle_uses_the_thin_axis_of_an_almost_circular_transform() {
+    use surgeist_render::geometry::Transform;
+
+    let paint = field(&[stop(RED, 0.0, 0.0), stop(BLUE, 2.0, 0.0)], true);
+    let (mut renderer, mut surface) = target();
+    let mut scene = Scene::new();
+    scene.transform(
+        Transform::try_new([1.0, 0.0, 2.0_f64.powi(-27), 1.0, 0.0, 0.0]).unwrap(),
+        |scene| {
+            scene.fill(bounds(), paint);
+        },
+    );
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    let image = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    // Determinant is one, but the larger singular value exceeds one for
+    // every nonzero shear. The leading period is therefore below two pixels.
+    pixel(&image, CENTER_X, CENTER_Y, [128, 0, 128], false);
 }
 
 #[test]
