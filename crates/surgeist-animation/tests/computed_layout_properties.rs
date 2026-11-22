@@ -196,6 +196,85 @@ fn expanded_logical_inset_longhands_keep_their_own_values() {
     );
 }
 
+#[test]
+fn break_and_decoration_keywords_switch_discretely() {
+    let endpoints = [
+        ("break-before", "auto", "page"),
+        ("break-after", "avoid-page", "column"),
+        ("break-inside", "auto", "avoid"),
+        ("box-decoration-break", "slice", "clone"),
+    ];
+    let track = track(endpoints.map(|(property, from, to)| (property, keyword(from), keyword(to))));
+
+    assert_frame(
+        &track,
+        0.5_f64.next_down(),
+        endpoints.map(|(property, from, _)| (property, keyword(from))),
+    );
+    assert_frame(
+        &track,
+        0.5,
+        endpoints.map(|(property, _, to)| (property, keyword(to))),
+    );
+}
+
+#[test]
+fn widows_and_orphans_use_computed_integer_interpolation() {
+    let track = track([
+        ("widows", integer(2.0), integer(6.0)),
+        ("orphans", integer(3.0), integer(4.0)),
+    ]);
+
+    assert_frame(
+        &track,
+        0.25,
+        [("widows", integer(3.0)), ("orphans", integer(3.0))],
+    );
+    assert_frame(
+        &track,
+        0.5,
+        [("widows", integer(4.0)), ("orphans", integer(4.0))],
+    );
+}
+
+#[test]
+fn generated_content_and_bookmark_payloads_are_discrete() {
+    let endpoints = [
+        ("content", "none", r#""Heading""#),
+        ("quotes", "none", r#""«" "»""#),
+        ("string-set", "none", r#"chapter "Heading""#),
+        ("bookmark-label", "content(text)", r#""Overview""#),
+        ("bookmark-state", "open", "closed"),
+    ];
+    let track = track(endpoints.map(|(property, from, to)| (property, keyword(from), keyword(to))));
+
+    assert_frame(
+        &track,
+        0.5_f64.next_down(),
+        endpoints.map(|(property, from, _)| (property, keyword(from))),
+    );
+    assert_frame(
+        &track,
+        0.5,
+        endpoints.map(|(property, _, to)| (property, keyword(to))),
+    );
+}
+
+#[test]
+fn bookmark_levels_interpolate_integers_and_switch_none_discretely() {
+    let numbered = track([("bookmark-level", integer(1.0), integer(4.0))]);
+    assert_frame(&numbered, 0.25, [("bookmark-level", integer(2.0))]);
+    assert_frame(&numbered, 0.5, [("bookmark-level", integer(3.0))]);
+
+    let from_none = track([("bookmark-level", computed_keyword("none"), integer(4.0))]);
+    assert_frame(
+        &from_none,
+        0.5_f64.next_down(),
+        [("bookmark-level", computed_keyword("none"))],
+    );
+    assert_frame(&from_none, 0.5, [("bookmark-level", integer(4.0))]);
+}
+
 fn track<const N: usize>(
     endpoints: [(&str, InterpolableValue, InterpolableValue); N],
 ) -> KeyframeTrack {
