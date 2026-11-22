@@ -579,17 +579,8 @@ impl InterpolationPair {
         from: InterpolableValue,
         to: InterpolableValue,
     ) -> Result<Self, InterpolationError> {
-        let from_family = from.family();
-        let to_family = to.family();
-
-        if from_family != to_family {
-            return Err(InterpolationError::MismatchedFamilies {
-                property,
-                from: from_family,
-                to: to_family,
-                from_value: from,
-                to_value: to,
-            });
+        if from.family() != to.family() {
+            return Err(mismatched_families(property, from, to));
         }
 
         match (&from, &to) {
@@ -646,7 +637,11 @@ impl InterpolationPair {
             (InterpolableValue::Composite(_), InterpolableValue::Composite(_)) => {
                 self.unsupported(ValueFamily::Composite, "composite interpolation deferred")
             }
-            _ => unreachable!("InterpolationPair::new rejects mismatched value families"),
+            (from, to) => InterpolationOutcome::Unsupported(mismatched_families(
+                self.property.clone(),
+                from.clone(),
+                to.clone(),
+            )),
         }
     }
 
@@ -784,6 +779,20 @@ impl InterpolationPair {
             to: self.endpoints.to.clone(),
             reason,
         })
+    }
+}
+
+fn mismatched_families(
+    property: PropertyKey,
+    from_value: InterpolableValue,
+    to_value: InterpolableValue,
+) -> InterpolationError {
+    InterpolationError::MismatchedFamilies {
+        property,
+        from: from_value.family(),
+        to: to_value.family(),
+        from_value,
+        to_value,
     }
 }
 

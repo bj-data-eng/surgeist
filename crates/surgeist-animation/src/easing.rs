@@ -367,8 +367,6 @@ impl LinearEasing {
             before_flag,
             self.points[0].input(),
         );
-        debug_assert!(value.is_finite());
-
         EasedProgress { value }
     }
 
@@ -420,8 +418,6 @@ impl CubicBezier {
 
         let t = self.solve_t_for_x(progress_value);
         let value = cubic_output_axis(t, self.y1, self.y2);
-        debug_assert!(value.is_finite());
-
         EasedProgress { value }
     }
 
@@ -573,8 +569,6 @@ impl Steps {
         before_flag: bool,
     ) -> EasedProgress {
         let value = self.output_for_input(progress.value(), before_flag);
-        debug_assert!(value.is_finite());
-
         EasedProgress { value }
     }
 

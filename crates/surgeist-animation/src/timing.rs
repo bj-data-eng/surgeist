@@ -490,7 +490,7 @@ impl TimingSample {
         }
 
         let current_iteration = CurrentIteration::new(0.0);
-        let simple_progress = PhaseProgress::new(0.0).unwrap();
+        let simple_progress = PhaseProgress::from_normalized(NormalizedProgress::ZERO);
         let (directed_progress, current_direction) =
             directed_progress(timing.direction, current_iteration, simple_progress);
         let before_flag = current_direction == CurrentDirection::Forwards;
@@ -623,7 +623,9 @@ fn directed_progress(
     let current_direction = current_direction(direction, iteration);
     let directed_progress = match current_direction {
         CurrentDirection::Forwards => simple_progress,
-        CurrentDirection::Reverse => PhaseProgress::new(1.0 - simple_progress.value()).unwrap(),
+        CurrentDirection::Reverse => {
+            PhaseProgress::from_normalized(simple_progress.normalized().complement())
+        }
     };
 
     (directed_progress, current_direction)
@@ -640,9 +642,10 @@ fn final_iteration_progress(
     timing: &TimingParameters,
 ) -> Option<(CurrentIteration, PhaseProgress)> {
     match timing.iterations.value {
-        IterationCountValue::Finite(0.0) => {
-            Some((CurrentIteration::new(0.0), PhaseProgress::new(0.0).unwrap()))
-        }
+        IterationCountValue::Finite(0.0) => Some((
+            CurrentIteration::new(0.0),
+            PhaseProgress::from_normalized(NormalizedProgress::ZERO),
+        )),
         IterationCountValue::Finite(iterations) => {
             let simple_progress_value = iterations.fract();
             let (iteration_index, simple_progress_value) = if simple_progress_value == 0.0 {
@@ -656,7 +659,7 @@ fn final_iteration_progress(
         }
         IterationCountValue::Infinite if timing.duration.is_zero() => Some((
             CurrentIteration::infinite(),
-            PhaseProgress::new(1.0).unwrap(),
+            PhaseProgress::from_normalized(NormalizedProgress::ONE),
         )),
         IterationCountValue::Infinite => None,
     }
