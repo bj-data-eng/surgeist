@@ -421,6 +421,71 @@ fn finite_large_and_subnormal_scales_are_not_misclassified_as_singular() {
 }
 
 #[test]
+fn subnormal_non_axis_aligned_columns_preserve_the_other_axis() {
+    let tiny = f64::from_bits(2);
+    let original = [tiny, tiny, 0., 1., 0., 0.];
+    let pair = make_pair(list(vec![matrix(original)]), list(vec![matrix(original)]));
+    let result = sampled(&pair, 0.5).to_matrix().unwrap().coefficients();
+    assert_eq!(result[0], tiny);
+    assert_eq!(result[1], tiny);
+    assert!((result[2]).abs() <= 2e-12);
+    assert!(
+        (result[3] - 1.).abs() <= 2e-12,
+        "other axis changed: {result:?}"
+    );
+}
+
+#[test]
+fn non_axis_aligned_normalization_preserves_tiny_and_large_unequal_endpoints() {
+    for factor in [
+        f64::from_bits(2),
+        -f64::from_bits(2),
+        f64::MIN_POSITIVE / 2.,
+        f64::MIN_POSITIVE,
+        1e-300,
+        f64::MAX / 8.,
+        -f64::MAX / 8.,
+    ] {
+        // The endpoint linear parts have identical column directions. Their
+        // independent midpoint scales each column and translation arithmetically.
+        let from = [factor, factor, 1., 2., 10., 20.];
+        let to = [factor * 2., factor * 2., 3., 6., 30., 40.];
+        let pair = make_pair(list(vec![matrix(from)]), list(vec![matrix(to)]));
+        let result = sampled(&pair, 0.5).to_matrix().unwrap().coefficients();
+        let first_column = factor * 1.5;
+        let tolerance = (first_column.abs() * 2e-12).max(f64::from_bits(1));
+        for actual in [result[0], result[1]] {
+            assert!(
+                (actual - first_column).abs() <= tolerance,
+                "first column at scale {factor}: {result:?}"
+            );
+        }
+        assert_matrix(
+            &sampled(&pair, 0.5),
+            [first_column, first_column, 2., 4., 20., 30.],
+        );
+    }
+}
+
+#[test]
+fn singular_compatible_prefix_precedes_unmatched_suffix_overflow() {
+    let from = list(vec![
+        matrix([0., 0., 0., 1., 0., 0.]),
+        TransformFunction::ScaleX(scale(f64::MAX)),
+        TransformFunction::ScaleX(scale(2.)),
+    ]);
+    let to = list(vec![
+        matrix([1., 0., 0., 1., 0., 0.]),
+        TransformFunction::TranslateX(px(1.)),
+        TransformFunction::TranslateX(px(1.)),
+    ]);
+    let pair = make_pair(from.clone(), to.clone());
+    assert_eq!(sampled(&pair, 0.25), from);
+    assert_eq!(sampled(&pair, 0.5), to);
+    assert_eq!(sampled(&pair, 0.75), to);
+}
+
+#[test]
 fn singularity_check_handles_dependent_columns_with_overflowing_products() {
     let from = list(vec![matrix([1e308, 1e308, 1e308, 1e308, 0., 0.])]);
     let to = list(vec![matrix([1., 0., 0., 1., 10., 20.])]);
