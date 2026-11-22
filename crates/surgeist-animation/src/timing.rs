@@ -343,26 +343,21 @@ impl TimingParameters {
 
     pub fn sample(&self, elapsed: ElapsedTime, play_state: AnimationPlayState) -> TimingSample {
         let active_duration = self.active_duration;
-        let active_duration_secs = active_duration.representable_secs();
-        let local_time = checked_local_time_secs(elapsed, self.delay);
-
-        let Some(local_time_secs) = local_time else {
-            return TimingSample::new(
-                active_duration.phase_for_positive_overflow(),
-                play_state,
-                None,
-                active_duration_secs,
-            )
-            .with_timing_progress(self);
+        let local_time_secs = elapsed.as_secs();
+        let shifted_secs = local_time_secs - self.delay.as_secs();
+        let delay_adjusted_secs = shifted_secs.is_finite().then_some(shifted_secs);
+        let phase = match delay_adjusted_secs {
+            Some(time) => active_duration.phase_for_delay_adjusted_time(time),
+            None => active_duration.phase_for_positive_overflow(),
         };
 
         TimingSample::new(
-            active_duration.phase_for_local_time(local_time_secs),
+            phase,
             play_state,
             Some(local_time_secs),
-            active_duration_secs,
+            active_duration.representable_secs(),
         )
-        .with_timing_progress(self)
+        .with_timing_progress(self, delay_adjusted_secs)
     }
 }
 
@@ -408,6 +403,7 @@ impl TimingSample {
         self.play_state
     }
 
+    /// Returns the supplied local time in seconds before applying the delay.
     pub const fn local_time_secs(self) -> Option<f64> {
         self.local_time_secs
     }
@@ -440,17 +436,25 @@ impl TimingSample {
         matches!(self.phase, TimingPhase::After)
     }
 
-    fn with_timing_progress(self, timing: &TimingParameters) -> Self {
+    fn with_timing_progress(
+        self,
+        timing: &TimingParameters,
+        delay_adjusted_secs: Option<f64>,
+    ) -> Self {
         match self.phase {
             TimingPhase::Before => self.with_before_fill_progress(timing),
-            TimingPhase::Active => self.with_active_progress(timing),
+            TimingPhase::Active => self.with_active_progress(timing, delay_adjusted_secs),
             TimingPhase::After => self.with_after_fill_progress(timing),
             TimingPhase::Idle => self,
         }
     }
 
-    fn with_active_progress(mut self, timing: &TimingParameters) -> Self {
-        let Some(local_time_secs) = self.local_time_secs else {
+    fn with_active_progress(
+        mut self,
+        timing: &TimingParameters,
+        delay_adjusted_secs: Option<f64>,
+    ) -> Self {
+        let Some(delay_adjusted_secs) = delay_adjusted_secs else {
             return self;
         };
 
@@ -459,7 +463,7 @@ impl TimingSample {
             return self;
         }
 
-        let overall_progress = local_time_secs / duration_secs;
+        let overall_progress = delay_adjusted_secs / duration_secs;
         if !overall_progress.is_finite() {
             return self;
         }
@@ -561,14 +565,14 @@ impl ActiveDuration {
         }
     }
 
-    const fn phase_for_local_time(self, local_time_secs: f64) -> TimingPhase {
-        if local_time_secs < 0.0 {
+    const fn phase_for_delay_adjusted_time(self, delay_adjusted_secs: f64) -> TimingPhase {
+        if delay_adjusted_secs < 0.0 {
             return TimingPhase::Before;
         }
 
         match self {
             Self::Finite(0.0) => TimingPhase::After,
-            Self::Finite(active_duration_secs) if local_time_secs < active_duration_secs => {
+            Self::Finite(active_duration_secs) if delay_adjusted_secs < active_duration_secs => {
                 TimingPhase::Active
             }
             Self::Finite(_) => TimingPhase::After,
@@ -581,16 +585,6 @@ impl ActiveDuration {
             Self::Finite(_) => TimingPhase::After,
             Self::Unbounded => TimingPhase::Active,
         }
-    }
-}
-
-fn checked_local_time_secs(elapsed: ElapsedTime, delay: AnimationDelay) -> Option<f64> {
-    let local_time_secs = elapsed.as_secs() - delay.as_secs();
-
-    if local_time_secs.is_finite() {
-        Some(local_time_secs)
-    } else {
-        None
     }
 }
 
@@ -893,7 +887,7 @@ mod tests {
         );
 
         assert_eq!(sample.phase(), TimingPhase::After);
-        assert_eq!(sample.local_time_secs(), None);
+        assert_eq!(sample.local_time_secs(), Some(f64::MAX));
         assert_eq!(sample.active_duration_secs(), Some(f64::MAX));
     }
 
