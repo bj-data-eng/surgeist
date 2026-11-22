@@ -44,8 +44,9 @@ pub(super) fn reflects_live_tag_collection_properties() {
                     [...c].length !== 2 || [...c][0] !== first || [...c][1] !== second) return "iterator";
                 if (indexed?.value !== first || indexed.writable || !indexed.enumerable || !indexed.configurable ||
                     named?.value !== first || named.writable || named.enumerable || !named.configurable) return "descriptors";
+                const names = Object.getOwnPropertyNames(c);
                 if (Object.keys(c).join(",") !== "0,1" ||
-                    !Object.getOwnPropertyNames(c).includes("duplicate")) return "own keys";
+                    !names.includes("duplicate") || names.includes("item")) return "own keys";
                 let converted = 0;
                 const name = { toString() { converted++; return "first"; } };
                 try { HTMLCollection.prototype.namedItem.call({}, name); return "forged receiver"; }
@@ -56,6 +57,11 @@ pub(super) fn reflects_live_tag_collection_properties() {
                 if (Reflect.deleteProperty(c, "duplicate")) return "named deletion";
                 if (Reflect.set(c, "77", {}) || Object.hasOwn(c, "77")) return "indexed assignment";
                 if (Reflect.preventExtensions(c) || !Object.isExtensible(c)) return "extensibility";
+                const originalPrototype = Object.getPrototypeOf(c);
+                const ordinary = {};
+                if (!Reflect.setPrototypeOf(c, ordinary) ||
+                    Reflect.setPrototypeOf(ordinary, c) ||
+                    !Reflect.setPrototypeOf(c, originalPrototype)) return "ordinary prototype";
                 return "ok";
             })()"#;
         let observed = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
@@ -89,6 +95,7 @@ pub(super) fn reflects_live_tag_collection_properties() {
             const upper = xml.createElementNS("urn:collection", "t:Meta");
             const lower = xml.createElementNS("urn:collection", "t:meta");
             const replacement = xml.createElementNS(null, "\uFFFD");
+            replacement.setAttribute("id", "77");
             const root = xml.documentElement;
             root.appendChild(upper);
             root.appendChild(lower);
@@ -100,7 +107,9 @@ pub(super) fn reflects_live_tag_collection_properties() {
                 xml.getElementsByTagName("\uFFFD").item(0) === replacement &&
                 xml.getElementsByTagName("\uD800").length === 0 &&
                 wildcard.length === 4 && wildcard.item(0) === root &&
-                wildcard.item(1) === upper && wildcard.item(3) === replacement;
+                wildcard.item(1) === upper && wildcard.item(3) === replacement &&
+                wildcard.namedItem("77") === replacement &&
+                !Object.getOwnPropertyNames(wildcard).includes("77");
         })())"#,
         1.0,
     );

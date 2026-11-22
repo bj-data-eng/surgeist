@@ -171,6 +171,7 @@ impl<'scope> Scope<'scope> {
     /// When a second argument is present, it instead returns whether the key is
     /// supported. The keys callback returns a dense array of numeric indices
     /// without arguments, or a dense array of string names with one argument.
+    /// Invalid key arrays throw a guest TypeError during reflection.
     /// Use the ordinary prototype provided by the native interface.
     pub fn project_native_object_with_collection_properties<
         T: 'static,

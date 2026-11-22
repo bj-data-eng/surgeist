@@ -200,7 +200,7 @@ fn enumerate<'s>(
         keys.call(scope, holder.into(), &[])
     };
     if let Some(observed) = observed
-        && let Some(array) = snapshot_keys(scope, observed, named)
+        && let Some(array) = snapshot_keys(scope, holder, observed, named)
     {
         result.set(array);
     }
@@ -208,6 +208,7 @@ fn enumerate<'s>(
 
 fn snapshot_keys<'s>(
     scope: &mut PinScope<'s, '_>,
+    holder: Local<'s, Object>,
     observed: Local<'s, Value>,
     named: bool,
 ) -> Option<Local<'s, Array>> {
@@ -233,7 +234,12 @@ fn snapshot_keys<'s>(
             invalid_keys(scope);
             return None;
         }
-        let key = Integer::new_from_unsigned(scope, index).to_string(scope)?;
+        // For all-key reflection, V8 consumes named interceptor results
+        // without applying its usual non-masking lookup rule.
+        if named && !holder.has_own_property(scope, Local::<Name>::try_from(value).ok()?)? {
+            continue;
+        }
+        let key = Integer::new_from_unsigned(scope, result.length()).to_string(scope)?;
         if result.create_data_property(scope, key.into(), value) != Some(true) {
             return None;
         }
