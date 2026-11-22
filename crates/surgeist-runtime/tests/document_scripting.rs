@@ -159,6 +159,8 @@ mod translate_reflection;
 mod window_document;
 #[path = "document_scripting/window_length.rs"]
 mod window_length;
+#[path = "document_scripting/window_properties.rs"]
+mod window_properties;
 #[path = "document_scripting/window_timers.rs"]
 mod window_timers;
 #[path = "document_scripting/wpt_window_startup.rs"]
@@ -2506,6 +2508,8 @@ fn main() {
             "custom-element-construction" => native_window_defines_and_constructs_custom_elements(),
             "form-associated-custom-elements" => form_associated_custom_elements::attached_form_associated_custom_elements_deliver_native_reactions(),
             "window-length" => window_length::attached_window_length_tracks_current_native_children(),
+            "window-named-properties" => window_properties::named_window_elements_follow_the_live_document(),
+            "window-indexed-properties" => window_properties::indexed_window_children_follow_the_live_browsing_contexts(),
             "window-document-projection" => window_document::window_projects_the_live_document_and_node_brands(),
             "content-editable" => content_editable::attached_html_elements_use_native_content_editability(),
             "hidden-reflection" => hidden_reflection::attached_hidden_reflects_the_native_attribute_and_web_idl_union(),
@@ -2646,6 +2650,8 @@ fn main() {
     window_timers::window_schedules_and_cancels_after_guest_entry();
     window_document::window_projects_the_live_document_and_node_brands();
     window_length::attached_window_length_tracks_current_native_children();
+    window_properties::named_window_elements_follow_the_live_document();
+    window_properties::indexed_window_children_follow_the_live_browsing_contexts();
     content_editable::attached_html_elements_use_native_content_editability();
     hidden_reflection::attached_hidden_reflects_the_native_attribute_and_web_idl_union();
     html_prototype_order::attached_html_prototypes_link_constructors_after_own_members();
