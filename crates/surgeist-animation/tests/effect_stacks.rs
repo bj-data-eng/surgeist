@@ -840,3 +840,181 @@ fn color_nonadditive_addition_samples_through_the_effect_stack() {
 fn color_nonadditive_accumulation_samples_through_the_effect_stack() {
     assert_color_stack_fallback(CompositeOperation::Accumulate);
 }
+
+#[test]
+fn integration_cancelled_animation_cannot_contribute_stale_finished_data() {
+    use surgeist_animation::playback::PlaybackCommand;
+    let mut records = AnimationRecords::new();
+    let stale = input(
+        &mut records,
+        &[("x", number(7.0))],
+        CompositeOperation::Replace,
+    );
+    let context = PlaybackContext::new(vec![stale.timeline.unwrap()]).unwrap();
+    records
+        .apply(
+            &stale.animation,
+            PlaybackCommand::SetStartTime(Some(TimelineTime::from_millis(0.0).unwrap())),
+            &context,
+        )
+        .unwrap();
+    assert_eq!(
+        records
+            .snapshot(&stale.animation, stale.timeline)
+            .unwrap()
+            .observation()
+            .unwrap()
+            .play_state(),
+        EffectPlayState::Finished
+    );
+    records
+        .apply(&stale.animation, PlaybackCommand::Cancel, &context)
+        .unwrap();
+    assert_eq!(
+        records
+            .snapshot(&stale.animation, stale.timeline)
+            .unwrap()
+            .observation()
+            .unwrap()
+            .play_state(),
+        EffectPlayState::Idle
+    );
+    let snapshot = EffectStackSnapshot::new(&records, vec![stale]).unwrap();
+    assert_eq!(sample(&snapshot, "x", &number(0.0)), None);
+    assert!(snapshot.replacements().unwrap().is_empty());
+}
+
+#[test]
+fn integration_same_duration_reassociation_rejects_old_computed_frames() {
+    use surgeist_animation::playback::PlaybackCommand;
+    let mut records = AnimationRecords::new();
+    let stale = input(
+        &mut records,
+        &[("x", number(7.0))],
+        CompositeOperation::Replace,
+    );
+    let context = PlaybackContext::new(vec![stale.timeline.unwrap()]).unwrap();
+    let another = records
+        .register_effect(EffectFacts::from_timing(&timing()))
+        .unwrap();
+    records
+        .apply(
+            &stale.animation,
+            PlaybackCommand::AssignEffect(Some(another)),
+            &context,
+        )
+        .unwrap();
+    assert_eq!(
+        EffectStackSnapshot::new(&records, vec![stale])
+            .unwrap_err()
+            .kind(),
+        EffectStackErrorKind::EffectMismatch
+    );
+}
+
+#[test]
+fn integration_same_duration_setup_revision_rejects_old_computed_frames() {
+    let mut records = AnimationRecords::new();
+    let stale = input(
+        &mut records,
+        &[("x", number(7.0))],
+        CompositeOperation::Replace,
+    );
+    let context = PlaybackContext::new(vec![stale.timeline.unwrap()]).unwrap();
+    let setup = records
+        .snapshot(&stale.animation, stale.timeline)
+        .unwrap()
+        .effect()
+        .unwrap()
+        .clone();
+    records
+        .update_effect(setup.id(), setup.facts(), &context)
+        .unwrap();
+    assert_eq!(
+        EffectStackSnapshot::new(&records, vec![stale])
+            .unwrap_err()
+            .kind(),
+        EffectStackErrorKind::EffectMismatch
+    );
+}
+
+fn integration_scale(value: f64) -> InterpolableValue {
+    use surgeist_animation::interpolation::TransformValue;
+    use surgeist_animation::transform::{ResolvedTransformList, ScaleFactor, TransformFunction};
+    InterpolableValue::transform(TransformValue::resolved(ResolvedTransformList::new(vec![
+        TransformFunction::ScaleX(ScaleFactor::new(value).unwrap()),
+    ])))
+}
+
+fn integration_shadow_items(values: &[(f64, f64)]) -> InterpolableValue {
+    use surgeist_animation::interpolation::{ColorInterpolationSpace, InterpolableColor};
+    use surgeist_animation::shadow::{ShadowGeometry, ShadowInput, ShadowKind, ShadowList};
+    let color = InterpolableColor::from_straight_components(
+        ColorInterpolationSpace::Srgb,
+        1.0,
+        0.0,
+        0.0,
+        UnitRatio::new(1.0).unwrap(),
+    )
+    .unwrap();
+    InterpolableValue::shadow(
+        ShadowList::new(
+            ShadowKind::Box,
+            values
+                .iter()
+                .map(|&(x, blur)| {
+                    ShadowInput::new(
+                        ShadowKind::Box,
+                        ShadowGeometry::new([x, 0.0, blur, 0.0]).unwrap(),
+                        color,
+                        false,
+                    )
+                    .unwrap()
+                })
+                .collect(),
+        )
+        .unwrap(),
+    )
+}
+
+#[test]
+fn integration_default_operations_use_transform_accumulation() {
+    use surgeist_animation::composition::PropertyValueOperations;
+    let operations = AnimationTypeOperations::new(AnimationType::ByComputedValue);
+    assert_eq!(
+        operations.accumulate(
+            &key("transform"),
+            &integration_scale(2.0),
+            &integration_scale(3.0)
+        ),
+        Ok(integration_scale(4.0))
+    );
+}
+
+#[test]
+fn integration_default_operations_use_shadow_addition() {
+    use surgeist_animation::composition::PropertyValueOperations;
+    let operations = AnimationTypeOperations::new(AnimationType::ByComputedValue);
+    assert_eq!(
+        operations.add(
+            &key("box-shadow"),
+            &integration_shadow_items(&[(1.0, 2.0)]),
+            &integration_shadow_items(&[(3.0, 4.0)])
+        ),
+        Ok(integration_shadow_items(&[(1.0, 2.0), (3.0, 4.0)]))
+    );
+}
+
+#[test]
+fn integration_default_operations_use_shadow_accumulation() {
+    use surgeist_animation::composition::PropertyValueOperations;
+    let operations = AnimationTypeOperations::new(AnimationType::ByComputedValue);
+    assert_eq!(
+        operations.accumulate(
+            &key("box-shadow"),
+            &integration_shadow_items(&[(1.0, 2.0)]),
+            &integration_shadow_items(&[(3.0, 4.0)])
+        ),
+        Ok(integration_shadow_items(&[(4.0, 6.0)]))
+    );
+}
