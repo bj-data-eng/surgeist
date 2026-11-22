@@ -6,7 +6,7 @@ use crate::accounting::{RenderAccountingContext, RenderAttemptKind, RenderPhase}
 
 use super::{
     Account, Direction, Header, ProfileError, device_channel_count, find_tag, lut, media_white,
-    mpe, pcs, read_tag_table,
+    model, mpe, pcs, read_tag_table,
 };
 use crate::{Error, Result};
 
@@ -364,7 +364,7 @@ impl<'a> IccProfile<'a> {
                     let account = account.at(RenderPhase::IccProfileConvert);
                     match &mut transform {
                         NativeTransform::Mpe(mpe) => mpe.evaluate(input, output, &account),
-                        NativeTransform::Lut(pipeline) => self.evaluate_relative(
+                        NativeTransform::Relative(pipeline) => self.evaluate_relative(
                             direction,
                             intent,
                             input,
@@ -436,19 +436,29 @@ impl<'a> IccProfile<'a> {
         let tag = match find_tag(&table, preferred, account)? {
             None if preferred != fallback => find_tag(&table, fallback, account)?,
             found => found,
-        }
-        .ok_or(ProfileError::Unsupported)?;
-        let payload = tag.payload(self.bytes)?;
-        let pipeline = lut::Lut::read(
-            payload,
-            version,
-            (&self.header.data_space, &self.header.pcs),
-            direction,
-            input,
-            output,
-            account,
-        )?;
-        Ok(NativeTransform::Lut(pipeline))
+        };
+        let pipeline = if let Some(tag) = tag {
+            let payload = tag.payload(self.bytes)?;
+            RelativeTransform::Lut(lut::Lut::read(
+                payload,
+                version,
+                (&self.header.data_space, &self.header.pcs),
+                direction,
+                input,
+                output,
+                account,
+            )?)
+        } else {
+            RelativeTransform::Model(model::Model::read(
+                &table,
+                self.bytes,
+                &self.header,
+                self.pcs,
+                direction,
+                account,
+            )?)
+        };
+        Ok(NativeTransform::Relative(pipeline))
     }
 }
 
@@ -458,7 +468,21 @@ impl<'a> IccProfile<'a> {
 )]
 enum NativeTransform<'a> {
     Mpe(mpe::MpeTransform<'a>),
+    Relative(RelativeTransform<'a>),
+}
+
+enum RelativeTransform<'a> {
     Lut(lut::Lut<&'a [u8]>),
+    Model(model::Model<'a>),
+}
+
+impl RelativeTransform<'_> {
+    fn evaluate(&self, input: &[f64], output: &mut [f64], account: &Account) -> Result<()> {
+        match self {
+            Self::Lut(pipeline) => pipeline.evaluate(input, output, account),
+            Self::Model(pipeline) => pipeline.evaluate(input, output, account),
+        }
+    }
 }
 
 fn validate_coordinates(coordinates: &[f64]) -> Result<()> {
