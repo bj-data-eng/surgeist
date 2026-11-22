@@ -365,14 +365,31 @@ class DescriptionTests(unittest.TestCase):
             with self.subTest(key=key):
                 self.setUp()
                 del self.data["access_mappings"][key]
-                self.rejected("indexed setter and legacy factory")
+                self.rejected("special mutation and legacy factory")
 
     def test_unnamed_select_indexed_setter_cannot_be_mapped_as_callable(self):
         mappings = self.data["access_mappings"]
         mappings["HTMLSelectElement.operation:0/call"] = mappings.pop(
             "HTMLSelectElement.operation:0/index-set"
         )
-        self.rejected("indexed setter and legacy factory")
+        self.rejected("special mutation and legacy factory")
+
+    def test_dom_string_map_distinguishes_named_mutation_from_indexed_or_callable(self):
+        definition = self.definition("DOMStringMap")
+        self.assertEqual(definition["attributes"], [
+            {"name": "Exposed", "value": "Window"}, {"name": "LegacyOverrideBuiltIns"},
+        ])
+        expected = [("getter", "/call"), ("setter", "/name-set"), ("deleter", "/name-delete")]
+        self.assertEqual(len(definition["members"]), len(expected))
+        for member, (special, suffix) in zip(definition["members"], expected, strict=True):
+            with self.subTest(special=special):
+                self.assertEqual(member["special"], special)
+                self.assertNotIn("name", member)
+                self.assertEqual(member["arguments"][0]["type"], {"kind": "named", "name": "DOMString"})
+                self.assertEqual(self.data["access_mappings"][member["id"] + suffix]["kind"], "native")
+        mappings = self.data["access_mappings"]
+        mappings["DOMStringMap.operation:1/index-set"] = mappings.pop("DOMStringMap.operation:1/name-set")
+        self.rejected("special mutation and legacy factory")
 
     def test_node_filter_legacy_constants_cannot_be_dropped_from_pinned_idl(self):
         # The exact declaration is the artifact contract: even obsolete SHOW

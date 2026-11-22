@@ -3,7 +3,9 @@ use super::dialog::OperationDraft;
 use super::*;
 use crate::internal::hosted::ScriptRegistration;
 use crate::internal::source::callback::CallbackWork;
-use crate::internal::store::attributes::{AttributeAttachmentPlan, PreparedAttributeName};
+use crate::internal::store::attributes::{
+    AttributeAttachmentPlan, AttributeNameInput, PreparedAttributeName,
+};
 use crate::{internal::hosted::DomDocumentScriptRegistration, internal::hosted::DomHostedError};
 use surgeist_html::security::csp::{
     HtmlCspArtifactLayout, HtmlCspDisposalWork, HtmlCspLayout, HtmlCspStorage,
@@ -336,19 +338,21 @@ impl Operation {
         let (element, sink, operands) = match command {
             Command::SetAttribute {
                 node,
-                namespace,
                 name,
                 value,
                 mode: AttributeSetterMode::Standard,
-            } => {
+                ..
+            }
+            | Command::SetAttributeLocalName { node, name, value } => {
                 self.draft.source_step(cancel)?;
                 let element = self.draft.resolve(node.clone())?;
-                let (name, sink) = self.draft.prepare_standard_attribute_name(
-                    element,
-                    namespace.as_ref(),
-                    name,
-                    cancel,
-                )?;
+                let name_input = match command {
+                    Command::SetAttribute { namespace, .. } => namespace.as_ref().into(),
+                    _ => AttributeNameInput::Local,
+                };
+                let (name, sink) = self
+                    .draft
+                    .prepare_standard_attribute_name(element, name_input, name, cancel)?;
                 let Some(sink) = sink else {
                     return self
                         .draft

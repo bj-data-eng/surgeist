@@ -172,6 +172,7 @@ pub(in crate::document_scripting::guest::interfaces) struct ElementBindings {
     element: RetainedCallbackObject,
     attribute_map: attribute::map::MapProjection,
     token_list: token_list::Projection,
+    pub(super) dataset: super::dataset::Projection,
     mathml: RetainedCallbackObject,
     html: Vec<HtmlPrototype>,
     svg: svg::SvgBindings,
@@ -369,6 +370,7 @@ impl ElementBindings {
         )?;
         token_list::install_reflection(scope, &element, capture, token_list::Reflection::Class)?;
         let token_list = token_list::install(scope, &global, capture, fund)?;
+        let dataset = super::dataset::install(scope, &global, capture, fund)?;
         super::reflection::install(
             scope,
             &element,
@@ -435,6 +437,7 @@ impl ElementBindings {
             element: scope.retain_callback_object(base, fund)?,
             attribute_map,
             token_list,
+            dataset,
             mathml: scope.retain_callback_object(mathml, fund)?,
             html: classes,
             svg,

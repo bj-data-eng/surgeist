@@ -1633,6 +1633,25 @@ impl DomSourceEdit {
             AttributeSetterMode::Standard,
         )
     }
+    /// Set an exact local name in the null namespace, without a prefix.
+    ///
+    /// This applies the DOM local-name grammar directly. A colon is a local
+    /// name character here, and no HTML case folding or qualified-name
+    /// splitting applies. The standard attribute verification and hooks run.
+    pub fn set_attribute_local_name(
+        node: NodeId,
+        name: impl Into<DocumentString>,
+        value: impl Into<DocumentString>,
+    ) -> Self {
+        Self {
+            command: Command::SetAttributeLocalName {
+                node: node.into(),
+                name: name.into(),
+                value: value.into(),
+            },
+        }
+    }
+
     /// Write a qualified attribute as part of native canonical authoring.
     pub fn set_native_attribute(
         node: NodeId,

@@ -1,4 +1,4 @@
-//! Nonce, autofocus and tabIndex installed on each including interface.
+//! Dataset, nonce, autofocus and tabIndex on each including interface.
 
 use super::{
     reflection::{self, Receiver, Reflection},
@@ -30,6 +30,7 @@ pub(super) fn install<'scope>(
     capture: CaptureFunding<'_>,
     receiver: Receiver,
 ) -> Result<(), DocumentGuestEventError> {
+    super::dataset::install_accessor(scope, prototype, capture, receiver)?;
     let get = capture(size_of::<(Capture, Receiver)>())?;
     let set = capture(size_of::<(Capture, Receiver)>())?;
     let getter = scope.fixed_arity_function(

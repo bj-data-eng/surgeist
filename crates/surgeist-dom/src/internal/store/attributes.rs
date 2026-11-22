@@ -75,8 +75,21 @@ enum AttributeLookup<'a> {
     },
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum AttributeNameInput<'a> {
+    Qualified,
+    Namespaced(&'a Namespace),
+    Local,
+}
+
+impl<'a> From<Option<&'a Namespace>> for AttributeNameInput<'a> {
+    fn from(namespace: Option<&'a Namespace>) -> Self {
+        namespace.map_or(Self::Qualified, Self::Namespaced)
+    }
+}
+
 struct AttributeSetter<'a> {
-    namespace: Option<&'a Namespace>,
+    name_input: AttributeNameInput<'a>,
     name: &'a DocumentString,
     value: &'a DocumentString,
     mode: AttributeSetterMode,
@@ -466,7 +479,7 @@ impl Draft {
         self.set_attribute_value(
             node,
             AttributeSetter {
-                namespace,
+                name_input: namespace.into(),
                 name,
                 value,
                 mode: AttributeSetterMode::Native,
@@ -487,7 +500,7 @@ impl Draft {
         self.set_attribute_value(
             node,
             AttributeSetter {
-                namespace,
+                name_input: namespace.into(),
                 name,
                 value,
                 mode: AttributeSetterMode::Standard,
@@ -496,6 +509,27 @@ impl Draft {
             cancelled,
         )
     }
+    pub(super) fn set_local_attribute(
+        &mut self,
+        node: Key,
+        name: &DocumentString,
+        value: &DocumentString,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.set_attribute_value(
+            node,
+            AttributeSetter {
+                name_input: AttributeNameInput::Local,
+                name,
+                value,
+                mode: AttributeSetterMode::Standard,
+            },
+            limits,
+            cancelled,
+        )
+    }
+
     fn set_attribute_value(
         &mut self,
         node: Key,
@@ -504,13 +538,13 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         let AttributeSetter {
-            namespace,
+            name_input,
             name,
             value,
             mode,
         } = input;
         self.element(node)?;
-        let prepared = self.prepare_attribute_name(node, namespace, name, cancelled)?;
+        let prepared = self.prepare_attribute_name(node, name_input, name, cancelled)?;
         if mode == AttributeSetterMode::Standard {
             self.require_attribute_verification(node, &prepared.raw_name, cancelled)?;
         }
@@ -556,12 +590,12 @@ impl Draft {
     pub(super) fn prepare_standard_attribute_name(
         &self,
         node: Key,
-        namespace: Option<&Namespace>,
+        name_input: AttributeNameInput<'_>,
         name: &DocumentString,
         cancel: &AtomicBool,
     ) -> Result<(PreparedAttributeName, Option<DomSourceAttributeSink>), DomError> {
         self.element(node)?;
-        let prepared = self.prepare_attribute_name(node, namespace, name, cancel)?;
+        let prepared = self.prepare_attribute_name(node, name_input, name, cancel)?;
         let sink = self.classify_attribute_sink(node, &prepared.raw_name, cancel)?;
         Ok((prepared, sink))
     }
@@ -569,13 +603,14 @@ impl Draft {
     fn prepare_attribute_name(
         &self,
         node: Key,
-        namespace: Option<&Namespace>,
+        name_input: AttributeNameInput<'_>,
         name: &DocumentString,
         cancelled: &AtomicBool,
     ) -> Result<PreparedAttributeName, DomError> {
         let formation = source::formation::Formation::new(self, cancelled)?;
         let mut normalized = name_registry::Normalized::new(&self.names);
-        let raw_name = if let Some(namespace) = namespace {
+        let qualified = matches!(name_input, AttributeNameInput::Qualified);
+        let raw_name = if let AttributeNameInput::Namespaced(namespace) = name_input {
             attribute_name(
                 namespace,
                 name,
@@ -587,7 +622,7 @@ impl Draft {
             if !valid_attribute_local_name(name, &mut || self.name_step(cancelled))? {
                 return Err(DomError::InvalidCharacter);
             }
-            let name = if self.html_element_in_html_document(node)? {
+            let name = if qualified && self.html_element_in_html_document(node)? {
                 crate::internal::names::ascii_lowercase(
                     name,
                     &mut || self.name_step(cancelled),
@@ -605,7 +640,7 @@ impl Draft {
             raw_name,
             formation,
             normalized: normalized.into_custody(),
-            expanded: namespace.is_some(),
+            expanded: !qualified,
         })
     }
     fn prepared_attribute_position(
@@ -713,7 +748,8 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let prepared = self.prepare_attribute_name(node, None, name, cancel)?;
+        let prepared =
+            self.prepare_attribute_name(node, AttributeNameInput::Qualified, name, cancel)?;
         let position = self.prepared_attribute_position(self.element(node)?, &prepared, cancel)?;
         let present = force.unwrap_or(position.is_none());
         self.register_node_ticket(NodeTicket::ElementAttributePresent(node, present), cancel)?;

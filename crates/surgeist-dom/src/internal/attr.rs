@@ -85,14 +85,22 @@ impl<'a> DomNamedNodeMap<'a> {
     /// Visit attributes in their stored order with metered canonical lookups.
     pub fn visit_with<E: From<DomError>>(
         self,
-        mut step: impl FnMut() -> Result<(), E>,
+        step: impl FnMut() -> Result<(), E>,
         mut visit: impl FnMut(DomAttr<'a>) -> Result<(), E>,
+    ) -> Result<(), E> {
+        self.visit_accounted_with(step, |attribute, _| visit(attribute))
+    }
+
+    pub(crate) fn visit_accounted_with<E: From<DomError>, Step: FnMut() -> Result<(), E>>(
+        self,
+        mut step: Step,
+        mut visit: impl FnMut(DomAttr<'a>, &mut Step) -> Result<(), E>,
     ) -> Result<(), E> {
         for &id in self.ids() {
             step()?;
             let node = self.element.snapshot.node_with(id, &mut step)?;
             let attribute = node.as_attr().ok_or(DomError::WrongNodeKind)?;
-            visit(attribute)?;
+            visit(attribute, &mut step)?;
         }
         Ok(())
     }

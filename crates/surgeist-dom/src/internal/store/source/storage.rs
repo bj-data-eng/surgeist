@@ -558,6 +558,10 @@ pub(in crate::internal::store) fn commands(
                 payload.string(name)?;
                 payload.string(value)?;
             }
+            Command::SetAttributeLocalName { name, value, .. } => {
+                payload.string(name)?;
+                payload.string(value)?;
+            }
             Command::RemoveAttribute {
                 namespace, name, ..
             } => {

@@ -150,6 +150,7 @@ impl OperationRoot {
             | Command::Detach(node)
             | Command::Destroy(node)
             | Command::SetAttribute { node, .. }
+            | Command::SetAttributeLocalName { node, .. }
             | Command::ToggleAttribute { node, .. }
             | Command::RemoveAttribute { node, .. }
             | Command::RemoveAttributeNode { node, .. }

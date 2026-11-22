@@ -9,8 +9,9 @@ use boa_engine::object::{
     JsPrototype, WeakJsObject,
     builtins::{JsArray, JsFunction},
     host::{
-        IndexedProperties, NamedOverrideProperties, named_override, named_override_source,
-        readonly_indexed, readonly_indexed_source, readonly_indexed_with_html_dda,
+        IndexedProperties, MutableNamedOverrideProperties, NamedOverrideProperties,
+        mutable_named_override, named_override, named_override_source, readonly_indexed,
+        readonly_indexed_source, readonly_indexed_with_html_dda,
     },
 };
 use boa_engine::{
@@ -151,10 +152,17 @@ struct PropertyCallbacks {
 }
 
 #[derive(Trace, Finalize)]
-struct NamedOverride {
+struct NamedOverride<M: Trace> {
     native: Gc<NativeData>,
     callbacks: PropertyCallbacks,
     unforgeable_names: &'static [&'static [u16]],
+    mutation: M,
+}
+
+#[derive(Trace, Finalize)]
+struct NamedMutation {
+    set: JsObject,
+    delete: JsObject,
 }
 
 fn native_data(object: &JsObject) -> Option<Gc<NativeData>> {
@@ -168,7 +176,11 @@ fn native_data(object: &JsObject) -> Option<Gc<NativeData>> {
                 .map(|collection| Gc::clone(&collection.native))
         })
         .or_else(|| {
-            named_override_source::<NamedOverride>(object).map(|named| Gc::clone(&named.native))
+            named_override_source::<NamedOverride<()>>(object).map(|named| Gc::clone(&named.native))
+        })
+        .or_else(|| {
+            named_override_source::<NamedOverride<NamedMutation>>(object)
+                .map(|named| Gc::clone(&named.native))
         })
 }
 
@@ -333,7 +345,7 @@ impl<const NAMED: bool> IndexedProperties for Collection<NAMED> {
     }
 }
 
-impl NamedOverrideProperties for NamedOverride {
+impl<M: Trace + 'static> NamedOverrideProperties for NamedOverride<M> {
     fn named_value(
         &self,
         holder: &JsObject,
@@ -370,6 +382,37 @@ impl NamedOverrideProperties for NamedOverride {
         self.unforgeable_names
             .iter()
             .any(|declared| name == *declared)
+    }
+}
+
+impl MutableNamedOverrideProperties for NamedOverride<NamedMutation> {
+    fn set_named_value(
+        &self,
+        holder: &JsObject,
+        name: &JsString,
+        value: &JsValue,
+        context: &mut Context,
+    ) -> JsResult<()> {
+        self.mutation
+            .set
+            .call(
+                &holder.clone().into(),
+                &[name.clone().into(), value.clone()],
+                context,
+            )
+            .map(drop)
+    }
+
+    fn delete_named_value(
+        &self,
+        holder: &JsObject,
+        name: &JsString,
+        context: &mut Context,
+    ) -> JsResult<()> {
+        self.mutation
+            .delete
+            .call(&holder.clone().into(), &[name.clone().into()], context)
+            .map(drop)
     }
 }
 
@@ -444,15 +487,36 @@ impl Entered<'_> {
                 read,
                 keys,
                 unforgeable_names,
-            }) => named_override(
-                root_shape,
-                prototype,
-                NamedOverride {
-                    native,
-                    callbacks: callbacks(read, keys)?,
-                    unforgeable_names,
-                },
-            ),
+                mutation,
+            }) => {
+                let callbacks = callbacks(read, keys)?;
+                if let Some(mutation) = mutation {
+                    mutable_named_override(
+                        root_shape,
+                        prototype,
+                        NamedOverride {
+                            native,
+                            callbacks,
+                            unforgeable_names,
+                            mutation: NamedMutation {
+                                set: callable(mutation.set)?.into(),
+                                delete: callable(mutation.delete)?.into(),
+                            },
+                        },
+                    )
+                } else {
+                    named_override(
+                        root_shape,
+                        prototype,
+                        NamedOverride {
+                            native,
+                            callbacks,
+                            unforgeable_names,
+                            mutation: (),
+                        },
+                    )
+                }
+            }
             Some(NativeProjectionSlot::Collection { read, keys, kind }) => {
                 let callbacks = callbacks(read, keys)?;
                 match kind {

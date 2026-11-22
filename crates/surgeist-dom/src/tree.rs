@@ -22,6 +22,7 @@
 //! and `docs/node-iterators.md` own the contracts.
 
 pub use crate::internal::attr::{DomAttr, DomAttributeAttachment, DomNamedNodeMap};
+pub use crate::internal::dataset::DomDataset;
 pub use crate::internal::element::DomElement;
 pub use crate::internal::name::{DomAttribute, DomNameAtom, DomQualifiedName};
 pub use crate::internal::node_iterator::{

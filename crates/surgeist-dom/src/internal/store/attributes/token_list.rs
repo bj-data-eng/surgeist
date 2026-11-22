@@ -55,8 +55,12 @@ impl Draft {
         if let Some(value) = value {
             let name =
                 source::formation::string(list.attribute_name_str(), scratch.as_ref(), cancel)?;
-            let prepared =
-                self.prepare_attribute_name(node, Some(&Namespace::none()), &name, cancel)?;
+            let prepared = self.prepare_attribute_name(
+                node,
+                AttributeNameInput::Namespaced(&Namespace::none()),
+                &name,
+                cancel,
+            )?;
             self.apply_attribute_name_at(node, prepared, position, &value, limits, cancel)?;
         }
         Ok(())

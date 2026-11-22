@@ -1493,6 +1493,18 @@
       "entries": [
         "HTMLIFrameElement.obsolete"
       ]
+    },
+    {
+      "id": "DOMStringMap.source",
+      "path": "references/html-language-foundations--877d6146487f--b55e73c31978.md",
+      "anchor": "domstringmap",
+      "block": 0,
+      "sha256": "7a799cd593bb266c6c8b4f4dde57a662994fe9e6d22cb3354acf35b783f5014e",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#domstringmap",
+      "entries": [
+        "DOMStringMap"
+      ]
     }
   ],
   "declarations": [
@@ -14467,6 +14479,98 @@
         }
       ],
       "partial": true
+    },
+    {
+      "id": "DOMStringMap",
+      "kind": "interface",
+      "name": "DOMStringMap",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        },
+        {
+          "name": "LegacyOverrideBuiltIns"
+        }
+      ],
+      "members": [
+        {
+          "id": "DOMStringMap.operation:0",
+          "kind": "operation",
+          "special": "getter",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "arguments": [
+            {
+              "name": "name",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "presence": "required"
+            }
+          ],
+          "attributes": []
+        },
+        {
+          "id": "DOMStringMap.operation:1",
+          "kind": "operation",
+          "special": "setter",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [
+            {
+              "name": "name",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "presence": "required"
+            },
+            {
+              "name": "value",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "presence": "required"
+            }
+          ],
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ]
+        },
+        {
+          "id": "DOMStringMap.operation:2",
+          "kind": "operation",
+          "special": "deleter",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [
+            {
+              "name": "name",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "presence": "required"
+            }
+          ],
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ]
+        }
+      ]
     }
   ],
   "includes": [
@@ -14658,13 +14762,6 @@
       "owner": "surgeist-runtime",
       "url": "https://github.com/w3c/hr-time/blob/1f0b9faf793db3b06c8e85462448e8a812d00fb9/index.bs",
       "requirement": "DOMHighResTimeStamp shared HR-Time double type; native monotonic clock and time origin remain Runtime-owned, not invented from an IDL number."
-    },
-    {
-      "name": "DOMStringMap",
-      "kind": "interface",
-      "owner": "surgeist-dom",
-      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#domstringmap",
-      "requirement": "Source-qualified DOMStringMap definition and its owning native/binding family; not an empty installed interface."
     },
     {
       "name": "ElementInternals",
@@ -20043,16 +20140,22 @@
       "requirements": []
     },
     "HTMLOrSVGOrMathMLElement.dataset/get": {
-      "kind": "derived",
-      "algorithm": "htmlorsvgormathmlelement.dataset.get",
-      "owner": "surgeist-bindings-js",
-      "contract": "Return the SameObject DOMStringMap view associated with this Element; its external family uses the source data-* name transformation, own-property hooks and native attribute writer rather than independent mutable values.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-dataset",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/element.rs", "symbol": "attributes"}
+      "kind": "native",
+      "adapter": "htmlorsvgormathmlelement.dataset.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/dataset.rs",
+          "symbol": "element_dataset"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/dataset.rs",
+          "symbol": "DomDataset"
+        }
       ],
-      "requirements": []
+      "requirements": [],
+      "result_view": "live"
     },
     "HTMLOrSVGOrMathMLElement.nonce/get": {
       "kind": "native",
@@ -29940,6 +30043,57 @@
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
         "issue": 2258
       }
+    },
+    "DOMStringMap.operation:0/call": {
+      "kind": "native",
+      "adapter": "domstringmap.name.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/dataset.rs",
+          "symbol": "dataset_read"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/dataset.rs",
+          "symbol": "get_with"
+        }
+      ],
+      "requirements": []
+    },
+    "DOMStringMap.operation:1/name-set": {
+      "kind": "native",
+      "adapter": "domstringmap.name.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/dataset.rs",
+          "symbol": "dataset_edit"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_local_name"
+        }
+      ],
+      "requirements": []
+    },
+    "DOMStringMap.operation:2/name-delete": {
+      "kind": "native",
+      "adapter": "domstringmap.name.delete",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/dataset.rs",
+          "symbol": "dataset_edit"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_attribute"
+        }
+      ],
+      "requirements": []
     }
   },
   "semantics": {

@@ -3,10 +3,10 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-use crate::backend::{NativeCollectionKind, NativeProjectionSlot};
+use crate::backend::{NativeCollectionKind, NativeNamedMutation, NativeProjectionSlot};
 use crate::callback_object::CallbackObjectIdentity;
 use crate::{
-    Error, ObjectPrototype, PropertyDescriptor, PropertyKey, RealmAuthority,
+    Error, ObjectPrototype, PropertyDescriptor, PropertyKey, RealmAuthority, RealmId,
     RetainedCallbackObject, Scope, Value,
 };
 
@@ -89,6 +89,24 @@ impl fmt::Debug for NativeNamedPropertyCallbacks<'_, '_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("NativeNamedPropertyCallbacks")
+            .finish_non_exhaustive()
+    }
+}
+
+/// Native callbacks for a mutable named-only Web IDL object.
+pub struct NativeMutableNamedPropertyCallbacks<'value, 'scope> {
+    /// The read, presence and ordered key producers, and unforgeable names.
+    pub properties: NativeNamedPropertyCallbacks<'value, 'scope>,
+    /// Receives the original holder, string name and unconverted assigned value.
+    pub set: &'value Value<'scope>,
+    /// Receives the original holder and a currently visible supported name.
+    pub delete: &'value Value<'scope>,
+}
+
+impl fmt::Debug for NativeMutableNamedPropertyCallbacks<'_, '_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("NativeMutableNamedPropertyCallbacks")
             .finish_non_exhaustive()
     }
 }
@@ -353,6 +371,75 @@ impl<'scope> Scope<'scope> {
         )
     }
 
+    /// Project a typed native object with mutable, enumerable named properties.
+    /// All four callbacks must be callable in the current creation realm.
+    /// Ordinary Symbols remain separate from the native string-name interface.
+    ///
+    /// # Errors
+    /// Returns the first callback, realm, backing or engine refusal.
+    pub fn project_native_object_with_mutable_named_properties<
+        T: 'static,
+        Storage: 'static,
+        E: From<Error>,
+    >(
+        &mut self,
+        prototype: ObjectPrototype<'_, 'scope>,
+        payload: T,
+        callbacks: NativeMutableNamedPropertyCallbacks<'_, 'scope>,
+        admit: impl FnOnce(usize) -> Result<Storage, E>,
+    ) -> Result<Value<'scope>, E> {
+        let NativeMutableNamedPropertyCallbacks {
+            properties:
+                NativeNamedPropertyCallbacks {
+                    read,
+                    keys,
+                    unforgeable_names,
+                },
+            set,
+            delete,
+        } = callbacks;
+        let realm = self.realm_authority()?.identity();
+        self.qualify_named_callback_realm([read, keys, set, delete], realm)?;
+        self.project_payload(
+            prototype,
+            payload,
+            Some(NativeProjectionSlot::NamedOverride {
+                read: &read.root,
+                keys: &keys.root,
+                unforgeable_names,
+                mutation: Some(NativeNamedMutation {
+                    set: &set.root,
+                    delete: &delete.root,
+                }),
+            }),
+            admit,
+        )
+    }
+
+    fn qualify_named_callback_realm<'value>(
+        &mut self,
+        callbacks: impl IntoIterator<Item = &'value Value<'scope>>,
+        realm: RealmId,
+    ) -> Result<(), Error>
+    where
+        'scope: 'value,
+    {
+        for callback in callbacks {
+            if !self.is_callable(callback)? {
+                return Err(Error::ExpectedFunction);
+            }
+            if self
+                .callback_object(callback)?
+                .associated_realm()
+                .identity()
+                != realm
+            {
+                return Err(Error::CallbackRealmUnavailable);
+            }
+        }
+        Ok(())
+    }
+
     fn project_payload<T: 'static, Storage: 'static, E: From<Error>>(
         &mut self,
         prototype: ObjectPrototype<'_, 'scope>,
@@ -462,23 +549,12 @@ impl<'scope> Scope<'scope> {
                 prototype.associated_realm().identity()
             }
         };
-        for callback in [callbacks.read, callbacks.keys] {
-            if !self.is_callable(callback)? {
-                return Err(Error::ExpectedFunction.into());
-            }
-            if self
-                .callback_object(callback)?
-                .associated_realm()
-                .identity()
-                != realm
-            {
-                return Err(Error::CallbackRealmUnavailable.into());
-            }
-        }
+        self.qualify_named_callback_realm([callbacks.read, callbacks.keys], realm)?;
         let slot = NativeProjectionSlot::NamedOverride {
             read: &callbacks.read.root,
             keys: &callbacks.keys.root,
             unforgeable_names: callbacks.unforgeable_names,
+            mutation: None,
         };
         let projected =
             self.form_retained_native_object(prototype, payload, Some(slot), admit, |_| Ok(None))?;
