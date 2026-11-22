@@ -118,9 +118,57 @@ impl Draft {
 
     pub(super) fn script_effect(
         &mut self,
-        mut frame: Frame,
+        frame: Frame,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.prepare_script(frame, false, cancel).map(|_| ())
+    }
+
+    pub(super) fn initialize_parser_inserted_script(
+        &mut self,
+        node: Key,
+        document: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let mut fields = self.script_fields_mut(node, cancel)?;
+        let state = (*fields).as_mut().ok_or(DomError::WrongNodeKind)?;
+        state.parser_document = Some(document);
+        state.flags.mark_parser_inserted();
+        fields.commit(cancel)
+    }
+
+    /// Apply the ordinary preparation prefix to an exact local parser script.
+    /// The caller verifies the original current script-host registration. On
+    /// reaching a classic executable, Runtime owns its local source and pause.
+    pub(super) fn prepare_local_parser_classic_script(
+        &mut self,
+        node: Key,
+        document: Key,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        self.source_step(cancel)?;
+        let state = self.node(node)?.script().ok_or(DomError::WrongNodeKind)?;
+        if state.parser_document != Some(document) || state.flags.already_started() {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        self.prepare_script(
+            Frame {
+                node,
+                cursor: HtmlScriptPreparationCursor::new(),
+                saved_document: None,
+                boundary: None,
+            },
+            true,
+            cancel,
+        )
+    }
+
+    fn prepare_script(
+        &mut self,
+        mut frame: Frame,
+        local_parser_classic: bool,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
         let node = frame.node;
         let mut state = self
             .node(node)?
@@ -213,9 +261,16 @@ impl Draft {
                     Reply::DocumentsEqual(state.parser_document == state.preparation_document)
                 }
                 Action::RequireDisabledScripting => {
+                    if local_parser_classic {
+                        return if state.kind == Some(HtmlScriptKind::Classic) {
+                            Ok(true)
+                        } else {
+                            Err(DomError::ScriptPreparationRequired)
+                        };
+                    }
                     if !self.script_scripting_disabled(node, cancel)? {
                         if self.headroom_script_settings(cancel)? {
-                            return Ok(());
+                            return Ok(false);
                         }
                         if self.source_limits.is_some() {
                             frame.boundary = Some(Boundary::Settings(None));
@@ -229,7 +284,7 @@ impl Draft {
                     }
                     Reply::Disabled
                 }
-                Action::Complete(_) => return Ok(()),
+                Action::Complete(_) => return Ok(false),
             };
             check_cancel(cancel)?;
             frame

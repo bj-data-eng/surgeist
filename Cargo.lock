@@ -4673,6 +4673,7 @@ dependencies = [
  "surgeist-dom",
  "surgeist-fuzz",
  "surgeist-html",
+ "surgeist-html-parser",
  "surgeist-ledger",
  "surgeist-runtime",
 ]

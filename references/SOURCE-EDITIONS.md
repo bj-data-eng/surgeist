@@ -329,6 +329,9 @@ HTML original SHA-256 is
 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
 These add representations of already cataloged identities, not newer editions.
 
+The [PageTransitionEvent declaration and firing algorithm](html-page-transition-event--877d6146487f.md)
+select the same HTML snapshot for the `pageshow` step in native stop parsing.
+
 Runtime owns one typed listener/path dispatcher and feature task servicing;
 DOM owns canonical identities and stored tree/slot relations, and HTML owns
 payload and notification rules. Nonbubbling events still invoke ancestor capture

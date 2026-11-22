@@ -19,7 +19,20 @@ read the canonical prefix. Later advances edit the same Document under one
 cumulative native work budget. Once the original EOF reaches stop parsing,
 `DomHostedHtmlParser::take_stop_parsing` transfers the continuation to Runtime
 once, while the exact Document and Global are current and the load-delay state
-is known to be empty. The handoff precedes readiness changes and load dispatch.
+is known to be empty.
+
+An attached host can submit that continuation with
+`DocumentScriptHost::begin_html_completion` and service the parser-end,
+`DOMContentLoaded`, and Window load tasks in order. Readiness and native timing
+are captured with the Document. The load task dispatches trusted `load` and
+`pageshow`, then commits the finished-loading time and runs the task-end
+microtask checkpoint. A timer queued by a load listener runs at a later timer
+opportunity. The initial `about:blank` Document starts complete.
+
+The opt-in local classic script profile pauses at the original parser-inserted
+script boundary and lets the host supply local script resources. The host
+releases each pause after script evaluation and its checkpoint. Deferred scripts,
+network fetches and unrelated resource producers are outside that profile.
 
 The actual Style association owner also retains [Document stylesheet-set
 preferences](docs/explanation.md#document-stylesheet-set-preferences), including

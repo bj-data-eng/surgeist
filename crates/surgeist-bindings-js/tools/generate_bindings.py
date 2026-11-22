@@ -1210,8 +1210,13 @@ def emit_conversions(model, arguments=(), selected_setters=()):
                 statement = "cx.default_dom_string(&" + units_literal(default["value"]) + ")"
             result += ["fn default_" + function + "(", "    cx: &mut Conversion<'_, '_>,", ") -> Result<Converted<" + output + ">, Failure> {",
                        "    " + statement, "}", ""]
-        result += ["/// Selected argument `" + lowered["id"] + "` (not overload selection).",
-                   "pub fn " + function + "() -> Argument<" + descriptor_type + "> {"]
+        result.append("/// Selected argument `" + lowered["id"] + "` (not overload selection).")
+        signature = "pub fn " + function + "()"
+        returns = "-> Argument<" + descriptor_type + "> {"
+        if len(signature) + 1 + len(returns) <= 100:
+            result.append(signature + " " + returns)
+        else:
+            result += [signature, returns]
         pieces = [json.dumps(lowered["id"]), str(lowered["index"]), str(arg["presence"] == "optional").lower(), descriptor, default_fn]
         if len(", ".join(pieces)) <= 60:
             result.append("    Argument::new(" + ", ".join(pieces) + ")")

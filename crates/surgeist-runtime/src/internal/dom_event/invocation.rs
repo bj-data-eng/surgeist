@@ -77,6 +77,70 @@ impl<C> DomEventDispatcher<C> {
         })
     }
 
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn prepare_parsing_event(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        event: ParsingEvent,
+        (global, document): (
+            surgeist_dom::hosted::DomHostedGlobalId,
+            surgeist_dom::identity::DocumentId,
+        ),
+        creation: &mut Option<Result<EventCreation, DomEventTimestampUnavailable>>,
+        cancel: &AtomicBool,
+    ) -> Result<DomEventDispatch, DomEventDispatchError> {
+        self.association.validate(dom.raw())?;
+        if creation.is_none() {
+            return Err(DomEventDispatchError::WrongContinuation);
+        }
+        let associated = dom
+            .raw()
+            .dispatch_global_document_with(global, cancel, &mut || self.storage.step(1, cancel))?;
+        if associated != document {
+            return Err(DomError::WrongDocument.into());
+        }
+        self.storage.step(1, cancel)?;
+        let backing = EventBodyCustody::owned(dom, &self.storage, cancel)?;
+        let creation = creation
+            .take()
+            .ok_or(DomEventDispatchError::WrongContinuation)?;
+        let origin = match event {
+            ParsingEvent::WindowLoad | ParsingEvent::PageShow => {
+                NativeDispatchOrigin::WindowParsing {
+                    global,
+                    document,
+                    event,
+                }
+            }
+            ParsingEvent::ReadyStateChange | ParsingEvent::DomContentLoaded => {
+                NativeDispatchOrigin::Node {
+                    node: document.node(),
+                    cause: NativeEventCause::Parsing(event),
+                }
+            }
+        };
+        let page_show = event == ParsingEvent::PageShow;
+        let payload = if page_show {
+            EventPayload::PageTransition { persisted: false }
+        } else {
+            EventPayload::None
+        };
+        Ok(DomEventDispatch {
+            owner: EventInvocationOwner::from_native(
+                origin,
+                payload,
+                DomEventInit {
+                    bubbles: event == ParsingEvent::DomContentLoaded || page_show,
+                    cancelable: page_show,
+                    composed: false,
+                },
+                creation,
+                backing,
+            ),
+            registry: self.owner.id,
+        })
+    }
+
     /// Prepare the report's selected native delivery. Refused preparation
     /// leaves the task's original creation observation available to retry.
     #[cfg(feature = "document-scripting")]

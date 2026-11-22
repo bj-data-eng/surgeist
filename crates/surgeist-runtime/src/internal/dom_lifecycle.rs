@@ -10,7 +10,11 @@ mod focus;
 mod fullscreen;
 mod history;
 mod local_html;
+#[cfg(feature = "document-scripting")]
+mod local_html_load;
 pub use local_html::{DomHostedHtmlError, DomHostedHtmlParser, DomHostedHtmlStopParsing};
+#[cfg(feature = "document-scripting")]
+pub(crate) use local_html_load::HtmlCompletionTask;
 mod policy;
 mod records;
 mod uuid;
@@ -2021,6 +2025,11 @@ pub(crate) struct NativeTaskRunning {
     complete: bool,
 }
 impl NativeTaskRunning {
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn global(&self) -> DomHostedGlobalId {
+        self.global
+    }
+
     pub(crate) fn checkpoint(
         &mut self,
         dom: &DomEventDom<'_>,
@@ -2063,13 +2072,13 @@ impl Drop for NativeTaskRunning {
 }
 
 #[cfg(feature = "document-scripting")]
-pub(crate) struct CspTaskCustody {
+pub(crate) struct DocumentTaskCustody {
     event_loop: Weak<RefCell<records::WindowLoop>>,
     current: records::CurrentTask,
 }
 
 #[cfg(feature = "document-scripting")]
-impl Drop for CspTaskCustody {
+impl Drop for DocumentTaskCustody {
     fn drop(&mut self) {
         if let Some(owner) = self.event_loop.upgrade() {
             // The runner holds no loop borrow. If it is still live, it keeps
@@ -2090,13 +2099,25 @@ impl HostedRuntime {
         global: DomHostedGlobalId,
         document: surgeist_dom::identity::DocumentId,
         task: u64,
-        custody: &mut Option<CspTaskCustody>,
+        custody: &mut Option<DocumentTaskCustody>,
         cancel: &AtomicBool,
     ) -> Result<NativeTaskRunning, DomHostedRuntimeError> {
         let current = records::CurrentTask::CspViolation { task, document };
-        let running = self.enter_document_task(dom, (global, document), current, false, cancel)?;
+        self.enter_retained_document_task(dom, (global, document), current, custody, cancel)
+    }
+
+    #[cfg(feature = "document-scripting")]
+    fn enter_retained_document_task(
+        &self,
+        dom: &DomEventDom<'_>,
+        target: (DomHostedGlobalId, surgeist_dom::identity::DocumentId),
+        current: records::CurrentTask,
+        custody: &mut Option<DocumentTaskCustody>,
+        cancel: &AtomicBool,
+    ) -> Result<NativeTaskRunning, DomHostedRuntimeError> {
+        let running = self.enter_document_task(dom, target, current, false, cancel)?;
         if custody.is_none() {
-            *custody = Some(CspTaskCustody {
+            *custody = Some(DocumentTaskCustody {
                 event_loop: Rc::downgrade(&running.event_loop),
                 current,
             });

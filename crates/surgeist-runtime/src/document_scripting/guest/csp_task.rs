@@ -1,7 +1,7 @@
 //! Deferred delivery for the attached Window's native CSP violation queue.
 
 use super::*;
-use crate::internal::dom_lifecycle::{CspTaskCustody, EventCreation};
+use crate::internal::dom_lifecycle::{DocumentTaskCustody, EventCreation};
 
 /// Progress of one attached Window's deferred CSP violation task.
 #[derive(Debug)]
@@ -16,7 +16,7 @@ pub enum DocumentCspViolationProgress {
 
 pub(super) struct ActiveViolationTask {
     number: u64,
-    custody: Option<CspTaskCustody>,
+    custody: Option<DocumentTaskCustody>,
     creation: Option<Result<EventCreation, DomEventTimestampUnavailable>>,
     dispatch: Option<DomEventDispatch>,
     receipt: Option<DomEventDispatchReceipt>,

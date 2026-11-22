@@ -250,6 +250,17 @@ impl DomEventType {
         115, 101, 99, 117, 114, 105, 116, 121, 112, 111, 108, 105, 99, 121, 118, 105, 111, 108, 97,
         116, 105, 111, 110,
     ]));
+    #[cfg(feature = "document-scripting")]
+    pub(super) const READY_STATE_CHANGE: Self = Self(EventText::Static(&[
+        114, 101, 97, 100, 121, 115, 116, 97, 116, 101, 99, 104, 97, 110, 103, 101,
+    ]));
+    #[cfg(feature = "document-scripting")]
+    pub(super) const DOM_CONTENT_LOADED: Self = Self(EventText::Static(&[
+        68, 79, 77, 67, 111, 110, 116, 101, 110, 116, 76, 111, 97, 100, 101, 100,
+    ]));
+    #[cfg(feature = "document-scripting")]
+    pub(super) const PAGE_SHOW: Self =
+        Self(EventText::Static(&[112, 97, 103, 101, 115, 104, 111, 119]));
 
     /// Exact code units, including isolated surrogates and NULs.
     pub fn code_units(&self) -> &[u16] {

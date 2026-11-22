@@ -16,6 +16,8 @@ mod element_task;
 mod interfaces;
 pub(super) use interfaces::{ActiveConstructor, ActiveReactionQueue, PendingConstructor};
 mod listeners;
+mod parsing_event;
+pub(super) use parsing_event::ParsingEventFiring;
 mod reports;
 mod source_event;
 mod wrapper;
@@ -1085,7 +1087,7 @@ impl DocumentScriptHost {
         Ok(reports.take_custom_element_callback())
     }
 
-    fn guest_events(&self) -> Result<Rc<GuestEvents>, DocumentGuestEventError> {
+    pub(super) fn guest_events(&self) -> Result<Rc<GuestEvents>, DocumentGuestEventError> {
         self.engine
             .as_ref()
             .and_then(|engine| engine.guest_events.clone())

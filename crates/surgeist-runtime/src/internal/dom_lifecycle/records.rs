@@ -111,6 +111,11 @@ pub(super) enum CurrentTask {
     },
     #[cfg(feature = "document-scripting")]
     CspViolation { task: u64, document: DocumentId },
+    #[cfg(feature = "document-scripting")]
+    HtmlCompletion {
+        task: super::HtmlCompletionTask,
+        document: DocumentId,
+    },
     History {
         operation: DomHostedOperationId,
         occurrence: u64,

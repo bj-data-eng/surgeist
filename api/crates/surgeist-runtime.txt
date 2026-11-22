@@ -773,6 +773,7 @@ pub surgeist_runtime::hosted::DomHostedHtmlError::NonEmptyDocument
 pub surgeist_runtime::hosted::DomHostedHtmlError::Parse(surgeist_html_parser::parser::tree_builder::live::HtmlLiveParseError<surgeist_dom::internal::store::DomError>)
 pub surgeist_runtime::hosted::DomHostedHtmlError::ParserAlreadyClaimed
 pub surgeist_runtime::hosted::DomHostedHtmlError::Start(surgeist_html_parser::parser::tree_builder::live::HtmlLiveParseError<core::convert::Infallible>)
+pub surgeist_runtime::hosted::DomHostedHtmlError::UnexpectedScript
 impl core::convert::From<surgeist_runtime::hosted::DomHostedRuntimeError> for surgeist_runtime::hosted::DomHostedHtmlError
 pub fn surgeist_runtime::hosted::DomHostedHtmlError::from(error: surgeist_runtime::hosted::DomHostedRuntimeError) -> Self
 #[non_exhaustive] pub enum surgeist_runtime::hosted::DomHostedRuntimeError
@@ -863,7 +864,9 @@ impl surgeist_runtime::hosted::DomHostedHtmlParser<'_>
 pub fn surgeist_runtime::hosted::DomHostedHtmlParser<'_>::abort(&mut self) -> core::result::Result<(), surgeist_html_parser::parser::control::HtmlParseStop>
 pub fn surgeist_runtime::hosted::DomHostedHtmlParser<'_>::accept_eof(&mut self)
 pub fn surgeist_runtime::hosted::DomHostedHtmlParser<'_>::advance(&mut self, hosted: &surgeist_runtime::hosted::HostedRuntime, dom: &mut surgeist_runtime::event::DomEventDom<'_>, token_limit: core::num::nonzero::NonZeroUsize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_html_parser::parser::tree_builder::live::HtmlLiveParseProgress, &surgeist_runtime::hosted::DomHostedHtmlError>
+pub fn surgeist_runtime::hosted::DomHostedHtmlParser<'_>::complete_script(&mut self, hosted: &surgeist_runtime::hosted::HostedRuntime, dom: &mut surgeist_runtime::event::DomEventDom<'_>, script: surgeist_dom::internal::identity::NodeId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), &surgeist_runtime::hosted::DomHostedHtmlError>
 pub fn surgeist_runtime::hosted::DomHostedHtmlParser<'_>::first_refusal(&self) -> core::option::Option<&surgeist_runtime::hosted::DomHostedHtmlError>
+pub fn surgeist_runtime::hosted::DomHostedHtmlParser<'_>::pending_script(&self) -> core::option::Option<surgeist_dom::internal::identity::NodeId>
 pub fn surgeist_runtime::hosted::DomHostedHtmlParser<'_>::take_stop_parsing(&mut self, hosted: &surgeist_runtime::hosted::HostedRuntime, dom: &mut surgeist_runtime::event::DomEventDom<'_>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<core::option::Option<surgeist_runtime::hosted::DomHostedHtmlStopParsing>, &surgeist_runtime::hosted::DomHostedHtmlError>
 pub fn surgeist_runtime::hosted::DomHostedHtmlParser<'_>::top_level(&self) -> surgeist_runtime::hosted::DomHostedTopLevel
 impl core::fmt::Debug for surgeist_runtime::hosted::DomHostedHtmlParser<'_>
@@ -906,6 +909,7 @@ impl core::fmt::Debug for surgeist_runtime::hosted::DomSourceExecutionScope
 pub fn surgeist_runtime::hosted::DomSourceExecutionScope::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::hosted::HostedRuntime
 impl surgeist_runtime::hosted::HostedRuntime
+pub fn surgeist_runtime::hosted::HostedRuntime::begin_local_classic_html_parser<'source>(&self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, top: surgeist_runtime::hosted::DomHostedTopLevel, html: &'source surgeist_html_parser::source::HtmlSource, limits: surgeist_html_parser::settings::HtmlParseLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::hosted::DomHostedHtmlParser<'source>, surgeist_runtime::hosted::DomHostedHtmlError>
 pub fn surgeist_runtime::hosted::HostedRuntime::begin_local_html_parser<'source>(&self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, top: surgeist_runtime::hosted::DomHostedTopLevel, html: &'source surgeist_html_parser::source::HtmlSource, limits: surgeist_html_parser::settings::HtmlParseLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::hosted::DomHostedHtmlParser<'source>, surgeist_runtime::hosted::DomHostedHtmlError>
 impl surgeist_runtime::hosted::HostedRuntime
 pub fn surgeist_runtime::hosted::HostedRuntime::create_abort_controller<C>(&mut self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, dispatcher: &mut surgeist_runtime::event::DomEventDispatcher<C>, global: surgeist_dom::internal::hosted::DomHostedGlobalId, algorithm_limit: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::event::DomAbortController<C>, surgeist_runtime::event::DomEventConstructionError>

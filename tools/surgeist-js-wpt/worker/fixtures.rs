@@ -2,7 +2,7 @@ use sha1::{Digest, Sha1};
 use surgeist_js_wpt::FixtureId;
 
 mod wpt;
-pub(crate) use wpt::is_pinned_window;
+pub(super) use wpt::{HtmlFixture, LocalScript, is_pinned_window, resolve_html};
 
 pub(super) struct Fixture {
     pub(super) source: &'static str,

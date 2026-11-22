@@ -411,6 +411,43 @@ impl History {
         Ok(changes.into())
     }
 
+    /// Qualify every reached publication without copying retained history.
+    /// Missing coverage fails closed.
+    pub(super) fn changes_since_satisfy<E>(
+        &self,
+        baseline: DomRevision,
+        current: DomRevision,
+        mut step: impl FnMut() -> Result<(), E>,
+        mut check: impl FnMut(&DomChange) -> Result<bool, E>,
+    ) -> Result<bool, E> {
+        let mut expected = current;
+        let mut cursor = self.newest.clone();
+        while expected > baseline {
+            let Some(link) = cursor else {
+                return Ok(false);
+            };
+            let chunk = lock(&link);
+            for entry in chunk.values.iter().rev() {
+                step()?;
+                if entry.from.0.checked_add(1) != Some(expected.0) {
+                    return Ok(false);
+                }
+                for change in entry.changes.iter() {
+                    step()?;
+                    if !check(change)? {
+                        return Ok(false);
+                    }
+                }
+                expected = entry.from;
+                if expected == baseline {
+                    return Ok(true);
+                }
+            }
+            cursor = chunk.older.clone();
+        }
+        Ok(expected == baseline)
+    }
+
     #[cfg(test)]
     pub(super) fn oldest_changes_weak(&self) -> Weak<[DomChange]> {
         Arc::downgrade(

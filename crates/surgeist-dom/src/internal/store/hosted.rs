@@ -5,6 +5,7 @@ pub(in crate::internal::store) mod containers;
 mod destruction;
 pub(crate) mod history;
 pub(crate) mod local_html;
+pub(crate) mod local_html_load;
 pub(in crate::internal::store) mod operations;
 pub(in crate::internal::store) mod queue;
 pub(super) mod style_root_withdrawal;
@@ -2339,6 +2340,37 @@ impl DomHostedSource {
         global: DomHostedGlobalId,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedError> {
+        let (metadata, _, _) = self.local_html_current_document(dom, document, global, cancel)?;
+        if !matches!(
+            metadata
+                .document_environment()
+                .hosted
+                .as_ref()
+                .map(|association| association.phase),
+            Some(DocumentPhase::InitialEntry {
+                load: HostedDocumentLoad::Loading,
+                ..
+            })
+        ) {
+            return Err(DomHostedError::WrongPhase);
+        }
+        Ok(())
+    }
+
+    pub(super) fn local_html_current_document<'dom>(
+        &self,
+        dom: &'dom Dom,
+        document: DocumentId,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+    ) -> Result<
+        (
+            &'dom DomDocumentMetadata,
+            DomHostedEntryId,
+            DomHostedNavigableId,
+        ),
+        DomHostedError,
+    > {
         check_cancel(cancel)?;
         dom.validate_hosted_source(self)?;
         dom.require_source_idle()?;
@@ -2357,9 +2389,7 @@ impl DomHostedSource {
             return Err(DomHostedError::UnsupportedProfile);
         }
         let DocumentPhase::InitialEntry {
-            entry,
-            navigable,
-            load: HostedDocumentLoad::Loading,
+            entry, navigable, ..
         } = phase
         else {
             return Err(DomHostedError::WrongPhase);
@@ -2385,7 +2415,7 @@ impl DomHostedSource {
         {
             return Err(DomHostedError::StaleIdentity);
         }
-        Ok(())
+        Ok((metadata, entry, navigable))
     }
 
     /// Establish whether a local parser's load-delay profile remains closed

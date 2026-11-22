@@ -9,7 +9,7 @@ publish = false
 description = "Isolated JavaScript conformance tooling for Surgeist"
 
 [features]
-native-worker = ["dep:sha1", "dep:surgeist-bindings-js", "dep:surgeist-css", "dep:surgeist-dom", "dep:surgeist-html", "dep:surgeist-ledger", "dep:surgeist-runtime"]
+native-worker = ["dep:sha1", "dep:surgeist-bindings-js", "dep:surgeist-css", "dep:surgeist-dom", "dep:surgeist-html", "dep:surgeist-html-parser", "dep:surgeist-ledger", "dep:surgeist-runtime"]
 
 [dependencies]
 serde = { version = "=1.0.229", features = ["derive"] }
@@ -19,6 +19,7 @@ surgeist-css = { path = "../../crates/surgeist-css", version = "=0.1.0", optiona
 surgeist-dom = { path = "../../crates/surgeist-dom", version = "=0.1.0", optional = true }
 surgeist-fuzz = { path = "../../crates/surgeist-fuzz", version = "=0.1.0", features = ["execution"] }
 surgeist-html = { path = "../../crates/surgeist-html", version = "=0.1.0", optional = true }
+surgeist-html-parser = { path = "../../crates/surgeist-html-parser", version = "=0.1.0", default-features = false, optional = true }
 surgeist-ledger = { workspace = true, optional = true }
 surgeist-runtime = { path = "../../crates/surgeist-runtime", version = "=0.1.0", features = ["document-scripting"], optional = true }
 

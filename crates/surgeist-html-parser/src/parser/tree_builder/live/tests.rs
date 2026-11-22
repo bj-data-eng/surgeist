@@ -29,6 +29,7 @@ struct Node {
 struct Tree {
     nodes: Vec<Node>,
     refuse_div: bool,
+    prepared_scripts: Vec<usize>,
 }
 
 impl Tree {
@@ -39,6 +40,7 @@ impl Tree {
                 children: Vec::new(),
             }],
             refuse_div: false,
+            prepared_scripts: Vec::new(),
         }
     }
 
@@ -100,10 +102,126 @@ impl HtmlLiveTree for Tree {
         }
         Ok(())
     }
+
+    fn prepare_classic_script(&mut self, script: usize) -> Result<bool, Self::Error> {
+        self.prepared_scripts.push(script);
+        Ok(true)
+    }
 }
 
 fn tokens(count: usize) -> NonZeroUsize {
     NonZeroUsize::new(count).unwrap()
+}
+
+#[test]
+fn classic_scripts_pause_at_their_end_tags_before_inserting_later_nodes() {
+    let input = "<!doctype html><meta charset=utf-8><title>A&lt;b&gt;</title>\n<script src=/h.js></script>\n<div id=log></div><script>if (a < b) x = '&amp;';</script><div></div>";
+    let source = HtmlSource::utf8(input);
+    let mut tree = Tree::new();
+    let mut parser = HtmlLiveParser::with_classic_scripts(&source, 0, limits(8)).unwrap();
+
+    assert_eq!(
+        parser.advance(&mut tree, tokens(128)).unwrap(),
+        HtmlLiveParseProgress::Script
+    );
+    let external = parser.pending_script().unwrap();
+    assert_eq!(tree.prepared_scripts, [external]);
+    assert_eq!(tree.nodes[0].children, [1, 2]);
+    assert_eq!(tree.nodes[2].children, [3]);
+    assert_eq!(
+        tree.nodes[3].kind,
+        Kind::Element(HtmlLiveElement::Head, vec![])
+    );
+    assert_eq!(
+        tree.nodes[4].kind,
+        Kind::Element(
+            HtmlLiveElement::Meta,
+            vec![(HtmlLiveAttribute::Charset, "utf-8".into())]
+        )
+    );
+    assert_eq!(
+        tree.nodes[5].kind,
+        Kind::Element(HtmlLiveElement::Title, vec![])
+    );
+    assert_eq!(
+        tree.nodes[tree.nodes[5].children[0]].kind,
+        Kind::Text("A<b>".encode_utf16().collect())
+    );
+    assert_eq!(
+        tree.nodes[external].kind,
+        Kind::Element(
+            HtmlLiveElement::Script,
+            vec![(HtmlLiveAttribute::Src, "/h.js".into())]
+        )
+    );
+    assert!(tree.nodes[external].children.is_empty());
+    parser.accept_eof();
+    assert_eq!(
+        parser.advance(&mut tree, tokens(128)).unwrap(),
+        HtmlLiveParseProgress::Script
+    );
+    assert_eq!(tree.prepared_scripts, [external]);
+    assert!(parser.take_stop_parsing().unwrap().is_none());
+    assert!(!parser.complete_script(external + 1).unwrap());
+    assert!(parser.complete_script(external).unwrap());
+
+    assert_eq!(
+        parser.advance(&mut tree, tokens(128)).unwrap(),
+        HtmlLiveParseProgress::Script
+    );
+    let inline = parser.pending_script().unwrap();
+    let body = tree.nodes[2].children[1];
+    assert_eq!(
+        tree.nodes[body].kind,
+        Kind::Element(HtmlLiveElement::Body, vec![])
+    );
+    assert_eq!(tree.nodes[body].children.len(), 2);
+    assert_eq!(tree.nodes[body].children[1], inline);
+    assert_eq!(
+        tree.nodes[tree.nodes[inline].children[0]].kind,
+        Kind::Text("if (a < b) x = '&amp;';".encode_utf16().collect())
+    );
+    assert_eq!(tree.prepared_scripts, [external, inline]);
+    assert!(parser.complete_script(inline).unwrap());
+    assert!(!parser.complete_script(inline).unwrap());
+
+    assert_eq!(
+        parser.advance(&mut tree, tokens(128)).unwrap(),
+        HtmlLiveParseProgress::StopParsing
+    );
+    assert_eq!(tree.nodes[body].children.len(), 3);
+    let mut stop = parser.take_stop_parsing().unwrap().unwrap();
+    assert_eq!(stop.eof().source(), source.identity());
+    assert_eq!(stop.eof().start(), input.len());
+    assert!(stop.parser_scripts_are_absent());
+    assert_eq!(stop.open_elements().count(), 2);
+    stop.finish_open_elements().unwrap();
+    assert_eq!(stop.open_elements().count(), 0);
+    stop.finish_open_elements().unwrap();
+}
+
+#[test]
+fn classic_script_with_async_attribute_refuses_at_the_original_token() {
+    let input = "<!doctype html><script async src=/h.js></script>";
+    let source = HtmlSource::utf8(input);
+    let mut tree = Tree::new();
+    let mut parser = HtmlLiveParser::with_classic_scripts(&source, 0, limits(8)).unwrap();
+    let Err(HtmlLiveParseError::Unsupported { reason, source }) =
+        parser.advance(&mut tree, tokens(64))
+    else {
+        panic!("async script must be outside this profile");
+    };
+    assert_eq!(reason, HtmlLiveUnsupported::Attribute);
+    assert_eq!(
+        &input[source.start()..source.end()],
+        "<script async src=/h.js>"
+    );
+    assert!(
+        tree.nodes
+            .iter()
+            .all(|node| !matches!(&node.kind, Kind::Element(HtmlLiveElement::Script, _)))
+    );
+    assert!(tree.prepared_scripts.is_empty());
 }
 
 #[test]
