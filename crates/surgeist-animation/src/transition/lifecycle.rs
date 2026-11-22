@@ -74,7 +74,8 @@ impl TransitionTiming {
 ///
 /// Style owns eligibility (presence in both document style events), computed
 /// values, declarative-animation advancement, and longhand/list matching.
-/// `new_id` is the caller-assigned identity used if a new run is created.
+/// Runtime supplies a fresh `new_id` for each new run of this key, including
+/// restarts and reversals.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TransitionChange<T> {
     pub key: TransitionKey<T>,
@@ -406,6 +407,8 @@ impl<T: Clone> RunningTransition<T> {
     /// Unresolved time and times at/after the end contribute no value. Delay
     /// (including exact start) returns the raw start without interpolation.
     /// Old easing output is retained independently for reversal calculations.
+    /// Supply time from the same document origin as the record. Runtime applies
+    /// the result only to the applicable record and time in its current frame.
     ///
     /// # Errors
     /// Returns typed numeric or property interpolation failures. No fallback
@@ -431,10 +434,13 @@ impl<T: Clone> RunningTransition<T> {
         if now.as_millis() <= self.start_time().as_millis() {
             sample.phase = TransitionSamplePhase::Delay;
             sample.value = Some(self.start_value().clone());
-            sample.easing_output = Some(self.timing().easing().evaluate_with_before_flag(
-                NormalizedProgress::ZERO,
-                now.as_millis() < self.start_time().as_millis(),
-            ));
+            let easing = self.timing().easing();
+            // The selected transition rules use the before flag for a step
+            // boundary. Linear easing keeps the last point at a duplicate input.
+            let before_step = matches!(easing, Easing::Steps(_))
+                && now.as_millis() < self.start_time().as_millis();
+            sample.easing_output =
+                Some(easing.evaluate_with_before_flag(NormalizedProgress::ZERO, before_step));
             return Ok(sample);
         }
         let progress = interval_progress(now, self.start_time(), self.end_time())?;
