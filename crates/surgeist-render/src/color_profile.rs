@@ -13,6 +13,13 @@ use crate::{Error, Result};
 mod lut;
 mod mpe;
 pub(crate) mod native;
+pub(crate) mod pcs;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Direction {
+    ToPcs,
+    FromPcs,
+}
 
 pub(crate) enum Selection {
     Invalid,

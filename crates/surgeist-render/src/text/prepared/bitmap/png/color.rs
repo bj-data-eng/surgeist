@@ -313,18 +313,7 @@ fn complete_in(space: ColorSpace, values: [f64; 3], account: &Account) -> Result
 fn icc_color(pcs: PcsColor, account: &Account) -> Result<IntrinsicColor> {
     let xyz = match pcs {
         PcsColor::XyzD50(xyz) => xyz,
-        PcsColor::Lab(components) => {
-            let lab = complete_in(ColorSpace::Lab, components, account)?;
-            let mut xyz = channels(convert(lab, Space::XyzD50, account)?, account)?;
-            // Color uses the CSS D50 white. Scale its Lab-to-XYZ result to
-            // the ICC PCS reference white (ICC.1:2022 §§6.3.2.3, 6.3.4.3).
-            const ICC_OVER_CSS_D50: [f64; 3] =
-                [0.9642 / (3457.0 / 3585.0), 1.0, 0.8249 / (986.0 / 1195.0)];
-            for (value, scale) in xyz.iter_mut().zip(ICC_OVER_CSS_D50) {
-                *value = account.coordinate(|| *value * scale)?;
-            }
-            xyz
-        }
+        PcsColor::Lab(components) => color_profile::pcs::lab_to_xyz(components, account)?,
     };
     complete(Space::XyzD50, xyz, account)
 }
