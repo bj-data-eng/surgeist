@@ -4,6 +4,10 @@ use super::*;
 use std::time::{Duration, Instant};
 use surgeist_runtime::document_scripting::{WindowTimerLimits, WindowTimerProgress};
 
+// The Window harness registers two load listeners and one error listener.
+// Those notifications retain recipient leases in the canonical DOM.
+const HARNESS_RECIPIENTS: usize = 3;
+
 pub(super) fn starts_unmodified_harness_with_native_timers() {
     let path = std::env::args_os()
         .nth(2)
@@ -18,9 +22,13 @@ pub(super) fn starts_unmodified_harness_with_native_timers() {
 
     for expected_seconds in [10, 60] {
         let mut dom = native_dom();
-        let recipients =
-            surgeist_dom::event::DomEventRecipientLimits::new(32, 16_000_000, 16_000_000, 100_000)
-                .unwrap();
+        let recipients = surgeist_dom::event::DomEventRecipientLimits::new(
+            HARNESS_RECIPIENTS,
+            16_000_000,
+            16_000_000,
+            100_000,
+        )
+        .unwrap();
         dom.set_limits(
             dom.limits()
                 .with_event_recipients(recipients)
@@ -116,8 +124,34 @@ pub(super) fn starts_unmodified_harness_with_native_timers() {
         if !fixtures.is_empty() {
             observe_event_target_subtests(&mut host, &permit, &fixtures);
         }
+        assert_native_harness_registration(&mut host, &permit);
         assert!(host.stop().into_session().is_ok());
     }
+}
+
+fn assert_native_harness_registration(
+    host: &mut DocumentScriptHost,
+    permit: &DocumentScriptPermit,
+) {
+    let refusal = native_failure(host.in_document(permit, |scope| {
+        let source = "addEventListener('load', () => {})";
+        scope
+            .evaluate(&source.encode_utf16().collect::<Vec<_>>())
+            .map(drop)
+    }));
+    let cause = refusal.cause::<DocumentGuestEventError>();
+    assert!(
+        matches!(
+            cause,
+            Some(DocumentGuestEventError::Dispatch(
+                DomEventDispatchError::Dom(DomError::ResourceLimit {
+                    resource: DomResource::EventRecipients,
+                    limit: HARNESS_RECIPIENTS,
+                },)
+            ))
+        ),
+        "expected the harness registrations to exhaust the native recipient limit: {cause:?}"
+    );
 }
 
 fn exercise_live_meta_collection(
