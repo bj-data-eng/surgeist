@@ -147,13 +147,18 @@ fn sdr_color_reaches_native_scene_paint_with_source_over_alpha() {
     let mut accounting = RenderAccountingContext::default();
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let mut surface =
-        pollster::block_on(renderer.create_headless(Size::try_new(2.0, 1.0).unwrap(), 1.0))
+        pollster::block_on(renderer.create_headless(Size::try_new(5.0, 1.0).unwrap(), 1.0))
             .unwrap();
-    let colors = [1.0, 0.5].map(|alpha| {
-        prepare_sdr_srgb_color(oklch(0.8, 0.35, 30.0, alpha), &mut accounting).unwrap()
-    });
+    let colors = [
+        oklch(0.8, 0.35, 30.0, 1.0),
+        oklch(0.8, 0.35, 30.0, 0.5),
+        ResolvedColor::from_srgba8([17, 128, 240, 255]),
+        oklch(0.0, 0.35, 30.0, 0.25),
+        oklch(1.0, 0.35, 30.0, 0.25),
+    ]
+    .map(|color| prepare_sdr_srgb_color(color, &mut accounting).unwrap());
     let fill = |scene: &mut Scene| {
-        for (x, color) in [0.0, 1.0].into_iter().zip(colors) {
+        for (x, color) in [0.0, 1.0, 2.0, 3.0, 4.0].into_iter().zip(colors) {
             scene.fill(Rect::try_new(x, 0.0, 1.0, 1.0).unwrap(), color);
         }
     };
@@ -171,8 +176,14 @@ fn sdr_color_reaches_native_scene_paint_with_source_over_alpha() {
         let stats = pollster::block_on(renderer.render(&mut surface, &scene, parameters)).unwrap();
         assert_eq!(stats.route, Some(route));
         let image = pollster::block_on(renderer.read_headless(&surface)).unwrap();
-        // At half alpha, source-over onto opaque blue gives about [127.5, 76.8, 195.3].
-        let expected = [255, 154, 136, 255, 128, 77, 195, 255];
+        // The WPT mapped color is [255, 153.55, 135.55]. Source-over
+        // opaque blue at half alpha averages its channels with that blue.
+        // The third input is already in gamut. The lightness endpoints
+        // contribute quarter-alpha black and white, respectively.
+        let expected = [
+            255, 154, 136, 255, 128, 77, 195, 255, 17, 128, 240, 255, 0, 0, 191, 255, 64, 64, 255,
+            255,
+        ];
         assert_eq!(image.rgba().len(), expected.len());
         for (&actual, expected) in image.rgba().iter().zip(expected) {
             assert!(
@@ -180,6 +191,69 @@ fn sdr_color_reaches_native_scene_paint_with_source_over_alpha() {
                 "{route:?} pixels: {:?}",
                 image.rgba()
             );
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn mapped_sdr_paints_apply_opacity_once_to_the_composited_group() {
+    use surgeist_render::{
+        geometry::{Rect, Size},
+        renderer::{Options, RenderRoute, Renderer},
+        scene::{Layer, Scene},
+        surface::Parameters,
+    };
+
+    let mut accounting = RenderAccountingContext::default();
+    let [blue, mapped, invisible] = [
+        ResolvedColor::from_srgba8([0, 0, 255, 255]),
+        oklch(0.8, 0.35, 30.0, 0.5),
+        oklch(1.0, 0.35, 30.0, 0.0),
+    ]
+    .map(|color| prepare_sdr_srgb_color(color, &mut accounting).unwrap());
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::try_new(3.0, 1.0).unwrap(), 1.0))
+            .unwrap();
+    let red = Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap();
+    for route in [RenderRoute::DirectVello, RenderRoute::GpuGraph] {
+        let mut layer = Layer::new().try_opacity(0.5).unwrap();
+        if route == RenderRoute::GpuGraph {
+            layer = layer.isolated();
+        }
+        let mut scene = Scene::new();
+        scene.layer(layer, |scene| {
+            scene.fill(Rect::try_new(0.0, 0.0, 2.0, 1.0).unwrap(), blue);
+            scene.fill(Rect::try_new(0.0, 0.0, 1.0, 1.0).unwrap(), mapped);
+            scene.fill(Rect::try_new(1.0, 0.0, 2.0, 1.0).unwrap(), invisible);
+        });
+        // The opaque blue and half-alpha mapped color first form an opaque
+        // group pixel [127.5, 76.775, 195.275]. Opacity halves its premultiplied
+        // channels and alpha together. The invisible paint adds no coverage.
+        for (base_color, expected) in [
+            (
+                Color::TRANSPARENT,
+                [128, 77, 195, 128, 0, 0, 255, 128, 0, 0, 0, 0],
+            ),
+            (red, [191, 38, 98, 255, 128, 0, 128, 255, 255, 0, 0, 255]),
+        ] {
+            let parameters = Parameters {
+                base_color,
+                ..Parameters::default()
+            };
+            let stats =
+                pollster::block_on(renderer.render(&mut surface, &scene, parameters)).unwrap();
+            assert_eq!(stats.route, Some(route));
+            let image = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+            assert_eq!(image.rgba().len(), expected.len());
+            for (&actual, expected) in image.rgba().iter().zip(expected) {
+                assert!(
+                    actual.abs_diff(expected) <= 2,
+                    "{route:?} pixels: {:?}",
+                    image.rgba()
+                );
+            }
         }
     }
 }
