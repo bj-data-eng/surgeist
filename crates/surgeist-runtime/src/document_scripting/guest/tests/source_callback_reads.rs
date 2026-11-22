@@ -175,9 +175,12 @@ fn queries_consume_the_enclosing_attribute_source(
         matches!(
             failure.cause::<DocumentGuestEventError>(),
             Some(DocumentGuestEventError::Document(
-                DocumentScriptError::Native(DocumentScriptNativeError::Dom(
-                    DomError::SourceWorkLimit { limit }
-                ))
+                DocumentScriptError::Native(
+                    DocumentScriptNativeError::Dom(DomError::SourceWorkLimit { limit })
+                    | DocumentScriptNativeError::Hosted(DomHostedRuntimeError::Dom(
+                        DomHostedError::Dom(DomError::SourceWorkLimit { limit })
+                    ))
+                )
             )) if *limit == source_work
         ),
         "original Source cause: {:?}",

@@ -15,6 +15,10 @@ pub(super) fn node_base_uri_exposes_the_actual_node_document() {
         if (set !== undefined || !enumerable || !configurable || get.name !== 'get baseURI' ||
             get.length !== 0 || Object.hasOwn(get, 'prototype') || Object.hasOwn(document, 'baseURI'))
             return 'incorrect Node baseURI descriptor';
+        const keys = Object.keys(Node.prototype);
+        const position = keys.indexOf('baseURI');
+        if (keys[position - 1] !== 'nodeName' || keys[position + 1] !== 'isConnected')
+            return 'incorrect Node baseURI member order';
         for (const receiver of [null, {}, Object.create(document), new Proxy(document, {}), window]) {
             try { Reflect.apply(get, receiver, []); return 'unbranded Node receiver accepted'; }
             catch (error) { if (!(error instanceof TypeError)) throw error; }
