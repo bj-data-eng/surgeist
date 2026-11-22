@@ -8,13 +8,16 @@ Version 0.1.0 supports snapshot-based CSS transition decisions, typed native
 keyframe normalization and computed interval sampling, timing, easing,
 computed numeric composition,
 logarithmic ratio interpolation, normalized positions, premultiplied colors,
-resolved 2D/3D transforms, and discrete switching. Contextual calculations retain
+computed circle, ellipse, inset and polygon shapes, resolved 2D/3D transforms,
+and discrete switching. Basic shapes retain explicit reference boxes and use
+whole-value fallback for incompatible pairs. Contextual calculations retain
 source identity in symbolic combination plans. Transform lists support identity
 padding, common primitives, suffix matrix interpolation, list addition and
 accumulation. Explicit transform/composite diagnostic markers retain typed
 unsupported outcomes. CSS lowering, contextual evaluation, final
 clamping, runtime scheduling, and root integration belong to their respective
-owners.
+owners. Shape/path command interpolation and shape addition/accumulation are
+outside the current basic-shape capability.
 
 ## Start
 

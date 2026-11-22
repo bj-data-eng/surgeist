@@ -282,6 +282,7 @@ pub surgeist_animation::interpolation::InterpolableValue::Computed(surgeist_anim
 pub surgeist_animation::interpolation::InterpolableValue::Discrete(surgeist_animation::interpolation::DiscreteValue)
 pub surgeist_animation::interpolation::InterpolableValue::Number(surgeist_animation::interpolation::InterpolableNumber)
 pub surgeist_animation::interpolation::InterpolableValue::Percentage(surgeist_animation::interpolation::InterpolablePercentage)
+pub surgeist_animation::interpolation::InterpolableValue::Shape(surgeist_animation::shape::ShapeValue)
 pub surgeist_animation::interpolation::InterpolableValue::Transform(surgeist_animation::interpolation::TransformValue)
 impl surgeist_animation::interpolation::InterpolableValue
 pub const fn surgeist_animation::interpolation::InterpolableValue::color(value: surgeist_animation::interpolation::InterpolableColor) -> Self
@@ -291,6 +292,7 @@ pub fn surgeist_animation::interpolation::InterpolableValue::discrete(value: sur
 pub const fn surgeist_animation::interpolation::InterpolableValue::family(&self) -> surgeist_animation::interpolation::ValueFamily
 pub const fn surgeist_animation::interpolation::InterpolableValue::number(value: surgeist_animation::interpolation::InterpolableNumber) -> Self
 pub const fn surgeist_animation::interpolation::InterpolableValue::percentage(value: surgeist_animation::interpolation::InterpolablePercentage) -> Self
+pub fn surgeist_animation::interpolation::InterpolableValue::shape(value: surgeist_animation::shape::ShapeValue) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::transform(value: surgeist_animation::interpolation::TransformValue) -> Self
 pub enum surgeist_animation::interpolation::InterpolationComponent
 pub surgeist_animation::interpolation::InterpolationComponent::ColorAlpha
@@ -324,6 +326,7 @@ pub surgeist_animation::interpolation::InterpolationError::NonFiniteNumber::valu
 pub surgeist_animation::interpolation::InterpolationError::NonFiniteProgress
 pub surgeist_animation::interpolation::InterpolationError::NonFiniteProgress::value: f64
 pub surgeist_animation::interpolation::InterpolationError::Numeric(surgeist_animation::diagnostics::NumericError)
+pub surgeist_animation::interpolation::InterpolationError::Shape(surgeist_animation::interpolation::ShapeInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationError::UnsupportedFamily
 pub surgeist_animation::interpolation::InterpolationError::UnsupportedFamily::family: surgeist_animation::interpolation::ValueFamily
 pub surgeist_animation::interpolation::InterpolationError::UnsupportedFamily::from: surgeist_animation::interpolation::InterpolableValue
@@ -339,6 +342,7 @@ pub fn surgeist_animation::interpolation::InterpolationError::fmt(&self, f: &mut
 pub enum surgeist_animation::interpolation::InterpolationOutcome
 pub surgeist_animation::interpolation::InterpolationOutcome::ArithmeticFailure(surgeist_animation::interpolation::NonFiniteInterpolationResult)
 pub surgeist_animation::interpolation::InterpolationOutcome::ComputedFailure(surgeist_animation::interpolation::ComputedInterpolationFailure)
+pub surgeist_animation::interpolation::InterpolationOutcome::ShapeFailure(surgeist_animation::interpolation::ShapeInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationOutcome::Unsupported(surgeist_animation::interpolation::InterpolationError)
 pub surgeist_animation::interpolation::InterpolationOutcome::Value(surgeist_animation::interpolation::InterpolableValue)
 pub enum surgeist_animation::interpolation::ValueFamily
@@ -348,6 +352,7 @@ pub surgeist_animation::interpolation::ValueFamily::Computed
 pub surgeist_animation::interpolation::ValueFamily::Discrete
 pub surgeist_animation::interpolation::ValueFamily::Number
 pub surgeist_animation::interpolation::ValueFamily::Percentage
+pub surgeist_animation::interpolation::ValueFamily::Shape
 pub surgeist_animation::interpolation::ValueFamily::Transform
 pub struct surgeist_animation::interpolation::CompositeValue
 impl surgeist_animation::interpolation::CompositeValue
@@ -408,6 +413,13 @@ pub fn surgeist_animation::interpolation::PropertyKey::as_str(&self) -> &str
 pub fn surgeist_animation::interpolation::PropertyKey::from_shared(name: alloc::sync::Arc<str>) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::PropertyKey::from_text(name: &str) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
 pub fn surgeist_animation::interpolation::PropertyKey::new(name: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_animation::interpolation::InterpolationError>
+pub struct surgeist_animation::interpolation::ShapeInterpolationFailure
+impl surgeist_animation::interpolation::ShapeInterpolationFailure
+pub const fn surgeist_animation::interpolation::ShapeInterpolationFailure::error(&self) -> &surgeist_animation::shape::ShapeError
+pub fn surgeist_animation::interpolation::ShapeInterpolationFailure::from(&self) -> &surgeist_animation::interpolation::InterpolableValue
+pub const fn surgeist_animation::interpolation::ShapeInterpolationFailure::progress(&self) -> surgeist_animation::interpolation::InterpolationProgress
+pub const fn surgeist_animation::interpolation::ShapeInterpolationFailure::property(&self) -> &surgeist_animation::interpolation::PropertyKey
+pub fn surgeist_animation::interpolation::ShapeInterpolationFailure::to(&self) -> &surgeist_animation::interpolation::InterpolableValue
 pub struct surgeist_animation::interpolation::TransformValue
 impl surgeist_animation::interpolation::TransformValue
 pub fn surgeist_animation::interpolation::TransformValue::kind(&self) -> &str
@@ -729,6 +741,91 @@ pub const fn surgeist_animation::sample::SampledPropertyResult::completion(&self
 pub fn surgeist_animation::sample::SampledPropertyResult::from_timing_and_pair(timing: surgeist_animation::timing::TimingSample, pair: &surgeist_animation::interpolation::InterpolationPair) -> Self
 pub const fn surgeist_animation::sample::SampledPropertyResult::next_frame(&self) -> surgeist_animation::sample::NextFrameHint
 pub const fn surgeist_animation::sample::SampledPropertyResult::value(&self) -> &surgeist_animation::sample::SampleValue
+pub mod surgeist_animation::shape
+pub enum surgeist_animation::shape::BasicShape
+pub surgeist_animation::shape::BasicShape::Circle(surgeist_animation::shape::Circle)
+pub surgeist_animation::shape::BasicShape::Ellipse(surgeist_animation::shape::Ellipse)
+pub surgeist_animation::shape::BasicShape::Inset(surgeist_animation::shape::Inset)
+pub surgeist_animation::shape::BasicShape::Polygon(surgeist_animation::shape::Polygon)
+pub enum surgeist_animation::shape::FillRule
+pub surgeist_animation::shape::FillRule::Evenodd
+pub surgeist_animation::shape::FillRule::Nonzero
+pub enum surgeist_animation::shape::Radius
+pub surgeist_animation::shape::Radius::ClosestCorner
+pub surgeist_animation::shape::Radius::ClosestSide
+pub surgeist_animation::shape::Radius::FarthestCorner
+pub surgeist_animation::shape::Radius::FarthestSide
+pub surgeist_animation::shape::Radius::Numeric(surgeist_animation::shape::LengthPercentage)
+pub enum surgeist_animation::shape::ReferenceBox
+pub surgeist_animation::shape::ReferenceBox::BorderBox
+pub surgeist_animation::shape::ReferenceBox::ContentBox
+pub surgeist_animation::shape::ReferenceBox::FillBox
+pub surgeist_animation::shape::ReferenceBox::MarginBox
+pub surgeist_animation::shape::ReferenceBox::PaddingBox
+pub surgeist_animation::shape::ReferenceBox::StrokeBox
+pub surgeist_animation::shape::ReferenceBox::ViewBox
+pub enum surgeist_animation::shape::ShapeComponent
+pub surgeist_animation::shape::ShapeComponent::Center
+pub surgeist_animation::shape::ShapeComponent::CornerHorizontalRadius(usize)
+pub surgeist_animation::shape::ShapeComponent::CornerVerticalRadius(usize)
+pub surgeist_animation::shape::ShapeComponent::HorizontalRadius
+pub surgeist_animation::shape::ShapeComponent::InsetOffset(usize)
+pub surgeist_animation::shape::ShapeComponent::PolygonRounding
+pub surgeist_animation::shape::ShapeComponent::PolygonVertex(usize)
+pub surgeist_animation::shape::ShapeComponent::Radius
+pub surgeist_animation::shape::ShapeComponent::VerticalRadius
+pub enum surgeist_animation::shape::ShapeErrorKind
+pub surgeist_animation::shape::ShapeErrorKind::Capacity
+pub surgeist_animation::shape::ShapeErrorKind::EmptyPolygon
+pub surgeist_animation::shape::ShapeErrorKind::InvalidNumericType
+pub surgeist_animation::shape::ShapeErrorKind::Numeric
+pub struct surgeist_animation::shape::Circle
+impl surgeist_animation::shape::Circle
+pub const fn surgeist_animation::shape::Circle::center(&self) -> &surgeist_animation::computed::ComputedPosition
+pub const fn surgeist_animation::shape::Circle::new(radius: surgeist_animation::shape::Radius, center: surgeist_animation::computed::ComputedPosition) -> Self
+pub const fn surgeist_animation::shape::Circle::radius(&self) -> &surgeist_animation::shape::Radius
+pub struct surgeist_animation::shape::CornerRadii
+impl surgeist_animation::shape::CornerRadii
+pub const fn surgeist_animation::shape::CornerRadii::horizontal(&self) -> &[surgeist_animation::shape::LengthPercentage; 4]
+pub const fn surgeist_animation::shape::CornerRadii::new(horizontal: [surgeist_animation::shape::LengthPercentage; 4], vertical: [surgeist_animation::shape::LengthPercentage; 4]) -> Self
+pub const fn surgeist_animation::shape::CornerRadii::vertical(&self) -> &[surgeist_animation::shape::LengthPercentage; 4]
+pub struct surgeist_animation::shape::Ellipse
+impl surgeist_animation::shape::Ellipse
+pub const fn surgeist_animation::shape::Ellipse::center(&self) -> &surgeist_animation::computed::ComputedPosition
+pub const fn surgeist_animation::shape::Ellipse::horizontal_radius(&self) -> &surgeist_animation::shape::Radius
+pub const fn surgeist_animation::shape::Ellipse::new(horizontal_radius: surgeist_animation::shape::Radius, vertical_radius: surgeist_animation::shape::Radius, center: surgeist_animation::computed::ComputedPosition) -> Self
+pub const fn surgeist_animation::shape::Ellipse::vertical_radius(&self) -> &surgeist_animation::shape::Radius
+pub struct surgeist_animation::shape::Inset
+impl surgeist_animation::shape::Inset
+pub fn surgeist_animation::shape::Inset::corners(&self) -> &surgeist_animation::shape::CornerRadii
+pub fn surgeist_animation::shape::Inset::new(offsets: [surgeist_animation::shape::LengthPercentage; 4], corners: surgeist_animation::shape::CornerRadii) -> Self
+pub fn surgeist_animation::shape::Inset::offsets(&self) -> &[surgeist_animation::shape::LengthPercentage; 4]
+pub struct surgeist_animation::shape::LengthPercentage
+impl surgeist_animation::shape::LengthPercentage
+pub fn surgeist_animation::shape::LengthPercentage::new(numeric: surgeist_animation::computed::ComputedNumeric) -> core::result::Result<Self, surgeist_animation::shape::ShapeError>
+pub const fn surgeist_animation::shape::LengthPercentage::numeric(&self) -> &surgeist_animation::computed::ComputedNumeric
+pub struct surgeist_animation::shape::Polygon
+impl surgeist_animation::shape::Polygon
+pub const fn surgeist_animation::shape::Polygon::fill_rule(&self) -> surgeist_animation::shape::FillRule
+pub fn surgeist_animation::shape::Polygon::new(vertices: alloc::vec::Vec<surgeist_animation::computed::ComputedPosition>, fill_rule: surgeist_animation::shape::FillRule, rounding: surgeist_animation::computed::ComputedNumeric) -> core::result::Result<Self, surgeist_animation::shape::ShapeError>
+pub const fn surgeist_animation::shape::Polygon::rounding(&self) -> &surgeist_animation::computed::ComputedNumeric
+pub fn surgeist_animation::shape::Polygon::vertices(&self) -> &[surgeist_animation::computed::ComputedPosition]
+pub struct surgeist_animation::shape::ShapeError
+impl surgeist_animation::shape::ShapeError
+pub const fn surgeist_animation::shape::ShapeError::actual_type(&self) -> core::option::Option<surgeist_animation::computed::NumericType>
+pub const fn surgeist_animation::shape::ShapeError::component(&self) -> core::option::Option<surgeist_animation::shape::ShapeComponent>
+pub const fn surgeist_animation::shape::ShapeError::kind(&self) -> surgeist_animation::shape::ShapeErrorKind
+pub const fn surgeist_animation::shape::ShapeError::numeric_error(&self) -> core::option::Option<&surgeist_animation::computed::ComputedError>
+impl core::error::Error for surgeist_animation::shape::ShapeError
+pub fn surgeist_animation::shape::ShapeError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_animation::shape::ShapeError
+pub fn surgeist_animation::shape::ShapeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::shape::ShapeValue
+impl surgeist_animation::shape::ShapeValue
+pub fn surgeist_animation::shape::ShapeValue::interpolate(&self, other: &Self, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<Self, surgeist_animation::shape::ShapeError>
+pub fn surgeist_animation::shape::ShapeValue::new(reference_box: surgeist_animation::shape::ReferenceBox, shape: surgeist_animation::shape::BasicShape) -> Self
+pub const fn surgeist_animation::shape::ShapeValue::reference_box(&self) -> surgeist_animation::shape::ReferenceBox
+pub fn surgeist_animation::shape::ShapeValue::shape(&self) -> &surgeist_animation::shape::BasicShape
 pub mod surgeist_animation::time
 pub enum surgeist_animation::time::TimeErrorKind
 pub surgeist_animation::time::TimeErrorKind::DecreasingDocumentTime

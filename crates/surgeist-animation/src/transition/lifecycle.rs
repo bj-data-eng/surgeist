@@ -461,6 +461,9 @@ impl<T: Clone> RunningTransition<T> {
                 InterpolationOutcome::ComputedFailure(error) => {
                     return Err(InterpolationError::Computed(error).into());
                 }
+                InterpolationOutcome::ShapeFailure(error) => {
+                    return Err(InterpolationError::Shape(error).into());
+                }
                 InterpolationOutcome::Unsupported(error) => return Err(error.into()),
             },
         );

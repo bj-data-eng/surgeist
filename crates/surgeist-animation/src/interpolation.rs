@@ -17,6 +17,7 @@ use crate::computed::{ComputedError, ComputedValue};
 use crate::diagnostics::{NumericError, NumericInput};
 use crate::easing::EasedProgress;
 use crate::progress::UnitRatio;
+use crate::shape::{ShapeError, ShapeValue};
 use crate::transform::{ResolvedTransformList, TransformComponent, TransformInterpolation};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -33,6 +34,7 @@ pub enum ValueFamily {
     Transform,
     Composite,
     Computed,
+    Shape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -90,6 +92,7 @@ pub enum InterpolableValue {
     Transform(TransformValue),
     Composite(CompositeValue),
     Computed(ComputedValue),
+    Shape(ShapeValue),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -114,6 +117,7 @@ pub enum InterpolationOutcome {
     Value(InterpolableValue),
     ArithmeticFailure(NonFiniteInterpolationResult),
     ComputedFailure(ComputedInterpolationFailure),
+    ShapeFailure(ShapeInterpolationFailure),
     Unsupported(InterpolationError),
 }
 
@@ -164,6 +168,33 @@ impl ComputedInterpolationFailure {
     }
 }
 
+/// A sample-local shape failure retaining its property, progress and complete endpoints.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShapeInterpolationFailure {
+    property: PropertyKey,
+    endpoints: Arc<InterpolationEndpoints>,
+    progress: InterpolationProgress,
+    error: ShapeError,
+}
+
+impl ShapeInterpolationFailure {
+    pub const fn property(&self) -> &PropertyKey {
+        &self.property
+    }
+    pub fn from(&self) -> &InterpolableValue {
+        &self.endpoints.from
+    }
+    pub fn to(&self) -> &InterpolableValue {
+        &self.endpoints.to
+    }
+    pub const fn progress(&self) -> InterpolationProgress {
+        self.progress
+    }
+    pub const fn error(&self) -> &ShapeError {
+        &self.error
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum InterpolationError {
     EmptyPropertyKey,
@@ -174,6 +205,7 @@ pub enum InterpolationError {
     Numeric(NumericError),
     NonFiniteInterpolationResult(NonFiniteInterpolationResult),
     Computed(ComputedInterpolationFailure),
+    Shape(ShapeInterpolationFailure),
     MismatchedFamilies {
         property: PropertyKey,
         from: ValueFamily,
@@ -215,6 +247,13 @@ impl fmt::Display for InterpolationError {
                 f,
                 "interpolating {} failed: {}",
                 result.property.as_str(),
+                result.error
+            ),
+            Self::Shape(result) => write!(
+                f,
+                "interpolating {} at progress {} failed: {}",
+                result.property.as_str(),
+                result.progress.value(),
                 result.error
             ),
             Self::NonFiniteInterpolationResult(result) => write!(
@@ -266,6 +305,7 @@ impl std::error::Error for InterpolationError {
         match self {
             Self::Numeric(error) => Some(error),
             Self::Computed(result) => Some(&result.error),
+            Self::Shape(result) => Some(&result.error),
             _ => None,
         }
     }
@@ -280,6 +320,7 @@ fn value_family_name(family: ValueFamily) -> &'static str {
         ValueFamily::Transform => "transform",
         ValueFamily::Composite => "composite",
         ValueFamily::Computed => "computed",
+        ValueFamily::Shape => "shape",
     }
 }
 
@@ -576,6 +617,10 @@ impl InterpolableValue {
         Self::Computed(value)
     }
 
+    pub fn shape(value: ShapeValue) -> Self {
+        Self::Shape(value)
+    }
+
     pub const fn family(&self) -> ValueFamily {
         match self {
             Self::Number(_) => ValueFamily::Number,
@@ -585,6 +630,7 @@ impl InterpolableValue {
             Self::Transform(_) => ValueFamily::Transform,
             Self::Composite(_) => ValueFamily::Composite,
             Self::Computed(_) => ValueFamily::Computed,
+            Self::Shape(_) => ValueFamily::Shape,
         }
     }
 }
@@ -727,6 +773,17 @@ impl InterpolationPair {
                             error,
                         })
                     }
+                }
+            }
+            (InterpolableValue::Shape(from), InterpolableValue::Shape(to)) => {
+                match from.interpolate(to, progress) {
+                    Ok(value) => InterpolationOutcome::Value(InterpolableValue::Shape(value)),
+                    Err(error) => InterpolationOutcome::ShapeFailure(ShapeInterpolationFailure {
+                        property: self.property.clone(),
+                        endpoints: Arc::clone(&self.endpoints),
+                        progress,
+                        error,
+                    }),
                 }
             }
             (from, to) => InterpolationOutcome::Unsupported(mismatched_families(

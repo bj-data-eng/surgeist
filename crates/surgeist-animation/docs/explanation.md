@@ -107,6 +107,15 @@ them when reference-box facts change. Animation owns interpolation and checked
 and singular visibility.
 This requires no dependency on Layout, Shape, Paint or Render.
 
+Computed basic shapes retain their numeric components and semantic reference
+box instead of flattening into geometry. This permits interpolation of symbolic
+length-percentage values while preserving the caller's source/context identity.
+Compatibility is decided for the whole pair before sampling any component, so a
+late radius keyword or polygon metadata conflict cannot publish a partially
+interpolated shape or be hidden by an earlier arithmetic failure. Used radii,
+overlap adjustment and polygon geometry stay with consumers. See the
+[basic-shape contract](reference.md#computed-basic-shapes).
+
 ## App-native motion
 
 This remains distinct from app-native motion work. A future `surgeist-motion`
