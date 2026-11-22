@@ -315,11 +315,11 @@ mod tests {
     #[test]
     fn active_transition_arithmetic_failure_is_failed_running_and_may_change() {
         let track = opacity_track(
+            InterpolableNumber::new(0.0).unwrap(),
             InterpolableNumber::new(f64::MAX).unwrap(),
-            InterpolableNumber::new(-f64::MAX).unwrap(),
             AnimationDuration::from_secs(1.0).unwrap(),
             AnimationDelay::from_secs(0.0).unwrap(),
-            Easing::linear(),
+            overshoot_then_endpoint_easing(),
         );
 
         let sample = track.sample(
@@ -336,24 +336,24 @@ mod tests {
     #[test]
     fn delayed_running_arithmetic_failure_next_frame_may_change_and_later_recovers() {
         let track = opacity_track(
+            InterpolableNumber::new(0.0).unwrap(),
             InterpolableNumber::new(f64::MAX).unwrap(),
-            InterpolableNumber::new(-f64::MAX).unwrap(),
             AnimationDuration::from_secs(1.0).unwrap(),
             AnimationDelay::from_secs(1.0).unwrap(),
-            before_fill_failure_then_start_endpoint_easing(),
+            overshoot_then_endpoint_easing(),
         );
 
         let delayed = track.sample(
-            ElapsedTime::from_secs(0.5).unwrap(),
+            ElapsedTime::from_secs(1.5).unwrap(),
             AnimationPlayState::Running,
         );
         let recovered = track.sample(
-            ElapsedTime::from_secs(1.0).unwrap(),
+            ElapsedTime::from_secs(1.75).unwrap(),
             AnimationPlayState::Running,
         );
 
         assert_eq!(delayed.classification(), SampleClassification::Failed);
-        assert_eq!(delayed.completion(), CompletionStatus::NotStarted);
+        assert_eq!(delayed.completion(), CompletionStatus::Running);
         assert_eq!(delayed.next_frame(), NextFrameHint::MayChange);
         assert_arithmetic_error(&delayed, "opacity", ValueFamily::Number);
         assert_eq!(recovered.classification(), SampleClassification::Active);
@@ -597,16 +597,20 @@ mod tests {
         .unwrap()
     }
 
-    fn before_fill_failure_then_start_endpoint_easing() -> Easing {
+    fn overshoot_then_endpoint_easing() -> Easing {
         Easing::linear_function(
             LinearEasing::new(vec![
                 LinearControlPointInput {
                     input: 0.0,
-                    output: 0.5,
+                    output: 0.0,
                 },
                 LinearControlPointInput {
-                    input: 0.0,
-                    output: 0.0,
+                    input: 0.5,
+                    output: 2.0,
+                },
+                LinearControlPointInput {
+                    input: 0.75,
+                    output: 1.0,
                 },
                 LinearControlPointInput {
                     input: 1.0,

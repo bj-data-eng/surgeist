@@ -84,7 +84,16 @@ fn unsupported_sample_retains_both_endpoints_after_track_destruction() {
 #[test]
 fn arithmetic_diagnostic_survives_recovery_and_track_destruction() {
     let (failure, recovery) = {
-        let track = transition("opacity", number(f64::MAX), number(-f64::MAX));
+        let track = TransitionTrack::new(
+            TransitionTrackId::new(1),
+            PropertyKey::new("opacity").unwrap(),
+            number(0.0),
+            number(f64::MAX),
+            AnimationDuration::from_secs(1.0).unwrap(),
+            AnimationDelay::from_secs(0.0).unwrap(),
+            overflow_easing(),
+        )
+        .unwrap();
         (sample(&track, 0.5), sample(&track, 0.0))
     };
     assert_state(
@@ -100,11 +109,11 @@ fn arithmetic_diagnostic_survives_recovery_and_track_destruction() {
     };
     assert_eq!(error.property().as_str(), "opacity");
     assert_eq!(error.family(), ValueFamily::Number);
-    assert_eq!(error.from(), &number(f64::MAX));
-    assert_eq!(error.to(), &number(-f64::MAX));
-    assert_eq!(error.progress().value(), 0.5);
+    assert_eq!(error.from(), &number(0.0));
+    assert_eq!(error.to(), &number(f64::MAX));
+    assert_eq!(error.progress().value(), 2.0);
     assert_eq!(error.component(), InterpolationComponent::Number);
-    assert_eq!(error.value(), f64::NEG_INFINITY);
+    assert_eq!(error.value(), f64::INFINITY);
     assert_state(
         &recovery,
         SampleClassification::Active,
@@ -115,7 +124,7 @@ fn arithmetic_diagnostic_survives_recovery_and_track_destruction() {
         panic!("expected recovery")
     };
     assert_eq!(value.property().as_str(), "opacity");
-    assert_eq!(value.value(), &number(f64::MAX));
+    assert_eq!(value.value(), &number(0.0));
 }
 
 fn number(value: f64) -> InterpolableValue {
@@ -151,4 +160,25 @@ fn assert_state(
     assert_eq!(sample.classification(), classification);
     assert_eq!(sample.completion(), completion);
     assert_eq!(sample.next_frame(), hint);
+}
+
+fn overflow_easing() -> Easing {
+    use surgeist_animation::easing::{LinearControlPointInput, LinearEasing};
+    Easing::linear_function(
+        LinearEasing::new(vec![
+            LinearControlPointInput {
+                input: 0.0,
+                output: 0.0,
+            },
+            LinearControlPointInput {
+                input: 0.5,
+                output: 2.0,
+            },
+            LinearControlPointInput {
+                input: 1.0,
+                output: 1.0,
+            },
+        ])
+        .unwrap(),
+    )
 }

@@ -13,6 +13,7 @@
 use core::fmt;
 use std::sync::Arc;
 
+use crate::computed::{ComputedError, ComputedValue};
 use crate::diagnostics::{NumericError, NumericInput};
 use crate::easing::EasedProgress;
 use crate::progress::UnitRatio;
@@ -30,6 +31,7 @@ pub enum ValueFamily {
     Discrete,
     Transform,
     Composite,
+    Computed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -80,6 +82,7 @@ pub enum InterpolableValue {
     Discrete(DiscreteValue),
     Transform(TransformValue),
     Composite(CompositeValue),
+    Computed(ComputedValue),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -103,6 +106,7 @@ struct InterpolationEndpoints {
 pub enum InterpolationOutcome {
     Value(InterpolableValue),
     ArithmeticFailure(NonFiniteInterpolationResult),
+    ComputedFailure(ComputedInterpolationFailure),
     Unsupported(InterpolationError),
 }
 
@@ -126,6 +130,29 @@ pub struct NonFiniteInterpolationResult {
     value: f64,
 }
 
+/// A sample-local computed combination failure retaining both complete endpoints.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ComputedInterpolationFailure {
+    property: PropertyKey,
+    endpoints: Arc<InterpolationEndpoints>,
+    error: ComputedError,
+}
+
+impl ComputedInterpolationFailure {
+    pub const fn property(&self) -> &PropertyKey {
+        &self.property
+    }
+    pub fn from(&self) -> &InterpolableValue {
+        &self.endpoints.from
+    }
+    pub fn to(&self) -> &InterpolableValue {
+        &self.endpoints.to
+    }
+    pub const fn error(&self) -> &ComputedError {
+        &self.error
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum InterpolationError {
     EmptyPropertyKey,
@@ -135,6 +162,7 @@ pub enum InterpolationError {
     },
     Numeric(NumericError),
     NonFiniteInterpolationResult(NonFiniteInterpolationResult),
+    Computed(ComputedInterpolationFailure),
     MismatchedFamilies {
         property: PropertyKey,
         from: ValueFamily,
@@ -172,6 +200,12 @@ impl fmt::Display for InterpolationError {
             Self::Numeric(error) => {
                 write!(f, "numeric interpolation input is invalid: {error}")
             }
+            Self::Computed(result) => write!(
+                f,
+                "interpolating {} failed: {}",
+                result.property.as_str(),
+                result.error
+            ),
             Self::NonFiniteInterpolationResult(result) => write!(
                 f,
                 "interpolating {} produced non-finite {} component at progress {}: {}",
@@ -220,6 +254,7 @@ impl std::error::Error for InterpolationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Numeric(error) => Some(error),
+            Self::Computed(result) => Some(&result.error),
             _ => None,
         }
     }
@@ -233,6 +268,7 @@ fn value_family_name(family: ValueFamily) -> &'static str {
         ValueFamily::Discrete => "discrete",
         ValueFamily::Transform => "transform",
         ValueFamily::Composite => "composite",
+        ValueFamily::Computed => "computed",
     }
 }
 
@@ -497,6 +533,10 @@ impl InterpolableValue {
         Self::Composite(value)
     }
 
+    pub fn computed(value: ComputedValue) -> Self {
+        Self::Computed(value)
+    }
+
     pub const fn family(&self) -> ValueFamily {
         match self {
             Self::Number(_) => ValueFamily::Number,
@@ -505,6 +545,7 @@ impl InterpolableValue {
             Self::Discrete(_) => ValueFamily::Discrete,
             Self::Transform(_) => ValueFamily::Transform,
             Self::Composite(_) => ValueFamily::Composite,
+            Self::Computed(_) => ValueFamily::Computed,
         }
     }
 }
@@ -636,6 +677,18 @@ impl InterpolationPair {
             }
             (InterpolableValue::Composite(_), InterpolableValue::Composite(_)) => {
                 self.unsupported(ValueFamily::Composite, "composite interpolation deferred")
+            }
+            (InterpolableValue::Computed(from), InterpolableValue::Computed(to)) => {
+                match from.interpolate(to, progress) {
+                    Ok(value) => InterpolationOutcome::Value(InterpolableValue::Computed(value)),
+                    Err(error) => {
+                        InterpolationOutcome::ComputedFailure(ComputedInterpolationFailure {
+                            property: self.property.clone(),
+                            endpoints: Arc::clone(&self.endpoints),
+                            error,
+                        })
+                    }
+                }
             }
             (from, to) => InterpolationOutcome::Unsupported(mismatched_families(
                 self.property.clone(),
@@ -833,18 +886,25 @@ fn finite_color_component(value: f64) -> Result<f64, InterpolationError> {
     Ok(value)
 }
 
-fn checked_interpolate(from: f64, to: f64, progress: f64) -> Result<f64, f64> {
-    let delta = to - from;
-    if !delta.is_finite() {
-        return Err(delta);
+pub(crate) fn checked_interpolate(from: f64, to: f64, progress: f64) -> Result<f64, f64> {
+    if progress == 0.0 {
+        return Ok(from);
     }
-
-    let scaled_delta = delta * progress;
-    if !scaled_delta.is_finite() {
-        return Err(scaled_delta);
+    if progress == 1.0 {
+        return Ok(to);
     }
-
-    let value = from + scaled_delta;
+    if from == to {
+        return Ok(from);
+    }
+    // Opposite signs can overflow subtraction even inside a finite convex
+    // interval. Outside that interval the weighted terms have the same sign.
+    // Same-sign endpoints have a finite difference; fused multiply-add avoids
+    // overflow in a product that is cancelled by the first endpoint.
+    let value = if from.is_sign_negative() != to.is_sign_negative() {
+        from.mul_add(1.0 - progress, to * progress)
+    } else {
+        (to - from).mul_add(progress, from)
+    };
     if !value.is_finite() {
         return Err(value);
     }
@@ -1044,16 +1104,16 @@ mod tests {
     }
 
     #[test]
-    fn numeric_interior_overflow_returns_typed_arithmetic_failure_and_does_not_panic() {
+    fn numeric_extrapolation_overflow_returns_typed_arithmetic_failure_and_does_not_panic() {
         let pair = InterpolationPair::new(
             PropertyKey::new("opacity").unwrap(),
+            InterpolableValue::number(InterpolableNumber::new(0.0).unwrap()),
             InterpolableValue::number(InterpolableNumber::new(f64::MAX).unwrap()),
-            InterpolableValue::number(InterpolableNumber::new(-f64::MAX).unwrap()),
         )
         .unwrap();
 
         let sample =
-            std::panic::catch_unwind(|| pair.sample(InterpolationProgress::new(0.5).unwrap()))
+            std::panic::catch_unwind(|| pair.sample(InterpolationProgress::new(2.0).unwrap()))
                 .expect("finite scalar interpolation must not panic on overflow");
 
         assert_arithmetic_failure(
@@ -1121,16 +1181,16 @@ mod tests {
     }
 
     #[test]
-    fn percentage_interior_overflow_returns_typed_arithmetic_failure_and_does_not_panic() {
+    fn percentage_extrapolation_overflow_returns_typed_arithmetic_failure_and_does_not_panic() {
         let pair = InterpolationPair::new(
             PropertyKey::new("width").unwrap(),
+            InterpolableValue::percentage(InterpolablePercentage::new(0.0).unwrap()),
             InterpolableValue::percentage(InterpolablePercentage::new(f64::MAX).unwrap()),
-            InterpolableValue::percentage(InterpolablePercentage::new(-f64::MAX).unwrap()),
         )
         .unwrap();
 
         let sample =
-            std::panic::catch_unwind(|| pair.sample(InterpolationProgress::new(0.5).unwrap()))
+            std::panic::catch_unwind(|| pair.sample(InterpolationProgress::new(2.0).unwrap()))
                 .expect("finite percentage interpolation must not panic on overflow");
 
         assert_arithmetic_failure(
@@ -1385,9 +1445,19 @@ mod tests {
     }
 
     #[test]
-    fn color_arithmetic_overflow_returns_typed_failure_and_does_not_panic() {
+    fn color_extrapolation_overflow_returns_typed_failure_and_does_not_panic() {
         let pair = InterpolationPair::new(
             PropertyKey::new("color").unwrap(),
+            InterpolableValue::color(
+                InterpolableColor::from_straight_components(
+                    ColorInterpolationSpace::Srgb,
+                    0.0,
+                    0.0,
+                    0.0,
+                    crate::progress::UnitRatio::new(1.0).unwrap(),
+                )
+                .unwrap(),
+            ),
             InterpolableValue::color(
                 InterpolableColor::from_straight_components(
                     ColorInterpolationSpace::Srgb,
@@ -1398,21 +1468,11 @@ mod tests {
                 )
                 .unwrap(),
             ),
-            InterpolableValue::color(
-                InterpolableColor::from_straight_components(
-                    ColorInterpolationSpace::Srgb,
-                    -f64::MAX,
-                    0.0,
-                    0.0,
-                    crate::progress::UnitRatio::new(1.0).unwrap(),
-                )
-                .unwrap(),
-            ),
         )
         .unwrap();
 
         let sample =
-            std::panic::catch_unwind(|| pair.sample(InterpolationProgress::new(0.5).unwrap()))
+            std::panic::catch_unwind(|| pair.sample(InterpolationProgress::new(2.0).unwrap()))
                 .expect("finite color interpolation must not panic on overflow");
 
         assert_arithmetic_failure(
@@ -1641,7 +1701,7 @@ mod tests {
         assert_eq!(result.family(), family);
         assert_eq!(result.from().family(), family);
         assert_eq!(result.to().family(), family);
-        assert_eq!(result.progress(), InterpolationProgress::new(0.5).unwrap());
+        assert_eq!(result.progress(), InterpolationProgress::new(2.0).unwrap());
         assert_eq!(result.component(), component);
         assert!(!result.value().is_finite());
     }
@@ -1649,13 +1709,13 @@ mod tests {
     fn arithmetic_failure() -> NonFiniteInterpolationResult {
         let pair = InterpolationPair::new(
             PropertyKey::new("opacity").unwrap(),
+            InterpolableValue::number(InterpolableNumber::new(0.0).unwrap()),
             InterpolableValue::number(InterpolableNumber::new(f64::MAX).unwrap()),
-            InterpolableValue::number(InterpolableNumber::new(-f64::MAX).unwrap()),
         )
         .unwrap();
 
         let InterpolationOutcome::ArithmeticFailure(result) =
-            pair.sample(InterpolationProgress::new(0.5).unwrap())
+            pair.sample(InterpolationProgress::new(2.0).unwrap())
         else {
             panic!("expected arithmetic failure");
         };

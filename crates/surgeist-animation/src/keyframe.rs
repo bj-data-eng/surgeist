@@ -885,7 +885,7 @@ mod tests {
         let track = KeyframeTrack::new(
             KeyframeAnimationId::new("fade").unwrap(),
             default_timing(),
-            vec![overflow_segment("opacity", Easing::linear())],
+            vec![overflow_segment("opacity", overflow_easing())],
         )
         .unwrap();
 
@@ -937,7 +937,7 @@ mod tests {
                 FillMode::Forwards,
             )
             .unwrap(),
-            vec![overflow_segment("opacity", Easing::linear())],
+            vec![overflow_segment("opacity", overflow_easing())],
         )
         .unwrap();
 
@@ -967,7 +967,7 @@ mod tests {
                 FillMode::Forwards,
             )
             .unwrap(),
-            vec![overflow_segment("opacity", Easing::linear())],
+            vec![overflow_segment("opacity", overflow_easing())],
         )
         .unwrap();
 
@@ -983,7 +983,7 @@ mod tests {
         assert_eq!(early[0].classification(), SampleClassification::Failed);
         assert_eq!(later[0].classification(), SampleClassification::Filling);
         assert_eq!(later[0].completion(), CompletionStatus::Finished);
-        assert_sampled_number(&later[0], "opacity", -f64::MAX);
+        assert_sampled_number(&later[0], "opacity", f64::MAX);
     }
 
     #[test]
@@ -1461,13 +1461,33 @@ mod tests {
         .unwrap()
     }
 
+    fn overflow_easing() -> Easing {
+        Easing::linear_function(
+            LinearEasing::new(vec![
+                LinearControlPointInput {
+                    input: 0.0,
+                    output: 0.0,
+                },
+                LinearControlPointInput {
+                    input: 0.5,
+                    output: 2.0,
+                },
+                LinearControlPointInput {
+                    input: 1.0,
+                    output: 1.0,
+                },
+            ])
+            .unwrap(),
+        )
+    }
+
     fn overflow_segment(property: &str, easing: Easing) -> KeyframeSegment {
         KeyframeSegment::new(
             PropertyKey::new(property).unwrap(),
             UnitRatio::new(0.0).unwrap(),
             UnitRatio::new(1.0).unwrap(),
+            number(0.0),
             number(f64::MAX),
-            number(-f64::MAX),
             easing,
         )
         .unwrap()

@@ -286,14 +286,14 @@ fn unsupported_sample_distinction_uses_public_modules() {
 fn transient_arithmetic_failure_sample_distinction_uses_public_modules() {
     let track = public_transition(
         animation::interpolation::InterpolableValue::number(
-            animation::interpolation::InterpolableNumber::new(f64::MAX).unwrap(),
+            animation::interpolation::InterpolableNumber::new(0.0).unwrap(),
         ),
         animation::interpolation::InterpolableValue::number(
-            animation::interpolation::InterpolableNumber::new(-f64::MAX).unwrap(),
+            animation::interpolation::InterpolableNumber::new(f64::MAX).unwrap(),
         ),
         animation::time::AnimationDuration::from_secs(1.0).unwrap(),
         animation::time::AnimationDelay::from_secs(0.0).unwrap(),
-        animation::easing::Easing::linear(),
+        overflow_easing(),
     );
 
     let failed = track.sample(
@@ -342,7 +342,7 @@ fn transient_arithmetic_failure_sample_distinction_uses_public_modules() {
         recovered.next_frame(),
         animation::sample::NextFrameHint::MayChange
     );
-    assert_sampled_number(&recovered, f64::MAX);
+    assert_sampled_number(&recovered, 0.0);
 }
 
 #[test]
@@ -619,4 +619,25 @@ fn rejected_elapsed_time_exposes_numeric_diagnostic() {
         "elapsed time must be non-negative, got -1"
     );
     assert!(std::error::Error::source(&error).is_none());
+}
+
+fn overflow_easing() -> animation::easing::Easing {
+    use surgeist_animation::easing::{LinearControlPointInput, LinearEasing};
+    animation::easing::Easing::linear_function(
+        LinearEasing::new(vec![
+            LinearControlPointInput {
+                input: 0.0,
+                output: 0.0,
+            },
+            LinearControlPointInput {
+                input: 0.5,
+                output: 2.0,
+            },
+            LinearControlPointInput {
+                input: 1.0,
+                output: 1.0,
+            },
+        ])
+        .unwrap(),
+    )
 }

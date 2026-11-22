@@ -66,6 +66,14 @@ impl Family {
         }
     }
 
+    pub fn easing(self) -> Easing {
+        if matches!(self, Self::ArithmeticFailure) {
+            overflow_easing()
+        } else {
+            Easing::linear()
+        }
+    }
+
     fn endpoints(self, bias: f64) -> (InterpolableValue, InterpolableValue) {
         match self {
             Self::Number => (number(10.0 + bias), number(30.0 + bias)),
@@ -86,7 +94,7 @@ impl Family {
                 InterpolableValue::composite(CompositeValue::unsupported("shadow-a")),
                 InterpolableValue::composite(CompositeValue::unsupported("shadow-b")),
             ),
-            Self::ArithmeticFailure => (number(f64::MAX), number(-f64::MAX)),
+            Self::ArithmeticFailure => (number(0.0), number(f64::MAX)),
         }
     }
 }
@@ -139,7 +147,7 @@ pub fn segments(
                 UnitRatio::new((segment + 1) as f64 / per_property as f64).unwrap(),
                 from,
                 to,
-                Easing::linear(),
+                family.easing(),
             )
             .unwrap(),
         );
@@ -165,7 +173,7 @@ pub fn transition(family: Family) -> TransitionTrack {
         to,
         AnimationDuration::from_secs(1.0).unwrap(),
         AnimationDelay::from_secs(0.0).unwrap(),
-        Easing::linear(),
+        family.easing(),
     )
     .unwrap()
 }
@@ -176,4 +184,21 @@ pub fn elapsed_inputs() -> [ElapsedTime; 1024] {
     std::array::from_fn(|index| {
         ElapsedTime::from_secs((((index * 613) % 1024) as f64 + 0.381_966) / 1024.0).unwrap()
     })
+}
+
+fn overflow_easing() -> Easing {
+    use surgeist_animation::easing::{LinearControlPointInput, LinearEasing};
+    Easing::linear_function(
+        LinearEasing::new(vec![
+            LinearControlPointInput {
+                input: 0.0,
+                output: 2.0,
+            },
+            LinearControlPointInput {
+                input: 1.0,
+                output: 2.0,
+            },
+        ])
+        .unwrap(),
+    )
 }

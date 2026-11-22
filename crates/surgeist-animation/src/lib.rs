@@ -31,6 +31,7 @@
 //! | [`easing`] | Cubic Bezier, step and linear easing functions. |
 //! | [`timing`] | Timing parameters, phases and the timing sample. |
 //! | [`interpolation`] | Interpolable values, property keys and pairs. |
+//! | [`computed`] | Canonical computed atoms, symbolic math and property combination. |
 //! | [`sample`] | Sampled property results and next-frame hints. |
 //! | [`transition`] | Transition tracks, the entry point for transitions. |
 //! | [`keyframe`] | Keyframe tracks, the entry point for keyframe animations. |
@@ -128,6 +129,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod computed;
 pub mod diagnostics;
 pub mod easing;
 pub mod interpolation;
