@@ -983,11 +983,39 @@ pub const fn surgeist_animation::shadow::ShadowList::kind(&self) -> surgeist_ani
 pub fn surgeist_animation::shadow::ShadowList::new(kind: surgeist_animation::shadow::ShadowKind, inputs: alloc::vec::Vec<surgeist_animation::shadow::ShadowInput>) -> core::result::Result<Self, surgeist_animation::shadow::ShadowError>
 pub fn surgeist_animation::shadow::ShadowList::shadows(&self) -> &[surgeist_animation::shadow::Shadow]
 pub mod surgeist_animation::shape
+pub enum surgeist_animation::shape::ArcSize
+pub surgeist_animation::shape::ArcSize::Large
+pub surgeist_animation::shape::ArcSize::Small
+pub enum surgeist_animation::shape::ArcSweep
+pub surgeist_animation::shape::ArcSweep::Ccw
+pub surgeist_animation::shape::ArcSweep::Cw
+pub enum surgeist_animation::shape::AxisCommand
+pub surgeist_animation::shape::AxisCommand::By(surgeist_animation::shape::LengthPercentage)
+pub surgeist_animation::shape::AxisCommand::To(surgeist_animation::shape::LengthPercentage)
 pub enum surgeist_animation::shape::BasicShape
 pub surgeist_animation::shape::BasicShape::Circle(surgeist_animation::shape::Circle)
 pub surgeist_animation::shape::BasicShape::Ellipse(surgeist_animation::shape::Ellipse)
 pub surgeist_animation::shape::BasicShape::Inset(surgeist_animation::shape::Inset)
+pub surgeist_animation::shape::BasicShape::Path(surgeist_animation::shape::CommandPath)
 pub surgeist_animation::shape::BasicShape::Polygon(surgeist_animation::shape::Polygon)
+pub surgeist_animation::shape::BasicShape::Shape(surgeist_animation::shape::CommandShape)
+pub enum surgeist_animation::shape::CommandComponent
+pub surgeist_animation::shape::CommandComponent::Endpoint
+pub surgeist_animation::shape::CommandComponent::FirstControl
+pub surgeist_animation::shape::CommandComponent::HorizontalRadius
+pub surgeist_animation::shape::CommandComponent::Rotation
+pub surgeist_animation::shape::CommandComponent::SecondControl
+pub surgeist_animation::shape::CommandComponent::VerticalRadius
+pub enum surgeist_animation::shape::ControlAnchor
+pub surgeist_animation::shape::ControlAnchor::End
+pub surgeist_animation::shape::ControlAnchor::Origin
+pub surgeist_animation::shape::ControlAnchor::Start
+pub enum surgeist_animation::shape::CurveControls
+pub surgeist_animation::shape::CurveControls::Cubic(surgeist_animation::shape::ControlPoint, surgeist_animation::shape::ControlPoint)
+pub surgeist_animation::shape::CurveControls::Quadratic(surgeist_animation::shape::ControlPoint)
+pub enum surgeist_animation::shape::Endpoint
+pub surgeist_animation::shape::Endpoint::By(surgeist_animation::computed::ComputedPosition)
+pub surgeist_animation::shape::Endpoint::To(surgeist_animation::computed::ComputedPosition)
 pub enum surgeist_animation::shape::FillRule
 pub surgeist_animation::shape::FillRule::Evenodd
 pub surgeist_animation::shape::FillRule::Nonzero
@@ -1005,11 +1033,28 @@ pub surgeist_animation::shape::ReferenceBox::MarginBox
 pub surgeist_animation::shape::ReferenceBox::PaddingBox
 pub surgeist_animation::shape::ReferenceBox::StrokeBox
 pub surgeist_animation::shape::ReferenceBox::ViewBox
+pub enum surgeist_animation::shape::ShapeCommand
+pub surgeist_animation::shape::ShapeCommand::Arc(surgeist_animation::shape::ArcCommand)
+pub surgeist_animation::shape::ShapeCommand::Close
+pub surgeist_animation::shape::ShapeCommand::Curve
+pub surgeist_animation::shape::ShapeCommand::Curve::controls: surgeist_animation::shape::CurveControls
+pub surgeist_animation::shape::ShapeCommand::Curve::end: surgeist_animation::shape::Endpoint
+pub surgeist_animation::shape::ShapeCommand::HorizontalLine(surgeist_animation::shape::AxisCommand)
+pub surgeist_animation::shape::ShapeCommand::Line(surgeist_animation::shape::Endpoint)
+pub surgeist_animation::shape::ShapeCommand::Move(surgeist_animation::shape::Endpoint)
+pub surgeist_animation::shape::ShapeCommand::Smooth
+pub surgeist_animation::shape::ShapeCommand::Smooth::control: core::option::Option<surgeist_animation::shape::ControlPoint>
+pub surgeist_animation::shape::ShapeCommand::Smooth::end: surgeist_animation::shape::Endpoint
+pub surgeist_animation::shape::ShapeCommand::VerticalLine(surgeist_animation::shape::AxisCommand)
 pub enum surgeist_animation::shape::ShapeComponent
 pub surgeist_animation::shape::ShapeComponent::Center
+pub surgeist_animation::shape::ShapeComponent::Command
+pub surgeist_animation::shape::ShapeComponent::Command::component: surgeist_animation::shape::CommandComponent
+pub surgeist_animation::shape::ShapeComponent::Command::index: usize
 pub surgeist_animation::shape::ShapeComponent::CornerHorizontalRadius(usize)
 pub surgeist_animation::shape::ShapeComponent::CornerVerticalRadius(usize)
 pub surgeist_animation::shape::ShapeComponent::HorizontalRadius
+pub surgeist_animation::shape::ShapeComponent::InitialPoint
 pub surgeist_animation::shape::ShapeComponent::InsetOffset(usize)
 pub surgeist_animation::shape::ShapeComponent::PolygonRounding
 pub surgeist_animation::shape::ShapeComponent::PolygonVertex(usize)
@@ -1017,14 +1062,42 @@ pub surgeist_animation::shape::ShapeComponent::Radius
 pub surgeist_animation::shape::ShapeComponent::VerticalRadius
 pub enum surgeist_animation::shape::ShapeErrorKind
 pub surgeist_animation::shape::ShapeErrorKind::Capacity
+pub surgeist_animation::shape::ShapeErrorKind::EmptyCommands
 pub surgeist_animation::shape::ShapeErrorKind::EmptyPolygon
 pub surgeist_animation::shape::ShapeErrorKind::InvalidNumericType
+pub surgeist_animation::shape::ShapeErrorKind::InvalidPathControlAnchor
 pub surgeist_animation::shape::ShapeErrorKind::Numeric
+pub struct surgeist_animation::shape::ArcCommand
+impl surgeist_animation::shape::ArcCommand
+pub const fn surgeist_animation::shape::ArcCommand::end(&self) -> &surgeist_animation::shape::Endpoint
+pub const fn surgeist_animation::shape::ArcCommand::horizontal_radius(&self) -> &surgeist_animation::shape::LengthPercentage
+pub fn surgeist_animation::shape::ArcCommand::new(end: surgeist_animation::shape::Endpoint, horizontal_radius: surgeist_animation::shape::LengthPercentage, vertical_radius: surgeist_animation::shape::LengthPercentage, rotation: surgeist_animation::computed::ComputedNumeric, sweep: surgeist_animation::shape::ArcSweep, size: surgeist_animation::shape::ArcSize) -> core::result::Result<Self, surgeist_animation::shape::ShapeError>
+pub const fn surgeist_animation::shape::ArcCommand::rotation(&self) -> &surgeist_animation::computed::ComputedNumeric
+pub const fn surgeist_animation::shape::ArcCommand::size(&self) -> surgeist_animation::shape::ArcSize
+pub const fn surgeist_animation::shape::ArcCommand::sweep(&self) -> surgeist_animation::shape::ArcSweep
+pub const fn surgeist_animation::shape::ArcCommand::vertical_radius(&self) -> &surgeist_animation::shape::LengthPercentage
 pub struct surgeist_animation::shape::Circle
 impl surgeist_animation::shape::Circle
 pub const fn surgeist_animation::shape::Circle::center(&self) -> &surgeist_animation::computed::ComputedPosition
 pub const fn surgeist_animation::shape::Circle::new(radius: surgeist_animation::shape::Radius, center: surgeist_animation::computed::ComputedPosition) -> Self
 pub const fn surgeist_animation::shape::Circle::radius(&self) -> &surgeist_animation::shape::Radius
+pub struct surgeist_animation::shape::CommandPath
+impl surgeist_animation::shape::CommandPath
+pub fn surgeist_animation::shape::CommandPath::commands(&self) -> &[surgeist_animation::shape::ShapeCommand]
+pub fn surgeist_animation::shape::CommandPath::fill_rule(&self) -> surgeist_animation::shape::FillRule
+pub fn surgeist_animation::shape::CommandPath::initial(&self) -> &surgeist_animation::computed::ComputedPosition
+pub fn surgeist_animation::shape::CommandPath::new(initial: surgeist_animation::computed::ComputedPosition, commands: alloc::vec::Vec<surgeist_animation::shape::ShapeCommand>, fill_rule: surgeist_animation::shape::FillRule) -> core::result::Result<Self, surgeist_animation::shape::ShapeError>
+pub struct surgeist_animation::shape::CommandShape
+impl surgeist_animation::shape::CommandShape
+pub fn surgeist_animation::shape::CommandShape::commands(&self) -> &[surgeist_animation::shape::ShapeCommand]
+pub fn surgeist_animation::shape::CommandShape::fill_rule(&self) -> surgeist_animation::shape::FillRule
+pub fn surgeist_animation::shape::CommandShape::initial(&self) -> &surgeist_animation::computed::ComputedPosition
+pub fn surgeist_animation::shape::CommandShape::new(initial: surgeist_animation::computed::ComputedPosition, commands: alloc::vec::Vec<surgeist_animation::shape::ShapeCommand>, fill_rule: surgeist_animation::shape::FillRule) -> core::result::Result<Self, surgeist_animation::shape::ShapeError>
+pub struct surgeist_animation::shape::ControlPoint
+impl surgeist_animation::shape::ControlPoint
+pub const fn surgeist_animation::shape::ControlPoint::anchor(&self) -> surgeist_animation::shape::ControlAnchor
+pub const fn surgeist_animation::shape::ControlPoint::new(anchor: surgeist_animation::shape::ControlAnchor, offset: surgeist_animation::computed::ComputedPosition) -> Self
+pub const fn surgeist_animation::shape::ControlPoint::offset(&self) -> &surgeist_animation::computed::ComputedPosition
 pub struct surgeist_animation::shape::CornerRadii
 impl surgeist_animation::shape::CornerRadii
 pub const fn surgeist_animation::shape::CornerRadii::horizontal(&self) -> &[surgeist_animation::shape::LengthPercentage; 4]

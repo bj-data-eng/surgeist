@@ -126,6 +126,13 @@ interpolated shape or be hidden by an earlier arithmetic failure. Used radii,
 overlap adjustment and polygon geometry stay with consumers. See the
 [basic-shape contract](reference.md#computed-basic-shapes).
 
+Native shape/path commands preserve command identity, absolute/relative forms,
+explicit control anchors and implicit smooth controls. Sampling needs no path
+execution or box geometry: it combines corresponding numeric operands after
+whole-list compatibility. This also keeps authored CSS/SVG parsing with CSS and
+resolved geometry with its consuming owner. See the
+[command contract](reference.md#native-shape-and-path-commands).
+
 Box and text shadows share one normalized list algebra above their supplied
 resolved geometry and premultiplied colors. Input guards remain distinct from
 sampled values, so easing extrapolation does not trigger authored range checks.
