@@ -567,6 +567,7 @@ pub enum surgeist_animation::interpolation::ColorInterpolationSpace
 pub surgeist_animation::interpolation::ColorInterpolationSpace::Oklab
 pub surgeist_animation::interpolation::ColorInterpolationSpace::Srgb
 pub enum surgeist_animation::interpolation::InterpolableValue
+pub surgeist_animation::interpolation::InterpolableValue::ClipPath(surgeist_animation::masking::ClipPathValue)
 pub surgeist_animation::interpolation::InterpolableValue::Color(surgeist_animation::interpolation::InterpolableColor)
 pub surgeist_animation::interpolation::InterpolableValue::Composite(surgeist_animation::interpolation::CompositeValue)
 pub surgeist_animation::interpolation::InterpolableValue::Computed(surgeist_animation::computed::ComputedValue)
@@ -579,6 +580,7 @@ pub surgeist_animation::interpolation::InterpolableValue::Shadow(surgeist_animat
 pub surgeist_animation::interpolation::InterpolableValue::Shape(surgeist_animation::shape::ShapeValue)
 pub surgeist_animation::interpolation::InterpolableValue::Transform(surgeist_animation::interpolation::TransformValue)
 impl surgeist_animation::interpolation::InterpolableValue
+pub fn surgeist_animation::interpolation::InterpolableValue::clip_path(value: surgeist_animation::masking::ClipPathValue) -> Self
 pub const fn surgeist_animation::interpolation::InterpolableValue::color(value: surgeist_animation::interpolation::InterpolableColor) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::composite(value: surgeist_animation::interpolation::CompositeValue) -> Self
 pub fn surgeist_animation::interpolation::InterpolableValue::computed(value: surgeist_animation::computed::ComputedValue) -> Self
@@ -649,6 +651,7 @@ pub surgeist_animation::interpolation::InterpolationOutcome::ShapeFailure(surgei
 pub surgeist_animation::interpolation::InterpolationOutcome::Unsupported(surgeist_animation::interpolation::InterpolationError)
 pub surgeist_animation::interpolation::InterpolationOutcome::Value(surgeist_animation::interpolation::InterpolableValue)
 pub enum surgeist_animation::interpolation::ValueFamily
+pub surgeist_animation::interpolation::ValueFamily::ClipPath
 pub surgeist_animation::interpolation::ValueFamily::Color
 pub surgeist_animation::interpolation::ValueFamily::Composite
 pub surgeist_animation::interpolation::ValueFamily::Computed
@@ -925,6 +928,28 @@ pub surgeist_animation::keyframe_input::PropertyIndexedInput::offsets: alloc::ve
 pub surgeist_animation::keyframe_input::PropertyIndexedInput::properties: alloc::vec::Vec<(surgeist_animation::interpolation::PropertyKey, alloc::vec::Vec<core::option::Option<V>>)>
 impl<V, E> core::default::Default for surgeist_animation::keyframe_input::PropertyIndexedInput<V, E>
 pub fn surgeist_animation::keyframe_input::PropertyIndexedInput<V, E>::default() -> Self
+pub mod surgeist_animation::masking
+pub enum surgeist_animation::masking::ClipPathValue
+pub surgeist_animation::masking::ClipPathValue::Box(surgeist_animation::shape::ReferenceBox)
+pub surgeist_animation::masking::ClipPathValue::None
+pub surgeist_animation::masking::ClipPathValue::Shape(surgeist_animation::shape::ShapeValue)
+pub surgeist_animation::masking::ClipPathValue::Source(surgeist_animation::masking::ClipSource)
+impl surgeist_animation::masking::ClipPathValue
+pub fn surgeist_animation::masking::ClipPathValue::interpolate(&self, other: &Self, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<Self, surgeist_animation::shape::ShapeError>
+pub enum surgeist_animation::masking::ClipSourceErrorKind
+pub surgeist_animation::masking::ClipSourceErrorKind::Blank
+pub surgeist_animation::masking::ClipSourceErrorKind::ControlCharacter
+pub surgeist_animation::masking::ClipSourceErrorKind::ControlCharacter::byte_index: usize
+pub struct surgeist_animation::masking::ClipSource(_)
+impl surgeist_animation::masking::ClipSource
+pub fn surgeist_animation::masking::ClipSource::as_str(&self) -> &str
+pub fn surgeist_animation::masking::ClipSource::new(value: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_animation::masking::ClipSourceError>
+pub struct surgeist_animation::masking::ClipSourceError
+impl surgeist_animation::masking::ClipSourceError
+pub const fn surgeist_animation::masking::ClipSourceError::kind(&self) -> surgeist_animation::masking::ClipSourceErrorKind
+impl core::error::Error for surgeist_animation::masking::ClipSourceError
+impl core::fmt::Display for surgeist_animation::masking::ClipSourceError
+pub fn surgeist_animation::masking::ClipSourceError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub mod surgeist_animation::playback
 pub enum surgeist_animation::playback::CompletionKind
 pub surgeist_animation::playback::CompletionKind::Finished
