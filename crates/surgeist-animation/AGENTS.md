@@ -9,8 +9,10 @@ This crate owns timing, easing, keyframes, computed effect sampling and native
 endpoint fallback, CSS animation-list reconciliation, interpolation, sampled
 values, transition decisions over supplied snapshots, and animation diagnostics.
 Consumers supply normalized tracks, computed endpoints, and property support
-policy. Authored CSS, clocks, scheduling, lifecycle publication/dispatch, invalidation,
-color conversion, gamut mapping, and final property clamping remain caller-owned.
+policy. Color owns numerical interpolation and the conversion it uses for
+resolved color pairs. Consumers own authored CSS, contextual color resolution,
+display gamut mapping, final property clamping, clocks, scheduling, lifecycle
+publication and dispatch, and invalidation.
 
 ## Discover The Current Structure
 
@@ -30,10 +32,9 @@ color conversion, gamut mapping, and final property clamping remain caller-owned
 Select affected checks under the root process/resource policy; commands below
 run from this crate directory.
 
-The manifest declares no features or runtime dependencies. Performance and
-allocation commands are separate measurements, not routine test gates; their
-contracts and commands are in `docs/performance.md` and
-`docs/construction-performance.md`.
+The manifest declares `surgeist-color` as the sole runtime dependency.
+The performance and allocation measurements have their own commands and
+contracts in `docs/performance.md` and `docs/construction-performance.md`.
 
 ```sh
 cargo check -j 1 --offline -p surgeist-animation

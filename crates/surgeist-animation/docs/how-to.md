@@ -236,8 +236,8 @@ property counts or change the input contract.
 
 Run these before handing off crate-local animation work:
 
-Offline verification and measurement commands require the existing dev-only
-`stats_alloc` dependency to be cached. The crate has no runtime dependencies.
+Offline verification and measurement commands load `surgeist-color` from the
+workspace and require the dev-only `stats_alloc` dependency in Cargo's cache.
 
 ```sh
 cargo test --offline -p surgeist-animation

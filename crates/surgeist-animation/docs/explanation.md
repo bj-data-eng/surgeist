@@ -24,8 +24,8 @@ Computed font palettes follow the same boundary. Animation retains opaque
 computed operand identities and returns flat Oklab mix plans. Style keeps their
 keyword/name/mix mapping, determines context-dependent equivalence and resolves
 palette entries against the selected font and rules. Nested sampled mixes keep
-their operation boundaries; they do not introduce Color or font-resource
-dependencies. See [computed font properties](reference.md#computed-font-properties).
+their operation boundaries. Animation returns the symbolic plan for Style
+to evaluate. See [computed font properties](reference.md#computed-font-properties).
 
 ## Why inputs are normalized
 

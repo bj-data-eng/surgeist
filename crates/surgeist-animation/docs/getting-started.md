@@ -5,9 +5,9 @@ Sample a normalized opacity transition and observe an active sample.
 ## Prerequisites
 
 Use a local checkout and an already-installed Rust toolchain supporting edition
-2024, with Cargo. The [manifest](../Cargo.toml) declares no runtime dependencies
-and no explicit minimum Rust version. Local verification also requires the
-dev-only `stats_alloc` dependency in Cargo's cache. On a new checkout, populate
+2024, with Cargo. Cargo loads the `surgeist-color` runtime dependency from the
+workspace. Local verification also requires the dev-only `stats_alloc`
+dependency in Cargo's cache. On a new checkout, populate
 that cache with `cargo fetch` when dependency retrieval is authorized. The
 commands below run from the crate directory and use offline mode.
 
