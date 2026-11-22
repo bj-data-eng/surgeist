@@ -1,0 +1,4 @@
+[submodule "vendor/boa"]
+	path = vendor/boa
+	url = https://github.com/bj-data-eng/surgeist-boa.git
+	branch = branch/surgeist-host

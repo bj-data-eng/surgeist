@@ -1,6 +1,20 @@
-# External JavaScript backend
+# JavaScript backends
 
-The direct dependency is crates.io `v8` exactly **152.2.0**, the Rust SDK from
+## Boa qualification
+
+The `boa-qualification` feature uses [Surgeist's Boa fork](https://github.com/bj-data-eng/surgeist-boa), based on [Boa v0.22.0](https://github.com/boa-dev/boa/tree/v0.22). The root Git tree pins the exact fork commit under `vendor/boa`, and Cargo resolves the Boa packages from that checkout.
+
+Initialize the pinned checkout before building.
+
+```sh
+git submodule update --init vendor/boa
+```
+
+The fork's `branch/surgeist-host` branch carries the embedding changes. To update the pin, integrate the chosen upstream revision into that branch, verify the host and Runtime, then commit the tested Git submodule pointer in Surgeist.
+
+## Rusty V8
+
+The default backend depends on crates.io `v8` exactly **152.2.0**, the Rust SDK from
 [`denoland/rusty_v8`](https://github.com/denoland/rusty_v8/tree/v152.2.0).
 The root lockfile authenticates its package with SHA-256
 `a10fe1a92da5c32c7c7f838ce36c0ccfcfd5edf0865b58bdde820aa64cea9888`.

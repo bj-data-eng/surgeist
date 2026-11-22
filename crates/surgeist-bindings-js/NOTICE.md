@@ -13,6 +13,10 @@ Other targets, feature choices and final distributions need their own inventory.
 
 ## Dependencies
 
+### Boa qualification
+
+The qualification feature uses the [Boa engine](https://boajs.dev/), distributed by boa-dev, through the [Surgeist fork](https://github.com/bj-data-eng/surgeist-boa). The submodule retains the upstream [MIT](../../vendor/boa/LICENSE-MIT) and [Unlicense](../../vendor/boa/LICENSE-UNLICENSE) alternatives. The Git submodule pointer fixes the exact source used for the fork.
+
 ### Rust SDK and native V8
 
 This product depends on [rusty_v8](https://github.com/denoland/rusty_v8),

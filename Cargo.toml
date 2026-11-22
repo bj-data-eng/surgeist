@@ -106,6 +106,9 @@ members = [
 ]
 exclude = [
     "api/generator",
+    "vendor/boa",
+    "vendor/boa/core/*",
+    "vendor/boa/utils/*",
     "crates/surgeist-layout/tools/surgeist-layout-audits",
 ]
 
@@ -116,4 +119,6 @@ surgeist-ledger = { path = "crates/surgeist-ledger", version = "=0.1.0" }
 unsafe_code = "forbid"
 
 [patch.crates-io]
+boa_engine = { path = "vendor/boa/core/engine" }
+boa_gc = { path = "vendor/boa/core/gc" }
 accesskit_consumer = { path = "vendor/accesskit-consumer" }
