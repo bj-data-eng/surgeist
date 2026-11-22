@@ -31,6 +31,14 @@ adoption preserve surviving identities. Retired identities never alias reused
 generations; old snapshots retain their historical boundaries and associations.
 Disassociation and copied-handle drop do not retire a Range.
 
+`Dom::create_owned_range` attaches an affine ownership token to a new Range
+created by the same Source command. The canonical Range limit also bounds
+outstanding release records. Dropping the token queues its funded record
+without editing the tree. `Dom::reap_released_ranges` reclaims the exact
+generation at a native boundary after its last active Document association
+ends. It preserves caller-owned Ranges and keeps pending records across
+admission refusal and cancellation.
+
 Ordinary batches keep tree, Range and association changes atomic. Source edits
 use that same owner and retain valid boundaries at every visible publication.
 A multi-child insertion whose prescribed aggregate offset shift would make an

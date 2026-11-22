@@ -2743,6 +2743,11 @@ pub surgeist_dom::range::DomSourceDesignModeStep::ReadActiveRange
 pub struct surgeist_dom::range::CreatedRange
 impl core::convert::From<&surgeist_dom::range::CreatedRange> for surgeist_dom::range::DomRangeOperand
 pub fn surgeist_dom::range::DomRangeOperand::from(ticket: &surgeist_dom::range::CreatedRange) -> Self
+pub struct surgeist_dom::range::DomOwnedRange
+impl surgeist_dom::range::DomOwnedRange
+pub fn surgeist_dom::range::DomOwnedRange::id(&self) -> surgeist_dom::range::DomRangeId
+impl core::ops::drop::Drop for surgeist_dom::range::DomOwnedRange
+pub fn surgeist_dom::range::DomOwnedRange::drop(&mut self)
 pub struct surgeist_dom::range::DomRange<'a>
 impl surgeist_dom::range::DomRange<'_>
 pub fn surgeist_dom::range::DomRange<'_>::collapsed(self) -> bool
@@ -4641,6 +4646,9 @@ pub fn surgeist_dom::Dom::node_iterator_next_accounted<A, E>(&mut self, id: surg
 pub fn surgeist_dom::Dom::node_iterator_previous(&mut self, id: surgeist_dom::tree::DomNodeIteratorId, work_limit: u64, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomNodeIteratorProgress, surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::node_iterator_previous_accounted<A, E>(&mut self, id: surgeist_dom::tree::DomNodeIteratorId, admission: A, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomNodeIteratorProgress<A>, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::retire_node_iterator(&mut self, id: surgeist_dom::tree::DomNodeIteratorId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::DomError>
+impl surgeist_dom::Dom
+pub fn surgeist_dom::Dom::create_owned_range(&mut self, document: surgeist_dom::identity::DocumentId, limits: surgeist_dom::source::DomSourceLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::range::DomOwnedRange, surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::reap_released_ranges(&mut self, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::DomError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::create_scoped_registry(&mut self, source: &surgeist_dom::hosted::DomHostedSource, global: surgeist_dom::hosted::DomHostedGlobalId, limits: surgeist_dom::source::DomSourceLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(surgeist_dom::DomCommit, surgeist_dom::custom_element::DomRegistryId), surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::Dom::prepare_registry_definition<'a>(&'a mut self, source: &'a surgeist_dom::hosted::DomHostedSource, global: surgeist_dom::hosted::DomHostedGlobalId, registry: surgeist_dom::custom_element::DomRegistryId, definition: &surgeist_html_semantics::capture::HtmlCustomElementDefinition, limits: surgeist_dom::source::DomSourceLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::custom_element::DomRegistryDefinitionPreparation<'a>, surgeist_dom::hosted::DomHostedError>
