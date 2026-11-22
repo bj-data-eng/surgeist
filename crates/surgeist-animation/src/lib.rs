@@ -37,6 +37,7 @@
 //! | [`interpolation`] | Interpolable values, property keys and pairs. |
 //! | [`computed`] | Canonical computed atoms, symbolic math and property combination. |
 //! | [`composition`] | Pure underlying-first endpoint composition and property operations. |
+//! | [`shadow`] | Resolved box/text shadows, padding and ordered list combination. |
 //! | [`shape`] | Computed circle, ellipse, inset and polygon interpolation. |
 //! | [`transform`] | Resolved transform functions, matrix interpolation and list combination. |
 //! | [`sample`] | Sampled property results and next-frame hints. |
@@ -148,6 +149,7 @@ pub mod keyframe_input;
 pub mod playback;
 pub mod progress;
 pub mod sample;
+pub mod shadow;
 pub mod shape;
 pub mod time;
 pub mod timeline;

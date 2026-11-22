@@ -9,7 +9,7 @@ dependencies, features, or explicit minimum Rust version. The dev-only
 
 [src/lib.rs](../src/lib.rs) declares the public modules `computed`, `diagnostics`,
 `composition`, `css_animation`, `easing`, `interpolation`, `keyframe`,
-`keyframe_input`, `playback`, `progress`, `sample`, `shape`, `time`, `timeline`,
+`keyframe_input`, `playback`, `progress`, `sample`, `shadow`, `shape`, `time`, `timeline`,
 `timing`, `transform`, and `transition`, and the
 constant `CRATE_NAME`. Each public type has one path through its owning module,
 such as `surgeist_animation::easing::Easing`. The crate forbids unsafe code. Tests live in
@@ -777,6 +777,47 @@ composite interpolation, produces `SampleClassification::Unsupported` and
 supported interpolation produces `SampleClassification::Failed` and
 `SampleValue::Error`, and later endpoint samples can recover.
 
+## Resolved shadow lists
+
+[`shadow`](../src/shadow.rs) owns normalized box/text shadow inputs and sampled
+lists. `ShadowGeometry` stores finite CSS-pixel X/Y offsets, blur radius and
+spread in that order. `ShadowInput::new` checks nonnegative blur, nonnegative
+spread for the selected Text Decoration 4 shape, and ordinary alpha in [0, 1].
+Box spread can be negative. Both shapes permit inset. `ShadowList::new` requires
+all inputs to match the list's explicit `ShadowKind`; an empty list is `none`.
+The shared slice exposes immutable `Shadow` samples. These preserve finite
+extended geometry and alpha during extrapolation, and the sampled list can be
+reused as an endpoint without repeating authored range checks.
+
+`InterpolableValue::shadow` enters the normal pair, keyframe and transition
+samplers. Each paired color must already use the same explicit rectangular
+interpolation space. Animation reuses its premultiplied color/scalar kernel;
+it performs no currentcolor resolution, color conversion, missing-channel
+processing, contextual length evaluation or final clamping.
+
+Interpolation pairs shadows in order and appends transparent zero-geometry
+blanks to the shorter list, using the corresponding real shadow's inset status
+and color space. This is end padding, not repetition to a common multiple.
+Compatible interpolation retains the padded list, including at exact endpoints.
+An inset mismatch in any real pair switches the entire original list at 0.5.
+These rules follow [Web Animations shadow-list combination](../../../references/web-animations-1--WD-web-animations-1-20230605--e814a799ef24.md#animating-shadow-lists).
+
+`added_to` concatenates underlying first without inset matching.
+`accumulated_with` uses the same padding and matching as interpolation, adds
+geometry and selects the effect color: [Colors are not additive](../../../references/css-values-4--WD-css-values-4-20240312--7b6b68c34d00.md#combine-colors).
+If the effect requires padding, its blank color is transparent. An accumulation
+inset mismatch selects the complete effect value. Input-kind mismatches, color
+space mismatches, capacity failures and nonfinite arithmetic return `ShadowError`
+without partial output. `ShadowInterpolationFailure` retains the property,
+complete endpoints, eased progress and indexed/component diagnostic; sampling
+publishes a failed property, with later finite samples able to recover.
+
+This is the shared box/text value algebra. Filter `drop-shadow()` has a distinct
+singleton shape with standard deviation and no spread/inset; it is not admitted
+as a box/text input. Filter-list composition, full Color interpolation, broad
+background/decoration property lowering, and Style/Text/Render publication remain
+with their respective owners.
+
 ## Resolved transforms
 
 [`transform`](../src/transform.rs) owns `ResolvedTransformList`, `TransformFunction`,
@@ -906,6 +947,7 @@ basis is guessed.
 | Computed keyframe effect sampling and native endpoint fallback | `supported` | `keyframe::ComputedKeyframes` selects sparse property intervals, preserves overlap branches, composes endpoints, and samples supplied property operations. |
 | Cubic-bezier, steps, linear keyword, and CSS `linear()` easing | `supported` | `surgeist-animation` evaluates typed easing, including canonical linear control points. |
 | Number, unrestricted percentage, and explicit premultiplied color interpolation | `supported` | `surgeist-animation` interpolates finite values with checked arithmetic and explicit color spaces. |
+| Normalized box/text shadow lists | `supported` | Supplied resolved geometry and explicit colors, inset-aware end padding, whole-value discrete fallback, ordered addition and accumulation. |
 | Discrete value switching | `supported` | `surgeist-animation` switches discrete values at the interpolation midpoint. |
 | Computed numeric records, normalized positions, ratios and symbolic math | `supported` | Typed computed components combine without contextual evaluation or early clamping. |
 | Computed circle, ellipse, inset and polygon interpolation | `supported` | Explicit reference boxes, guarded numeric domains, whole-shape compatibility and typed sample-local errors. |

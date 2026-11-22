@@ -126,6 +126,14 @@ interpolated shape or be hidden by an earlier arithmetic failure. Used radii,
 overlap adjustment and polygon geometry stay with consumers. See the
 [basic-shape contract](reference.md#computed-basic-shapes).
 
+Box and text shadows share one normalized list algebra above their supplied
+resolved geometry and premultiplied colors. Input guards remain distinct from
+sampled values, so easing extrapolation does not trigger authored range checks.
+The selected text shape permits inset and spread; a filter drop shadow's standard
+deviation belongs to its distinct function shape. Shared box/text algebra does
+not confer filter-list composition semantics or own layout, painting, currentcolor
+resolution, color conversion or invalidation.
+
 ## App-native motion
 
 This remains distinct from app-native motion work. A future `surgeist-motion`
