@@ -16,6 +16,35 @@ pub struct AnimationDelay {
     secs: f64,
 }
 
+/// Effective elapsed seconds supplied to sampling after clock resolution.
+///
+/// A duration cannot be passed as elapsed time:
+///
+/// ```compile_fail,E0308
+/// use surgeist_animation::time::AnimationDuration;
+/// use surgeist_animation::timing::{AnimationPlayState, TimingParameters};
+///
+/// fn sample(timing: &TimingParameters) {
+///     let _ = timing.sample(
+///         AnimationDuration::from_secs(0.5).unwrap(),
+///         AnimationPlayState::Running,
+///     );
+/// }
+/// ```
+///
+/// The same sampling boundary accepts validated elapsed time:
+///
+/// ```
+/// use surgeist_animation::time::ElapsedTime;
+/// use surgeist_animation::timing::{AnimationPlayState, TimingParameters};
+///
+/// fn sample(timing: &TimingParameters) {
+///     let _ = timing.sample(
+///         ElapsedTime::from_secs(0.5).unwrap(),
+///         AnimationPlayState::Running,
+///     );
+/// }
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ElapsedTime {
     secs: f64,

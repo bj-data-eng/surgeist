@@ -49,6 +49,44 @@ pub enum SampleValue {
     None,
 }
 
+/// A sampling result whose classification, completion, hint, and value agree.
+///
+/// Callers cannot construct contradictory result fields:
+///
+/// ```compile_fail,E0451
+/// use surgeist_animation::sample::{
+///     CompletionStatus, NextFrameHint, SampleClassification, SampledPropertyResult, SampleValue,
+/// };
+///
+/// let _ = SampledPropertyResult {
+///     classification: SampleClassification::Active,
+///     completion: CompletionStatus::Finished,
+///     next_frame: NextFrameHint::MayChange,
+///     value: SampleValue::None,
+/// };
+/// ```
+///
+/// Sample validated timing and interpolation inputs, then inspect the result:
+///
+/// ```
+/// use surgeist_animation::interpolation::{
+///     InterpolableNumber, InterpolableValue, InterpolationPair, PropertyKey,
+/// };
+/// use surgeist_animation::sample::{SampleClassification, SampledPropertyResult};
+/// use surgeist_animation::timing::{AnimationPlayState, TimingSample};
+///
+/// let pair = InterpolationPair::new(
+///     PropertyKey::new("opacity")?,
+///     InterpolableValue::number(InterpolableNumber::new(0.0)?),
+///     InterpolableValue::number(InterpolableNumber::new(1.0)?),
+/// )?;
+/// let result = SampledPropertyResult::from_timing_and_pair(
+///     TimingSample::idle(AnimationPlayState::Running),
+///     &pair,
+/// );
+/// assert_eq!(result.classification(), SampleClassification::Idle);
+/// # Ok::<(), surgeist_animation::interpolation::InterpolationError>(())
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct SampledPropertyResult {
     classification: SampleClassification,
@@ -231,7 +269,7 @@ mod tests {
     use super::{
         CompletionStatus, NextFrameHint, SampleClassification, SampleValue, SampledPropertyResult,
     };
-    use crate::easing::{Easing, LinearControlPoint, LinearEasing};
+    use crate::easing::{Easing, LinearControlPointInput, LinearEasing};
     use crate::interpolation::{
         DiscreteValue, InterpolableNumber, InterpolableValue, InterpolationError,
         InterpolationOutcome, InterpolationPair, PropertyKey, TransformValue, ValueFamily,
@@ -650,8 +688,14 @@ mod tests {
     fn half_progress_easing() -> Easing {
         Easing::linear_function(
             LinearEasing::new(vec![
-                LinearControlPoint::new(0.0, 0.5),
-                LinearControlPoint::new(1.0, 0.5),
+                LinearControlPointInput {
+                    input: 0.0,
+                    output: 0.5,
+                },
+                LinearControlPointInput {
+                    input: 1.0,
+                    output: 0.5,
+                },
             ])
             .unwrap(),
         )

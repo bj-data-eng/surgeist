@@ -38,10 +38,41 @@ pub struct CubicBezier {
     y2: f64,
 }
 
+/// A finite control point published by a validated linear easing function.
+///
+/// Callers cannot construct a point through an unchecked constructor:
+///
+/// ```compile_fail,E0599
+/// use surgeist_animation::easing::LinearControlPoint;
+///
+/// let _ = LinearControlPoint::new(f64::NAN, f64::INFINITY);
+/// ```
+///
+/// Submit raw inputs to [`LinearEasing::new`] and inspect validated points:
+///
+/// ```
+/// use surgeist_animation::easing::{LinearControlPointInput, LinearEasing};
+///
+/// let easing = LinearEasing::new(vec![
+///     LinearControlPointInput { input: 0.0, output: 0.0 },
+///     LinearControlPointInput { input: 1.0, output: 1.0 },
+/// ])?;
+/// assert_eq!(easing.points().first().map(|point| point.input()), Some(0.0));
+/// # Ok::<(), surgeist_animation::easing::EasingError>(())
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LinearControlPoint {
     input: f64,
     output: f64,
+}
+
+/// Raw coordinates validated together by [`LinearEasing::new`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LinearControlPointInput {
+    /// The unrestricted input coordinate, checked for finiteness and ordering.
+    pub input: f64,
+    /// The unrestricted output coordinate, checked for finiteness.
+    pub output: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -318,10 +349,6 @@ impl EasedProgress {
 }
 
 impl LinearControlPoint {
-    pub const fn new(input: f64, output: f64) -> Self {
-        Self { input, output }
-    }
-
     pub const fn input(self) -> f64 {
         self.input
     }
@@ -332,14 +359,21 @@ impl LinearControlPoint {
 }
 
 impl LinearEasing {
-    pub fn new(points: Vec<LinearControlPoint>) -> Result<Self, EasingError> {
+    /// Validates raw coordinates before publishing finite, ordered control points.
+    pub fn new(points: Vec<LinearControlPointInput>) -> Result<Self, EasingError> {
         if points.is_empty() {
             return Err(EasingError::EmptyLinearFunction);
         }
 
         validate_linear_points(&points)?;
 
-        let boxed_points = points.into_boxed_slice();
+        let boxed_points = points
+            .into_iter()
+            .map(|point| LinearControlPoint {
+                input: point.input,
+                output: point.output,
+            })
+            .collect::<Box<[_]>>();
         let normalized_points = normalized_linear_projection(&boxed_points)?;
 
         Ok(Self {
@@ -786,37 +820,37 @@ fn validate_finite_control_point(name: &'static str, value: f64) -> Result<(), E
     Ok(())
 }
 
-fn validate_linear_points(points: &[LinearControlPoint]) -> Result<(), EasingError> {
+fn validate_linear_points(points: &[LinearControlPointInput]) -> Result<(), EasingError> {
     let mut previous_input = None;
 
     for (index, point) in points.iter().copied().enumerate() {
-        if !point.input().is_finite() {
+        if !point.input.is_finite() {
             return Err(EasingError::NonFiniteLinearControlPoint {
                 index,
                 component: LinearControlPointComponent::Input,
-                value: point.input(),
+                value: point.input,
             });
         }
 
-        if !point.output().is_finite() {
+        if !point.output.is_finite() {
             return Err(EasingError::NonFiniteLinearControlPoint {
                 index,
                 component: LinearControlPointComponent::Output,
-                value: point.output(),
+                value: point.output,
             });
         }
 
         if let Some(previous_input) = previous_input
-            && point.input() < previous_input
+            && point.input < previous_input
         {
             return Err(EasingError::DecreasingLinearControlPointInput {
                 index,
                 previous_input,
-                input: point.input(),
+                input: point.input,
             });
         }
 
-        previous_input = Some(point.input());
+        previous_input = Some(point.input);
     }
 
     Ok(())
@@ -832,7 +866,10 @@ fn normalized_linear_projection(
     let mut normalized = Vec::new();
 
     if points.iter().all(|point| point.input() != 0.0) {
-        normalized.push(LinearControlPoint::new(0.0, zero_output));
+        normalized.push(LinearControlPoint {
+            input: 0.0,
+            output: zero_output,
+        });
     }
 
     normalized.extend(
@@ -843,7 +880,10 @@ fn normalized_linear_projection(
     );
 
     if points.iter().all(|point| point.input() != 1.0) {
-        normalized.push(LinearControlPoint::new(1.0, one_output));
+        normalized.push(LinearControlPoint {
+            input: 1.0,
+            output: one_output,
+        });
     }
 
     Ok(normalized.into_boxed_slice())
@@ -994,8 +1034,8 @@ fn cubic_axis_derivative(t: f64, control_1: f64, control_2: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        CubicBezier, EasedProgress, Easing, EasingError, EasingKeyword, LinearControlPoint,
-        LinearControlPointComponent, LinearEasing, StepPosition, Steps,
+        CubicBezier, EasedProgress, Easing, EasingError, EasingKeyword,
+        LinearControlPointComponent, LinearControlPointInput, LinearEasing, StepPosition, Steps,
     };
     use crate::diagnostics::{NumericError, NumericInput};
     use crate::progress::{EasingInput, NormalizedProgress};
@@ -2115,8 +2155,8 @@ mod tests {
         assert!(std::error::Error::source(&EasingError::EmptyLinearFunction).is_none());
     }
 
-    fn linear_point(input: f64, output: f64) -> LinearControlPoint {
-        LinearControlPoint::new(input, output)
+    fn linear_point(input: f64, output: f64) -> LinearControlPointInput {
+        LinearControlPointInput { input, output }
     }
 
     fn cubic_axis(t: f64, control_1: f64, control_2: f64) -> f64 {

@@ -14,7 +14,7 @@ use std::cell::Cell;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 use surgeist_animation::easing::{
-    CubicBezier, Easing, EasingKeyword, LinearControlPoint, LinearEasing,
+    CubicBezier, Easing, EasingKeyword, LinearControlPointInput, LinearEasing,
 };
 use surgeist_animation::progress::{EasingInput, NormalizedProgress};
 use surgeist_animation::timing::AnimationPlayState;
@@ -394,7 +394,10 @@ fn main() {
             (0..count)
                 .map(|index| {
                     let x = index as f64 / (count - 1) as f64;
-                    LinearControlPoint::new(x, x * x)
+                    LinearControlPointInput {
+                        input: x,
+                        output: x * x,
+                    }
                 })
                 .collect(),
         )

@@ -86,6 +86,33 @@ Each call replaces the previous results. Reserve enough capacity for the number
 of distinct properties to avoid output allocations. Results own their values
 and diagnostics and may be moved out or retained after dropping the track.
 
+## Validate linear easing coordinates
+
+Pass raw coordinates to `LinearEasing::new`, then inspect its validated points:
+
+```rust
+use surgeist_animation::easing::{LinearControlPointInput, LinearEasing};
+use surgeist_animation::progress::NormalizedProgress;
+
+let easing = LinearEasing::new(vec![
+    LinearControlPointInput { input: 0.0, output: 0.0 },
+    LinearControlPointInput { input: 0.5, output: 0.25 },
+    LinearControlPointInput { input: 1.0, output: 1.0 },
+])
+.unwrap();
+assert_eq!(easing.points().len(), 3);
+assert_eq!(
+    easing.evaluate(NormalizedProgress::new(0.25).unwrap()).value(),
+    0.125,
+);
+```
+
+Construction rejects empty input, nonfinite coordinates, decreasing input
+coordinates, and unrepresentable normalized boundary outputs with typed errors.
+Coordinate diagnostics identify the original list index and component. The
+published points preserve finite coordinates exactly, including duplicate inputs
+and signed zero; they have no public unchecked constructor or writable fields.
+
 ## Prepare property keys and value text
 
 When preparing multiple segments for one CSS property, construct a `PropertyKey`
