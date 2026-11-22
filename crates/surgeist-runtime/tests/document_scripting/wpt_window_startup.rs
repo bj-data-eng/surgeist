@@ -66,7 +66,7 @@ pub(super) fn starts_unmodified_harness_with_native_timers() {
                 None,
                 &mut registry,
                 DocumentGuestEventLimits {
-                    storage_bytes: 640 * 1024,
+                    storage_bytes: ATTACHED_GUEST_STORAGE,
                     work: 100_000,
                     pending_exception_reports: 16,
                     node_retirement: DomNodeRetirementLimits::new(16_000_000, 1000),

@@ -1,3 +1,5 @@
+mod token_list;
+
 use super::*;
 use crate::internal::element::{ElementFormation, FormedElement, NonceUpdate};
 use crate::internal::names::{
@@ -66,6 +68,7 @@ enum AttributePlacement {
 #[derive(Clone, Copy)]
 enum AttributeLookup<'a> {
     Qualified(&'a DocumentString),
+    NullNamespace(&'a [u16]),
     Expanded {
         namespace: Option<&'a DocumentString>,
         local_name: &'a DocumentString,
@@ -384,6 +387,13 @@ impl Draft {
         for (position, attribute) in attributes.iter().enumerate() {
             self.source_step(cancel)?;
             let matched = match lookup {
+                AttributeLookup::NullNamespace(local_name) => {
+                    let stored = attribute.name();
+                    stored.namespace_uri().is_none()
+                        && same_code_units(stored.local_name().code_units(), local_name, || {
+                            self.name_step(cancel)
+                        })?
+                }
                 AttributeLookup::Expanded {
                     namespace,
                     local_name,
@@ -626,12 +636,25 @@ impl Draft {
     ) -> Result<(), DomError> {
         let element = self.element(node)?;
         let position = self.prepared_attribute_position(element, &prepared, cancelled)?;
+        self.apply_attribute_name_at(node, prepared, position, value, limits, cancelled)
+    }
+
+    fn apply_attribute_name_at(
+        &mut self,
+        node: Key,
+        prepared: PreparedAttributeName,
+        position: Option<usize>,
+        value: &DocumentString,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
         let Some(position) = position else {
             return self.append_prepared_attribute(node, prepared, value, limits, cancelled);
         };
         // Existing set-value preserves its exact canonical prefix and order.
         // Discard lookup spelling before admitting the selected occurrence.
         let normalized = prepared.discard_name();
+        let element = self.element(node)?;
         let name_formation = source::formation::Formation::new(self, cancelled)?;
         let name = self.bind_canonical_name(
             element

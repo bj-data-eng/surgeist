@@ -397,6 +397,10 @@ pub enum DomError {
     /// An adjacent insertion position matched none of the four standard names.
     InvalidAdjacentPosition,
     InvalidCharacter,
+    /// A token-list mutation required a nonempty token.
+    EmptyToken,
+    /// A token-list mutation received a token containing ASCII whitespace.
+    TokenContainsAsciiWhitespace,
     Namespace,
     /// HTML Script preparation requires a live settings observation.
     ScriptPreparationRequired,
@@ -622,6 +626,8 @@ impl std::fmt::Display for DomError {
             Self::WrongDocument => f.write_str("the node is not the expected Document or belongs to a different Document"),
             Self::HierarchyRequest => f.write_str("the node hierarchy does not allow this edit or position"),
             Self::InvalidAdjacentPosition => f.write_str("the adjacent insertion position is not beforebegin, afterbegin, beforeend or afterend"),
+            Self::EmptyToken => f.write_str("the token must not be empty"),
+            Self::TokenContainsAsciiWhitespace => f.write_str("the token contains ASCII whitespace"),
             Self::InvalidCharacter => f.write_str("the name or value contains a character or sequence that is not allowed"),
             Self::Namespace => f.write_str("the qualified name and namespace are inconsistent"),
             Self::ScriptPreparationRequired => f.write_str("HTML Script preparation requires a live settings observation"),
@@ -903,6 +909,8 @@ impl std::error::Error for DomError {
             | Self::HierarchyRequest
             | Self::InvalidAdjacentPosition
             | Self::InvalidCharacter
+            | Self::EmptyToken
+            | Self::TokenContainsAsciiWhitespace
             | Self::Namespace
             | Self::ScriptPreparationRequired
             | Self::MetaCspProcessingRequired
@@ -1720,6 +1728,7 @@ enum NodeOutputKind {
     RemovedAttribute,
     AttributeAttachment(AttachmentKind),
     ElementAttributePresent(bool),
+    TokenListResult(bool),
     ProcessingInstructionAttributePresent(bool),
 }
 
@@ -1749,6 +1758,7 @@ enum NodeTicket {
     RemovedAttribute(Key),
     AttributeAttachment(Key, AttachmentKind),
     ElementAttributePresent(Key, bool),
+    TokenListResult(Key, bool),
     ProcessingInstructionAttributePresent(Key, bool),
 }
 
@@ -1760,6 +1770,7 @@ impl NodeTicket {
             | Self::RemovedAttribute(key)
             | Self::AttributeAttachment(key, _)
             | Self::ElementAttributePresent(key, _)
+            | Self::TokenListResult(key, _)
             | Self::ProcessingInstructionAttributePresent(key, _) => key,
         }
     }
@@ -1814,6 +1825,9 @@ impl DomCommit {
                     crate::internal::source::DomSourceOutput::AttributeAttachment(
                         kind.published(*node),
                     )
+                }
+                NodeOutputKind::TokenListResult(result) => {
+                    crate::internal::source::DomSourceOutput::TokenListResult(*result)
                 }
                 NodeOutputKind::ElementAttributePresent(present) => {
                     crate::internal::source::DomSourceOutput::ElementAttributePresent(*present)
@@ -4620,6 +4634,9 @@ impl Draft {
             Command::ToggleAttribute { node, name, force } => {
                 let node = self.resolve(node.clone())?;
                 self.toggle_attribute(node, name, *force, limits, cancelled)?;
+            }
+            Command::EditTokenList { list, edit } => {
+                self.edit_token_list(*list, edit, limits, cancelled)?;
             }
             Command::SetAttributeValue { attribute, value } => {
                 let attr = self.resolve(attribute.node().into())?;

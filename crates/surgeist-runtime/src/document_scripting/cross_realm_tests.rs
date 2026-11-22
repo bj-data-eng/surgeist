@@ -459,6 +459,13 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     }
     super::guest::tests::document_default_view::projection_only_document_has_no_local_window_producer();
     super::guest::tests::document_default_view::default_view_admits_exact_native_read_work();
+    super::guest::tests::token_list_admission::class_token_read_admits_exact_work_and_temporary_backing();
+    super::guest::tests::token_list_admission::retained_class_list_keeps_then_releases_its_traced_element();
+    super::guest::tests::token_list_admission::cached_class_list_authenticates_the_current_element(
+    );
+    super::guest::tests::token_list_admission::token_edit_preserves_the_original_source_refusal();
+    super::guest::tests::token_list_admission::indexed_membership_admits_the_native_descriptor_read(
+    );
     super::guest::tests::document_metadata_admission::metadata_getter_admits_its_native_observation_and_copy();
     document_cookie::cookie_averse_documents_read_empty_and_ignore_assignment();
     document_cookie::cookie_assignment_preserves_conversion_reentry_and_abrupt_completion();

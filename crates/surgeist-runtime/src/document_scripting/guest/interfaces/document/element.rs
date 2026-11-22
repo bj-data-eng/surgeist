@@ -12,6 +12,7 @@ mod attribute;
 mod option_factory;
 pub(super) use attribute::AttributeResult;
 mod svg;
+mod token_list;
 
 const ELEMENT: &[u16] = &ascii(b"Element");
 const MATHML_ELEMENT: &[u16] = &ascii(b"MathMLElement");
@@ -53,14 +54,14 @@ const REFLECTIONS: &[super::reflection::Member] = &[
         &ascii(b"class"),
         super::reflection::Reflection::String,
     ),
-    (
-        &ascii(b"slot"),
-        &ascii(b"get slot"),
-        &ascii(b"set slot"),
-        &ascii(b"slot"),
-        super::reflection::Reflection::String,
-    ),
 ];
+const SLOT_REFLECTION: &[super::reflection::Member] = &[(
+    &ascii(b"slot"),
+    &ascii(b"get slot"),
+    &ascii(b"set slot"),
+    &ascii(b"slot"),
+    super::reflection::Reflection::String,
+)];
 const HTML_REFLECTIONS: &[super::reflection::Member] = &[
     (
         &ascii(b"title"),
@@ -169,6 +170,7 @@ const OBSOLETE_SPECIAL: &[(&str, &str)] = &[
 pub(in crate::document_scripting::guest::interfaces) struct ElementBindings {
     element: RetainedCallbackObject,
     attribute_map: attribute::map::MapProjection,
+    token_list: token_list::Projection,
     mathml: RetainedCallbackObject,
     html: Vec<HtmlPrototype>,
     svg: svg::SvgBindings,
@@ -364,6 +366,14 @@ impl ElementBindings {
             super::reflection::Receiver::Element,
             REFLECTIONS,
         )?;
+        let token_list = token_list::install(scope, &global, &element, capture, fund)?;
+        super::reflection::install(
+            scope,
+            &element,
+            capture,
+            super::reflection::Receiver::Element,
+            SLOT_REFLECTION,
+        )?;
         attribute::install(scope, &element, capture)?;
         let attribute_map = attribute::map::install(scope, &global, &element, capture, fund)?;
         super::slot::install_slottable(
@@ -422,6 +432,7 @@ impl ElementBindings {
         Ok(Self {
             element: scope.retain_callback_object(base, fund)?,
             attribute_map,
+            token_list,
             mathml: scope.retain_callback_object(mathml, fund)?,
             html: classes,
             svg,

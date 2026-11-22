@@ -360,7 +360,7 @@ pub(super) fn new_registry() -> DomEventDispatcher<()> {
 
 pub(super) fn guest_limits() -> DocumentGuestEventLimits {
     DocumentGuestEventLimits {
-        storage_bytes: 640 * 1024,
+        storage_bytes: ATTACHED_GUEST_STORAGE,
         work: 10_000,
         pending_exception_reports: 16,
         node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),

@@ -2988,6 +2988,7 @@ pub surgeist_dom::source::DomSourceOutput::Node(surgeist_dom::identity::NodeId)
 pub surgeist_dom::source::DomSourceOutput::ProcessingInstructionAttributePresent(bool)
 pub surgeist_dom::source::DomSourceOutput::Range(surgeist_dom::range::DomRangeId)
 pub surgeist_dom::source::DomSourceOutput::RemovedAttribute(surgeist_dom::identity::DomAttrId)
+pub surgeist_dom::source::DomSourceOutput::TokenListResult(bool)
 pub surgeist_dom::source::DomSourceOutput::ViewTransition(surgeist_dom::view_transition::DomViewTransitionId)
 pub surgeist_dom::source::DomSourceOutput::ViewTransitionRecord(surgeist_dom::view_transition::DomViewTransitionRecordId)
 pub enum surgeist_dom::source::DomSourcePhase
@@ -3028,6 +3029,15 @@ pub surgeist_dom::source::DomSourceRequest::Style(surgeist_dom::style::DomStyleR
 pub enum surgeist_dom::source::DomSourceStoppedAction
 pub surgeist_dom::source::DomSourceStoppedAction::CloseWatcher(surgeist_html::internal::elements::dialog::request::HtmlCloseWatcherRequestAction)
 pub surgeist_dom::source::DomSourceStoppedAction::Dialog(surgeist_html::internal::elements::dialog::HtmlDialogAction)
+pub enum surgeist_dom::source::DomTokenListEdit
+pub surgeist_dom::source::DomTokenListEdit::Add(alloc::vec::Vec<surgeist_html::internal::values::document_string::DocumentString>)
+pub surgeist_dom::source::DomTokenListEdit::Remove(alloc::vec::Vec<surgeist_html::internal::values::document_string::DocumentString>)
+pub surgeist_dom::source::DomTokenListEdit::Replace
+pub surgeist_dom::source::DomTokenListEdit::Replace::replacement: surgeist_html::internal::values::document_string::DocumentString
+pub surgeist_dom::source::DomTokenListEdit::Replace::token: surgeist_html::internal::values::document_string::DocumentString
+pub surgeist_dom::source::DomTokenListEdit::Toggle
+pub surgeist_dom::source::DomTokenListEdit::Toggle::force: core::option::Option<bool>
+pub surgeist_dom::source::DomTokenListEdit::Toggle::token: surgeist_html::internal::values::document_string::DocumentString
 pub struct surgeist_dom::source::DomSourceCompletion
 impl surgeist_dom::source::DomSourceCompletion
 pub fn surgeist_dom::source::DomSourceCompletion::cancellation_requested(&self) -> bool
@@ -3078,6 +3088,7 @@ pub fn surgeist_dom::source::DomSourceEdit::create_xml_document_in_attachment(as
 pub fn surgeist_dom::source::DomSourceEdit::destroy(node: surgeist_dom::identity::NodeId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::detach(node: surgeist_dom::identity::NodeId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::edit_processing_instruction_attribute(node: surgeist_dom::identity::NodeId, edit: surgeist_dom::edit::DomProcessingInstructionAttributeEdit) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::edit_token_list(list: surgeist_dom::tree::DomTokenList, edit: surgeist_dom::source::DomTokenListEdit) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::exit_fullscreen(document: surgeist_dom::identity::DocumentId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::fullscreen_element_model(node: surgeist_dom::identity::NodeId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::import_live_node(source: surgeist_dom::identity::NodeId, document: surgeist_dom::identity::DocumentId, subtree: bool, registry: core::option::Option<surgeist_dom::custom_element::DomRegistryId>, fallback: surgeist_dom::script::DomCreationRealmFallback) -> Self
@@ -4002,6 +4013,21 @@ impl surgeist_dom::tree::DomTagName
 pub const fn surgeist_dom::tree::DomTagName::code_unit_len(&self) -> usize
 pub fn surgeist_dom::tree::DomTagName::code_units(&self) -> impl core::iter::traits::iterator::Iterator<Item = u16> + '_
 pub fn surgeist_dom::tree::DomTagName::contiguous_units(&self) -> core::option::Option<&[u16]>
+pub struct surgeist_dom::tree::DomTokenList
+impl surgeist_dom::tree::DomTokenList
+pub const fn surgeist_dom::tree::DomTokenList::attribute_name(self) -> &'static [u16]
+pub fn surgeist_dom::tree::DomTokenList::capture_with<'a, E: core::convert::From<surgeist_dom::DomError>, B>(self, snapshot: &'a surgeist_dom::DomSnapshot, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, reserve: impl core::ops::function::FnMut(usize) -> core::result::Result<B, E>) -> core::result::Result<surgeist_dom::tree::DomTokenListCapture<'a, B>, E>
+pub const fn surgeist_dom::tree::DomTokenList::class(element: surgeist_dom::identity::NodeId) -> Self
+pub fn surgeist_dom::tree::DomTokenList::contains_with<E: core::convert::From<surgeist_dom::DomError>>(self, snapshot: &surgeist_dom::DomSnapshot, token: &[u16], step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
+pub const fn surgeist_dom::tree::DomTokenList::element(self) -> surgeist_dom::identity::NodeId
+pub fn surgeist_dom::tree::DomTokenList::raw_with<E: core::convert::From<surgeist_dom::DomError>>(self, snapshot: &surgeist_dom::DomSnapshot, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>, E>
+pub struct surgeist_dom::tree::DomTokenListCapture<'a, B>
+impl<'a, B> surgeist_dom::tree::DomTokenListCapture<'a, B>
+pub fn surgeist_dom::tree::DomTokenListCapture<'a, B>::is_empty(&self) -> bool
+pub fn surgeist_dom::tree::DomTokenListCapture<'a, B>::item(&self, index: usize) -> core::option::Option<&'a [u16]>
+pub fn surgeist_dom::tree::DomTokenListCapture<'a, B>::len(&self) -> usize
+impl<B> core::fmt::Debug for surgeist_dom::tree::DomTokenListCapture<'_, B>
+pub fn surgeist_dom::tree::DomTokenListCapture<'_, B>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_dom::tree::DomTreeOrder<'a>
 impl core::iter::traits::iterator::Iterator for surgeist_dom::tree::DomTreeOrder<'_>
 pub type surgeist_dom::tree::DomTreeOrder<'_>::Item = surgeist_dom::identity::NodeId
@@ -4293,6 +4319,7 @@ pub surgeist_dom::DomError::DispatchCustodyWorkLimit
 pub surgeist_dom::DomError::DispatchCustodyWorkLimit::limit: u64
 pub surgeist_dom::DomError::DocumentConstructor(surgeist_dom::script::DomDocumentConstructorError)
 pub surgeist_dom::DomError::DuplicateViewTransitionName
+pub surgeist_dom::DomError::EmptyToken
 pub surgeist_dom::DomError::EncodingUrlFacts(surgeist_dom::url::DomEncodingUrlFactsError)
 pub surgeist_dom::DomError::EncodingUrlWorkLimit
 pub surgeist_dom::DomError::EncodingUrlWorkLimit::limit: u64
@@ -4461,6 +4488,7 @@ pub surgeist_dom::DomError::TemplateContentsUnavailable
 pub surgeist_dom::DomError::TextareaInapplicable
 pub surgeist_dom::DomError::TextareaReadWorkLimit
 pub surgeist_dom::DomError::TextareaReadWorkLimit::limit: u64
+pub surgeist_dom::DomError::TokenContainsAsciiWhitespace
 pub surgeist_dom::DomError::TopLayerAdoptionUnavailable
 pub surgeist_dom::DomError::TopLayerAdoptionUnavailable::old_document: core::option::Option<surgeist_dom::identity::DocumentId>
 pub surgeist_dom::DomError::TopLayerAdoptionUnavailable::subject: core::option::Option<surgeist_dom::identity::NodeId>

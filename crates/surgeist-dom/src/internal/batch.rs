@@ -306,6 +306,10 @@ pub(crate) enum Command {
         name: DocumentString,
         force: Option<bool>,
     },
+    EditTokenList {
+        list: crate::internal::token_list::DomTokenList,
+        edit: crate::internal::token_list::DomTokenListEdit,
+    },
     SetAttributeValue {
         attribute: DomAttrId,
         value: DocumentString,

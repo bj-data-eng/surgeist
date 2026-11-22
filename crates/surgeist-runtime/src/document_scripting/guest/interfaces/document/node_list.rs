@@ -111,36 +111,7 @@ pub(super) fn install<'scope>(
         true,
         true,
     )?;
-    let iterator = scope.well_known_symbol(WellKnownSymbol::Iterator)?;
-    let values = scope.intrinsic(Intrinsic::ArrayValues)?;
-    define_data(
-        scope,
-        &prototype,
-        PropertyKey::Value(&iterator),
-        &values,
-        true,
-        false,
-        true,
-    )?;
-    let entries = scope.intrinsic(Intrinsic::ArrayEntries)?;
-    let keys = scope.intrinsic(Intrinsic::ArrayKeys)?;
-    let for_each = scope.intrinsic(Intrinsic::ArrayForEach)?;
-    for (name, value) in [
-        (&ascii(b"entries")[..], &entries),
-        (&ascii(b"keys")[..], &keys),
-        (&ascii(b"values")[..], &values),
-        (&ascii(b"forEach")[..], &for_each),
-    ] {
-        define_data(
-            scope,
-            &prototype,
-            PropertyKey::String(name),
-            value,
-            true,
-            true,
-            true,
-        )?;
-    }
+    install_indexed_value_iteration(scope, &prototype)?;
     install_interface(scope, global, INTERFACE, &constructor, &prototype)?;
 
     let name_handler = capture(size_of::<Capture>())?;
@@ -185,6 +156,43 @@ pub(super) fn install<'scope>(
         read: scope.retain_callback_object(read, funding.retain)?,
         keys: scope.retain_callback_object(keys, funding.retain)?,
     })
+}
+
+pub(super) fn install_indexed_value_iteration<'scope>(
+    scope: &mut Scope<'scope>,
+    prototype: &Value<'scope>,
+) -> Result<(), Error> {
+    let iterator = scope.well_known_symbol(WellKnownSymbol::Iterator)?;
+    let values = scope.intrinsic(Intrinsic::ArrayValues)?;
+    define_data(
+        scope,
+        prototype,
+        PropertyKey::Value(&iterator),
+        &values,
+        true,
+        false,
+        true,
+    )?;
+    let entries = scope.intrinsic(Intrinsic::ArrayEntries)?;
+    let keys = scope.intrinsic(Intrinsic::ArrayKeys)?;
+    let for_each = scope.intrinsic(Intrinsic::ArrayForEach)?;
+    for (name, value) in [
+        (&ascii(b"entries")[..], &entries),
+        (&ascii(b"keys")[..], &keys),
+        (&ascii(b"values")[..], &values),
+        (&ascii(b"forEach")[..], &for_each),
+    ] {
+        define_data(
+            scope,
+            prototype,
+            PropertyKey::String(name),
+            value,
+            true,
+            true,
+            true,
+        )?;
+    }
+    Ok(())
 }
 
 impl Projection {

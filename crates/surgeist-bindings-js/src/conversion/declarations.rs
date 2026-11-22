@@ -638,6 +638,77 @@ pub fn parent_node_query_selector_all_0_selectors() -> Argument<Type<DomString>>
     )
 }
 
+/// Selected argument `DOMTokenList.item:0/index` (not overload selection).
+pub fn dom_token_list_item_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "DOMTokenList.item:0/index",
+        0,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `DOMTokenList.contains:0/token` (not overload selection).
+pub fn dom_token_list_contains_0_token() -> Argument<Type<DomString>> {
+    Argument::new(
+        "DOMTokenList.contains:0/token",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `DOMTokenList.toggle:0/token` (not overload selection).
+pub fn dom_token_list_toggle_0_token() -> Argument<Type<DomString>> {
+    Argument::new(
+        "DOMTokenList.toggle:0/token",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `DOMTokenList.toggle:0/force` (not overload selection).
+pub fn dom_token_list_toggle_0_force() -> Argument<Type<bool>> {
+    Argument::new("DOMTokenList.toggle:0/force", 1, true, types::BOOLEAN, None)
+}
+
+/// Selected argument `DOMTokenList.replace:0/token` (not overload selection).
+pub fn dom_token_list_replace_0_token() -> Argument<Type<DomString>> {
+    Argument::new(
+        "DOMTokenList.replace:0/token",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `DOMTokenList.replace:0/newToken` (not overload selection).
+pub fn dom_token_list_replace_0_new_token() -> Argument<Type<DomString>> {
+    Argument::new(
+        "DOMTokenList.replace:0/newToken",
+        1,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `DOMTokenList.supports:0/token` (not overload selection).
+pub fn dom_token_list_supports_0_token() -> Argument<Type<DomString>> {
+    Argument::new(
+        "DOMTokenList.supports:0/token",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
 /// Selected argument `NodeList.item:0/index` (not overload selection).
 pub fn node_list_item_0_index() -> Argument<IntegerType> {
     Argument::new(

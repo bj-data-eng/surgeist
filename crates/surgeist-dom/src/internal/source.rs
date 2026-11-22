@@ -335,6 +335,8 @@ pub enum DomSourceOutput {
     /// The qualified toggle's selected presence branch. A removal returns
     /// false even if another namespace has an attribute with the same spelling.
     ElementAttributePresent(bool),
+    /// The original Boolean result of a token-list toggle or replacement.
+    TokenListResult(bool),
     /// Whether the named pseudo-attribute is present after a toggle.
     ProcessingInstructionAttributePresent(bool),
     Range(crate::internal::range::DomRangeId),
@@ -1725,6 +1727,16 @@ impl DomSourceEdit {
                 node: node.into(),
                 attribute,
             },
+        }
+    }
+    /// Edit an Element's exact associated null-namespace attribute as one
+    /// ordered-set operation. Validation precedes lookup and mutation.
+    pub fn edit_token_list(
+        list: crate::internal::token_list::DomTokenList,
+        edit: crate::internal::token_list::DomTokenListEdit,
+    ) -> Self {
+        Self {
+            command: Command::EditTokenList { list, edit },
         }
     }
     /// Set an existing Attr's value with standard attribute verification.

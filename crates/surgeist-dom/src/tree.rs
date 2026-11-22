@@ -41,6 +41,7 @@ pub use crate::internal::store::{
 };
 pub use crate::internal::store::{DomTreeWalkerFilterRequest, DomTreeWalkerMatchRequest};
 pub use crate::internal::table_part::DomHtmlTablePart;
+pub use crate::internal::token_list::{DomTokenList, DomTokenListCapture};
 pub use crate::internal::tree_walker::{
     DomTreeWalker, DomTreeWalkerDirection, DomTreeWalkerFilter, DomTreeWalkerId,
     DomTreeWalkerProgress,

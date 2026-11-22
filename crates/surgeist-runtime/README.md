@@ -576,6 +576,11 @@ removal use the native Source operation, including Trusted Types verification
 and custom-element reactions. [Live HTTP response CSP](https://github.com/bj-data-eng/surgeist/issues/2675)
 has its own navigation and reporting requirements.
 
+`Element.classList` returns a live `DOMTokenList` in the Element's creation
+realm. The value and stringifier preserve the exact current class attribute.
+Indexed reads and token edits use its UTF-16 ordered set. Mutations go through
+native Source and deliver the reached attribute reactions.
+
 `Document.all` exposes a stable, callable `HTMLAllCollection` over the
 Document's ordinary Element descendants. The maintained Boa backend applies
 the ECMAScript IsHTMLDDA semantics to this object. Indexed and named reads use
