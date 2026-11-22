@@ -247,6 +247,53 @@ fn pinned_window_variants_report_the_missing_native_environment() {
 }
 
 #[test]
+fn pinned_html_collection_fixture_completes_with_both_subtests_passing() {
+    if !execution_capabilities().process_groups {
+        return;
+    }
+    let fixture = FixtureId::new(
+        SourceRevision::new("69f2bba61ce7e9469ccbce53de4644a89f6b7dff").unwrap(),
+        RelativePath::new("dom/collections/HTMLCollection-as-prototype.html").unwrap(),
+        "/dom/collections/HTMLCollection-as-prototype.html".into(),
+    )
+    .unwrap();
+
+    let result = received(&fixture);
+    let WorkerResult::Harness(completion) = result else {
+        panic!("expected the pinned HTML fixture to complete: {result:?}");
+    };
+    assert_eq!(completion.status, HarnessStatus::Ok);
+    assert_eq!(
+        completion.diagnostic,
+        GuestDiagnostic {
+            message: None,
+            stack: None,
+        }
+    );
+    let subtests: Vec<_> = completion
+        .subtests
+        .iter()
+        .map(|test| (test.index, String::from_utf16(&test.name).unwrap(), test.status))
+        .collect();
+    assert_eq!(
+        subtests,
+        [
+            (
+                0,
+                "HTMLCollection as a prototype should not allow getting .length on the base object"
+                    .into(),
+                SubtestStatus::Pass,
+            ),
+            (
+                1,
+                "HTMLCollection as a prototype and setting own properties".into(),
+                SubtestStatus::Pass,
+            ),
+        ]
+    );
+}
+
+#[test]
 fn policy_refusal_and_worker_deadline_have_distinct_outcomes() {
     if !execution_capabilities().process_groups {
         return;
