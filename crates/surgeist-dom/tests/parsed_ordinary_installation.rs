@@ -3086,6 +3086,44 @@ fn qualified_base_freezing_and_link_parser_history_transfer_without_native_respo
     assert_eq!(frozen.revision(), &revision);
     assert_eq!(frozen.response(), DomBaseResponse::ParsedCompleted);
     assert_eq!(document.document_base_url(), Ok(parsed.serialization()));
+    let cancel = AtomicBool::new(false);
+    let before_read = dom.snapshot().stamp();
+    let mut required = 0;
+    let selected = dom.read_node_base_url_with(
+        base,
+        || {
+            required += 1;
+            Ok::<(), DomError>(())
+        },
+        &cancel,
+    );
+    assert_eq!(selected, Ok(parsed.serialization()));
+    assert!(required > 0);
+    let short = required - 1;
+    let mut admitted = 0;
+    let refused = dom.read_node_base_url_with(
+        base,
+        || {
+            if admitted == short {
+                return Err(DomError::BaseWorkLimit { limit: short });
+            }
+            admitted += 1;
+            Ok(())
+        },
+        &cancel,
+    );
+    assert_eq!(refused, Err(DomError::BaseWorkLimit { limit: short }));
+    assert_eq!(admitted, short);
+    cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert_eq!(
+        dom.read_node_base_url_with::<DomError>(
+            base,
+            || panic!("a cancelled Base read must refuse before caller admission"),
+            &cancel,
+        ),
+        Err(DomError::Cancelled)
+    );
+    assert_eq!(dom.snapshot().stamp(), before_read);
     let link = result
         .snapshot()
         .node(element(&result, "link"))

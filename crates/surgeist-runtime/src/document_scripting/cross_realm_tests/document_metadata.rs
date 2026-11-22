@@ -1,6 +1,6 @@
 use super::*;
 use crate::document_scripting::guest::tests::{
-    attach_public_nodes, expose_public_node_for_source_test,
+    attach_public_nodes, expose_public_node_for_source_test, fund_guest_operation_after_setup,
 };
 use surgeist_dom::{
     document::DomNativeInputPlatform,
@@ -137,6 +137,14 @@ pub(super) fn projected_parsed_documents_keep_original_metadata() {
                     doc.inputEncoding !== doc.characterSet || doc.contentType !== 'text/html')
                     return 'parsed Document must retain its selected encoding and content type';
             }
+            return 'ok';
+        })()")?;
+        assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&observed)?), "ok");
+        Ok(())
+    }).unwrap();
+    fund_guest_operation_after_setup(&host);
+    host.in_document(&permit, |scope| {
+        let observed = evaluate(scope, r"(() => {
             if (parsedLimited.baseURI !== 'https://example.test/original/next/')
                 return 'parsed Node base URI must use the actual frozen Base';
             const node = document.createElementNS(null, 'witness');
@@ -159,7 +167,14 @@ pub(super) fn projected_parsed_documents_keep_original_metadata() {
         })()")?;
         assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&observed)?), "ok");
         Ok(())
-    }).unwrap();
+    }).unwrap_or_else(|error| match &error {
+        DocumentScriptError::Script(Error::HostFailure(failure)) => panic!(
+            "parsed Base observation refused: guest={:?}; source={:?}",
+            failure.cause::<DocumentGuestEventError>(),
+            failure.cause::<crate::internal::dom_source::DomSourceDriveError>(),
+        ),
+        _ => panic!("parsed Base observation refused: {error:?}"),
+    });
     let base = documents[1].2.unwrap();
     host.with_native(|dom, _, _| {
         let mut batch = DomBatch::new();
@@ -167,6 +182,7 @@ pub(super) fn projected_parsed_documents_keep_original_metadata() {
         dom.apply(batch, &AtomicBool::new(false)).unwrap();
     })
     .unwrap();
+    fund_guest_operation_after_setup(&host);
     host.in_document(&permit, |scope| {
         let observed = evaluate(scope, r"(() => {
             const {node, attribute} = baseUriProbe;

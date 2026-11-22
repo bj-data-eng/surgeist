@@ -1,6 +1,8 @@
 //! Qualified native facts and source-time first-Base changes, without a URL engine.
 use super::*;
-use crate::internal::base::{BaseState, DomBaseFactsError as Failure, Frozen, Response};
+use crate::internal::base::{
+    BaseState, DocumentBaseRead, DomBaseFactsError as Failure, Frozen, Response,
+};
 
 use surgeist_html::{elements::script::HtmlScriptResult, vocabulary::KnownHtmlAttribute};
 use surgeist_html_semantics::{
@@ -43,6 +45,47 @@ pub(super) fn parsed_document_inputs_match(
         }
     }
 }
+
+impl Dom {
+    /// Read the current base URL of the node's canonical Document. Each
+    /// observation uses caller admission and the original active Source scope
+    /// when present. A parked Source without read authority refuses the read.
+    pub fn read_node_base_url_with<E: From<DomError>>(
+        &self,
+        node: NodeId,
+        mut admission: impl FnMut() -> Result<(), E>,
+        cancel: &AtomicBool,
+    ) -> Result<&DocumentString, E> {
+        if node.owner() != self.owner {
+            return Err(DomError::ForeignOwner.into());
+        }
+        self.require_source_entry(cancel)?;
+        let source = self.qualify_read_source(cancel)?;
+        let mut step = || -> Result<(), E> {
+            check_cancel(cancel)?;
+            if let Some(source) = &source {
+                source.validate()?;
+            }
+            admission()?;
+            match &source {
+                Some(source) => source.step(cancel)?,
+                None => check_cancel(cancel)?,
+            }
+            Ok(())
+        };
+        let receiver = self.state.node_with(self.owner, node, &mut step)?;
+        let document_id = receiver.document().node();
+        let document = if document_id == node {
+            receiver
+        } else {
+            self.state.node_with(self.owner, document_id, &mut step)?
+        };
+        DocumentBaseRead::open(&self.state, self.owner, document, &mut step)?
+            .serialization()
+            .map_err(E::from)
+    }
+}
+
 impl Draft {
     fn document_first_base(
         &self,

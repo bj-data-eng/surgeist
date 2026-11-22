@@ -365,6 +365,8 @@ configurable and nonenumerable.
 in its creation realm. Its name and identifiers preserve exact UTF-16.
 Document URL, compatibility mode, encoding aliases and content type read the
 receiver's current canonical metadata, including during qualified Source reads.
+`Node.baseURI` uses the receiver's current node Document and its canonical Base
+selection, including detached and adopted nodes.
 Document and Window listeners share the native registry. Borrowed
 `EventTarget.prototype` methods authenticate the exact Window, and dispatch
 through a Document uses the canonical Window capture and bubble path.
