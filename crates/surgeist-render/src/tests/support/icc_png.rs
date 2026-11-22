@@ -189,6 +189,27 @@ pub(crate) fn mpe_curve_transform() -> Vec<u8> {
     mpe_transform([input, curves])
 }
 
+pub(crate) fn mpe_formula_transform(
+    operand: f32,
+    breakpoints: [f32; 2],
+    function: u16,
+    parameters: &[f32],
+) -> Vec<u8> {
+    let input = mpe_matrix(3, 1, &[0.0; 3], &[operand]);
+    let curve = mpe_curve(
+        &breakpoints,
+        [
+            constant_segment(0.0),
+            formula_segment(function, parameters),
+            constant_segment(0.0),
+        ],
+    );
+    let mut curves = mpe_element(b"cvst", 1, 1);
+    append_positions(&mut curves, [curve]);
+    let neutral = mpe_matrix(1, 3, &[0.9642, 1.0, 0.8249], &[0.0; 3]);
+    mpe_transform([input, curves, neutral])
+}
+
 fn mpe_transform<const N: usize>(elements: [Vec<u8>; N]) -> Vec<u8> {
     let mut transform = mpe_element(b"mpet", 3, 3);
     transform.extend(u32::try_from(N).unwrap().to_be_bytes());

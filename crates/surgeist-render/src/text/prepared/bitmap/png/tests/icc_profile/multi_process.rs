@@ -2,8 +2,9 @@ use super::*;
 use crate::{
     accounting::RenderAttemptStatus,
     tests::icc_png::{
-        mpe_aliased_matrix_transform, mpe_clut_transform, mpe_curve_transform, mpe_matrix_profile,
-        mpe_overflowing_matrix_transform, mpe_profile, unsupported_mpe_transform,
+        mpe_aliased_matrix_transform, mpe_clut_transform, mpe_curve_transform,
+        mpe_formula_transform, mpe_matrix_profile, mpe_overflowing_matrix_transform, mpe_profile,
+        unsupported_mpe_transform,
     },
     text::GlyphNumericPhase,
 };
@@ -120,6 +121,54 @@ fn selected_icc_mpe_evaluates_segmented_curves_to_direct_lab() {
             17, 56, 26, 0, 99, 77, 67, 128, 183, 140, 140, 255, 176, 188, 178, 1, 255, 213, 223,
             254
         ],
+    );
+}
+
+#[test]
+fn selected_icc_mpe_evaluates_logarithm_of_a_large_power() {
+    // ICC.1:2022 §10.16.2.2 type 1. Y = log10(2^1024 + 1)/1024 is
+    // approximately log10(2), which encodes to neutral sRGB byte 149.
+    let transform =
+        mpe_formula_transform(2.0, [1.0, 4.0], 1, &[1024.0, 0.0009765625, 1.0, 1.0, 0.0]);
+    assert_neutral_formula_output(transform, 149);
+}
+
+#[test]
+fn selected_icc_mpe_evaluates_logarithm_of_a_large_product() {
+    // Y = log10(16×2^1023 + 1)/1024 is approximately
+    // (1027/1024) log10(2), which encodes to neutral sRGB byte 149.
+    let transform =
+        mpe_formula_transform(2.0, [1.0, 4.0], 1, &[1023.0, 0.0009765625, 16.0, 1.0, 0.0]);
+    assert_neutral_formula_output(transform, 149);
+}
+
+#[test]
+fn selected_icc_mpe_evaluates_logarithm_of_a_small_power() {
+    // Y = log10((1/4)^1024)/1024 + 1 is exactly 1 + log10(1/4),
+    // which encodes to neutral sRGB byte 169.
+    let transform = mpe_formula_transform(
+        0.25,
+        [0.125, 0.75],
+        1,
+        &[1024.0, 0.0009765625, 1.0, 0.0, 1.0],
+    );
+    assert_neutral_formula_output(transform, 169);
+}
+
+#[test]
+fn selected_icc_mpe_evaluates_exponential_with_zero_amplitude() {
+    // ICC.1:2022 §10.16.2.2 type 2. Y = 0×2^1024 + 1/4 is exactly
+    // 1/4, which encodes to neutral sRGB byte 137.
+    let transform = mpe_formula_transform(1.0, [0.5, 2.0], 2, &[0.0, 2.0, 1024.0, 0.0, 0.25]);
+    assert_neutral_formula_output(transform, 137);
+}
+
+fn assert_neutral_formula_output(transform: Vec<u8>, expected: u8) {
+    let profile = mpe_profile(transform, b"XYZ ", lut16_transform(), None);
+    let png = image(&[192, 96, 32, 79], Some(&profile), &[], &[]);
+    assert_eq!(
+        test_decode(&png, 1 << 20).unwrap().pixels,
+        [expected, expected, expected, 79],
     );
 }
 
