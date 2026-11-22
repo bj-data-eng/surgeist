@@ -330,7 +330,6 @@ fn assert_invalid(bytes: &[u8]) {
 #[test]
 fn unsupported_higher_profiles_never_silently_defer_to_supported_tags() {
     for (kind, data) in [
-        (b"iCCP", [0; 4]),
         (b"cICP", [1, 13, 0, 1]),
         (b"mDCV", [0; 4]),
         (b"cLLI", [0; 4]),

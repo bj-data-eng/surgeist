@@ -313,6 +313,7 @@ fn paeth(a: u8, b: u8, c: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    mod icc_profile;
     mod source_color;
 
     const PIXELS: [u8; 16] = [
