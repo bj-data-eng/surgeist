@@ -14,7 +14,7 @@ use surgeist_html_parser::{
 };
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlFragmentContext};
 
-fn parse_limits() -> HtmlParseLimits {
+pub(super) fn parse_limits() -> HtmlParseLimits {
     HtmlParseLimits::builder()
         .source_units(100_000)
         .buffered_utf16_units(100_000)
