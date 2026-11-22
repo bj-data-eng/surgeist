@@ -25,6 +25,31 @@ fn a_negative_delay_enters_the_active_interval_with_easing() {
     assert_eq!(opacity(&track, 0.0), 0.625);
 }
 
+#[test]
+fn delay_returns_the_raw_start_even_when_interpolation_is_unsupported() {
+    use surgeist_animation::interpolation::TransformValue;
+    let from = InterpolableValue::transform(TransformValue::unsupported("translate"));
+    let to = InterpolableValue::transform(TransformValue::unsupported("scale"));
+    let track = TransitionTrack::new(
+        TransitionTrackId::new(2),
+        PropertyKey::from_text("transform").unwrap(),
+        from.clone(),
+        to,
+        AnimationDuration::from_secs(1.0).unwrap(),
+        AnimationDelay::from_secs(1.0).unwrap(),
+        Easing::linear(),
+    )
+    .unwrap();
+    let sample = track.sample(
+        ElapsedTime::from_secs(0.5).unwrap(),
+        AnimationPlayState::Running,
+    );
+    let SampleValue::Value(value) = sample.value() else {
+        panic!("expected raw delay value")
+    };
+    assert_eq!(value.value(), &from);
+}
+
 fn track(delay: f64) -> TransitionTrack {
     let easing = Easing::linear_function(
         LinearEasing::new(vec![
