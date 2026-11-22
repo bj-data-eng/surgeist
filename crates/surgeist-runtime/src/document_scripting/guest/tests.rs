@@ -17,6 +17,7 @@ pub(in crate::document_scripting) mod attributes;
 pub(in crate::document_scripting) mod canvas_dimension_admission;
 pub(in crate::document_scripting) mod control_autocomplete_admission;
 pub(in crate::document_scripting) mod conversion_admission;
+mod document_metadata_admission;
 pub(in crate::document_scripting) mod move_before;
 pub(in crate::document_scripting) mod node_iterator_admission;
 pub(in crate::document_scripting) mod numeric_control_admission;

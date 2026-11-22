@@ -91,6 +91,8 @@ mod document_all;
 mod document_collections;
 #[path = "document_scripting/document_fragment.rs"]
 mod document_fragment;
+#[path = "document_scripting/document_metadata.rs"]
+mod document_metadata;
 #[path = "document_scripting/document_named_properties.rs"]
 mod document_named_properties;
 #[path = "document_scripting/element_mixin.rs"]
@@ -2526,6 +2528,9 @@ fn main() {
             "html-collection-properties" => tag_collection::reflects_live_tag_collection_properties(),
             "document-all" => document_all::uses_the_canonical_live_document(),
             "document-collections" => document_collections::document_collections_share_live_native_identity(),
+            "document-metadata" => document_metadata::metadata_comes_from_the_canonical_document_receiver(),
+            "document-metadata-source" => document_metadata::metadata_getters_read_during_an_original_native_source_reaction(),
+            "document-metadata-realm" => document_metadata::borrowed_metadata_getters_read_the_other_live_document(),
             "document-named-properties" => document_named_properties::document_names_are_virtual_own_properties(),
             "document-named-mutation" => document_named_properties::document_names_preserve_ordinary_own_keys_and_current_mutation(),
             "document-named-iframe" => document_named_properties::document_named_iframe_shares_the_native_window_proxy(),
@@ -2701,6 +2706,9 @@ fn main() {
     window_properties::named_window_elements_follow_the_live_document();
     document_all::uses_the_canonical_live_document();
     document_collections::document_collections_share_live_native_identity();
+    document_metadata::metadata_comes_from_the_canonical_document_receiver();
+    document_metadata::metadata_getters_read_during_an_original_native_source_reaction();
+    document_metadata::borrowed_metadata_getters_read_the_other_live_document();
     document_named_properties::document_names_are_virtual_own_properties();
     document_named_properties::document_names_preserve_ordinary_own_keys_and_current_mutation();
     document_named_properties::document_named_iframe_shares_the_native_window_proxy();
