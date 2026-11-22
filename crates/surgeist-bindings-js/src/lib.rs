@@ -77,6 +77,7 @@ mod backend;
 mod callback_object;
 pub mod conversion;
 pub mod css;
+pub mod cssom;
 mod custom_elements;
 pub mod declarations;
 pub mod dom_exception;

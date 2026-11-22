@@ -115,7 +115,11 @@ pub(crate) trait Engine {
 
 pub(crate) enum NativeProjectionSlot<'a> {
     Traced(u32, &'a Root),
-    Collection { read: &'a Root, keys: &'a Root },
+    Collection {
+        read: &'a Root,
+        keys: &'a Root,
+        named: bool,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -210,7 +214,7 @@ pub(crate) trait Operations {
     fn dom_exception_profile(&mut self) -> Result<Option<DomExceptionProfile>, Error>;
     fn publish_dom_exception(
         &mut self,
-        key: &[u16],
+        key: Option<&[u16]>,
         constructor: &Root,
         prototype: &Root,
         account: std::rc::Weak<ConversionAccount>,
@@ -254,6 +258,7 @@ pub(crate) trait Operations {
     ) -> Result<(), Error>;
     fn object(&mut self, prototype: ObjectPrototype<'_>) -> Result<Root, Error>;
     fn native_object_storage_bytes(&self) -> usize;
+    fn native_reference_storage_bytes(&self) -> usize;
     fn project_native_object(
         &mut self,
         prototype: ObjectPrototype<'_>,
@@ -282,6 +287,7 @@ pub(crate) trait Operations {
         root: &Root,
     );
     fn native_object(&mut self, object: &Root) -> Result<Option<Rc<dyn Any>>, Error>;
+    fn native_object_is_live(&self, index: u32, brand: TypeId) -> Result<bool, Error>;
     fn native_object_index(&mut self, object: &Root, brand: TypeId) -> Result<Option<u32>, Error>;
     fn open_native_object(&mut self, index: u32, brand: TypeId) -> Result<Option<Root>, Error>;
     fn clear_native_object_reference(
@@ -304,6 +310,8 @@ pub(crate) trait Operations {
         reference: Option<&Root>,
     ) -> Result<(), Error>;
     fn managed_object(&mut self) -> Result<Root, Error>;
+    fn cssom_prototypes(&mut self, prototypes: &[&Root]) -> Result<(), Error>;
+    fn cssom_prototype(&mut self, index: u32) -> Result<Option<Root>, Error>;
     fn open_managed_object(&mut self, holder: &Root) -> Result<Root, Error>;
     fn set_prototype(&mut self, object: &Root, prototype: ObjectPrototype<'_>)
     -> Result<(), Error>;

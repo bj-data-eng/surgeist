@@ -42,6 +42,18 @@ struct Quota {
     _backing: DomHostedRuntimeRetention,
 }
 
+/// Shared admission for a native adapter that runs inside a guest callback.
+pub(super) struct ExternalAdmission(Rc<Quota>);
+
+impl ExternalAdmission {
+    pub(super) fn reserve(
+        &self,
+        bytes: usize,
+    ) -> Result<CapReservation, DocumentScriptNativeError> {
+        self.0.reserve(bytes)
+    }
+}
+
 /// Local-cap custody for actual additional native backing. This does not
 /// replace canonical DOM retention. Keep it with the physical caller-owned
 /// body and its canonical backing, including during replacement overlap.
@@ -191,7 +203,10 @@ impl Host for NativeConversionHost {
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
             native_admit_work(&mut session, &native, units)
         })()
-        .map_err(|error| native_refusal(&self.state.failures, error))
+        .map_err(|error| native_refusal(&self.state.failures, error))?;
+        #[cfg(test)]
+        observe_conversion_admission(&self.state, work);
+        Ok(())
     }
 
     fn retain_buffer(&self, request: BufferRequest) -> Result<Self::Buffer, Error> {
@@ -440,6 +455,15 @@ impl Prepared {
     #[cfg(test)]
     pub(super) fn peak_storage_bytes(&self) -> usize {
         self.state.quota.peak.get()
+    }
+
+    #[cfg(test)]
+    pub(super) fn live_storage_bytes(&self) -> usize {
+        self.state.quota.live.get()
+    }
+
+    pub(super) fn external_admission(&self) -> ExternalAdmission {
+        ExternalAdmission(self.state.quota.clone())
     }
 
     /// Reserve only caller-owned native bodies. Producer preparation requests

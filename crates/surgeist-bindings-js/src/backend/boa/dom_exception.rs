@@ -141,19 +141,21 @@ impl Entered<'_> {
 
     pub(super) fn boa_publish_dom_exception(
         &mut self,
-        key: &[u16],
+        key: Option<&[u16]>,
         constructor: &Root,
         prototype: &Root,
         account: Weak<ConversionAccount>,
     ) -> Result<(), Error> {
         self.validate_root(constructor)?;
         self.validate_root(prototype)?;
-        self.validate_string_length(key.len())?;
+        if let Some(key) = key {
+            self.validate_string_length(key.len())?;
+        }
         let state = self.state.clone();
         let realm_key = self.realm;
         let realm = state.lookup_realm(realm_key)?;
         let global = self.context.global_object();
-        let prepared = state.prepare(realm_key)?;
+        let prepared = key.map(|_| state.prepare(realm_key)).transpose()?;
         if realm.host_defined().get::<Profile>().is_some() {
             return Err(Error::PropertyRejected);
         }
@@ -167,25 +169,33 @@ impl Entered<'_> {
         }
         let constructor = self.object_value(constructor)?;
         let prototype = self.object_value(prototype)?;
-        let key = PropertyKey::from(JsString::from(key));
-        match global.own_descriptor(&key, self.context) {
-            Ok(None) => {}
-            Ok(Some(_)) => return Err(Error::PropertyRejected),
-            Err(error) => return self.capture(ExceptionPhase::DefineProperty, error, prepared),
-        }
+        let publication = if let Some((key, prepared)) = key.zip(prepared) {
+            let key = PropertyKey::from(JsString::from(key));
+            match global.own_descriptor(&key, self.context) {
+                Ok(None) => {}
+                Ok(Some(_)) => return Err(Error::PropertyRejected),
+                Err(error) => return self.capture(ExceptionPhase::DefineProperty, error, prepared),
+            }
+            let descriptor = PropertyDescriptor::builder()
+                .value(constructor.clone())
+                .writable(true)
+                .enumerable(false)
+                .configurable(true)
+                .build();
+            Some((key, descriptor, prepared))
+        } else {
+            None
+        };
         state.owner.available()?;
-        let descriptor = PropertyDescriptor::builder()
-            .value(constructor.clone())
-            .writable(true)
-            .enumerable(false)
-            .configurable(true)
-            .build();
         accounts.insert(realm_key.index, (realm.downgrade(), account));
         drop(accounts);
         realm.host_defined_mut().insert(Profile {
             prototype,
             _constructor: constructor,
         });
+        let Some((key, descriptor, prepared)) = publication else {
+            return Ok(());
+        };
         let result = global.define_own_property(&key, descriptor, self.context);
         if !matches!(result, Ok(true)) {
             let retired = realm.host_defined_mut().remove::<Profile>();

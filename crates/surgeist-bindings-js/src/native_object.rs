@@ -121,11 +121,25 @@ impl Drop for AbortProjection<'_, '_> {
 }
 
 impl<'scope> Scope<'scope> {
-    fn native_projection_bytes<T, Storage>(&self) -> Result<usize, Error> {
+    pub(crate) fn native_projection_bytes<T, Storage>(&self) -> Result<usize, Error> {
         self.operations
             .native_object_storage_bytes()
             .checked_add(size_of::<NativeObject<T>>())
             .and_then(|bytes| bytes.checked_add(size_of::<Storage>()))
+            .ok_or(Error::Allocation)
+    }
+
+    pub(crate) fn native_projection_bytes_with_references<T, Storage>(
+        &self,
+        count: usize,
+    ) -> Result<usize, Error> {
+        let references = self
+            .operations
+            .native_reference_storage_bytes()
+            .checked_mul(count)
+            .ok_or(Error::Allocation)?;
+        self.native_projection_bytes::<T, Storage>()?
+            .checked_add(references)
             .ok_or(Error::Allocation)
     }
 
@@ -191,8 +205,29 @@ impl<'scope> Scope<'scope> {
             Some(crate::backend::NativeProjectionSlot::Collection {
                 read: &read.root,
                 keys: &keys.root,
+                named: true,
             }),
             admit,
+        )
+    }
+
+    pub(crate) fn project_native_object_with_indexed_properties<T: 'static, Storage: 'static>(
+        &mut self,
+        prototype: ObjectPrototype<'_, 'scope>,
+        payload: T,
+        read: &Value<'scope>,
+        keys: &Value<'scope>,
+        backing: Storage,
+    ) -> Result<Value<'scope>, Error> {
+        self.project_payload(
+            prototype,
+            payload,
+            Some(crate::backend::NativeProjectionSlot::Collection {
+                read: &read.root,
+                keys: &keys.root,
+                named: false,
+            }),
+            |_| Ok(backing),
         )
     }
 
@@ -446,6 +481,18 @@ impl<'scope> Scope<'scope> {
             index,
             marker: PhantomData,
         }))
+    }
+
+    pub(crate) fn native_object_is_live<T: 'static>(
+        &self,
+        token: &NativeObjectToken<T>,
+    ) -> Result<bool, Error> {
+        self.check_active()?;
+        if token.owner != self.operations.owner_state().id() {
+            return Err(Error::ForeignOwner);
+        }
+        self.operations
+            .native_object_is_live(token.index, TypeId::of::<NativeObject<T>>())
     }
 
     /// Reopen a live weak projection in its own heap. Collection yields

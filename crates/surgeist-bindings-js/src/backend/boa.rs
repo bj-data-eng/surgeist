@@ -30,6 +30,7 @@ use crate::{
 use super::{NativeProjectionSlot, Operations, RealmProfile, WindowInterface};
 
 mod callback_objects;
+mod cssom;
 mod dom_exception;
 mod functions;
 mod native;

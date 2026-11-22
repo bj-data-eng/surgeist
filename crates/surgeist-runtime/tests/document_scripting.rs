@@ -2574,6 +2574,13 @@ fn main() {
             "native-css-style-sheet" => {
                 cssom::native_window_constructs_a_stylesheet_with_a_live_rule_list()
             }
+            "cssom-indexed-properties" => cssom::indexed_properties_and_rule_custody(),
+            "cssom-indexed-definition" => cssom::indexed_definition_converts_without_native_admission(),
+            "cssom-indexed-reflection" => cssom::indexed_list_reflection_and_receivers(),
+            "cssom-prototype-keys" => cssom::prototype_own_key_order(),
+            "cssom-prototype-cycle" => cssom::prototype_cycles_are_rejected_by_ordinary_receivers(),
+            "cssom-constructor-admission" => cssom::constructor_admission_rolls_back_before_publication(),
+            "cssom-conversion-admission" => cssom::constructor_conversion_charges_original_host(),
             "css-namespace" => native_window_exposes_css_escape(),
             "css-namespace-admission" => native_window_css_admission(),
             "css-namespace-collision" => {
@@ -2702,6 +2709,7 @@ fn main() {
     native_window_dom_exception_admission_and_hook_collision();
     native_window_dom_exception_meters_typed_diagnostics();
     cssom::native_window_constructs_a_stylesheet_with_a_live_rule_list();
+    cssom::run();
     native_window_exposes_css_escape();
     native_window_css_admission();
     native_window_css_hook_collision_preserves_the_original_session();
