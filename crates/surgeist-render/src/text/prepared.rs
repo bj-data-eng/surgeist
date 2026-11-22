@@ -579,9 +579,10 @@ impl FontData {
     /// COLRv1 PaintGlyph→PaintSolid with one optional translation and static
     /// root clip are supported at default coordinates without synthesis.
     /// sbix noninterlaced 8-bit RGBA PNG with IHDR, contiguous IDAT, IEND and
-    /// supported sRGB/gAMA/cHRM or embedded RGB matrix/TRC ICC color uses
-    /// retained strike/bearing metadata and decoded pixels under the same
-    /// instance restriction. Other selected
+    /// supported sRGB/gAMA/cHRM or embedded RGB ICC color uses retained
+    /// strike/bearing metadata and decoded pixels under the same instance
+    /// restriction. Embedded ICC supports matrix/TRC and forward lookup tables.
+    /// Other selected
     /// operations/formats refuse explicitly, without representation fallback.
     /// Palette0 is the default; CurrentColor uses the caller's paint.
     /// Consecutive ordinary outlines share one NonZero fill. Intrinsic paints

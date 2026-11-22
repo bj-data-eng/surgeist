@@ -909,8 +909,8 @@ clip and currentColor behavior. Caller paint applies to foreground operations.
 
 The supported intrinsic profile is COLRv0, a COLRv1 solid/glyph/translation/static
 clip subset, and sbix noninterlaced RGBA8 PNG with IHDR, contiguous IDAT,
-IEND and supported `sRGB`, `gAMA`, `cHRM` and embedded RGB matrix/TRC ICC
-color. Other paint operations, formats and unexecuted PNG semantics refuse
+IEND and supported `sRGB`, `gAMA`, `cHRM` and embedded RGB ICC color.
+Other paint operations, formats and unexecuted PNG semantics refuse
 explicitly.
 Color and bitmap admission requires a default effective instance without
 synthesis; supported outline variation and synthesis follow the policy below.
@@ -945,21 +945,33 @@ policy: sRGB primaries/D65 when cHRM is absent, and the actual piecewise sRGB
 transfer when gamma is absent or zero. A positive gAMA instead uses its encoded
 power exponent, including values near the legal integer endpoints.
 
-The embedded ICC route admits version 2 and 4 RGB Input and Display matrix
-profiles with XYZ PCS. It executes identity, gamma and sampled curves, and
-supported version 4 parametric curves. The profile's matrix columns produce
-media-relative XYZ D50. The existing Color conversion adapts that PCS to the
-SDR sRGB destination and quantizes with terminal clipping. This native route
-selects media-relative colorimetry independently of the profile's preferred
-intent. ICC precedence skips the optional multi-process route when its
-operations are unavailable. Profile qualification covers the selected
-color transform and profile structure. Non-operative metadata payloads stay
-opaque. A structurally valid selected forward lookup table requires a supported
-decoder. See [ICC.1:2022, §§8.3–8.4, 8.10 and Annex F](https://www.color.org/specifications/ICC.1-2022-05.pdf).
+The embedded ICC route admits version 2 and 4 RGB Input and Display profiles.
+It requests media-relative colorimetry independently of the preferred intent
+in the header. With the optional DToB multi-process route unavailable, ICC
+precedence selects `A2B1`, then the perceptual `A2B0` fallback, then matrix/TRC.
+`A2B0` can contain profile-defined gamut and tone mapping. Profile qualification
+covers the selected transform and profile structure while keeping unrelated
+metadata opaque. [ICC.1:2022, §§8.3–8.4 and 8.10](https://www.color.org/specifications/ICC.1-2022-05.pdf#page=45)
 
-Ledger accounts for the ICC inflater's offered output bytes, reached tag
-records, numeric work and temporary backing. Profile preparation and pixel
-conversion use the existing PNG color phases.
+| Forward transform | Supported PCS |
+| --- | --- |
+| Matrix/TRC | XYZ D50. |
+| `mft1` | Lab. ICC leaves the 8-bit XYZ encoding implementation-specific, so selected `mft1` XYZ returns `UnsupportedPng`. |
+| `mft2` | XYZ D50 and legacy Lab, including legacy Lab in v4 profiles. |
+| v4 `mAB` | XYZ D50 and current Lab. |
+
+Render executes identity, gamma, sampled, and v4 parametric curves. It uses
+linear interpolation for uniform curves and trilinear interpolation for RGB
+CLUTs. It executes the stages in ICC order, clips the `mAB` affine
+matrix output before B curves, and retains fractional values through final PCS
+decoding. Legacy Lab lightness is bounded to 100. Render scales Color's
+Lab-to-XYZ result to the ICC reference white and uses Color to convert XYZ D50
+to SDR sRGB with terminal clipping and quantization. Straight alpha
+retains its source byte. [ICC.1:2022, §§6.3.4, 10.10–10.12 and Annex F](https://www.color.org/specifications/ICC.1-2022-05.pdf#page=65)
+
+Ledger accounts for the ICC inflater's offered output bytes, reached tag records,
+curve and table samples, numeric work, and temporary backing. Profile preparation
+and pixel conversion use the existing PNG color phases.
 
 Chromaticities calibrate homogeneous integer XYZ columns without dividing by
 primary y; zero-y primaries and boundary whites remain admissible. Exact integer
@@ -1500,7 +1512,8 @@ Huffman arrays. Selected PNG color compilation and conversion also admit their
 actual fixed numeric workspaces before construction, retaining the compiled
 workspace charge through pixel conversion and its real overlap with inflate and
 pixel buffers. ICC qualification also admits the inflated profile bytes and
-tag index. Sampled curves keep the inflated backing until conversion completes.
+tag index. Sampled curves and lookup tables keep the inflated backing until
+conversion completes.
 Pixel conversion runs in place using the compiled transform.
 Arc allocator headers, hash-table bucket overhead, dependency
 internal allocations and process/RSS usage are outside these units.
