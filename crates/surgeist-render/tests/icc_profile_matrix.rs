@@ -301,6 +301,37 @@ fn rgb_matrix_runs_after_channel_curves_and_before_inverse_channel_curves() {
 }
 
 #[test]
+fn nonsingular_matrix_keeps_the_inverse_residual_before_clipping() {
+    // These signed fixed-point columns sum to the encoded D50 white.
+    // Their determinant in integer code units is exactly -1.
+    let columns = [
+        [1073741824, 1048638629, 865027663],
+        [-2147420457, -2097211722, -1730001265],
+        [1073741823, 1048638629, 865027663],
+    ];
+    let tags = rgb_tags(columns, [curve(&[]), curve(&[]), curve(&[])]);
+    let bytes = profile(V4, b"mntr", b"RGB ", b"XYZ ", D50, tags);
+    let mut accounting = RenderAccountingContext::default();
+    let profile = IccProfile::inspect(&bytes, &mut accounting).unwrap();
+    let controls = [0.25, 0.5, 0.75];
+    let rgb = profile.device_color(&controls).unwrap();
+    // Integer code sums for the three quarter-weighted coordinates.
+    let expected = [126379.0 / 262144.0, 0.5, 54061.0 / 131072.0];
+    close(
+        &profile
+            .to_pcs(RELATIVE, &rgb, &mut accounting)
+            .unwrap()
+            .coordinates(),
+        &expected,
+    );
+    let xyz = IccPcsColor::try_new(IccPcsSpace::XyzD50, expected, RELATIVE).unwrap();
+    close(
+        profile.from_pcs(xyz, &mut accounting).unwrap().channels(),
+        &controls,
+    );
+}
+
+#[test]
 fn v2_registry_profile_id_is_opaque_and_reserved_tail_stays_zero() {
     let mut bytes = profile(V2, b"mntr", b"RGB ", b"XYZ ", D50, calibrated_rgb_tags());
     // The ICC Registry's sRGB2014 and PSOcoated_v3 v2 profiles populate
