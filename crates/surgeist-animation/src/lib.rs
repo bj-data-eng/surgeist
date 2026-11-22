@@ -37,6 +37,7 @@
 //! | [`interpolation`] | Interpolable values, property keys and pairs. |
 //! | [`computed`] | Canonical computed atoms, symbolic math and property combination. |
 //! | [`composition`] | Pure underlying-first endpoint composition and property operations. |
+//! | [`grid`] | Structured computed Grid tracks and fixed-repeat interpolation. |
 //! | [`shadow`] | Resolved box/text shadows, padding and ordered list combination. |
 //! | [`shape`] | Computed circle, ellipse, inset and polygon interpolation. |
 //! | [`transform`] | Resolved transform functions, matrix interpolation and list combination. |
@@ -143,6 +144,7 @@ pub mod computed;
 pub mod css_animation;
 pub mod diagnostics;
 pub mod easing;
+pub mod grid;
 pub mod interpolation;
 pub mod keyframe;
 pub mod keyframe_input;

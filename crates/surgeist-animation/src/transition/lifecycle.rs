@@ -467,6 +467,9 @@ impl<T: Clone> RunningTransition<T> {
                 InterpolationOutcome::ShadowFailure(error) => {
                     return Err(InterpolationError::Shadow(error).into());
                 }
+                InterpolationOutcome::GridFailure(error) => {
+                    return Err(InterpolationError::Grid(error).into());
+                }
                 InterpolationOutcome::Unsupported(error) => return Err(error.into()),
             },
         );
