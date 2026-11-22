@@ -241,6 +241,13 @@ pub(crate) enum Command {
         kind: Creation,
         document: Option<NodeOperand>,
     },
+    CreateHtmlOption {
+        document: DocumentId,
+        text: DocumentString,
+        value: Option<DocumentString>,
+        default_selected: bool,
+        selected: bool,
+    },
     ConstructDocument(crate::internal::hosted::DocumentConstructorContext),
     SplitText {
         node: NodeOperand,

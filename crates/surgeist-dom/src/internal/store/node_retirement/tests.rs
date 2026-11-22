@@ -237,6 +237,99 @@ fn source_detached_creation_and_watch_publish_together() {
 }
 
 #[test]
+fn watched_option_publication_keeps_initial_state_and_refuses_atomically() {
+    use crate::internal::source::{DomDetachedNodeCreation, DomSourceLimits};
+    use surgeist_html::values::{DocumentString, Namespace};
+
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document, _) = fixture(&cancel);
+    dom.set_limits(
+        dom.limits()
+            .with_select_processing(32, 1_000_000, 1_000_000)
+            .unwrap(),
+    )
+    .unwrap();
+    let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let before = dom.snapshot();
+    let input = || DomDetachedNodeCreation::HtmlOption {
+        text: DocumentString::from_utf16(vec![0xd800, 0, 0xdc00]),
+        value: Some("".into()),
+        default_selected: true,
+        selected: false,
+    };
+    let source = |work| DomSourceLimits::new(16_000_000, 20_000, work, 64, 64, 64, 2);
+    let create = |dom: &mut Dom, inbox: &DomNodeRetirementInbox, limits| {
+        dom.create_detached_with_node_retirement_watch(
+            document,
+            input(),
+            (inbox, 4),
+            limits,
+            &cancel,
+        )
+    };
+    assert!(matches!(
+        create(&mut dom, &inbox, (source(0), GENEROUS)),
+        Err(DomError::SourceWorkLimit { limit: 0 })
+    ));
+    let bytes_short = DomSourceLimits::new(1, 20_000, 200_000, 64, 64, 64, 2);
+    assert!(matches!(
+        create(&mut dom, &inbox, (bytes_short, GENEROUS)),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::SourceRetainedBytes,
+            limit: 1,
+        })
+    ));
+    assert!(matches!(
+        create(
+            &mut dom,
+            &inbox,
+            (source(200_000), DomNodeRetirementLimits::new(16_000_000, 0))
+        ),
+        Err(DomError::NodeRetirementWorkLimit { limit: 0 })
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.snapshot().nodes().count(), before.nodes().count());
+    assert!(dom.pending_source_edit().is_none());
+    assert!(dom.node_retirements.is_none());
+    assert!(inbox.take().is_none());
+
+    let (_, option, watch) = create(&mut dom, &inbox, (source(200_000), GENEROUS))
+        .unwrap()
+        .into_parts();
+    let snapshot = dom.snapshot();
+    let option_node = snapshot.node(option).unwrap();
+    let element = option_node.as_element().unwrap();
+    let flags = element.option_state().unwrap().flags();
+    assert!(!flags.selectedness());
+    assert!(!flags.dirtiness());
+    assert_eq!(option_node.parent(), None);
+    assert_eq!(option_node.owner_document(), Some(document));
+    assert_eq!(element.name().namespace_uri(), Namespace::html().uri());
+    let [text] = option_node.children() else {
+        panic!("nonempty initial text creates exactly one Text node");
+    };
+    assert_eq!(
+        snapshot.node(*text).unwrap().data().unwrap().code_units(),
+        [0xd800, 0, 0xdc00]
+    );
+    for attribute in ["value", "selected"] {
+        assert_eq!(
+            option_node.attribute_ns(&Namespace::none(), &attribute.into()),
+            Some(&DocumentString::default())
+        );
+    }
+
+    let mut destroy = DomBatch::new();
+    destroy.destroy(option);
+    dom.apply(destroy, &cancel).unwrap();
+    let notice = inbox.take().unwrap();
+    assert_eq!(notice.node(), option);
+    assert_eq!(notice.custody_key(), 4);
+    assert!(inbox.take().is_none());
+    drop(watch);
+}
+
+#[test]
 fn source_shadow_creation_admits_the_watch_before_publication() {
     use crate::{internal::shadow::DomShadowRootInit, internal::source::DomSourceLimits};
     use surgeist_html::construction::HtmlShadowRootMode;

@@ -543,6 +543,11 @@ pub surgeist_dom::edit::DomDetachedNodeCreation::DocumentType::name: surgeist_ht
 pub surgeist_dom::edit::DomDetachedNodeCreation::DocumentType::public_id: surgeist_html::internal::values::document_string::DocumentString
 pub surgeist_dom::edit::DomDetachedNodeCreation::DocumentType::system_id: surgeist_html::internal::values::document_string::DocumentString
 pub surgeist_dom::edit::DomDetachedNodeCreation::Fragment
+pub surgeist_dom::edit::DomDetachedNodeCreation::HtmlOption
+pub surgeist_dom::edit::DomDetachedNodeCreation::HtmlOption::default_selected: bool
+pub surgeist_dom::edit::DomDetachedNodeCreation::HtmlOption::selected: bool
+pub surgeist_dom::edit::DomDetachedNodeCreation::HtmlOption::text: surgeist_html::internal::values::document_string::DocumentString
+pub surgeist_dom::edit::DomDetachedNodeCreation::HtmlOption::value: core::option::Option<surgeist_html::internal::values::document_string::DocumentString>
 pub surgeist_dom::edit::DomDetachedNodeCreation::ProcessingInstruction
 pub surgeist_dom::edit::DomDetachedNodeCreation::ProcessingInstruction::data: surgeist_html::internal::values::document_string::DocumentString
 pub surgeist_dom::edit::DomDetachedNodeCreation::ProcessingInstruction::fallback: surgeist_dom::script::DomCreationRealmFallback

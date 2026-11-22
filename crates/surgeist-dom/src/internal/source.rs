@@ -576,13 +576,22 @@ pub struct DomElementCreationOptions {
     pub registry: Option<crate::internal::document::DomRegistryBinding>,
 }
 
-/// One ordinary detached node creation with no connected-tree effects.
+/// One detached native result, including any descendants required by its
+/// creation algorithm, with no connected-tree effects.
 #[derive(Debug)]
 pub enum DomDetachedNodeCreation {
     Attribute(DocumentString),
     AttributeNs(Namespace, DocumentString),
     Fragment,
     Text(DocumentString),
+    /// The HTML Option factory's converted arguments. Selectedness starts clean
+    /// and is independent of the presence of the selected content attribute.
+    HtmlOption {
+        text: DocumentString,
+        value: Option<DocumentString>,
+        default_selected: bool,
+        selected: bool,
+    },
     CdataSection {
         data: DocumentString,
         fallback: crate::internal::hosted::DomCreationRealmFallback,
@@ -613,6 +622,20 @@ impl DomDetachedNodeCreation {
             }
             Self::Fragment => DomSourceEdit::create_fragment(document.node()),
             Self::Text(data) => DomSourceEdit::create_text(document.node(), data),
+            Self::HtmlOption {
+                text,
+                value,
+                default_selected,
+                selected,
+            } => DomSourceEdit {
+                command: Command::CreateHtmlOption {
+                    document,
+                    text,
+                    value,
+                    default_selected,
+                    selected,
+                },
+            },
             Self::CdataSection { data, fallback } => DomSourceEdit::create(
                 Creation::CdataSection {
                     data,

@@ -1035,7 +1035,14 @@ def conversion_type(ty, model, aliases=frozenset()):
 def lower_arguments(data, model):
     arguments = []
     for declaration in data["declarations"]:
-        for member in declaration.get("members", []):
+        members = list(declaration.get("members", []))
+        for attribute in declaration["attributes"]:
+            if attribute["name"] == "LegacyFactoryFunction":
+                factory = attribute["value"]
+                identifier = declaration["id"] + "." + factory["name"]
+                if data["access_mappings"][identifier + "/factory"]["kind"] == "native":
+                    members.append({"id": identifier, "arguments": factory["arguments"]})
+        for member in members:
             for index, argument in enumerate(member.get("arguments", [])):
                 info = conversion_type(argument["type"], model)
                 if info is None or argument["presence"] == "variadic":

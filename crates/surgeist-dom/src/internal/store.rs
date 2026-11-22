@@ -4191,6 +4191,23 @@ impl Draft {
                 )?;
                 self.register_ticket(key, cancelled)?;
             }
+            Command::CreateHtmlOption {
+                document,
+                text,
+                value,
+                default_selected,
+                selected,
+            } => {
+                let key = self.create_html_option(
+                    *document,
+                    text,
+                    value.as_ref(),
+                    *default_selected,
+                    *selected,
+                    (limits, cancelled),
+                )?;
+                self.register_ticket(key, cancelled)?;
+            }
             Command::AttachShadow { host, init } => {
                 let host = self.resolve(host.clone())?;
                 self.attach_shadow_command(host, *init, limits, cancelled)?;

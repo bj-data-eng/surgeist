@@ -2337,6 +2337,68 @@ pub fn html_select_element_set_custom_validity_0_error() -> Argument<Type<DomStr
     )
 }
 
+fn default_html_option_element_option_text(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<DomString>, Failure> {
+    Ok(cx.plain(DomString::new(Vec::new())))
+}
+
+/// Selected argument `HTMLOptionElement.Option/text` (not overload selection).
+pub fn html_option_element_option_text() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLOptionElement.Option/text",
+        0,
+        true,
+        types::DOM_STRING,
+        Some(default_html_option_element_option_text),
+    )
+}
+
+/// Selected argument `HTMLOptionElement.Option/value` (not overload selection).
+pub fn html_option_element_option_value() -> Argument<Type<DomString>> {
+    Argument::new(
+        "HTMLOptionElement.Option/value",
+        1,
+        true,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+fn default_html_option_element_option_default_selected(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<bool>, Failure> {
+    Ok(cx.plain(false))
+}
+
+/// Selected argument `HTMLOptionElement.Option/defaultSelected` (not overload selection).
+pub fn html_option_element_option_default_selected() -> Argument<Type<bool>> {
+    Argument::new(
+        "HTMLOptionElement.Option/defaultSelected",
+        2,
+        true,
+        types::BOOLEAN,
+        Some(default_html_option_element_option_default_selected),
+    )
+}
+
+fn default_html_option_element_option_selected(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<bool>, Failure> {
+    Ok(cx.plain(false))
+}
+
+/// Selected argument `HTMLOptionElement.Option/selected` (not overload selection).
+pub fn html_option_element_option_selected() -> Argument<Type<bool>> {
+    Argument::new(
+        "HTMLOptionElement.Option/selected",
+        3,
+        true,
+        types::BOOLEAN,
+        Some(default_html_option_element_option_selected),
+    )
+}
+
 /// Selected setter conversion for `CharacterData.data`.
 pub fn character_data_data_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY

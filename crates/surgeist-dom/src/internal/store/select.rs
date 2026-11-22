@@ -1882,6 +1882,68 @@ impl Draft {
         }
         self.run_effects(limits, cancel)
     }
+    pub(super) fn create_html_option(
+        &mut self,
+        document: DocumentId,
+        text: &DocumentString,
+        value: Option<&DocumentString>,
+        default_selected: bool,
+        selected: bool,
+        (limits, cancel): (DomLimits, &AtomicBool),
+    ) -> Result<Key, DomError> {
+        use crate::internal::source::{DomElementCreationName, DomElementCreationOptions};
+        use surgeist_html::{elements::form::HtmlOptionFlags, values::Namespace};
+
+        let document = self.resolve(document.into())?;
+        let metadata = self.document_metadata(document)?;
+        let operands = source::formation::Formation::new(self, cancel)?;
+        let namespace =
+            source::formation::string("http://www.w3.org/1999/xhtml", operands.as_ref(), cancel)?;
+        let local = source::formation::string(Tag::Option.local_name(), operands.as_ref(), cancel)?;
+        let name = DomElementCreationName::Qualified(Namespace::from_uri(namespace), local);
+        let formation = source::formation::Formation::new(self, cancel)?;
+        let element = self.native_element(
+            &name,
+            &DomElementCreationOptions::default(),
+            metadata,
+            formation.as_ref(),
+            cancel,
+        )?;
+        drop(name);
+        drop(operands);
+        let option = self.allocate_element_formed(element, document, limits, cancel, formation)?;
+        self.initialize_native_element(option, None, limits, cancel)?;
+
+        if !text.is_empty() {
+            let (text, payload) = source::formation::shared_string(self, text, cancel)?;
+            let child =
+                self.allocate_charged(NewNode::Text(text), document, limits, cancel, payload)?;
+            self.pre_insert(child, option, None, limits, cancel)?;
+        }
+        if let Some(value) = value {
+            let operands = source::formation::Formation::new(self, cancel)?;
+            let name =
+                source::formation::string(Attr::Value.local_name(), operands.as_ref(), cancel)?;
+            self.set_attribute(option, None, &name, value, limits, cancel)?;
+        }
+        if default_selected {
+            let operands = source::formation::Formation::new(self, cancel)?;
+            let name =
+                source::formation::string(Attr::Selected.local_name(), operands.as_ref(), cancel)?;
+            let empty = source::formation::string("", operands.as_ref(), cancel)?;
+            self.set_attribute(option, None, &name, &empty, limits, cancel)?;
+        }
+        self.select_step(cancel)?;
+        self.with_element_fields(option, cancel, |element| {
+            let state = element
+                .option_state_mut()
+                .ok_or(DomError::OptionInapplicable)?;
+            state.flags = HtmlOptionFlags::new(selected, false);
+            Ok(())
+        })??;
+        Ok(option)
+    }
+
     pub(super) fn select_edit(
         &mut self,
         key: Key,

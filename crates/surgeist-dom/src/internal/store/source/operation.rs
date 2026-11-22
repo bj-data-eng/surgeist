@@ -2398,6 +2398,7 @@ impl DomSourceLease<'_> {
                         | Command::ConstructDocument(_)
                         | Command::AttachShadow { .. }
                         | Command::CreateHtmlDocument { .. }
+                        | Command::CreateHtmlOption { .. }
                         | Command::CreateXmlDocument { .. }
                         | Command::ToggleAttribute { .. }
                         | Command::Compound(
