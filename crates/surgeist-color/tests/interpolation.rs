@@ -454,3 +454,21 @@ fn sample_rejects_true_overflow_at_the_finite_boundary() {
         .unwrap_err();
     assert_eq!(error.component(), InterpolationComponent::Channel(0));
 }
+
+#[test]
+fn sample_applies_the_exact_range_boundary_to_alpha() {
+    let first = color(SRGB, [None; 3], Some(1.0));
+    let second = color(SRGB, [None; 3], Some(0.0));
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+    // 1 - (-MAX) lies outside the finite range even though it rounds to MAX.
+    let error = first
+        .sample_interpolation(second, method, Finite::new(-f64::MAX).unwrap())
+        .unwrap_err();
+    assert_eq!(error.component(), InterpolationComponent::Alpha);
+
+    let valid = second
+        .sample_interpolation(first, method, Finite::new(f64::MAX).unwrap())
+        .unwrap();
+    assert_eq!(valid.alpha().map(Finite::get), Some(f64::MAX));
+    assert_eq!(valid.channels(), [None; 3]);
+}
