@@ -2,8 +2,10 @@ use super::*;
 use crate::{
     accounting::{RenderAccountingOptions, RenderLimits, RenderQuantity},
     tests::icc_png::{
-        gray_profile, image, lut_a_to_b_transform, lut_profile, lut_profile_with_transform,
-        lut8_transform, lut16_transform, matrix_profile, v2_matrix_profile,
+        LabStages, colorimetric_lut_profile, gray_profile, image, lut_a_to_b_transform,
+        lut_profile, lut_profile_with_transform, lut8_transform, lut16_lab_transform,
+        lut16_transform, matrix_and_lut_profile, matrix_profile, staged_lab_transform,
+        v2_matrix_profile,
     },
 };
 use ::png::chunk::{cHRM, gAMA, iCCP, sRGB};
@@ -164,41 +166,168 @@ fn assert_diagnostic(bytes: &[u8], expected: GlyphPreparationError) {
     );
 }
 
-#[test]
-fn selected_valid_lut_profile_refuses_despite_lower_profiles() {
-    let profile = lut_profile();
-    let bytes = png_with_lower_profiles(&profile);
-    assert_diagnostic(&bytes, GlyphPreparationError::UnsupportedPng);
-    let mut bad_png = bytes;
-    *bad_png.last_mut().unwrap() ^= 1;
-    assert_diagnostic(&bad_png, GlyphPreparationError::InvalidFont);
-}
+// LUT color oracles use ICC.1:2022 Tables 11–13 and §§10.10–10.12,
+// followed by the CSS Color 4 Lab/XYZ and Bradford/sRGB equations.
+// <https://www.color.org/specifications/ICC.1-2022-05.pdf>
+// <https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#color-conversion-code>
+const LUT16_XYZ: [u8; 12] = [188, 188, 188, 0, 254, 185, 129, 128, 234, 207, 144, 255];
+const B_ONLY_XYZ: [u8; 12] = [255, 252, 255, 0, 255, 116, 204, 128, 255, 242, 219, 255];
 
 #[test]
-fn selected_well_formed_icc_lut8_and_a_to_b_refuse_as_unsupported() {
-    for (transform, pcs) in [
-        (lut8_transform(), b"Lab "),
-        (lut_a_to_b_transform(), b"XYZ "),
-    ] {
-        let profile = lut_profile_with_transform(transform, pcs);
-        assert_diagnostic(
-            &png_with_lower_profiles(&profile),
-            GlyphPreparationError::UnsupportedPng,
+fn selected_icc_lut16_xyz_overrides_lower_png_profiles_and_preserves_alpha() {
+    let mut bad_png = png_with_lower_profiles(&lut_profile());
+    *bad_png.last_mut().unwrap() ^= 1;
+    assert_diagnostic(&bad_png, GlyphPreparationError::InvalidFont);
+
+    // The eight corners are sums of the fixture's P3 primaries encoded as
+    // u1Fixed15. For RGB=(230,128,64), their trilinear blend gives destination
+    // bytes [254.060, 185.011, 128.826] before rounding.
+    for version in [2, 4] {
+        let profile = colorimetric_lut_profile(lut16_transform(), b"XYZ ", version);
+        let bytes = png_with_lower_profiles(&profile);
+        assert_eq!(
+            test_decode(&bytes, 1 << 20).unwrap().pixels,
+            LUT16_XYZ,
+            "ICC v{version}"
         );
     }
 }
 
 #[test]
-fn selected_icc_a_to_b_with_outer_padding_refuses_as_unsupported() {
+fn selected_icc_lut8_evaluates_neutral_lab_in_v2_and_v4() {
+    // Trilinear interpolation gives L*=100(R+G+B)/(3*255), a*=b*=0.
+    // The second pixel maps to 132.038 per channel before byte rounding.
+    for version in [2, 4] {
+        let profile = colorimetric_lut_profile(lut8_transform(), b"Lab ", version);
+        assert_eq!(
+            test_decode(&png_with_lower_profiles(&profile), 1 << 20)
+                .unwrap()
+                .pixels,
+            [119, 119, 119, 0, 132, 132, 132, 128, 138, 138, 138, 255],
+            "ICC v{version}"
+        );
+    }
+}
+
+#[test]
+fn selected_icc_lut8_xyz_has_no_standard_pcs_encoding() {
+    // ICC.1:2022 §10.11 leaves the 8-bit PCSXYZ encoding undefined.
+    let profile = lut_profile_with_transform(lut8_transform(), b"XYZ ");
+    assert_diagnostic(
+        &png_with_lower_profiles(&profile),
+        GlyphPreparationError::UnsupportedPng,
+    );
+}
+
+#[test]
+fn selected_icc_lut16_lab_applies_both_tables_and_uses_legacy_encoding() {
+    let source = [
+        130, 128, 128, 0, 230, 64, 40, 128, 202, 160, 80, 255, 255, 0, 0, 1, 0, 0, 0, 254,
+    ];
+    // In §10.10 the lightness and neutral codes are ff00 and 8000. The
+    // fixture gives [100*R', 40*G', -32*B'] where R', G', B' are the input
+    // table outputs. The last two pixels map to Lab white and black.
+    for version in [2, 4] {
+        let profile = colorimetric_lut_profile(lut16_lab_transform(), b"Lab ", version);
+        let bytes = image(&source, Some(&profile), &[], &[]);
+        assert_eq!(
+            test_decode(&bytes, 1 << 20).unwrap().pixels,
+            [
+                83, 51, 88, 0, 229, 207, 223, 128, 206, 152, 187, 255, 255, 255, 255, 1, 0, 0, 0,
+                254
+            ],
+            "ICC v{version}"
+        );
+    }
+}
+
+#[test]
+fn selected_icc_a_to_b_evaluates_b_only_xyz_curves() {
+    let profile = colorimetric_lut_profile(lut_a_to_b_transform(), b"XYZ ", 4);
+    // Identity B curves give X, Y, Z = RGB/255 × (65535/32768).
+    let decoded = test_decode(&png_with_lower_profiles(&profile), 1 << 20).unwrap();
+    assert_eq!(decoded.pixels, B_ONLY_XYZ);
+}
+
+#[test]
+fn selected_icc_a_to_b_evaluates_the_final_curve_before_outer_padding() {
     // The last B curve has a 16-bit gamma. Its two alignment bytes follow
     // the complete mAB payload and are excluded from the tag's declared size.
     let mut transform = lut_a_to_b_transform();
     transform[64..68].copy_from_slice(&1_u32.to_be_bytes());
     transform.extend_from_slice(&0x0200_u16.to_be_bytes());
-    let profile = lut_profile_with_transform(transform, b"XYZ ");
-    assert_diagnostic(
-        &png_with_lower_profiles(&profile),
-        GlyphPreparationError::UnsupportedPng,
+    let profile = colorimetric_lut_profile(transform, b"XYZ ", 4);
+    // Only the Z coordinate is squared before its u1Fixed15 scaling.
+    assert_eq!(
+        test_decode(&png_with_lower_profiles(&profile), 1 << 20)
+            .unwrap()
+            .pixels,
+        [255, 250, 196, 0, 255, 112, 78, 128, 255, 241, 90, 255],
+    );
+}
+
+#[test]
+fn selected_icc_a_to_b_prefers_colorimetric_then_perceptual_then_matrix() {
+    // ICC.1:2022 §8.10.2 ranks A2B1, A2B0 and matrix/TRC for this intent.
+    for (profile, expected) in [
+        (matrix_and_lut_profile(true), B_ONLY_XYZ),
+        (matrix_and_lut_profile(false), LUT16_XYZ),
+        (matrix_profile(true), SAMPLED),
+    ] {
+        let bytes = png_with_lower_profiles(&profile);
+        assert_eq!(test_decode(&bytes, 1 << 20).unwrap().pixels, expected);
+    }
+}
+
+#[test]
+fn selected_icc_a_to_b_interpolates_asymmetric_clut_after_a_curves_and_before_b_curves() {
+    let source = [
+        96, 64, 222, 0, 192, 168, 68, 128, 250, 244, 194, 255, 0, 255, 0, 12, 255, 255, 255, 254,
+    ];
+    let profile = colorimetric_lut_profile(staged_lab_transform(LabStages::Clut), b"Lab ", 4);
+    let bytes = image(&source, Some(&profile), &[], &[]);
+    // With u=(R/255)^2, v=2G/255 and w=B/255, trilinear interpolation
+    // gives the raw L coordinate (36 + 46uv + 46w + 24v)/255. The B curve
+    // squares it before Lab decoding. A simplex blend changes the uv term.
+    assert_eq!(
+        test_decode(&bytes, 1 << 20).unwrap().pixels,
+        [
+            18, 38, 14, 0, 69, 40, 46, 128, 221, 121, 117, 255, 16, 32, 29, 12, 255, 154, 138, 254
+        ],
+    );
+}
+
+#[test]
+fn selected_icc_a_to_b_clips_matrix_output_between_m_and_b_curves() {
+    let source = [
+        60, 230, 36, 0, 170, 84, 170, 128, 245, 230, 10, 255, 250, 30, 190, 1,
+    ];
+    let profile = colorimetric_lut_profile(staged_lab_transform(LabStages::Matrix), b"Lab ", 4);
+    let bytes = image(&source, Some(&profile), &[], &[]);
+    // M squares the first input. The matrix then produces 2(R/255)^2−1/4,
+    // which falls below 0 in the first pixel and above 1 in the last two.
+    // §10.12.5 clips each result before the B curve squares L again.
+    assert_eq!(
+        test_decode(&bytes, 1 << 20).unwrap().pixels,
+        [
+            0, 0, 79, 0, 75, 102, 96, 128, 255, 241, 255, 255, 212, 255, 223, 1
+        ],
+    );
+}
+
+#[test]
+fn selected_icc_a_to_b_runs_all_five_stages_with_full_clut_precision() {
+    let source = [
+        96, 64, 220, 0, 192, 170, 68, 128, 250, 244, 194, 255, 0, 255, 0, 12,
+    ];
+    let profile = colorimetric_lut_profile(staged_lab_transform(LabStages::Full), b"Lab ", 4);
+    let bytes = image(&source, Some(&profile), &[], &[]);
+    // Add 199/65535 to each interpolated CLUT component, then apply M,
+    // matrix, clipping and B. The second pixel's blue is 38.950 before
+    // rounding. Discarding those low CLUT bits changes its rounded value.
+    assert_eq!(
+        test_decode(&bytes, 1 << 20).unwrap().pixels,
+        [0, 3, 23, 0, 0, 8, 39, 128, 255, 250, 255, 255, 0, 3, 27, 12],
     );
 }
 

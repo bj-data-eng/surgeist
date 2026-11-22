@@ -1,8 +1,45 @@
 use super::*;
 use crate::{
     accounting::{RenderAccountingOptions, RenderLimits, RenderQuantity},
-    tests::icc_png::{image, matrix_profile},
+    tests::icc_png::{colorimetric_lut_profile, image, lut16_transform, matrix_profile},
 };
+
+#[test]
+fn icc_lut_conversion_refuses_at_the_texel_boundary_and_releases_table_backing() {
+    let profile = colorimetric_lut_profile(lut16_transform(), b"XYZ ", 4);
+    let source = [128, 128, 128, 37, 64, 64, 64, 0];
+    let input = image(&source, Some(&profile), &[], &[]);
+    let mut accounting = RenderAccountingContext::new(
+        RenderAccountingOptions::new().with_limits(
+            RenderLimits::new()
+                .with_work_limit(RenderWork::ImageTexelVisits, 1)
+                .unwrap(),
+        ),
+    );
+    let error = decode_in(&input, 1 << 20, &mut accounting).err().unwrap();
+    assert!(error.accounting_diagnostic().is_some(), "{error:?}");
+    let terminal = accounting.last_attempt().unwrap();
+    assert_eq!(terminal.cleanup_fault(), None);
+    let attempt = terminal.attempt().unwrap();
+    assert_eq!(
+        attempt.refusal().unwrap().quantity(),
+        RenderQuantity::Work(RenderWork::ImageTexelVisits)
+    );
+    let conversion = attempt.phase_usage(RenderPhase::PngColorConvert);
+    assert_eq!(conversion.work(RenderWork::ImageTexelVisits), 1);
+    // This interior RGB coordinate uses all eight three-channel CLUT corners.
+    assert!(conversion.work(RenderWork::CoordinateVisits) >= 24);
+    let usage = attempt.usage();
+    assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+    assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+    assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+
+    let retry = image(&source[..4], Some(&profile), &[], &[]);
+    assert_eq!(
+        decode_in(&retry, 1 << 20, &mut accounting).unwrap().pixels,
+        [188, 188, 188, 37]
+    );
+}
 
 #[test]
 fn png_phase_counts_profile_name_visits_with_the_other_png_bytes() {
