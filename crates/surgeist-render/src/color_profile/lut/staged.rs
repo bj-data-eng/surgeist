@@ -1,90 +1,171 @@
-//! ICC lutAToBType stage admission and execution (ICC.1:2022 §10.12).
+//! ICC lutAToBType and lutBToAType stages (ICC.1:2022 §§10.12–10.13).
 
 use crate::color_profile::{
     Account, Curve, CurveInput, Extent, ParametricCurve, ProfileError, ProfileResult, RenderWork,
-    Result, field, fixed, sampled_curve_size, tag_kind, u32_at,
+    Result, field, fixed, sample_invariant, sampled_curve_size, tag_kind, u32_at,
 };
 
 use super::{
-    CHANNELS,
+    Direction, MAX_CHANNELS,
     sampling::{Grid, Precision},
 };
 
-const CURVE_EXTENTS: usize = 3 * CHANNELS;
+const PCS_CHANNELS: usize = 3;
+const A_CURVES: usize = 2 * PCS_CHANNELS;
+const CURVE_EXTENTS: usize = A_CURVES + MAX_CHANNELS;
 const STAGE_EXTENTS: usize = CURVE_EXTENTS + 2;
 
 pub(super) struct Staged {
-    clut: Option<ClutStage>,
+    direction: Direction,
+    device_channels: usize,
+    b: [Curve; PCS_CHANNELS],
     matrix: Option<MatrixStage>,
-    output: Curves,
+    clut: Option<ClutStage>,
 }
 
 struct ClutStage {
-    input: Curves,
+    a: [Curve; MAX_CHANNELS],
     grid: Grid,
 }
 
 struct MatrixStage {
-    input: Curves,
-    rows: [[f64; CHANNELS]; CHANNELS],
-    offsets: [f64; CHANNELS],
+    m: [Curve; PCS_CHANNELS],
+    rows: [[f64; PCS_CHANNELS]; PCS_CHANNELS],
+    offsets: [f64; PCS_CHANNELS],
 }
 
 impl Staged {
-    pub(super) fn read(payload: &[u8], account: &Account) -> ProfileResult<Self> {
-        let [b, matrix, m, clut, a] = stage_offsets(payload, account)?;
-        if b == 0 || (matrix == 0) != (m == 0) || (clut == 0) != (a == 0) {
+    pub(super) fn read(
+        payload: &[u8],
+        direction: Direction,
+        input_channels: usize,
+        output_channels: usize,
+        account: &Account,
+    ) -> ProfileResult<Self> {
+        let (signature, device_channels, pcs_channels) = match direction {
+            Direction::ToPcs => (b"mAB \0\0\0\0", input_channels, output_channels),
+            Direction::FromPcs => (b"mBA \0\0\0\0", output_channels, input_channels),
+        };
+        if !(1..=MAX_CHANNELS).contains(&device_channels) || pcs_channels != PCS_CHANNELS {
             return Err(ProfileError::Invalid);
         }
 
-        let mut curve_extents = [[None; CHANNELS]; 3];
+        let [b, matrix, m, clut, a] =
+            stage_offsets(payload, signature, input_channels, output_channels, account)?;
+        if b == 0
+            || (matrix == 0) != (m == 0)
+            || (clut == 0) != (a == 0)
+            || (clut == 0 && input_channels != output_channels)
+        {
+            return Err(ProfileError::Invalid);
+        }
+
         let mut extents = [None; STAGE_EXTENTS];
-        let output = Curves::read(payload, b, &mut curve_extents[0], account)?;
+        let b = read_curves(payload, b, &mut extents[..PCS_CHANNELS], account)?;
         let matrix = if matrix == 0 {
             None
         } else {
-            let input = Curves::read(payload, m, &mut curve_extents[1], account)?;
+            let curves = read_curves(payload, m, &mut extents[PCS_CHANNELS..A_CURVES], account)?;
             extents[CURVE_EXTENTS] = Some(element(payload, matrix, 48)?);
-            Some(MatrixStage::read(input, payload, matrix, account)?)
+            Some(MatrixStage::read(curves, payload, matrix, account)?)
         };
         let clut = if clut == 0 {
             None
         } else {
-            let input = Curves::read(payload, a, &mut curve_extents[2], account)?;
-            let grid = clut_grid(payload, clut, account)?;
+            let a = read_curves(
+                payload,
+                a,
+                &mut extents[A_CURVES..A_CURVES + device_channels],
+                account,
+            )?;
+            let grid = clut_grid(payload, clut, input_channels, output_channels, account)?;
             extents[CURVE_EXTENTS + 1] = Some(element(payload, clut, grid.end() - clut)?);
-            Some(ClutStage { input, grid })
+            Some(ClutStage { a, grid })
         };
-        extents[..CURVE_EXTENTS].copy_from_slice(curve_extents.as_flattened());
         validate_extents(&extents, account)?;
         Ok(Self {
-            clut,
+            direction,
+            device_channels,
+            b,
             matrix,
-            output,
+            clut,
         })
     }
 
     pub(super) fn evaluate(
         &self,
-        mut values: [f64; CHANNELS],
+        input: &[f64],
+        output: &mut [f64],
         payload: &[u8],
         account: &Account,
-    ) -> Result<[f64; CHANNELS]> {
-        if let Some(stage) = &self.clut {
-            let a = stage.input.evaluate(values, payload, account)?;
-            values = stage.grid.evaluate(a, payload, account)?;
+    ) -> Result<()> {
+        match self.direction {
+            Direction::ToPcs => {
+                let output: &mut [f64; PCS_CHANNELS] =
+                    output.try_into().map_err(|_| sample_invariant())?;
+                if input.len() != self.device_channels {
+                    return Err(sample_invariant());
+                }
+                let mut pcs = if let Some(stage) = &self.clut {
+                    let mut device = [0.0; MAX_CHANNELS];
+                    let device = &mut device[..self.device_channels];
+                    device.copy_from_slice(input);
+                    evaluate_curves(&stage.a[..self.device_channels], device, payload, account)?;
+                    let mut pcs = [0.0; PCS_CHANNELS];
+                    stage.grid.evaluate(device, &mut pcs, payload, account)?;
+                    pcs
+                } else {
+                    input.try_into().map_err(|_| sample_invariant())?
+                };
+                if let Some(stage) = &self.matrix {
+                    evaluate_curves(&stage.m, &mut pcs, payload, account)?;
+                    pcs = stage.apply(pcs, account)?;
+                }
+                evaluate_curves(&self.b, &mut pcs, payload, account)?;
+                *output = pcs;
+            }
+            Direction::FromPcs => {
+                let mut pcs: [f64; PCS_CHANNELS] =
+                    input.try_into().map_err(|_| sample_invariant())?;
+                if output.len() != self.device_channels {
+                    return Err(sample_invariant());
+                }
+                evaluate_curves(&self.b, &mut pcs, payload, account)?;
+                if let Some(stage) = &self.matrix {
+                    pcs = stage.apply(pcs, account)?;
+                    evaluate_curves(&stage.m, &mut pcs, payload, account)?;
+                }
+                if let Some(stage) = &self.clut {
+                    let mut device = [0.0; MAX_CHANNELS];
+                    let device = &mut device[..self.device_channels];
+                    stage.grid.evaluate(&pcs, device, payload, account)?;
+                    evaluate_curves(&stage.a[..self.device_channels], device, payload, account)?;
+                    output.copy_from_slice(device);
+                } else {
+                    let output: &mut [f64; PCS_CHANNELS] =
+                        output.try_into().map_err(|_| sample_invariant())?;
+                    *output = pcs;
+                }
+            }
         }
-        if let Some(stage) = &self.matrix {
-            let m = stage.input.evaluate(values, payload, account)?;
-            values = stage.apply(m, account)?;
-        }
-        self.output.evaluate(values, payload, account)
+        Ok(())
     }
 }
 
-fn stage_offsets(payload: &[u8], account: &Account) -> ProfileResult<[usize; 5]> {
+fn stage_offsets(
+    payload: &[u8],
+    signature: &[u8; 8],
+    input_channels: usize,
+    output_channels: usize,
+    account: &Account,
+) -> ProfileResult<[usize; 5]> {
     const HEADER: usize = 32;
-    if account.coordinate(|| field::<4>(payload, 8))?? != [3, 3, 0, 0] {
+    let header = account.coordinate(|| field::<12>(payload, 0))??;
+    if header[..8] != *signature
+        || usize::from(header[8]) != input_channels
+        || usize::from(header[9]) != output_channels
+        || header[10..] != [0, 0]
+    {
         return Err(ProfileError::Invalid);
     }
     let mut offsets = [0; 5];
@@ -99,95 +180,108 @@ fn stage_offsets(payload: &[u8], account: &Account) -> ProfileResult<[usize; 5]>
     Ok(offsets)
 }
 
-struct Curves([Curve; CHANNELS]);
-
-impl Curves {
-    fn read(
-        payload: &[u8],
-        mut next: usize,
-        extents: &mut [Option<Extent>; CHANNELS],
-        account: &Account,
-    ) -> ProfileResult<Self> {
-        let mut curves = [Curve::Identity, Curve::Identity, Curve::Identity];
-        for (curve, extent) in curves.iter_mut().zip(extents) {
-            let tail = payload.get(next..).ok_or(ProfileError::Invalid)?;
-            let encoded_len = match &tag_kind(tail, account)? {
-                b"curv" => {
-                    let count = account.coordinate(|| u32_at(tail, 8))??;
-                    sampled_curve_size(count)?
-                }
-                b"para" => {
-                    let (_, count) = ParametricCurve::kind_and_count(tail, account)?;
-                    12 + count * 4
-                }
-                _ => return Err(ProfileError::Invalid),
-            };
-            let aligned = element(payload, next, encoded_len)?;
-            let raw = Extent {
-                start: next,
-                end: next + encoded_len,
-            };
-            *curve = Curve::read(raw, payload, 4, account)?;
-            *extent = Some(aligned);
-            next = aligned.end;
-        }
-        Ok(Self(curves))
+fn read_curves<const CAPACITY: usize>(
+    payload: &[u8],
+    mut next: usize,
+    extents: &mut [Option<Extent>],
+    account: &Account,
+) -> ProfileResult<[Curve; CAPACITY]> {
+    let mut curves = [const { Curve::Identity }; CAPACITY];
+    let active = curves
+        .get_mut(..extents.len())
+        .ok_or(ProfileError::Invalid)?;
+    for (curve, extent) in active.iter_mut().zip(extents) {
+        let tail = payload.get(next..).ok_or(ProfileError::Invalid)?;
+        let encoded_len = match &tag_kind(tail, account)? {
+            b"curv" => {
+                let count = account.coordinate(|| u32_at(tail, 8))??;
+                sampled_curve_size(count)?
+            }
+            b"para" => {
+                let (_, count) = ParametricCurve::kind_and_count(tail, account)?;
+                12 + count * 4
+            }
+            _ => return Err(ProfileError::Invalid),
+        };
+        let aligned = element(payload, next, encoded_len)?;
+        let raw = Extent {
+            start: next,
+            end: next + encoded_len,
+        };
+        *curve = Curve::read(raw, payload, 4, account)?;
+        *extent = Some(aligned);
+        next = aligned.end;
     }
+    Ok(curves)
+}
 
-    fn evaluate(
-        &self,
-        mut values: [f64; CHANNELS],
-        payload: &[u8],
-        account: &Account,
-    ) -> Result<[f64; CHANNELS]> {
-        for (curve, value) in self.0.iter().zip(&mut values) {
-            *value = curve.evaluate(CurveInput::Unit(*value), payload, account)?;
-        }
-        Ok(values)
+fn evaluate_curves(
+    curves: &[Curve],
+    values: &mut [f64],
+    payload: &[u8],
+    account: &Account,
+) -> Result<()> {
+    for (curve, value) in curves.iter().zip(values) {
+        *value = curve.evaluate(CurveInput::Unit(*value), payload, account)?;
     }
+    Ok(())
 }
 
 impl MatrixStage {
-    fn read(input: Curves, payload: &[u8], start: usize, account: &Account) -> ProfileResult<Self> {
-        let mut rows = [[0.0; CHANNELS]; CHANNELS];
-        let mut offsets = [0.0; CHANNELS];
-        // Table 45 encodes nine row-major coefficients, then three offsets.
+    fn read(
+        m: [Curve; PCS_CHANNELS],
+        payload: &[u8],
+        start: usize,
+        account: &Account,
+    ) -> ProfileResult<Self> {
+        let mut rows = [[0.0; PCS_CHANNELS]; PCS_CHANNELS];
+        let mut offsets = [0.0; PCS_CHANNELS];
+        // The nine row-major coefficients precede the three offsets.
         for (index, value) in rows.iter_mut().flatten().chain(&mut offsets).enumerate() {
             *value = account.coordinate(|| fixed(payload, start + index * 4))??;
         }
-        Ok(Self {
-            input,
-            rows,
-            offsets,
-        })
+        Ok(Self { m, rows, offsets })
     }
 
-    fn apply(&self, input: [f64; CHANNELS], account: &Account) -> Result<[f64; CHANNELS]> {
+    fn apply(&self, input: [f64; PCS_CHANNELS], account: &Account) -> Result<[f64; PCS_CHANNELS]> {
         let mut output = self.offsets;
         for (value, row) in output.iter_mut().zip(&self.rows) {
             for (&coefficient, input) in row.iter().zip(input) {
                 *value = account.coordinate(|| coefficient.mul_add(input, *value))?;
             }
-            // The B curves receive the clipped affine result (§10.12.5).
+            // B (A-to-B) or M (B-to-A) receives the clipped affine result.
             *value = account.coordinate(|| value.clamp(0.0, 1.0))?;
         }
         Ok(output)
     }
 }
 
-fn clut_grid(payload: &[u8], start: usize, account: &Account) -> ProfileResult<Grid> {
+fn clut_grid(
+    payload: &[u8],
+    start: usize,
+    input_channels: usize,
+    output_channels: usize,
+    account: &Account,
+) -> ProfileResult<Grid> {
     let tail = payload.get(start..).ok_or(ProfileError::Invalid)?;
-    let [r, g, b, unused @ ..] = account.coordinate(|| field::<16>(tail, 0))??;
+    let points = account.coordinate(|| field::<16>(tail, 0))??;
+    let (dimensions, unused) = points.split_at(input_channels);
     let precision = match account.coordinate(|| field::<4>(tail, 16))?? {
         [1, 0, 0, 0] => Precision::Eight,
         [2, 0, 0, 0] => Precision::Sixteen,
         _ => return Err(ProfileError::Invalid),
     };
-    if unused != [0; 13] {
+    if unused.iter().any(|&point| point != 0) {
         return Err(ProfileError::Invalid);
     }
     // Reading the complete 20-byte CLUT header above proved this addition.
-    Grid::read(start + 20, [r, g, b], precision, payload.len())
+    Grid::read(
+        start + 20,
+        dimensions,
+        output_channels,
+        precision,
+        payload.len(),
+    )
 }
 
 fn validate_extents(

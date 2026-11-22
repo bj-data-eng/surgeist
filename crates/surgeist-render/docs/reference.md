@@ -209,12 +209,20 @@ encoding's channel order. Native float operations accept signed and extended
 coordinates within the supported finite ICC range. A returned device color
 contains that profile's output coordinates in device scale.
 
-The native operation executes v4 `D2B0` through `D2B3` and `B2D0` through
-`B2D3` for their matching intents. Absent or unsupported routes return
-`IccProfileError::UnsupportedTransform`. Malformed profile data and numerical
-output failures have separate typed diagnostics. Runtime owns resource
-retrieval, and document bindings supply the resolved bytes and intent.
-[ICC.1:2022, §§6.3.4, 8.10 and 10.16](https://www.color.org/specifications/ICC.1-2022-05.pdf#page=45)
+The native operation prefers a supported v4 `D2B` or `B2D` tag for the
+requested intent. It then tries the matching integer `A2B` or `B2A` tag
+and the directional index-zero fallback. Integer routes support `mft1`,
+`mft2`, and v4 `mAB` or `mBA` with normalized device controls and
+actual XYZ or Lab PCS values. Eight-bit `mft1` requires Lab PCS.
+Indirect absolute conversion uses the profile's media white and the
+fixed D50 PCS reference. Direct absolute float routes supply their own
+mapping.
+
+Unavailable routes return `IccProfileError::UnsupportedTransform`.
+Malformed selected data and numerical output failures have separate
+typed diagnostics. Runtime owns resource retrieval, and document
+bindings supply resolved bytes and intent.
+[ICC.1:2022, §§6.3.2, 6.3.4, 8.10 and 10.10–10.16](https://www.color.org/specifications/ICC.1-2022-05.pdf#page=45)
 
 Native inspection and conversion use the `IccProfile` accounting attempt.
 The `IccProfilePrepare` and `IccProfileConvert` phases measure tag reads,

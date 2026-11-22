@@ -85,7 +85,7 @@ fn profile_bytes(
     bytes[20..24].copy_from_slice(pcs);
     bytes[24..36].copy_from_slice(&[0x07, 0xea, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0]);
     bytes[36..40].copy_from_slice(b"acsp");
-    for (slot, coordinate) in bytes[68..80].chunks_exact_mut(4).zip(D50) {
+    for (slot, coordinate) in bytes[68..80].as_chunks_mut::<4>().0.iter_mut().zip(D50) {
         slot.copy_from_slice(&coordinate.to_be_bytes());
     }
     bytes[128..132].copy_from_slice(&u32::try_from(tags.len()).unwrap().to_be_bytes());

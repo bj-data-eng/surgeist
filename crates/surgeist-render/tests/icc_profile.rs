@@ -366,40 +366,36 @@ fn historical_v4_input_requires_its_final_alignment_padding() {
 }
 
 #[test]
-fn missing_intent_does_not_substitute_another_or_a_legacy_route() {
+fn missing_mpe_intent_uses_the_legacy_route_without_substituting_perceptual_mpe() {
     let mut accounting = RenderAccountingContext::default();
     let bytes = perceptual_cmyk_profile();
     let profile = IccProfile::inspect(&bytes, &mut accounting).unwrap();
     let cmyk = profile.device_color(&CMYK_SAMPLE).unwrap();
     let intent = IccRenderingIntent::Saturation;
-    assert_icc_error(
-        profile.to_pcs(intent, &cmyk, &mut accounting),
-        IccProfileError::UnsupportedTransform,
-    );
+    let converted = profile.to_pcs(intent, &cmyk, &mut accounting).unwrap();
+    let coordinates = converted.coordinates();
+    assert!((coordinates[0] - 12800.0 / 255.0).abs() < 1.0e-12);
+    assert!(coordinates[1..].iter().all(|value| value.abs() < 1.0e-12));
 
     let lab = IccPcsColor::try_new(IccPcsSpace::Lab, [60.0, -12.0, 8.0], intent).unwrap();
-    assert_icc_error(
-        profile.from_pcs(lab, &mut accounting),
-        IccProfileError::UnsupportedTransform,
-    );
+    let converted = profile.from_pcs(lab, &mut accounting).unwrap();
+    assert_eq!(converted.channels(), [128.0 / 255.0; 4]);
 }
 
 #[test]
-fn unsupported_stage_and_malformed_stage_size_or_shape_are_distinct() {
+fn malformed_mpe_stage_size_or_shape_does_not_use_legacy_fallback() {
     let mut accounting = RenderAccountingContext::default();
-    let unknown_stage = b"xmpl\0\0\0\0\0\x04\0\x03".to_vec();
     let mut short_matrix = matrix([[0.0; 4]; 3], [0.0; 3]);
     short_matrix.truncate(short_matrix.len() - 4);
     let wrong_inputs = matrix([[0.0; 3]; 3], [0.0; 3]);
-    for (stage, expected) in [
-        (unknown_stage, IccProfileError::UnsupportedTransform),
-        (short_matrix, IccProfileError::InvalidProfile),
-        (wrong_inputs, IccProfileError::InvalidProfile),
-    ] {
+    for stage in [short_matrix, wrong_inputs] {
         let bytes = cmyk_profile(vec![(b"D2B0", mpe(4, 3, &[stage]))]);
         let profile = IccProfile::inspect(&bytes, &mut accounting).unwrap();
         let cmyk = profile.device_color(&CMYK_SAMPLE).unwrap();
-        assert_icc_error(profile.to_pcs(PERCEPTUAL, &cmyk, &mut accounting), expected);
+        assert_icc_error(
+            profile.to_pcs(PERCEPTUAL, &cmyk, &mut accounting),
+            IccProfileError::InvalidProfile,
+        );
     }
 }
 

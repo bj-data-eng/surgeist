@@ -5,7 +5,8 @@ use std::fmt;
 use crate::accounting::{RenderAccountingContext, RenderAttemptKind, RenderPhase};
 
 use super::{
-    Header, ProfileError, device_channel_count, find_tag, media_white, mpe, read_tag_table,
+    Account, Direction, Header, ProfileError, device_channel_count, find_tag, lut, media_white,
+    mpe, pcs, read_tag_table,
 };
 use crate::{Error, Result};
 
@@ -38,7 +39,7 @@ pub enum IccRenderingIntent {
 }
 
 impl IccRenderingIntent {
-    const fn tag(self, direction: Direction) -> &'static [u8; 4] {
+    const fn mpe_tag(self, direction: Direction) -> &'static [u8; 4] {
         match (direction, self) {
             (Direction::ToPcs, Self::Perceptual) => b"D2B0",
             (Direction::ToPcs, Self::MediaRelativeColorimetric) => b"D2B1",
@@ -50,12 +51,19 @@ impl IccRenderingIntent {
             (Direction::FromPcs, Self::AbsoluteColorimetric) => b"B2D3",
         }
     }
-}
 
-#[derive(Clone, Copy)]
-enum Direction {
-    ToPcs,
-    FromPcs,
+    const fn legacy_tags(self, direction: Direction) -> (&'static [u8; 4], &'static [u8; 4]) {
+        let tags = match direction {
+            Direction::ToPcs => [b"A2B0", b"A2B1", b"A2B2"],
+            Direction::FromPcs => [b"B2A0", b"B2A1", b"B2A2"],
+        };
+        let preferred = match self {
+            Self::Perceptual => tags[0],
+            Self::MediaRelativeColorimetric | Self::AbsoluteColorimetric => tags[1],
+            Self::Saturation => tags[2],
+        };
+        (preferred, tags[0])
+    }
 }
 
 /// The profile connection space representation.
@@ -156,6 +164,7 @@ pub struct IccProfile<'a> {
     class: IccProfileClass,
     device: IccDeviceSpace,
     pcs: IccPcsSpace,
+    media_white: [f64; 3],
 }
 
 impl fmt::Debug for IccProfile<'_> {
@@ -214,13 +223,21 @@ impl<'a> IccProfile<'a> {
                     };
                     let table = read_tag_table(bytes, header.native_tag_layout(), &account)
                         .map_err(profile_error)?;
-                    media_white(&header, &table, bytes, &account).map_err(profile_error)?;
+                    let white =
+                        media_white(&header, &table, bytes, &account).map_err(profile_error)?;
+                    let media_white = if header.version[0] == 4 && class == IccProfileClass::Display
+                    {
+                        pcs::D50
+                    } else {
+                        white
+                    };
                     Ok(Self {
                         bytes,
                         header,
                         class,
                         device,
                         pcs,
+                        media_white,
                     })
                 })
             },
@@ -334,26 +351,114 @@ impl<'a> IccProfile<'a> {
             RenderPhase::Preparation,
             |account| {
                 let mut transform = account.phase(RenderPhase::IccProfilePrepare, || {
-                    let account = account.at(RenderPhase::IccProfilePrepare);
-                    if self.header.version[0] != 4 {
-                        return Err(IccProfileError::UnsupportedTransform.into());
-                    }
-                    let table =
-                        read_tag_table(self.bytes, self.header.native_tag_layout(), &account)
-                            .map_err(profile_error)?;
-                    let tag = find_tag(&table, intent.tag(direction), &account)?
-                        .ok_or(IccProfileError::UnsupportedTransform)?;
-                    mpe::prepare_borrowed(self.bytes, tag, input.len(), output.len(), &account)
-                        .map_err(profile_error)
+                    self.prepare(
+                        direction,
+                        intent,
+                        input.len(),
+                        output.len(),
+                        &account.at(RenderPhase::IccProfilePrepare),
+                    )
+                    .map_err(profile_error)
                 })?;
                 account.phase(RenderPhase::IccProfileConvert, || {
-                    transform
-                        .evaluate(input, output, &account.at(RenderPhase::IccProfileConvert))
-                        .map_err(numeric_error)
+                    let account = account.at(RenderPhase::IccProfileConvert);
+                    match &mut transform {
+                        NativeTransform::Mpe(mpe) => mpe.evaluate(input, output, &account),
+                        NativeTransform::Lut(pipeline) => self.evaluate_relative(
+                            direction,
+                            intent,
+                            input,
+                            output,
+                            &account,
+                            |input, output| pipeline.evaluate(input, output, &account),
+                        ),
+                    }
+                    .map_err(numeric_error)
                 })
             },
         )
     }
+
+    fn evaluate_relative(
+        &self,
+        direction: Direction,
+        intent: IccRenderingIntent,
+        input: &[f64],
+        output: &mut [f64],
+        account: &Account,
+        evaluate: impl FnOnce(&[f64], &mut [f64]) -> Result<()>,
+    ) -> Result<()> {
+        if intent != IccRenderingIntent::AbsoluteColorimetric {
+            return evaluate(input, output);
+        }
+        let adjust =
+            |values| pcs::adjust_absolute(values, self.pcs, direction, self.media_white, account);
+        match direction {
+            Direction::ToPcs => {
+                let destination = output
+                    .first_chunk_mut::<3>()
+                    .ok_or(IccProfileError::IncompatibleColor)?;
+                let mut relative = [0.0; 3];
+                evaluate(input, &mut relative)?;
+                *destination = adjust(relative)?;
+                Ok(())
+            }
+            Direction::FromPcs => {
+                let values = input
+                    .first_chunk::<3>()
+                    .ok_or(IccProfileError::IncompatibleColor)?;
+                evaluate(&adjust(*values)?, output)
+            }
+        }
+    }
+
+    fn prepare(
+        &self,
+        direction: Direction,
+        intent: IccRenderingIntent,
+        input: usize,
+        output: usize,
+        account: &Account,
+    ) -> super::ProfileResult<NativeTransform<'a>> {
+        let version = self.header.version[0];
+        let table = read_tag_table(self.bytes, self.header.native_tag_layout(), account)?;
+        if version == 4
+            && let Some(tag) = find_tag(&table, intent.mpe_tag(direction), account)?
+        {
+            match mpe::prepare_borrowed(self.bytes, tag, input, output, account) {
+                Ok(transform) => return Ok(NativeTransform::Mpe(transform)),
+                Err(ProfileError::Unsupported) => (),
+                Err(error) => return Err(error),
+            }
+        }
+
+        let (preferred, fallback) = intent.legacy_tags(direction);
+        let tag = match find_tag(&table, preferred, account)? {
+            None if preferred != fallback => find_tag(&table, fallback, account)?,
+            found => found,
+        }
+        .ok_or(ProfileError::Unsupported)?;
+        let payload = tag.payload(self.bytes)?;
+        let pipeline = lut::Lut::read(
+            payload,
+            version,
+            (&self.header.data_space, &self.header.pcs),
+            direction,
+            input,
+            output,
+            account,
+        )?;
+        Ok(NativeTransform::Lut(pipeline))
+    }
+}
+
+#[expect(
+    clippy::large_enum_variant,
+    reason = "a single attempt keeps its accounted MPE scratch handles inline"
+)]
+enum NativeTransform<'a> {
+    Mpe(mpe::MpeTransform<'a>),
+    Lut(lut::Lut<&'a [u8]>),
 }
 
 fn validate_coordinates(coordinates: &[f64]) -> Result<()> {
