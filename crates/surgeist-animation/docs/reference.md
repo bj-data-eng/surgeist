@@ -8,9 +8,9 @@ dependencies, features, or explicit minimum Rust version. The dev-only
 `stats_alloc` dependency instruments allocation measurements.
 
 [src/lib.rs](../src/lib.rs) declares the public modules `computed`, `diagnostics`,
-`composition`, `easing`, `interpolation`, `keyframe`, `keyframe_input`, `playback`,
-`progress`, `sample`, `shape`, `time`, `timeline`, `timing`, `transform`, and
-`transition`, and the
+`composition`, `css_animation`, `easing`, `interpolation`, `keyframe`,
+`keyframe_input`, `playback`, `progress`, `sample`, `shape`, `time`, `timeline`,
+`timing`, `transform`, and `transition`, and the
 constant `CRATE_NAME`. Each public type has one path through its owning module,
 such as `surgeist_animation::easing::Easing`. The crate forbids unsafe code. Tests live in
 source modules and the external consumer targets under
@@ -308,6 +308,82 @@ Its underlying/replace/linear fallback supersedes the older neutral/add wording.
 supplies its endpoint override; retained [CSS timing rules](../../../references/css-animations-1--WD-css-animations-1-20230302--f725ad790abb.md#timing-functions)
 govern CSS delay and direction behavior.
 
+## CSS animation reconciliation
+
+`css_animation::CssAnimationList` consumes one target's coherent resolved list
+and applicability at a native style update. Style supplies list repetition and
+truncation, exact name decoding, winning-rule availability, computed rule data,
+and used `KeyframeTiming`/`AnimationPlayState`. `CssAnimationSlot::None` is the
+keyword; `Unmatched(name)` explicitly means no valid rule; `Matched` contains a
+`ResolvedCssAnimation<R>` whose caller-owned payload may represent an empty
+valid rule. Every occurrence of a name must agree about match availability.
+Rule provenance/revision and computed values remain in `R`, which need not
+implement equality or cloning for reconciliation.
+
+`CssAnimationName` is an exact case-sensitive resolved name value. Identifier and
+string syntax yielding the same value match. Empty and whitespace string names
+remain valid, and a string named `none` remains distinct from the keyword slot.
+This name differs from the segment API's `KeyframeAnimationId` and from opaque
+`playback::AnimationId`, which identifies one applied playback instance.
+
+`CssAnimationInstance` captures an opaque instance ID, its prior matched
+animation, and `PlaybackCoordinates` from the current update. Construction
+samples the existing timing and rejects arithmetic failure. Capture all old
+instances coherently for the same target in prior animation-name order,
+including finished instances that remain applied. Unresolved time remains
+unresolved, and held time retains the playback owner's precedence over timeline
+arithmetic. Rule resolution and ID liveness remain their respective owners'
+facts; Animation rejects duplicate instance IDs in the supplied old list.
+
+`reconcile(previous)` scans new matched slots last to first. Each uses the last
+remaining old occurrence of its exact name, consumes it once, and retains its
+ID and playback coordinates. A changed rule identity, edited contents, or a
+replacement winning rule does not restart that instance. Matched slots with no
+old occurrence create start plans at local time zero; missing rules and the
+keyword create no animation. Start plans require Runtime to allocate fresh IDs
+when published.
+Old unmatched instances produce stops. Losing the last matching rule removes
+the old instance; after publishing that stop, later rule availability starts
+anew. A valid empty rule still creates an instance, including its timing data
+for lifecycle consumers.
+
+The caller selects `CssAnimationEligibility`: eligible, element `display:none`,
+ancestor `display:none`, or the chosen policy to ignore noninteractive media.
+Suppression stops every old instance and creates no starts. Runtime owns ancestor
+traversal and supplies the resulting fact; restoration against the published
+empty instance list starts eligible animations anew.
+
+The complete immutable `CssAnimationPlan` borrows its inputs. Updates are in
+new-slot order, preserving positions skipped by keyword/unmatched slots; stops
+are in old-instance order. These orders do not prescribe Runtime event order.
+Each update exposes the new rule/timing, optional old instance/index, before and
+after `EffectTimingSample`s, and an optional CSS play-state request. Retained
+samples evaluate old and new timing at exactly the same supplied local time,
+so duration, delay, direction, iteration and fill edits take effect as though
+present since start. Timing may jump to after or return to before without
+replacing identity. Finished instances remain matchable and their contribution
+follows the current fill mode.
+
+Timing samples precede any requested playback operation. Starts request their
+initial CSS play-state; retains request it only when the CSS value changed.
+Unchanged values leave the existing playback state alone. The playback owner
+applies pause/resume requests with timing continuity, then Runtime publishes and
+resamples coherently. Reconciliation does not implement a second playback state
+machine, mutate animation records, resolve clocks, schedule work, or dispatch
+events. Before/after samples, old instance identity, rule updates, stop reasons
+and final captured stop samples supply the native publication/event consumer.
+
+`KeyframeTiming` seconds are checked when converted to `EffectTiming`
+milliseconds; a finite value is never silently turned into infinity. Both
+samples use the existing timing kernel with linear whole-effect easing, since
+CSS interval easing belongs to the supplied computed keyframes. Numeric and
+sampling failures return `CssAnimationError` with the original typed cause and
+applicable old/new index; no partial plan or input mutation escapes.
+
+These rules follow pinned [CSS Animations 1 §2](../../../references/css-animations-1--WD-css-animations-1-20230302--f725ad790abb.md#animations).
+Style's named-rule assembly and Runtime's playback publication, scheduling and
+lifecycle event dispatch remain separate owners.
+
 ## CSS transition lifecycle decisions
 
 `transition::TransitionSnapshot<T>` holds immutable records keyed by a caller's
@@ -591,7 +667,10 @@ Paused sampling is explicit through `AnimationPlayState::Paused`. Paused
 pending, active, and failed samples are stable until external input; running
 before and active samples can report `NextFrameHint::MayChange`.
 
-Root-supplied normalized tracks are the input shape for this crate. Root/style
+`css_animation::CssAnimationList` separately reconciles caller-resolved CSS
+animation snapshots without mutating playback or publishing lifecycle events.
+
+Root-supplied normalized tracks are the input shape for track sampling. Root/style
 choose transition generation, keyframe lookup, CSS endpoint synthesis, property
 support policy, and list pairing before constructing transition or keyframe
 tracks here.
@@ -755,6 +834,7 @@ basis is guessed.
 | Timing phases, fill modes, direction, iteration counts, play state, and next-frame hints | `supported` | `surgeist-animation` samples validated timing and reports stable or may-change hints. |
 | Web Animations effect timing, signed local time, end delay, iteration start and relevance | `supported` | `EffectTiming` samples supplied animation observations through the shared phase/progress kernel without owning animation lifecycle or target queries. |
 | CSS transition creation, cancellation, reversal, and completion decisions | `supported` | `transition::TransitionSnapshot` consumes coherent caller facts and returns immutable candidates and lifecycle outcomes. |
+| CSS animation occurrence retention, start, and stop reconciliation | `supported` | `css_animation::CssAnimationList` consumes resolved rule/timing/applicability snapshots and preserves matched native identities and playback coordinates. |
 | Typed native keyframe inputs and missing-offset computation | `supported` | `keyframe_input` normalizes sequences and property-indexed inputs while preserving specified offsets and caller payloads. |
 | Computed keyframe effect sampling and native endpoint fallback | `supported` | `keyframe::ComputedKeyframes` selects sparse property intervals, preserves overlap branches, composes endpoints, and samples supplied property operations. |
 | Cubic-bezier, steps, linear keyword, and CSS `linear()` easing | `supported` | `surgeist-animation` evaluates typed easing, including canonical linear control points. |

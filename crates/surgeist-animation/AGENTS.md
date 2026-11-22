@@ -6,8 +6,8 @@ This supplement records crate facts and grants no additional authority.
 ## Product Boundary
 
 This crate owns timing, easing, keyframes, computed effect sampling and native
-endpoint fallback, interpolation, sampled values,
-transition decisions over supplied snapshots, and animation diagnostics.
+endpoint fallback, CSS animation-list reconciliation, interpolation, sampled
+values, transition decisions over supplied snapshots, and animation diagnostics.
 Consumers supply normalized tracks, computed endpoints, and property support
 policy. Authored CSS, clocks, scheduling, lifecycle publication/dispatch, invalidation,
 color conversion, gamut mapping, and final property clamping remain caller-owned.

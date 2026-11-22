@@ -143,6 +143,88 @@ impl core::cmp::PartialEq for surgeist_animation::computed::MathSource
 pub fn surgeist_animation::computed::MathSource::eq(&self, other: &Self) -> bool
 impl core::hash::Hash for surgeist_animation::computed::MathSource
 pub fn surgeist_animation::computed::MathSource::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub mod surgeist_animation::css_animation
+pub enum surgeist_animation::css_animation::CssAnimationEligibility
+pub surgeist_animation::css_animation::CssAnimationEligibility::AncestorDisplayNone
+pub surgeist_animation::css_animation::CssAnimationEligibility::ElementDisplayNone
+pub surgeist_animation::css_animation::CssAnimationEligibility::Eligible
+pub surgeist_animation::css_animation::CssAnimationEligibility::IgnoredMedia
+pub enum surgeist_animation::css_animation::CssAnimationErrorKind
+pub surgeist_animation::css_animation::CssAnimationErrorKind::DuplicateAnimation
+pub surgeist_animation::css_animation::CssAnimationErrorKind::DuplicateAnimation::first: usize
+pub surgeist_animation::css_animation::CssAnimationErrorKind::InconsistentRuleMatch
+pub surgeist_animation::css_animation::CssAnimationErrorKind::InconsistentRuleMatch::first: usize
+pub surgeist_animation::css_animation::CssAnimationErrorKind::Playback(surgeist_animation::playback::PlaybackError)
+pub surgeist_animation::css_animation::CssAnimationErrorKind::Time(surgeist_animation::time::TimeError)
+pub surgeist_animation::css_animation::CssAnimationErrorKind::Timing(surgeist_animation::timing::EffectTimingError)
+pub surgeist_animation::css_animation::CssAnimationErrorKind::UnrepresentableMilliseconds
+pub enum surgeist_animation::css_animation::CssAnimationSlot<R>
+pub surgeist_animation::css_animation::CssAnimationSlot::Matched(surgeist_animation::css_animation::ResolvedCssAnimation<R>)
+pub surgeist_animation::css_animation::CssAnimationSlot::None
+pub surgeist_animation::css_animation::CssAnimationSlot::Unmatched(surgeist_animation::css_animation::CssAnimationName)
+pub enum surgeist_animation::css_animation::CssAnimationStopReason
+pub surgeist_animation::css_animation::CssAnimationStopReason::Ineligible(surgeist_animation::css_animation::CssAnimationEligibility)
+pub surgeist_animation::css_animation::CssAnimationStopReason::MissingRule
+pub surgeist_animation::css_animation::CssAnimationStopReason::NameRemoved
+pub struct surgeist_animation::css_animation::CssAnimationError
+impl surgeist_animation::css_animation::CssAnimationError
+pub const fn surgeist_animation::css_animation::CssAnimationError::kind(&self) -> &surgeist_animation::css_animation::CssAnimationErrorKind
+pub const fn surgeist_animation::css_animation::CssAnimationError::new_index(&self) -> core::option::Option<usize>
+pub const fn surgeist_animation::css_animation::CssAnimationError::old_index(&self) -> core::option::Option<usize>
+impl core::convert::From<surgeist_animation::playback::PlaybackError> for surgeist_animation::css_animation::CssAnimationError
+pub fn surgeist_animation::css_animation::CssAnimationError::from(error: surgeist_animation::playback::PlaybackError) -> Self
+impl core::convert::From<surgeist_animation::time::TimeError> for surgeist_animation::css_animation::CssAnimationError
+pub fn surgeist_animation::css_animation::CssAnimationError::from(error: surgeist_animation::time::TimeError) -> Self
+impl core::convert::From<surgeist_animation::timing::EffectTimingError> for surgeist_animation::css_animation::CssAnimationError
+pub fn surgeist_animation::css_animation::CssAnimationError::from(error: surgeist_animation::timing::EffectTimingError) -> Self
+impl core::error::Error for surgeist_animation::css_animation::CssAnimationError
+pub fn surgeist_animation::css_animation::CssAnimationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_animation::css_animation::CssAnimationError
+pub fn surgeist_animation::css_animation::CssAnimationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::css_animation::CssAnimationInstance<R>
+impl<R> surgeist_animation::css_animation::CssAnimationInstance<R>
+pub const fn surgeist_animation::css_animation::CssAnimationInstance<R>::animation(&self) -> &surgeist_animation::css_animation::ResolvedCssAnimation<R>
+pub const fn surgeist_animation::css_animation::CssAnimationInstance<R>::coordinates(&self) -> surgeist_animation::playback::PlaybackCoordinates
+pub const fn surgeist_animation::css_animation::CssAnimationInstance<R>::id(&self) -> &surgeist_animation::playback::AnimationId
+pub fn surgeist_animation::css_animation::CssAnimationInstance<R>::new(id: surgeist_animation::playback::AnimationId, animation: surgeist_animation::css_animation::ResolvedCssAnimation<R>, coordinates: surgeist_animation::playback::PlaybackCoordinates) -> core::result::Result<Self, surgeist_animation::css_animation::CssAnimationError>
+pub const fn surgeist_animation::css_animation::CssAnimationInstance<R>::sample(&self) -> surgeist_animation::timing::EffectTimingSample
+pub struct surgeist_animation::css_animation::CssAnimationList<R>
+impl<R> surgeist_animation::css_animation::CssAnimationList<R>
+pub const fn surgeist_animation::css_animation::CssAnimationList<R>::eligibility(&self) -> surgeist_animation::css_animation::CssAnimationEligibility
+pub fn surgeist_animation::css_animation::CssAnimationList<R>::new(slots: alloc::vec::Vec<surgeist_animation::css_animation::CssAnimationSlot<R>>, eligibility: surgeist_animation::css_animation::CssAnimationEligibility) -> core::result::Result<Self, surgeist_animation::css_animation::CssAnimationError>
+pub fn surgeist_animation::css_animation::CssAnimationList<R>::reconcile<'a>(&'a self, previous: &'a [surgeist_animation::css_animation::CssAnimationInstance<R>]) -> core::result::Result<surgeist_animation::css_animation::CssAnimationPlan<'a, R>, surgeist_animation::css_animation::CssAnimationError>
+pub fn surgeist_animation::css_animation::CssAnimationList<R>::slots(&self) -> &[surgeist_animation::css_animation::CssAnimationSlot<R>]
+pub struct surgeist_animation::css_animation::CssAnimationName(_)
+impl surgeist_animation::css_animation::CssAnimationName
+pub fn surgeist_animation::css_animation::CssAnimationName::as_str(&self) -> &str
+pub fn surgeist_animation::css_animation::CssAnimationName::new(value: impl core::convert::Into<alloc::string::String>) -> Self
+pub struct surgeist_animation::css_animation::CssAnimationPlan<'a, R>
+impl<'a, R> surgeist_animation::css_animation::CssAnimationPlan<'a, R>
+pub fn surgeist_animation::css_animation::CssAnimationPlan<'a, R>::stops(&self) -> &[surgeist_animation::css_animation::CssAnimationStop<'a, R>]
+pub fn surgeist_animation::css_animation::CssAnimationPlan<'a, R>::updates(&self) -> &[surgeist_animation::css_animation::CssAnimationUpdate<'a, R>]
+pub struct surgeist_animation::css_animation::CssAnimationStop<'a, R>
+impl<'a, R> surgeist_animation::css_animation::CssAnimationStop<'a, R>
+pub const fn surgeist_animation::css_animation::CssAnimationStop<'a, R>::instance(&self) -> &'a surgeist_animation::css_animation::CssAnimationInstance<R>
+pub const fn surgeist_animation::css_animation::CssAnimationStop<'a, R>::old_index(&self) -> usize
+pub const fn surgeist_animation::css_animation::CssAnimationStop<'a, R>::reason(&self) -> surgeist_animation::css_animation::CssAnimationStopReason
+pub const fn surgeist_animation::css_animation::CssAnimationStop<'a, R>::sample(&self) -> surgeist_animation::timing::EffectTimingSample
+pub struct surgeist_animation::css_animation::CssAnimationUpdate<'a, R>
+impl<'a, R> surgeist_animation::css_animation::CssAnimationUpdate<'a, R>
+pub const fn surgeist_animation::css_animation::CssAnimationUpdate<'a, R>::after(&self) -> surgeist_animation::timing::EffectTimingSample
+pub const fn surgeist_animation::css_animation::CssAnimationUpdate<'a, R>::animation(&self) -> &'a surgeist_animation::css_animation::ResolvedCssAnimation<R>
+pub fn surgeist_animation::css_animation::CssAnimationUpdate<'a, R>::before(&self) -> core::option::Option<surgeist_animation::timing::EffectTimingSample>
+pub const fn surgeist_animation::css_animation::CssAnimationUpdate<'a, R>::new_index(&self) -> usize
+pub fn surgeist_animation::css_animation::CssAnimationUpdate<'a, R>::old_index(&self) -> core::option::Option<usize>
+pub fn surgeist_animation::css_animation::CssAnimationUpdate<'a, R>::play_state_change(&self) -> core::option::Option<surgeist_animation::timing::AnimationPlayState>
+pub fn surgeist_animation::css_animation::CssAnimationUpdate<'a, R>::previous(&self) -> core::option::Option<&'a surgeist_animation::css_animation::CssAnimationInstance<R>>
+pub struct surgeist_animation::css_animation::ResolvedCssAnimation<R>
+impl<R> surgeist_animation::css_animation::ResolvedCssAnimation<R>
+pub const fn surgeist_animation::css_animation::ResolvedCssAnimation<R>::effect_timing(&self) -> &surgeist_animation::timing::EffectTiming
+pub const fn surgeist_animation::css_animation::ResolvedCssAnimation<R>::name(&self) -> &surgeist_animation::css_animation::CssAnimationName
+pub fn surgeist_animation::css_animation::ResolvedCssAnimation<R>::new(name: surgeist_animation::css_animation::CssAnimationName, rule: R, timing: surgeist_animation::keyframe::KeyframeTiming, play_state: surgeist_animation::timing::AnimationPlayState) -> core::result::Result<Self, surgeist_animation::css_animation::CssAnimationError>
+pub const fn surgeist_animation::css_animation::ResolvedCssAnimation<R>::play_state(&self) -> surgeist_animation::timing::AnimationPlayState
+pub const fn surgeist_animation::css_animation::ResolvedCssAnimation<R>::rule(&self) -> &R
+pub const fn surgeist_animation::css_animation::ResolvedCssAnimation<R>::timing(&self) -> surgeist_animation::keyframe::KeyframeTiming
 pub mod surgeist_animation::diagnostics
 pub enum surgeist_animation::diagnostics::NumericErrorKind
 pub surgeist_animation::diagnostics::NumericErrorKind::Negative
@@ -681,6 +763,8 @@ pub fn surgeist_animation::playback::PlaybackCoordinates::observe(self, effect: 
 pub struct surgeist_animation::playback::PlaybackError
 impl surgeist_animation::playback::PlaybackError
 pub const fn surgeist_animation::playback::PlaybackError::kind(&self) -> &surgeist_animation::playback::PlaybackErrorKind
+impl core::convert::From<surgeist_animation::playback::PlaybackError> for surgeist_animation::css_animation::CssAnimationError
+pub fn surgeist_animation::css_animation::CssAnimationError::from(error: surgeist_animation::playback::PlaybackError) -> Self
 impl core::convert::From<surgeist_animation::time::TimeError> for surgeist_animation::playback::PlaybackError
 pub fn surgeist_animation::playback::PlaybackError::from(error: surgeist_animation::time::TimeError) -> Self
 impl core::error::Error for surgeist_animation::playback::PlaybackError
@@ -873,6 +957,8 @@ pub const fn surgeist_animation::time::PlaybackRate::value(self) -> f64
 pub struct surgeist_animation::time::TimeError
 impl surgeist_animation::time::TimeError
 pub const fn surgeist_animation::time::TimeError::kind(self) -> surgeist_animation::time::TimeErrorKind
+impl core::convert::From<surgeist_animation::time::TimeError> for surgeist_animation::css_animation::CssAnimationError
+pub fn surgeist_animation::css_animation::CssAnimationError::from(error: surgeist_animation::time::TimeError) -> Self
 impl core::convert::From<surgeist_animation::time::TimeError> for surgeist_animation::playback::PlaybackError
 pub fn surgeist_animation::playback::PlaybackError::from(error: surgeist_animation::time::TimeError) -> Self
 impl core::error::Error for surgeist_animation::time::TimeError
@@ -1010,6 +1096,8 @@ pub fn surgeist_animation::timing::EffectTiming::default() -> Self
 pub struct surgeist_animation::timing::EffectTimingError
 impl surgeist_animation::timing::EffectTimingError
 pub const fn surgeist_animation::timing::EffectTimingError::kind(self) -> surgeist_animation::timing::EffectTimingErrorKind
+impl core::convert::From<surgeist_animation::timing::EffectTimingError> for surgeist_animation::css_animation::CssAnimationError
+pub fn surgeist_animation::css_animation::CssAnimationError::from(error: surgeist_animation::timing::EffectTimingError) -> Self
 impl core::error::Error for surgeist_animation::timing::EffectTimingError
 impl core::fmt::Display for surgeist_animation::timing::EffectTimingError
 pub fn surgeist_animation::timing::EffectTimingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
