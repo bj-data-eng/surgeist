@@ -433,3 +433,24 @@ fn sample_keeps_exact_cancellation_during_extrapolation() {
     assert_eq!(sample.alpha().map(Finite::get), Some(1.5));
     assert_eq!(sample.channels()[0].map(Finite::get), Some(0.0));
 }
+
+#[test]
+fn sample_rejects_true_overflow_at_the_finite_boundary() {
+    let first = color(
+        SRGB,
+        [Some(f64::from_bits(0xffd5_5555_5555_5566)), None, None],
+        Some(0.5),
+    );
+    let second = color(
+        SRGB,
+        [Some(f64::from_bits(0x7fe5_5555_5555_5553)), None, None],
+        Some(1.0),
+    );
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+
+    // At t = 2 the exact result is MAX plus 2/3 of a top-binade ULP.
+    let error = first
+        .sample_interpolation(second, method, Finite::new(2.0).unwrap())
+        .unwrap_err();
+    assert_eq!(error.component(), InterpolationComponent::Channel(0));
+}
