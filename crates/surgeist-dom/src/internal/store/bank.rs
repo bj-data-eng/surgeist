@@ -8,7 +8,7 @@ mod weak_registry_tests;
 use std::{
     any::Any,
     marker::PhantomData,
-    mem::size_of,
+    mem::{self, size_of},
     sync::{Arc, Mutex, MutexGuard, Weak},
 };
 
@@ -989,8 +989,6 @@ struct ControlledSlots<V, C> {
 type ControlledPage<T> = RegisteredPage<Arc<Page<T>>>;
 type ControlledReplacement<T> = Option<ControlledPage<T>>;
 
-const ID_SHIFT: u32 = 60;
-
 #[derive(Clone, Copy)]
 enum RegistryKind {
     Page,
@@ -1026,15 +1024,133 @@ struct RegistryEntry {
     custody: WeakCustody,
 }
 
-enum RegistryNode {
-    Branch {
-        children: Vec<Option<Box<RegistryNode>>>,
-        _debit: Debit,
-    },
-    Leaf {
-        entries: Vec<Option<RegistryEntry>>,
-        _debit: Debit,
-    },
+/// One charged allocation per materialization. Ordering depends on the key,
+/// but the index extent and allocation work depend only on its live entries.
+struct RegistryNode {
+    identity: MaterializationId,
+    entry: RegistryEntry,
+    children: [Option<Box<Self>>; 2],
+    height: u8,
+}
+
+impl RegistryNode {
+    fn height(root: &Option<Box<Self>>) -> u8 {
+        root.as_deref().map_or(0, |node| node.height)
+    }
+
+    fn refresh_height(&mut self) {
+        self.height = 1 + Self::height(&self.children[0]).max(Self::height(&self.children[1]));
+    }
+
+    fn balance(&self) -> i16 {
+        i16::from(Self::height(&self.children[1])) - i16::from(Self::height(&self.children[0]))
+    }
+
+    fn rotate(root: &mut Option<Box<Self>>, side: usize) {
+        let Some(parent) = root.as_mut() else {
+            return;
+        };
+        let Some(mut top) = parent.children[side].take() else {
+            return;
+        };
+        parent.children[side] = top.children[1 - side].take();
+        parent.refresh_height();
+        top.children[1 - side] = root.take();
+        top.refresh_height();
+        *root = Some(top);
+    }
+
+    fn rebalance(root: &mut Option<Box<Self>>) {
+        let Some(node) = root.as_mut() else {
+            return;
+        };
+        node.refresh_height();
+        let balance = node.balance();
+        if balance.abs() > 1 {
+            let side = usize::from(balance > 0);
+            if node.children[side]
+                .as_deref()
+                .is_some_and(|child| child.balance().signum() == -balance.signum())
+            {
+                Self::rotate(&mut node.children[side], 1 - side);
+            }
+            Self::rotate(root, side);
+        }
+    }
+
+    fn find(root: &Option<Box<Self>>, identity: MaterializationId) -> Option<&RegistryEntry> {
+        let mut current = root;
+        while let Some(node) = current {
+            #[cfg(test)]
+            metric(Event::BankPageVisited);
+            if node.identity == identity {
+                return Some(&node.entry);
+            }
+            current = &node.children[usize::from(identity > node.identity)];
+        }
+        None
+    }
+
+    fn insert(root: &mut Option<Box<Self>>, incoming: Box<Self>) -> Result<(), Box<Self>> {
+        let Some(node) = root.as_mut() else {
+            *root = Some(incoming);
+            return Ok(());
+        };
+        #[cfg(test)]
+        metric(Event::BankPageVisited);
+        if incoming.identity == node.identity {
+            return Err(incoming);
+        }
+        let side = usize::from(incoming.identity > node.identity);
+        Self::insert(&mut node.children[side], incoming)?;
+        Self::rebalance(root);
+        Ok(())
+    }
+
+    fn remove(
+        root: &mut Option<Box<Self>>,
+        identity: MaterializationId,
+        nonce: u64,
+    ) -> Option<Box<Self>> {
+        let node = root.as_mut()?;
+        #[cfg(test)]
+        metric(Event::BankPageVisited);
+        if identity != node.identity {
+            let side = usize::from(identity > node.identity);
+            let removed = Self::remove(&mut node.children[side], identity, nonce)?;
+            Self::rebalance(root);
+            return Some(removed);
+        }
+        if node.entry.nonce != nonce {
+            return None;
+        }
+        let mut removed = root.take()?;
+        let [left, mut right] = mem::take(&mut removed.children);
+        if left.is_some()
+            && let Some(mut successor) = Self::take_first(&mut right)
+        {
+            successor.children = [left, right];
+            *root = Some(successor);
+            Self::rebalance(root);
+        } else {
+            *root = left.or(right);
+        }
+        Some(removed)
+    }
+
+    fn take_first(root: &mut Option<Box<Self>>) -> Option<Box<Self>> {
+        let node = root.as_mut()?;
+        #[cfg(test)]
+        metric(Event::BankPageVisited);
+        if node.children[0].is_some() {
+            let first = Self::take_first(&mut node.children[0]);
+            Self::rebalance(root);
+            return first;
+        }
+        let mut first = root.take()?;
+        *root = first.children[1].take();
+        Some(first)
+    }
 }
 
 struct ReleaseNode {
@@ -1091,7 +1207,9 @@ struct RegistryState {
     blocks_bank: Debit,
     blocks_charged: usize,
     next_nonce: u64,
-    _administration: Debit,
+    // Drop both indexes and their weak targets before returning their backing
+    // allowance. The shared debit avoids a separate receipt in every node.
+    debit: Debit,
 }
 
 impl RegistryState {
@@ -1109,15 +1227,25 @@ impl RegistryState {
         }
     }
 
+    fn remove(&mut self, kind: RegistryKind, identity: MaterializationId, nonce: u64) {
+        if let Some(node) = RegistryNode::remove(self.root_mut(kind), identity, nonce) {
+            let usage = Usage::new(
+                size_of::<RegistryNode>() + node.entry.custody.backing_usage().bytes(),
+                0,
+            );
+            drop(node);
+            drop(
+                self.debit
+                    .split(usage)
+                    .expect("registry owns each node's allowance"),
+            );
+        }
+    }
+
     fn reconcile_releases(&mut self) {
         while let Some(mut released) = self.released.take() {
             self.released = released.next.take();
-            remove_registry_entry(
-                self.root_mut(released.kind),
-                released.identity.key(),
-                ID_SHIFT,
-                released.nonce,
-            );
+            self.remove(released.kind, released.identity, released.nonce);
         }
     }
 
@@ -1125,31 +1253,23 @@ impl RegistryState {
     /// Retire that exact expired Weak now; its delayed nonce cannot affect a
     /// later custodian for the same still externally retained materialization.
     fn live(&mut self, kind: RegistryKind, identity: MaterializationId) -> Option<LiveCustody> {
-        let entry = registry_entry(self.root(kind), identity.key(), ID_SHIFT)?;
+        let entry = RegistryNode::find(self.root(kind), identity)?;
         let live = match &entry.custody {
             WeakCustody::Page(value) => value.upgrade().map(LiveCustody::Page),
             WeakCustody::Record(value) => value.upgrade().map(LiveCustody::Record),
         };
         if live.is_none() {
-            let nonce = entry.nonce;
-            remove_registry_entry(self.root_mut(kind), identity.key(), ID_SHIFT, nonce);
+            self.remove(kind, identity, entry.nonce);
         }
         live
     }
 
-    fn plan(
-        &mut self,
-        kind: RegistryKind,
-        identity: MaterializationId,
-    ) -> Result<RegistrationPlan, DomError> {
+    fn reserve_nonce(&mut self) -> Result<u64, DomError> {
         let nonce = self.next_nonce;
         self.next_nonce = nonce
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
-        Ok(RegistrationPlan {
-            nonce,
-            missing: missing_registry_shift(self.root(kind), identity.key(), ID_SHIFT),
-        })
+        Ok(nonce)
     }
 }
 
@@ -1186,7 +1306,7 @@ impl CustodyRegistry {
         ledger: &Ledger,
         mut admit: impl FnMut(Usage) -> Result<(), DomError>,
     ) -> Result<Self, DomError> {
-        let administration = ledger.retain(Self::administration_usage(), &mut admit)?;
+        let debit = ledger.retain(Self::administration_usage(), &mut admit)?;
         let blocks_bank = ledger.retain(Usage::ZERO, &mut admit)?;
         let state = Arc::new(Mutex::new(RegistryState {
             pages: None,
@@ -1196,7 +1316,7 @@ impl CustodyRegistry {
             blocks_bank,
             blocks_charged: 0,
             next_nonce: 1,
-            _administration: administration,
+            debit,
         }));
         #[cfg(test)]
         metric(Event::StructuralAllocation {
@@ -1505,40 +1625,30 @@ impl CustodyRegistry {
                 "registry.node",
                 size_of::<RegistryNode>(),
             );
-            match value {
-                RegistryNode::Branch { children, .. } => {
-                    graph.buffer(children, "registry.children");
-                    for child in children.iter().flatten() {
-                        node(child, graph, live);
+            match &value.entry.custody {
+                WeakCustody::Page(weak) => {
+                    graph.allocation(
+                        weak.as_ptr() as usize,
+                        "control.page",
+                        size_of::<PageCustody>(),
+                    );
+                    if let Some(value) = weak.upgrade() {
+                        live.push(LiveCustody::Page(value));
                     }
                 }
-                RegistryNode::Leaf { entries, .. } => {
-                    graph.buffer(entries, "registry.entries");
-                    for entry in entries.iter().flatten() {
-                        match &entry.custody {
-                            WeakCustody::Page(weak) => {
-                                graph.allocation(
-                                    weak.as_ptr() as usize,
-                                    "control.page",
-                                    size_of::<PageCustody>(),
-                                );
-                                if let Some(value) = weak.upgrade() {
-                                    live.push(LiveCustody::Page(value));
-                                }
-                            }
-                            WeakCustody::Record(weak) => {
-                                graph.allocation(
-                                    weak.as_ptr() as usize,
-                                    "control.record",
-                                    size_of::<RecordCustody>(),
-                                );
-                                if let Some(value) = weak.upgrade() {
-                                    live.push(LiveCustody::Record(value));
-                                }
-                            }
-                        }
+                WeakCustody::Record(weak) => {
+                    graph.allocation(
+                        weak.as_ptr() as usize,
+                        "control.record",
+                        size_of::<RecordCustody>(),
+                    );
+                    if let Some(value) = weak.upgrade() {
+                        live.push(LiveCustody::Record(value));
                     }
                 }
+            }
+            for child in value.children.iter().flatten() {
+                node(child, graph, live);
             }
         }
         graph.target(&self.state, "registry.state");
@@ -1580,28 +1690,18 @@ impl CustodyRegistry {
     #[cfg(test)]
     pub(in crate::internal::store) fn inspect_storage(&self) -> Usage {
         fn node_bytes(node: &RegistryNode) -> usize {
+            let target = match &node.entry.custody {
+                WeakCustody::Page(_) => size_of::<PageCustody>(),
+                WeakCustody::Record(_) => size_of::<RecordCustody>(),
+            };
             size_of::<RegistryNode>()
-                + match node {
-                    RegistryNode::Branch { children, .. } => {
-                        children.capacity() * size_of::<Option<Box<RegistryNode>>>()
-                            + children
-                                .iter()
-                                .flatten()
-                                .map(|node| node_bytes(node))
-                                .sum::<usize>()
-                    }
-                    RegistryNode::Leaf { entries, .. } => {
-                        entries.capacity() * size_of::<Option<RegistryEntry>>()
-                            + entries
-                                .iter()
-                                .flatten()
-                                .map(|entry| match &entry.custody {
-                                    WeakCustody::Page(_) => size_of::<PageCustody>(),
-                                    WeakCustody::Record(_) => size_of::<RecordCustody>(),
-                                })
-                                .sum::<usize>()
-                    }
-                }
+                + target
+                + node
+                    .children
+                    .iter()
+                    .flatten()
+                    .map(|child| node_bytes(child))
+                    .sum::<usize>()
         }
         let state = self.lock();
         let mut bytes = size_of::<Mutex<RegistryState>>()
@@ -1635,26 +1735,23 @@ impl CustodyRegistry {
 
     fn prepare_registration(
         &self,
-        plan: RegistrationPlan,
+        nonce: u64,
         kind: RegistryKind,
         identity: MaterializationId,
         target_bytes: usize,
         admit: &mut impl FnMut(Usage) -> Result<(), DomError>,
     ) -> Result<PreparedRegistration, DomError> {
-        let path = plan
-            .missing
-            .map(|shift| prepare_registry_path(identity.key(), shift, &self.ledger, admit))
-            .transpose()?;
-        let backing = self
-            .ledger
-            .retain(Usage::new(target_bytes, 0), &mut *admit)?;
+        let backing = self.ledger.retain(
+            Usage::new(checked_add(size_of::<RegistryNode>(), target_bytes)?, 0),
+            &mut *admit,
+        )?;
         let release = self
             .ledger
             .retain(Usage::new(size_of::<ReleaseNode>(), 0), &mut *admit)?;
         let node = Box::new(ReleaseNode {
             kind,
             identity,
-            nonce: plan.nonce,
+            nonce,
             next: None,
             _debit: release,
         });
@@ -1662,12 +1759,7 @@ impl CustodyRegistry {
         metric(Event::StructuralAllocation {
             bytes: size_of::<ReleaseNode>(),
         });
-        Ok(PreparedRegistration {
-            path,
-            backing,
-            node,
-            plan,
-        })
+        Ok(PreparedRegistration { backing, node })
     }
 
     fn register_page<D>(
@@ -1676,76 +1768,66 @@ impl CustodyRegistry {
         pending: PendingPage<D>,
         admit: &mut impl FnMut(Usage) -> Result<(), DomError>,
     ) -> Result<RegisteredPage<D>, DomError> {
-        loop {
-            let plan = {
-                let mut state = self.lock();
-                state.reconcile_releases();
-                if let Some(LiveCustody::Page(custody)) = state.live(RegistryKind::Page, identity) {
-                    drop(state);
-                    return Ok(RegisteredPage {
-                        semantic: pending.semantic,
-                        custody,
-                    });
-                }
-                state.plan(RegistryKind::Page, identity)?
-            };
-            #[cfg(test)]
-            drop_observation::planned();
-            // Every admission callback and fallible allocation runs unlocked.
-            // Its temporary release node has no queue authority before attach.
-            let prepared = self.prepare_registration(
-                plan,
-                RegistryKind::Page,
-                identity,
-                size_of::<PageCustody>(),
-                admit,
-            )?;
+        let nonce = {
             let mut state = self.lock();
             state.reconcile_releases();
             if let Some(LiveCustody::Page(custody)) = state.live(RegistryKind::Page, identity) {
                 drop(state);
-                drop(prepared);
                 return Ok(RegisteredPage {
                     semantic: pending.semantic,
                     custody,
                 });
             }
-            if missing_registry_shift(state.root(RegistryKind::Page), identity.key(), ID_SHIFT)
-                != prepared.plan.missing
-            {
-                drop(state);
-                drop(prepared);
-                continue;
-            }
-            let custody = Arc::new(PageCustody {
-                _payload: pending.payload,
-                identity,
-                edges: pending.edges,
-                release: ReleaseTicket {
-                    owner: Arc::downgrade(&self.state),
-                    node: Some(prepared.node),
-                },
-                debit: pending.debit,
-            });
-            #[cfg(test)]
-            metric(Event::StructuralAllocation {
-                bytes: size_of::<PageCustody>(),
-            });
-            commit_registration(
-                &mut state,
-                RegistryKind::Page,
-                identity,
-                WeakCustody::Page(Arc::downgrade(&custody)),
-                prepared.path,
-                prepared.backing,
-                prepared.plan.nonce,
-            );
+            state.reserve_nonce()?
+        };
+        #[cfg(test)]
+        drop_observation::planned();
+        // Admission runs unlocked. Fixed-size backing remains sufficient
+        // even when a callback changes the current tree.
+        let prepared = self.prepare_registration(
+            nonce,
+            RegistryKind::Page,
+            identity,
+            size_of::<PageCustody>(),
+            admit,
+        )?;
+        let mut state = self.lock();
+        state.reconcile_releases();
+        if let Some(LiveCustody::Page(custody)) = state.live(RegistryKind::Page, identity) {
             drop(state);
             return Ok(RegisteredPage {
                 semantic: pending.semantic,
                 custody,
             });
         }
+        let custody = Arc::new(PageCustody {
+            _payload: pending.payload,
+            identity,
+            edges: pending.edges,
+            release: ReleaseTicket {
+                owner: Arc::downgrade(&self.state),
+                node: Some(prepared.node),
+            },
+            debit: pending.debit,
+        });
+        #[cfg(test)]
+        metric(Event::StructuralAllocation {
+            bytes: size_of::<PageCustody>(),
+        });
+        let committed = commit_registration(
+            &mut state,
+            RegistryKind::Page,
+            identity,
+            WeakCustody::Page(Arc::downgrade(&custody)),
+            prepared.backing,
+            nonce,
+        );
+        drop(state);
+        committed?;
+        Ok(RegisteredPage {
+            semantic: pending.semantic,
+            custody,
+        })
     }
 
     fn register_record(
@@ -1775,83 +1857,63 @@ impl CustodyRegistry {
             ),
             &mut *admit,
         )?;
-        loop {
-            let plan = {
-                let mut state = self.lock();
-                state.reconcile_releases();
-                if let Some(LiveCustody::Record(existing)) =
-                    state.live(RegistryKind::Record, identity)
-                {
-                    drop(state);
-                    return Ok(existing);
-                }
-                state.plan(RegistryKind::Record, identity)?
-            };
-            #[cfg(test)]
-            drop_observation::planned();
-            let prepared = self.prepare_registration(
-                plan,
-                RegistryKind::Record,
-                identity,
-                size_of::<RecordCustody>(),
-                admit,
-            )?;
+        let nonce = {
             let mut state = self.lock();
             state.reconcile_releases();
             if let Some(LiveCustody::Record(existing)) = state.live(RegistryKind::Record, identity)
             {
                 drop(state);
-                drop(prepared);
                 return Ok(existing);
             }
-            if missing_registry_shift(state.root(RegistryKind::Record), identity.key(), ID_SHIFT)
-                != prepared.plan.missing
-            {
-                drop(state);
-                drop(prepared);
-                continue;
-            }
-            let custody = Arc::new(RecordCustody {
-                identity,
-                dependency,
-                attachment: Mutex::new(None),
-                _payload: debit,
-                release: ReleaseTicket {
-                    owner: Arc::downgrade(&self.state),
-                    node: Some(prepared.node),
-                },
-                _administration: administration,
-            });
-            #[cfg(test)]
-            metric(Event::StructuralAllocation {
-                bytes: size_of::<RecordCustody>(),
-            });
-            commit_registration(
-                &mut state,
-                RegistryKind::Record,
-                identity,
-                WeakCustody::Record(Arc::downgrade(&custody)),
-                prepared.path,
-                prepared.backing,
-                prepared.plan.nonce,
-            );
+            state.reserve_nonce()?
+        };
+        #[cfg(test)]
+        drop_observation::planned();
+        let prepared = self.prepare_registration(
+            nonce,
+            RegistryKind::Record,
+            identity,
+            size_of::<RecordCustody>(),
+            admit,
+        )?;
+        let mut state = self.lock();
+        state.reconcile_releases();
+        if let Some(LiveCustody::Record(existing)) = state.live(RegistryKind::Record, identity) {
             drop(state);
-            return Ok(custody);
+            return Ok(existing);
         }
+        let custody = Arc::new(RecordCustody {
+            identity,
+            dependency,
+            attachment: Mutex::new(None),
+            _payload: debit,
+            release: ReleaseTicket {
+                owner: Arc::downgrade(&self.state),
+                node: Some(prepared.node),
+            },
+            _administration: administration,
+        });
+        #[cfg(test)]
+        metric(Event::StructuralAllocation {
+            bytes: size_of::<RecordCustody>(),
+        });
+        let committed = commit_registration(
+            &mut state,
+            RegistryKind::Record,
+            identity,
+            WeakCustody::Record(Arc::downgrade(&custody)),
+            prepared.backing,
+            nonce,
+        );
+        drop(state);
+        committed?;
+        Ok(custody)
     }
 }
 
 struct PreparedRegistration {
-    path: Option<Box<RegistryNode>>,
     backing: Debit,
     node: Box<ReleaseNode>,
-    plan: RegistrationPlan,
-}
-
-#[derive(Clone, Copy)]
-struct RegistrationPlan {
-    nonce: u64,
-    missing: Option<u32>,
 }
 
 fn commit_registration(
@@ -1859,219 +1921,32 @@ fn commit_registration(
     kind: RegistryKind,
     identity: MaterializationId,
     custody: WeakCustody,
-    path: Option<Box<RegistryNode>>,
     backing: Debit,
     nonce: u64,
-) {
-    // Navigation and private invariant checks keep the incoming Weak paired
-    // with its own admitted target allowance, including while unwinding.
-    let incoming = Held::new(RegistryEntry { nonce, custody }, backing);
-    assert_eq!(
-        incoming.debit().usage(),
-        incoming.value().custody.backing_usage()
-    );
-    let root = state.root_mut(kind);
-    attach_registry_path(root, identity.key(), ID_SHIFT, path);
-    let (entry, leaf_debit) = registry_entry_mut(root, identity.key(), ID_SHIFT);
-    assert!(
-        entry.is_none(),
-        "new custody identity has no active registry entry"
-    );
-    let (value, backing) = incoming.into_parts();
-    match leaf_debit.absorb(backing) {
-        Ok(()) => *entry = Some(value),
-        Err(backing) => {
-            // A foreign domain is an invariant violation, but it must still
-            // destroy the Weak before returning its original target credit.
-            drop(Held::new(value, backing));
-            panic!("registry leaf and weak target use the same ledger");
-        }
+) -> Result<(), DomError> {
+    let usage = backing.usage();
+    let incoming = RegistryNode {
+        identity,
+        entry: RegistryEntry { nonce, custody },
+        children: [None, None],
+        height: 1,
+    };
+    if let Err(backing) = state.debit.absorb(backing) {
+        // Dispose of the unreachable Weak before releasing its backing.
+        drop(Held::new(incoming, backing));
+        return Err(DomError::RepresentationExhausted);
     }
-}
-
-fn registry_entry(
-    root: &Option<Box<RegistryNode>>,
-    key: u64,
-    shift: u32,
-) -> Option<&RegistryEntry> {
-    #[cfg(test)]
-    if root.is_some() {
-        metric(Event::BankPageVisited);
-    }
-    match root.as_deref()? {
-        RegistryNode::Leaf { entries, .. } => entries[(key & MASK as u64) as usize].as_ref(),
-        RegistryNode::Branch { children, .. } => registry_entry(
-            &children[((key >> shift) & MASK as u64) as usize],
-            key,
-            shift - BITS,
-        ),
-    }
-}
-
-fn registry_entry_mut(
-    root: &mut Option<Box<RegistryNode>>,
-    key: u64,
-    shift: u32,
-) -> (&mut Option<RegistryEntry>, &mut Debit) {
-    #[cfg(test)]
-    metric(Event::BankPageVisited);
-    match root
-        .as_deref_mut()
-        .expect("prepared registry path is attached")
-    {
-        RegistryNode::Leaf { entries, _debit } => {
-            (&mut entries[(key & MASK as u64) as usize], _debit)
-        }
-        RegistryNode::Branch { children, .. } => registry_entry_mut(
-            &mut children[((key >> shift) & MASK as u64) as usize],
-            key,
-            shift - BITS,
-        ),
-    }
-}
-
-fn missing_registry_shift(root: &Option<Box<RegistryNode>>, key: u64, shift: u32) -> Option<u32> {
-    #[cfg(test)]
-    if root.is_some() {
-        metric(Event::BankPageVisited);
-    }
-    match root.as_deref() {
-        None => Some(shift),
-        Some(RegistryNode::Leaf { .. }) => None,
-        Some(RegistryNode::Branch { children, .. }) => missing_registry_shift(
-            &children[((key >> shift) & MASK as u64) as usize],
-            key,
-            shift - BITS,
-        ),
-    }
-}
-
-fn registry_slots<T>(
-    ledger: &Ledger,
-    admit: &mut impl FnMut(Usage) -> Result<(), DomError>,
-) -> Result<Held<Vec<Option<T>>>, DomError> {
-    let requested = WIDTH
-        .checked_mul(size_of::<Option<T>>())
-        .ok_or(DomError::RepresentationExhausted)?;
-    let mut debit = ledger.retain(
-        Usage::new(checked_add(size_of::<RegistryNode>(), requested)?, 0),
-        &mut *admit,
-    )?;
-    let mut slots = Vec::new();
-    slots
-        .try_reserve_exact(WIDTH)
-        .map_err(|_| DomError::AllocationFailed)?;
-    #[cfg(test)]
-    metric(Event::StructuralAllocation {
-        bytes: slots.capacity() * size_of::<Option<T>>(),
-    });
-    if slots.capacity() > WIDTH {
-        let excess = (slots.capacity() - WIDTH)
-            .checked_mul(size_of::<Option<T>>())
-            .ok_or(DomError::RepresentationExhausted)?;
-        debit.grow(Usage::new(excess, 0), &mut *admit)?;
-    }
-    slots.resize_with(WIDTH, || None);
-    Ok(Held::new(slots, debit))
-}
-
-fn prepare_registry_path(
-    key: u64,
-    shift: u32,
-    ledger: &Ledger,
-    admit: &mut impl FnMut(Usage) -> Result<(), DomError>,
-) -> Result<Box<RegistryNode>, DomError> {
-    let (entries, debit) = registry_slots(ledger, admit)?.into_parts();
-    let mut node = Box::new(RegistryNode::Leaf {
-        entries,
-        _debit: debit,
-    });
+    let node = Box::new(incoming);
     #[cfg(test)]
     metric(Event::StructuralAllocation {
         bytes: size_of::<RegistryNode>(),
     });
-    for depth in (BITS..=shift).step_by(BITS as usize) {
-        let (mut children, debit) = registry_slots(ledger, admit)?.into_parts();
-        children[((key >> depth) & MASK as u64) as usize] = Some(node);
-        node = Box::new(RegistryNode::Branch {
-            children,
-            _debit: debit,
-        });
-        #[cfg(test)]
-        metric(Event::StructuralAllocation {
-            bytes: size_of::<RegistryNode>(),
-        });
+    if let Err(duplicate) = RegistryNode::insert(state.root_mut(kind), node) {
+        drop(duplicate);
+        drop(state.debit.split(usage)?);
+        return Err(DomError::RepresentationExhausted);
     }
-    Ok(node)
-}
-
-fn attach_registry_path(
-    root: &mut Option<Box<RegistryNode>>,
-    key: u64,
-    shift: u32,
-    path: Option<Box<RegistryNode>>,
-) {
-    #[cfg(test)]
-    if root.is_some() {
-        metric(Event::BankPageVisited);
-    }
-    if root.is_none() {
-        *root = path;
-        return;
-    }
-    if let RegistryNode::Branch { children, .. } =
-        root.as_deref_mut().expect("present registry path")
-    {
-        attach_registry_path(
-            &mut children[((key >> shift) & MASK as u64) as usize],
-            key,
-            shift - BITS,
-            path,
-        );
-    } else {
-        assert!(
-            path.is_none(),
-            "existing registry leaf requires no new path"
-        );
-    }
-}
-
-fn remove_registry_entry(root: &mut Option<Box<RegistryNode>>, key: u64, shift: u32, nonce: u64) {
-    let Some(node) = root.as_deref_mut() else {
-        return;
-    };
-    #[cfg(test)]
-    metric(Event::BankPageVisited);
-    let empty = match node {
-        RegistryNode::Leaf { entries, _debit } => {
-            let entry = &mut entries[(key & MASK as u64) as usize];
-            if entry.as_ref().is_some_and(|entry| entry.nonce == nonce) {
-                let removed = entry.take().expect("matching registry entry");
-                let backing = removed.custody.backing_usage();
-                drop(removed);
-                // The exact Weak is gone before its fixed target allowance is
-                // released. Stale nonces neither remove nor debit a new entry.
-                drop(
-                    _debit
-                        .split(backing)
-                        .expect("leaf owns each weak target allowance"),
-                );
-            }
-            entries.iter().all(Option::is_none)
-        }
-        RegistryNode::Branch { children, .. } => {
-            remove_registry_entry(
-                &mut children[((key >> shift) & MASK as u64) as usize],
-                key,
-                shift - BITS,
-                nonce,
-            );
-            children.iter().all(Option::is_none)
-        }
-    };
-    if empty {
-        *root = None;
-    }
+    Ok(())
 }
 
 /// An immutable shared radix root with a mutable publication handle. Missing
@@ -4883,14 +4758,13 @@ mod controlled_tests {
     }
 
     #[test]
-    fn occupied_registry_entry_unwind_keeps_incoming_weak_and_credit_together() {
+    fn duplicate_registry_entry_releases_incoming_weak_and_credit_together() {
         let (ledger, registry) = new_registry();
         let value = value(41);
         let usage = supplied_usage(&value);
         let record = ControlledRecord::new(value, usage, &registry, unlimited).unwrap();
-        // Move the actual exclusively owned registry state out of its mutex;
-        // this intentionally invalid private commit must not poison a mutex
-        // or invoke unrelated lock-unwind behavior in the ownership witness.
+        // Keep the exclusive state separate from the registry handle so the
+        // intentionally rejected attachment exercises only its local cleanup.
         let Ok(state) = Arc::try_unwrap(registry.state) else {
             panic!("one actual registry owner")
         };
@@ -4901,25 +4775,22 @@ mod controlled_tests {
         let identity = record.record.identity;
         let before_weak = Arc::weak_count(custody);
         let before = ledger.total();
-        let plan = state
-            .plan(RegistryKind::Record, record.record.identity)
-            .unwrap();
-        assert!(plan.missing.is_none());
+        let nonce = state.reserve_nonce().unwrap();
         let backing = ledger
-            .retain(Usage::new(size_of::<RecordCustody>(), 0), unlimited)
+            .retain(
+                Usage::new(size_of::<RegistryNode>() + size_of::<RecordCustody>(), 0),
+                unlimited,
+            )
             .unwrap();
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            commit_registration(
-                &mut state,
-                RegistryKind::Record,
-                record.record.identity,
-                WeakCustody::Record(Arc::downgrade(custody)),
-                None,
-                backing,
-                plan.nonce,
-            );
-        }));
-        assert!(result.is_err());
+        let result = commit_registration(
+            &mut state,
+            RegistryKind::Record,
+            identity,
+            WeakCustody::Record(Arc::downgrade(custody)),
+            backing,
+            nonce,
+        );
+        assert_eq!(result, Err(DomError::RepresentationExhausted));
         assert_eq!(Arc::weak_count(custody), before_weak);
         assert_eq!(ledger.total(), before);
         assert_eq!(record.value().marker, 41);
@@ -4933,56 +4804,32 @@ mod controlled_tests {
     #[test]
     fn mixed_page_and_record_weak_allowances_survive_strong_zero_until_exact_cleanup() {
         fn credits(node: &RegistryNode) -> (usize, usize, usize) {
-            match node {
-                RegistryNode::Branch { children, _debit } => {
-                    assert_eq!(
-                        _debit.usage(),
-                        Usage::new(
-                            size_of::<RegistryNode>()
-                                + children.capacity() * size_of::<Option<Box<RegistryNode>>>(),
-                            0
-                        ),
-                    );
-                    children
-                        .iter()
-                        .flatten()
-                        .map(|child| credits(child))
-                        .fold((0, 0, 0), |sum, next| {
-                            (sum.0 + next.0, sum.1 + next.1, sum.2 + next.2)
-                        })
-                }
-                RegistryNode::Leaf { entries, _debit } => {
-                    let mut raw = size_of::<RegistryNode>()
-                        + entries.capacity() * size_of::<Option<RegistryEntry>>();
-                    let mut counts = (0, 0, 0);
-                    for entry in entries.iter().flatten() {
-                        match &entry.custody {
-                            WeakCustody::Page(value) => {
-                                raw += size_of::<PageCustody>();
-                                counts.0 += 1;
-                                counts.2 += usize::from(value.strong_count() == 0);
-                            }
-                            WeakCustody::Record(value) => {
-                                raw += size_of::<RecordCustody>();
-                                counts.1 += 1;
-                                counts.2 += usize::from(value.strong_count() == 0);
-                            }
-                        }
-                    }
-                    assert_eq!(_debit.usage(), Usage::new(raw, 0));
-                    counts
-                }
-            }
+            let local = match &node.entry.custody {
+                WeakCustody::Page(value) => (1, 0, usize::from(value.strong_count() == 0)),
+                WeakCustody::Record(value) => (0, 1, usize::from(value.strong_count() == 0)),
+            };
+            node.children
+                .iter()
+                .flatten()
+                .map(|child| credits(child))
+                .fold(local, |sum, next| {
+                    (sum.0 + next.0, sum.1 + next.1, sum.2 + next.2)
+                })
         }
         fn all_credits(registry: &CustodyRegistry) -> (usize, usize, usize) {
             let state = registry.lock();
             let pages = credits(state.pages.as_deref().unwrap());
             let records = credits(state.records.as_deref().unwrap());
-            (
+            let counts = (
                 pages.0 + records.0,
                 pages.1 + records.1,
                 pages.2 + records.2,
-            )
+            );
+            let bytes = size_of::<Mutex<RegistryState>>()
+                + counts.0 * (size_of::<RegistryNode>() + size_of::<PageCustody>())
+                + counts.1 * (size_of::<RegistryNode>() + size_of::<RecordCustody>());
+            assert_eq!(state.debit.usage(), Usage::new(bytes, 0));
+            counts
         }
         let (ledger, registry) = new_registry();
         let mut historical = Bank::default();
@@ -5004,7 +4851,7 @@ mod controlled_tests {
         assert_eq!(all_credits(&registry), (3, 2, 0));
         drop(alias);
         // Actual custodians have died, but their queued release tickets have
-        // not yet removed the five Weak occurrences from the registry leaves.
+        // not yet removed the five Weak occurrences from the registry.
         assert_eq!(all_credits(&registry), (3, 2, 5));
         assert_eq!(ledger.total(), registry.inspect_storage());
         assert_eq!(historical.get(0).unwrap().marker, 17);
@@ -5037,7 +4884,7 @@ mod controlled_tests {
             .unwrap();
         let old_nonce = {
             let state = registry.lock();
-            registry_entry(state.root(RegistryKind::Record), identity.key(), ID_SHIFT)
+            RegistryNode::find(state.root(RegistryKind::Record), identity)
                 .unwrap()
                 .nonce
         };
@@ -5158,9 +5005,7 @@ mod controlled_tests {
         let observer_registry = registry.clone();
         let watch = drop_observation::pages(move |identity| {
             let state = observer_registry.lock();
-            if let Some(entry) =
-                registry_entry(state.root(RegistryKind::Page), identity.key(), ID_SHIFT)
-            {
+            if let Some(entry) = RegistryNode::find(state.root(RegistryKind::Page), identity) {
                 let WeakCustody::Page(custody) = &entry.custody else {
                     unreachable!()
                 };
@@ -5233,7 +5078,7 @@ mod controlled_tests {
     }
 
     #[test]
-    fn registration_retries_when_admission_prunes_its_previously_shared_index_prefix() {
+    fn prepared_registration_survives_admission_removing_the_previous_entry() {
         finish_worker(
             observed_worker(|| {
                 let (ledger, registry) = new_registry();
@@ -5247,8 +5092,8 @@ mod controlled_tests {
                 let mut attempts = 0;
                 let acquired = ControlledRecord::new(next, usage, &registry, |_| {
                     attempts += 1;
-                    // Payload and administration have been admitted. A registration
-                    // plan now exists, with part of its ID path shared by the old atom.
+                    // The new registration has a reserved nonce, but its admission
+                    // callback can still remove the old index node before attachment.
                     if attempts == 3 {
                         drop(original.take());
                         registry.reconcile_releases();
@@ -5263,7 +5108,7 @@ mod controlled_tests {
                 registry.reconcile_releases();
                 assert_eq!(ledger.total(), CustodyRegistry::administration_usage());
             }),
-            "record construction entered; planned-path admission prunes prior index",
+            "record construction entered; admission removes the prior index entry",
         );
     }
 
@@ -5386,8 +5231,7 @@ mod controlled_tests {
                 state.released.is_none(),
                 "old destructor has not queued its preallocated ticket"
             );
-            let entry =
-                registry_entry(state.root(RegistryKind::Record), identity.key(), ID_SHIFT).unwrap();
+            let entry = RegistryNode::find(state.root(RegistryKind::Record), identity).unwrap();
             let WeakCustody::Record(old) = &entry.custody else {
                 unreachable!()
             };
