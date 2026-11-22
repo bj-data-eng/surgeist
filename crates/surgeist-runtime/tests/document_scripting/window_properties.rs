@@ -218,6 +218,9 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
             let subject = batch.create_element_ns(document, Namespace::html(), "span");
             batch.set_attribute(&subject, "id", "nestedWindowElement");
             batch.insert_before(&subject, child_body, None);
+            let shadowed = batch.create_element_ns(document, Namespace::html(), "div");
+            batch.set_attribute(&shadowed, "id", "document");
+            batch.insert_before(&shadowed, child_body, None);
             let commit = dom.apply(batch, &cancel()).unwrap();
             let subject = commit.created(&subject).unwrap().unwrap();
             assert_eq!(
@@ -253,6 +256,24 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
             if (element === undefined || element.id !== 'nestedWindowElement'
                 || !(element instanceof parent.HTMLElement) || element instanceof HTMLElement) {
                 return "nested native element must use the child creation realm";
+            }
+            const descriptor = Object.getOwnPropertyDescriptor(parent, 'document');
+            const childDocument = parent.document;
+            if (typeof descriptor?.get !== 'function' || descriptor.set !== undefined
+                || descriptor.configurable || !descriptor.enumerable
+                || childDocument !== element.ownerDocument
+                || !(childDocument instanceof parent.Document) || childDocument === document) {
+                return "child Window.document must expose its exact native Document";
+            }
+            const names = Object.getPrototypeOf(Object.getPrototypeOf(parent));
+            if (parent.document.getElementById('document')?.id !== 'document'
+                || Object.getOwnPropertyDescriptor(names, 'document') !== undefined) {
+                return "the child Window document attribute must mask the colliding name";
+            }
+            if (Object.getOwnPropertyDescriptor(window, 'document').get.call(parent) !== childDocument
+                || descriptor.get.call(window) !== document
+                || Reflect.deleteProperty(parent, 'document')) {
+                return "the unforgeable getter must use the actual Window receiver";
             }
             globalThis.originalNestedChild = child;
             return "ok";
@@ -535,9 +556,7 @@ fn verify_child_creation_origin(first: FirstProjection) {
                 if (before !== document.getElementById('adoptedBeforeRetirement')
                     || after !== document.getElementById('adoptedAfterRetirement')
                     || Object.getPrototypeOf(before) !== Object.getPrototypeOf(after)
-                    || Object.getPrototypeOf(before) === HTMLDivElement.prototype
-                    || ((before.originWitness ?? after.originWitness) !== undefined
-                        && (before.originWitness !== 'original child' || after.originWitness !== 'original child'))) {
+                    || Object.getPrototypeOf(before) === HTMLDivElement.prototype) {
                     return 'child nodes lost their original creation prototype';
                 }
                 return 'ok';
@@ -545,4 +564,16 @@ fn verify_child_creation_origin(first: FirstProjection) {
         ),
         "ok"
     );
+    if !matches!(first, FirstProjection::RetiredAdoptedNode) {
+        assert_eq!(
+            observe(
+                &mut host,
+                &permit,
+                r#"(() => window.adoptedBeforeRetirement.originWitness === 'original child'
+                    && window.adoptedAfterRetirement.originWitness === 'original child'
+                    ? 'ok' : 'the original mutated child prototype was lost')()"#,
+            ),
+            "ok"
+        );
+    }
 }
