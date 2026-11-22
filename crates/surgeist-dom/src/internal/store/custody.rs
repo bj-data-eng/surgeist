@@ -439,6 +439,44 @@ mod tests {
     }
 
     #[test]
+    fn materialization_history_preserves_registration_work_and_retained_bytes() {
+        use crate::internal::store::bank::CustodyRegistry;
+
+        fn sample(start: u64) -> Vec<(usize, usize, Usage)> {
+            let identities = IdentityAllocator::new(start);
+            let ledger = Ledger::default();
+            let registry = CustodyRegistry::new(&ledger, unlimited).unwrap();
+            let baseline = ledger.total();
+            let mut retained = Vec::new();
+            let mut charges = Vec::new();
+            for _ in 0..3 {
+                let mut work = 0;
+                let mut peak = 0;
+                let identity = identities.allocate().unwrap();
+                retained.push(
+                    registry
+                        .adopt_object(identity, Usage::new(32, 4), |usage| {
+                            // Source charges one step for each custody admission.
+                            work += 1;
+                            peak = peak.max(usage.bytes());
+                            Ok(())
+                        })
+                        .unwrap(),
+                );
+                charges.push((work, peak, ledger.total()));
+            }
+            drop(retained);
+            registry.reconcile_releases();
+            assert_eq!(ledger.total(), baseline);
+            charges
+        }
+
+        // Repeat the same three live registrations after unrelated identity
+        // allocations have moved them across an old radix page boundary.
+        assert_eq!(sample(1), sample(65_535));
+    }
+
+    #[test]
     fn component_receipts_check_both_dimensions_and_replace_only_the_changed_component() {
         let total = Usage::new(37, 19);
         assert_eq!(
