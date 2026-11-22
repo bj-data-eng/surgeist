@@ -1,16 +1,20 @@
 //! Structured computed Grid tracks without used-size resolution.
 //!
 //! CSS/Style supplies effective longhands, decoded line names and computed
-//! numeric leaves. Animation preserves explicit track/function tags, fixed
-//! repeats and symbolic percentages. Layout owns repeat expansion, percentage
-//! bases and intrinsic sizing; consumers own final range handling. Automatic repeats,
-//! subgrid, masonry, addition and accumulation are not represented here.
+//! numeric leaves. Animation preserves explicit track/function tags, fixed and
+//! automatic repeats, subgrid name lists and symbolic percentages. Layout owns
+//! repeat expansion, subgrid adoption, percentage bases and intrinsic sizing;
+//! consumers own final range handling. Masonry is outside this Grid 1/2 model.
 //!
 //! Equal outer lists combine corresponding items; unequal lists switch as a
 //! whole at progress 0.5. Incompatible fixed-repeat structure also switches the
 //! whole template. Otherwise names and incompatible track leaves switch locally;
 //! two explicit `minmax()` functions combine their bounds independently. A plain
 //! breadth and an explicit `minmax()` remain distinct computed input tags.
+//! Automatic-repeat templates and subgrid forms switch as complete originals.
+//! Addition and default accumulation share the same traversal, adding numeric
+//! leaves while taking effect names and incompatible ordinary items. Incompatible
+//! structure, automatic repeats and subgrid composition select the effect.
 //!
 //! ```
 //! use surgeist_animation::grid::{ImplicitTrackList, TrackBreadth, TrackSize};
@@ -24,7 +28,9 @@
 use core::fmt;
 use std::sync::Arc;
 
-use crate::computed::{ComputedError, ComputedNumeric, DimensionKind, NumericType};
+use crate::computed::{
+    ComputedError, ComputedNumeric, ComputedOperation, DimensionKind, NumericType,
+};
 use crate::interpolation::{DiscreteValue, InterpolationProgress};
 
 /// Constructor or sampling failure category.
@@ -34,6 +40,8 @@ pub enum GridErrorKind {
     ZeroRepeatCount,
     InvalidNumericType,
     FlexibleMinimum,
+    InvalidAutomaticTrack,
+    MultipleAutomaticRepeats,
     Numeric,
     Capacity,
 }
@@ -128,7 +136,13 @@ impl fmt::Display for GridError {
             GridErrorKind::FlexibleMinimum => {
                 f.write_str("Grid minmax minimum cannot be flexible")?
             }
-            GridErrorKind::Numeric => f.write_str("Grid numeric interpolation failed")?,
+            GridErrorKind::InvalidAutomaticTrack => f.write_str(
+                "automatic Grid repeat requires fixed-size tracks throughout its template",
+            )?,
+            GridErrorKind::MultipleAutomaticRepeats => {
+                f.write_str("Grid list cannot contain multiple automatic repeats")?
+            }
+            GridErrorKind::Numeric => f.write_str("Grid numeric operation failed")?,
             GridErrorKind::Capacity => f.write_str("Grid result storage could not be reserved")?,
         }
         if let Some(index) = self.section_index {
@@ -238,19 +252,15 @@ impl TrackBreadth {
             _ => None,
         }
     }
-    fn interpolate(
-        &self,
-        other: &Self,
-        progress: InterpolationProgress,
-    ) -> Result<Self, GridError> {
+    fn combine(&self, other: &Self, operation: ComputedOperation) -> Result<Self, GridError> {
         let value = match (&self.value, &other.value) {
             (Breadth::LengthPercentage(a), Breadth::LengthPercentage(b)) => {
-                Breadth::LengthPercentage(a.interpolate(b, progress).map_err(GridError::numeric)?)
+                Breadth::LengthPercentage(combine_numeric(a, b, operation)?)
             }
             (Breadth::Flex(a), Breadth::Flex(b)) => {
-                Breadth::Flex(a.interpolate(b, progress).map_err(GridError::numeric)?)
+                Breadth::Flex(combine_numeric(a, b, operation)?)
             }
-            _ => return Ok(select(self, other, progress)),
+            _ => return Ok(select(self, other, operation)),
         };
         Ok(Self { value })
     }
@@ -269,6 +279,16 @@ pub struct TrackSize {
     value: Size,
 }
 impl TrackSize {
+    fn is_fixed_size(&self) -> bool {
+        match &self.value {
+            Size::Breadth(value) => value.kind() == TrackBreadthKind::LengthPercentage,
+            Size::Minmax(minimum, maximum) => {
+                minimum.kind() == TrackBreadthKind::LengthPercentage
+                    || maximum.kind() == TrackBreadthKind::LengthPercentage
+            }
+            Size::FitContent(_) => false,
+        }
+    }
     pub const fn breadth(value: TrackBreadth) -> Self {
         Self {
             value: Size::Breadth(value),
@@ -307,28 +327,23 @@ impl TrackSize {
             _ => None,
         }
     }
-    fn interpolate(
-        &self,
-        other: &Self,
-        progress: InterpolationProgress,
-    ) -> Result<Self, GridError> {
+    fn combine(&self, other: &Self, operation: ComputedOperation) -> Result<Self, GridError> {
         let value = match (&self.value, &other.value) {
             (Size::Breadth(a), Size::Breadth(b)) => Size::Breadth(
-                a.interpolate(b, progress)
+                a.combine(b, operation)
                     .map_err(|error| error.at(GridComponent::Breadth))?,
             ),
             (Size::Minmax(a, b), Size::Minmax(c, d)) => Size::Minmax(
-                a.interpolate(c, progress)
+                a.combine(c, operation)
                     .map_err(|error| error.at(GridComponent::Minimum))?,
-                b.interpolate(d, progress)
+                b.combine(d, operation)
                     .map_err(|error| error.at(GridComponent::Maximum))?,
             ),
-            (Size::FitContent(a), Size::FitContent(b)) => {
-                Size::FitContent(a.interpolate(b, progress).map_err(|error| {
-                    GridError::numeric(error).at(GridComponent::FitContentLimit)
-                })?)
-            }
-            _ => return Ok(select(self, other, progress)),
+            (Size::FitContent(a), Size::FitContent(b)) => Size::FitContent(
+                combine_numeric(a, b, operation)
+                    .map_err(|error| error.at(GridComponent::FitContentLimit))?,
+            ),
+            _ => return Ok(select(self, other, operation)),
         };
         Ok(Self { value })
     }
@@ -369,34 +384,90 @@ impl FixedRepeat {
     fn compatible(&self, other: &Self) -> bool {
         self.count == other.count && self.tracks.len() == other.tracks.len()
     }
-    fn interpolate(
-        &self,
-        other: &Self,
-        progress: InterpolationProgress,
-    ) -> Result<Self, GridError> {
+    fn combine(&self, other: &Self, operation: ComputedOperation) -> Result<Self, GridError> {
         let mut tracks = storage(self.tracks.len())?;
         for (index, ((a, names), (b, other_names))) in
             self.tracks.iter().zip(other.tracks.iter()).enumerate()
         {
             tracks.push((
-                a.interpolate(b, progress)
+                a.combine(b, operation)
                     .map_err(|error| error.repeated(index))?,
-                select(names, other_names, progress),
+                select(names, other_names, operation),
             ));
         }
         Ok(Self {
             count: self.count,
-            leading: select(&self.leading, &other.leading, progress),
+            leading: select(&self.leading, &other.leading, operation),
             tracks: tracks.into(),
         })
     }
 }
 
-/// An ordinary track or a preserved fixed repeat section.
+/// An automatic repeat keyword, retained without calculating a used count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutomaticRepeatKind {
+    AutoFill,
+    AutoFit,
+}
+
+/// A nonempty, nonnested automatic repeat of fixed-size tracks.
+/// Both automatic keywords select complete templates discretely, even when equal.
+///
+/// ```
+/// use surgeist_animation::computed::{ComputedDimension, ComputedNumeric, DimensionKind};
+/// use surgeist_animation::grid::{AutomaticRepeat, AutomaticRepeatKind, LineNames, TrackBreadth, TrackSize};
+/// let size = TrackSize::breadth(TrackBreadth::length_percentage(ComputedNumeric::dimension(
+///     ComputedDimension::new(DimensionKind::Length, 20.0).unwrap(),
+/// )).unwrap());
+/// let repeat = AutomaticRepeat::new(AutomaticRepeatKind::AutoFill,
+///     LineNames::new(vec![]), vec![(size, LineNames::new(vec![]))]).unwrap();
+/// assert_eq!(repeat.kind(), AutomaticRepeatKind::AutoFill);
+/// ```
+///
+/// Unchecked empty bodies cannot bypass construction.
+///
+/// ```compile_fail,E0451
+/// use surgeist_animation::grid::{AutomaticRepeat, AutomaticRepeatKind, LineNames};
+/// let unchecked = AutomaticRepeat { kind: AutomaticRepeatKind::AutoFill,
+///     leading: LineNames::new(vec![]), tracks: Vec::new().into() };
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct AutomaticRepeat {
+    kind: AutomaticRepeatKind,
+    leading: LineNames,
+    tracks: Arc<[(TrackSize, LineNames)]>,
+}
+impl AutomaticRepeat {
+    pub fn new(
+        kind: AutomaticRepeatKind,
+        leading: LineNames,
+        tracks: Vec<(TrackSize, LineNames)>,
+    ) -> Result<Self, GridError> {
+        nonempty(&tracks)?;
+        check_fixed_tracks(&tracks)?;
+        Ok(Self {
+            kind,
+            leading,
+            tracks: tracks.into(),
+        })
+    }
+    pub const fn kind(&self) -> AutomaticRepeatKind {
+        self.kind
+    }
+    pub const fn leading_names(&self) -> &LineNames {
+        &self.leading
+    }
+    pub fn tracks(&self) -> &[(TrackSize, LineNames)] {
+        &self.tracks
+    }
+}
+
+/// An ordinary track or preserved fixed/automatic repeat section.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TrackSection {
     Single(TrackSize),
     Repeat(FixedRepeat),
+    AutomaticRepeat(AutomaticRepeat),
 }
 
 /// A nonempty computed template list, with leading and trailing line groups.
@@ -416,6 +487,28 @@ impl TemplateTrackList {
         sections: Vec<(TrackSection, LineNames)>,
     ) -> Result<Self, GridError> {
         nonempty(&sections)?;
+        let automatic_count = sections
+            .iter()
+            .filter(|(section, _)| matches!(section, TrackSection::AutomaticRepeat(_)))
+            .count();
+        if automatic_count > 1 {
+            return Err(GridError::new(GridErrorKind::MultipleAutomaticRepeats));
+        }
+        if automatic_count == 1 {
+            for (index, (section, _)) in sections.iter().enumerate() {
+                match section {
+                    TrackSection::Single(track) if !track.is_fixed_size() => {
+                        return Err(
+                            GridError::new(GridErrorKind::InvalidAutomaticTrack).section(index)
+                        );
+                    }
+                    TrackSection::Repeat(repeat) => {
+                        check_fixed_tracks(repeat.tracks()).map_err(|error| error.section(index))?
+                    }
+                    _ => {}
+                }
+            }
+        }
         Ok(Self {
             data: Arc::new(TemplateTrackListData {
                 leading,
@@ -442,13 +535,9 @@ impl TemplateTrackList {
                     _ => false,
                 })
     }
-    fn interpolate(
-        &self,
-        other: &Self,
-        progress: InterpolationProgress,
-    ) -> Result<Self, GridError> {
+    fn combine(&self, other: &Self, operation: ComputedOperation) -> Result<Self, GridError> {
         if !self.compatible(other) {
-            return Ok(select(self, other, progress));
+            return Ok(select(self, other, operation));
         }
         let mut sections = storage(self.data.sections.len())?;
         for (index, ((a, names), (b, other_names))) in self
@@ -460,20 +549,20 @@ impl TemplateTrackList {
         {
             let section = match (a, b) {
                 (TrackSection::Single(a), TrackSection::Single(b)) => TrackSection::Single(
-                    a.interpolate(b, progress)
+                    a.combine(b, operation)
                         .map_err(|error| error.section(index))?,
                 ),
                 (TrackSection::Repeat(a), TrackSection::Repeat(b)) => TrackSection::Repeat(
-                    a.interpolate(b, progress)
+                    a.combine(b, operation)
                         .map_err(|error| error.section(index))?,
                 ),
-                _ => return Ok(select(self, other, progress)),
+                _ => return Ok(select(self, other, operation)),
             };
-            sections.push((section, select(names, other_names, progress)));
+            sections.push((section, select(names, other_names, operation)));
         }
         Ok(Self {
             data: Arc::new(TemplateTrackListData {
-                leading: select(&self.data.leading, &other.data.leading, progress),
+                leading: select(&self.data.leading, &other.data.leading, operation),
                 sections: sections.into(),
             }),
         })
@@ -502,24 +591,96 @@ impl ImplicitTrackList {
     pub fn tracks(&self) -> &[TrackSize] {
         &self.tracks
     }
-    fn interpolate(
-        &self,
-        other: &Self,
-        progress: InterpolationProgress,
-    ) -> Result<Self, GridError> {
+    fn combine(&self, other: &Self, operation: ComputedOperation) -> Result<Self, GridError> {
         if self.tracks.len() != other.tracks.len() {
-            return Ok(select(self, other, progress));
+            return Ok(select(self, other, operation));
         }
         let mut tracks = storage(self.tracks.len())?;
         for (index, (a, b)) in self.tracks.iter().zip(other.tracks.iter()).enumerate() {
             tracks.push(
-                a.interpolate(b, progress)
+                a.combine(b, operation)
                     .map_err(|error| error.section(index))?,
             );
         }
         Ok(Self {
             tracks: tracks.into(),
         })
+    }
+}
+
+/// A repetition count for subgrid line-name groups; auto-fit is not allowed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NameRepeatCount {
+    Fixed(usize),
+    AutoFill,
+}
+
+/// A preserved name-repeat with a positive fixed count or auto-fill and
+/// nonempty groups. Empty individual groups remain valid positional anchors.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NameRepeat {
+    count: NameRepeatCount,
+    groups: Arc<[LineNames]>,
+}
+impl NameRepeat {
+    pub fn new(count: NameRepeatCount, groups: Vec<LineNames>) -> Result<Self, GridError> {
+        if count == NameRepeatCount::Fixed(0) {
+            return Err(GridError::new(GridErrorKind::ZeroRepeatCount));
+        }
+        nonempty(&groups)?;
+        Ok(Self {
+            count,
+            groups: groups.into(),
+        })
+    }
+    pub const fn count(&self) -> NameRepeatCount {
+        self.count
+    }
+    pub fn groups(&self) -> &[LineNames] {
+        &self.groups
+    }
+}
+
+/// One supplied subgrid line group or preserved name-repeat. No track sizes
+/// or nested repeats can be inserted into a name-repeat body.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SubgridSection {
+    Names(LineNames),
+    Repeat(NameRepeat),
+}
+
+/// Grid 2 subgrid's distinct computed line-name list, including bare subgrid.
+/// At most one name-repeat may use auto-fill. Layout owns adoption and expansion.
+///
+/// ```
+/// use surgeist_animation::grid::{LineNames, NameRepeat, NameRepeatCount, SubgridSection, SubgridTrackList};
+/// let repeat = NameRepeat::new(NameRepeatCount::Fixed(2), vec![LineNames::new(vec![])]).unwrap();
+/// let subgrid = SubgridTrackList::new(vec![SubgridSection::Repeat(repeat)]).unwrap();
+/// assert_eq!(subgrid.sections().len(), 1);
+/// assert!(SubgridTrackList::new(vec![]).is_ok());
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct SubgridTrackList {
+    sections: Arc<[SubgridSection]>,
+}
+impl SubgridTrackList {
+    pub fn new(sections: Vec<SubgridSection>) -> Result<Self, GridError> {
+        let automatic_count = sections
+            .iter()
+            .filter(|section| {
+                matches!(section,
+            SubgridSection::Repeat(repeat) if repeat.count() == NameRepeatCount::AutoFill)
+            })
+            .count();
+        if automatic_count > 1 {
+            return Err(GridError::new(GridErrorKind::MultipleAutomaticRepeats));
+        }
+        Ok(Self {
+            sections: sections.into(),
+        })
+    }
+    pub fn sections(&self) -> &[SubgridSection] {
+        &self.sections
     }
 }
 
@@ -530,6 +691,7 @@ pub enum GridValue {
     None,
     Template(TemplateTrackList),
     Implicit(ImplicitTrackList),
+    Subgrid(SubgridTrackList),
 }
 impl GridValue {
     pub fn interpolate(
@@ -537,14 +699,23 @@ impl GridValue {
         other: &Self,
         progress: InterpolationProgress,
     ) -> Result<Self, GridError> {
+        self.combine(other, ComputedOperation::Interpolate(progress))
+    }
+    /// Adds corresponding compatible numeric components, taking effect names
+    /// and incompatible ordinary components. Incompatible structure selects B.
+    pub fn add(&self, effect: &Self) -> Result<Self, GridError> {
+        self.combine(effect, ComputedOperation::Add)
+    }
+    /// Uses Values' default accumulation (addition) for Grid numeric leaves.
+    /// Repeat counts remain structural; no used counts or list repetition occur.
+    pub fn accumulate(&self, effect: &Self) -> Result<Self, GridError> {
+        self.combine(effect, ComputedOperation::Accumulate)
+    }
+    fn combine(&self, other: &Self, operation: ComputedOperation) -> Result<Self, GridError> {
         match (self, other) {
-            (Self::Template(a), Self::Template(b)) => {
-                a.interpolate(b, progress).map(Self::Template)
-            }
-            (Self::Implicit(a), Self::Implicit(b)) => {
-                a.interpolate(b, progress).map(Self::Implicit)
-            }
-            _ => Ok(select(self, other, progress)),
+            (Self::Template(a), Self::Template(b)) => a.combine(b, operation).map(Self::Template),
+            (Self::Implicit(a), Self::Implicit(b)) => a.combine(b, operation).map(Self::Implicit),
+            _ => Ok(select(self, other, operation)),
         }
     }
 }
@@ -557,8 +728,28 @@ fn check_length_percentage(value: &ComputedNumeric) -> Result<(), GridError> {
         actual => Err(GridError::invalid_type(actual)),
     }
 }
-fn select<T: Clone>(from: &T, to: &T, progress: InterpolationProgress) -> T {
-    if progress.value() < 0.5 {
+fn check_fixed_tracks(tracks: &[(TrackSize, LineNames)]) -> Result<(), GridError> {
+    for (index, (track, _)) in tracks.iter().enumerate() {
+        if !track.is_fixed_size() {
+            return Err(GridError::new(GridErrorKind::InvalidAutomaticTrack).repeated(index));
+        }
+    }
+    Ok(())
+}
+fn combine_numeric(
+    from: &ComputedNumeric,
+    to: &ComputedNumeric,
+    operation: ComputedOperation,
+) -> Result<ComputedNumeric, GridError> {
+    match operation {
+        ComputedOperation::Interpolate(progress) => from.interpolate(to, progress),
+        ComputedOperation::Add => from.add(to),
+        ComputedOperation::Accumulate => from.accumulate(to),
+    }
+    .map_err(GridError::numeric)
+}
+fn select<T: Clone>(from: &T, to: &T, operation: ComputedOperation) -> T {
+    if matches!(operation, ComputedOperation::Interpolate(progress) if progress.value() < 0.5) {
         from.clone()
     } else {
         to.clone()
@@ -577,4 +768,17 @@ fn storage<T>(capacity: usize) -> Result<Vec<T>, GridError> {
         .try_reserve_exact(capacity)
         .map_err(|_| GridError::new(GridErrorKind::Capacity))?;
     Ok(values)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GridErrorKind, TrackSize, storage};
+
+    #[test]
+    fn unrepresentable_grid_result_capacity_returns_a_typed_error() {
+        assert_eq!(
+            storage::<TrackSize>(usize::MAX).unwrap_err().kind(),
+            GridErrorKind::Capacity
+        );
+    }
 }

@@ -973,12 +973,13 @@ addition, accumulation or geometry engine is introduced.
 
 ## Computed Grid tracks
 
-`grid::GridValue` represents template `None`, a nonempty `TemplateTrackList`, or
-a nonempty `ImplicitTrackList`. CSS/Style supplies effective longhands and
+`grid::GridValue` represents template `None`, a nonempty `TemplateTrackList`,
+a nonempty `ImplicitTrackList`, or the distinct Grid 2 `SubgridTrackList`.
+CSS/Style supplies effective longhands and
 validated, decoded custom identifiers. It expands the `grid`, `grid-template`,
 `grid-row`, `grid-column` and `grid-area` shorthands. Template lists retain a
 leading `LineNames` group and a trailing group after each `TrackSection`;
-fixed-repeat bodies preserve the same grouping. Animation preserves supplied
+fixed and automatic repeat bodies preserve the same grouping. Animation preserves supplied
 group order and case, without parsing or validating authored identifiers.
 
 `TrackSize` preserves plain breadth, explicit `minmax()` and `fit-content()`
@@ -999,7 +1000,7 @@ incompatible leaf kinds locally. Two explicit `minmax()` functions combine their
 minimum and maximum independently. A plain track opposite explicit `minmax()`,
 or `fit-content()` opposite another function kind, switches that track item.
 
-These first-increment rules use the pinned [Grid 2 property animation tables](../../../references/css-grid-2--CRD-css-grid-2-20250326--05aa64853c44.md#propdef-grid-template-columns)
+These rules use the pinned [Grid 2 property animation tables](../../../references/css-grid-2--CRD-css-grid-2-20250326--05aa64853c44.md#propdef-grid-template-columns)
 and [repeat combination clause](../../../references/css-grid-2--CRD-css-grid-2-20250326--05aa64853c44.md#repeat-interpolation),
 with the [CSSWG integer-repeat resolution](https://github.com/w3c/csswg-drafts/issues/3503)
 and the explicit-minmax/local-item and incompatible-repeat whole-value cases in
@@ -1011,10 +1012,41 @@ switch a whole incompatible `minmax()` record; this API instead selects WPT's
 independent-bound behavior. These are explicit source determinations, not
 claims of complete Grid or browser parity.
 
-`FixedRepeat` requires a positive count and nonempty, nonnested body. Automatic
-repeat keywords and Grid 2 subgrid/name-repeat are unrepresented, so this
-capability makes no interpolation promise for them. Used repeat expansion,
-subgrid adoption, masonry and layout are outside this increment. Supplied
+`FixedRepeat` requires a positive count and nonempty, nonnested body.
+`AutomaticRepeat` retains `AutoFill` or `AutoFit`, a leading name group and a
+nonempty fixed-size body. `TemplateTrackList::new` permits only one automatic
+repeat and requires fixed-size ordinary tracks and fixed-repeat bodies around
+it, following the [auto-track-list grammar](../../../references/css-grid-2--CRD-css-grid-2-20250326--05aa64853c44.md#track-sizing).
+Fixed-size means a length-percentage breadth, or an explicit `minmax()` with at
+least one length-percentage bound. A template containing automatic repeat always
+switches as a complete original, including when the two automatic keywords are
+identical. This follows the [restrictive CSSWG resolution](https://github.com/w3c/csswg-drafts/issues/3503#issuecomment-456901487),
+which requires numeric equal repeat counts for smooth combination, and the WPT
+automatic-repeat cases. The pin's literal equal-first-argument prose would also
+allow equal automatic keywords; the numeric-only resolution is selected here.
+
+`SubgridTrackList` retains the ordered `SubgridSection` sequence of line groups
+and `NameRepeat` records, following the [distinct computed subgrid form](../../../references/css-grid-2--CRD-css-grid-2-20250326--05aa64853c44.md#computed-tracks).
+Bare subgrid and empty individual line groups are valid; name-repeat bodies must
+contain at least one group. Name-repeat permits a positive fixed count or
+`AutoFill`, with at most one automatic name-repeat in the list. `AutoFit`, track
+sizes and nested repeats are unrepresentable there. Subgrid values switch as
+complete originals; no name-repeat count is expanded or interpolated.
+
+`GridValue::add` and `accumulate` reuse the same structure traversal and computed
+numeric owner. Matching numeric length-percentage/flex leaves, explicit minmax
+bounds and fit-content limits combine componentwise. Accumulation uses Values'
+[default of addition](../../../references/css-values-4--WD-css-values-4-20240312--7b6b68c34d00.md#accumulation).
+Line-name groups take the effect's supplied ordered names. Incompatible ordinary
+items or bounds take effect B locally; incompatible outer/repeat structure,
+automatic-repeat templates and subgrid take the complete effect B before any
+numeric work. Matching fixed-repeat counts remain unchanged. These choices
+follow the [WPT Grid composition cases](https://github.com/web-platform-tests/wpt/blob/master/css/css-grid/animation/grid-template-columns-composition.html)
+and Values' [non-additive fallback](../../../references/css-values-4--WD-css-values-4-20240312--7b6b68c34d00.md#addition).
+No list least-common-multiple, concatenation or used percentage basis is applied.
+
+Used repeat expansion, subgrid adoption, masonry and layout are outside this
+native Grid 1/2 capability. Supplied
 `grid-template-areas`, `grid-auto-flow` and placement longhands use the existing
 discrete value path; Animation does not derive those values from track geometry.
 
@@ -1024,8 +1056,9 @@ complete endpoints, property and progress. `GridError` identifies the outer
 section, repeat item and numeric role when applicable. Result storage uses
 checked reservation, and a failed sample publishes no interpolated prefix.
 Track samples classify these failures as `Failed`; a later valid progress can
-recover. Property applicability, transitionability, addition and accumulation
-remain outside this capability.
+recover. Composition's numeric causes retain the Add/Accumulate operation and
+indexed role. Property applicability, transitionability and the consumer's
+effect-stack adapter remain separate from these owned value operations.
 
 ## Computed Masking values
 

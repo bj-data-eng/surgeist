@@ -25,7 +25,12 @@ the existing discrete and computed-component families. Shared layer sampling
 uses repeatable-list pairing for background and mask positions and sizes.
 Filter lists use corresponding identity padding and ordered addition; native
 filter images specialize matching used sources or execute supplied generic
-image interpolation. Explicit transform/composite diagnostic markers retain typed
+image interpolation.
+Grid values retain track/function kinds, fixed and automatic repeats, subgrid
+name lists and symbolic percentages. Compatible tracks combine numerically;
+automatic repeats and incompatible structures select complete values. Native
+Grid addition and accumulation share the same component traversal.
+Explicit transform/composite diagnostic markers retain typed
 unsupported outcomes. CSS lowering, contextual evaluation, final
 clamping, runtime scheduling, and root integration belong to their respective
 owners. Shape addition and accumulation remain outside the current capability.
