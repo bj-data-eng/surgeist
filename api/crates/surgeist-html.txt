@@ -5780,6 +5780,21 @@ pub const fn surgeist_html::microsyntax::color::HtmlLegacyColor::channels(&self)
 pub const fn surgeist_html::microsyntax::color::HtmlLegacyColor::green(&self) -> u8
 pub const fn surgeist_html::microsyntax::color::HtmlLegacyColor::new(red: u8, green: u8, blue: u8) -> Self
 pub const fn surgeist_html::microsyntax::color::HtmlLegacyColor::red(&self) -> u8
+pub mod surgeist_html::microsyntax::dataset
+pub struct surgeist_html::microsyntax::dataset::HtmlDatasetAttributeName<'a>
+impl<'a> surgeist_html::microsyntax::dataset::HtmlDatasetAttributeName<'a>
+pub fn surgeist_html::microsyntax::dataset::HtmlDatasetAttributeName<'a>::for_delete_with<E>(property: &'a [u16], step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<Self, E>
+pub fn surgeist_html::microsyntax::dataset::HtmlDatasetAttributeName<'a>::for_set_with<E>(property: &'a [u16], step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<Self>, E>
+pub const fn surgeist_html::microsyntax::dataset::HtmlDatasetAttributeName<'a>::is_empty(self) -> bool
+pub const fn surgeist_html::microsyntax::dataset::HtmlDatasetAttributeName<'a>::len(self) -> usize
+pub fn surgeist_html::microsyntax::dataset::HtmlDatasetAttributeName<'a>::matches_local_name_with<E>(self, candidate: &[u16], step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
+pub fn surgeist_html::microsyntax::dataset::HtmlDatasetAttributeName<'a>::visit_with<E>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, write: impl core::ops::function::FnMut(u16) -> core::result::Result<(), E>) -> core::result::Result<(), E>
+pub struct surgeist_html::microsyntax::dataset::HtmlDatasetPropertyName<'a>
+impl<'a> surgeist_html::microsyntax::dataset::HtmlDatasetPropertyName<'a>
+pub fn surgeist_html::microsyntax::dataset::HtmlDatasetPropertyName<'a>::from_attribute_with<E>(local_name: &'a [u16], step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<Self>, E>
+pub const fn surgeist_html::microsyntax::dataset::HtmlDatasetPropertyName<'a>::is_empty(self) -> bool
+pub const fn surgeist_html::microsyntax::dataset::HtmlDatasetPropertyName<'a>::len(self) -> usize
+pub fn surgeist_html::microsyntax::dataset::HtmlDatasetPropertyName<'a>::visit_with<E>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, write: impl core::ops::function::FnMut(u16) -> core::result::Result<(), E>) -> core::result::Result<(), E>
 pub mod surgeist_html::microsyntax::numeric
 #[non_exhaustive] pub enum surgeist_html::microsyntax::numeric::HtmlDecimalDigitsError
 pub surgeist_html::microsyntax::numeric::HtmlDecimalDigitsError::Empty

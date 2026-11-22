@@ -8,6 +8,7 @@ pub(crate) mod button;
 pub(crate) mod child_list;
 pub(crate) mod compound;
 pub(crate) mod control;
+pub(crate) mod dataset;
 pub(crate) mod details;
 pub(crate) mod dialog;
 pub(crate) mod dispatch;

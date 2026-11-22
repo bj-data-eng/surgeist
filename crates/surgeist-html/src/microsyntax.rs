@@ -1,6 +1,7 @@
 //! HTML's common microsyntaxes: numbers, temporal values, colors and tokens.
 
 pub mod color;
+pub mod dataset;
 pub mod numeric;
 pub mod temporal;
 pub mod tokens;

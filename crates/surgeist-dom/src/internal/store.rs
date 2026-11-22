@@ -4627,6 +4627,10 @@ impl Draft {
                     }
                 }
             }
+            Command::SetAttributeLocalName { node, name, value } => {
+                let node = self.resolve(node.clone())?;
+                self.set_local_attribute(node, name, value, limits, cancelled)?;
+            }
             Command::SetCustomValidity { node, value } => {
                 let node = self.resolve(node.clone())?;
                 self.set_custom_validity(node, value, limits, cancelled)?;

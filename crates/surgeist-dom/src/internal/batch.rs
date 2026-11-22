@@ -301,6 +301,11 @@ pub(crate) enum Command {
         value: DocumentString,
         mode: AttributeSetterMode,
     },
+    SetAttributeLocalName {
+        node: NodeOperand,
+        name: DocumentString,
+        value: DocumentString,
+    },
     ToggleAttribute {
         node: NodeOperand,
         name: DocumentString,

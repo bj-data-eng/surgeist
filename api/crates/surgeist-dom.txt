@@ -3115,6 +3115,7 @@ pub fn surgeist_dom::source::DomSourceEdit::reset_textarea(node: surgeist_dom::i
 pub fn surgeist_dom::source::DomSourceEdit::retire_range(range: surgeist_dom::range::DomRangeId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_active_range(document: surgeist_dom::identity::DocumentId, range: core::option::Option<surgeist_dom::range::DomRangeId>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_attribute(node: surgeist_dom::identity::NodeId, name: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::set_attribute_local_name(node: surgeist_dom::identity::NodeId, name: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_attribute_ns(node: surgeist_dom::identity::NodeId, namespace: surgeist_html::internal::values::Namespace, qualified_name: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_attribute_value(attribute: surgeist_dom::identity::DomAttrId, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_command_for_element(node: surgeist_dom::identity::NodeId, target: core::option::Option<surgeist_dom::identity::NodeId>) -> Self
@@ -3689,6 +3690,12 @@ impl surgeist_html::internal::values::semantic_input::HtmlAttributeInput for sur
 pub type surgeist_dom::tree::DomAttribute::Name = surgeist_dom::tree::DomQualifiedName
 pub fn surgeist_dom::tree::DomAttribute::name(&self) -> &Self::Name
 pub fn surgeist_dom::tree::DomAttribute::value(&self) -> &surgeist_html::internal::values::document_string::DocumentString
+pub struct surgeist_dom::tree::DomDataset(_)
+impl surgeist_dom::tree::DomDataset
+pub const fn surgeist_dom::tree::DomDataset::element(self) -> surgeist_dom::identity::NodeId
+pub fn surgeist_dom::tree::DomDataset::get_with<'a, E: core::convert::From<surgeist_dom::DomError>>(self, snapshot: &'a surgeist_dom::DomSnapshot, property: &[u16], step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_dom::tree::DomAttr<'a>>, E>
+pub fn surgeist_dom::tree::DomDataset::new(node: surgeist_dom::tree::DomNode<'_>) -> core::option::Option<Self>
+pub fn surgeist_dom::tree::DomDataset::visit_with<'a, E: core::convert::From<surgeist_dom::DomError>>(self, snapshot: &'a surgeist_dom::DomSnapshot, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, visit: impl core::ops::function::FnMut(surgeist_html::internal::microsyntax::dataset::HtmlDatasetPropertyName<'a>, surgeist_dom::tree::DomAttr<'a>) -> core::result::Result<(), E>) -> core::result::Result<(), E>
 pub struct surgeist_dom::tree::DomDocument<'a>
 impl surgeist_dom::tree::DomDocument<'_>
 pub fn surgeist_dom::tree::DomDocument<'_>::associated_inert_template_document(self) -> core::option::Option<surgeist_dom::identity::DocumentId>
