@@ -4,6 +4,9 @@ mod callback_object;
 mod capture;
 #[path = "execution/dom_exception.rs"]
 mod dom_exception;
+#[cfg(feature = "boa-qualification")]
+#[path = "execution/guest_creation_realm.rs"]
+mod guest_creation_realm;
 #[path = "execution/holder_custody.rs"]
 mod holder_custody;
 #[path = "execution/host.rs"]
@@ -2508,6 +2511,11 @@ fn native_collection_rejects_invalid_key_results(process: &mut Process) -> Resul
 }
 
 fn main() -> Result<(), Error> {
+    #[cfg(feature = "boa-qualification")]
+    if std::env::args().nth(1).as_deref() == Some("guest-creation-realm") {
+        let mut process = Process::bootstrap(EngineKind::Boa)?;
+        return guest_creation_realm::guest_objects_keep_their_creation_realm(&mut process);
+    }
     v8::V8::set_flags_from_string("--expose-gc");
     let mut process = Process::bootstrap(EngineKind::V8)?;
     if std::env::args().nth(1).as_deref() == Some("proxy-callback-object") {
