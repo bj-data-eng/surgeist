@@ -26,6 +26,7 @@ mod character_data;
 mod control_validation;
 mod custom_validity;
 mod data_time;
+mod default_view;
 mod details;
 mod dialog;
 mod document_named;
@@ -475,6 +476,9 @@ impl DocumentPrototypes {
         html_document::install(scope, &document, funding.capture)?;
         tag_collection::install_document_element_collections(scope, &document, funding.capture)?;
         title::install_document(scope, &document, funding.capture)?;
+        default_view::install(scope, &document, funding.capture)?;
+        html_document::install_obsolete_colors(scope, &document, funding.capture)?;
+        tag_collection::install_obsolete_document_collections(scope, &document, funding.capture)?;
         legacy::install(scope, &document, funding.capture)?;
         let all = all_collection::install(scope, &global, &document, funding)?;
         let node_lists = node_list::install(scope, &global, &document, funding)?;

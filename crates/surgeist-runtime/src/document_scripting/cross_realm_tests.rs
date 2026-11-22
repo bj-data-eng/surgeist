@@ -452,6 +452,13 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     document_title::document_title_preserves_coercion_and_native_reaction_order();
     document_referrer::document_referrer_reads_the_canonical_known_empty_value();
     document_metadata::projected_parsed_documents_keep_original_metadata();
+    for retiring in [false, true] {
+        super::guest::tests::document_default_view::child_document_can_expose_its_window_first(
+            retiring,
+        );
+    }
+    super::guest::tests::document_default_view::projection_only_document_has_no_local_window_producer();
+    super::guest::tests::document_default_view::default_view_admits_exact_native_read_work();
     super::guest::tests::document_metadata_admission::metadata_getter_admits_its_native_observation_and_copy();
     document_cookie::cookie_averse_documents_read_empty_and_ignore_assignment();
     document_cookie::cookie_assignment_preserves_conversion_reentry_and_abrupt_completion();
@@ -558,6 +565,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::source_callback_reads::editable_ancestry_queries_consume_the_enclosing_attribute_source();
     super::guest::tests::source_callback_reads::translation_queries_consume_the_enclosing_attribute_source();
     super::guest::tests::source_callback_reads::base_uri_reads_consume_the_enclosing_attribute_source();
+    super::guest::tests::source_callback_reads::default_view_reads_consume_the_enclosing_attribute_source();
     tree_mutations::native_mutation_mixins_preserve_original_operands_and_conversion_order();
     super::guest::tests::tree_mutation_admission::normalized_operands_admit_exact_backing_and_work(
     );

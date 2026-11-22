@@ -605,6 +605,13 @@ appear as enumerable named own properties, and multiple matches return a
 live `HTMLCollection`. A sole eligible iframe with a same-origin content
 navigable returns its canonical `WindowProxy`.
 
+`Document.defaultView` reads the receiving Document's native association.
+The attached Document and its qualified same-origin children return their
+existing WindowProxy. A retiring child keeps that identity until DOM clears
+the association. Documents without an association return `null`.
+Other top-level Documents registered for creation prototypes do not provide
+a WindowProxy in this attachment.
+
 An attachment can enable callable Window timers with `WindowTimerLimits`.
 `setTimeout` keeps the callable and arguments in the attached Window's realm.
 `clearTimeout` releases the registration. Runtime orders admitted timers by

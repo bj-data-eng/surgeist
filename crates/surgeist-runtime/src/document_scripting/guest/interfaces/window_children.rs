@@ -8,12 +8,13 @@ use surgeist_dom::{
     hosted::history::DomHostedNavigable,
     hosted::{DomHostedBrowsingContextId, DomHostedError, DomHostedNavigableId},
     identity::DomStamp,
-    tree::DomNodeKind,
+    tree::{DomDocument, DomNodeKind},
 };
+use surgeist_html::security::nonce::HtmlBrowsingContextPresence;
 
 #[derive(Default)]
 pub(super) struct Children {
-    live: RefCell<Option<Box<Entry>>>,
+    entries: RefCell<Option<Box<Entry>>>,
     reconciled: Cell<Option<DomStamp>>,
 }
 
@@ -31,6 +32,19 @@ struct Child {
     global: DomHostedGlobalId,
     document: DocumentId,
     parent: Target,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ChildCustody {
+    Live,
+    AssociatedInactive,
+    OriginOnly,
+}
+
+struct AssociatedWindow {
+    /// The attached Window already owns its proxy. Only a child carries
+    /// additional qualification for the child registry.
+    child: Option<(Child, ChildCustody)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -72,6 +86,10 @@ impl WindowSite {
 }
 
 impl Child {
+    fn is_associated(self, document: DomDocument<'_>) -> bool {
+        document.navigable() == Some(self.navigable)
+    }
+
     fn is_retired(self, snapshot: &DomSnapshot) -> Result<bool, DomHostedError> {
         let mut cursor = Some(self.navigable);
         while let Some(id) = cursor {
@@ -92,6 +110,14 @@ impl Child {
         let record = read
             .snapshot
             .captured_hosted_navigable_with(self.navigable, &mut || read.step())?;
+        self.is_live_at(read, record)
+    }
+
+    fn is_live_at(
+        self,
+        read: &NativeRead<'_>,
+        record: DomHostedNavigable<'_>,
+    ) -> Result<bool, DocumentGuestEventError> {
         if (record.global(), record.browsing_context()) != (self.global, self.context) {
             return Err(DocumentScriptNativeError::ProjectionCustody.into());
         }
@@ -280,9 +306,64 @@ fn describe_child(
 }
 
 impl PublicEventBindings {
+    pub(super) fn document_window<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        document: DocumentId,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
+        let target = attachment.target.navigable();
+        let association = self.callbacks.with_read(owner, events, |read, attached| {
+            let node = read.node(document.node())?;
+            let DomNodeKind::Document(metadata) = node.kind() else {
+                return Err(DomError::WrongNodeKind.into());
+            };
+            if metadata.document_environment().browsing_context()
+                == HtmlBrowsingContextPresence::Absent
+            {
+                return Ok(None);
+            }
+            let record = read
+                .snapshot
+                .hosted_creation_navigable_with(document, &mut || read.step())?
+                .ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
+            if record.active_document() != Some(document) {
+                return Err(DocumentScriptNativeError::ProjectionCustody.into());
+            }
+            if record.id() == target {
+                if record.global() != attached || document != self.callbacks.permit.document {
+                    return Err(DocumentScriptNativeError::ProjectionCustody.into());
+                }
+                return Ok(Some(AssociatedWindow { child: None }));
+            }
+            let child = self
+                .qualified_child(read, target, attached, record, document)?
+                .ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
+            let custody = if child.is_live_at(read, record)? {
+                ChildCustody::Live
+            } else {
+                ChildCustody::AssociatedInactive
+            };
+            Ok(Some(AssociatedWindow {
+                child: Some((child, custody)),
+            }))
+        })?;
+        match association {
+            None => Ok(scope.primitive(Primitive::Null)?),
+            Some(AssociatedWindow { child: None }) => Ok(self.window(scope)?),
+            Some(AssociatedWindow {
+                child: Some((child, custody)),
+            }) => self
+                .establish_child_from_attached(scope, owner, events, child, custody)?
+                .ok_or_else(|| DocumentScriptNativeError::ProjectionCustody.into()),
+        }
+    }
+
     /// Admit the original profile for a same-origin native child before any
-    /// guest operation uses that child's prototypes. Retired children keep
-    /// creation provenance without regaining a live Window registry entry.
+    /// guest operation uses that child's prototypes. A child without its
+    /// native association retains only creation provenance.
     pub(super) fn establish_child_origin<'scope>(
         &self,
         scope: &mut Scope<'scope>,
@@ -290,10 +371,10 @@ impl PublicEventBindings {
         events: &GuestEvents,
         origin: DomHostedGlobalId,
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
-        let Some((child, live)) = self.child_by_origin(owner, events, origin)? else {
+        let Some((child, custody)) = self.child_by_origin(owner, events, origin)? else {
             return Ok(None);
         };
-        self.establish_child_from_attached(scope, owner, events, child, live)
+        self.establish_child_from_attached(scope, owner, events, child, custody)
     }
 
     pub(in crate::document_scripting::guest) fn child_window<'scope>(
@@ -306,10 +387,10 @@ impl PublicEventBindings {
         if let Some(window) = self.window_children.open_global(scope, events, global)? {
             return Ok(Some(window));
         }
-        let Some((child, true)) = self.child_by_origin(owner, events, global)? else {
+        let Some((child, ChildCustody::Live)) = self.child_by_origin(owner, events, global)? else {
             return Ok(None);
         };
-        self.establish_child_from_attached(scope, owner, events, child, true)
+        self.establish_child_from_attached(scope, owner, events, child, ChildCustody::Live)
     }
 
     fn child_by_origin(
@@ -317,7 +398,7 @@ impl PublicEventBindings {
         owner: &NativeOwner,
         events: &GuestEvents,
         origin: DomHostedGlobalId,
-    ) -> Result<Option<(Child, bool)>, DocumentGuestEventError> {
+    ) -> Result<Option<(Child, ChildCustody)>, DocumentGuestEventError> {
         let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
         self.callbacks.with_read(owner, events, |read, attached| {
             let document = read
@@ -329,41 +410,68 @@ impl PublicEventBindings {
             else {
                 return Ok(None);
             };
-            if record.traversable() != attachment.target.navigable() || record.container().is_none()
-            {
+            let Some(child) = self.qualified_child(
+                read,
+                attachment.target.navigable(),
+                attached,
+                record,
+                document,
+            )?
+            else {
                 return Ok(None);
-            }
-            let child = describe_child(read, record, document)?;
-            let top = read.node(self.callbacks.permit.document.node())?;
-            let DomNodeKind::Document(top) = top.kind() else {
+            };
+            let custody = if child.is_live_at(read, record)? {
+                ChildCustody::Live
+            } else if child.is_associated(read.snapshot.document(document)?) {
+                ChildCustody::AssociatedInactive
+            } else {
+                ChildCustody::OriginOnly
+            };
+            Ok(Some((child, custody)))
+        })
+    }
+
+    fn qualified_child(
+        &self,
+        read: &NativeRead<'_>,
+        target: DomHostedNavigableId,
+        attached: DomHostedGlobalId,
+        record: DomHostedNavigable<'_>,
+        document: DocumentId,
+    ) -> Result<Option<Child>, DocumentGuestEventError> {
+        if record.traversable() != target || record.container().is_none() {
+            return Ok(None);
+        }
+        let child = describe_child(read, record, document)?;
+        let top = read.node(self.callbacks.permit.document.node())?;
+        let DomNodeKind::Document(top) = top.kind() else {
+            return Err(DocumentScriptNativeError::ProjectionCustody.into());
+        };
+        let mut cursor = record;
+        let mut document = document;
+        while cursor.id() != target {
+            let node = read.node(document.node())?;
+            let DomNodeKind::Document(metadata) = node.kind() else {
                 return Err(DocumentScriptNativeError::ProjectionCustody.into());
             };
-            let mut cursor = record;
-            let mut document = document;
-            while cursor.id() != attachment.target.navigable() {
-                let node = read.node(document.node())?;
-                let DomNodeKind::Document(metadata) = node.kind() else {
-                    return Err(DocumentScriptNativeError::ProjectionCustody.into());
-                };
-                if metadata.origin() != top.origin() {
-                    return Ok(None);
-                }
-                let parent = cursor
-                    .parent()
-                    .or(cursor.former_parent())
-                    .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                cursor = read
-                    .snapshot
-                    .captured_hosted_navigable_with(parent, &mut || read.step())?;
-                document = read
-                    .snapshot
-                    .global_document_with(cursor.global(), &mut || read.step())?;
+            if metadata.origin() != top.origin() {
+                return Ok(None);
             }
-            if cursor.global() != attached || document != self.callbacks.permit.document {
-                return Err(DocumentScriptNativeError::ProjectionCustody.into());
-            }
-            Ok(Some((child, child.is_live(read)?)))
-        })
+            let parent = cursor
+                .parent()
+                .or(cursor.former_parent())
+                .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+            cursor = read
+                .snapshot
+                .captured_hosted_navigable_with(parent, &mut || read.step())?;
+            document = read
+                .snapshot
+                .global_document_with(cursor.global(), &mut || read.step())?;
+        }
+        if cursor.global() != attached || document != self.callbacks.permit.document {
+            return Err(DocumentScriptNativeError::ProjectionCustody.into());
+        }
+        Ok(Some(child))
     }
 
     fn establish_child_from_attached<'scope>(
@@ -372,15 +480,15 @@ impl PublicEventBindings {
         owner: &NativeOwner,
         events: &GuestEvents,
         child: Child,
-        live: bool,
+        custody: ChildCustody,
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
         if scope.realm_authority()?.identity() == self.callbacks.permit.realm {
-            return self.establish_child(scope, owner, events, child, live);
+            return self.establish_child(scope, owner, events, child, custody);
         }
         let window = self.window(scope)?;
         let window = scope.callback_object(&window)?;
         let proxy = scope.in_callback_object_realm(&window, |scope, _| {
-            let proxy = self.establish_child(scope, owner, events, child, live)?;
+            let proxy = self.establish_child(scope, owner, events, child, custody)?;
             Ok::<_, DocumentGuestEventError>(proxy.as_ref().map(|value| scope.retain(value)))
         })?;
         proxy
@@ -435,7 +543,7 @@ fn child_count(
 
 impl Drop for Children {
     fn drop(&mut self) {
-        release_entries(self.live.get_mut().take());
+        release_entries(self.entries.get_mut().take());
     }
 }
 
@@ -446,7 +554,8 @@ fn release_entries(mut entries: Option<Box<Entry>>) {
 }
 
 impl Children {
-    /// Release live registry custody at a published native revision. DOM's
+    /// Revoke operation access at native retirement and release proxy custody
+    /// when the Document's native association is cleared. DOM's
     /// retired Documents can still create nodes with their original global, so
     /// Runtime retains the corresponding creation prototypes in OriginBindings.
     /// Cleanup needs no new guest admission.
@@ -454,22 +563,29 @@ impl Children {
         if self.reconciled.get() == Some(snapshot.stamp()) {
             return false;
         }
-        let Ok(mut live) = self.live.try_borrow_mut() else {
+        let Ok(mut entries) = self.entries.try_borrow_mut() else {
             return false;
         };
         let mut retired = None;
+        let mut changed = false;
         let mut complete = true;
-        let mut cursor = &mut *live;
+        let mut cursor = &mut *entries;
         while let Some(entry) = cursor.as_ref() {
             match entry.relations.child.is_retired(snapshot) {
                 Ok(true) => {
-                    if let Some(mut entry) = cursor.take() {
-                        entry.relations.retired.set(true);
-                        *cursor = entry.next.take();
-                        entry.next = retired.take();
-                        retired = Some(entry);
+                    changed |= !entry.relations.retired.replace(true);
+                    match snapshot.document(entry.relations.child.document) {
+                        Ok(document) if entry.relations.child.is_associated(document) => (),
+                        Ok(_) | Err(DomError::StaleNode) => {
+                            if let Some(mut entry) = cursor.take() {
+                                *cursor = entry.next.take();
+                                entry.next = retired.take();
+                                retired = Some(entry);
+                            }
+                            continue;
+                        }
+                        Err(_) => complete = false,
                     }
-                    continue;
                 }
                 Ok(false) => (),
                 Err(_) => complete = false,
@@ -482,10 +598,10 @@ impl Children {
         if complete {
             self.reconciled.set(Some(snapshot.stamp()));
         }
-        drop(live);
+        drop(entries);
         let released = retired.is_some();
         release_entries(retired);
-        released
+        changed || released
     }
 
     fn lookup<T>(
@@ -494,7 +610,11 @@ impl Children {
         events: &GuestEvents,
         project: impl FnOnce(&Entry) -> Result<T, DocumentGuestEventError>,
     ) -> Result<Option<T>, DocumentGuestEventError> {
-        self.lookup_where(|child| child.context == context, events, project)
+        self.lookup_where(
+            |entry| entry.relations.child.context == context,
+            events,
+            project,
+        )
     }
 
     pub(in crate::document_scripting::guest) fn open_global<'scope>(
@@ -504,7 +624,7 @@ impl Children {
         global: DomHostedGlobalId,
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
         self.lookup_where(
-            |child| child.global == global,
+            |entry| entry.relations.child.global == global && !entry.relations.is_retired(),
             events,
             |entry| Ok(entry.proxy.open(scope)?),
         )
@@ -512,18 +632,18 @@ impl Children {
 
     fn lookup_where<T>(
         &self,
-        matches: impl Fn(Child) -> bool,
+        matches: impl Fn(&Entry) -> bool,
         events: &GuestEvents,
         project: impl FnOnce(&Entry) -> Result<T, DocumentGuestEventError>,
     ) -> Result<Option<T>, DocumentGuestEventError> {
         let children = self
-            .live
+            .entries
             .try_borrow()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         let mut next = children.as_deref();
         while let Some(entry) = next {
             events.step()?;
-            if matches(entry.relations.child) {
+            if matches(entry) {
                 return project(entry).map(Some);
             }
             next = entry.next.as_deref();
@@ -660,7 +780,7 @@ impl Capture {
 
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
         let proxy = public
-            .establish_child(scope, owner, events, child, true)?
+            .establish_child(scope, owner, events, child, ChildCustody::Live)?
             .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
         Ok(Completion::Return(proxy))
     }
@@ -673,7 +793,7 @@ impl PublicEventBindings {
         owner: &NativeOwner,
         events: &GuestEvents,
         child: Child,
-        live: bool,
+        custody: ChildCustody,
     ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
         let registry = &self.window_children;
         if let Some(proxy) = registry.lookup(child.context, events, |candidate| {
@@ -686,7 +806,7 @@ impl PublicEventBindings {
             return Ok(Some(proxy));
         }
 
-        let backing = live
+        let backing = (custody != ChildCustody::OriginOnly)
             .then(|| events.reserve(owner, size_of::<Entry>()))
             .transpose()?;
         let bytes = window_relations::child_callback_count()
@@ -698,7 +818,7 @@ impl PublicEventBindings {
         let source = Rc::new(ChildRelations {
             callbacks: self.callbacks.clone(),
             child,
-            retired: Cell::new(!live),
+            retired: Cell::new(custody != ChildCustody::Live),
             _backing: events.reserve(owner, bytes)?,
         });
         let document_registry = self.callbacks.with_read(owner, events, |read, _| {
@@ -747,7 +867,7 @@ impl PublicEventBindings {
         };
         let value = proxy.open(scope)?;
         let mut children = registry
-            .live
+            .entries
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         self.publish_origin(origin)?;

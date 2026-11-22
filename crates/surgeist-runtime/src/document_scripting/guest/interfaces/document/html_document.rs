@@ -68,7 +68,7 @@ pub(super) fn install<'scope>(
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
-    for (member, name, get_name, set_name) in [
+    let members: [Attribute<'_>; 4] = [
         (
             Member::Cookie,
             &ascii(b"cookie")[..],
@@ -93,6 +93,35 @@ pub(super) fn install<'scope>(
             &ascii(b"get head")[..],
             None,
         ),
+    ];
+    install_members(scope, prototype, capture, &members)?;
+    let handler = capture(size_of::<Capture>())?;
+    install_getter(
+        scope,
+        prototype,
+        &ascii(b"referrer"),
+        &ascii(b"get referrer"),
+        true,
+        Callback::new(move |scope, arguments| handler.document_referrer(scope, arguments)),
+    )?;
+    let handler = capture(size_of::<Capture>())?;
+    install_getter(
+        scope,
+        prototype,
+        &ascii(b"readyState"),
+        &ascii(b"get readyState"),
+        true,
+        Callback::new(move |scope, arguments| handler.document_readiness(scope, arguments)),
+    )?;
+    Ok(())
+}
+
+pub(super) fn install_obsolete_colors<'scope>(
+    scope: &mut Scope<'scope>,
+    prototype: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    let members: [Attribute<'_>; 5] = [
         (
             Member::FgColor,
             &ascii(b"fgColor")[..],
@@ -123,7 +152,19 @@ pub(super) fn install<'scope>(
             &ascii(b"get bgColor")[..],
             Some(&ascii(b"set bgColor")[..]),
         ),
-    ] {
+    ];
+    install_members(scope, prototype, capture, &members)
+}
+
+type Attribute<'a> = (Member, &'a [u16], &'a [u16], Option<&'a [u16]>);
+
+fn install_members<'scope>(
+    scope: &mut Scope<'scope>,
+    prototype: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+    members: &[Attribute<'_>],
+) -> Result<(), DocumentGuestEventError> {
+    for &(member, name, get_name, set_name) in members {
         let handler = capture(size_of::<(Capture, Member)>())?;
         let getter = scope.fixed_arity_function(
             &Callback::new(move |scope, arguments| {
@@ -159,24 +200,6 @@ pub(super) fn install<'scope>(
             },
         )?;
     }
-    let handler = capture(size_of::<Capture>())?;
-    install_getter(
-        scope,
-        prototype,
-        &ascii(b"referrer"),
-        &ascii(b"get referrer"),
-        true,
-        Callback::new(move |scope, arguments| handler.document_referrer(scope, arguments)),
-    )?;
-    let handler = capture(size_of::<Capture>())?;
-    install_getter(
-        scope,
-        prototype,
-        &ascii(b"readyState"),
-        &ascii(b"get readyState"),
-        true,
-        Callback::new(move |scope, arguments| handler.document_readiness(scope, arguments)),
-    )?;
     Ok(())
 }
 

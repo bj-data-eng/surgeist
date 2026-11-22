@@ -35,6 +35,15 @@ pub(super) fn default_view_follows_the_native_document_context() {
         if (get.name !== 'get defaultView' || get.length !== 0 || set !== undefined ||
             !enumerable || !configurable || Object.hasOwn(get, 'prototype'))
             return 'incorrect getter descriptor';
+        const keys = Object.keys(Document.prototype);
+        const position = keys.indexOf('defaultView');
+        for (const earlier of ['readyState', 'title', 'dir', 'body', 'head', 'images']) {
+            const index = keys.indexOf(earlier);
+            if (index < 0 || index >= position) return 'defaultView precedes ' + earlier;
+        }
+        for (const later of ['fgColor', 'anchors', 'applets', 'all', 'getElementsByName', 'clear']) {
+            if (keys.indexOf(later) <= position) return 'defaultView follows ' + later;
+        }
         for (const receiver of [{}, document.body, new Proxy(document, {}), Object.create(document)]) {
             try { get.call(receiver); return 'accepted non-Document receiver'; }
             catch (error) { if (!(error instanceof TypeError)) throw error; }

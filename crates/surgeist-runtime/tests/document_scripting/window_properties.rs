@@ -435,6 +435,7 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
         ),
         "ok"
     );
+    assert!(live_backing() > before_retirement);
     edit(&mut host, DomSourceEdit::detach(first));
     let snapshot = host.snapshot().unwrap();
     assert!(
@@ -445,9 +446,9 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
     );
     assert_eq!(content_navigable(&snapshot, second), Some(second_child));
     let after_retirement = live_backing();
-    assert!(
-        after_retirement < before_retirement,
-        "native removal must release guest Window registry backing before the next guest read ({before_retirement} -> {after_retirement})"
+    assert_eq!(
+        after_retirement, before_retirement,
+        "native removal must release listener backing and preserve proxy custody while associated"
     );
     let retired = observe(
         &mut host,
