@@ -136,6 +136,38 @@ fn a_numeric_basis_uses_declared_percentage_occurrences_instead_of_its_result_ty
 }
 
 #[test]
+fn nested_basis_skips_an_unused_inner_expansion() {
+    let context = MathContext::new();
+    let kind = NumericType::Dimension(DimensionKind::Length);
+    let basis =
+        CalcSizeCalculation::from_numeric(ComputedNumeric::percentage(0.5).unwrap()).unwrap();
+    let inner = source(&context.source(kind), 3001, 1001, 0);
+    let outer = length(12.0);
+
+    // Substituting the percentage into all 1,001 size references would exceed
+    // the budget. The outer expression discards the inner calculation first.
+    let prepared = CalcSize::with_numeric_basis(&basis, &inner)
+        .and_then(|inner| CalcSize::with_nested_basis(&inner, &outer))
+        .expect("the ignored inner calculation takes no space in the result");
+    assert_eq!(prepared.basis(), CalcSizeBasis::Percentage);
+    assert_eq!(prepared.calculation(), &outer);
+    let sampled = midpoint(
+        &prepared,
+        &CalcSize::new(CalcSizeBasis::Any, length(20.0)).unwrap(),
+    );
+    assert_eq!(sampled.basis(), CalcSizeBasis::Percentage);
+    assert_eq!(
+        evaluate(
+            sampled.calculation(),
+            100.0,
+            100.0,
+            |_, _, _| unreachable!()
+        ),
+        16.0
+    );
+}
+
+#[test]
 fn substitution_rejects_excessive_expansion_and_leaves_inputs_usable() {
     let context = MathContext::new();
     let kind = NumericType::Dimension(DimensionKind::Length);
