@@ -517,6 +517,39 @@ fn staged_luts_execute_direction_specific_order_and_aliased_curves() {
 }
 
 #[test]
+fn staged_tags_reject_unclaimed_bytes_inside_the_selected_payload() {
+    let mut a_to_b = staged(b"mAB ");
+    a_to_b.extend_from_slice(&[9, 8, 7, 6]);
+    let mut b_to_a = staged(b"mBA ");
+    b_to_a.splice(32..32, [9, 8, 7, 6]);
+    for field in b_to_a[12..32].as_chunks_mut::<4>().0 {
+        *field = (u32::from_be_bytes(*field) + 4).to_be_bytes();
+    }
+    let bytes = rgb_profile(
+        b"Lab ",
+        D50,
+        vec![
+            (b"A2B0", staged(b"mAB ")),
+            (b"B2A0", staged(b"mBA ")),
+            (b"A2B1", a_to_b),
+            (b"B2A1", b_to_a),
+        ],
+    );
+    let mut accounting = RenderAccountingContext::default();
+    let profile = IccProfile::inspect(&bytes, &mut accounting).unwrap();
+    let rgb = profile.device_color(&[0.25, 0.5, 0.75]).unwrap();
+    assert_icc_error(
+        profile.to_pcs(RELATIVE, &rgb, &mut accounting),
+        IccProfileError::InvalidProfile,
+    );
+    let lab = IccPcsColor::try_new(IccPcsSpace::Lab, [25.0, -0.5, 63.25], RELATIVE).unwrap();
+    assert_icc_error(
+        profile.from_pcs(lab, &mut accounting),
+        IccProfileError::InvalidProfile,
+    );
+}
+
+#[test]
 fn legacy_conversion_budget_refusal_releases_scratch_and_allows_retry() {
     let bytes = rgb_profile(
         b"Lab ",
