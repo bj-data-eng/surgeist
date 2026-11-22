@@ -163,6 +163,25 @@ fn selected_icc_mpe_evaluates_exponential_with_zero_amplitude() {
     assert_neutral_formula_output(transform, 137);
 }
 
+#[test]
+fn selected_icc_mpe_refuses_a_zero_logarithm_argument() {
+    // At x=2, 9x - 18 is exactly zero. The outer +15 cannot make
+    // log10(0) a finite PCS coordinate.
+    let transform = mpe_formula_transform(2.0, [1.0, 4.0], 1, &[1.0, 1.0, 9.0, -18.0, 15.0]);
+    let profile = mpe_profile(transform, b"XYZ ", lut16_transform(), None);
+    let png = image(&[192, 96, 32, 79], Some(&profile), &[], &[]);
+    let error = test_decode(&png, 1 << 20)
+        .err()
+        .expect("undefined ICC formula must refuse");
+    assert_eq!(
+        error.glyph_preparation_diagnostic(),
+        Some(&GlyphPreparationError::Numeric {
+            phase: GlyphNumericPhase::BitmapColor,
+            value: f64::NEG_INFINITY,
+        }),
+    );
+}
+
 fn assert_neutral_formula_output(transform: Vec<u8>, expected: u8) {
     let profile = mpe_profile(transform, b"XYZ ", lut16_transform(), None);
     let png = image(&[192, 96, 32, 79], Some(&profile), &[], &[]);
