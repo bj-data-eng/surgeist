@@ -737,9 +737,19 @@ impl PublicEventBindings {
     fn with_origin_with<T>(
         &self,
         global: DomHostedGlobalId,
-        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+        step: impl FnMut() -> Result<(), DocumentGuestEventError>,
         use_origin: impl FnOnce(&OriginBindings) -> Result<T, DocumentGuestEventError>,
     ) -> Result<T, DocumentGuestEventError> {
+        self.with_origin_if_present(global, step, use_origin)?
+            .ok_or_else(|| DocumentScriptNativeError::CreationGlobalUnavailable.into())
+    }
+
+    fn with_origin_if_present<T>(
+        &self,
+        global: DomHostedGlobalId,
+        mut step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+        use_origin: impl FnOnce(&OriginBindings) -> Result<T, DocumentGuestEventError>,
+    ) -> Result<Option<T>, DocumentGuestEventError> {
         let origins = self
             .origins
             .try_borrow()
@@ -748,11 +758,11 @@ impl PublicEventBindings {
         while let Some(origin) = next {
             step()?;
             if origin.global == global {
-                return use_origin(origin);
+                return use_origin(origin).map(Some);
             }
             next = origin.next.as_deref();
         }
-        Err(DocumentScriptNativeError::CreationGlobalUnavailable.into())
+        Ok(None)
     }
 
     pub(super) fn activate(&self, events: &Rc<GuestEvents>) {
@@ -764,15 +774,6 @@ impl PublicEventBindings {
 
     pub(super) fn window<'scope>(&self, scope: &mut Scope<'scope>) -> Result<Value<'scope>, Error> {
         scope.open_callback_object(&self.window)
-    }
-
-    pub(super) fn child_window<'scope>(
-        &self,
-        scope: &mut Scope<'scope>,
-        events: &GuestEvents,
-        global: DomHostedGlobalId,
-    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
-        self.window_children.open_global(scope, events, global)
     }
 
     pub(super) fn target_prototype<'scope>(

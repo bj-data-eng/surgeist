@@ -1665,16 +1665,63 @@ impl DomSnapshot {
         id: DomHostedNavigableId,
     ) -> Result<DomHostedNavigable<'_>, DomHostedError> {
         self.require_complete_source()?;
+        self.captured_hosted_navigable_with(id, &mut || Ok(()))
+    }
+
+    /// Read a navigable from this exact snapshot using caller-accounted work.
+    /// In a Source phase this describes the captured graph only and grants no
+    /// authority to act on its navigables.
+    pub fn captured_hosted_navigable_with<E: From<DomHostedError>>(
+        &self,
+        id: DomHostedNavigableId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<DomHostedNavigable<'_>, E> {
         let graph = self
             .state
             .hosted_history
             .as_ref()
             .ok_or(DomHostedError::StaleIdentity)?;
-        let record = graph.navigable(id)?;
+        let record = graph.navigable_with(id, &mut *step)?;
         Ok(DomHostedNavigable {
             record,
-            active: graph.entry(record.active)?,
+            active: graph.entry_with(record.active, step)?,
         })
+    }
+
+    /// Find the navigable of a Document's original hosted creation.
+    /// Retirement preserves this provenance after the active association ends.
+    /// A Document without a published hosted entry returns no navigable.
+    pub fn hosted_creation_navigable_with<E>(
+        &self,
+        document: DocumentId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomHostedNavigable<'_>>, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
+        let node = self.node_with(document.node(), &mut *step)?;
+        let DomNodeKind::Document(metadata) = node.kind() else {
+            return Err(DomError::WrongDocument.into());
+        };
+        let environment = metadata.document_environment();
+        let Some(association) = environment.hosted.as_ref() else {
+            return Ok(None);
+        };
+        let id = match association.phase {
+            DocumentPhase::InitialEntry { navigable, .. } => navigable,
+            DocumentPhase::Retired {
+                original_navigable, ..
+            } => original_navigable,
+            _ => return Ok(None),
+        };
+        let navigable = self.captured_hosted_navigable_with(id, step)?;
+        if navigable.record.initial_document != document
+            || navigable.global() != association.global
+            || navigable.browsing_context() != association.context
+        {
+            return Err(DomHostedError::StaleIdentity.into());
+        }
+        Ok(Some(navigable))
     }
     pub fn hosted_entry(&self, id: DomHostedEntryId) -> Result<DomHostedEntry<'_>, DomHostedError> {
         self.require_complete_source()?;

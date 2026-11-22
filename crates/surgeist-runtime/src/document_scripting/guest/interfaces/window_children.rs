@@ -5,6 +5,7 @@ use crate::document_scripting::window_relations::{self, Member, Relation};
 use surgeist_bindings_js::{ChildWindow, IntegerKind, IntegerMode, IntegerValue, ValueKind};
 use surgeist_dom::{
     DomSnapshot,
+    hosted::history::DomHostedNavigable,
     hosted::{DomHostedBrowsingContextId, DomHostedError, DomHostedNavigableId},
     identity::DomStamp,
     tree::DomNodeKind,
@@ -100,7 +101,17 @@ impl Child {
                 .window_children
                 .lookup(parent, read.events, |entry| Ok(entry.relations.child))?
             else {
-                return Ok(false);
+                let Some(record) = read
+                    .snapshot
+                    .hosted_creation_navigable_with(self.parent.document, &mut || read.step())?
+                else {
+                    return Ok(false);
+                };
+                if record.browsing_context() != parent || record.global() != self.parent.global {
+                    return Err(DocumentScriptNativeError::ProjectionCustody.into());
+                }
+                self = describe_child(read, record, self.parent.document)?;
+                continue;
             };
             if (ancestor.global, ancestor.document) != (self.parent.global, self.parent.document) {
                 return Err(DocumentScriptNativeError::ProjectionCustody.into());
@@ -264,9 +275,8 @@ impl ChildRelations {
             let value = match member.relation {
                 Relation::WindowProxy => scope.import(&scope.retain(proxy))?,
                 Relation::Parent if live => match child.parent.context {
-                    Some(context) => public
-                        .window_children
-                        .lookup(context, &events, |entry| Ok(entry.proxy.open(scope)?))?
+                    Some(_) => public
+                        .child_window(scope, &owner, &events, child.parent.global)?
                         .ok_or(DocumentScriptNativeError::ProjectionCustody)?,
                     None => scope.open_callback_object(&public.window)?,
                 },
@@ -277,6 +287,149 @@ impl ChildRelations {
             Ok(Completion::Return(value))
         })();
         document::tree::tree_completion(scope, &events, result)
+    }
+}
+
+fn describe_child(
+    read: &NativeRead<'_>,
+    record: DomHostedNavigable<'_>,
+    document: DocumentId,
+) -> Result<Child, DocumentGuestEventError> {
+    let parent_id = record
+        .parent()
+        .or(record.former_parent())
+        .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+    let parent = read
+        .snapshot
+        .captured_hosted_navigable_with(parent_id, &mut || read.step())?;
+    let parent_context = (parent.parent().is_some() || parent.former_parent().is_some())
+        .then(|| parent.browsing_context());
+    let parent_document = read
+        .snapshot
+        .global_document_with(parent.global(), &mut || read.step())?;
+    Ok(Child {
+        context: record.browsing_context(),
+        navigable: record.id(),
+        global: record.global(),
+        document,
+        parent: Target {
+            context: parent_context,
+            global: parent.global(),
+            document: parent_document,
+        },
+    })
+}
+
+impl PublicEventBindings {
+    /// Admit the original profile for a same-origin native child before any
+    /// guest operation uses that child's prototypes. Retired children keep
+    /// creation provenance without regaining a live Window registry entry.
+    pub(super) fn establish_child_origin<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        origin: DomHostedGlobalId,
+    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
+        let Some((child, live)) = self.child_by_origin(owner, events, origin)? else {
+            return Ok(None);
+        };
+        self.establish_child_from_attached(scope, owner, events, child, live)
+    }
+
+    pub(in crate::document_scripting::guest) fn child_window<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        global: DomHostedGlobalId,
+    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
+        if let Some(window) = self.window_children.open_global(scope, events, global)? {
+            return Ok(Some(window));
+        }
+        let Some((child, true)) = self.child_by_origin(owner, events, global)? else {
+            return Ok(None);
+        };
+        self.establish_child_from_attached(scope, owner, events, child, true)
+    }
+
+    fn child_by_origin(
+        &self,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        origin: DomHostedGlobalId,
+    ) -> Result<Option<(Child, bool)>, DocumentGuestEventError> {
+        let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
+        self.callbacks.with_read(owner, events, |read, attached| {
+            let document = read
+                .snapshot
+                .global_document_with(origin, &mut || read.step())?;
+            let Some(record) = read
+                .snapshot
+                .hosted_creation_navigable_with(document, &mut || read.step())?
+            else {
+                return Ok(None);
+            };
+            if record.traversable() != attachment.target.navigable() || record.container().is_none()
+            {
+                return Ok(None);
+            }
+            let child = describe_child(read, record, document)?;
+            let top = read.node(self.callbacks.permit.document.node())?;
+            let DomNodeKind::Document(top) = top.kind() else {
+                return Err(DocumentScriptNativeError::ProjectionCustody.into());
+            };
+            let mut cursor = record;
+            let mut document = document;
+            let mut live = true;
+            while cursor.id() != attachment.target.navigable() {
+                let node = read.node(document.node())?;
+                let DomNodeKind::Document(metadata) = node.kind() else {
+                    return Err(DocumentScriptNativeError::ProjectionCustody.into());
+                };
+                if metadata.origin() != top.origin() {
+                    return Ok(None);
+                }
+                live &= !cursor.is_retiring() && !cursor.is_retired();
+                let parent = cursor
+                    .parent()
+                    .or(cursor.former_parent())
+                    .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+                cursor = read
+                    .snapshot
+                    .captured_hosted_navigable_with(parent, &mut || read.step())?;
+                document = read
+                    .snapshot
+                    .global_document_with(cursor.global(), &mut || read.step())?;
+            }
+            if cursor.global() != attached || document != self.callbacks.permit.document {
+                return Err(DocumentScriptNativeError::ProjectionCustody.into());
+            }
+            Ok(Some((child, live)))
+        })
+    }
+
+    fn establish_child_from_attached<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        child: Child,
+        live: bool,
+    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
+        if scope.realm_authority()?.identity() == self.callbacks.permit.realm {
+            return self.establish_child(scope, owner, events, child, live);
+        }
+        let window = self.window(scope)?;
+        let window = scope.callback_object(&window)?;
+        let proxy = scope.in_callback_object_realm(&window, |scope, _| {
+            let proxy = self.establish_child(scope, owner, events, child, live)?;
+            Ok::<_, DocumentGuestEventError>(proxy.as_ref().map(|value| scope.retain(value)))
+        })?;
+        proxy
+            .as_ref()
+            .map(|root| scope.import(root).map_err(Into::into))
+            .transpose()
     }
 }
 
@@ -549,18 +702,36 @@ impl Capture {
         }
 
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
-        let registry = &public.window_children;
-        if let Some(proxy) = registry.lookup(context, events, |candidate| {
+        let proxy = public
+            .establish_child(scope, owner, events, child, true)?
+            .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+        Ok(Completion::Return(proxy))
+    }
+}
+
+impl PublicEventBindings {
+    fn establish_child<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        child: Child,
+        live: bool,
+    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
+        let registry = &self.window_children;
+        if let Some(proxy) = registry.lookup(child.context, events, |candidate| {
             if candidate.relations.child != child {
                 Err(DocumentScriptNativeError::ProjectionCustody.into())
             } else {
                 Ok(candidate.proxy.open(scope)?)
             }
         })? {
-            return Ok(Completion::Return(proxy));
+            return Ok(Some(proxy));
         }
 
-        let backing = events.reserve(owner, size_of::<Entry>())?;
+        let backing = live
+            .then(|| events.reserve(owner, size_of::<Entry>()))
+            .transpose()?;
         let bytes = window_relations::child_callback_count()
             .checked_mul(size_of::<ChildAccess>())
             .and_then(|bytes| {
@@ -570,7 +741,7 @@ impl Capture {
         let source = Rc::new(ChildRelations {
             callbacks: self.callbacks.clone(),
             child,
-            retired: Cell::new(false),
+            retired: Cell::new(!live),
             _backing: events.reserve(owner, bytes)?,
         });
         let document_registry = self.callbacks.with_read(owner, events, |read, _| {
@@ -593,7 +764,7 @@ impl Capture {
                 };
                 Callback::new(move |scope, arguments| access.call(scope, arguments))
             })?;
-            public.build_origin(
+            self.build_origin(
                 scope,
                 events,
                 OriginInstall {
@@ -602,7 +773,7 @@ impl Capture {
                     registry: document_registry,
                     dom_exception_limits: owner.dom_exception_limits.get(),
                     admission,
-                    conversion_host: public
+                    conversion_host: self
                         .conversion_host
                         .for_origin(ConversionOrigin::DomException),
                     window: Some(WindowOriginInstall {
@@ -613,12 +784,16 @@ impl Capture {
                 },
             )
         })?;
+        let Some(backing) = backing else {
+            self.publish_origin(origin)?;
+            return Ok(None);
+        };
         let value = proxy.open(scope)?;
         let mut children = registry
             .live
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        public.publish_origin(origin)?;
+        self.publish_origin(origin)?;
         let next = children.take();
         *children = Some(Box::new(Entry {
             relations: source,
@@ -626,6 +801,6 @@ impl Capture {
             next,
             _backing: backing,
         }));
-        Ok(Completion::Return(value))
+        Ok(Some(value))
     }
 }

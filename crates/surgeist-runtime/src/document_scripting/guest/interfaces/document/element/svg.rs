@@ -118,6 +118,7 @@ const ELEMENTS: &[(&str, &str, Parent)] = &[
     ("view", "SVGViewElement", Parent::Base),
 ];
 
+#[derive(Clone, Copy)]
 pub(super) struct Interface(Option<usize>);
 
 pub(super) fn interface(

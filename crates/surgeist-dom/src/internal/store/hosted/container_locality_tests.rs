@@ -643,6 +643,13 @@ fn document_tree_children_follow_current_publication_reorder_and_retirement() {
         current_children(&f.inner.dom, f.top.document),
         [identities(f.first), identities(f.light)]
     );
+    let active_snapshot = f.inner.dom.snapshot();
+    let active_origin = active_snapshot
+        .hosted_creation_navigable_with(f.first.document, &mut || Ok::<_, DomHostedError>(()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(active_origin.id(), f.first.navigable);
+    assert_eq!(active_origin.active_document(), Some(f.first.document));
 
     let mut edit = f
         .inner
@@ -687,6 +694,7 @@ fn document_tree_children_follow_current_publication_reorder_and_retirement() {
         f.first,
         DocumentPhase::Retired {
             operation: f.first_operation,
+            original_navigable: f.first.navigable,
         },
     );
     draft
@@ -699,6 +707,17 @@ fn document_tree_children_follow_current_publication_reorder_and_retirement() {
         [identities(f.light)]
     );
     assert!(current_children(&f.inner.dom, f.first.document).is_empty());
+    let retired_snapshot = f.inner.dom.snapshot();
+    let retired_origin = retired_snapshot
+        .hosted_creation_navigable_with(f.first.document, &mut || Ok::<_, DomHostedError>(()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(retired_origin.id(), active_origin.id());
+    assert_eq!(retired_origin.global(), active_origin.global());
+    assert_eq!(retired_origin.former_parent(), Some(f.top.navigable));
+    assert_eq!(retired_origin.active_document(), None);
+    assert!(retired_origin.is_retired());
+    assert!(!active_origin.is_retired());
     let mut edit = DomBatch::new();
     edit.detach(f.containers[0]);
     f.inner.dom.apply(edit, &cancel()).unwrap();

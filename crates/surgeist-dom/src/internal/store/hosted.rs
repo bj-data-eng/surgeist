@@ -1931,6 +1931,7 @@ impl DomHostedDestructionLease {
                     creation.document,
                     DocumentPhase::Retired {
                         operation: self.operation,
+                        original_navigable: creation.navigable,
                     },
                     cancel,
                 )?;

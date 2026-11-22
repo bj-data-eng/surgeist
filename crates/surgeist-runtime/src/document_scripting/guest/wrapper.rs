@@ -130,7 +130,7 @@ pub(super) fn project_native_event_target<'scope>(
                 };
             }
             if let Some(public) = &events.public
-                && let Some(value) = public.child_window(scope, events, *global)?
+                && let Some(value) = public.child_window(scope, owner, events, *global)?
             {
                 return Ok(value);
             }
