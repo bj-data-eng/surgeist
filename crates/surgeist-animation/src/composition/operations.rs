@@ -3,6 +3,7 @@
 use super::PropertyValueOperations;
 use crate::computed::ComputedError;
 use crate::filter::FilterError;
+use crate::grid::GridError;
 use crate::interpolation::{
     InterpolableNumber, InterpolablePercentage, InterpolableValue, InterpolationError,
     InterpolationOutcome, InterpolationPair, InterpolationProgress, PropertyKey, TransformValue,
@@ -20,10 +21,8 @@ use core::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnimationType {
     Discrete,
-    /// Combines computed components and dispatches guarded Transform/Shadow/Filter
-    /// payloads to their selected property-specific list owners. Shadow kind and
-    /// filter function identities remain encoded by their respective lists;
-    /// generic repeatable-list rules do not apply to these payloads.
+    /// Combines computed components or delegates to the selected property rules
+    /// for transforms, shadows, filters, Grid track values and font palettes.
     ByComputedValue,
     RepeatableList,
 }
@@ -56,6 +55,7 @@ pub enum PropertyOperationErrorKind {
     Transform(Box<TransformError>),
     Shadow(Box<ShadowError>),
     Filter(Box<FilterError>),
+    Grid(Box<GridError>),
     Interpolation(Box<InterpolationError>),
 }
 /// A typed failure from a generic property operation.
@@ -85,6 +85,7 @@ impl std::error::Error for PropertyOperationError {
             PropertyOperationErrorKind::Transform(error) => Some(error.as_ref()),
             PropertyOperationErrorKind::Shadow(error) => Some(error.as_ref()),
             PropertyOperationErrorKind::Filter(error) => Some(error.as_ref()),
+            PropertyOperationErrorKind::Grid(error) => Some(error.as_ref()),
             PropertyOperationErrorKind::Interpolation(error) => Some(error.as_ref()),
             _ => None,
         }
@@ -94,6 +95,13 @@ impl From<ComputedError> for PropertyOperationError {
     fn from(error: ComputedError) -> Self {
         Self {
             kind: PropertyOperationErrorKind::Computed(error),
+        }
+    }
+}
+impl From<GridError> for PropertyOperationError {
+    fn from(error: GridError) -> Self {
+        Self {
+            kind: PropertyOperationErrorKind::Grid(Box::new(error)),
         }
     }
 }
@@ -264,6 +272,14 @@ impl AnimationTypeOperations {
                     a.accumulated_with(b)
                 };
                 Ok(InterpolableValue::filter(value))
+            }
+            (InterpolableValue::Grid(a), InterpolableValue::Grid(b)) => {
+                let value = if operation == CompositeOperation::Add {
+                    a.add(b)
+                } else {
+                    a.accumulate(b)
+                }?;
+                Ok(InterpolableValue::grid(value))
             }
             (InterpolableValue::Discrete(_), InterpolableValue::Discrete(_)) => Ok(value.clone()),
             (a, b) if a.family() != b.family() => Ok(value.clone()),

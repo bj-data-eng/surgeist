@@ -31,6 +31,7 @@ pub enum surgeist_animation::composition::PropertyOperationErrorKind
 pub surgeist_animation::composition::PropertyOperationErrorKind::Capacity
 pub surgeist_animation::composition::PropertyOperationErrorKind::Computed(surgeist_animation::computed::ComputedError)
 pub surgeist_animation::composition::PropertyOperationErrorKind::Filter(alloc::boxed::Box<surgeist_animation::filter::FilterError>)
+pub surgeist_animation::composition::PropertyOperationErrorKind::Grid(alloc::boxed::Box<surgeist_animation::grid::GridError>)
 pub surgeist_animation::composition::PropertyOperationErrorKind::Interpolation(alloc::boxed::Box<surgeist_animation::interpolation::InterpolationError>)
 pub surgeist_animation::composition::PropertyOperationErrorKind::Shadow(alloc::boxed::Box<surgeist_animation::shadow::ShadowError>)
 pub surgeist_animation::composition::PropertyOperationErrorKind::Transform(alloc::boxed::Box<surgeist_animation::transform::TransformError>)
@@ -108,6 +109,8 @@ impl surgeist_animation::composition::PropertyOperationError
 pub const fn surgeist_animation::composition::PropertyOperationError::kind(&self) -> &surgeist_animation::composition::PropertyOperationErrorKind
 impl core::convert::From<surgeist_animation::computed::ComputedError> for surgeist_animation::composition::PropertyOperationError
 pub fn surgeist_animation::composition::PropertyOperationError::from(error: surgeist_animation::computed::ComputedError) -> Self
+impl core::convert::From<surgeist_animation::grid::GridError> for surgeist_animation::composition::PropertyOperationError
+pub fn surgeist_animation::composition::PropertyOperationError::from(error: surgeist_animation::grid::GridError) -> Self
 impl core::convert::From<surgeist_animation::interpolation::InterpolationError> for surgeist_animation::composition::PropertyOperationError
 pub fn surgeist_animation::composition::PropertyOperationError::from(error: surgeist_animation::interpolation::InterpolationError) -> Self
 impl core::error::Error for surgeist_animation::composition::PropertyOperationError
@@ -651,6 +654,8 @@ pub const fn surgeist_animation::grid::GridError::kind(&self) -> surgeist_animat
 pub const fn surgeist_animation::grid::GridError::numeric_error(&self) -> core::option::Option<&surgeist_animation::computed::ComputedError>
 pub const fn surgeist_animation::grid::GridError::repeat_index(&self) -> core::option::Option<usize>
 pub const fn surgeist_animation::grid::GridError::section_index(&self) -> core::option::Option<usize>
+impl core::convert::From<surgeist_animation::grid::GridError> for surgeist_animation::composition::PropertyOperationError
+pub fn surgeist_animation::composition::PropertyOperationError::from(error: surgeist_animation::grid::GridError) -> Self
 impl core::error::Error for surgeist_animation::grid::GridError
 pub fn surgeist_animation::grid::GridError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_animation::grid::GridError

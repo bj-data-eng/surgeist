@@ -1057,8 +1057,11 @@ section, repeat item and numeric role when applicable. Result storage uses
 checked reservation, and a failed sample publishes no interpolated prefix.
 Track samples classify these failures as `Failed`; a later valid progress can
 recover. Composition's numeric causes retain the Add/Accumulate operation and
-indexed role. Property applicability, transitionability and the consumer's
-effect-stack adapter remain separate from these owned value operations.
+indexed role. `AnimationTypeOperations::new(AnimationType::ByComputedValue)`
+delegates Grid addition and accumulation to these owned operations when sampling an effect stack.
+`PropertyOperationErrorKind::Grid` preserves the typed cause and its source
+chain through animation/keyframe diagnostics. Property applicability and
+transitionability remain consumer choices.
 
 ## Computed Masking values
 

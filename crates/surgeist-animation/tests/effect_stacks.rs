@@ -261,6 +261,87 @@ fn grid_default_stack_accumulates_tracks_against_evolving_underlying() {
     assert_grid_stack_composes(CompositeOperation::Accumulate);
 }
 
+fn assert_grid_operation_error(
+    error: &surgeist_animation::composition::PropertyOperationError,
+    operation: surgeist_animation::computed::ComputedOperation,
+) {
+    use surgeist_animation::composition::PropertyOperationErrorKind;
+    use surgeist_animation::grid::{GridComponent, GridError, GridErrorKind};
+    let PropertyOperationErrorKind::Grid(owner) = error.kind() else {
+        panic!("expected the original Grid error, got {error:?}");
+    };
+    assert_eq!(owner.kind(), GridErrorKind::Numeric);
+    assert_eq!(owner.section_index(), Some(0));
+    assert_eq!(owner.component(), Some(GridComponent::Breadth));
+    assert_eq!(owner.numeric_error().unwrap().operation(), Some(operation));
+    let source = std::error::Error::source(error)
+        .unwrap()
+        .downcast_ref::<GridError>()
+        .unwrap();
+    assert_eq!(source, owner.as_ref());
+    assert!(std::error::Error::source(source).is_some());
+}
+
+#[test]
+fn grid_default_adapter_preserves_typed_owner_errors_for_both_operations() {
+    use surgeist_animation::composition::PropertyValueOperations;
+    use surgeist_animation::computed::ComputedOperation;
+    let operations = AnimationTypeOperations::new(AnimationType::ByComputedValue);
+    let value = grid_value(f64::MAX, 0.0, 0.0);
+    for (result, operation) in [
+        (
+            operations.add(&key("grid-template-columns"), &value, &value),
+            ComputedOperation::Add,
+        ),
+        (
+            operations.accumulate(&key("grid-template-columns"), &value, &value),
+            ComputedOperation::Accumulate,
+        ),
+    ] {
+        assert_grid_operation_error(&result.unwrap_err(), operation);
+    }
+}
+
+#[test]
+fn grid_default_stack_preserves_animation_keyframe_and_owner_error_context() {
+    use surgeist_animation::computed::ComputedOperation;
+    use surgeist_animation::keyframe::KeyframeSampleStage;
+    for (operation, expected) in [
+        (CompositeOperation::Add, ComputedOperation::Add),
+        (
+            CompositeOperation::Accumulate,
+            ComputedOperation::Accumulate,
+        ),
+    ] {
+        let mut records = AnimationRecords::new();
+        let value = grid_value(f64::MAX, 0.0, 0.0);
+        let low = input(
+            &mut records,
+            &[("grid-template-columns", value.clone())],
+            CompositeOperation::Replace,
+        );
+        let high = input(&mut records, &[("grid-template-columns", value)], operation);
+        let high_id = high.animation.clone();
+        let snapshot = EffectStackSnapshot::new(&records, vec![high, low]).unwrap();
+        let base = grid_value(10.0, 20.0, 0.125);
+        let error = snapshot
+            .sample(
+                EffectTargetId::new(1),
+                &key("grid-template-columns"),
+                KeyframeTarget::Available(&base),
+                &AnimationTypeOperations::new(AnimationType::ByComputedValue),
+            )
+            .unwrap_err();
+        assert_eq!(error.animation(), &high_id);
+        let frame_error = error.keyframe_error();
+        assert_eq!(frame_error.property(), &key("grid-template-columns"));
+        assert_eq!(frame_error.stage(), KeyframeSampleStage::Composition);
+        assert_eq!(frame_error.frame_index(), Some(0));
+        assert_grid_operation_error(frame_error.operation_error().unwrap(), expected);
+        assert_eq!(base, grid_value(10.0, 20.0, 0.125));
+    }
+}
+
 #[test]
 fn folds_in_creation_order_with_evolving_underlying_and_no_double_composition() {
     let mut records = AnimationRecords::new();
