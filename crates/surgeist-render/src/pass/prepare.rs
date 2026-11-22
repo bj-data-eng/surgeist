@@ -31,6 +31,7 @@ use super::super::{
         MorphologyPassKeyRefs, NativeShadowParameterBytes, NativeShadowPassKeyRefs,
         OffsetParameterBytes, OffsetPassKeyRefs, PassSpatialUniformBytes,
         ProvisionalCopyBackdropPassObjects, ProvisionalDevicePassCacheUpdate,
+        TurbulenceParameterBytes, TurbulencePassKeyRefs,
     },
     texture::EffectTextureDescriptor,
     vello_engine::VelloEngineState,
@@ -155,6 +156,9 @@ impl RuntimePassPreparationRequest {
         if matches!(self.runtime.kind, RuntimePassKind::Lighting(_)) {
             roles.insert(PassBufferRole::Lighting);
         }
+        if matches!(self.runtime.kind, RuntimePassKind::Turbulence(_)) {
+            roles.insert(PassBufferRole::Turbulence);
+        }
         role!(offset_parameters, Offset);
         role!(displacement, Displacement);
         role!(convolution_parameters, Convolution);
@@ -241,6 +245,7 @@ impl RuntimePassPreparationRequest {
                 | RuntimePassKind::Morphology(_)
                 | RuntimePassKind::NativeShadowMerge(_)
                 | RuntimePassKind::Lighting(_)
+                | RuntimePassKind::Turbulence(_)
                 | RuntimePassKind::Offset(_)
                 | RuntimePassKind::Displacement(_)
         );
@@ -271,12 +276,15 @@ impl RuntimePassPreparationRequest {
                 ));
             }
         }
-        // The lighting parameters live inside the immutable runtime payload.
-        // A stage always has its fixed uniform and other passes have no role
-        // to inspect here.
-        let lighting = matches!(kind, RuntimePassKind::Lighting(_))
-            .then_some((R::Lighting, Some(LightingParameterBytes::SIZE)));
-        Ok(layout.into_iter().chain(lighting))
+        // These parameter owners hold their wire bytes in the runtime facts.
+        let embedded = match kind {
+            RuntimePassKind::Lighting(_) => Some((R::Lighting, Some(LightingParameterBytes::SIZE))),
+            RuntimePassKind::Turbulence(_) => {
+                Some((R::Turbulence, Some(TurbulenceParameterBytes::SIZE)))
+            }
+            _ => None,
+        };
+        Ok(layout.into_iter().chain(embedded))
     }
     pub(super) fn parameter_roles(&self, account: &Account) -> Result<PassBufferRoles> {
         let _ = self.parameter_layout(account)?;
@@ -1054,6 +1062,7 @@ fn prepare_runtime_pass_requests(
             _ => None,
         };
         let lighting = matches!(pass.kind, RuntimePassKind::Lighting(_));
+        let turbulence = matches!(pass.kind, RuntimePassKind::Turbulence(_));
         let displacement = match &pass.kind {
             RuntimePassKind::Displacement(work) => Some(super::displacement::prepare(
                 work,
@@ -1070,7 +1079,10 @@ fn prepare_runtime_pass_requests(
             || native_shadow_parameters.is_some()
             || lighting
         {
-            validate_fixed_uniform_limits(uniform_limits)?;
+            validate_fixed_uniform_limits(uniform_limits, 256)?;
+        }
+        if turbulence {
+            validate_fixed_uniform_limits(uniform_limits, TurbulenceParameterBytes::SIZE)?;
         }
         if (spatial_uniform.is_some()
             || convolution_parameters.is_some()
@@ -1079,6 +1091,7 @@ fn prepare_runtime_pass_requests(
             || offset_parameters.is_some()
             || native_shadow_parameters.is_some()
             || lighting
+            || turbulence
             || displacement.is_some())
             != pass.cache_keys.is_some()
         {
@@ -1117,11 +1130,14 @@ fn prepare_runtime_pass_requests(
     Ok(requests)
 }
 
-fn validate_fixed_uniform_limits(limits: &wgpu::Limits) -> Result<()> {
-    if limits.max_buffer_size < 256 || limits.max_uniform_buffer_binding_size < 256 {
+fn validate_fixed_uniform_limits(limits: &wgpu::Limits, bytes: usize) -> Result<()> {
+    let required_bytes = bytes as u64;
+    if limits.max_buffer_size < required_bytes
+        || limits.max_uniform_buffer_binding_size < required_bytes
+    {
         return Err(crate::Error::invalid_value(
             "native spatial filter uniform buffer byte length",
-            256,
+            bytes,
             "must fit the selected device buffer and uniform-binding limits",
         ));
     }
@@ -1596,6 +1612,8 @@ pub(super) struct AcquiredGraphBindings {
         PassMap<RuntimePassId, PreparedPassBuffer<OffsetParameterBytes>>,
     pub(super) lighting_parameter_bindings:
         PassMap<RuntimePassId, PreparedPassBuffer<LightingParameterBytes>>,
+    pub(super) turbulence_parameter_bindings:
+        PassMap<RuntimePassId, PreparedPassBuffer<TurbulenceParameterBytes>>,
     pub(super) native_shadow_parameter_bindings:
         PassMap<RuntimePassId, PreparedPassBuffer<NativeShadowParameterBytes>>,
     pub(super) gaussian_parameter_bindings:
@@ -1732,6 +1750,10 @@ fn acquire_prepared_graph_resources(
             lighting_parameter_bindings: PassMap::new(
                 account,
                 counts[PassBufferRole::Lighting.index()],
+            )?,
+            turbulence_parameter_bindings: PassMap::new(
+                account,
+                counts[PassBufferRole::Turbulence.index()],
             )?,
             native_shadow_parameter_bindings: PassMap::new(
                 account,
@@ -1888,6 +1910,10 @@ fn acquire_prepared_graph_resources(
         if let RuntimePassKind::Lighting(work) = &pass.runtime.kind {
             let bytes = LightingParameterBytes::from_stage(work);
             acquire!(lighting_parameter_bindings, Some(&bytes), Lighting);
+        }
+        if let RuntimePassKind::Turbulence(work) = &pass.runtime.kind {
+            let bytes = TurbulenceParameterBytes::from_facts(work);
+            acquire!(turbulence_parameter_bindings, Some(&bytes), Turbulence);
         }
         acquire!(
             native_shadow_parameter_bindings,
@@ -2087,6 +2113,20 @@ fn realize_prepared_graph_pass(
                 pass_cache,
                 account,
                 LightingPassKeyRefs {
+                    samplers: keys.samplers(),
+                    layout: keys.layout(),
+                    shader: keys.shader(),
+                    pipeline: keys.pipeline(),
+                },
+            )?;
+            Ok(None)
+        }
+        RuntimePassKind::Turbulence(_) => {
+            update.realize_turbulence_pass(
+                device,
+                pass_cache,
+                account,
+                TurbulencePassKeyRefs {
                     samplers: keys.samplers(),
                     layout: keys.layout(),
                     shader: keys.shader(),
@@ -3568,7 +3608,7 @@ mod reconstructed_key_accounting_tests {
 }
 
 #[cfg(test)]
-mod offset_uniform_tests {
+mod native_uniform_tests {
     use super::validate_fixed_uniform_limits;
 
     #[test]
@@ -3576,11 +3616,28 @@ mod offset_uniform_tests {
         let mut limits = wgpu::Limits::downlevel_defaults();
         limits.max_buffer_size = 256;
         limits.max_uniform_buffer_binding_size = 256;
-        validate_fixed_uniform_limits(&limits).unwrap();
+        validate_fixed_uniform_limits(&limits, 256).unwrap();
         limits.max_buffer_size = 255;
-        assert!(validate_fixed_uniform_limits(&limits).is_err());
+        assert!(validate_fixed_uniform_limits(&limits, 256).is_err());
         limits.max_buffer_size = 256;
         limits.max_uniform_buffer_binding_size = 255;
-        assert!(validate_fixed_uniform_limits(&limits).is_err());
+        assert!(validate_fixed_uniform_limits(&limits, 256).is_err());
+    }
+
+    #[test]
+    fn turbulence_uniform_preflight_requires_the_entire_wire_allocation() {
+        use crate::shader::TurbulenceParameterBytes;
+        let bytes = TurbulenceParameterBytes::SIZE;
+        let mut limits = wgpu::Limits {
+            max_buffer_size: 9296,
+            max_uniform_buffer_binding_size: 9296,
+            ..wgpu::Limits::downlevel_defaults()
+        };
+        validate_fixed_uniform_limits(&limits, bytes).unwrap();
+        limits.max_buffer_size -= 1;
+        assert!(validate_fixed_uniform_limits(&limits, bytes).is_err());
+        limits.max_buffer_size += 1;
+        limits.max_uniform_buffer_binding_size -= 1;
+        assert!(validate_fixed_uniform_limits(&limits, bytes).is_err());
     }
 }

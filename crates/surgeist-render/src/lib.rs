@@ -104,6 +104,7 @@ mod resource;
 mod shader;
 mod stats;
 mod texture;
+mod turbulence;
 mod validation;
 mod vello_engine;
 

@@ -20,6 +20,7 @@ pub(crate) enum ParameterFamilyForTest {
     Morphology,
     NativeShadow,
     Lighting,
+    Turbulence,
     Offset,
     Displacement,
     Convolution,
@@ -162,6 +163,7 @@ pub(super) fn record_owner(
     append!(morphology_parameter_bindings, Morphology);
     append!(native_shadow_parameter_bindings, NativeShadow);
     append!(lighting_parameter_bindings, Lighting);
+    append!(turbulence_parameter_bindings, Turbulence);
     append!(offset_parameter_bindings, Offset);
     append!(convolution_parameter_bindings, Convolution);
     append!(spatial_parameter_bindings, Spatial);
@@ -192,6 +194,7 @@ pub(super) fn record_disposing(
         PassBufferRole::Morphology => ParameterFamilyForTest::Morphology,
         PassBufferRole::NativeShadow => ParameterFamilyForTest::NativeShadow,
         PassBufferRole::Lighting => ParameterFamilyForTest::Lighting,
+        PassBufferRole::Turbulence => ParameterFamilyForTest::Turbulence,
         PassBufferRole::Offset => ParameterFamilyForTest::Offset,
         PassBufferRole::Displacement => ParameterFamilyForTest::Displacement,
         PassBufferRole::Convolution => ParameterFamilyForTest::Convolution,

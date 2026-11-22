@@ -24,9 +24,10 @@ pub(super) enum PassBufferRole {
     CssShadow,
     BlurEdge,
     Lighting,
+    Turbulence,
 }
 impl PassBufferRole {
-    pub(super) const COUNT: usize = Self::Lighting as usize + 1;
+    pub(super) const COUNT: usize = Self::Turbulence as usize + 1;
 
     pub(super) const fn index(self) -> usize {
         self as usize
@@ -45,6 +46,7 @@ impl PassBufferRole {
             Self::Composite => size == 128,
             Self::CssShadow => size == 32,
             Self::BlurEdge => size == 16,
+            Self::Turbulence => size == crate::shader::TurbulenceParameterBytes::SIZE,
             _ => size == 256,
         }
     }
@@ -274,6 +276,32 @@ impl AcquiredGraphBindings {
             }
         }
         match (
+            &request.runtime.kind,
+            self.turbulence_parameter_bindings
+                .get(&request.runtime.id, account)?,
+        ) {
+            (RuntimePassKind::Turbulence(work), Some(binding)) => {
+                account.work(RenderWork::ResourceProbes, 1)?;
+                if !binding.bytes.belongs_to(work) {
+                    return Err(preparation_error(
+                        "turbulence binding differs from its admitted bytes",
+                    ));
+                }
+                binding.buffer.active(
+                    request.runtime.id,
+                    PassBufferRole::Turbulence,
+                    binding.bytes.as_bytes().len(),
+                    generation,
+                )?;
+            }
+            (kind, None) if !matches!(kind, RuntimePassKind::Turbulence(_)) => {}
+            _ => {
+                return Err(preparation_error(
+                    "turbulence binding differs from its admitted pass",
+                ));
+            }
+        }
+        match (
             &request.color_filter_operations,
             self.color_filter_operation_bindings
                 .get(&request.runtime.id, account)?,
@@ -341,6 +369,7 @@ impl AcquiredGraphBindings {
         consume!(offset_parameter_bindings, Offset);
         consume!(native_shadow_parameter_bindings, NativeShadow);
         consume!(lighting_parameter_bindings, Lighting);
+        consume!(turbulence_parameter_bindings, Turbulence);
         consume!(gaussian_parameter_bindings, Gaussian);
         consume!(morphology_parameter_bindings, Morphology);
         consume!(color_filter_operation_bindings, ColorOperation);
@@ -392,6 +421,7 @@ impl AcquiredGraphBindings {
         check!(offset_parameter_bindings, Offset);
         check!(native_shadow_parameter_bindings, NativeShadow);
         check!(lighting_parameter_bindings, Lighting);
+        check!(turbulence_parameter_bindings, Turbulence);
         check!(gaussian_parameter_bindings, Gaussian);
         check!(morphology_parameter_bindings, Morphology);
         check!(color_filter_operation_bindings, ColorOperation);

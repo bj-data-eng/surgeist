@@ -342,6 +342,26 @@ impl LightingParameterBytes {
     }
 }
 
+/// Shares the wire allocation held by the immutable turbulence pass facts.
+#[derive(Clone)]
+pub(crate) struct TurbulenceParameterBytes(crate::frame::TurbulencePassFacts);
+
+impl TurbulenceParameterBytes {
+    pub(crate) const SIZE: usize = crate::turbulence::TurbulenceParameters::SIZE;
+
+    pub(crate) fn from_facts(facts: &crate::frame::TurbulencePassFacts) -> Self {
+        Self(facts.clone())
+    }
+
+    pub(crate) fn as_bytes(&self) -> &[u8; Self::SIZE] {
+        self.0.uniform_bytes()
+    }
+
+    pub(crate) fn belongs_to(&self, facts: &crate::frame::TurbulencePassFacts) -> bool {
+        std::ptr::eq(self.as_bytes(), facts.uniform_bytes())
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct NativeShadowParameterBytes([u8; 256]);
 

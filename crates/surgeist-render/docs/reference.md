@@ -751,6 +751,30 @@ format refusal identifies `RuntimeOperation::DisplacementRendering`.
 The exhaustive `PrimitiveOperation` variant and required `RenderWorkFields<T>`
 fields require downstream exhaustive match/struct updates.
 
+### Native turbulence
+
+`Scene::turbulence_layer` generates a source-free Perlin noise image from
+resolved `Turbulence` and `TurbulenceRegion` values. The primitive region fixes
+the stitch period and the filter region clips the resulting pixels. The layer
+then applies its transform, clip, mask, opacity and composition.
+
+The default uses zero frequency on both axes, one octave, seed zero, absolute
+turbulence, no stitching and a linear sRGB working space. Seed admission
+truncates toward zero and normalizes the result for the generator. Zero octaves
+and two zero frequencies produce transparent black for absolute turbulence or
+half-alpha gray for fractal noise. The renderer uses up to 16 octaves and
+reports an input error when the reached GPU lattice cannot preserve the
+required sampling range or channel precision.
+
+Stitching snaps each nonzero frequency by the least relative change. Each
+lattice corner wraps into the octave's complete period, including the far
+corner of a fractionally positioned one-cell period. This preserves the edge
+match described by [Filter Effects 1](https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#feTurbulenceElement).
+
+`FilterCapabilities::supports_gpu_turbulence_filter_execution()` reports
+semantic support. Render accounts for candidate gradients, serialized parameters,
+GPU backing and uploads, and the number of scheduled octave evaluations.
+
 ## Image sampling
 
 `Image::rendering` accepts an `ImageRendering` hint already selected by the

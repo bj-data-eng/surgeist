@@ -5,6 +5,7 @@ mod lighting;
 mod morphology;
 mod native_shadow;
 mod offset;
+mod turbulence;
 
 use crate::accounting::{
     Account, AccountedVec, RenderAccountingError, RenderResource, RenderWork, SharedValue,
@@ -486,6 +487,10 @@ pub(super) enum ExecutableFilterStepFacts {
         source: Option<RuntimeResourceId>,
         result: RuntimeResourceId,
     },
+    Turbulence {
+        pass: RuntimePassId,
+        result: RuntimeResourceId,
+    },
     NativeShadow {
         passes: SharedValue<Vec<RuntimePassId>>,
         source: Option<RuntimeResourceId>,
@@ -526,7 +531,7 @@ pub(super) enum ExecutableFilterStepFacts {
 impl ExecutableFilterStepFacts {
     fn first_pass(&self) -> Option<RuntimePassId> {
         match self {
-            Self::Color(pass) => Some(*pass),
+            Self::Color(pass) | Self::Turbulence { pass, .. } => Some(*pass),
             Self::Offset { rebase, sample, .. } => Some(rebase.unwrap_or(*sample)),
             Self::Lighting {
                 resample, shade, ..
@@ -544,7 +549,7 @@ impl ExecutableFilterStepFacts {
 
     fn last_pass(&self) -> Option<RuntimePassId> {
         match self {
-            Self::Color(pass) => Some(*pass),
+            Self::Color(pass) | Self::Turbulence { pass, .. } => Some(*pass),
             Self::Offset { sample, .. } => Some(*sample),
             Self::Lighting { resolve, .. } => Some(*resolve),
             Self::Blur { vertical, .. } => Some(*vertical),
@@ -576,6 +581,7 @@ pub(super) struct ClosedExecutableGraphFacts {
     has_displacement: bool,
     has_native_shadow: bool,
     has_lighting: bool,
+    has_turbulence: bool,
     has_offset: bool,
     pub(super) backdrops: SharedValue<Vec<ExecutableBackdropFacts>>,
 }
@@ -625,6 +631,7 @@ impl ClosedExecutableGraph {
             || self.facts.has_displacement
             || self.facts.has_native_shadow
             || self.facts.has_lighting
+            || self.facts.has_turbulence
             || self.facts.has_offset
     }
 
@@ -686,6 +693,7 @@ impl ClosedExecutableGraphFacts {
                     || self.has_displacement
                     || self.has_native_shadow
                     || self.has_lighting
+                    || self.has_turbulence
                     || !filter_footprint_present)
                     && same_source_composite(composite, &layer.composite)
                     && proof_reads(pass, &proof)
@@ -736,6 +744,7 @@ impl ClosedExecutableGraphFacts {
                 &self.filter_steps,
                 self.has_offset,
                 self.has_lighting,
+                self.has_turbulence,
                 &proof,
             );
             let backdrops_are_exact = proof_nodes(&self.backdrops, &proof)
@@ -773,6 +782,12 @@ impl ClosedExecutableGraphFacts {
                     &proof,
                 )
                 && lighting::steps_are_exact(plan, &self.filter_steps, self.has_lighting, &proof)
+                && turbulence::steps_are_exact(
+                    plan,
+                    &self.filter_steps,
+                    self.has_turbulence,
+                    &proof,
+                )
                 && backdrops_are_exact
         })();
         proof.finish()?;
@@ -1221,12 +1236,14 @@ fn filter_step_order_is_exact(
     expected: &[ExecutableFilterStepFacts],
     expected_offset: bool,
     expected_lighting: bool,
+    expected_turbulence: bool,
     proof: &ProofContext<'_>,
 ) -> bool {
     let result = (|| -> Option<()> {
         let mut step_index = 0;
         let mut has_offset = false;
         let mut has_lighting = false;
+        let mut has_turbulence = false;
         macro_rules! step {
             ($step:expr) => {{
                 let expected_step = expected.get(step_index)?;
@@ -1359,6 +1376,17 @@ fn filter_step_order_is_exact(
                     step_index += 1;
                     cursor = end;
                 }
+                RuntimePassKind::Turbulence(_) => {
+                    has_turbulence = true;
+                    let RuntimeResultBinding::Resource(result) = pass.result else {
+                        return None;
+                    };
+                    step!(ExecutableFilterStepFacts::Turbulence {
+                        pass: pass.id,
+                        result,
+                    });
+                    cursor = cursor.checked_add(1)?;
+                }
                 RuntimePassKind::Gaussian(_) | RuntimePassKind::NativeShadowMerge(_) => {
                     let ExecutableFilterStepFacts::NativeShadow { passes, .. } =
                         expected.get(step_index)?
@@ -1446,7 +1474,8 @@ fn filter_step_order_is_exact(
         }
         (step_index == expected.len()
             && has_offset == expected_offset
-            && has_lighting == expected_lighting)
+            && has_lighting == expected_lighting
+            && has_turbulence == expected_turbulence)
             .then_some(())
     })();
     result.is_some()
@@ -2187,6 +2216,10 @@ impl ProofBounds {
                         bounds.contexts += 1;
                     }
                 }
+                RuntimePassKind::Turbulence(_) => {
+                    bounds.steps += 1;
+                    bounds.contexts += 1;
+                }
                 RuntimePassKind::NativeShadowMerge(work) => {
                     bounds.steps += 1;
                     // The original-only constant route has no Gaussian Constant
@@ -2224,6 +2257,7 @@ struct ClosedGraphTraversal<'plan, 'proof> {
     has_displacement: bool,
     has_native_shadow: bool,
     has_lighting: bool,
+    has_turbulence: bool,
     has_offset: bool,
     backdrops: ProofVec<ExecutableBackdropFacts>,
     expected_resources: ProofSet<'proof, RuntimeResourceId>,
@@ -2296,6 +2330,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             has_displacement: false,
             has_native_shadow: false,
             has_lighting: false,
+            has_turbulence: false,
             has_offset: false,
             backdrops: ProofVec::new(
                 proof.account,
@@ -2353,6 +2388,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             has_displacement: self.has_displacement,
             has_native_shadow: self.has_native_shadow,
             has_lighting: self.has_lighting,
+            has_turbulence: self.has_turbulence,
             has_offset: self.has_offset,
             backdrops: self.backdrops.into_shared(self.proof.account)?,
         }))
@@ -2388,6 +2424,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             RuntimePassKind::Offset(_) => self.visit_offset(),
             RuntimePassKind::NativeShadowMerge(_) => self.visit_native_shadow(),
             RuntimePassKind::Lighting(_) => self.visit_lighting(),
+            RuntimePassKind::Turbulence(work) => self.visit_turbulence(pass, work),
             RuntimePassKind::CopyBackdrop => self.visit_backdrop(pass),
             RuntimePassKind::Composite(Some(composite))
                 if matches!(composite.kind, RuntimeCompositeKind::Layer { .. }) =>
@@ -5856,7 +5893,8 @@ fn dispatch_pass_semantics(
         | RuntimePassKind::Displacement(_)
         | RuntimePassKind::Offset(_)
         | RuntimePassKind::NativeShadowMerge(_)
-        | RuntimePassKind::Lighting(_) => Some(DispatchPassSemantics::ClosedExecutable),
+        | RuntimePassKind::Lighting(_)
+        | RuntimePassKind::Turbulence(_) => Some(DispatchPassSemantics::ClosedExecutable),
         RuntimePassKind::CopyBackdrop
         | RuntimePassKind::ColorFilter(Some(_))
         | RuntimePassKind::DropShadowColorize(Some(_)) => Some(DispatchPassSemantics::FuturePass),

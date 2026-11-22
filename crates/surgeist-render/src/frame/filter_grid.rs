@@ -19,10 +19,16 @@ pub(super) enum FilterGridOwner {
     Morphology,
     Displacement,
     Lighting,
+    Turbulence,
 }
 impl FilterGridOwner {
     fn mapping_error(self, value: f64) -> Error {
         match self {
+            Self::Turbulence => Error::invalid_value(
+                "turbulence raster grid",
+                crate::number_text::Number(value),
+                "must be representable in the output raster grid",
+            ),
             Self::Lighting => crate::lighting::numeric_error(
                 crate::lighting::LightingNumericPhase::GridMapping,
                 value,
@@ -46,6 +52,7 @@ impl FilterGridOwner {
     }
     fn index_error(self, value: f64) -> Error {
         match self {
+            Self::Turbulence => self.mapping_error(value),
             Self::Lighting => crate::lighting::numeric_error(
                 crate::lighting::LightingNumericPhase::GridIndex,
                 value,
@@ -69,6 +76,7 @@ impl FilterGridOwner {
     }
     fn sampling_error(self, value: f64) -> Error {
         match self {
+            Self::Turbulence => self.mapping_error(value),
             Self::Lighting => crate::lighting::numeric_error(
                 crate::lighting::LightingNumericPhase::Sampling,
                 value,
@@ -413,7 +421,7 @@ pub(super) fn require_spatial(
 ) -> Result<NonEmptyFrameSpatialPlan> {
     let plan = context
         .plan_local_bounds(
-            LogicalBounds::try_from_rect(rect, "Gaussian domain")?,
+            LogicalBounds::try_from_rect(rect, "native filter domain")?,
             transform,
         )
         .map_err(|error| {

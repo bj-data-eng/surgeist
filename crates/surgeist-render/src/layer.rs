@@ -184,6 +184,15 @@ impl Layer {
         self
     }
 
+    pub(crate) fn with_turbulence(
+        mut self,
+        operation: crate::turbulence::Turbulence,
+        region: crate::turbulence::TurbulenceRegion,
+    ) -> Self {
+        self.filter = Some(LayerFilter::Turbulence(operation, region));
+        self
+    }
+
     pub(crate) fn with_lighting(mut self, lighting: crate::lighting::LightingForeground) -> Self {
         self.filter = Some(LayerFilter::Lighting(lighting));
         self
@@ -343,6 +352,7 @@ impl Layer {
                 | LayerFilter::Offset(_)
                 | LayerFilter::Gaussian(_)
                 | LayerFilter::Lighting(_)
+                | LayerFilter::Turbulence(..)
                 | LayerFilter::Morphology(_)
                 | LayerFilter::Displacement(_)
                 | LayerFilter::NativeShadow(_),
@@ -362,6 +372,7 @@ impl Layer {
                 | LayerFilter::Offset(_)
                 | LayerFilter::Gaussian(_)
                 | LayerFilter::Lighting(_)
+                | LayerFilter::Turbulence(..)
                 | LayerFilter::Morphology(_)
                 | LayerFilter::Displacement(_)
                 | LayerFilter::NativeShadow(_),
@@ -410,6 +421,10 @@ pub(crate) enum LayerFilter {
     Offset(crate::offset::PreparedOffset),
     Gaussian(crate::gaussian::GaussianForeground),
     Lighting(crate::lighting::LightingForeground),
+    Turbulence(
+        crate::turbulence::Turbulence,
+        crate::turbulence::TurbulenceRegion,
+    ),
     Morphology(crate::morphology::MorphologyForeground),
     Displacement(crate::displacement::DisplacementForeground),
     NativeShadow(crate::native_shadow::DropShadowForeground),

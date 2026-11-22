@@ -1343,6 +1343,7 @@ pub(crate) fn runtime_color_filter_observation_for_test(
             | RuntimePassKind::Offset(_)
             | RuntimePassKind::NativeShadowMerge(_)
             | RuntimePassKind::Lighting(_)
+            | RuntimePassKind::Turbulence(_)
             | RuntimePassKind::BlurHorizontal(_)
             | RuntimePassKind::BlurVertical(_)
             | RuntimePassKind::DropShadowColorize(_)
@@ -3193,6 +3194,7 @@ fn core_pass_class(kind: &RuntimePassKind) -> Option<CorePassClass> {
         | RuntimePassKind::Offset(_)
         | RuntimePassKind::NativeShadowMerge(_)
         | RuntimePassKind::Lighting(_)
+        | RuntimePassKind::Turbulence(_)
         | RuntimePassKind::ColorFilter(_)
         | RuntimePassKind::BlurHorizontal(_)
         | RuntimePassKind::BlurVertical(_)
@@ -4920,6 +4922,9 @@ fn spatial_filter_pass_tags(
     let mut tags = Vec::new();
     for step in &facts.filter_steps {
         match step {
+            ExecutableFilterStepFacts::Turbulence { .. } => {
+                tags.push(SpatialFilterPassTagForTest::Turbulence);
+            }
             ExecutableFilterStepFacts::Lighting {
                 resample,
                 shade,
@@ -6231,7 +6236,7 @@ impl<'device> PreparedGraph<'device> {
 
 #[cfg(test)]
 fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
-    let mut vocabulary = [false; 17];
+    let mut vocabulary = [false; 18];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.runtime.kind)] = true;
     }
@@ -6247,6 +6252,7 @@ fn prepared_handoff_is_complete(plan: &RuntimeGraphPreparationPlan) -> bool {
         && !vocabulary[14]
         && !vocabulary[15]
         && !vocabulary[16]
+        && !vocabulary[17]
         && vocabulary[3..8].iter().all(|present| !present);
     plan.resources
         .iter()
@@ -6633,7 +6639,7 @@ pub(crate) fn runtime_lowering_observation_for_test(
 
 #[cfg(test)]
 fn runtime_vocabulary_is_exact(plan: &LoweredGraphPlan) -> bool {
-    let mut vocabulary = [false; 17];
+    let mut vocabulary = [false; 18];
     for pass in &plan.passes {
         vocabulary[runtime_pass_kind_index(&pass.kind)] = true;
     }
@@ -6781,6 +6787,11 @@ fn runtime_semantic_pass_facts_are_exact(plan: &LoweredGraphPlan) -> bool {
                 && work.operation().operator() == crate::morphology::MorphologyOperator::Dilate
                 && work.operation().radii() == Some([1.0; 2])
                 && work.operation().color_space() == crate::filter_model::FilterColorSpace::Srgb)
+    }) && plan.passes.iter().any(|pass| {
+        matches!(&pass.kind, RuntimePassKind::Turbulence(work) if work.octaves() == 2)
+            && pass.reads.is_empty()
+            && pass.dependencies.is_empty()
+            && pass.releases.is_empty()
     })
 }
 
@@ -7007,6 +7018,7 @@ fn runtime_pass_kind_index(kind: &RuntimePassKind) -> usize {
         RuntimePassKind::Morphology(_) => 14,
         RuntimePassKind::Displacement(_) => 15,
         RuntimePassKind::Lighting(_) => 16,
+        RuntimePassKind::Turbulence(_) => 17,
     }
 }
 

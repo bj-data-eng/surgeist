@@ -8,6 +8,7 @@ use crate::{
     accounting::RenderResource,
     convolution::ConvolutionInput,
     displacement::DisplacementChannel,
+    effect::{Turbulence, TurbulenceKind, TurbulenceRegion},
     filter_domains::FilterDomains,
     filter_model::FilterColorSpace,
     filter_model::FilterEdgeMode,
@@ -385,6 +386,26 @@ fn lighting_fixture() -> Fixture {
     fixture
 }
 
+fn turbulence_fixture() -> Fixture {
+    let full = bounds(2, 1);
+    let mut scene = Scene::new();
+    scene
+        .turbulence_layer(
+            Layer::new(),
+            Turbulence::try_new([0.125, 0.25], 1.0)
+                .unwrap()
+                .with_octaves(0)
+                .with_kind(TurbulenceKind::FractalNoise)
+                .with_color_space(FilterColorSpace::Srgb),
+            TurbulenceRegion::try_new(full, full).unwrap(),
+        )
+        .unwrap();
+    let mut fixture = Fixture::new("source-free turbulence", scene, vec![Family::Turbulence]);
+    // The empty noise sum maps to straight .5 for each fractal-noise channel.
+    fixture.rectangle(2, 1, [128, 128, 128, 128]);
+    fixture
+}
+
 fn wait<F: Future>(mut future: Pin<&mut F>, device: &wgpu::Device, reached: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
@@ -469,6 +490,10 @@ fn assert_descriptors(fixture: &Fixture, snapshots: &[ParameterSnapshotForTest])
                 48,
                 wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             ),
+            Family::Turbulence => (
+                9296,
+                wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            ),
             Family::Composite => (
                 128,
                 wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -503,6 +528,15 @@ fn assert_descriptors(fixture: &Fixture, snapshots: &[ParameterSnapshotForTest])
                 .filter(|b| b.family == Family::Lighting)
                 .count(),
             3
+        );
+    }
+    if fixture.required.contains(&Family::Turbulence) {
+        assert_eq!(
+            originals
+                .iter()
+                .filter(|b| b.family == Family::Turbulence)
+                .count(),
+            1
         );
     }
     originals.sort_unstable_by_key(|b| b.native_identity);
@@ -684,6 +718,7 @@ fn public_native_prepared_families_retain_exact_parameter_descriptors_until_term
             morphology_fixture(),
             native_shadow_fixture(),
             lighting_fixture(),
+            turbulence_fixture(),
             offset_fixture(),
         ] {
             exercise(fixture, format);

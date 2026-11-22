@@ -103,6 +103,11 @@ dimensions! {
         /// Shaded-result load opportunities: four per resolve-scissor cell,
         /// including repeat loads clamped to the canvas edge.
         ScheduledLightingResultSamples,
+        /// Reached turbulence octaves times output-scissor cells, each evaluating RGBA.
+        ScheduledTurbulenceOctaves,
+        /// Candidate turbulence gradient vectors drawn from the seeded random stream.
+        /// Includes vectors discarded before normalization.
+        TurbulenceLatticeCandidates,
         /// Native shadow merge cells times actual original/shifted-alpha fetch opportunities.
         ScheduledShadowSamples,
         /// Native morphology scheduled fetch opportunities: table builds and
@@ -382,6 +387,8 @@ impl RenderWork {
                         | Self::ScheduledLightingAlphaSamples
                         | Self::ScheduledLightingEvaluations
                         | Self::ScheduledLightingResultSamples
+                        | Self::ScheduledTurbulenceOctaves
+                        | Self::TurbulenceLatticeCandidates
                         | Self::ScheduledMorphologySamples
                         | Self::DisplacementMapByteVisits
                         | Self::DisplacementMapRecordVisits
@@ -1135,6 +1142,8 @@ impl RenderWork {
             Self::ScheduledOffsetSamples => "scheduled offset samples",
             Self::ScheduledGaussianSamples => "scheduled gaussian samples",
             Self::ScheduledLightingAlphaSamples => "scheduled lighting alpha samples",
+            Self::ScheduledTurbulenceOctaves => "scheduled turbulence octaves",
+            Self::TurbulenceLatticeCandidates => "turbulence lattice candidates",
             Self::ScheduledLightingEvaluations => "scheduled lighting evaluations",
             Self::ScheduledLightingResultSamples => "scheduled lighting result samples",
             Self::ScheduledShadowSamples => "scheduled shadow samples",

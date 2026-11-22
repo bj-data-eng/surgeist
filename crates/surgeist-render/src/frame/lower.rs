@@ -948,6 +948,7 @@ pub(crate) enum GraphLoweringPassKind {
     Morphology(MorphologyPassFacts),
     Displacement(DisplacementPassFacts),
     Lighting(super::LightingPassFacts),
+    Turbulence(super::TurbulencePassFacts),
     NativeShadowMerge(NativeShadowPassFacts),
     BlurHorizontal(Option<GraphLoweringBlur>),
     BlurVertical(Option<GraphLoweringBlur>),
@@ -1273,6 +1274,11 @@ fn graph_lowering_pass_kind(
                 .filter(|entry| entry.pass == pass.id && entry.facts.stage() == stage)
                 .ok_or(GraphValidationError::InvalidPassArity)?;
             Ok(GraphLoweringPassKind::Displacement(entry.facts.clone()))
+        }
+        SemanticPassIntent::Turbulence => {
+            let entry = super::validate::turbulence_for_pass(graph, pass.id, account)?
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            Ok(GraphLoweringPassKind::Turbulence(entry.facts.clone()))
         }
         SemanticPassIntent::Lighting(stage) => {
             let mut low = 0;
@@ -1996,6 +2002,12 @@ fn graph_lowering_read_bindings(
                 )?);
             }
             reads
+        }
+        GraphLoweringPassKind::Turbulence(_) => {
+            if !pass.reads.is_empty() {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            account.temporary(0)?
         }
         GraphLoweringPassKind::Lighting(facts) => {
             let count = usize::from(facts.reads_source());

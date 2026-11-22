@@ -237,6 +237,7 @@ fn core_pass_program_sampling(
         | ShaderProgramKey::Displacement { .. }
         | ShaderProgramKey::Offset
         | ShaderProgramKey::Lighting(_)
+        | ShaderProgramKey::Turbulence
         | ShaderProgramKey::NativeShadow { .. }
         | ShaderProgramKey::ColorFilter
         | ShaderProgramKey::BlurHorizontal { .. }
@@ -810,6 +811,48 @@ pub(super) fn validate_lighting_pass_keys(
 }
 
 pub(super) fn lighting_cache_error(message: &'static str) -> Error {
+    Error::new(BackendErrorCode::RenderFailed, message)
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct TurbulencePassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
+}
+
+pub(super) fn validate_turbulence_pass_keys(
+    keys: TurbulencePassKeyRefs<'_>,
+    observer: Option<&Account>,
+) -> Result<ShaderTextureFormatKey> {
+    let target_format = keys.pipeline.target_format;
+    if keys.layout.program != ShaderProgramKey::Turbulence
+        || keys.shader.program != ShaderProgramKey::Turbulence
+        || !keys.layout.sampled_textures.is_empty()
+        || !keys.samplers.is_empty()
+        || !keys.shader.samplers.is_empty()
+        || !keys.pipeline.samplers.is_empty()
+        || !binding_eq(
+            keys.layout.data_bindings.as_slice(),
+            &[ShaderDataBindingKey::TurbulenceParameters],
+            observer,
+        )?
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || keys.shader.working_format != Some(target_format)
+        || keys.shader.output_format != Some(target_format)
+        || !is_working_format(target_format)
+    {
+        return Err(turbulence_cache_error(
+            "turbulence keys disagree across bindings, programs, or working formats",
+        ));
+    }
+    Ok(target_format)
+}
+
+pub(super) fn turbulence_cache_error(message: &'static str) -> Error {
     Error::new(BackendErrorCode::RenderFailed, message)
 }
 

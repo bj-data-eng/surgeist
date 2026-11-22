@@ -153,6 +153,7 @@ impl GpuRenderGraph {
             morphologies: copy_backing(&self.morphologies, account)?,
             displacements: copy_backing(&self.displacements, account)?,
             lighting: copy_backing(&self.lighting, account)?,
+            turbulence: copy_backing(&self.turbulence, account)?,
             native_shadows: copy_backing(&self.native_shadows, account)?,
             backdrop_reads: copy_backing(&self.backdrop_reads, account)?,
             imports: copy_backing(&self.imports, account)?,
@@ -1282,6 +1283,7 @@ pub(crate) fn semantic_graph_base_initialization_observation_for_test(
             | SemanticPassIntent::Morphology(_)
             | SemanticPassIntent::Displacement(_)
             | SemanticPassIntent::Lighting(_)
+            | SemanticPassIntent::Turbulence
             | SemanticPassIntent::NativeShadowMerge
             | SemanticPassIntent::Composite
             | SemanticPassIntent::Present => None,

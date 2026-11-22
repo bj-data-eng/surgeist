@@ -69,6 +69,8 @@ mod support;
 mod surface;
 #[cfg(feature = "render-text")]
 mod text_layout_adapter;
+#[cfg(not(target_arch = "wasm32"))]
+mod turbulence;
 mod value_names;
 mod vello;
 
