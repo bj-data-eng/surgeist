@@ -256,6 +256,54 @@ fn actual_constructor_and_registry_preserve_every_utf16_type_exactly() {
 }
 
 #[test]
+fn legacy_event_uses_the_creation_settings_of_a_detached_document() {
+    let mut session = session();
+    let creator = top(&mut session);
+    let detached = {
+        let mut batch = DomBatch::new();
+        let ticket = batch.create_html_document(creator.document(), None);
+        session
+            .dom()
+            .apply(batch, &cancel())
+            .unwrap()
+            .document(&ticket)
+            .unwrap()
+    };
+    let snapshot = session.snapshot();
+    assert!(snapshot.document(detached).unwrap().navigable().is_none());
+    assert_eq!(
+        snapshot
+            .node(detached.node())
+            .unwrap()
+            .relevant_global()
+            .unwrap(),
+        Some(creator.global())
+    );
+    let mut hosted = session.hosted_execution();
+    let settings = hosted
+        .settings(&session.dom(), creator.global(), &cancel())
+        .unwrap();
+    let event = hosted
+        .create_legacy_event(
+            &mut session.dom(),
+            detached,
+            &units("HTMLEvents"),
+            &cancel(),
+        )
+        .unwrap();
+    let creation = event.creation().unwrap();
+    assert_eq!(creation.global(), creator.global());
+    assert_eq!(creation.clock_source(), settings.clock_source());
+    assert_eq!(
+        creation.time_origin_microseconds(),
+        settings.time_origin_microseconds()
+    );
+    assert!(event.event_type().code_units().is_empty());
+    assert_eq!(event.target(), None);
+    assert!(!event.is_trusted());
+}
+
+#[test]
 fn legacy_event_uses_the_receiving_document_and_requires_successful_initialization() {
     let mut session = session();
     let destination = top(&mut session);
