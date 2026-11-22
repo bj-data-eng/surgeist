@@ -8,7 +8,7 @@ dependencies, features, or explicit minimum Rust version. The dev-only
 `stats_alloc` dependency instruments allocation measurements.
 
 [src/lib.rs](../src/lib.rs) declares the public modules `computed`, `diagnostics`,
-`easing`, `interpolation`, `keyframe`, `keyframe_input`, `playback`, `progress`,
+`composition`, `easing`, `interpolation`, `keyframe`, `keyframe_input`, `playback`, `progress`,
 `sample`, `time`, `timeline`, `timing`, `transform`, and `transition`, and the
 constant `CRATE_NAME`. Each public type has one path through its owning module,
 such as `surgeist_animation::easing::Easing`. The crate forbids unsafe code. Tests live in
@@ -227,6 +227,85 @@ Reverse playback traverses those same intervals and timing functions backwards.
 During the delay, backwards fill holds the first iteration's directed starting
 value without applying easing. At the start of the active phase, interval easing
 applies normally. CSS endpoint synthesis and CSS keyframe assembly remain caller-owned.
+
+## Computed keyframe effects
+
+`keyframe::ComputedKeyframes` samples caller-computed values separately from the
+contiguous segment API. `ComputedKeyframeInput` supplies optional specified
+offset metadata, a required `UnitRatio` computed offset, validated easing,
+optional composite override, and longhand/value entries. Construction checks
+explicit/computed offset equality, nondecreasing computed order, and unique
+property keys per frame. It preserves
+equal-offset order without sorting or merging. Read-only `ComputedKeyframe`
+records retain specified-offset provenance independently from computed offsets.
+Authored offset validation and missing-offset distribution remain in
+`keyframe_input`; a supplied explicit offset must equal its computed offset here.
+`from_normalized` copies that metadata when the caller's normalized payloads are
+already target-context `InterpolableValue`s; it does not resolve authored values.
+
+`KeyframeEndpointSource::Native` inserts missing property endpoints at zero and
+one during each sample, using the supplied current underlying value, replace
+composition, and linear easing. `CssAssembled` instead requires supplied zero
+and one endpoints for each represented property and retains their computed
+values, easing, composition, and stable order. Style owns CSS grouping,
+generated endpoint assembly, and live target-context computation. Rebuild
+computed inputs when their influencing context changes; the sampler does not
+cache or invent target geometry or value-resolution context.
+
+`sample(property, input, progress, operations)` accepts optional finite
+`InterpolationProgress`, including values outside `[0,1]`. Unresolved progress,
+not-animatable properties, and absent or uncalculable targets return `None`.
+After filtering frames for the requested longhand, an empty set returns the
+underlying value. Missing native endpoints are then inserted. Below zero with
+multiple zero-offset frames, the first frame is selected alone; at or above one
+with multiple one-offset frames, the last frame is selected alone. Otherwise,
+the last offset not greater than progress and less than one (or the last zero
+frame) starts the interval, followed by its next frame. Interior exact overlaps
+therefore select the last frame at that offset.
+
+Each selected endpoint resolves its override against the effect composite and
+composes against underlying before interpolation. A single endpoint returns
+directly. For two endpoints, the sampler evaluates the start frame's easing at
+`(progress-startOffset)/(endOffset-startOffset)` and then invokes the property's
+selected interpolation algorithm. Input and eased output are not clamped;
+terminal-frame easing is unused. The selected current Web Animations clause
+evaluates interval easing without forwarding an effect timing before flag.
+
+`sample_timing` provides two explicit adapters. Native collections use
+`EffectTimingSample::eased_progress`: whole-effect easing already ran and its
+before flag was already consumed. It is not forwarded to interval easing, as
+the selected current §5.3.4 interval-easing step does not supply that mapping.
+CSS collections use directed progress, apply interval easing once, and preserve
+the recognized CSS interval step-side flag. During CSS delay fill they bypass
+interval easing and hold the directed endpoint. This retains CSS's delay rule
+even for easing functions with nonzero initial output. The raw `sample` method
+is phase-neutral; callers adapting CSS timing use `sample_timing`.
+
+`composition::PropertyValueOperations` supplies the selected property's pure
+interpolation, addition, and accumulation algorithms with its original typed
+failure. `compose_value` handles replace directly and passes underlying first to
+addition or accumulation. It never substitutes addition for accumulation.
+Existing computed operations and resolved 2D transform list addition can provide
+their supported mathematics. Discrete fallback and unsupported capabilities
+remain the selected property's responsibility; property names or value families
+alone are not a replacement for property animation policy.
+
+Sampling is immutable and returns the complete value or `KeyframeSampleError<E>`
+with property, operation stage, optional original frame index, and original
+easing, progress, or property-operation failure. No partial value is published.
+When `E` implements `std::error::Error`, that cause is available through the
+standard error chain. The returned value already includes endpoint composition
+against its supplied underlying. An effect stack must pass that result directly
+as the next underlying value rather than composing it again. Stack ordering,
+replacement decisions, cascade insertion, scheduling, and publication remain
+separate consumers.
+
+The adopted [current effect-value algorithm](../../../references/style-source-determinations-additional-web-animations-1--editor-capture-20261010--92e1d5e27678.md#the-effect-value-of-a-keyframe-animation-effect)
+governs interval selection, endpoint composition, and step 8's interval easing.
+Its underlying/replace/linear fallback supersedes the older neutral/add wording.
+[CSS assembly](../../../references/style-source-determinations-additional-css-animations-2--editor-capture-20261010--d03de1340087.md#keyframe-processing)
+supplies its endpoint override; retained [CSS timing rules](../../../references/css-animations-1--WD-css-animations-1-20230302--f725ad790abb.md#timing-functions)
+govern CSS delay and direction behavior.
 
 ## CSS transition lifecycle decisions
 
@@ -467,7 +546,7 @@ pending, active, and failed samples are stable until external input; running
 before and active samples can report `NextFrameHint::MayChange`.
 
 Root-supplied normalized tracks are the input shape for this crate. Root/style
-choose transition generation, keyframe lookup, endpoint synthesis, property
+choose transition generation, keyframe lookup, CSS endpoint synthesis, property
 support policy, and list pairing before constructing transition or keyframe
 tracks here.
 
@@ -571,6 +650,7 @@ endpoints when it changes; no percentage basis is guessed.
 | Web Animations effect timing, signed local time, end delay, iteration start and relevance | `supported` | `EffectTiming` samples supplied animation observations through the shared phase/progress kernel without owning animation lifecycle or target queries. |
 | CSS transition creation, cancellation, reversal, and completion decisions | `supported` | `transition::TransitionSnapshot` consumes coherent caller facts and returns immutable candidates and lifecycle outcomes. |
 | Typed native keyframe inputs and missing-offset computation | `supported` | `keyframe_input` normalizes sequences and property-indexed inputs while preserving specified offsets and caller payloads. |
+| Computed keyframe effect sampling and native endpoint fallback | `supported` | `keyframe::ComputedKeyframes` selects sparse property intervals, preserves overlap branches, composes endpoints, and samples supplied property operations. |
 | Cubic-bezier, steps, linear keyword, and CSS `linear()` easing | `supported` | `surgeist-animation` evaluates typed easing, including canonical linear control points. |
 | Number, unrestricted percentage, and explicit premultiplied color interpolation | `supported` | `surgeist-animation` interpolates finite values with checked arithmetic and explicit color spaces. |
 | Discrete value switching | `supported` | `surgeist-animation` switches discrete values at the interpolation midpoint. |

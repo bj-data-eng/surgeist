@@ -11,6 +11,12 @@
 //! Sampling selects each property's interval after direction, then applies its
 //! easing once to the local interval fraction. During delay fill, the starting
 //! endpoint of the first iteration is held without easing.
+//!
+//! [`ComputedKeyframes`] separately consumes caller-computed frames with sparse
+//! properties and equal offsets. It samples supplied iteration progress or an
+//! [`EffectTimingSample`](crate::timing::EffectTimingSample), preserving native
+//! versus CSS endpoint and timing behavior. Property operations are supplied
+//! through [`PropertyValueOperations`](crate::composition::PropertyValueOperations).
 
 use core::fmt;
 use core::ops::Range;
@@ -28,6 +34,15 @@ use crate::timing::ActiveDuration;
 use crate::timing::{
     AnimationDirection, AnimationPlayState, FillMode, IterationCount, TimingError,
     TimingParameters, TimingPhase, TimingSample,
+};
+
+mod effect;
+
+#[doc(inline)]
+pub use effect::{
+    ComputedKeyframe, ComputedKeyframeError, ComputedKeyframeErrorKind, ComputedKeyframeInput,
+    ComputedKeyframes, KeyframeEndpointSource, KeyframeSampleError, KeyframeSampleInput,
+    KeyframeSampleStage, KeyframeTarget,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

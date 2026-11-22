@@ -5,7 +5,8 @@ Rust library samples normalized tracks into typed property values, completion
 states, and next-frame hints.
 
 Version 0.1.0 supports snapshot-based CSS transition decisions, typed native
-keyframe normalization, timing, easing, computed numeric composition,
+keyframe normalization and computed interval sampling, timing, easing,
+computed numeric composition,
 logarithmic ratio interpolation, normalized positions, premultiplied colors,
 resolved 2D transforms, and discrete switching. Contextual calculations retain
 source identity in symbolic combination plans. 2D transform lists support
