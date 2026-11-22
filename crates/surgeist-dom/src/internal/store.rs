@@ -73,6 +73,7 @@ pub use hosted::style_root_withdrawal::{
     DomHostedStyleRootWithdrawalPublished,
 };
 pub use inline_style::feedback::DomInlineStyleOperation;
+mod collection_read;
 mod html_collection;
 mod input;
 mod input_processing;
@@ -84,6 +85,7 @@ mod method;
 mod name_registry;
 mod navigable;
 mod node_iterator;
+mod node_list;
 mod node_retirement;
 mod read_source;
 mod tree_walker;
@@ -135,6 +137,7 @@ pub use html_collection::{
     DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead, DomWindowNamedElements,
     DomWindowNamedValue,
 };
+pub use node_list::{DomNodeList, DomNodeListRead};
 pub(crate) use shared::SharedVec;
 pub(crate) use source::AllocationIds as KeyAliases;
 pub(crate) use source::formation::{SourceRetention, SourceStorage, SourceWorkIdentity};
@@ -152,6 +155,10 @@ pub enum DomResource {
     HtmlCollectionNames,
     /// UTF-16 backing of the supported names returned by the collection.
     HtmlCollectionNameUnits,
+    /// The retained UTF-16 backing of a live NodeList name query.
+    NodeListQueryUnits,
+    /// Cumulative work for a qualified NodeList read.
+    NodeListWork,
     /// Outstanding occurrences owned by the stable-state scheduler.
     MediaRemovalContinuations,
     /// Work admitted for one stable-state membership check and transition.
@@ -738,6 +745,8 @@ const fn resource_text(resource: DomResource) -> &'static str {
         DomResource::HtmlCollectionWork => "HTML collection read work",
         DomResource::HtmlCollectionNames => "HTML collection supported names",
         DomResource::HtmlCollectionNameUnits => "HTML collection supported name code units",
+        DomResource::NodeListQueryUnits => "NodeList query code units",
+        DomResource::NodeListWork => "NodeList read work",
         DomResource::MediaRemovalContinuations => "pending media removal continuations",
         DomResource::MediaRemovalWork => "media removal stable-state work",
         DomResource::ParsedAssociationBytes => "retained parsed association bytes",

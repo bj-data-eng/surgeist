@@ -583,6 +583,13 @@ The standard Document element collection getters return live
 `document.embeds` object. `document.applets` exposes the standard empty
 collection.
 
+`Node.childNodes` has one live `NodeList` per node. It exposes all ordinary
+direct children, including text and comments. `Document.getElementsByName`
+also returns a live `NodeList` and matches the exact UTF-16 `name` attribute
+of ordinary HTML descendants. NodeList indexing returns the canonical node
+wrappers, and its iteration methods use the original Array intrinsics for
+the collection's realm.
+
 An attachment can enable callable Window timers with `WindowTimerLimits`.
 `setTimeout` keeps the callable and arguments in the attached Window's realm.
 `clearTimeout` releases the registration. Runtime orders admitted timers by

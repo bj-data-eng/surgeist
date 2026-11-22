@@ -52,6 +52,7 @@ mod lists;
 mod marquee;
 mod media;
 mod meta;
+mod node_list;
 mod non_element_parent;
 mod optgroup;
 mod ordinary;
@@ -345,6 +346,7 @@ pub(super) struct DocumentPrototypes {
     character_data: character_data::CharacterBindings,
     collections: tag_collection::CollectionProjection,
     all: all_collection::Projection,
+    node_lists: node_list::Projection,
 }
 
 impl DocumentPrototypes {
@@ -460,6 +462,7 @@ impl DocumentPrototypes {
         title::install_document(scope, &document, funding.capture)?;
         legacy::install(scope, &document, funding.capture)?;
         let all = all_collection::install(scope, &global, &document, funding)?;
+        let node_lists = node_list::install(scope, &global, &document, funding)?;
         let document_names = tree_mutations::unscopables(scope, &document)?;
         parent_node::install(
             scope,
@@ -509,6 +512,7 @@ impl DocumentPrototypes {
                 character_data,
                 collections,
                 all,
+                node_lists,
             },
             document,
         ))
@@ -816,6 +820,7 @@ pub(super) fn install_node<'scope>(
             Callback::new(move |scope, arguments| handler.node_member(scope, arguments, member)),
         )?;
     }
+    node_list::install_children(scope, &node, capture)?;
     let handler = capture(size_of::<Capture>())?;
     let name = &ascii(b"hasChildNodes");
     let method = scope.fixed_arity_function(

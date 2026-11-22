@@ -834,7 +834,10 @@ pub enum WellKnownSymbol {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Intrinsic {
+    ArrayEntries,
+    ArrayKeys,
     ArrayValues,
+    ArrayForEach,
 }
 
 /// The complete shape of an own property. Data and accessor fields cannot mix.

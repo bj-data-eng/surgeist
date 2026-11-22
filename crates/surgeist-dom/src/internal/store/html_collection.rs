@@ -1,9 +1,8 @@
-use std::cell::Cell;
 use std::ops::ControlFlow;
 
-use super::node_iterator::traversal::{OrdinaryTree, following};
 use super::{
-    read_source::{HostedReadError, ReadSource},
+    collection_read::{CollectionRead, Meter},
+    read_source::HostedReadError,
     *,
 };
 use crate::internal::{
@@ -137,11 +136,9 @@ impl DomHtmlCollectionLimits {
 /// cumulative across its operations, and the caller's admission runs at
 /// every reached step.
 pub struct DomHtmlCollectionRead<'dom, A> {
-    dom: &'dom Dom,
-    snapshot: DomSnapshot,
+    view: CollectionRead<'dom, A>,
     collection: &'dom DomHtmlCollection,
     class: DomDocumentClass,
-    meter: Meter<'dom, A>,
     limits: DomHtmlCollectionLimits,
 }
 
@@ -155,14 +152,6 @@ impl<A> std::fmt::Debug for DomHtmlAllCollectionRead<'_, A> {
             .field(&self.0)
             .finish()
     }
-}
-
-struct Meter<'dom, A> {
-    cancellation: &'dom AtomicBool,
-    admission: A,
-    source: Option<ReadSource<'dom>>,
-    work_limit: u64,
-    work: Cell<u64>,
 }
 
 /// Owned ordered names with the backing admitted for this read.
@@ -192,7 +181,7 @@ impl<A> std::fmt::Debug for DomHtmlCollectionRead<'_, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DomHtmlCollectionRead")
             .field("document", &self.collection.document)
-            .field("stamp", &self.snapshot.stamp())
+            .field("stamp", &self.view.snapshot.stamp())
             .finish_non_exhaustive()
     }
 }
@@ -243,27 +232,6 @@ impl Dom {
             document,
             filter: Filter::Document(filter),
         })
-    }
-
-    fn validate_collection_document(
-        &self,
-        document: DocumentId,
-        cancel: &AtomicBool,
-    ) -> Result<(), DomError> {
-        if document.node().owner() != self.owner {
-            return Err(DomError::ForeignOwner);
-        }
-        self.require_source_entry(cancel)?;
-        let source = self.qualify_read_source(cancel)?;
-        let document_node = self.snapshot();
-        let view = document_node.node_with(document.node(), || match &source {
-            Some(source) => source.step(cancel),
-            None => check_cancel(cancel),
-        })?;
-        if !matches!(view.kind(), DomNodeKind::Document(_)) {
-            return Err(DomError::WrongNodeKind);
-        }
-        Ok(())
     }
 
     /// Resolve the current ordinary-tree Element candidates for a Window name.
@@ -343,13 +311,13 @@ impl Dom {
         }
         let read = || -> Result<DomWindowNamedValue, HostedReadError<E>> {
             let source = self.qualify_read_source(cancel)?;
-            let meter = Meter {
-                cancellation: cancel,
-                admission: || admission().map_err(HostedReadError::Caller),
+            let meter = Meter::new(
+                cancel,
                 source,
+                DomResource::HtmlCollectionWork,
                 work_limit,
-                work: Cell::new(0),
-            };
+                || admission().map_err(HostedReadError::Caller),
+            );
             let (document, metadata, _) =
                 self.dispatch_global_document_metadata_with(global, &mut || meter.step())?;
             admit(
@@ -397,11 +365,13 @@ impl Dom {
                 filter: Filter::WindowName(name),
             };
             let elements = DomHtmlCollectionRead {
-                dom: self,
-                snapshot,
+                view: CollectionRead {
+                    dom: self,
+                    snapshot,
+                    meter,
+                },
                 collection: &collection,
                 class: metadata.class(),
-                meter,
                 limits: DomHtmlCollectionLimits::new(work_limit, 0, 0),
             };
             let matches = if first.is_some() {
@@ -412,7 +382,7 @@ impl Dom {
                 elements.first_two_matches(|_| Ok(true))?
             };
             // The caller can expire the hosted issuer at any admission step.
-            elements.meter.step()?;
+            elements.view.meter.step()?;
             metadata
                 .document_environment()
                 .hosted
@@ -446,33 +416,21 @@ impl Dom {
         A: Fn() -> Result<(), E>,
         E: From<DomError>,
     {
-        if collection.document.node().owner() != self.owner {
-            return Err(DomError::ForeignOwner.into());
-        }
-        self.require_source_entry(cancel)?;
-        let source = self.qualify_read_source(cancel)?;
-        let meter = Meter {
-            cancellation: cancel,
+        let view = self.open_collection_read(
+            collection.document.node(),
+            DomResource::HtmlCollectionWork,
+            limits.work,
             admission,
-            source,
-            work_limit: limits.work,
-            work: Cell::new(0),
-        };
-        let snapshot = self.snapshot();
-        meter.step()?;
-        let DomNodeKind::Document(metadata) = snapshot
-            .node_with(collection.document.node(), || meter.step())?
-            .kind()
-        else {
+            cancel,
+        )?;
+        let DomNodeKind::Document(metadata) = view.node(collection.document.node())?.kind() else {
             return Err(DomError::WrongNodeKind.into());
         };
         let class = metadata.class();
         Ok(DomHtmlCollectionRead {
-            dom: self,
-            snapshot,
+            view,
             collection,
             class,
-            meter,
             limits,
         })
     }
@@ -494,47 +452,11 @@ impl Dom {
     }
 }
 
-impl<A, E> Meter<'_, A>
-where
-    A: Fn() -> Result<(), E>,
-    E: From<DomError>,
-{
-    fn step(&self) -> Result<(), E> {
-        check_cancel(self.cancellation)?;
-        if let Some(source) = &self.source {
-            source.validate()?;
-        }
-        let next = self
-            .work
-            .get()
-            .checked_add(1)
-            .ok_or(DomError::RepresentationExhausted)?;
-        if next > self.work_limit {
-            return Err(DomError::WorkLimit {
-                resource: DomResource::HtmlCollectionWork,
-                limit: self.work_limit,
-            }
-            .into());
-        }
-        (self.admission)()?;
-        match &self.source {
-            Some(source) => source.step(self.cancellation)?,
-            None => check_cancel(self.cancellation)?,
-        }
-        self.work.set(next);
-        Ok(())
-    }
-}
-
 impl<A, E> DomHtmlCollectionRead<'_, A>
 where
     A: Fn() -> Result<(), E>,
     E: From<DomError>,
 {
-    fn node(&self, node: NodeId) -> Result<DomNode<'_>, E> {
-        self.snapshot.node_with(node, || self.meter.step())
-    }
-
     fn walk<T>(
         &self,
         mut visit: impl FnMut(DomNode<'_>) -> Result<ControlFlow<T>, E>,
@@ -543,46 +465,40 @@ where
             &self.collection.filter,
             Filter::Document(HtmlDocumentCollection::Applets)
         ) {
-            self.meter.step()?;
+            self.view.meter.step()?;
             return Ok(None);
         }
-        let root = self.collection.document.node();
-        let mut at = self.child(root, 0)?;
-        while let Some(id) = at {
-            let node = self.node(id)?;
-            if let Some(element) = node.as_element() {
-                let matches = match &self.collection.filter {
-                    Filter::TagName(query) => {
-                        query.code_units() == [0x2a]
-                            || qualified_equals_with(
-                                element.name(),
-                                query,
-                                self.class == DomDocumentClass::Html
-                                    && in_html_namespace_with(element.name(), || {
-                                        self.meter.step()
-                                    })?,
-                                || self.meter.step(),
-                            )?
+        self.view
+            .descendants(self.collection.document.node(), |node| {
+                if let Some(element) = node.as_element() {
+                    let matches = match &self.collection.filter {
+                        Filter::TagName(query) => {
+                            query.code_units() == [0x2a]
+                                || qualified_equals_with(
+                                    element.name(),
+                                    query,
+                                    self.class == DomDocumentClass::Html
+                                        && in_html_namespace_with(element.name(), || {
+                                            self.view.meter.step()
+                                        })?,
+                                    || self.view.meter.step(),
+                                )?
+                        }
+                        Filter::WindowName(name) => {
+                            self.element_matches_name(node, name, ElementNameScope::Window)?
+                        }
+                        Filter::All => true,
+                        Filter::AllName(name) => {
+                            self.element_matches_name(node, name, ElementNameScope::All)?
+                        }
+                        Filter::Document(filter) => self.matches_document_filter(node, *filter)?,
+                    };
+                    if matches {
+                        return visit(node);
                     }
-                    Filter::WindowName(name) => {
-                        self.element_matches_name(node, name, ElementNameScope::Window)?
-                    }
-                    Filter::All => true,
-                    Filter::AllName(name) => {
-                        self.element_matches_name(node, name, ElementNameScope::All)?
-                    }
-                    Filter::Document(filter) => self.matches_document_filter(node, *filter)?,
-                };
-                if matches && let ControlFlow::Break(value) = visit(node)? {
-                    return Ok(Some(value));
                 }
-            }
-            at = match node.children().first().copied() {
-                Some(child) => Some(child),
-                None => following(self, root, id)?,
-            };
-        }
-        Ok(None)
+                Ok(ControlFlow::Continue(()))
+            })
     }
 
     fn first_two_matches(
@@ -613,17 +529,17 @@ where
         filter: HtmlDocumentCollection,
     ) -> Result<bool, E> {
         let element = node.as_element().ok_or(DomError::WrongNodeKind)?;
-        if !in_html_namespace_with(element.name(), || self.meter.step())? {
+        if !in_html_namespace_with(element.name(), || self.view.meter.step())? {
             return Ok(false);
         }
-        self.meter.step()?;
+        self.view.meter.step()?;
         match filter.match_local_name(element.name().local_name().code_units()) {
             HtmlDocumentCollectionMatch::Excluded => Ok(false),
             HtmlDocumentCollectionMatch::Included => Ok(true),
             HtmlDocumentCollectionMatch::AttributePresent(name) => {
                 let attributes = node.attributes().ok_or(DomError::WrongNodeKind)?;
                 Ok(attributes
-                    .get_null_namespace_attribute_with(name, || self.meter.step())?
+                    .get_null_namespace_attribute_with(name, || self.view.meter.step())?
                     .is_some())
             }
         }
@@ -662,7 +578,7 @@ where
         name: &DocumentString,
         scope: ElementNameScope,
     ) -> Result<Option<NodeId>, E> {
-        self.meter.step()?;
+        self.view.meter.step()?;
         if name.is_empty() {
             return Ok(None);
         }
@@ -680,7 +596,7 @@ where
         matched: T,
     ) -> Result<ControlFlow<T>, E> {
         if same_code_units(candidate.code_units(), query.code_units(), || {
-            self.meter.step()
+            self.view.meter.step()
         })? {
             Ok(ControlFlow::Break(matched))
         } else {
@@ -708,7 +624,8 @@ where
         mut visit: impl FnMut(&DocumentString) -> Result<ControlFlow<T>, E>,
     ) -> Result<ControlFlow<T>, E> {
         let attributes = node.attributes().ok_or(DomError::WrongNodeKind)?;
-        if let Some(id) = attributes.get_null_namespace_attribute_with(ID, || self.meter.step())?
+        if let Some(id) =
+            attributes.get_null_namespace_attribute_with(ID, || self.view.meter.step())?
             && !id.value().is_empty()
             && let ControlFlow::Break(value) = visit(id.value())?
         {
@@ -717,12 +634,14 @@ where
         let element = node.as_element().ok_or(DomError::WrongNodeKind)?;
         let eligible = match scope {
             ElementNameScope::Collection => {
-                in_html_namespace_with(element.name(), || self.meter.step())?
+                in_html_namespace_with(element.name(), || self.view.meter.step())?
             }
-            ElementNameScope::Window => window_name_element(element.name(), || self.meter.step())?,
+            ElementNameScope::Window => {
+                window_name_element(element.name(), || self.view.meter.step())?
+            }
             ElementNameScope::All => {
-                if in_html_namespace_with(element.name(), || self.meter.step())? {
-                    self.meter.step()?;
+                if in_html_namespace_with(element.name(), || self.view.meter.step())? {
+                    self.view.meter.step()?;
                     is_document_all_named_local_name(element.name().local_name().code_units())
                 } else {
                     false
@@ -733,7 +652,7 @@ where
             return Ok(ControlFlow::Continue(()));
         }
         if let Some(name) =
-            attributes.get_null_namespace_attribute_with(NAME, || self.meter.step())?
+            attributes.get_null_namespace_attribute_with(NAME, || self.view.meter.step())?
             && !name.value().is_empty()
         {
             return visit(name.value());
@@ -768,9 +687,9 @@ where
         value: &DocumentString,
     ) -> Result<(), E> {
         for present in &output.names {
-            self.meter.step()?;
+            self.view.meter.step()?;
             if same_code_units(present.code_units(), value.code_units(), || {
-                self.meter.step()
+                self.view.meter.step()
             })? {
                 return Ok(());
             }
@@ -793,20 +712,26 @@ where
         if output.names.capacity() < count {
             self.grow_names(output, count)?;
         }
-        self.meter.step()?;
-        if self.meter.source.is_some() {
+        self.view.meter.step()?;
+        if self.view.meter.source.is_some() {
             let mut payload = source::storage::Payload::default();
             payload.string(value)?;
             let usage = custody::Usage::new(payload.bytes, payload.units);
             let admit = |usage| {
-                self.dom
-                    .admit_collection_output_usage(usage, self.meter.cancellation)
+                self.view
+                    .dom
+                    .admit_collection_output_usage(usage, self.view.meter.cancellation)
             };
             if let Some(backing) = &mut output.text_backing {
                 backing.grow(usage, admit)?;
             } else {
-                output.text_backing =
-                    Some(self.dom.custody_registry.ledger().retain(usage, admit)?);
+                output.text_backing = Some(
+                    self.view
+                        .dom
+                        .custody_registry
+                        .ledger()
+                        .retain(usage, admit)?,
+                );
             }
         }
         output.names.push(value.clone());
@@ -815,7 +740,7 @@ where
     }
 
     fn grow_names(&self, output: &mut DomHtmlCollectionNames, count: usize) -> Result<(), E> {
-        self.meter.step()?;
+        self.view.meter.step()?;
         let capacity = count.max(
             output
                 .names
@@ -830,15 +755,18 @@ where
                 .ok_or(DomError::RepresentationExhausted)
         };
         let admit = |usage| {
-            self.dom
-                .admit_collection_output_usage(usage, self.meter.cancellation)
+            self.view
+                .dom
+                .admit_collection_output_usage(usage, self.view.meter.cancellation)
         };
         let mut backing = self
+            .view
             .meter
             .source
             .as_ref()
             .map(|_| {
-                self.dom
+                self.view
+                    .dom
                     .custody_registry
                     .ledger()
                     .retain(usage(capacity)?, admit)
@@ -859,7 +787,7 @@ where
         // Source holds both old and replacement vector storage until the move.
         // The text occurrence receipts stay with the whole output.
         for value in output.names.drain(..) {
-            self.meter.step()?;
+            self.view.meter.step()?;
             names.push(value);
         }
         output.names = names;
@@ -897,7 +825,7 @@ where
         name: &DocumentString,
         max_retained_query_units: usize,
     ) -> Result<DomHtmlAllNamedValue, E> {
-        self.0.meter.step()?;
+        self.0.view.meter.step()?;
         if name.is_empty() {
             return Ok(DomHtmlAllNamedValue::Absent);
         }
@@ -924,28 +852,6 @@ where
     /// Return each eligible nonempty ID or name in tree order.
     pub fn supported_names(&self) -> Result<DomHtmlCollectionNames, E> {
         self.0.names_for(ElementNameScope::All)
-    }
-}
-
-impl<A, E> OrdinaryTree<NodeId> for DomHtmlCollectionRead<'_, A>
-where
-    A: Fn() -> Result<(), E>,
-    E: From<DomError>,
-{
-    type Error = E;
-
-    fn position(&self, node: NodeId) -> Result<Option<(NodeId, usize)>, E> {
-        self.dom
-            .state
-            .ordinary_child_position_with(node, &mut || self.meter.step())
-    }
-
-    fn child(&self, parent: NodeId, ordinal: usize) -> Result<Option<NodeId>, E> {
-        Ok(self.node(parent)?.children().get(ordinal).copied())
-    }
-
-    fn last_child(&self, parent: NodeId) -> Result<Option<NodeId>, E> {
-        Ok(self.node(parent)?.children().last().copied())
     }
 }
 

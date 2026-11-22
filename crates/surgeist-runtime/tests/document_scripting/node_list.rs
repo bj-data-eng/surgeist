@@ -10,7 +10,7 @@ pub(super) fn node_lists_follow_current_canonical_nodes() {
     let child_nodes = observe(
         &mut host,
         &permit,
-        r#"(() => {
+        r"(() => {
             const fragment = document.createDocumentFragment();
             const children = fragment.childNodes;
             if (typeof NodeList !== 'function' || typeof document.getElementsByName !== 'function'
@@ -84,14 +84,14 @@ pub(super) fn node_lists_follow_current_canonical_nodes() {
                 || children.length !== 2 || children[0] !== element || current !== comment)
                 return 'the same child view must survive adoption and read after index coercion';
             return 'ok';
-        })()"#,
+        })()",
     );
     assert_eq!(child_nodes, "ok");
 
     let names = observe(
         &mut host,
         &permit,
-        r#"(() => {
+        r"(() => {
             const query = 'N\ud800\0\udc00';
             const read = document.getElementsByName;
             for (const operation of [() => read.call(Object.create(document), query),
@@ -147,7 +147,70 @@ pub(super) fn node_lists_follow_current_canonical_nodes() {
             parent.remove();
             if (result.length !== 0) return 'the retained query must exclude detached subtrees';
             return 'ok';
-        })()"#,
+        })()",
     );
     assert_eq!(names, "ok");
+}
+
+pub(super) fn retired_child_roots_refuse_cached_and_first_access() {
+    for cached in [false, true] {
+        let mut session = DomSession::new(native_dom(), limits()).unwrap();
+        let (_, top) = create(&mut session);
+        let (mut host, _) =
+            attach_event_window_with_work(session, top, Arc::new(cancel()), 180_000, |_, _, _| {});
+        let permit = host.permit().unwrap();
+        let before = host.snapshot().unwrap();
+        assert_eq!(
+            observe(
+                &mut host,
+                &permit,
+                "globalThis.root = new DocumentFragment(); 'ok'"
+            ),
+            "ok"
+        );
+        if cached {
+            assert_eq!(
+                observe(
+                    &mut host,
+                    &permit,
+                    "globalThis.saved = root.childNodes; String(saved.length)"
+                ),
+                "0"
+            );
+        }
+        host.with_native(|dom, _, _| {
+            let snapshot = dom.snapshot();
+            let mut created = snapshot.nodes().filter(|node| before.node(*node).is_err());
+            let root = created.next().unwrap();
+            assert!(created.next().is_none());
+            assert!(matches!(
+                snapshot.node(root).unwrap().kind(),
+                DomNodeKind::DocumentFragment
+            ));
+            let mut edit = DomBatch::new();
+            edit.destroy(root);
+            dom.apply(edit, &cancel()).unwrap();
+            assert!(matches!(
+                dom.snapshot().node(root),
+                Err(DomError::StaleNode)
+            ));
+        })
+        .unwrap();
+        let failure = native_failure(host.in_document(&permit, |scope| {
+            scope
+                .evaluate(&"root.childNodes".encode_utf16().collect::<Vec<_>>())
+                .map(drop)
+        }));
+        assert!(
+            matches!(
+                failure.cause::<DocumentGuestEventError>(),
+                Some(DocumentGuestEventError::Document(
+                    DocumentScriptError::Native(DocumentScriptNativeError::Dom(
+                        DomError::StaleNode
+                    ))
+                ))
+            ),
+            "cached={cached}"
+        );
+    }
 }
