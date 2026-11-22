@@ -143,6 +143,8 @@ mod table_legacy_reflections;
 mod table_parts;
 #[path = "document_scripting/table_row_indexes.rs"]
 mod table_row_indexes;
+#[path = "document_scripting/tag_collection.rs"]
+mod tag_collection;
 #[path = "document_scripting/text_comment.rs"]
 mod text_comment;
 #[path = "document_scripting/textarea_values.rs"]
@@ -155,6 +157,8 @@ mod window_document;
 mod window_length;
 #[path = "document_scripting/window_timers.rs"]
 mod window_timers;
+#[path = "document_scripting/wpt_window_startup.rs"]
+mod wpt_window_startup;
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -2473,6 +2477,13 @@ fn explicit_hook_keys_require_each_authored_utf16_work_unit() {
 fn main() {
     if let Some(scenario) = std::env::args().nth(1) {
         match scenario.as_str() {
+            "window-event-target-lookup" => window_document::window_resolves_the_inherited_event_target_operations(),
+            "window-properties-full" => window_document::window_properties_full_assignment_regression(),
+            "window-properties-alternate-assignment" => window_document::window_properties_refuses_alternate_receiver(),
+            "window-properties-direct-storage" => window_document::window_properties_direct_assignment_preserves_storage_and_inheritance(),
+            "wpt-window-startup" => wpt_window_startup::starts_unmodified_harness_with_native_timers(),
+            "html-collection-indexed-assignment" => wpt_window_startup::refuses_unsupported_html_collection_index_assignment(),
+            "html-collection-properties" => tag_collection::reflects_live_tag_collection_properties(),
             "standard-window" => standard_window::window_without_host_hooks_uses_standard_globals(),
             "standard-window-guest" => standard_window::guest_window_without_host_hooks_recovers_from_policy_refusal(),
             "media-removal-stable-state" => standard_window::guest_media_removal_reaches_the_owning_checkpoint(),
@@ -2672,6 +2683,9 @@ fn main() {
     window_document::native_document_retirement_releases_registered_callbacks();
     window_document::document_dispatch_preserves_native_observer_and_refusal();
     window_document::window_uses_the_real_global_event_target();
+    window_document::window_resolves_the_inherited_event_target_operations();
+    window_document::window_properties_direct_assignment_preserves_storage_and_inheritance();
+    tag_collection::reflects_live_tag_collection_properties();
     native_window_exposes_dom_exception();
     native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion();
     native_window_dom_exception_admission_and_hook_collision();

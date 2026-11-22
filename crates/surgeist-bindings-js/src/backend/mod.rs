@@ -75,9 +75,13 @@ pub(crate) trait Engine {
     fn prepare_realm(&mut self) -> Result<(), Error>;
     fn create_realm_with_backing(
         &mut self,
+        profile: RealmProfile,
         backing: Option<Rc<crate::RealmBacking>>,
     ) -> Result<Realm, Error>;
     fn create_realm(&mut self) -> Result<Realm, Error> {
+        self.create_realm_profile(RealmProfile::Plain)
+    }
+    fn create_realm_profile(&mut self, profile: RealmProfile) -> Result<Realm, Error> {
         self.prepare_realm()?;
         let owner = self.owner_state();
         let backing = owner
@@ -92,7 +96,7 @@ pub(crate) trait Engine {
                 Ok::<_, Error>(crate::RealmBacking::new(guard))
             })
             .transpose()?;
-        self.create_realm_with_backing(backing)
+        self.create_realm_with_backing(profile, backing)
     }
     fn with_realm(
         &mut self,
@@ -107,6 +111,22 @@ pub(crate) trait Engine {
     fn release_callback_object(&mut self, holder: &Rc<CallbackObjectIdentity>)
     -> Result<(), Error>;
     fn reap(&mut self);
+}
+
+pub(crate) enum NativeProjectionSlot<'a> {
+    Traced(u32, &'a Root),
+    Collection { read: &'a Root, keys: &'a Root },
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum RealmProfile {
+    Plain,
+    Window,
+}
+
+pub(crate) struct WindowInterface {
+    pub(crate) prototype: Root,
+    pub(crate) event_target_prototype: Root,
 }
 
 pub(crate) struct DomExceptionProfile {
@@ -124,6 +144,7 @@ pub(crate) struct DeclaredCallable<'a> {
 /// native callbacks borrow this same adapter; neither can reenter the owner.
 pub(crate) trait Operations {
     fn realm_key(&self) -> RealmKey;
+    fn window_interface(&mut self) -> Result<WindowInterface, Error>;
     fn owner_state(&self) -> std::rc::Rc<crate::owner::OwnerState>;
     fn refuse(&self, error: Error) -> Error;
     fn check_host_failure_report(&self) -> Result<(), Error>;
@@ -148,6 +169,11 @@ pub(crate) trait Operations {
     fn kind(&mut self, value: &Root) -> Result<ValueKind, Error>;
     fn is_callable(&mut self, value: &Root) -> Result<bool, Error>;
     fn is_constructor(&mut self, value: &Root) -> Result<bool, Error>;
+    fn qualify_window_event_target(
+        &mut self,
+        constructor: &Root,
+        prototype: &Root,
+    ) -> Result<(), Error>;
     fn callback_object_realm(&mut self, value: &Root) -> Result<RealmKey, Error>;
     fn with_callback_object_realm(
         &mut self,
@@ -232,7 +258,7 @@ pub(crate) trait Operations {
         &mut self,
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
-        reference: Option<(u32, &Root)>,
+        slot: Option<NativeProjectionSlot<'_>>,
     ) -> Result<Root, Error>;
     fn project_retained_native_object(
         &mut self,

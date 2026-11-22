@@ -737,7 +737,7 @@ impl PreparedDocumentScriptHost {
         hooks: Option<DocumentScriptHooks<'_>>,
     ) -> Result<DocumentScriptHost, EnableDocumentScriptFailure> {
         let result = self
-            .prepare_engine(target, hooks)
+            .prepare_engine(target, hooks, ScriptRealmKind::Ordinary)
             .and_then(|engine| engine.publish(&self.native, policy));
         match result {
             Ok(engine) => Ok(self.into_host(engine, None)),
@@ -763,6 +763,7 @@ impl PreparedDocumentScriptHost {
         &self,
         target: DomHostedTopLevel,
         hooks: Option<DocumentScriptHooks<'_>>,
+        realm_kind: ScriptRealmKind,
     ) -> Result<UnpublishedScriptEngine, DocumentScriptError> {
         let owner = &self.native;
         let cancel = &owner.cancellation;
@@ -805,10 +806,17 @@ impl PreparedDocumentScriptHost {
             Ok::<_, DocumentScriptError>(backing)
         };
         let mut process = Process::bootstrap_funded(EngineKind::V8, fund_setup)?;
-        let realm = process.execution().create_realm_funded(fund_setup)?;
-        let authority = process
-            .execution()
-            .in_realm(&realm, |scope| scope.realm_authority())?;
+        let realm = match realm_kind {
+            ScriptRealmKind::Ordinary => {
+                PreparedScriptRealm::Ready(process.execution().create_realm_funded(fund_setup)?)
+            }
+            ScriptRealmKind::Window => PreparedScriptRealm::Window(
+                process
+                    .execution()
+                    .prepare_window_realm_funded(fund_setup)?,
+            ),
+        };
+        let authority = realm.enter(&mut process, |scope| scope.realm_authority())?;
         let permit = DocumentScriptPermit {
             realm: authority.identity(),
             document: target.document(),
@@ -981,7 +989,7 @@ impl PreparedDocumentScriptHost {
                         .admit_script_work(&session.dom(), name.len(), cancel)
                         .map_err(DocumentScriptNativeError::from)?;
                 }
-                process.execution().in_realm(&realm, |scope| {
+                realm.enter(&mut process, |scope| {
                     let global = scope.global()?;
                     let hook = scope.function(&callback)?;
                     scope.define_new_property(
@@ -997,7 +1005,7 @@ impl PreparedDocumentScriptHost {
                 })?;
             }
         }
-        process.execution().in_realm(&realm, |scope| {
+        realm.enter(&mut process, |scope| {
             window_relations::install(
                 scope,
                 Rc::downgrade(owner),
@@ -1026,7 +1034,7 @@ impl PreparedDocumentScriptHost {
             Ok(())
         })?;
 
-        let media_removal_job = process.execution().in_realm(&realm, |scope| {
+        let media_removal_job = realm.enter(&mut process, |scope| {
             media_stable_state::install(scope, Rc::downgrade(owner), media_job_backing)
         })?;
         Ok(UnpublishedScriptEngine {
@@ -1046,11 +1054,34 @@ impl PreparedDocumentScriptHost {
     }
 }
 
+enum ScriptRealmKind {
+    Ordinary,
+    Window,
+}
+
+enum PreparedScriptRealm {
+    Ready(Realm),
+    Window(surgeist_bindings_js::PendingWindowRealm),
+}
+
+impl PreparedScriptRealm {
+    fn enter<T>(
+        &self,
+        process: &mut Process,
+        action: impl for<'scope> FnOnce(&mut Scope<'scope>) -> Result<T, Error>,
+    ) -> Result<T, Error> {
+        match self {
+            Self::Ready(realm) => process.execution().in_realm(realm, action),
+            Self::Window(pending) => process.execution().in_pending_window_realm(pending, action),
+        }
+    }
+}
+
 struct UnpublishedScriptEngine {
     media_removal_job: Root,
     process: Process,
     preparation: preparation::Prepared,
-    realm: Realm,
+    realm: PreparedScriptRealm,
     target: DomHostedTopLevel,
     authority: RealmAuthority,
     failures: FailureSlot,
@@ -1082,6 +1113,9 @@ impl UnpublishedScriptEngine {
             mut liveness_backing,
             _hook_backing,
         } = self;
+        let PreparedScriptRealm::Ready(realm) = realm else {
+            return Err(DocumentScriptNativeError::ProjectionCustody.into());
+        };
         // Keep the hook debit alive through engine disposal on refusal.
         let process = process;
         let registration_access_backing = liveness_backing

@@ -9,6 +9,9 @@ use crate::{Error, ExceptionPhase, RealmKey, Root};
 
 use super::callback_object::creation_context;
 use super::{Entered, ObjectPrototype, Roots, prototype_value};
+use crate::backend::NativeProjectionSlot;
+
+mod collection;
 
 struct Entry {
     object: v8::Weak<v8::Object>,
@@ -34,7 +37,7 @@ fn prepare_payload<'s>(
     realm: RealmKey,
     prototype: impl FnOnce(&v8::PinScope<'s, '_>) -> Result<v8::Local<'s, v8::Value>, Error>,
     payload: Rc<dyn Any>,
-    reference: Option<(u32, &Root)>,
+    slot: Option<NativeProjectionSlot<'_>>,
     funding: Option<crate::preparation::Guard>,
 ) -> Result<PreparedObject, Error> {
     let mut root = match funding {
@@ -49,7 +52,13 @@ fn prepare_payload<'s>(
         .ok_or(Error::IdentityExhausted)?;
     bank.next.set(index);
     let template = v8::ObjectTemplate::new(scope);
-    if !template.set_internal_field_count(2) {
+    let fields = if matches!(slot, Some(NativeProjectionSlot::Collection { .. })) {
+        collection::install(template);
+        collection::FIELD_COUNT
+    } else {
+        2
+    };
+    if !template.set_internal_field_count(fields) {
         return Err(Error::BackendUnavailable);
     }
     let object = template
@@ -66,14 +75,28 @@ fn prepare_payload<'s>(
     {
         return Err(Error::BackendUnavailable);
     }
-    if let Some((slot, reference)) = reference {
-        let value = roots.local(scope, reference)?;
-        if !value.is_object() {
-            return Err(Error::ExpectedObject);
+    match slot {
+        Some(NativeProjectionSlot::Traced(slot, reference)) => {
+            let value = roots.local(scope, reference)?;
+            if !value.is_object() {
+                return Err(Error::ExpectedObject);
+            }
+            if references.set_index(scope, slot, value) != Some(true) {
+                return Err(Error::BackendUnavailable);
+            }
         }
-        if references.set_index(scope, slot, value) != Some(true) {
-            return Err(Error::BackendUnavailable);
+        Some(NativeProjectionSlot::Collection { read, keys }) => {
+            let read = v8::Local::<v8::Function>::try_from(roots.local(scope, read)?)
+                .map_err(|_| Error::ExpectedObject)?;
+            let keys = v8::Local::<v8::Function>::try_from(roots.local(scope, keys)?)
+                .map_err(|_| Error::ExpectedObject)?;
+            if !object.set_internal_field(collection::READ_FIELD, read.into())
+                || !object.set_internal_field(collection::KEYS_FIELD, keys.into())
+            {
+                return Err(Error::BackendUnavailable);
+            }
         }
+        None => {}
     }
     let root = root.retain(scope, realm, object.into())?;
     let retired = Rc::new(Cell::new(false));
@@ -164,10 +187,10 @@ impl Entered<'_, '_, '_> {
         &mut self,
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
-        reference: Option<(u32, &Root)>,
+        slot: Option<NativeProjectionSlot<'_>>,
     ) -> Result<Root, Error> {
         let PreparedObject { index, root, entry } =
-            self.prepare_payload(prototype, payload, reference, None)?;
+            self.prepare_payload(prototype, payload, slot, None)?;
         self.roots
             .native_objects
             .entries
@@ -243,7 +266,7 @@ impl Entered<'_, '_, '_> {
         &mut self,
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
-        reference: Option<(u32, &Root)>,
+        slot: Option<NativeProjectionSlot<'_>>,
         funding: Option<crate::preparation::Guard>,
     ) -> Result<PreparedObject, Error> {
         self.observe(ExceptionPhase::Prototype, |scope, roots, realm, _| {
@@ -253,7 +276,7 @@ impl Entered<'_, '_, '_> {
                 realm,
                 |scope| prototype_value(scope, roots, prototype),
                 payload,
-                reference,
+                slot,
                 funding,
             )
         })

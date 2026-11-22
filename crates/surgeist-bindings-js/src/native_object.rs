@@ -153,14 +153,54 @@ impl<'scope> Scope<'scope> {
         reference: &Value<'scope>,
         admit: impl FnOnce(usize) -> Result<Storage, E>,
     ) -> Result<Value<'scope>, E> {
-        self.project_payload(prototype, payload, Some((slot, &reference.root)), admit)
+        self.project_payload(
+            prototype,
+            payload,
+            Some(crate::backend::NativeProjectionSlot::Traced(
+                slot,
+                &reference.root,
+            )),
+            admit,
+        )
+    }
+
+    /// Project a native object with live, readonly indexed and named properties.
+    ///
+    /// Both callbacks receive the actual holder. The read callback receives a
+    /// numeric index or string name and returns the property value or undefined.
+    /// When a second argument is present, it instead returns whether the key is
+    /// supported. The keys callback returns a dense array of numeric indices
+    /// without arguments, or a dense array of string names with one argument.
+    /// Invalid key arrays throw a guest TypeError during reflection.
+    /// Use the ordinary prototype provided by the native interface.
+    pub fn project_native_object_with_collection_properties<
+        T: 'static,
+        Storage: 'static,
+        E: From<Error>,
+    >(
+        &mut self,
+        prototype: ObjectPrototype<'_, 'scope>,
+        payload: T,
+        read: &Value<'scope>,
+        keys: &Value<'scope>,
+        admit: impl FnOnce(usize) -> Result<Storage, E>,
+    ) -> Result<Value<'scope>, E> {
+        self.project_payload(
+            prototype,
+            payload,
+            Some(crate::backend::NativeProjectionSlot::Collection {
+                read: &read.root,
+                keys: &keys.root,
+            }),
+            admit,
+        )
     }
 
     fn project_payload<T: 'static, Storage: 'static, E: From<Error>>(
         &mut self,
         prototype: ObjectPrototype<'_, 'scope>,
         payload: T,
-        reference: Option<(u32, &crate::Root)>,
+        slot: Option<crate::backend::NativeProjectionSlot<'_>>,
         admit: impl FnOnce(usize) -> Result<Storage, E>,
     ) -> Result<Value<'scope>, E> {
         self.check_active()?;
@@ -168,7 +208,7 @@ impl<'scope> Scope<'scope> {
         let root = self.operations.project_native_object(
             prototype.input(),
             Rc::new(NativeObject::new(payload, backing)),
-            reference,
+            slot,
         )?;
         Ok(self.value(root))
     }

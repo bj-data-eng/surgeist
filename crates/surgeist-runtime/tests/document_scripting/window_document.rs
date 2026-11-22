@@ -251,3 +251,292 @@ pub(super) fn window_uses_the_real_global_event_target() {
         .unwrap();
     assert_eq!(String::from_utf16(&result).unwrap(), "ok");
 }
+
+pub(super) fn window_resolves_the_inherited_event_target_operations() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let script = r#"(() => {
+        if (typeof Window !== "function") return "missing Window interface object";
+        const target = EventTarget.prototype;
+        if (Object.getPrototypeOf(window) !== Window.prototype
+            || Object.getPrototypeOf(Window) !== EventTarget
+            || !target.isPrototypeOf(window) || !(window instanceof Window)
+            || Reflect.setPrototypeOf(window, {})) {
+            return "Window must inherit EventTarget through its immutable global prototype";
+        }
+        const descriptor = Object.getOwnPropertyDescriptor(window, "Window");
+        const prototype = Object.getOwnPropertyDescriptor(Window, "prototype");
+        if (!descriptor.writable || descriptor.enumerable || !descriptor.configurable
+            || prototype.writable || prototype.enumerable || prototype.configurable
+            || Window.prototype.constructor !== Window || Window.name !== "Window"
+            || Window.length !== 0 || Object.prototype.toString.call(window) !== "[object Window]") {
+            return "Window must expose the standard interface descriptors";
+        }
+        let prototypeReads = 0;
+        const newTarget = new Proxy(function () {}, {
+            get(target, key) {
+                if (key === "prototype") prototypeReads++;
+                return Reflect.get(target, key);
+            }
+        });
+        for (const invoke of [() => Window(), () => new Window(),
+            () => Reflect.construct(Window, [], newTarget)]) {
+            let refused = false;
+            try { invoke(); } catch (error) { refused = error instanceof TypeError; }
+            if (!refused) return "Window must reject direct calls and construction";
+        }
+        if (prototypeReads !== 0) return "Window must refuse before reading NewTarget.prototype";
+        const names = Object.getPrototypeOf(Window.prototype);
+        if (Object.getPrototypeOf(names) !== target || Object.hasOwn(names, "constructor")
+            || Object.prototype.toString.call(names) !== "[object WindowProperties]"
+            || Reflect.setPrototypeOf(Window.prototype, {}) || Reflect.setPrototypeOf(target, {})
+            || Reflect.setPrototypeOf(names, {}) || Reflect.preventExtensions(names)
+            || Reflect.defineProperty(names, "absent", { value: 1 })
+            || Reflect.deleteProperty(names, "absent")
+            || Reflect.defineProperty(names, "0", { value: 1 })
+            || Reflect.deleteProperty(names, "0")) {
+            return "the Window named-properties layer must preserve standard reflection";
+        }
+        for (const key of ["addEventListener", "removeEventListener", "dispatchEvent"]) {
+            if (Object.hasOwn(window, key) || window[key] !== target[key]) {
+                return "Window must resolve the original inherited EventTarget operations";
+            }
+        }
+        let calls = 0;
+        function observe(event) {
+            if (this === window && event.target === window && event.currentTarget === window) calls++;
+            event.preventDefault();
+        }
+        window.addEventListener("inherited", observe);
+        if (dispatchEvent(new Event("inherited", { cancelable: true })) || calls !== 1) {
+            return "ordinary registration and unqualified dispatch must use the native Global";
+        }
+        removeEventListener("inherited", observe);
+        if (!window.dispatchEvent(new Event("inherited", { cancelable: true })) || calls !== 1) {
+            return "unqualified removal must remove the native registration";
+        }
+        addEventListener("inherited", observe, { once: true });
+        window.dispatchEvent(new Event("inherited"));
+        if (calls !== 2) return "unqualified registration must use the native Global";
+        let conversions = 0;
+        try {
+            target.addEventListener.call(Object.create(Window.prototype), {
+                toString() { conversions++; return "inherited"; },
+            }, observe);
+            return "a prototype forgery must fail the Window receiver check";
+        } catch (error) {
+            if (!(error instanceof TypeError) || conversions !== 0) {
+                return "receiver qualification must precede conversion";
+            }
+        }
+        return "ok";
+    })()"#;
+    let result = host
+        .in_document(&permit, |scope| {
+            let value = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&value)
+        })
+        .unwrap();
+    assert_eq!(String::from_utf16(&result).unwrap(), "ok");
+}
+
+pub(super) fn window_properties_full_assignment_regression() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let script = r#"(() => {
+        if (typeof Window !== "function") return "missing Window interface object";
+        const target = EventTarget.prototype;
+        if (Object.getPrototypeOf(window) !== Window.prototype
+            || Object.getPrototypeOf(Window) !== EventTarget
+            || !target.isPrototypeOf(window) || !(window instanceof Window)
+            || Reflect.setPrototypeOf(window, {})) {
+            return "Window must inherit EventTarget through its immutable global prototype";
+        }
+        const descriptor = Object.getOwnPropertyDescriptor(window, "Window");
+        const prototype = Object.getOwnPropertyDescriptor(Window, "prototype");
+        if (!descriptor.writable || descriptor.enumerable || !descriptor.configurable
+            || prototype.writable || prototype.enumerable || prototype.configurable
+            || Window.prototype.constructor !== Window || Window.name !== "Window"
+            || Window.length !== 0 || Object.prototype.toString.call(window) !== "[object Window]") {
+            return "Window must expose the standard interface descriptors";
+        }
+        let prototypeReads = 0;
+        const newTarget = new Proxy(function () {}, {
+            get(target, key) {
+                if (key === "prototype") prototypeReads++;
+                return Reflect.get(target, key);
+            }
+        });
+        for (const invoke of [() => Window(), () => new Window(),
+            () => Reflect.construct(Window, [], newTarget)]) {
+            let refused = false;
+            try { invoke(); } catch (error) { refused = error instanceof TypeError; }
+            if (!refused) return "Window must reject direct calls and construction";
+        }
+        if (prototypeReads !== 0) return "Window must refuse before reading NewTarget.prototype";
+        const names = Object.getPrototypeOf(Window.prototype);
+        if (Object.getPrototypeOf(names) !== target || Object.hasOwn(names, "constructor")
+            || Object.prototype.toString.call(names) !== "[object WindowProperties]"
+            || Reflect.setPrototypeOf(Window.prototype, {}) || Reflect.setPrototypeOf(target, {})
+            || Reflect.setPrototypeOf(names, {}) || Reflect.preventExtensions(names)
+            || Reflect.defineProperty(names, "absent", { value: 1 })
+            || Reflect.deleteProperty(names, "absent")
+            || Reflect.defineProperty(names, "0", { value: 1 })
+            || Reflect.deleteProperty(names, "0")) {
+            return "the Window named-properties layer must preserve standard reflection";
+        }
+        for (const key of ["newName", "0", Symbol("name"), "constructor"]) {
+            if (Reflect.set(names, key, 17) || Object.hasOwn(names, key)) {
+                return "WindowProperties must refuse direct assignment for " + String(key);
+            }
+            if (Reflect.set({}, key, 17, names) || Object.hasOwn(names, key)) {
+                return "WindowProperties must refuse assignment as an alternate receiver for " + String(key);
+            }
+            const ordinary = Object.create(names);
+            if (!Reflect.set(names, key, 17, ordinary) || ordinary[key] !== 17
+                || !Object.hasOwn(ordinary, key)) {
+                return "WindowProperties must preserve ordinary receiver assignment";
+            }
+        }
+        for (const key of ["inheritedSetter", "0", Symbol("setter")]) {
+            let received;
+            Object.defineProperty(target, key, {
+                configurable: true,
+                set(value) { received = [this, value]; },
+            });
+            const assigned = Reflect.set(names, key, 42);
+            delete target[key];
+            if (!assigned || !received || received[0] !== names || received[1] !== 42) {
+                return "WindowProperties must invoke an inherited setter with the exact receiver";
+            }
+        }
+        for (const key of ["addEventListener", "removeEventListener", "dispatchEvent"]) {
+            if (Object.hasOwn(window, key) || window[key] !== target[key]) {
+                return "Window must resolve the original inherited EventTarget operations";
+            }
+        }
+        let calls = 0;
+        function observe(event) {
+            if (this === window && event.target === window && event.currentTarget === window) calls++;
+            event.preventDefault();
+        }
+        window.addEventListener("inherited", observe);
+        if (dispatchEvent(new Event("inherited", { cancelable: true })) || calls !== 1) {
+            return "ordinary registration and unqualified dispatch must use the native Global";
+        }
+        removeEventListener("inherited", observe);
+        if (!window.dispatchEvent(new Event("inherited", { cancelable: true })) || calls !== 1) {
+            return "unqualified removal must remove the native registration";
+        }
+        addEventListener("inherited", observe, { once: true });
+        window.dispatchEvent(new Event("inherited"));
+        if (calls !== 2) return "unqualified registration must use the native Global";
+        let conversions = 0;
+        try {
+            target.addEventListener.call(Object.create(Window.prototype), {
+                toString() { conversions++; return "inherited"; },
+            }, observe);
+            return "a prototype forgery must fail the Window receiver check";
+        } catch (error) {
+            if (!(error instanceof TypeError) || conversions !== 0) {
+                return "receiver qualification must precede conversion";
+            }
+        }
+        return "ok";
+    })()"#;
+    let result = host
+        .in_document(&permit, |scope| {
+            let value = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&value)
+        })
+        .unwrap();
+    assert_eq!(String::from_utf16(&result).unwrap(), "ok");
+}
+
+pub(super) fn window_properties_refuses_alternate_receiver() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let script = r#"(() => {
+        const names = Object.getPrototypeOf(Window.prototype);
+        const key = "newName";
+        if (Object.hasOwn(names, key)) return "expected an absent WindowProperties key";
+        const assigned = Reflect.set({}, key, 17, names);
+        const ownsName = Object.hasOwn(names, key);
+        if (assigned || ownsName) {
+            return "WindowProperties must refuse own property creation through an alternate target"
+                + "; Reflect.set returned " + assigned + ", own name " + ownsName;
+        }
+        return "ok";
+    })()"#;
+    let result = host
+        .in_document(&permit, |scope| {
+            let value = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&value)
+        })
+        .unwrap();
+    assert_eq!(String::from_utf16(&result).unwrap(), "ok");
+}
+
+pub(super) fn window_properties_direct_assignment_preserves_storage_and_inheritance() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let script = r#"(() => {
+        const names = Object.getPrototypeOf(Window.prototype);
+        const target = EventTarget.prototype;
+        for (const key of ["newName", "0", Symbol("name"), "constructor"]) {
+            const assigned = Reflect.set(names, key, 17);
+            if (assigned || Object.hasOwn(names, key)) {
+                return "direct assignment must refuse storage of " + String(key)
+                    + " on WindowProperties; Reflect.set returned " + assigned;
+            }
+            let refused = false;
+            try {
+                (function () { "use strict"; names[key] = 17; })();
+            } catch (error) {
+                refused = error instanceof TypeError;
+            }
+            if (!refused || Object.hasOwn(names, key)) {
+                return "strict direct assignment must refuse storage of " + String(key);
+            }
+            const ordinary = Object.create(names);
+            if (!Reflect.set(names, key, 17, ordinary)
+                || !Object.hasOwn(ordinary, key) || ordinary[key] !== 17) {
+                return "assignment must store " + String(key) + " on an ordinary receiver";
+            }
+        }
+        for (const key of ["inheritedSetter", "0", Symbol("setter")]) {
+            let received;
+            const thrown = {};
+            Object.defineProperty(target, key, {
+                configurable: true,
+                get() { throw new Error("assignment must not invoke the getter"); },
+                set(value) {
+                    if (value === thrown) throw thrown;
+                    received = [this, value];
+                },
+            });
+            if (!Reflect.set(names, key, 42)
+                || received?.[0] !== names || received[1] !== 42 || Object.hasOwn(names, key)) {
+                return "an inherited setter must receive the original WindowProperties object";
+            }
+            let caught;
+            try { Reflect.set(names, key, thrown); } catch (error) { caught = error; }
+            if (caught !== thrown) return "assignment must propagate the inherited setter exception";
+            delete target[key];
+        }
+        window.windowAssignmentControl = 19;
+        if (window !== globalThis || !Object.hasOwn(window, "windowAssignmentControl")
+            || window.windowAssignmentControl !== 19
+            || Object.hasOwn(names, "windowAssignmentControl")) {
+            return "ordinary Window assignment must use the same exposed global receiver";
+        }
+        return "ok";
+    })()"#;
+    let result = host
+        .in_document(&permit, |scope| {
+            let value = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&value)
+        })
+        .unwrap();
+    assert_eq!(String::from_utf16(&result).unwrap(), "ok");
+}
