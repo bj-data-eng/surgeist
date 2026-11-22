@@ -263,3 +263,55 @@ fn sample_reports_the_overflowing_channel_and_a_later_sample_succeeds() {
         [None, Some(2.0_f64.powi(1022)), Some(0.3125)]
     );
 }
+
+#[test]
+fn sample_keeps_a_maximum_constant_channel_with_different_alphas() {
+    let first = color(SRGB, [Some(f64::MAX), None, None], Some(1.0));
+    let second = color(SRGB, [Some(f64::MAX), None, None], Some(0.75));
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+
+    let sample = first
+        .sample_interpolation(second, method, Finite::new(-1.0).unwrap())
+        .unwrap();
+    assert_eq!(sample.alpha().map(Finite::get), Some(1.25));
+    assert_eq!(sample.channels()[0].map(Finite::get), Some(f64::MAX));
+}
+
+#[test]
+fn sample_keeps_low_bits_in_the_alpha_slope() {
+    let below_half = f64::from_bits(0.5_f64.to_bits() - 1);
+    let first = color(SRGB, [Some(0.25), None, None], Some(1.0));
+    let second = color(SRGB, [Some(0.5), None, None], Some(below_half));
+    let method = InterpolationMethod::try_new(SRGB, None).unwrap();
+
+    // At t = 2, alpha is 2 * below_half - 1 = -2^-53. The premultiplied
+    // coordinate is below_half - .25, so division gives .5 - 2^51.
+    let sample = first
+        .sample_interpolation(second, method, Finite::new(2.0).unwrap())
+        .unwrap();
+    assert_eq!(sample.alpha().map(Finite::get), Some(-2.0_f64.powi(-53)));
+    assert_eq!(
+        sample.channels()[0].map(Finite::get),
+        Some(0.5 - 2.0_f64.powi(51))
+    );
+}
+
+#[test]
+fn sample_keeps_a_tiny_hue_endpoint_at_extreme_progress() {
+    let space = ColorSpace::Oklch;
+    let first = color(space, [Some(0.5), Some(0.25), Some(2.0)], Some(1.0));
+    let progress = 2.0_f64.powi(1023);
+    let second = color(
+        space,
+        [Some(0.5), Some(0.25), Some(1.0 / progress)],
+        Some(1.0),
+    );
+    let method = InterpolationMethod::try_new(space, Some(HueInterpolation::Decreasing)).unwrap();
+
+    // 2 + (2^-1023 - 2) * 2^1023 = 3 - 2^1024. The power of two is
+    // 16 modulo 360, so the canonical angle is 347 degrees.
+    let sample = first
+        .sample_interpolation(second, method, Finite::new(progress).unwrap())
+        .unwrap();
+    assert_eq!(sample.channels()[2].map(Finite::get), Some(347.0));
+}
