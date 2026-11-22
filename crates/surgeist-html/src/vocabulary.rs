@@ -137,6 +137,31 @@ impl HtmlDocumentCollection {
     }
 }
 
+/// The ID contribution of an HTML element eligible for Document named access.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlDocumentNamedId {
+    /// The element contributes only its nonempty name.
+    Never,
+    /// Both its nonempty ID and name contribute independently.
+    Always,
+    /// A nonempty ID contributes only when the element has a nonempty name.
+    WithName,
+}
+
+impl HtmlDocumentNamedId {
+    /// Select the rule for an exact local name in the HTML namespace.
+    pub const fn for_local_name(units: &[u16]) -> Option<Self> {
+        use KnownHtmlElement as Element;
+
+        match KnownHtmlElement::from_units(units) {
+            Some(Element::Embed | Element::Form | Element::Iframe) => Some(Self::Never),
+            Some(Element::Object) => Some(Self::Always),
+            Some(Element::Img) => Some(Self::WithName),
+            _ => None,
+        }
+    }
+}
+
 /// Whether an exact HTML local name contributes its name attribute to Document.all.
 pub const fn is_document_all_named_local_name(units: &[u16]) -> bool {
     matches!(

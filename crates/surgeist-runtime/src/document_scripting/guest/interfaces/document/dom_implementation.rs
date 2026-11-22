@@ -403,6 +403,7 @@ impl Capture {
                 scope,
                 admission,
                 ordinary::NodePrototype::Creation(prototypes.for_document(interface)),
+                &prototypes.named,
                 || {
                     let drive = self.drive_guest_tree_edit(owner, events, realm, edit)?;
                     let pending = drive.pending.map(DomSourceStatus::operation);

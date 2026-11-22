@@ -20,7 +20,9 @@ pub(super) fn document_implementation_is_the_same_object() {
                     try { action(); } catch (error) { return error instanceof TypeError; }
                     return false;
                 };
-                Object.freeze(document);
+                // A legacy platform object must remain extensible for live names.
+                if (Reflect.preventExtensions(document) || !Object.isExtensible(document) ||
+                    !throwsTypeError(() => Object.freeze(document))) return false;
                 const separate = new Document();
                 original.extra = 1;
                 return original === document.implementation && original.extra === 1 &&

@@ -1,7 +1,8 @@
 use super::*;
 use crate::document_scripting::guest::tests::{
     attach_public_nodes, attach_public_nodes_with_source_output_limit,
-    expose_public_node_for_source_test, expose_reaction_work_exhaustion, guest_backing_used,
+    expose_public_node_for_source_test, expose_reaction_work_exhaustion,
+    fund_guest_operation_after_setup, guest_backing_used, set_guest_work_remaining,
 };
 
 // HTML877d 156302 defines these three operations without effects; 97492
@@ -65,6 +66,8 @@ fn check_legacy_script(label: &str, script: &str) {
     let (session, target) = hosted_session(&cancel, 0);
     let mut host = attach_public_nodes(session, target, cancel, 200_000, 2_000_000);
     let permit = host.permit().unwrap();
+    // Fund the repeated native named lookups in the multi-receiver scenarios.
+    set_guest_work_remaining(&host, 16_000);
     host.in_document(&permit, |scope| {
         let result = evaluate(scope, script)?;
         assert_eq!(
@@ -269,6 +272,7 @@ fn legacy_methods_and_alias_keep_registered_realms() {
             .unwrap()
     };
     let before = host.snapshot().unwrap().stamp();
+    fund_guest_operation_after_setup(&host);
     host.in_document(&permit, |scope| {
         let value = evaluate(scope, "originLegacyDocument")?;
         assert_ne!(scope.callback_object(&value)?.associated_realm().identity(), permit.realm);

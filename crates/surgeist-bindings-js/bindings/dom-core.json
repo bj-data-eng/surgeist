@@ -16531,20 +16531,26 @@
       }
     },
     "Document.html.operation:0/call": {
-      "kind": "derived",
-      "algorithm": "document.html.operation_0.call",
-      "owner": "surgeist-html-semantics",
-      "contract": "The HTML Document named-property selection over the actual current supported names: return the source single element, live collection or child WindowProxy branch; apply Document LegacyOverrideBuiltIns visibility in the binding object, not a native pseudo-field.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-nameditem",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"}
+      "kind": "native",
+      "adapter": "document.html.named.get",
+      "producers": [
+        {"owner": "surgeist-bindings-js", "path": "crates/surgeist-bindings-js/src/native_object.rs", "symbol": "try_project_retained_native_named_object"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/document_named.rs", "symbol": "document_named_property"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "document_named_value"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/vocabulary.rs", "symbol": "HtmlDocumentNamedId"}
       ],
       "requirements": [
         {
           "owner": "surgeist-runtime",
-          "contract": "A child navigable WindowProxy for a reached named child-window branch, with current authority; canonical names alone cannot fabricate a WindowProxy.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#windowproxy"
+          "contract": "Cross-origin WindowProxy behavior for a reached child navigable.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#windowproxy",
+          "issue": 3145
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Live WindowProxy retargeting across child navigation.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#windowproxy",
+          "issue": 3146
         }
       ]
     },

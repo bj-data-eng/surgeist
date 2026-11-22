@@ -218,11 +218,13 @@ pub(in crate::document_scripting) fn profiles_observe_actual_projection_without_
                 .live(DocumentGuestResource::BackingBytes)
         );
         // Compile/evaluate result slots; Window getter frame, receiver, global
-        // and reopened Document; Element getter frame, receiver and new root.
+        // and reopened Document; the Document named lookup frame, receiver,
+        // argument buffer and root, string conversion outcome, UTF-16 buffer
+        // and units; Element getter frame, receiver and new root.
         assert_eq!(
             capture.usage.work(DocumentGuestWork::Adapter)
                 - initial.scopes[2].usage.work(DocumentGuestWork::Adapter),
-            2 + 4 + 3
+            2 + 4 + (4 + 1 + 1 + "documentElement".len() as u64) + 3
         );
         assert_eq!(report.events.len(), if detailed { 8 } else { 0 });
         assert_eq!(report.dropped_events > 0, detailed);

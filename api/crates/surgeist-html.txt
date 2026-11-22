@@ -7055,6 +7055,12 @@ pub enum surgeist_html::vocabulary::HtmlDocumentCollectionMatch
 pub surgeist_html::vocabulary::HtmlDocumentCollectionMatch::AttributePresent(&'static [u16])
 pub surgeist_html::vocabulary::HtmlDocumentCollectionMatch::Excluded
 pub surgeist_html::vocabulary::HtmlDocumentCollectionMatch::Included
+pub enum surgeist_html::vocabulary::HtmlDocumentNamedId
+pub surgeist_html::vocabulary::HtmlDocumentNamedId::Always
+pub surgeist_html::vocabulary::HtmlDocumentNamedId::Never
+pub surgeist_html::vocabulary::HtmlDocumentNamedId::WithName
+impl surgeist_html::vocabulary::HtmlDocumentNamedId
+pub const fn surgeist_html::vocabulary::HtmlDocumentNamedId::for_local_name(units: &[u16]) -> core::option::Option<Self>
 pub enum surgeist_html::vocabulary::HtmlEventHandlerApplicability
 pub surgeist_html::vocabulary::HtmlEventHandlerApplicability::AllHtmlElements
 pub surgeist_html::vocabulary::HtmlEventHandlerApplicability::BodyElement

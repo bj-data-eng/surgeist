@@ -734,6 +734,7 @@ impl Operations for Entered<'_> {
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn std::any::Any>,
         backing: Box<dyn std::any::Any>,
+        slot: Option<NativeProjectionSlot<'_>>,
         funding: Option<crate::preparation::Guard>,
     ) -> Result<
         (
@@ -743,7 +744,7 @@ impl Operations for Entered<'_> {
         ),
         Error,
     > {
-        self.project_retained_native(prototype, payload, backing, funding)
+        self.project_retained_native(prototype, payload, backing, slot, funding)
     }
 
     fn project_retained_native_object_in_prototype_realm(
@@ -752,6 +753,7 @@ impl Operations for Entered<'_> {
         realm: RealmKey,
         payload: Rc<dyn std::any::Any>,
         backing: Box<dyn std::any::Any>,
+        slot: Option<NativeProjectionSlot<'_>>,
         funding: Option<crate::preparation::Guard>,
     ) -> Result<
         (
@@ -761,7 +763,9 @@ impl Operations for Entered<'_> {
         ),
         Error,
     > {
-        self.project_retained_native_in_prototype_realm(prototype, realm, payload, backing, funding)
+        self.project_retained_native_in_prototype_realm(
+            prototype, realm, payload, backing, slot, funding,
+        )
     }
 
     fn discard_unpublished_native_object(

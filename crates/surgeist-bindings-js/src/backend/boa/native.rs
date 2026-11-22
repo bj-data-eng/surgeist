@@ -9,8 +9,8 @@ use boa_engine::object::{
     JsPrototype, WeakJsObject,
     builtins::{JsArray, JsFunction},
     host::{
-        IndexedProperties, readonly_indexed, readonly_indexed_source,
-        readonly_indexed_with_html_dda,
+        IndexedProperties, NamedOverrideProperties, named_override, named_override_source,
+        readonly_indexed, readonly_indexed_source, readonly_indexed_with_html_dda,
     },
 };
 use boa_engine::{
@@ -139,9 +139,21 @@ struct NativeCarrier(Gc<NativeData>);
 #[derive(Trace, Finalize)]
 struct Collection<const NAMED: bool> {
     native: Gc<NativeData>,
+    callbacks: PropertyCallbacks,
+    named_getter: Option<JsObject>,
+}
+
+#[derive(Trace, Finalize)]
+struct PropertyCallbacks {
     read: JsObject,
     keys: JsObject,
-    named_getter: Option<JsObject>,
+}
+
+#[derive(Trace, Finalize)]
+struct NamedOverride {
+    native: Gc<NativeData>,
+    callbacks: PropertyCallbacks,
+    unforgeable_names: &'static [&'static [u16]],
 }
 
 fn native_data(object: &JsObject) -> Option<Gc<NativeData>> {
@@ -154,9 +166,12 @@ fn native_data(object: &JsObject) -> Option<Gc<NativeData>> {
             readonly_indexed_source::<Collection<false>>(object)
                 .map(|collection| Gc::clone(&collection.native))
         })
+        .or_else(|| {
+            named_override_source::<NamedOverride>(object).map(|named| Gc::clone(&named.native))
+        })
 }
 
-impl<const NAMED: bool> Collection<NAMED> {
+impl PropertyCallbacks {
     fn read(
         &self,
         holder: &JsObject,
@@ -208,48 +223,14 @@ impl<const NAMED: bool> Collection<NAMED> {
         }
         Ok(indices)
     }
-}
 
-fn invalid_keys() -> boa_engine::JsError {
-    JsNativeError::typ()
-        .with_message("Invalid native collection keys")
-        .into()
-}
-
-impl<const NAMED: bool> IndexedProperties for Collection<NAMED> {
-    const HAS_NAMED_PROPERTIES: bool = NAMED;
-
-    fn index_count(&self, holder: &JsObject, context: &mut Context) -> JsResult<u32> {
-        self.numeric_keys(holder, context)
-            .and_then(|keys| u32::try_from(keys.len()).map_err(|_| invalid_keys()))
-    }
-
-    fn indexed_keys(&self, holder: &JsObject, context: &mut Context) -> JsResult<Vec<u32>> {
-        self.numeric_keys(holder, context)
-    }
-
-    fn indexed_value(
+    fn string_keys(
         &self,
         holder: &JsObject,
-        index: u32,
+        named_marker: bool,
         context: &mut Context,
-    ) -> JsResult<Option<JsValue>> {
-        let value = self.read(holder, JsValue::from(index), false, context)?;
-        Ok((!value.is_undefined()).then_some(value))
-    }
-
-    fn index_present(
-        &self,
-        holder: &JsObject,
-        index: u32,
-        context: &mut Context,
-    ) -> JsResult<bool> {
-        let present = self.read(holder, JsValue::from(index), true, context)?;
-        Ok(present.as_boolean() == Some(true))
-    }
-
-    fn named_keys(&self, holder: &JsObject, context: &mut Context) -> JsResult<Vec<JsString>> {
-        let (array, length) = self.keys(holder, true, context)?;
+    ) -> JsResult<Vec<JsString>> {
+        let (array, length) = self.keys(holder, named_marker, context)?;
         let mut names = Vec::new();
         names
             .try_reserve_exact(length as usize)
@@ -264,6 +245,54 @@ impl<const NAMED: bool> IndexedProperties for Collection<NAMED> {
         }
         Ok(names)
     }
+}
+
+fn invalid_keys() -> boa_engine::JsError {
+    JsNativeError::typ()
+        .with_message("Invalid native collection keys")
+        .into()
+}
+
+impl<const NAMED: bool> IndexedProperties for Collection<NAMED> {
+    const HAS_NAMED_PROPERTIES: bool = NAMED;
+
+    fn index_count(&self, holder: &JsObject, context: &mut Context) -> JsResult<u32> {
+        self.callbacks
+            .numeric_keys(holder, context)
+            .and_then(|keys| u32::try_from(keys.len()).map_err(|_| invalid_keys()))
+    }
+
+    fn indexed_keys(&self, holder: &JsObject, context: &mut Context) -> JsResult<Vec<u32>> {
+        self.callbacks.numeric_keys(holder, context)
+    }
+
+    fn indexed_value(
+        &self,
+        holder: &JsObject,
+        index: u32,
+        context: &mut Context,
+    ) -> JsResult<Option<JsValue>> {
+        let value = self
+            .callbacks
+            .read(holder, JsValue::from(index), false, context)?;
+        Ok((!value.is_undefined()).then_some(value))
+    }
+
+    fn index_present(
+        &self,
+        holder: &JsObject,
+        index: u32,
+        context: &mut Context,
+    ) -> JsResult<bool> {
+        let present = self
+            .callbacks
+            .read(holder, JsValue::from(index), true, context)?;
+        Ok(present.as_boolean() == Some(true))
+    }
+
+    fn named_keys(&self, holder: &JsObject, context: &mut Context) -> JsResult<Vec<JsString>> {
+        self.callbacks.string_keys(holder, true, context)
+    }
 
     fn named_value(
         &self,
@@ -271,7 +300,9 @@ impl<const NAMED: bool> IndexedProperties for Collection<NAMED> {
         name: &JsString,
         context: &mut Context,
     ) -> JsResult<Option<JsValue>> {
-        let value = self.read(holder, JsValue::from(name.clone()), false, context)?;
+        let value = self
+            .callbacks
+            .read(holder, JsValue::from(name.clone()), false, context)?;
         Ok((!value.is_undefined()).then_some(value))
     }
 
@@ -281,7 +312,9 @@ impl<const NAMED: bool> IndexedProperties for Collection<NAMED> {
         name: &JsString,
         context: &mut Context,
     ) -> JsResult<bool> {
-        let present = self.read(holder, JsValue::from(name.clone()), true, context)?;
+        let present = self
+            .callbacks
+            .read(holder, JsValue::from(name.clone()), true, context)?;
         Ok(present.as_boolean() == Some(true))
     }
 
@@ -296,6 +329,46 @@ impl<const NAMED: bool> IndexedProperties for Collection<NAMED> {
             .as_ref()
             .ok_or_else(|| JsNativeError::typ().with_message("Missing native named getter"))?;
         get.call(&holder.clone().into(), &[name.clone().into()], context)
+    }
+}
+
+impl NamedOverrideProperties for NamedOverride {
+    fn named_value(
+        &self,
+        holder: &JsObject,
+        name: &JsString,
+        context: &mut Context,
+    ) -> JsResult<Option<JsValue>> {
+        let value = self
+            .callbacks
+            .read(holder, name.clone().into(), false, context)?;
+        Ok((!value.is_undefined()).then_some(value))
+    }
+
+    fn named_present(
+        &self,
+        holder: &JsObject,
+        name: &JsString,
+        context: &mut Context,
+    ) -> JsResult<bool> {
+        self.callbacks
+            .read(holder, name.clone().into(), true, context)?
+            .as_boolean()
+            .ok_or_else(|| {
+                JsNativeError::typ()
+                    .with_message("Native named presence requires a Boolean")
+                    .into()
+            })
+    }
+
+    fn named_keys(&self, holder: &JsObject, context: &mut Context) -> JsResult<Vec<JsString>> {
+        self.callbacks.string_keys(holder, false, context)
+    }
+
+    fn is_unforgeable_name(&self, name: &JsString) -> bool {
+        self.unforgeable_names
+            .iter()
+            .any(|declared| name == *declared)
     }
 }
 
@@ -351,26 +424,43 @@ impl Entered<'_> {
             index,
             references: GcRefCell::new(references),
         });
+        let function = |root, invalid| {
+            self.state
+                .value(root)?
+                .as_object()
+                .and_then(JsFunction::from_object)
+                .ok_or(invalid)
+        };
+        let callable = |root| function(root, Error::ExpectedObject);
+        let callbacks = |read, keys| -> Result<PropertyCallbacks, Error> {
+            Ok(PropertyCallbacks {
+                read: callable(read)?.into(),
+                keys: callable(keys)?.into(),
+            })
+        };
         let object = match slot {
+            Some(NativeProjectionSlot::NamedOverride {
+                read,
+                keys,
+                unforgeable_names,
+            }) => named_override(
+                root_shape,
+                prototype,
+                NamedOverride {
+                    native,
+                    callbacks: callbacks(read, keys)?,
+                    unforgeable_names,
+                },
+            ),
             Some(NativeProjectionSlot::Collection { read, keys, kind }) => {
-                let function = |root, invalid| {
-                    self.state
-                        .value(root)?
-                        .as_object()
-                        .and_then(JsFunction::from_object)
-                        .ok_or(invalid)
-                };
-                let callable = |root| function(root, Error::ExpectedObject);
-                let read = callable(read)?.into();
-                let keys = callable(keys)?.into();
+                let callbacks = callbacks(read, keys)?;
                 match kind {
                     NativeCollectionKind::Indexed => readonly_indexed(
                         root_shape,
                         prototype,
                         Collection::<false> {
                             native,
-                            read,
-                            keys,
+                            callbacks,
                             named_getter: None,
                         },
                     ),
@@ -379,8 +469,7 @@ impl Entered<'_> {
                         prototype,
                         Collection::<true> {
                             native,
-                            read,
-                            keys,
+                            callbacks,
                             named_getter: Some(callable(getter)?.into()),
                         },
                     ),
@@ -390,8 +479,7 @@ impl Entered<'_> {
                             prototype,
                             Collection::<true> {
                                 native,
-                                read,
-                                keys,
+                                callbacks,
                                 named_getter: Some(callable(getter)?.into()),
                             },
                             function(call, Error::ExpectedFunction)?,
@@ -432,10 +520,11 @@ impl Entered<'_> {
         prototype: ObjectPrototype<'_>,
         payload: Rc<dyn Any>,
         backing: Box<dyn Any>,
+        slot: Option<NativeProjectionSlot<'_>>,
         funding: Option<Guard>,
     ) -> Result<(Rc<CallbackObjectIdentity>, u32, Root), Error> {
         let prototype = self.native_prototype(prototype)?;
-        let prepared = self.prepare_native(prototype, self.realm, payload, None, funding)?;
+        let prepared = self.prepare_native(prototype, self.realm, payload, slot, funding)?;
         self.pin_native(prepared, self.realm, backing)
     }
 
@@ -445,6 +534,7 @@ impl Entered<'_> {
         realm: RealmKey,
         payload: Rc<dyn Any>,
         backing: Box<dyn Any>,
+        slot: Option<NativeProjectionSlot<'_>>,
         funding: Option<Guard>,
     ) -> Result<(Rc<CallbackObjectIdentity>, u32, Root), Error> {
         self.state.owner.available()?;
@@ -455,7 +545,7 @@ impl Entered<'_> {
         if self.state.realm_key(&actual)? != realm {
             return Err(Error::CallbackRealmUnavailable);
         }
-        let prepared = self.prepare_native(Some(prototype), realm, payload, None, funding)?;
+        let prepared = self.prepare_native(Some(prototype), realm, payload, slot, funding)?;
         self.pin_native(prepared, realm, backing)
     }
 

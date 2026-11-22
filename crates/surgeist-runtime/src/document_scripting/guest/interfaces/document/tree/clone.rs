@@ -243,6 +243,7 @@ impl Capture {
                         scope,
                         admission,
                         ordinary::NodePrototype::Creation(documents.for_document(interface)),
+                        &documents.named,
                         || {
                             let drive = self.drive_guest_tree_edit(owner, events, realm, edit)?;
                             let document = match drive.terminal_output() {

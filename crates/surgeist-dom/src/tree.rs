@@ -12,6 +12,7 @@
 //! settable current node and source-defined navigation in seven directions.
 //! `DomHtmlCollection` retains one exact root and an ordinary element filter.
 //! Qualify a new `DomHtmlCollectionRead` to read its current members.
+//! `DomDocumentNamedValue` represents the native branches of Document named access.
 //! `DomNodeList` retains a node's ordinary children or a Document name filter.
 //! `DomNodeListRead` provides its current length and indexed members.
 //!
@@ -33,10 +34,10 @@ pub use crate::internal::snapshot::{
     DomTagName, DomTreeOrder, DomTreeScope,
 };
 pub use crate::internal::store::{
-    DomDescendantQueryRoot, DomHtmlAllCollection, DomHtmlAllCollectionRead, DomHtmlAllNamedValue,
-    DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead,
-    DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest, DomNodeList, DomNodeListRead,
-    DomWindowNamedElements,
+    DomDescendantQueryRoot, DomDocumentNamedValue, DomHtmlAllCollection, DomHtmlAllCollectionRead,
+    DomHtmlAllNamedValue, DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionNames,
+    DomHtmlCollectionRead, DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest, DomNodeList,
+    DomNodeListRead, DomWindowNamedElements,
 };
 pub use crate::internal::store::{DomTreeWalkerFilterRequest, DomTreeWalkerMatchRequest};
 pub use crate::internal::table_part::DomHtmlTablePart;

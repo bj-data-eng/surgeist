@@ -28,6 +28,7 @@ mod custom_validity;
 mod data_time;
 mod details;
 mod dialog;
+mod document_named;
 mod document_type;
 mod dom_implementation;
 pub(super) use character_data::copy_native_data;
@@ -348,6 +349,7 @@ pub(super) struct DocumentPrototypes {
     collections: tag_collection::CollectionProjection,
     all: all_collection::Projection,
     node_lists: node_list::Projection,
+    named: document_named::Projection,
 }
 
 impl DocumentPrototypes {
@@ -470,6 +472,7 @@ impl DocumentPrototypes {
         legacy::install(scope, &document, funding.capture)?;
         let all = all_collection::install(scope, &global, &document, funding)?;
         let node_lists = node_list::install(scope, &global, &document, funding)?;
+        let named = document_named::install(scope, funding)?;
         let document_names = tree_mutations::unscopables(scope, &document)?;
         parent_node::install(
             scope,
@@ -520,6 +523,7 @@ impl DocumentPrototypes {
                 collections,
                 all,
                 node_lists,
+                named,
             },
             document,
         ))
@@ -601,14 +605,25 @@ impl DocumentBindings {
         element.install_option_factory(scope, &global, capture)?;
         install_window_document(scope, &global, capture(size_of::<Capture>())?)?;
         let attached = budget.phase(|| {
-            scope.project_retained_native_object(
-                ObjectPrototype::Object(&prototype),
+            let (read, keys) = prototypes.named.open(scope)?;
+            let (_, holder, ()) = scope.try_project_retained_native_named_object(
+                surgeist_bindings_js::NativeProjectionPrototype::Current(ObjectPrototype::Object(
+                    &prototype,
+                )),
                 GuestNodeProjection {
                     node: Cell::new(Some(GuestNode::Document(document))),
                     lifetime: None,
                 },
-                |bytes| budget.reserve(AccountScope::Projection, owner, bytes),
-            )
+                document_named::callbacks(&read, &keys),
+                |payload, holder| {
+                    Ok::<_, DocumentGuestEventError>((
+                        budget.reserve(AccountScope::Projection, owner, payload)?,
+                        budget.reserve(AccountScope::Projection, owner, holder)?,
+                    ))
+                },
+                |_| Ok(()),
+            )?;
+            Ok::<_, DocumentGuestEventError>(holder)
         })?;
         Ok(Self {
             attached_id: document,
@@ -662,9 +677,11 @@ impl DocumentBindings {
         scope: &mut Scope<'scope>,
         admission: ordinary::Admission<'_>,
         prototype: ordinary::NodePrototype<'_, 'scope>,
+        named: &document_named::Projection,
         resolve: impl FnOnce() -> Result<DocumentId, DocumentGuestEventError>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         admission.phase(|| {
+            let (read, keys) = named.open(scope)?;
             let mut pins = self
                 .documents
                 .try_borrow_mut()
@@ -676,9 +693,10 @@ impl DocumentBindings {
             };
             admission.step()?;
             let allocation = Box::new_uninit();
-            let (value, holder, document) = scope.try_project_retained_native_object(
+            let (value, holder, document) = scope.try_project_retained_native_named_object(
                 prototype.projection(),
                 payload,
+                document_named::callbacks(&read, &keys),
                 |payload, holder| {
                     Ok::<_, DocumentGuestEventError>((
                         admission.reserve(payload)?,
@@ -1291,6 +1309,7 @@ impl Capture {
                 scope,
                 ordinary::Admission::ordinary(&owner, &events),
                 ordinary::NodePrototype::Selected(selected.prototype()),
+                &bindings.prototypes.named,
                 || {
                     self.with_native(&owner, |session, global| {
                         let hosted = session.hosted_execution();
