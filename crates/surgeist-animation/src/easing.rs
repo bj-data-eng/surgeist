@@ -530,22 +530,14 @@ impl CubicBezier {
 
 fn tangent_delta(offset: f64, run: f64, rise: f64) -> f64 {
     let slope = rise / run;
-    if slope.is_normal() || slope == 0.0 {
-        return offset * slope;
+    let delta = offset * slope;
+    if rise == 0.0 || (slope.is_normal() && delta.is_normal() && delta.abs() < f64::MAX) {
+        return delta;
     }
 
-    // A subnormal slope loses significant bits before a large offset scales it.
-    if slope.is_subnormal() && offset.abs() >= 1.0 {
-        return (offset * rise) / run;
-    }
-
-    // A steep tangent can have a finite result close to the endpoint.
-    let distance = offset / run;
-    if distance.is_finite() {
-        distance * rise
-    } else {
-        (offset * rise) / run
-    }
+    // Classify range boundaries using the exact quotient of the binary64
+    // operands, without rounding the slope before applying the offset.
+    rounded_scaled_ratio(offset, rise, run)
 }
 
 impl Steps {
@@ -604,8 +596,8 @@ impl Steps {
         let scaled_input = input * count;
         if !scaled_input.is_finite() {
             // At this magnitude the floor and one-step adjustments are below
-            // binary64 precision. Divide the counts before scaling the input.
-            return input * (count / jumps);
+            // binary64 precision. Round only after division by the jump count.
+            return rounded_scaled_ratio(input, count, jumps);
         }
 
         let floor = scaled_input.floor();
@@ -644,6 +636,82 @@ impl Steps {
             StepPosition::JumpNone => f64::from(self.count) - 1.0,
             StepPosition::JumpBoth => f64::from(self.count) + 1.0,
         }
+    }
+}
+
+const BINARY64_FRACTION_BITS: i32 = 52;
+const BINARY64_IMPLICIT_BIT: u64 = 1 << BINARY64_FRACTION_BITS;
+const BINARY64_EXPONENT_BIAS: i32 = 1023;
+const BINARY64_MIN_NORMAL_EXPONENT: i32 = f64::MIN_EXP - 1;
+const BINARY64_MIN_EXPONENT: i32 = BINARY64_MIN_NORMAL_EXPONENT - BINARY64_FRACTION_BITS;
+
+/// Round `value * factor / divisor` once. The operands are finite and the
+/// divisor is strictly positive. This path handles numerical range boundaries.
+fn rounded_scaled_ratio(value: f64, factor: f64, divisor: f64) -> f64 {
+    let sign = (value.to_bits() ^ factor.to_bits()) & (1 << 63);
+    let with_sign = |bits| f64::from_bits(sign | bits);
+    let (value_bits, value_scale) = binary64_parts(value);
+    let (factor_bits, factor_scale) = binary64_parts(factor);
+    let (divisor_bits, divisor_scale) = binary64_parts(divisor);
+    let product = u128::from(value_bits) * u128::from(factor_bits);
+    if product == 0 {
+        return with_sign(0);
+    }
+
+    let divisor = u128::from(divisor_bits);
+    let scale = value_scale + factor_scale - divisor_scale;
+    // The product has at most 106 bits and the divisor at most 53. The
+    // comparison shifts the smaller operand only up to the larger one's width.
+    let bit_difference = divisor.leading_zeros() as i32 - product.leading_zeros() as i32;
+    let below_power = if bit_difference < 0 {
+        (product << bit_difference.unsigned_abs()) < divisor
+    } else {
+        product < (divisor << bit_difference)
+    };
+    let exponent = scale + bit_difference - i32::from(below_power);
+    if exponent < BINARY64_MIN_EXPONENT - 1 {
+        return with_sign(0);
+    }
+    if exponent >= f64::MAX_EXP {
+        return with_sign(f64::INFINITY.to_bits());
+    }
+
+    let quantum = (exponent - BINARY64_FRACTION_BITS).max(BINARY64_MIN_EXPONENT);
+    let shift = scale - quantum;
+    // The scaled quotient is between half a subnormal unit and 53 bits.
+    // The shift therefore needs at most 106 bits in the numerator or one
+    // more bit than the original product in the denominator.
+    let (numerator, denominator) = if shift < 0 {
+        (product, divisor << shift.unsigned_abs())
+    } else {
+        (product << shift, divisor)
+    };
+    let quotient = numerator / denominator;
+    let twice_remainder = (numerator % denominator) * 2;
+    let round_up =
+        twice_remainder > denominator || (twice_remainder == denominator && quotient % 2 != 0);
+    let rounded_significand = (quotient + u128::from(round_up)) as u64;
+    let exponent_bits = if exponent < BINARY64_MIN_NORMAL_EXPONENT {
+        0
+    } else {
+        ((exponent + BINARY64_EXPONENT_BIAS - 1) as u64) << BINARY64_FRACTION_BITS
+    };
+    // The significand contains its implicit bit. Addition carries rounding
+    // into the next exponent, including the subnormal and overflow boundaries.
+    with_sign(exponent_bits + rounded_significand)
+}
+
+fn binary64_parts(value: f64) -> (u64, i32) {
+    let bits = value.to_bits();
+    let fraction = bits & (BINARY64_IMPLICIT_BIT - 1);
+    let exponent = ((bits >> BINARY64_FRACTION_BITS) & 0x7ff) as i32;
+    if exponent == 0 {
+        (fraction, BINARY64_MIN_EXPONENT)
+    } else {
+        (
+            BINARY64_IMPLICIT_BIT | fraction,
+            exponent - BINARY64_EXPONENT_BIAS - BINARY64_FRACTION_BITS,
+        )
     }
 }
 
