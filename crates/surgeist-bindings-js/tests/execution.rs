@@ -2510,6 +2510,7 @@ fn native_collection_rejects_invalid_key_results(process: &mut Process) -> Resul
                 (),
                 &read,
                 &keys,
+                &read,
                 |_| Ok::<_, Error>(()),
             )?;
             let key = units("testCollection");

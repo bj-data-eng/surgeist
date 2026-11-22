@@ -2,6 +2,7 @@
 
 mod node;
 pub(super) use node::install;
+pub(super) mod map;
 
 use super::{super::character_data::copy_native_data, *};
 use crate::{

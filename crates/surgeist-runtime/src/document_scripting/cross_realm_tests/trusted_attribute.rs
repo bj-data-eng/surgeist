@@ -310,7 +310,7 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
     let mut host = attach_public_nodes(session, target, cancel, 5_000, 60_000);
     let permit = host.permit().unwrap();
     host.register_node_creation_realm(&permit, other).unwrap();
-    let origin_prototype = {
+    let (origin_prototype, origin_map_prototype) = {
         let engine = host.engine.as_mut().unwrap();
         let realm = engine
             .creations
@@ -322,7 +322,8 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
             .execution()
             .in_realm(realm, |scope| {
                 let prototype = evaluate(scope, "Attr.prototype")?;
-                Ok(scope.retain(&prototype))
+                let map = evaluate(scope, "NamedNodeMap.prototype")?;
+                Ok((scope.retain(&prototype), scope.retain(&map)))
             })
             .unwrap()
     };
@@ -341,8 +342,10 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
     super::super::guest::tests::fund_guest_operation_after_setup(&host);
     let result = host.in_document(&permit, |scope| {
         let prototype = scope.import(&origin_prototype)?;
+        let map_prototype = scope.import(&origin_map_prototype)?;
         let global = scope.global()?;
         scope.set(&global, PropertyKey::String(&"originAttrPrototype".encode_utf16().collect::<Vec<_>>()), &prototype)?;
+        scope.set(&global, PropertyKey::String(&"originMapPrototype".encode_utf16().collect::<Vec<_>>()), &map_prototype)?;
         evaluate(scope, r#"
             (() => {
                 const check = (ok, label) => { if (!ok) throw new Error(label); };
@@ -356,6 +359,13 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
                 check(creationPrototype === originAttrPrototype && creationPrototype !== Attr.prototype
                     && Object.getPrototypeOf(rejectedAttr) === Attr.prototype,
                     'distinct creation realms');
+                const acceptedMap = acceptedOwner.attributes;
+                const rejectedMap = rejectedOwner.attributes;
+                const receivingMap = Reflect.get(Element.prototype, 'attributes', replacementOwner);
+                check(acceptedMap.onclick === acceptedAttr && rejectedMap.onclick === rejectedAttr
+                    && receivingMap === replacementOwner.attributes
+                    && Object.getPrototypeOf(receivingMap) === originMapPrototype
+                    && originMapPrototype !== NamedNodeMap.prototype, 'the map uses its Element creation realm');
                 const throws = (action, name) => {
                     try { action(); } catch (error) { return error.name === name; }
                     return false;
@@ -377,14 +387,21 @@ pub(super) fn guest_attribute_policy_keeps_original_authority_after_adoption() {
                     check(adoptionTarget.appendChild(owner) === owner, 'same adopted owner');
                     check(owner.ownerDocument === destinationDocument && attr.ownerDocument === destinationDocument
                         && attr.ownerElement === owner, 'live adoption');
+                    const originalMap = value === 'move\ud800' ? acceptedMap : rejectedMap;
+                    check(owner.attributes === originalMap && originalMap.onclick === attr,
+                        'adoption preserves the live map and Attr identity');
                     check(originalDocument.adoptNode(attr) === attr && attr.ownerDocument === originalDocument
                         && attr.ownerElement === owner, 'direct adoption changes only the Attr document');
                     check(Document.prototype.adoptNode.call(destinationDocument, attr) === attr
                         && attr.ownerDocument === destinationDocument && attr.ownerElement === owner,
                         'borrowed adoption uses receiving Document');
-                    check(owner.removeAttributeNode(attr) === attr && attr.ownerElement === null, 'exact removal');
+                    const detached = value === 'move\ud800'
+                        ? originalMap.removeNamedItem('onclick') : owner.removeAttributeNode(attr);
+                    check(detached === attr && attr.ownerElement === null && originalMap.onclick === undefined,
+                        'exact removal from the adopted Element');
                     if (value === 'reject') return null;
-                    check(replacementOwner.setAttributeNode(attr) === null && attr.ownerElement === replacementOwner, 'new nonsink owner');
+                    check(receivingMap.setNamedItem(attr) === null && attr.ownerElement === replacementOwner
+                        && receivingMap.onclick === attr, 'new nonsink owner');
                     return value + '!';
                 }});
                 acceptedAttr.value = 'move\ud800';

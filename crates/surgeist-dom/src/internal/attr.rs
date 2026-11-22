@@ -57,7 +57,23 @@ impl<'a> DomNamedNodeMap<'a> {
     }
 
     pub fn item(self, index: usize) -> Option<DomAttr<'a>> {
-        self.element.snapshot.attr(*self.ids().get(index)?).ok()
+        self.item_with(index, || Ok::<_, DomError>(()))
+            .ok()
+            .flatten()
+    }
+
+    /// Read one attribute position, accounting for the lookup and its node.
+    pub fn item_with<E: From<DomError>>(
+        self,
+        index: usize,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomAttr<'a>>, E> {
+        step()?;
+        let Some(&id) = self.ids().get(index) else {
+            return Ok(None);
+        };
+        let node = self.element.snapshot.node_with(id, &mut step)?;
+        Ok(Some(node.as_attr().ok_or(DomError::WrongNodeKind)?))
     }
 
     pub fn iter(self) -> impl Iterator<Item = DomAttr<'a>> + 'a {
@@ -134,6 +150,50 @@ impl<'a> DomNamedNodeMap<'a> {
         })
     }
 
+    /// Find the first attribute exposed by an exact NamedNodeMap property key.
+    /// HTML mode excludes uppercase ASCII names rather than folding the key.
+    pub fn named_property_with<E: From<DomError>>(
+        self,
+        key: &DocumentString,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomAttr<'a>>, E> {
+        if self.element.html_element_in_html_document_with(&mut step)?
+            && has_ascii_uppercase(key.code_units(), &mut step)?
+        {
+            return Ok(None);
+        }
+        self.find_with(step, |attribute, step| {
+            crate::internal::names::qualified_equals_with(attribute.name(), key, false, step)
+        })
+    }
+
+    /// Visit names eligible for NamedNodeMap property exposure in Attr order.
+    /// Equal spellings share one key in the consuming property enumeration.
+    pub fn visit_named_property_candidates_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+        mut visit: impl FnMut(&'a DomQualifiedName) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let html = self.element.html_element_in_html_document_with(&mut step)?;
+        for &id in self.ids() {
+            let node = self.element.snapshot.node_with(id, &mut step)?;
+            let attr = node.as_attr().ok_or(DomError::WrongNodeKind)?;
+            let name = attr.name();
+            if html {
+                let parts = name
+                    .prefix()
+                    .into_iter()
+                    .flat_map(DocumentString::code_units)
+                    .chain(name.local_name().code_units());
+                if has_ascii_uppercase(parts, &mut step)? {
+                    continue;
+                }
+            }
+            visit(name)?;
+        }
+        Ok(())
+    }
+
     /// Read the first exact local name in the null namespace without allocating
     /// a query string. Admit each visited lookup and compared code unit.
     pub fn get_null_namespace_attribute_with<E: From<DomError>>(
@@ -172,6 +232,19 @@ impl<'a> DomNamedNodeMap<'a> {
         }
         Ok(None)
     }
+}
+
+fn has_ascii_uppercase<'a, E>(
+    units: impl IntoIterator<Item = &'a u16>,
+    step: &mut impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    for &unit in units {
+        step()?;
+        if (u16::from(b'A')..=u16::from(b'Z')).contains(&unit) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 impl surgeist_html::values::HtmlAttributesInput for DomNamedNodeMap<'_> {

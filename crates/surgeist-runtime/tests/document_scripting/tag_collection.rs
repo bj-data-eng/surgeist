@@ -109,7 +109,9 @@ pub(super) fn reflects_live_tag_collection_properties() {
                 wildcard.length === 4 && wildcard.item(0) === root &&
                 wildcard.item(1) === upper && wildcard.item(3) === replacement &&
                 wildcard.namedItem("77") === replacement &&
-                !Object.getOwnPropertyNames(wildcard).includes("77");
+                wildcard[77] === undefined &&
+                Object.getOwnPropertyDescriptor(wildcard, "77") === undefined &&
+                Object.getOwnPropertyNames(wildcard).includes("77");
         })())"#,
         1.0,
     );

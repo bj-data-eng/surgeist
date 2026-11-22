@@ -566,8 +566,11 @@ to complete the native edit before recovering the Session. Stop disposes of
 the guest report queue. A stopped host's `with_native` loan can bind a missing
 CSSOM root or raise a producer's limits before settlement.
 
-Full NamedNodeMap collection behavior and live HTTP response CSP have separate
-integration work.
+`Element.attributes` returns the Element's stable, live `NamedNodeMap`.
+Index and name lookups expose the canonical `Attr` wrappers. Attachment and
+removal use the native Source operation, including Trusted Types verification
+and custom-element reactions. [Live HTTP response CSP](https://github.com/bj-data-eng/surgeist/issues/2675)
+has its own navigation and reporting requirements.
 
 An attachment can enable callable Window timers with `WindowTimerLimits`.
 `setTimeout` keeps the callable and arguments in the attached Window's realm.

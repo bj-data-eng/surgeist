@@ -185,6 +185,9 @@ impl<'scope> Scope<'scope> {
     /// When a second argument is present, it instead returns whether the key is
     /// supported. The keys callback returns a dense array of numeric indices
     /// without arguments, or a dense array of string names with one argument.
+    /// The named getter receives the original holder and the name after a
+    /// prototype lookup that can reenter. It returns the interface's getter
+    /// result, including its ordinary missing-value result.
     /// Invalid key arrays throw a guest TypeError during reflection.
     /// Use the ordinary prototype provided by the native interface.
     pub fn project_native_object_with_collection_properties<
@@ -197,6 +200,7 @@ impl<'scope> Scope<'scope> {
         payload: T,
         read: &Value<'scope>,
         keys: &Value<'scope>,
+        named_getter: &Value<'scope>,
         admit: impl FnOnce(usize) -> Result<Storage, E>,
     ) -> Result<Value<'scope>, E> {
         self.project_payload(
@@ -205,7 +209,7 @@ impl<'scope> Scope<'scope> {
             Some(crate::backend::NativeProjectionSlot::Collection {
                 read: &read.root,
                 keys: &keys.root,
-                named: true,
+                named_getter: Some(&named_getter.root),
             }),
             admit,
         )
@@ -225,7 +229,7 @@ impl<'scope> Scope<'scope> {
             Some(crate::backend::NativeProjectionSlot::Collection {
                 read: &read.root,
                 keys: &keys.root,
-                named: false,
+                named_getter: None,
             }),
             |_| Ok(backing),
         )
