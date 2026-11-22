@@ -22,20 +22,20 @@ enum Method {
 type NamespaceArgument = fn() -> Argument<Nullable<Type<DomString>>>;
 
 #[derive(Clone, Copy)]
-struct NameArguments {
+pub(super) struct NameArguments {
     name: fn() -> Argument<Type<DomString>>,
     namespace: Option<NamespaceArgument>,
 }
 
 impl NameArguments {
-    const fn qualified(name: fn() -> Argument<Type<DomString>>) -> Self {
+    pub(super) const fn qualified(name: fn() -> Argument<Type<DomString>>) -> Self {
         Self {
             name,
             namespace: None,
         }
     }
 
-    const fn expanded(
+    pub(super) const fn expanded(
         namespace: NamespaceArgument,
         name: fn() -> Argument<Type<DomString>>,
     ) -> Self {
@@ -59,11 +59,24 @@ enum LookupResult {
     Presence,
 }
 
-struct AttributeName {
-    name: DocumentString,
-    namespace: Option<Namespace>,
-    _name_backing: GuestBacking,
-    _namespace_backing: Option<GuestBacking>,
+pub(super) struct AttributeName {
+    pub(super) name: DocumentString,
+    pub(super) namespace: Option<Namespace>,
+    pub(super) _name_backing: GuestBacking,
+    pub(super) _namespace_backing: Option<GuestBacking>,
+}
+
+impl AttributeName {
+    pub(super) fn resolve<'a>(
+        &self,
+        attributes: surgeist_dom::tree::DomNamedNodeMap<'a>,
+        step: impl FnMut() -> Result<(), DocumentGuestEventError>,
+    ) -> Result<Option<surgeist_dom::tree::DomAttr<'a>>, DocumentGuestEventError> {
+        match &self.namespace {
+            Some(namespace) => attributes.get_named_item_ns_with(namespace, &self.name, step),
+            None => attributes.get_named_item_with(&self.name, step),
+        }
+    }
 }
 
 pub(in crate::document_scripting::guest::interfaces::document::element) fn install<'scope>(
@@ -269,52 +282,54 @@ impl Capture {
             Method::SetNode | Method::RemoveNode => {
                 let (_, values) = arguments.into_parts();
                 let value = values.into_iter().next().ok_or(Error::BackendUnavailable)?;
-                let operand = scope.native_object::<GuestNodeProjection>(&value)?;
-                let Some(GuestNode::Attr(node)) = operand.and_then(|node| node.payload().id())
-                else {
-                    return Ok(Completion::Throw(
-                        scope.type_error(&ascii(b"Attr required"))?,
-                    ));
-                };
-                let result = (|| {
-                    let attribute = self.callbacks.with_read(&owner, &events, |read, _| {
-                        let attr = read
-                            .node(node)?
-                            .as_attr()
-                            .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                        Ok(attr.id())
-                    })?;
-                    let (edit, result_kind) = if matches!(method, Method::RemoveNode) {
-                        (
-                            DomSourceEdit::remove_attribute_node(element, attribute),
-                            AttributeResult::Removed(attribute, value),
-                        )
-                    } else {
-                        let registration = owner
-                            .attachment
-                            .get()
-                            .and_then(|attachment| attachment.registration.upgrade())
-                            .ok_or(DocumentScriptNativeError::Revoked)?;
-                        (
-                            DomSourceEdit::attach_attribute_for_script(
-                                element,
-                                attribute,
-                                &registration,
-                            ),
-                            AttributeResult::Attached(attribute, value),
-                        )
-                    };
-                    self.apply_attribute(scope, &owner, &events, edit, None, result_kind)
-                })();
-                match result {
-                    Ok(completion) => Ok(completion),
-                    Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
-                        Err(error)
-                    }
-                    Err(error) => refuse(scope, &events.refusal, error),
-                }
+                let result = self.edit_attribute_node(
+                    scope,
+                    (&owner, &events, element),
+                    value,
+                    matches!(method, Method::RemoveNode),
+                );
+                tree::tree_completion(scope, &events, result)
             }
         }
+    }
+
+    pub(super) fn edit_attribute_node<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        (owner, events, element): (&NativeOwner, &GuestEvents, NodeId),
+        value: Value<'scope>,
+        remove: bool,
+    ) -> Result<Completion<'scope>, DocumentGuestEventError> {
+        let operand = scope.native_object::<GuestNodeProjection>(&value)?;
+        let Some(GuestNode::Attr(node)) = operand.and_then(|node| node.payload().id()) else {
+            return Ok(Completion::Throw(
+                scope.type_error(&ascii(b"Attr required"))?,
+            ));
+        };
+        let attribute = self.callbacks.with_read(owner, events, |read, _| {
+            let attr = read
+                .node(node)?
+                .as_attr()
+                .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
+            Ok(attr.id())
+        })?;
+        let (edit, result) = if remove {
+            (
+                DomSourceEdit::remove_attribute_node(element, attribute),
+                AttributeResult::Removed(attribute, value),
+            )
+        } else {
+            let registration = owner
+                .attachment
+                .get()
+                .and_then(|attachment| attachment.registration.upgrade())
+                .ok_or(DocumentScriptNativeError::Revoked)?;
+            (
+                DomSourceEdit::attach_attribute_for_script(element, attribute, &registration),
+                AttributeResult::Attached(attribute, value),
+            )
+        };
+        self.apply_attribute(scope, owner, events, edit, None, result)
     }
 
     fn toggle_attribute<'scope>(
@@ -401,7 +416,7 @@ impl Capture {
         Ok(scope.array(&names)?)
     }
 
-    fn attribute_name_arguments<'scope>(
+    pub(super) fn attribute_name_arguments<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         arguments: &Arguments<'scope>,
@@ -461,11 +476,7 @@ impl Capture {
                 .node(element)?
                 .attributes()
                 .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-            let attribute = if let Some(namespace) = &name.namespace {
-                attributes.get_named_item_ns_with(namespace, &name.name, || read.step())?
-            } else {
-                attributes.get_named_item_with(&name.name, || read.step())?
-            };
+            let attribute = name.resolve(attributes, || read.step())?;
             Ok(match lookup.result {
                 LookupResult::Value => {
                     Observation::String(attribute.map(|attr| attr.value().clone()))
@@ -477,7 +488,7 @@ impl Capture {
     }
 }
 
-fn attribute_name_buffer<T>(count: usize) -> Result<Vec<T>, Error> {
+pub(super) fn attribute_name_buffer<T>(count: usize) -> Result<Vec<T>, Error> {
     let mut names = Vec::new();
     names
         .try_reserve_exact(count)

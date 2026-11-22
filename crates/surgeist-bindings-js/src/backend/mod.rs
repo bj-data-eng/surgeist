@@ -118,7 +118,7 @@ pub(crate) enum NativeProjectionSlot<'a> {
     Collection {
         read: &'a Root,
         keys: &'a Root,
-        named: bool,
+        named_getter: Option<&'a Root>,
     },
 }
 

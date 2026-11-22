@@ -27,6 +27,7 @@ pub(super) struct CollectionProjection {
     prototype: RetainedCallbackObject,
     read: RetainedCallbackObject,
     keys: RetainedCallbackObject,
+    named_getter: RetainedCallbackObject,
 }
 
 impl CollectionProjection {
@@ -40,11 +41,13 @@ impl CollectionProjection {
         let prototype = scope.open_callback_object(&self.prototype)?;
         let read = scope.open_callback_object(&self.read)?;
         let keys = scope.open_callback_object(&self.keys)?;
+        let named_getter = scope.open_callback_object(&self.named_getter)?;
         let value = scope.project_native_object_with_collection_properties(
             ObjectPrototype::Object(&prototype),
             collection,
             &read,
             &keys,
+            &named_getter,
             |bytes| events.reserve(owner, bytes),
         )?;
         Ok(Completion::Return(value))
@@ -123,6 +126,7 @@ pub(super) fn install<'scope>(
             length.read_tag_collection(scope, arguments, Read::Length)
         }),
     )?;
+    let mut named_getter = None;
     for (name, operation) in [(ITEM, Read::Item), (NAMED_ITEM, Read::NamedItem)] {
         let method = (funding.capture)(size_of::<(Capture, Read)>())?;
         let method = scope.fixed_arity_function(
@@ -140,6 +144,9 @@ pub(super) fn install<'scope>(
             true,
             true,
         )?;
+        if matches!(operation, Read::NamedItem) {
+            named_getter = Some(method);
+        }
     }
 
     let read = (funding.capture)(size_of::<Capture>())?;
@@ -166,10 +173,14 @@ pub(super) fn install<'scope>(
     let read = scope.retain_callback_object(read, funding.retain)?;
     let keys = scope.callback_object(&keys)?;
     let keys = scope.retain_callback_object(keys, funding.retain)?;
+    let named_getter = named_getter.ok_or(Error::BackendUnavailable)?;
+    let named_getter = scope.callback_object(&named_getter)?;
+    let named_getter = scope.retain_callback_object(named_getter, funding.retain)?;
     let projection = CollectionProjection {
         prototype,
         read,
         keys,
+        named_getter,
     };
     let query_projection = projection.clone();
     let query = (funding.capture)(size_of::<(Capture, CollectionProjection)>())?;

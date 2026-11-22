@@ -49,11 +49,21 @@ pub(super) fn collection_names_follow_prototype_own_descriptors(
             Ok(Completion::Return(keys))
         }))?;
         let prototype = scope.object(ObjectPrototype::Null)?;
+        let named_getter = scope.function(&Callback::new(|scope, arguments| {
+            let holder = scope
+                .native_object::<CollectionValue>(arguments.receiver())?
+                .expect("the getter must receive the original native holder");
+            let name = arguments.get(0).expect("the getter needs a name");
+            assert_eq!(scope.to_utf16(name)?, units("supported"));
+            assert_eq!(holder.payload().0, "native");
+            Ok(Completion::Return(scope.string(&units("getter"))?))
+        }))?;
         let collection = scope.project_native_object_with_collection_properties(
             ObjectPrototype::Object(&prototype),
             CollectionValue("native"),
             &read,
             &keys,
+            &named_getter,
             |bytes| {
                 assert!(bytes > 0);
                 admissions.set(admissions.get() + 1);
@@ -71,6 +81,9 @@ pub(super) fn collection_names_follow_prototype_own_descriptors(
                 if (collection.supported !== "ordinary" || own() !== undefined
                     || ownKeys().includes("supported")) return "ordinary inherited name";
                 delete prototype.supported;
+
+                Object.setPrototypeOf(prototype, new Proxy({}, {}));
+                if (own()?.value !== "getter") return "live native getter after prototype lookup";
 
                 const target = {supported: "inherited"};
                 const proxy = new Proxy(target, {

@@ -136,6 +136,7 @@ struct Collection<const NAMED: bool> {
     native: Gc<NativeData>,
     read: JsObject,
     keys: JsObject,
+    named_getter: Option<JsObject>,
 }
 
 fn native_data(object: &JsObject) -> Option<Gc<NativeData>> {
@@ -278,6 +279,19 @@ impl<const NAMED: bool> IndexedProperties for Collection<NAMED> {
         let present = self.read(holder, JsValue::from(name.clone()), true, context)?;
         Ok(present.as_boolean() == Some(true))
     }
+
+    fn named_getter(
+        &self,
+        holder: &JsObject,
+        name: &JsString,
+        context: &mut Context,
+    ) -> JsResult<JsValue> {
+        let get = self
+            .named_getter
+            .as_ref()
+            .ok_or_else(|| JsNativeError::typ().with_message("Missing native named getter"))?;
+        get.call(&holder.clone().into(), &[name.clone().into()], context)
+    }
 }
 
 struct Prepared {
@@ -333,7 +347,11 @@ impl Entered<'_> {
             references: GcRefCell::new(references),
         });
         let object = match slot {
-            Some(NativeProjectionSlot::Collection { read, keys, named }) => {
+            Some(NativeProjectionSlot::Collection {
+                read,
+                keys,
+                named_getter,
+            }) => {
                 let callable = |root| {
                     self.state
                         .value(root)?
@@ -343,17 +361,27 @@ impl Entered<'_> {
                 };
                 let read = callable(read)?;
                 let keys = callable(keys)?;
-                if named {
+                if let Some(named_getter) = named_getter {
                     readonly_indexed(
                         root_shape,
                         prototype,
-                        Collection::<true> { native, read, keys },
+                        Collection::<true> {
+                            native,
+                            read,
+                            keys,
+                            named_getter: Some(callable(named_getter)?),
+                        },
                     )
                 } else {
                     readonly_indexed(
                         root_shape,
                         prototype,
-                        Collection::<false> { native, read, keys },
+                        Collection::<false> {
+                            native,
+                            read,
+                            keys,
+                            named_getter: None,
+                        },
                     )
                 }
             }

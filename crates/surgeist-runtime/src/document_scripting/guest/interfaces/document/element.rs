@@ -168,6 +168,7 @@ const OBSOLETE_SPECIAL: &[(&str, &str)] = &[
 
 pub(in crate::document_scripting::guest::interfaces) struct ElementBindings {
     element: RetainedCallbackObject,
+    attribute_map: attribute::map::MapProjection,
     mathml: RetainedCallbackObject,
     html: Vec<HtmlPrototype>,
     svg: svg::SvgBindings,
@@ -364,6 +365,7 @@ impl ElementBindings {
             REFLECTIONS,
         )?;
         attribute::install(scope, &element, capture)?;
+        let attribute_map = attribute::map::install(scope, &global, &element, capture, fund)?;
         super::slot::install_slottable(
             scope,
             &element,
@@ -407,6 +409,7 @@ impl ElementBindings {
         let mathml = scope.callback_object(&mathml)?;
         Ok(Self {
             element: scope.retain_callback_object(base, fund)?,
+            attribute_map,
             mathml: scope.retain_callback_object(mathml, fund)?,
             html: classes,
             svg,
