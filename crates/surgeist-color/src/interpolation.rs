@@ -251,7 +251,20 @@ pub(crate) fn sample(
         Finite::new(value.to_f64()).ok_or(InterpolationSampleError { component })
     };
     let alpha = wide_alpha
-        .map(|alpha| checked(alpha, InterpolationComponent::Alpha))
+        .map(|alpha| {
+            if alpha.near_finite_limit() {
+                let a = first.alpha().or(second.alpha());
+                let b = second.alpha().or(first.alpha());
+                if let Some((a, b)) = a.zip(b)
+                    && range::exceeds((1.0, a), (1.0, b), progress.get(), None)
+                {
+                    return Err(InterpolationSampleError {
+                        component: InterpolationComponent::Alpha,
+                    });
+                }
+            }
+            checked(alpha, InterpolationComponent::Alpha)
+        })
         .transpose()?;
     let mut channels = [Finite::ZERO; 3];
     let mut present = if alpha.is_some() { 1 << 3 } else { 0 };
