@@ -1,6 +1,6 @@
 use surgeist_animation::computed::{
-    ComputedComponent, ComputedDimension, ComputedInteger, ComputedNumeric, ComputedValue,
-    DimensionKind, DimensionPercentage,
+    ComputedComponent, ComputedDimension, ComputedInteger, ComputedNumeric, ComputedPosition,
+    ComputedValue, DimensionKind, DimensionPercentage,
 };
 use surgeist_animation::easing::Easing;
 use surgeist_animation::interpolation::{
@@ -524,6 +524,168 @@ fn record(components: Vec<ComputedComponent>) -> InterpolableValue {
 
 fn token_component(value: &str) -> ComputedComponent {
     ComputedComponent::Discrete(DiscreteValue::from_text(value).unwrap())
+}
+
+#[test]
+fn images_and_image_controls_switch_at_the_midpoint() {
+    let endpoints = [
+        (
+            "background-image",
+            "linear-gradient(red, blue)",
+            "linear-gradient(black, white)",
+        ),
+        ("list-style-image", "url(dot.svg)", "url(square.svg)"),
+        ("object-fit", "contain", "cover"),
+        ("image-orientation", "none", "90deg flip"),
+        ("image-rendering", "smooth", "pixelated"),
+    ];
+    let track = track(endpoints.map(|(property, from, to)| (property, keyword(from), keyword(to))));
+
+    assert_frame(
+        &track,
+        0.5_f64.next_down(),
+        endpoints.map(|(property, from, _)| (property, keyword(from))),
+    );
+    assert_frame(
+        &track,
+        0.5,
+        endpoints.map(|(property, _, to)| (property, keyword(to))),
+    );
+    assert_frame(
+        &track,
+        0.75,
+        endpoints.map(|(property, _, to)| (property, keyword(to))),
+    );
+}
+
+#[test]
+fn object_position_combines_both_axes_without_resolving_percentages() {
+    let position = |x_pixels, x_ratio, y_pixels, y_ratio| {
+        let x = mixed_length(x_pixels, x_ratio);
+        let y = mixed_length(y_pixels, y_ratio);
+        InterpolableValue::computed(ComputedValue::single(ComputedComponent::Position(
+            ComputedPosition::new(x, y).unwrap(),
+        )))
+    };
+    let track = track([(
+        "object-position",
+        position(8.0, 0.25, -16.0, 0.75),
+        position(24.0, 0.75, 16.0, 0.25),
+    )]);
+
+    assert_frame(
+        &track,
+        0.25,
+        [("object-position", position(12.0, 0.375, -8.0, 0.625))],
+    );
+    assert_frame(
+        &track,
+        0.75,
+        [("object-position", position(20.0, 0.625, 8.0, 0.375))],
+    );
+}
+
+#[test]
+fn grid_lanes_flow_tolerance_keeps_finite_coefficients_and_the_infinite_sentinel() {
+    let finite = track([("flow-tolerance", length(8.0), percentage(0.5))]);
+    assert_frame(
+        &finite,
+        0.25,
+        [("flow-tolerance", length_percentage(6.0, 0.125))],
+    );
+    assert_frame(
+        &finite,
+        0.75,
+        [("flow-tolerance", length_percentage(2.0, 0.375))],
+    );
+
+    let infinite = track([("flow-tolerance", length(8.0), computed_keyword("infinite"))]);
+    assert_frame(
+        &infinite,
+        0.5_f64.next_down(),
+        [("flow-tolerance", length(8.0))],
+    );
+    assert_frame(
+        &infinite,
+        0.5,
+        [("flow-tolerance", computed_keyword("infinite"))],
+    );
+}
+
+#[test]
+fn grid_lanes_item_flow_constituents_are_independently_discrete() {
+    // Style has resolved the item-flow shorthand to its effective longhands.
+    let endpoints = [
+        ("item-direction", "row", "column-reverse"),
+        ("item-wrap", "nowrap", "wrap"),
+        ("item-pack", "normal", "dense balance"),
+    ];
+    let track = track(endpoints.map(|(property, from, to)| (property, keyword(from), keyword(to))));
+
+    assert_frame(
+        &track,
+        0.5_f64.next_down(),
+        endpoints.map(|(property, from, _)| (property, keyword(from))),
+    );
+    assert_frame(
+        &track,
+        0.5,
+        endpoints.map(|(property, _, to)| (property, keyword(to))),
+    );
+}
+
+#[test]
+fn all_counter_operation_lists_combine_corresponding_integers() {
+    let properties = ["counter-reset", "counter-increment", "counter-set"];
+    let track = track(properties.map(|property| {
+        (
+            property,
+            counters(&[("chapter", -3.0), ("section", 4.0)]),
+            counters(&[("chapter", 3.0), ("section", 12.0)]),
+        )
+    }));
+    assert_frame(
+        &track,
+        0.25,
+        properties.map(|property| (property, counters(&[("chapter", -1.0), ("section", 6.0)]))),
+    );
+    assert_frame(
+        &track,
+        0.75,
+        properties.map(|property| (property, counters(&[("chapter", 2.0), ("section", 10.0)]))),
+    );
+}
+
+#[test]
+fn counters_switch_the_whole_value_when_order_names_or_list_structure_differ() {
+    let from = counters(&[("chapter", 1.0), ("section", 3.0)]);
+    for to in [
+        counters(&[("chapter", 9.0), ("figure", 7.0)]),
+        counters(&[("section", 7.0), ("chapter", 9.0)]),
+        counters(&[("chapter", 9.0)]),
+        computed_keyword("none"),
+    ] {
+        let track = track([("counter-reset", from.clone(), to.clone())]);
+        assert_frame(
+            &track,
+            0.5_f64.next_down(),
+            [("counter-reset", from.clone())],
+        );
+        assert_frame(&track, 0.5, [("counter-reset", to)]);
+    }
+}
+
+fn counters(entries: &[(&str, f64)]) -> InterpolableValue {
+    let components = entries
+        .iter()
+        .flat_map(|(name, count)| {
+            [
+                ComputedComponent::Discrete(DiscreteValue::from_text(name).unwrap()),
+                integer_component(*count),
+            ]
+        })
+        .collect();
+    InterpolableValue::computed(ComputedValue::new(components).unwrap())
 }
 
 fn track<const N: usize>(

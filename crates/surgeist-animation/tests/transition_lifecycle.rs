@@ -131,6 +131,41 @@ fn delay_and_exact_start_return_raw_value_but_retain_old_function_output() {
 }
 
 #[test]
+fn eligible_marker_target_uses_normal_computed_opacity_sampling() {
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    enum Target {
+        Element,
+        Marker,
+    }
+
+    let opacity = PropertyKey::new("opacity").unwrap();
+    let changes =
+        [(Target::Element, 1), (Target::Marker, 2)].map(|(target, id)| TransitionChange {
+            key: TransitionKey::new(target, opacity.clone()),
+            before: number(0.25),
+            after: number(0.75),
+            // Style supplies target eligibility even though opacity is outside
+            // the direct marker-box applicability list.
+            eligible: true,
+            matching: Some(timing(1.0, 0.0, Easing::linear())),
+            new_id: TransitionTrackId::new(id),
+        });
+    let policy = Policy::default();
+    let snapshot = TransitionSnapshot::default()
+        .update(Some(time(0.0)), &changes, &policy)
+        .unwrap()
+        .unwrap();
+    for change in &changes {
+        let Some(TransitionState::Running(run)) = snapshot.state().get(&change.key) else {
+            panic!("expected a running transition for each eligible target");
+        };
+        let sample = run.sample(Some(time(0.25)), &policy).unwrap();
+        assert!(sample.key() == &change.key);
+        assert_eq!(sample.value(), Some(&number(0.375)));
+    }
+}
+
+#[test]
 fn samples_are_stateless_for_supplied_times() {
     let state = start(1.0, 0.0, Easing::linear());
     let run = running(&state);
