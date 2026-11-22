@@ -2015,6 +2015,90 @@ fn cleanup(driver: &mut StandaloneDocumentDriver<'_>) {
 }
 
 #[test]
+fn eof_wait_retains_the_open_prefix_and_dispatches_original_end_on_acceptance() {
+    let source = HtmlSource::utf16(surgeist_html::values::DocumentString::from(
+        "<!doctype html><div>prefix",
+    ));
+    let end = source.len();
+    let identity = source.identity().clone();
+    let request = HtmlDocumentParseRequest::offline(source, super::super::tests::limits(100));
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+    for _ in 0..32 {
+        driver.step().unwrap();
+        let ready = driver
+            .head
+            .as_ref()
+            .and_then(|head| head.state.as_ref())
+            .is_some_and(|state| state.mode == super::super::head::HtmlInsertionMode::InBody);
+        if ready {
+            break;
+        }
+    }
+    let mut waited = false;
+    for _ in 0..32 {
+        let result = driver
+            .head
+            .as_mut()
+            .unwrap()
+            .step_with_eof(&mut driver.control, &mut None, false)
+            .unwrap();
+        match result {
+            Some(HeadStep::Consumed) => {}
+            None => {
+                waited = true;
+                break;
+            }
+            other => panic!("unexpected step before EOF: {other:?}"),
+        }
+    }
+    assert!(waited);
+    let assert_waiting = |driver: &StandaloneDocumentDriver<'_>| {
+        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
+        assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
+        assert!(state.end.is_none());
+        let token = state.pending.as_ref().unwrap();
+        assert!(matches!(
+            token.payload,
+            super::super::prologue::Payload::Eof
+        ));
+        assert_eq!(token.source.source(), &identity);
+        assert_eq!((token.source.start(), token.source.end()), (end, end));
+    };
+    assert_waiting(&driver);
+    let reads = driver
+        .control
+        .usage()
+        .work(HtmlParseWorkCategory::InputUnitRead);
+    assert_eq!(
+        driver
+            .head
+            .as_mut()
+            .unwrap()
+            .step_with_eof(&mut driver.control, &mut None, false)
+            .unwrap(),
+        None
+    );
+    assert_waiting(&driver);
+    assert_eq!(
+        driver
+            .control
+            .usage()
+            .work(HtmlParseWorkCategory::InputUnitRead),
+        reads
+    );
+    assert_eq!(driver.step().unwrap(), HeadStep::Consumed);
+    assert_eq!(phase(&driver), Some(EndPhase::InsertionPoint));
+    to_phase(&mut driver, EndPhase::PopOpen);
+    assert_eq!(
+        state(&mut driver).readiness,
+        HtmlParseReadiness::Interactive
+    );
+    finish(&mut driver);
+    assert_eq!(state(&mut driver).completion, HtmlParseCompletion::Complete);
+    cleanup(&mut driver);
+}
+
+#[test]
 fn ordered_evidence_keeps_actual_delayed_table_and_lexer_emission_order() {
     use crate::construction::evidence::{
         HtmlParseDiagnosticContext as C, HtmlParseDiagnosticKind as K, HtmlParseDiagnosticSeverity,
