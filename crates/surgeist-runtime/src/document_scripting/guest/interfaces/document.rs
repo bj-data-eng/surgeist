@@ -31,6 +31,7 @@ mod dialog;
 mod document_named;
 mod document_type;
 mod dom_implementation;
+mod event_factory;
 pub(super) use character_data::copy_native_data;
 mod all_collection;
 pub(super) mod element;
@@ -464,6 +465,7 @@ impl DocumentPrototypes {
         fragment::install_factory(scope, &document, &funding.capture)?;
         attr_factory::install(scope, &document, &funding.capture)?;
         element_factory::install(scope, &document, &funding.capture)?;
+        event_factory::install(scope, &document, funding.capture)?;
         tree::install_adoption(scope, &document, funding.capture)?;
         tree::install_import(scope, &document, funding.capture)?;
         metadata::install(scope, &document, funding.capture)?;

@@ -1337,6 +1337,8 @@ impl GuestEvents {
         )
     }
 
+    // The callers enter through the checked host permit or an authenticated
+    // Event method in its own realm.
     fn initialize_projection<'scope>(
         &self,
         owner: &NativeOwner,
@@ -1355,15 +1357,15 @@ impl GuestEvents {
             .attachment
             .get()
             .ok_or(DocumentScriptNativeError::Revoked)?;
-        if scope.realm_authority()?.identity() != attachment.realm.identity() {
-            return Err(DocumentScriptNativeError::ForeignPermit.into());
-        }
         {
             let mut session = owner
                 .session
                 .try_borrow_mut()
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
-            if owner.observe(attachment, &mut session)?.status() != HtmlScriptingStatus::Enabled {
+            let request = owner.attached_event_request();
+            let status =
+                owner.callback_scripting_status(attachment, &mut session, request.as_ref())?;
+            if status != HtmlScriptingStatus::Enabled {
                 return Err(DocumentScriptNativeError::Revoked.into());
             }
             event.init_event(

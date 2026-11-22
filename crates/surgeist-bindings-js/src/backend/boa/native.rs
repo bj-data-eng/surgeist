@@ -18,7 +18,8 @@ use boa_engine::{
 };
 
 use crate::backend::{
-    NativeCollectionKind, NativeProjectionSlot, ObjectPrototype, validate_array_length,
+    NativeCollectionKind, NativeProjectionSlot, ObjectPrototype, Operations, PropertyDefinition,
+    validate_array_length,
 };
 use crate::callback_object::CallbackObjectIdentity;
 use crate::preparation::Guard;
@@ -506,8 +507,21 @@ impl Entered<'_> {
         slot: Option<NativeProjectionSlot<'_>>,
     ) -> Result<Root, Error> {
         let prototype = self.native_prototype(prototype)?;
+        let (slot, property) = match slot {
+            Some(NativeProjectionSlot::OwnProperty(key, descriptor)) => {
+                (None, Some((key, descriptor)))
+            }
+            slot => (slot, None),
+        };
         let Prepared { index, root, entry } =
             self.prepare_native(prototype, self.realm, payload, slot, None)?;
+        if let Some((key, descriptor)) = property
+            && let Err(error) =
+                self.define_property(&root, key, descriptor, PropertyDefinition::AllowExisting)
+        {
+            let _ = self.state.discard_root(&root);
+            return Err(error);
+        }
         if let Err(error) = self.state.native.insert(&self.state, index, entry) {
             let _ = self.state.discard_root(&root);
             return Err(error);

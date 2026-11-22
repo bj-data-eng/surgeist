@@ -519,14 +519,14 @@ impl HostedRuntime {
                 .try_borrow_mut()
                 .map_err(|_| DomHostedRuntimeError::Busy)?;
             state.qualify(dom)?;
-            let global = dom
+            let (global, document) = dom
                 .raw()
-                .dispatch_document_relevant_global_with(document, cancel, &mut || {
+                .dispatch_document_global_association_with(document, cancel, &mut || {
                     state.step(cancel).map_err(EventLookupError)
                 })
                 .map_err(|error| error.0)?
                 .ok_or(DomEventConstructionError::MissingRelevantGlobal)?;
-            let association = state.event_global(dom, global, cancel)?;
+            let association = EventTargetAssociation { global, document };
             state.sample_event_creation(dom, &association, cancel)?
         };
         NativeDomEvent::legacy(dom, self.event_storage.clone(), creation, cancel)
