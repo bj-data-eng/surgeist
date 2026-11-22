@@ -104,6 +104,11 @@ pub enum DomDocumentCreationCause {
         source: crate::internal::hosted::DomHostedSourceId,
         operation: crate::internal::hosted::DomHostedOperationId,
     },
+    /// The native top-level bootstrap for locally supplied HTML.
+    HostedLocalHtml {
+        source: crate::internal::hosted::DomHostedSourceId,
+        operation: crate::internal::hosted::DomHostedOperationId,
+    },
 }
 /// Canonical document metadata, captured together with its tree and revision.
 ///
@@ -139,6 +144,7 @@ pub struct DomDocumentMetadata {
 pub(crate) struct HostedDocumentInputs(pub(crate) Arc<HostedDocumentInputData>);
 #[derive(Debug)]
 pub(crate) struct HostedDocumentInputData {
+    pub(crate) profile: HostedDocumentProfile,
     pub(crate) facts: surgeist_html_semantics::HtmlBaseDocumentFacts,
     pub(crate) opener: surgeist_html::security::opener_policy::HtmlOpenerPolicy,
     pub(crate) top_creation_url: Option<surgeist_html_semantics::HtmlBaseUrlRecord>,
@@ -148,6 +154,11 @@ pub(crate) struct HostedDocumentInputData {
     // Both source algorithms complete before the new Document has a container.
     // Their actual initialized lists are empty in this creation profile.
     pub(crate) _retained: crate::internal::hosted::Retained,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HostedDocumentProfile {
+    InitialAboutBlank,
+    LocalHtml,
 }
 impl PartialEq for HostedDocumentInputs {
     fn eq(&self, other: &Self) -> bool {
@@ -329,7 +340,7 @@ impl DomDocumentMetadata {
     pub(crate) fn fresh_opaque_origin() -> DomOpaqueOrigin {
         DomOpaqueOrigin(OpaqueOriginBacking::Native(Arc::new(OpaqueOriginIdentity)))
     }
-    pub(crate) fn hosted_initial(
+    pub(crate) fn hosted(
         input: DomNativeInputPlatform,
         origin: DomOpaqueOrigin,
         registry: crate::internal::registry::DomRegistryId,
@@ -357,10 +368,17 @@ impl DomDocumentMetadata {
                 }
             },
         )?;
-        metadata.mode = HtmlDocumentMode::Quirks;
-        metadata.allow_declarative_shadow_roots = true;
+        metadata.cause = match inputs.0.profile {
+            HostedDocumentProfile::InitialAboutBlank => {
+                metadata.mode = HtmlDocumentMode::Quirks;
+                metadata.allow_declarative_shadow_roots = true;
+                DomDocumentCreationCause::HostedInitialAboutBlank { source, operation }
+            }
+            HostedDocumentProfile::LocalHtml => {
+                DomDocumentCreationCause::HostedLocalHtml { source, operation }
+            }
+        };
         metadata.registry = DomRegistryBinding::Registry(registry);
-        metadata.cause = DomDocumentCreationCause::HostedInitialAboutBlank { source, operation };
         metadata.hosted_inputs = Some(inputs);
         Ok(metadata)
     }
@@ -679,7 +697,8 @@ impl DomDocumentMetadata {
     /// reported as [`DomError::HostedSourceUnavailable`].
     pub fn referrer(&self) -> Result<Option<&DocumentString>, DomError> {
         match self.cause {
-            DomDocumentCreationCause::HostedInitialAboutBlank { .. } => self
+            DomDocumentCreationCause::HostedInitialAboutBlank { .. }
+            | DomDocumentCreationCause::HostedLocalHtml { .. } => self
                 .hosted_referrer()
                 .ok_or(DomError::HostedSourceUnavailable),
             DomDocumentCreationCause::Native
@@ -702,6 +721,7 @@ impl DomDocumentMetadata {
         if matches!(
             self.cause,
             DomDocumentCreationCause::HostedInitialAboutBlank { .. }
+                | DomDocumentCreationCause::HostedLocalHtml { .. }
         ) && self.hosted_inputs.as_ref().is_some_and(|inputs| {
             inputs
                 .0

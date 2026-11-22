@@ -347,7 +347,7 @@ pub(super) fn guest_media_removal_reaches_the_owning_checkpoint() {
     assert_eq!(autoplay(&session.snapshot(), stopped), Some(true));
 }
 
-fn new_registry() -> DomEventDispatcher<()> {
+pub(super) fn new_registry() -> DomEventDispatcher<()> {
     DomEventDispatcher::new(DomEventRegistryLimits {
         registrations: 16,
         pending_events: 4,
@@ -358,7 +358,7 @@ fn new_registry() -> DomEventDispatcher<()> {
     .unwrap()
 }
 
-fn guest_limits() -> DocumentGuestEventLimits {
+pub(super) fn guest_limits() -> DocumentGuestEventLimits {
     DocumentGuestEventLimits {
         storage_bytes: 640 * 1024,
         work: 10_000,

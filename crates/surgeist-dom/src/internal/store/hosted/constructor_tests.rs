@@ -44,6 +44,203 @@ fn prepared_top_level() -> (Dom, DomHostedSource, Option<DomHostedPreparedTopLev
     (dom, source, prepared)
 }
 
+fn publish_local_html_entry(
+    dom: &mut Dom,
+    source: &mut DomHostedSource,
+    prepared: &mut Option<DomHostedPreparedTopLevel>,
+) -> (DomHostedCreationLease, DocumentId, DomHostedGlobalId) {
+    let cancel = cancel();
+    let mut lease = dom
+        .begin_hosted_top_level_html(source, prepared, &cancel)
+        .unwrap();
+    let DomHostedCreationStep::PermissionsPolicy(request) = lease.step(dom).unwrap() else {
+        panic!("expected policy request");
+    };
+    let policy = DomInitialPermissionsPolicy::new(
+        DomPermissionsPolicyValue::Enabled,
+        DomPermissionsPolicyValue::Enabled,
+    );
+    let mut publication = Some(
+        source
+            .seal_permissions_policy(request, policy, &cancel)
+            .unwrap(),
+    );
+    lease
+        .accept_permissions_policy(dom, source, &mut publication, &cancel)
+        .unwrap();
+    let DomHostedCreationStep::NativeExecution(request) = lease.step(dom).unwrap() else {
+        panic!("expected execution request");
+    };
+    let global = source.issue_global(request, &cancel).unwrap();
+    let mut publication = Some(
+        source
+            .seal_native_execution(request, global, 100, &cancel)
+            .unwrap(),
+    );
+    lease
+        .accept_publication(dom, source, &mut publication, &cancel)
+        .unwrap();
+    let DomHostedCreationStep::MakeActive(request) = lease.step(dom).unwrap() else {
+        panic!("expected MakeActive request");
+    };
+    let document = request.document();
+    let mut publication = Some(source.seal_make_active(request, &cancel).unwrap());
+    lease
+        .accept_publication(dom, source, &mut publication, &cancel)
+        .unwrap();
+    let DomHostedCreationStep::InitialEntry(request) = lease.step(dom).unwrap() else {
+        panic!("expected entry without a finish-loading request");
+    };
+    let entry = source.issue_entry(request, &cancel).unwrap();
+    let navigable = source.issue_navigable(request, &cancel).unwrap();
+    let uuid = |value: &str| {
+        let mut units = [0; 36];
+        for (unit, source) in units.iter_mut().zip(value.encode_utf16()) {
+            *unit = source;
+        }
+        units
+    };
+    let mut initialization = Some(DomHostedEntryInitialization::new(
+        uuid("00000000-0000-4000-8000-000000000001"),
+        uuid("00000000-0000-4000-8000-000000000002"),
+    ));
+    let mut publication = Some(
+        source
+            .seal_initial_entry(request, entry, navigable, &mut initialization, &cancel)
+            .unwrap(),
+    );
+    lease
+        .accept_publication(dom, source, &mut publication, &cancel)
+        .unwrap();
+    (lease, document, global)
+}
+
+#[test]
+fn local_html_top_level_publishes_a_loading_current_entry_with_an_empty_tree() {
+    let cancel = cancel();
+    let (mut dom, mut source, mut prepared) = prepared_top_level();
+    let revision = dom.revision.0;
+    let source_revision = source.revision().unwrap().0;
+    let (mut lease, document, global) =
+        publish_local_html_entry(&mut dom, &mut source, &mut prepared);
+    assert_eq!(
+        source.qualify_hosted_local_html_parser(&dom, document, global, &cancel),
+        Err(DomError::SourceOperationPending.into())
+    );
+    let operation = lease.operation();
+    let creation = lease.finish(&mut dom, &mut source, &cancel).unwrap();
+    assert_eq!(dom.revision.0, revision + 4);
+    assert_eq!(source.revision().unwrap().0, source_revision + 9);
+    assert_eq!(dom.hosted_revisions, 0);
+
+    let snapshot = dom.snapshot();
+    let captured = snapshot.document(document).unwrap();
+    assert_eq!(
+        captured.metadata().creation_cause(),
+        &DomDocumentCreationCause::HostedLocalHtml {
+            source: source.id(),
+            operation,
+        }
+    );
+    assert_eq!(
+        captured.metadata().url(),
+        &DocumentString::from("about:blank")
+    );
+    assert_eq!(
+        captured.metadata().mode(),
+        surgeist_html::construction::HtmlDocumentMode::NoQuirks
+    );
+    assert!(!captured.metadata().allow_declarative_shadow_roots());
+    assert!(
+        snapshot
+            .node(document.node())
+            .unwrap()
+            .children()
+            .is_empty()
+    );
+    assert!(captured.is_fully_active().unwrap());
+    assert_eq!(dom.global_document(global).unwrap(), document);
+    let navigable = dom.hosted_navigable(creation.navigable()).unwrap();
+    assert_eq!(navigable.current_entry(), creation.entry());
+    assert_eq!(navigable.active_entry(), creation.entry());
+    assert_eq!(
+        dom.hosted_entry(creation.entry()).unwrap().document(),
+        Some(document)
+    );
+    source
+        .qualify_hosted_local_html_parser(&dom, document, global, &cancel)
+        .unwrap();
+}
+
+#[test]
+fn local_html_parser_qualification_rejects_foreign_mismatched_and_retired_authority() {
+    let cancel = cancel();
+    let (mut dom, mut source, mut prepared) = prepared_top_level();
+    let (mut lease, document, global) =
+        publish_local_html_entry(&mut dom, &mut source, &mut prepared);
+    let creation = lease.finish(&mut dom, &mut source, &cancel).unwrap();
+    let before_retirement = dom.snapshot();
+    let (mut foreign_dom, foreign_source, _) = prepared_top_level();
+    let mut batch = DomBatch::new();
+    let foreign = batch.create_document();
+    let foreign = foreign_dom
+        .apply(batch, &cancel)
+        .unwrap()
+        .document(&foreign)
+        .unwrap();
+    assert_eq!(
+        foreign_source.qualify_hosted_local_html_parser(&dom, document, global, &cancel),
+        Err(DomHostedError::ForeignSource)
+    );
+    assert_eq!(
+        source.qualify_hosted_local_html_parser(&dom, foreign, global, &cancel),
+        Err(DomHostedError::StaleIdentity)
+    );
+
+    let mut invocation = dom
+        .begin_hosted_top_level_destruction(&mut source, creation.navigable(), &cancel)
+        .unwrap();
+    assert_eq!(
+        source.qualify_hosted_local_html_parser(&dom, document, global, &cancel),
+        Err(DomHostedError::StaleIdentity)
+    );
+    let mut destruction = invocation.cleanup(&mut dom, &mut source, &cancel).unwrap();
+    let DomHostedDestructionStep::EnqueueParentTask(request) = destruction.step(&dom).unwrap()
+    else {
+        panic!("expected destruction enqueue");
+    };
+    let mut publication = Some(source.seal_destruction_queued(request, &cancel).unwrap());
+    destruction
+        .accept_publication(&mut dom, &mut source, &mut publication, &cancel)
+        .unwrap();
+    let DomHostedDestructionStep::Cleanup(request) = destruction.step(&dom).unwrap() else {
+        panic!("expected destruction cleanup");
+    };
+    let mut publication = Some(source.seal_top_level_cleanup(request, &cancel).unwrap());
+    destruction
+        .accept_publication(&mut dom, &mut source, &mut publication, &cancel)
+        .unwrap();
+    destruction.finish(&mut dom, &mut source, &cancel).unwrap();
+    assert_eq!(
+        source.qualify_hosted_local_html_parser(&dom, document, global, &cancel),
+        Err(DomHostedError::StaleIdentity)
+    );
+    assert!(
+        before_retirement
+            .document(document)
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    assert!(
+        !dom.snapshot()
+            .document(document)
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+}
+
 #[test]
 fn hosted_top_level_scratch_admits_the_final_policy_operation_before_issuance() {
     let c = cancel();
@@ -608,7 +805,7 @@ fn hosted_constructor_scratch_peak_and_each_work_cut_drop_actual_partial_graph()
         .set_limits(limits(8_000_000, scratch - 1, 1_000_000), &cancel())
         .unwrap();
     assert!(
-        matches!(HostedDocumentInputs::form(&source,&work,&origin,&cancel()),
+        matches!(HostedDocumentInputs::form(&source,&work,&origin,HostedDocumentProfile::InitialAboutBlank,&cancel()),
         Err(DomHostedError::Limit { resource: DomHostedResource::ScratchBytes,limit }) if limit==scratch-1)
     );
     assert_eq!(used(&source), base);
@@ -616,7 +813,14 @@ fn hosted_constructor_scratch_peak_and_each_work_cut_drop_actual_partial_graph()
         .set_limits(limits(8_000_000, scratch, 1_000_000), &cancel())
         .unwrap();
     let before = work.spent.load(Ordering::Relaxed);
-    let inputs = HostedDocumentInputs::form(&source, &work, &origin, &cancel()).unwrap();
+    let inputs = HostedDocumentInputs::form(
+        &source,
+        &work,
+        &origin,
+        HostedDocumentProfile::InitialAboutBlank,
+        &cancel(),
+    )
+    .unwrap();
     let cost = work.spent.load(Ordering::Relaxed) - before;
     assert_eq!(cost, 13); // entry + eleven literal UTF16 writes + observation
     assert_eq!(used(&source), base + expected_payload());
@@ -628,7 +832,7 @@ fn hosted_constructor_scratch_peak_and_each_work_cut_drop_actual_partial_graph()
             .set_limits(limits(8_000_000, scratch, before + allowance), &cancel())
             .unwrap();
         assert!(
-            matches!(HostedDocumentInputs::form(&source,&work,&origin,&cancel()),Err(DomHostedError::WorkLimit { limit }) if limit==before+allowance)
+            matches!(HostedDocumentInputs::form(&source,&work,&origin,HostedDocumentProfile::InitialAboutBlank,&cancel()),Err(DomHostedError::WorkLimit { limit }) if limit==before+allowance)
         );
         assert_eq!(used(&source), base);
         assert_eq!(work.spent.load(Ordering::Relaxed), before + allowance);

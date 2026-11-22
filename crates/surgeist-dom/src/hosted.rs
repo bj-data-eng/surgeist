@@ -31,3 +31,4 @@ pub use crate::internal::hosted::{
 };
 
 pub use crate::internal::store::DomWindowNamedValue;
+pub use crate::internal::store::hosted::local_html::DomHostedLocalHtmlEdits;

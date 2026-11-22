@@ -400,6 +400,9 @@ pub surgeist_dom::document::DomDocumentCreationCause::Constructed::global: surge
 pub surgeist_dom::document::DomDocumentCreationCause::HostedInitialAboutBlank
 pub surgeist_dom::document::DomDocumentCreationCause::HostedInitialAboutBlank::operation: surgeist_dom::hosted::DomHostedOperationId
 pub surgeist_dom::document::DomDocumentCreationCause::HostedInitialAboutBlank::source: surgeist_dom::hosted::DomHostedSourceId
+pub surgeist_dom::document::DomDocumentCreationCause::HostedLocalHtml
+pub surgeist_dom::document::DomDocumentCreationCause::HostedLocalHtml::operation: surgeist_dom::hosted::DomHostedOperationId
+pub surgeist_dom::document::DomDocumentCreationCause::HostedLocalHtml::source: surgeist_dom::hosted::DomHostedSourceId
 pub surgeist_dom::document::DomDocumentCreationCause::Native
 pub surgeist_dom::document::DomDocumentCreationCause::ParsedFragmentParser
 pub surgeist_dom::document::DomDocumentCreationCause::ParsedOffline
@@ -1408,6 +1411,7 @@ pub const fn surgeist_dom::hosted::DomHostedLimits::records(self) -> surgeist_do
 pub const fn surgeist_dom::hosted::DomHostedLimits::retained_bytes(self) -> usize
 pub const fn surgeist_dom::hosted::DomHostedLimits::scratch_bytes(self) -> usize
 pub const fn surgeist_dom::hosted::DomHostedLimits::work(self) -> u64
+pub struct surgeist_dom::hosted::DomHostedLocalHtmlEdits
 pub struct surgeist_dom::hosted::DomHostedMakeActiveRequest
 impl surgeist_dom::hosted::DomHostedMakeActiveRequest
 pub fn surgeist_dom::hosted::DomHostedMakeActiveRequest::browsing_context(&self) -> surgeist_dom::hosted::DomHostedBrowsingContextId
@@ -1462,7 +1466,12 @@ pub fn surgeist_dom::hosted::DomHostedSource::admit_runtime_work(&self, dom: &su
 impl surgeist_dom::hosted::DomHostedSource
 pub fn surgeist_dom::hosted::DomHostedSource::attach_document_script_host(&self, dom: &mut surgeist_dom::Dom, global: surgeist_dom::hosted::DomHostedGlobalId, document: surgeist_dom::identity::DocumentId, facts: surgeist_dom::script::DomDocumentScriptingFacts, backing: surgeist_dom::hosted::DomHostedRuntimeRetention, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(surgeist_dom::script::DomDocumentScriptBinding, surgeist_dom::script::DomDocumentScriptRegistration), surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::hosted::DomHostedSource::document_scripting_during_dispatch(&self, dom: &surgeist_dom::Dom, binding: &surgeist_dom::script::DomDocumentScriptBinding, request: &surgeist_dom::event::DomSourceEventRequest, facts: surgeist_dom::script::DomDocumentScriptingFacts, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_html_semantics::capture::HtmlScriptingStatus, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::hosted::DomHostedSource::local_html_load_profile_continues(&self, dom: &surgeist_dom::Dom, document: surgeist_dom::identity::DocumentId, global: surgeist_dom::hosted::DomHostedGlobalId, checkpoint: surgeist_dom::identity::DomStamp, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<bool, surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::hosted::DomHostedSource::observe_document_scripting(&self, dom: &surgeist_dom::Dom, binding: &surgeist_dom::script::DomDocumentScriptBinding, facts: core::option::Option<surgeist_dom::script::DomDocumentScriptingFacts>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::script::DomDocumentScriptingObservation, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::hosted::DomHostedSource::qualify_hosted_local_html_parser(&self, dom: &surgeist_dom::Dom, document: surgeist_dom::identity::DocumentId, global: surgeist_dom::hosted::DomHostedGlobalId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::hosted::DomHostedError>
+impl surgeist_dom::hosted::DomHostedSource
+pub fn surgeist_dom::hosted::DomHostedSource::begin_local_html_edits(&self, dom: &surgeist_dom::Dom, document: surgeist_dom::identity::DocumentId, global: surgeist_dom::hosted::DomHostedGlobalId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedLocalHtmlEdits, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::hosted::DomHostedSource::local_html_tree<'a>(&self, dom: &'a mut surgeist_dom::Dom, edits: &'a surgeist_dom::hosted::DomHostedLocalHtmlEdits, cancel: &'a core::sync::atomic::AtomicBool) -> core::result::Result<impl surgeist_html_parser::parser::tree_builder::live::HtmlLiveTree<Node = surgeist_dom::identity::NodeId, Error = surgeist_dom::DomError> + 'a, surgeist_dom::hosted::DomHostedError>
 impl surgeist_dom::hosted::DomHostedSource
 pub fn surgeist_dom::hosted::DomHostedSource::document_constructor_context(&self, dom: &surgeist_dom::Dom, global: surgeist_dom::hosted::DomHostedGlobalId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::script::DomDocumentConstructorContext, surgeist_dom::hosted::DomHostedError>
 impl surgeist_dom::hosted::DomHostedSource
@@ -4478,6 +4487,7 @@ pub fn surgeist_dom::Dom::create_detached_element_with_node_retirement_watch<T, 
 pub fn surgeist_dom::Dom::create_detached_with_node_retirement_watch(&mut self, document: surgeist_dom::identity::DocumentId, creation: surgeist_dom::edit::DomDetachedNodeCreation, (inbox, custody_key): (&surgeist_dom::edit::DomNodeRetirementInbox, usize), limits: (surgeist_dom::source::DomSourceLimits, surgeist_dom::edit::DomNodeRetirementLimits), cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::edit::DomWatchedNode, surgeist_dom::DomError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::begin_hosted_top_level(&mut self, source: &mut surgeist_dom::hosted::DomHostedSource, prepared: &mut core::option::Option<surgeist_dom::hosted::DomHostedPreparedTopLevel>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedCreationLease, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::Dom::begin_hosted_top_level_html(&mut self, source: &mut surgeist_dom::hosted::DomHostedSource, prepared: &mut core::option::Option<surgeist_dom::hosted::DomHostedPreparedTopLevel>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedCreationLease, surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::Dom::register_hosted_source(&mut self, limits: surgeist_dom::hosted::DomHostedLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedSource, surgeist_dom::hosted::DomHostedError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::begin_hosted_top_level_destruction(&mut self, source: &mut surgeist_dom::hosted::DomHostedSource, navigable: surgeist_dom::hosted::DomHostedNavigableId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::destruction::DomHostedDestructionInvocation, surgeist_dom::hosted::DomHostedError>

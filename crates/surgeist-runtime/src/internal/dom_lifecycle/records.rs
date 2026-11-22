@@ -98,6 +98,7 @@ impl Settings {
 pub(super) struct Top {
     pub id: DomHostedNavigableId,
     pub closing: bool,
+    pub local_parser_checkpoint: Option<surgeist_dom::identity::DomStamp>,
 }
 
 /// Actual task-source identity currently executing in this native window loop.

@@ -125,6 +125,7 @@ impl Fixture {
                     &self.source,
                     &work,
                     &origin,
+                    HostedDocumentProfile::InitialAboutBlank,
                     &cancel(),
                 )
                 .unwrap();

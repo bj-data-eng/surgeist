@@ -649,6 +649,7 @@ mod tests {
             &source,
             &request.work,
             &origin,
+            HostedDocumentProfile::InitialAboutBlank,
             &cancel,
         )
         .unwrap();

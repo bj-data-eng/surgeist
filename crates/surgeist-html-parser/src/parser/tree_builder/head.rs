@@ -628,6 +628,19 @@ impl<'source> HeadStage<'source> {
         c: &mut ParseControl,
         service: &mut Option<&mut dyn crate::meta_csp::Service>,
     ) -> Result<HeadStep, HeadError> {
+        self.step_with_eof(c, service, true)?
+            .ok_or(HeadError::IncompleteCompletion)
+    }
+    /// Drives the tree builder over the admitted decoded source. A host can
+    /// withhold EOF dispatch while the original, source-qualified token waits
+    /// in the same controller. `None` leaves that token and the open stack in
+    /// place. The caller must keep its EOF decision once it accepts the token.
+    pub(super) fn step_with_eof(
+        &mut self,
+        c: &mut ParseControl,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
+        accept_eof: bool,
+    ) -> Result<Option<HeadStep>, HeadError> {
         self.require(c)?;
         let state = self.state.as_mut().ok_or(HeadError::Consumed)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -643,7 +656,7 @@ impl<'source> HeadStage<'source> {
         }
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if state.end.is_some() {
-            return state.end_step(c);
+            return state.end_step(c).map(Some);
         }
         if state.boundary.is_some() {
             return Err(HeadError::AlreadyAtBoundary);
@@ -703,7 +716,7 @@ impl<'source> HeadStage<'source> {
                 // HTML877d pre/listing/textarea: the initial-LF rule applies to the
                 // token immediately after the start tag, whichever mode handles it.
                 if state.ignore_first_lf && state.first_lf(c)? {
-                    return state.finish(c);
+                    return state.finish(c).map(Some);
                 }
             } else {
                 state.lexical.reserve_geometric(c, 1)?;
@@ -719,7 +732,19 @@ impl<'source> HeadStage<'source> {
                 }
             }
         }
-        state.advance(self.source, c, service)
+        if !accept_eof {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if super::end::eof_is_held(
+                matches!(
+                    state.pending.as_ref().map(|token| &token.payload),
+                    Some(Payload::Eof)
+                ),
+                accept_eof,
+            ) {
+                return Ok(None);
+            }
+        }
+        state.advance(self.source, c, service).map(Some)
     }
     #[cfg(test)]
     pub(super) fn take_continuation(
@@ -851,7 +876,7 @@ fn release_fixture_vector<T>(
     let empty = OwnedVec::new(resource)?;
     std::mem::replace(vector, empty).release(c)
 }
-fn validate_source(
+pub(super) fn validate_source(
     source: &HtmlSource,
     token: &Token,
     c: &mut ParseControl,

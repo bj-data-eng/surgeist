@@ -8,7 +8,8 @@
 //! [`DomHostedTaskWait`]. [`DomSourceExecutionScope`] is a weak permission naming one host.
 
 pub use crate::internal::dom_lifecycle::{
-    DomHostedDestructionQueued, DomHostedHistoryEntry, DomHostedRuntimeError,
-    DomHostedRuntimeLimits, DomHostedSettings, DomHostedTaskKind, DomHostedTaskProgress,
-    DomHostedTaskWait, DomHostedTopLevel, DomSourceExecutionScope, HostedRuntime,
+    DomHostedDestructionQueued, DomHostedHistoryEntry, DomHostedHtmlError, DomHostedHtmlParser,
+    DomHostedHtmlStopParsing, DomHostedRuntimeError, DomHostedRuntimeLimits, DomHostedSettings,
+    DomHostedTaskKind, DomHostedTaskProgress, DomHostedTaskWait, DomHostedTopLevel,
+    DomSourceExecutionScope, HostedRuntime,
 };

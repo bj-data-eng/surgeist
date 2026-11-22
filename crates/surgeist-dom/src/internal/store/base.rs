@@ -37,6 +37,7 @@ pub(super) fn parsed_document_inputs_match(
         | crate::internal::document::DomDocumentCreationCause::Cloned { .. }
         | crate::internal::document::DomDocumentCreationCause::Native
         | crate::internal::document::DomDocumentCreationCause::HostedInitialAboutBlank { .. }
+        | crate::internal::document::DomDocumentCreationCause::HostedLocalHtml { .. }
         | crate::internal::document::DomDocumentCreationCause::ParsedFragmentParser => {
             Err(HtmlBaseMissing::DocumentFacts)
         }

@@ -761,6 +761,7 @@ impl DraftNode {
                         | crate::internal::document::DomDocumentCreationCause::Constructed { .. }
                         | crate::internal::document::DomDocumentCreationCause::Cloned { .. }
                         | crate::internal::document::DomDocumentCreationCause::HostedInitialAboutBlank { .. }
+                        | crate::internal::document::DomDocumentCreationCause::HostedLocalHtml { .. }
                 );
                 let usage = storage::document_metadata(metadata)?;
                 let metadata = fresh_language(

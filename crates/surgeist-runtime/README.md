@@ -11,6 +11,16 @@ The [DOM orchestration guide](docs/explanation.md#dom-orchestration) explains
 `DomSession`, Source operations, event/task custody and hosted lifecycle limits.
 These native operations do not supply complete browser services, positive focus
 movement or rendering readiness.
+
+`HostedRuntime::create_local_html_top_level` creates a loading Document for the
+[bounded decoded HTML profile](../surgeist-html-parser/README.md). A session can
+attach through the ordinary document scripting path after a parser pause and
+read the canonical prefix. Later advances edit the same Document under one
+cumulative native work budget. Once the original EOF reaches stop parsing,
+`DomHostedHtmlParser::take_stop_parsing` transfers the continuation to Runtime
+once, while the exact Document and Global are current and the load-delay state
+is known to be empty. The handoff precedes readiness changes and load dispatch.
+
 The actual Style association owner also retains [Document stylesheet-set
 preferences](docs/explanation.md#document-stylesheet-set-preferences), including
 empty-list history and source-defined enable/select behavior. `DomSession::new`
