@@ -687,6 +687,7 @@ computed endpoints.
 | `Ellipse` | Independent horizontal/vertical `Radius`, normalized center | All four endpoint radius branches must be numeric. |
 | `Inset` | Four top/right/bottom/left offsets, eight corner radii | Already expanded fixed arrays; corners run top-left, top-right, bottom-right, bottom-left independently for each axis. |
 | `Polygon` | Nonempty ordered vertices, effective fill rule, rounding length | Equal vertex counts and fill rules; rounding lengths interpolate. One and two vertices are valid. |
+| `Shape` / `Path` | Initial point, ordered native commands, effective fill rule | Equal command kinds, forms, control counts and effective control anchors, with equal fill rules. |
 
 `LengthPercentage::new` accepts only the existing computed Length, Percentage
 and LengthPercentage numeric domains, including symbolic sources. Other numeric
@@ -701,7 +702,8 @@ switches the entire shape at progress 0.5. Circle/ellipse radius keywords remain
 discrete even when identical; Animation does not invent their radius geometry.
 Compatible pairs interpolate every numeric component through the computed
 numeric owner, retaining percentages and contextual source identities. Exact
-endpoints preserve the supplied complete shape. Negative sampled radii, inset
+endpoints preserve the supplied complete shape, except compatible mixed
+Shape/Path pairs always produce Shape. Negative sampled radii, inset
 overlap, corner overlap and polygon-rounding geometry remain caller-owned.
 
 Arithmetic failures retain a `ShapeError` identifying the component and its
@@ -712,9 +714,66 @@ track sampling classifies the sample as `Failed`, and native running-transition
 sampling returns a typed interpolation error. A later exact endpoint can recover.
 
 These rules follow the pinned [Shapes 1 combination clause](../../../references/css-shapes-1--CRD-css-shapes-1-20250612--f7e528fad309.md#basic-shape-interpolation).
-`shape()`/`path()` command-list interpolation and shape addition/accumulation are
-outside this capability. Property animation metadata and transition applicability
-remain caller policy. See [sampling a basic shape](how-to.md#sample-computed-basic-shapes).
+Shape addition and accumulation are outside this capability. Property animation
+metadata and transition applicability remain caller policy. See [sampling a basic shape](how-to.md#sample-computed-basic-shapes).
+
+### Native shape and path commands
+
+`CommandShape::new` requires at least one trailing `ShapeCommand` after its
+initial absolute point. `CommandPath::new` accepts an initial move alone and
+requires all coordinate and radius operands to have the pure Length domain.
+Path controls use `Origin` for absolute commands and `Start` for relative
+commands. Rotation is guarded as a computed Angle. The supplying owner expands
+SVG implicit parameter groups and treats an initial relative moveto as the
+absolute initial point; subsequent implicit relative lines remain relative.
+Animation does not parse CSS or SVG, resolve logical positions, or execute geometry.
+
+Commands retain Move, Line, HorizontalLine, VerticalLine, Curve, Smooth, Arc and
+Close identity. `Endpoint` and `AxisCommand` retain `To`/`By`; percentages in
+relative displacements still use the reference box axes. Curves retain one or
+two explicit controls. Smooth commands retain zero (quadratic) or one (cubic)
+explicit control; reflection of implied controls remains with geometry. That
+consumer reflects only within the matching SVG quadratic/cubic family, otherwise
+using the segment start. Close resets that consumer's current point to the
+current subpath's initial point. No derived controls or endpoints are evaluated
+merely to sample explicit operands.
+
+`ControlPoint` requires an effective `ControlAnchor`. Lower an absolute bare
+position to Origin and an omitted relative anchor to Start. The selected Shapes
+clause does not define conversion between different control anchors. This model
+requires equal effective anchors, following the explicit no-interpolation cases
+in [WPT's control-point tests](https://github.com/web-platform-tests/wpt/blob/master/css/css-masking/animations/clip-path-interpolation-shape-control-points.html).
+Start, End and Origin remain distinct even when a particular box or segment
+would make their geometry coincide.
+
+The [pinned command interpolation clause](../../../references/css-shapes-1--CRD-css-shapes-1-20250612--f7e528fad309.md#interpolating-shape)
+requires Path output only for two Path endpoints. Compatible mixed pairs return
+Shape even at progress zero and one, reusing the complete endpoint's immutable
+command data. Incompatible pairs instead switch the original complete value at
+0.5, including its function kind. Preflight covers all commands before arithmetic.
+
+Effective arc defaults are Ccw, Small and zero-angle rotation, supplied by the
+caller. Differing sweep/size flags select Cw/Large only at strict interior
+progress; at or below zero they retain the starting flag, and at or above one
+the ending flag. Equal flags stay equal. This bounds the pin's unspecified
+extrapolation behavior to the endpoint flags, matching
+[WPT's negative and greater-than-one cases](https://github.com/web-platform-tests/wpt/blob/master/css/css-masking/animations/clip-path-interpolation-shape.html).
+Angles interpolate numerically without shortest-angle folding.
+
+Arc radii are supplied with their percentage bases already made suitable for
+independent horizontal/vertical operands. One authored radius uses the box's
+diagonal divided by sqrt(2) for its percentages; two radii use width and height.
+To preserve a single radius without evaluating a box here, supply a pure-Length
+symbolic source for the diagonal-based quantity in both axes, retaining its
+source/context mapping. Do not copy a diagonal percentage into two ordinary axis
+percentages. Geometry owns negative-radius absolute values, zero-radius lines,
+coincident-endpoint suppression and enlargement of undersized arcs. Sampling
+retains these operands unchanged except for their checked numeric interpolation.
+
+Command storage uses checked reservation. Arithmetic errors identify the initial
+point or the indexed command operand, retain complete endpoints through existing
+shape diagnostics, and allow later successful samples. No command parser, shape
+addition, accumulation or geometry engine is introduced.
 
 ## Integration boundary
 
@@ -951,7 +1010,8 @@ basis is guessed.
 | Discrete value switching | `supported` | `surgeist-animation` switches discrete values at the interpolation midpoint. |
 | Computed numeric records, normalized positions, ratios and symbolic math | `supported` | Typed computed components combine without contextual evaluation or early clamping. |
 | Computed circle, ellipse, inset and polygon interpolation | `supported` | Explicit reference boxes, guarded numeric domains, whole-shape compatibility and typed sample-local errors. |
-| Shape/path commands and shape addition/accumulation | `deferred` | Not part of the current basic-shape value model. |
+| Native shape/path command interpolation | `supported` | Matching forms, effective anchors and fill rules; mixed pairs return Shape, with explicit arc-flag extrapolation. |
+| Shape addition/accumulation | `deferred` | Composition operations remain outside the shape value model. |
 | Resolved 2D/3D transform interpolation, list addition and accumulation | `supported` | Typed native lists, contextual primitive promotion, checked matrix decomposition, quaternion SLERP/accumulation and whole-value singular fallback. |
 | Diagnostic transform markers and composite interpolation | `typed-unsupported` | Explicit markers retain unsupported outcomes; authored lowering and rendering are separate capabilities. |
 | CSS parsing, cascade, transition generation, keyframe lookup, endpoint synthesis, property transitionability, allow-discrete policy, and shorthand/list expansion | `deferred/root-owned` | Root/style normalize authored declarations into this crate's typed tracks. |

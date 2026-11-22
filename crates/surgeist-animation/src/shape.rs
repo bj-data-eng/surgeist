@@ -4,8 +4,8 @@
 //! polygon fill rules and lower omitted polygon rounding to a computed zero
 //! length. Percentages and contextual numeric sources stay symbolic. Reference
 //! box selection, authored CSS, final range/overlap adjustment and geometric
-//! execution remain outside Animation. Shape addition and accumulation, and
-//! `shape()`/`path()` command interpolation, are not provided here.
+//! execution remain outside Animation. Native `shape()`/`path()` commands retain
+//! their forms and implicit controls. Shape addition and accumulation are not provided.
 //!
 //! ```
 //! use surgeist_animation::computed::{ComputedDimension, ComputedNumeric, ComputedPosition, DimensionKind};
@@ -26,6 +26,12 @@
 //! let BasicShape::Circle(circle) = sampled.shape() else { panic!("expected circle") };
 //! assert_eq!(circle.radius(), &Radius::Numeric(radius(20.0)));
 //! ```
+
+mod commands;
+pub use commands::{
+    ArcCommand, ArcSize, ArcSweep, AxisCommand, CommandComponent, CommandPath, CommandShape,
+    ControlAnchor, ControlPoint, CurveControls, Endpoint, ShapeCommand,
+};
 
 use core::fmt;
 use std::sync::Arc;
@@ -50,7 +56,7 @@ pub enum ReferenceBox {
     ViewBox,
 }
 
-/// A polygon's effective computed fill rule.
+/// A computed shape's effective fill rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FillRule {
     Nonzero,
@@ -62,6 +68,8 @@ pub enum FillRule {
 pub enum ShapeErrorKind {
     InvalidNumericType,
     EmptyPolygon,
+    EmptyCommands,
+    InvalidPathControlAnchor,
     Numeric,
     Capacity,
 }
@@ -81,6 +89,11 @@ pub enum ShapeComponent {
     CornerVerticalRadius(usize),
     PolygonVertex(usize),
     PolygonRounding,
+    InitialPoint,
+    Command {
+        index: usize,
+        component: CommandComponent,
+    },
 }
 
 /// A checked shape error with its numeric cause or rejected computed type.
@@ -139,6 +152,12 @@ impl fmt::Display for ShapeError {
             }
             ShapeErrorKind::EmptyPolygon => {
                 f.write_str("computed polygon must contain at least one vertex")?
+            }
+            ShapeErrorKind::EmptyCommands => {
+                f.write_str("computed shape must contain a command after its initial point")?
+            }
+            ShapeErrorKind::InvalidPathControlAnchor => {
+                f.write_str("path control anchor does not match its absolute or relative command")?
             }
             ShapeErrorKind::Numeric => f.write_str("shape numeric interpolation failed")?,
             ShapeErrorKind::Capacity => {
@@ -360,6 +379,8 @@ pub enum BasicShape {
     Ellipse(Ellipse),
     Inset(Inset),
     Polygon(Polygon),
+    Shape(CommandShape),
+    Path(CommandPath),
 }
 
 /// An immutable computed shape with an explicit semantic reference-box identity.
@@ -383,7 +404,12 @@ impl ShapeValue {
         &self.shape
     }
 
-    /// Samples compatible numeric shapes, otherwise switching the complete value at 0.5.
+    /// Samples compatible shapes, otherwise switching the complete value at 0.5.
+    ///
+    /// Compatible mixed Shape/Path lists return Shape even at exact endpoints;
+    /// two Path lists retain Path. Command compatibility includes effective
+    /// control anchors and preserves implicit smooth controls. Geometry and
+    /// final range handling remain with the consuming owner.
     pub fn interpolate(
         &self,
         other: &Self,
@@ -393,6 +419,9 @@ impl ShapeValue {
         // must win over an earlier component's otherwise overflowing arithmetic.
         if !self.compatible(other) {
             return Ok(self.discrete(other, progress));
+        }
+        if let Some(shape) = self.shape().interpolate_commands(other.shape(), progress)? {
+            return Ok(Self::new(self.reference_box, shape));
         }
         if progress.value() == 0.0 {
             return Ok(self.clone());
@@ -522,7 +551,7 @@ impl ShapeValue {
                     first.fill_rule == second.fill_rule
                         && first.vertices.len() == second.vertices.len()
                 }
-                _ => false,
+                _ => self.shape().commands_compatible(other.shape()),
             }
     }
     fn discrete(&self, other: &Self, progress: InterpolationProgress) -> Self {

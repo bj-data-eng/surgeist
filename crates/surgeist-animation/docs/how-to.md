@@ -121,6 +121,16 @@ geometry. Different boxes, function kinds, radius keywords or polygon metadata
 produce whole-shape discrete fallback. The [reference](reference.md#computed-basic-shapes)
 distinguishes these pair rules from caller-owned transition applicability.
 
+For native `shape()` and `path()` values, construct `CommandShape` or
+`CommandPath` with an initial point, ordered `ShapeCommand` values and the
+effective fill rule. Supply explicit control anchors and arc defaults. Path
+admission requires pure pixel-length coordinate/radius operands and SVG control
+origins. Lower authored single-radius percentages to a shared pure-Length
+symbolic source with the diagonal-based context before supplying two arc radii.
+Keep smooth controls implicit and command forms intact. See the
+[native command contract](reference.md#native-shape-and-path-commands) for result
+kind, control-anchor compatibility and extrapolated arc flags.
+
 ## Reuse keyframe sample storage
 
 Keep one output buffer across samples. Given the `track` above:
