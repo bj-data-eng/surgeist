@@ -136,7 +136,28 @@ pub fn surgeist_animation::composition::AnimationTypeOperations::add(&self, _: &
 pub fn surgeist_animation::composition::AnimationTypeOperations::interpolate(&self, property: &surgeist_animation::interpolation::PropertyKey, start: &surgeist_animation::interpolation::InterpolableValue, end: &surgeist_animation::interpolation::InterpolableValue, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<surgeist_animation::interpolation::InterpolableValue, Self::Error>
 pub fn surgeist_animation::composition::compose_value<P: surgeist_animation::composition::PropertyValueOperations + ?core::marker::Sized>(property: &surgeist_animation::interpolation::PropertyKey, operation: surgeist_animation::keyframe_input::CompositeOperation, underlying: &surgeist_animation::interpolation::InterpolableValue, value: &surgeist_animation::interpolation::InterpolableValue, operations: &P) -> core::result::Result<surgeist_animation::interpolation::InterpolableValue, <P as surgeist_animation::composition::PropertyValueOperations>::Error>
 pub mod surgeist_animation::computed
+pub enum surgeist_animation::computed::CalcSizeBasis
+pub surgeist_animation::computed::CalcSizeBasis::Any
+pub surgeist_animation::computed::CalcSizeBasis::Keyword(surgeist_animation::computed::SizingKeyword)
+pub surgeist_animation::computed::CalcSizeBasis::Percentage
+pub enum surgeist_animation::computed::CalcSizeBasisInput<'a>
+pub surgeist_animation::computed::CalcSizeBasisInput::Canonical(surgeist_animation::computed::CalcSizeBasis)
+pub surgeist_animation::computed::CalcSizeBasisInput::Numeric(&'a surgeist_animation::computed::CalcSizeCalculation)
+pub enum surgeist_animation::computed::CalcSizeNode
+pub surgeist_animation::computed::CalcSizeNode::Depercentify
+pub surgeist_animation::computed::CalcSizeNode::Depercentify::calculation: usize
+pub surgeist_animation::computed::CalcSizeNode::Interpolate
+pub surgeist_animation::computed::CalcSizeNode::Interpolate::first: usize
+pub surgeist_animation::computed::CalcSizeNode::Interpolate::progress: surgeist_animation::interpolation::InterpolationProgress
+pub surgeist_animation::computed::CalcSizeNode::Interpolate::second: usize
+pub surgeist_animation::computed::CalcSizeNode::Numeric(surgeist_animation::computed::ComputedNumeric)
+pub surgeist_animation::computed::CalcSizeNode::Size
+pub surgeist_animation::computed::CalcSizeNode::Source(surgeist_animation::computed::MathSource)
+pub surgeist_animation::computed::CalcSizeNode::Substitute
+pub surgeist_animation::computed::CalcSizeNode::Substitute::calculation: usize
+pub surgeist_animation::computed::CalcSizeNode::Substitute::size: usize
 pub enum surgeist_animation::computed::ComputedComponent
+pub surgeist_animation::computed::ComputedComponent::BoxSize(surgeist_animation::computed::ComputedSize)
 pub surgeist_animation::computed::ComputedComponent::Discrete(surgeist_animation::interpolation::DiscreteValue)
 pub surgeist_animation::computed::ComputedComponent::Numeric(surgeist_animation::computed::ComputedNumeric)
 pub surgeist_animation::computed::ComputedComponent::Position(surgeist_animation::computed::ComputedPosition)
@@ -158,6 +179,12 @@ pub enum surgeist_animation::computed::ComputedOperation
 pub surgeist_animation::computed::ComputedOperation::Accumulate
 pub surgeist_animation::computed::ComputedOperation::Add
 pub surgeist_animation::computed::ComputedOperation::Interpolate(surgeist_animation::interpolation::InterpolationProgress)
+pub enum surgeist_animation::computed::ComputedSizeValue
+pub surgeist_animation::computed::ComputedSizeValue::CalcSize(surgeist_animation::computed::CalcSize)
+pub surgeist_animation::computed::ComputedSizeValue::FitContent(surgeist_animation::computed::ComputedNumeric)
+pub surgeist_animation::computed::ComputedSizeValue::Keyword(surgeist_animation::computed::SizingKeyword)
+pub surgeist_animation::computed::ComputedSizeValue::LengthPercentage(surgeist_animation::computed::ComputedNumeric)
+pub surgeist_animation::computed::ComputedSizeValue::UnavailableCalcSize(surgeist_animation::computed::MathSource)
 pub enum surgeist_animation::computed::DimensionKind
 pub surgeist_animation::computed::DimensionKind::Angle
 pub surgeist_animation::computed::DimensionKind::Frequency
@@ -192,6 +219,33 @@ pub surgeist_animation::computed::NumericType::DimensionPercentage(surgeist_anim
 pub surgeist_animation::computed::NumericType::Integer
 pub surgeist_animation::computed::NumericType::Number
 pub surgeist_animation::computed::NumericType::Percentage
+pub enum surgeist_animation::computed::SizingKeyword
+pub surgeist_animation::computed::SizingKeyword::Auto
+pub surgeist_animation::computed::SizingKeyword::Contain
+pub surgeist_animation::computed::SizingKeyword::FitContent
+pub surgeist_animation::computed::SizingKeyword::MaxContent
+pub surgeist_animation::computed::SizingKeyword::MinContent
+pub surgeist_animation::computed::SizingKeyword::Stretch
+pub struct surgeist_animation::computed::CalcSize
+impl surgeist_animation::computed::CalcSize
+pub const fn surgeist_animation::computed::CalcSize::basis(&self) -> surgeist_animation::computed::CalcSizeBasis
+pub const fn surgeist_animation::computed::CalcSize::calculation(&self) -> &surgeist_animation::computed::CalcSizeCalculation
+pub fn surgeist_animation::computed::CalcSize::can_interpolate(&self, other: &Self) -> bool
+pub fn surgeist_animation::computed::CalcSize::from_keyword(keyword: surgeist_animation::computed::SizingKeyword) -> Self
+pub fn surgeist_animation::computed::CalcSize::from_numeric(value: surgeist_animation::computed::ComputedNumeric) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
+pub fn surgeist_animation::computed::CalcSize::interpolate(&self, other: &Self, progress: surgeist_animation::interpolation::InterpolationProgress) -> core::result::Result<core::option::Option<Self>, surgeist_animation::computed::ComputedError>
+pub fn surgeist_animation::computed::CalcSize::new(basis: surgeist_animation::computed::CalcSizeBasis, calculation: surgeist_animation::computed::CalcSizeCalculation) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
+pub fn surgeist_animation::computed::CalcSize::prepare(basis: surgeist_animation::computed::CalcSizeBasisInput<'_>, calculation: &surgeist_animation::computed::CalcSizeCalculation, nested_calculations: &[surgeist_animation::computed::CalcSizeCalculation]) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
+pub fn surgeist_animation::computed::CalcSize::with_numeric_basis(basis: &surgeist_animation::computed::CalcSizeCalculation, calculation: &surgeist_animation::computed::CalcSizeCalculation) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
+pub struct surgeist_animation::computed::CalcSizeCalculation
+impl surgeist_animation::computed::CalcSizeCalculation
+pub fn surgeist_animation::computed::CalcSizeCalculation::from_numeric(value: surgeist_animation::computed::ComputedNumeric) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
+pub fn surgeist_animation::computed::CalcSizeCalculation::nodes(&self) -> &[surgeist_animation::computed::CalcSizeNode]
+pub fn surgeist_animation::computed::CalcSizeCalculation::size() -> Self
+pub fn surgeist_animation::computed::CalcSizeCalculation::source(source: surgeist_animation::computed::MathSource, footprint: surgeist_animation::computed::CalcSizeFootprint) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
+pub struct surgeist_animation::computed::CalcSizeFootprint
+impl surgeist_animation::computed::CalcSizeFootprint
+pub fn surgeist_animation::computed::CalcSizeFootprint::new(nodes: usize, size_references: usize, percentages: usize) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
 pub struct surgeist_animation::computed::ComputedDimension
 impl surgeist_animation::computed::ComputedDimension
 pub const fn surgeist_animation::computed::ComputedDimension::kind(self) -> surgeist_animation::computed::DimensionKind
@@ -247,6 +301,14 @@ pub fn surgeist_animation::computed::ComputedRatio::interpolate(self, other: Sel
 pub fn surgeist_animation::computed::ComputedRatio::is_degenerate(self) -> bool
 pub fn surgeist_animation::computed::ComputedRatio::new(numerator: f64, denominator: f64) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
 pub const fn surgeist_animation::computed::ComputedRatio::numerator(self) -> f64
+pub struct surgeist_animation::computed::ComputedSize(_)
+impl surgeist_animation::computed::ComputedSize
+pub const fn surgeist_animation::computed::ComputedSize::calc_size(value: surgeist_animation::computed::CalcSize) -> Self
+pub fn surgeist_animation::computed::ComputedSize::fit_content(value: surgeist_animation::computed::ComputedNumeric) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
+pub const fn surgeist_animation::computed::ComputedSize::keyword(keyword: surgeist_animation::computed::SizingKeyword) -> Self
+pub fn surgeist_animation::computed::ComputedSize::length_percentage(value: surgeist_animation::computed::ComputedNumeric) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
+pub fn surgeist_animation::computed::ComputedSize::unavailable_calc_size(source: surgeist_animation::computed::MathSource) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
+pub const fn surgeist_animation::computed::ComputedSize::value(&self) -> &surgeist_animation::computed::ComputedSizeValue
 pub struct surgeist_animation::computed::ComputedValue
 impl surgeist_animation::computed::ComputedValue
 pub fn surgeist_animation::computed::ComputedValue::accumulate(&self, other: &Self) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>

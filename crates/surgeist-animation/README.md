@@ -30,6 +30,11 @@ Grid values retain track/function kinds, fixed and automatic repeats, subgrid
 name lists and symbolic percentages. Compatible tracks combine numerically;
 automatic repeats and incompatible structures select complete values. Native
 Grid addition and accumulation share the same component traversal.
+Multi-column sampling accepts computed counts, widths, gaps, rule colors and
+discrete longhands. Column widths support intrinsic keywords, functional
+fit-content and bounded symbolic calc-size interpolation.
+[Multi-column sampling](docs/reference.md#computed-multi-column-properties)
+describes the supplied operands and consumer responsibilities.
 Resolved color pairs use a supplied interpolation method and the Color crate's
 finite-progress sampler. The result retains missing components and extended
 alpha. [Color sampling](docs/reference.md#standard-space-color-sampling)
