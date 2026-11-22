@@ -129,6 +129,7 @@ impl OperationRoot {
                 existing(root)
             }
             Command::AssignSlot { slot, .. } => existing(slot),
+            Command::EditTokenList { list, .. } => Some(list.element()),
             Command::Select { node, .. }
             | Command::SetStyleDisabled { node, .. }
             | Command::SetHtmlScriptAsync { node, .. }

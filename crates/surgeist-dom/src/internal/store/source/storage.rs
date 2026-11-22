@@ -570,6 +570,23 @@ pub(in crate::internal::store) fn commands(
                 payload.string(name)?;
             }
             Command::ToggleAttribute { name, .. } => payload.string(name)?,
+            Command::EditTokenList { edit, .. } => {
+                use crate::internal::token_list::DomTokenListEdit;
+                match edit {
+                    DomTokenListEdit::Add(tokens) | DomTokenListEdit::Remove(tokens) => {
+                        payload.bank::<DocumentString>(tokens.capacity())?;
+                        for token in tokens {
+                            step()?;
+                            payload.string(token)?;
+                        }
+                    }
+                    DomTokenListEdit::Toggle { token, .. } => payload.string(token)?,
+                    DomTokenListEdit::Replace { token, replacement } => {
+                        payload.string(token)?;
+                        payload.string(replacement)?;
+                    }
+                }
+            }
             Command::ReplaceData { data, .. } => payload.string(data)?,
             Command::ProcessingInstructionAttribute { edit, .. } => {
                 use crate::internal::source::DomProcessingInstructionAttributeEdit::*;

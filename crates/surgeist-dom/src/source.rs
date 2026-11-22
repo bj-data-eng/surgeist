@@ -28,3 +28,4 @@ pub use crate::internal::source::{
     DomSourceRequest, DomSourceStatus, DomSourceStoppedAction,
 };
 pub use crate::internal::store::source::operation::DomSourceLease;
+pub use crate::internal::token_list::DomTokenListEdit;

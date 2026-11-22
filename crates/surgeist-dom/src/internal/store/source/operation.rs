@@ -1590,6 +1590,7 @@ impl Operation {
                 Some(
                     NodeOutputKind::AdjacentElement(_)
                         | NodeOutputKind::ElementAttributePresent(_)
+                        | NodeOutputKind::TokenListResult(_)
                         | NodeOutputKind::ProcessingInstructionAttributePresent(_)
                 )
             );
@@ -1643,6 +1644,7 @@ impl Operation {
                 historical.push(match ticket {
                     NodeTicket::AdjacentElement(..)
                     | NodeTicket::ElementAttributePresent(..)
+                    | NodeTicket::TokenListResult(..)
                     | NodeTicket::ProcessingInstructionAttributePresent(..) => None,
                     _ => match ticket.key() {
                         Key::Created(index) => ids.get(index),
@@ -2401,6 +2403,11 @@ impl DomSourceLease<'_> {
                         | Command::CreateHtmlOption { .. }
                         | Command::CreateXmlDocument { .. }
                         | Command::ToggleAttribute { .. }
+                        | Command::EditTokenList {
+                            edit: crate::internal::token_list::DomTokenListEdit::Toggle { .. }
+                                | crate::internal::token_list::DomTokenListEdit::Replace { .. },
+                            ..
+                        }
                         | Command::Compound(
                             crate::internal::compound::Edit::AdjacentElement { .. }
                                 | crate::internal::compound::Edit::TablePart {

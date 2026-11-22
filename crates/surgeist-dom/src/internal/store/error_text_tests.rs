@@ -470,6 +470,16 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             "the name or value contains a character or sequence that is not allowed",
         ),
         (
+            "EmptyToken",
+            DomError::EmptyToken,
+            "the token must not be empty",
+        ),
+        (
+            "TokenContainsAsciiWhitespace",
+            DomError::TokenContainsAsciiWhitespace,
+            "the token contains ASCII whitespace",
+        ),
+        (
             "Namespace",
             DomError::Namespace,
             "the qualified name and namespace are inconsistent",
@@ -1092,6 +1102,8 @@ variants! {
     HierarchyRequest unit,
     InvalidAdjacentPosition unit,
     InvalidCharacter unit,
+    EmptyToken unit,
+    TokenContainsAsciiWhitespace unit,
     Namespace unit,
     ScriptPreparationRequired unit,
     MetaCspProcessingRequired unit,

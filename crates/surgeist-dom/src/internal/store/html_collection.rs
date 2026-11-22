@@ -11,10 +11,10 @@ use crate::internal::{
     hosted::{DomHostedBrowsingContextId, DomHostedEntry, DomHostedError, DomHostedGlobalId},
     names::{ascii_lower, in_html_namespace_with, qualified_equals_with, same_code_units},
     snapshot::{DomNode, DomNodeKind, DomSiblingDirection},
+    token_list::{CLASS, scan_space_tokens},
 };
 
 use surgeist_html::{
-    bounded::lexical::{HtmlSpaceTokenCursor, HtmlSpaceTokenStep},
     construction::HtmlDocumentMode,
     values::HtmlNameInput,
     vocabulary::{
@@ -25,7 +25,6 @@ use surgeist_html::{
 
 const ID: &[u16] = &[0x69, 0x64];
 const NAME: &[u16] = &[0x6e, 0x61, 0x6d, 0x65];
-const CLASS: &[u16] = &[0x63, 0x6c, 0x61, 0x73, 0x73];
 const WILDCARD: &[u16] = &[0x2a];
 
 fn document_metadata<'a, E: From<DomError>>(
@@ -64,31 +63,6 @@ fn matches_expanded_name<E>(
                 local_name.code_units(),
                 step,
             )?))
-}
-
-fn scan_class_tokens<T, E>(
-    units: &[u16],
-    mut step: impl FnMut() -> Result<(), E>,
-    mut visit: impl FnMut(&[u16]) -> Result<ControlFlow<T>, E>,
-) -> Result<Option<T>, E> {
-    for _ in 0..HtmlSpaceTokenCursor::BEGIN_WORK {
-        step()?;
-    }
-    let mut cursor = HtmlSpaceTokenCursor::new(units);
-    loop {
-        for _ in 0..HtmlSpaceTokenCursor::STEP_WORK {
-            step()?;
-        }
-        match cursor.step() {
-            HtmlSpaceTokenStep::Continue => (),
-            HtmlSpaceTokenStep::Token { start, end } => {
-                if let ControlFlow::Break(value) = visit(&units[start..end])? {
-                    return Ok(Some(value));
-                }
-            }
-            HtmlSpaceTokenStep::Done => return Ok(None),
-        }
-    }
 }
 
 fn window_name_element<E>(
@@ -832,10 +806,10 @@ where
             return Ok(None);
         }
         if let Filter::ClassName(query) = &self.collection.filter
-            && scan_class_tokens(
+            && scan_space_tokens(
                 query.code_units(),
                 || self.view.meter.step(),
-                |_| Ok(ControlFlow::Break(())),
+                |_, _| Ok(ControlFlow::Break(())),
             )?
             .is_none()
         {
@@ -895,8 +869,8 @@ where
         let Some(classes) = attributes.get_null_namespace_attribute_with(CLASS, step)? else {
             return Ok(false);
         };
-        let missing = scan_class_tokens(query.code_units(), step, |requested| {
-            let found = scan_class_tokens(classes.value().code_units(), step, |candidate| {
+        let missing = scan_space_tokens(query.code_units(), step, |requested, _| {
+            let found = scan_space_tokens(classes.value().code_units(), step, |candidate, _| {
                 let matches = if self.class_quirks {
                     if candidate.len() != requested.len() {
                         return Ok(ControlFlow::Continue(()));
