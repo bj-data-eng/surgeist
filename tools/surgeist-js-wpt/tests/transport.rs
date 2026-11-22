@@ -13,11 +13,12 @@ use std::{
 };
 
 use surgeist_js_wpt::{
-    CleanupStatus, EngineResourceEvidence, ExecutionError, FixtureId, FixtureUrlError,
-    GuestDiagnostic, HarnessResult, HarnessStatus, MemoryPolicy, NativeResourceEvidence,
-    OutputStream, ProcessExit, ProcessStop, ProtocolError, RelativePath, Report, Run,
-    SourceRevision, StartError, Subtest, SubtestStatus, WorkerFailure, WorkerLimits, WorkerReport,
-    WorkerResources, WorkerResult, execution_capabilities, read_request, run, write_report,
+    BoaHeapSample, CleanupStatus, EngineResourceEvidence, ExecutionError, FixtureId,
+    FixtureUrlError, GuestDiagnostic, HarnessResult, HarnessStatus, MemoryPolicy,
+    NativeResourceEvidence, OutputStream, ProcessExit, ProcessStop, ProtocolError, RelativePath,
+    Report, Run, SourceRevision, StartError, Subtest, SubtestStatus, WorkerFailure, WorkerLimits,
+    WorkerReport, WorkerResources, WorkerResult, execution_capabilities, read_request, run,
+    write_report,
 };
 
 const REVISION: &str = "69f2bba61ce7e9469ccbce53de4644a89f6b7dff";
@@ -198,6 +199,19 @@ fn verify_worker(cwd: &Path) {
             }],
         }),
     );
+    let boa = invoke(cwd, "boa-collector", default_limits(), &cancel).unwrap();
+    clean(&boa);
+    assert_eq!(boa.process.stop, ProcessStop::Exited);
+    assert_eq!(boa.process.exit, ProcessExit::Success);
+    let Report::Received(report) = boa.report else {
+        panic!("expected a qualified Boa sample: {boa:?}");
+    };
+    assert_eq!(
+        report.resources.engine,
+        EngineResourceEvidence::BoaCollector {
+            sample: Some(BoaHeapSample { used_bytes: 4 }),
+        }
+    );
     let timeout = invoke(cwd, "harness-timeout", default_limits(), &cancel).unwrap();
     received(&timeout, &mixed_result(HarnessStatus::Timeout));
     for mode in ["syntax", "runtime", "native", "capability", "engine"] {
@@ -234,6 +248,7 @@ fn verify_worker(cwd: &Path) {
         "invalid-ledger",
         "contradictory-native",
         "contradictory-engine",
+        "boa-collector-with-limit",
         "trailing",
         "extra",
         "mismatch",
@@ -253,7 +268,8 @@ fn verify_worker(cwd: &Path) {
                 | "bad-path"
                 | "invalid-ledger"
                 | "contradictory-native"
-                | "contradictory-engine" => matches!(error, ProtocolError::Frame(_)),
+                | "contradictory-engine"
+                | "boa-collector-with-limit" => matches!(error, ProtocolError::Frame(_)),
                 "trailing" | "extra" => matches!(error, ProtocolError::TrailingData),
                 "mismatch" => matches!(error, ProtocolError::FixtureMismatch),
                 _ => false,
@@ -440,6 +456,19 @@ fn worker(mode: &str) {
             );
         }
         "raw-result" => write_raw(&mut stdout, raw_report("V2", FIXTURE).as_bytes()),
+        "boa-collector" | "boa-collector-with-limit" => {
+            let sample = if mode == "boa-collector" {
+                r#""status":"boa-collector","sample":{"used_bytes":4}"#
+            } else {
+                r#""status":"boa-collector","sample":{"used_bytes":4,"limit_bytes":5}"#
+            };
+            write_raw(
+                &mut stdout,
+                raw_report("V2", FIXTURE)
+                    .replace(r#""status":"unavailable""#, sample)
+                    .as_bytes(),
+            );
+        }
         "missing" => {}
         "partial" => stdout.write_all(&[0, 0, 0, 8, b'{']).unwrap(),
         "version" => write_raw(&mut stdout, raw_report("V1", FIXTURE).as_bytes()),
@@ -467,7 +496,7 @@ fn worker(mode: &str) {
             raw_report("V2", FIXTURE)
                 .replace(
                     r#""status":"unavailable""#,
-                    r#""status":"unavailable","sample":{"used_bytes":4,"limit_bytes":5}"#,
+                    r#""status":"unavailable","sample":{"used_bytes":4}"#,
                 )
                 .as_bytes(),
         ),

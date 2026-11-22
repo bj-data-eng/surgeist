@@ -23,12 +23,13 @@ optional audit tools have additional prerequisites described in their sources.
 1. Clone the repository:
 
    ```sh
-   git clone https://github.com/bj-data-eng/surgeist.git
+   git clone --recurse-submodules https://github.com/bj-data-eng/surgeist.git
    cd surgeist
    ```
 
-   Crates under `crates/` are ordinary tracked source directories in this
-   repository. No separate crate checkout initialization is required.
+   The Surgeist Boa fork lives at `crates/surgeist-boa`. After pulling new
+   commits into an existing checkout, initialize or advance it to the pinned
+   revision with `git submodule update --init crates/surgeist-boa`.
 
 2. From the root directory, run the focused library check:
 

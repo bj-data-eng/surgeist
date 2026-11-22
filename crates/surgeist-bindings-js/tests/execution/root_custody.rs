@@ -60,7 +60,7 @@ impl Drop for Setup {
 
 fn metadata_survives_process_for_each_admission_path() -> Result<(), Error> {
     for path in 0..3 {
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         let realm = process.execution().create_realm()?;
         let captured = Rc::new(RefCell::new(None));
         if path == 1 {
@@ -119,7 +119,7 @@ fn metadata_survives_process_for_each_admission_path() -> Result<(), Error> {
 }
 
 fn policy_captured_roots_do_not_retain_the_policy() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let account = Rc::new(Accounting::default());
     let captured: Rc<RefCell<Option<Root>>> = Rc::new(RefCell::new(None));
@@ -155,7 +155,7 @@ fn policy_captured_roots_do_not_retain_the_policy() -> Result<(), Error> {
 }
 
 fn late_root_bearing_failure_keeps_the_original_error_without_a_cycle() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let account = Rc::new(Accounting::default());
     let policy = account.clone();
@@ -191,7 +191,7 @@ fn late_root_bearing_failure_keeps_the_original_error_without_a_cycle() -> Resul
 }
 
 fn late_release_finishes_without_an_observer() -> Result<(), Error> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let account = Rc::new(Accounting::default());
     *account.next_failure.borrow_mut() = Some(Error::Allocation);

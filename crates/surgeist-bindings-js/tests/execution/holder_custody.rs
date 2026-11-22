@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use surgeist_bindings_js::{EngineKind, Error, ObjectPrototype, Process};
+use surgeist_bindings_js::{Error, ObjectPrototype, Process};
 
 struct Funding(Rc<Cell<usize>>);
 
@@ -14,7 +14,7 @@ impl Drop for Funding {
 fn identity_clones_share_one_admission_through_process_teardown() -> Result<(), Error> {
     let drops = Rc::new(Cell::new(0));
     let admissions = Cell::new(0);
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let storage = Funding(drops.clone());
     let holder = process.execution().in_realm(&realm, |scope| {
@@ -39,7 +39,7 @@ fn identity_clones_share_one_admission_through_process_teardown() -> Result<(), 
     assert!(alias.associated_realm().check_owner_active().is_err());
     assert_eq!(drops.get(), 0);
 
-    let mut next = Process::bootstrap(EngineKind::V8)?;
+    let mut next = Process::bootstrap()?;
     let receiving = next.execution().create_realm()?;
     next.execution().in_realm(&receiving, |scope| {
         assert!(matches!(
@@ -59,7 +59,7 @@ fn explicit_release_drops_handles_but_preserves_funding_for_surviving_aliases() 
 {
     let drops = Rc::new(Cell::new(0));
     let admissions = Cell::new(0);
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let storage = Funding(drops.clone());
     let holder = process.execution().in_realm(&realm, |scope| {
@@ -93,7 +93,7 @@ fn native_holder_metadata_does_not_keep_its_sdk_entry_or_payload_alive() -> Resu
     let payload_funding_drops = Rc::new(Cell::new(0));
     let holder_funding_drops = Rc::new(Cell::new(0));
     let admissions = Cell::new(0);
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let payload = Funding(native_drops.clone());
     let mut funding = [

@@ -318,7 +318,7 @@ impl PublicEventBindings {
         };
         // Learn the size of one origin graph from the same installers in
         // the receiving realm. Their requested Rust extents are independent
-        // of the realm in which the V8 objects are created.
+        // of the realm in which the guest objects are created.
         let origin_cost = Cell::new(OriginCost::default());
         let fund_origin = |bytes| -> Result<GuestBacking, DocumentGuestEventError> {
             let backing = fund(bytes)?;

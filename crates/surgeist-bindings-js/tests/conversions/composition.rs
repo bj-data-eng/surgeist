@@ -231,7 +231,7 @@ fn nullable_and_declared_arguments(process: &mut Process) -> TestResult {
 }
 
 fn dictionary_admission(short: bool, value_cut: bool) -> TestResult {
-    let mut process = Process::bootstrap(surgeist_bindings_js::EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let ledger = new_ledger(ProfileMode::Off)?;
     let limits = Limits::new(
@@ -369,7 +369,7 @@ fn profiling_preserves_composed_values(process: &mut Process) -> TestResult {
 }
 
 fn nullable_admission(short_storage: bool) -> TestResult {
-    let mut process = Process::bootstrap(surgeist_bindings_js::EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let ledger = new_ledger(ProfileMode::Off)?;
     let limits = Limits::new(

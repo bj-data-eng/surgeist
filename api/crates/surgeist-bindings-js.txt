@@ -727,8 +727,6 @@ pub surgeist_bindings_js::Completion::Undefined
 pub enum surgeist_bindings_js::ConstructorCompletion<'scope>
 pub surgeist_bindings_js::ConstructorCompletion::Return(surgeist_bindings_js::Value<'scope>)
 pub surgeist_bindings_js::ConstructorCompletion::Throw(surgeist_bindings_js::Value<'scope>)
-#[non_exhaustive] pub enum surgeist_bindings_js::EngineKind
-pub surgeist_bindings_js::EngineKind::V8
 #[non_exhaustive] pub enum surgeist_bindings_js::Error
 pub surgeist_bindings_js::Error::Allocation
 pub surgeist_bindings_js::Error::ArrayTooLong
@@ -927,8 +925,7 @@ pub fn surgeist_bindings_js::Execution<'_>::drop(&mut self)
 pub struct surgeist_bindings_js::FunctionMetadata<'name>
 pub surgeist_bindings_js::FunctionMetadata::length: u32
 pub surgeist_bindings_js::FunctionMetadata::name: &'name [u16]
-pub struct surgeist_bindings_js::HeapObservation
-pub surgeist_bindings_js::HeapObservation::limit_bytes: usize
+#[non_exhaustive] pub struct surgeist_bindings_js::HeapObservation
 pub surgeist_bindings_js::HeapObservation::used_bytes: usize
 pub struct surgeist_bindings_js::HostFailure
 impl surgeist_bindings_js::HostFailure
@@ -956,8 +953,8 @@ impl<'scope, T> surgeist_bindings_js::PreparedNativeProjection<'_, 'scope, T>
 pub fn surgeist_bindings_js::PreparedNativeProjection<'_, 'scope, T>::publish<R>(self, bind: impl core::ops::function::FnOnce(&T) -> R) -> (surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::RetainedCallbackObject, R)
 pub struct surgeist_bindings_js::Process
 impl surgeist_bindings_js::Process
-pub fn surgeist_bindings_js::Process::bootstrap(kind: surgeist_bindings_js::EngineKind) -> core::result::Result<Self, surgeist_bindings_js::Error>
-pub fn surgeist_bindings_js::Process::bootstrap_funded<B: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(kind: surgeist_bindings_js::EngineKind, fund: impl core::ops::function::FnOnce(surgeist_bindings_js::preparation::Request) -> core::result::Result<B, E>) -> core::result::Result<Self, E>
+pub fn surgeist_bindings_js::Process::bootstrap() -> core::result::Result<Self, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Process::bootstrap_funded<B: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(fund: impl core::ops::function::FnOnce(surgeist_bindings_js::preparation::Request) -> core::result::Result<B, E>) -> core::result::Result<Self, E>
 pub fn surgeist_bindings_js::Process::conversion_cleanup_status(&self) -> surgeist_bindings_js::conversion::CleanupStatus
 pub fn surgeist_bindings_js::Process::execution(&mut self) -> surgeist_bindings_js::Execution<'_>
 pub fn surgeist_bindings_js::Process::has_preparation_admission(&self) -> bool

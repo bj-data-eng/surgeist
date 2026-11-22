@@ -32,8 +32,9 @@ are recorded in its provenance.
 It is distinct from the facade's geometry crate `surgeist-shape`.
 
 [`surgeist-bindings-js`](../crates/surgeist-bindings-js/README.md) supplies the safe
-embedding core over external V8: a thread-affine heap owner, independent realms,
-scoped values, checked persistent roots and explicit job checkpoints. Native
+embedding core over the maintained Boa fork. It provides a thread-affine
+execution owner, independent realms, scoped values, checked persistent roots
+and explicit job checkpoints. Native
 Web IDL and framework object exposure remain planned. Native framework crates
 remain usable without scripting.
 [Host regression inputs](../tests/fixtures/js-bindings/README.md) retain the
@@ -133,8 +134,8 @@ provides them.
 
 The generator supports `--all`, `--root`, or `--crate` target selection and
 `--list` or `--check` actions. Without flags it generates all artifacts. Targets
-are root plus `crates/surgeist-*` directories containing a manifest, independent
-of Cargo workspace membership. Source is authoritative; the generated root
+are root plus the Surgeist packages in `crates/surgeist-*`, independent of
+Cargo workspace membership. The Boa fork has its own API. The generated root
 audit retains wildcard reexport placeholders, and audit headers may report
 missing rustdoc item IDs. Consult current public source for detailed APIs.
 

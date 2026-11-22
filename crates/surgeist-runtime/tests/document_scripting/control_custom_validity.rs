@@ -96,7 +96,7 @@ pub(super) fn attached_controls_store_native_custom_validity() {
     let [place]: [NodeId; 1] = before.node(body).unwrap().children().try_into().unwrap();
     let controls: [NodeId; 5] = before.node(place).unwrap().children().try_into().unwrap();
     let [button, input, select, textarea, spare] = controls;
-    assert_eq!(messages(&before, controls), [&[][..]; 5]);
+    assert_eq!(messages(&before, controls), [&[] as &[u16]; 5]);
 
     observe(
         &mut host,

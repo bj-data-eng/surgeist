@@ -12,7 +12,7 @@ use super::{
     CleanupPrimary, CleanupStage, ConversionAccount, Converted, Failure, Resource, ResourceFields,
     ResourceTable, Work, WorkFields, WorkTable, types,
 };
-use crate::{Callback, Completion, EngineKind, Error, Process, Realm, Root};
+use crate::{Callback, Completion, Error, Process, Realm, Root};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 type Ledger = SharedOperation<Work, Resource>;
@@ -22,7 +22,7 @@ fn units(text: &str) -> Vec<u16> {
 }
 
 fn setup() -> Result<(Process, Realm, Ledger, ConversionAccount), Box<dyn std::error::Error>> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let ledger = Operation::with_profile(
         "host",
@@ -293,7 +293,7 @@ fn expired_release_fault_does_not_touch_the_next_owner() -> TestResult {
         (retained, account)
     };
     assert!(account.0.owner().upgrade().is_none());
-    let mut next = Process::bootstrap(EngineKind::V8)?;
+    let mut next = Process::bootstrap()?;
     let realm = next.execution().create_realm()?;
     sabotage_release(&account);
     drop(retained);
@@ -343,7 +343,8 @@ fn selected_guest_survives_post_sdk_reaping() -> TestResult {
         };
         save_original(scope, &failure, &saved)?;
         sabotage_release(&account);
-        scope.evaluate(&units("held = undefined; gc()"))?;
+        scope.evaluate(&units("held = undefined"))?;
+        boa_gc::force_collect();
         // SDK finalization only retires the lease. Captured storage must not
         // be destroyed until the returning entry reaps outside native frames.
         assert_eq!(account.cleanup_status().failures(), Some(0));
@@ -613,7 +614,7 @@ fn installed_dom_exception_charges_the_retained_account_body() -> TestResult {
 
     use crate::dom_exception::{self, DomExceptionLimits};
 
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     process.execution().in_realm(&realm, |scope| {
         dom_exception::install(scope, DomExceptionLimits::default(), ())?;
@@ -757,7 +758,7 @@ pub(crate) fn run() -> TestResult {
 
 fn foreign_native_error_is_refused_during_cleanup() -> TestResult {
     let foreign = {
-        let mut previous = Process::bootstrap(EngineKind::V8)?;
+        let mut previous = Process::bootstrap()?;
         let realm = previous.execution().create_realm()?;
         let authority = previous
             .execution()

@@ -16,8 +16,8 @@ use surgeist_bindings_js::conversion::{
 };
 use surgeist_bindings_js::declarations::ShadowRootMode;
 use surgeist_bindings_js::{
-    Callback, Completion, DomString, EngineKind, Error, IntegerKind, IntegerMode, IntegerValue,
-    Primitive, Process, PropertyKey, Realm,
+    Callback, Completion, DomString, Error, IntegerKind, IntegerMode, IntegerValue, Primitive,
+    Process, PropertyKey, Realm,
 };
 use surgeist_ledger::{EventFilter, Limits, Operation, ProfileMode, SharedOperation, Tariffs};
 
@@ -256,7 +256,7 @@ fn scalars_and_nested_reentry(process: &mut Process) -> TestResult {
 }
 
 fn admission_is_exact_and_terminal(storage_short: bool) -> TestResult {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let ledger = new_ledger(ProfileMode::Off)?;
     let limits = Limits::new(
@@ -439,7 +439,7 @@ fn timing_is_ledger_owned(process: &mut Process) -> TestResult {
 fn retained_output_does_not_own_the_heap() -> TestResult {
     let ledger = new_ledger(ProfileMode::Off)?;
     let (retained, account) = {
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         let realm = process.execution().create_realm()?;
         let account = account(&mut process, &realm, &ledger, Limits::unlimited())?;
         let retained = process.execution().in_realm(&realm, |scope| {
@@ -451,7 +451,7 @@ fn retained_output_does_not_own_the_heap() -> TestResult {
         (retained, account)
     };
     assert_eq!(ledger.usage(ledger.root())?.live(Resource::BufferBytes), 6);
-    let mut next = Process::bootstrap(EngineKind::V8)?;
+    let mut next = Process::bootstrap()?;
     let realm = next.execution().create_realm()?;
     let work = ledger.usage(ledger.root())?.work(Work::Value);
     let result = next.execution().in_realm(&realm, |scope| {
@@ -467,7 +467,7 @@ fn retained_output_does_not_own_the_heap() -> TestResult {
 
 fn main() -> TestResult {
     {
-        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut process = Process::bootstrap()?;
         callback_and_owned_output(&mut process)?;
         enum_errors_and_assignment(&mut process)?;
         scalars_and_nested_reentry(&mut process)?;

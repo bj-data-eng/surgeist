@@ -2183,7 +2183,7 @@ pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creatio
             scope.evaluate(&units("adopted.localName")).map(drop)
         })
     else {
-        panic!("the original V8 wrapper must observe exact native retirement");
+        panic!("the original guest wrapper must observe exact native retirement");
     };
     assert!(matches!(
         failure.cause::<DocumentGuestEventError>(),

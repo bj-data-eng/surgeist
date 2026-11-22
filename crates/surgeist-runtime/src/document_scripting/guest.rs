@@ -671,7 +671,7 @@ impl GuestEvents {
             return Ok(None);
         };
         let (bytes, requests) = public.origin_installation_cost();
-        // Reserve canonical backing before V8 can retain a callback capture.
+        // Reserve canonical backing before the engine can retain a callback capture.
         // The private install has no guest entry and spends its charged work
         // as each extent is transferred to its final owner.
         let work = requests

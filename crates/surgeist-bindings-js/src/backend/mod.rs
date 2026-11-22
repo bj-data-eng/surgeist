@@ -1,4 +1,4 @@
-pub(crate) mod v8;
+pub(crate) mod boa;
 
 use std::any::{Any, TypeId};
 use std::rc::Rc;

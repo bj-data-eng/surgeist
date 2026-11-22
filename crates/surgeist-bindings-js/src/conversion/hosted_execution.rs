@@ -12,7 +12,7 @@ use super::{
     ConversionAccount, Failure, Host, Hosted, LedgerError, Resource, ResourceTable, Work,
     WorkTable, declarations, types,
 };
-use crate::{Callback, Completion, EngineKind, Error, Process, PropertyKey, Realm, Root};
+use crate::{Callback, Completion, Error, Process, PropertyKey, Realm, Root};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 type Ledger = SharedOperation<Work, Resource>;
@@ -198,7 +198,7 @@ fn fixture(
     parent_work: u64,
     tariff: u64,
 ) -> Result<Fixture, Box<dyn std::error::Error>> {
-    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut process = Process::bootstrap()?;
     let realm = process.execution().create_realm()?;
     let parent = Parent::new(parent_work, tariff)?;
     let factory = Rc::new(());

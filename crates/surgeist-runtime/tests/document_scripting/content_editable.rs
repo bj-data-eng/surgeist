@@ -1,4 +1,4 @@
-//! ElementContentEditable over actual attached V8 and canonical native edits.
+//! ElementContentEditable through attached scripting and canonical native edits.
 
 use super::*;
 
