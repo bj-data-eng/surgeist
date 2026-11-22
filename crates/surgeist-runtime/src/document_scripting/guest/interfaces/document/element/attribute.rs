@@ -36,6 +36,10 @@ use surgeist_html::values::Namespace;
 
 pub(in crate::document_scripting::guest::interfaces::document) enum AttributeResult<'scope> {
     Value,
+    TokenListResult {
+        when_true: Value<'scope>,
+        when_false: Value<'scope>,
+    },
     Attached(DomAttrId, Value<'scope>),
     Removed(DomAttrId, Value<'scope>),
 }
@@ -247,6 +251,17 @@ impl Capture {
                 drain(scope, done.operation())?;
                 match (result_kind, done.output()) {
                     (AttributeResult::Value, None) => Ok(Completion::Undefined),
+                    (
+                        AttributeResult::TokenListResult {
+                            when_true,
+                            when_false,
+                        },
+                        Some(DomSourceOutput::TokenListResult(value)),
+                    ) => Ok(Completion::Return(if value {
+                        when_true
+                    } else {
+                        when_false
+                    })),
                     (
                         AttributeResult::Attached(incoming, _),
                         Some(DomSourceOutput::AttributeAttachment(
@@ -1002,7 +1017,10 @@ fn callback_sink(
 
 fn attribute_exception(error: &DomError) -> Option<DomExceptionName> {
     match error {
-        DomError::InvalidCharacter => Some(DomExceptionName::InvalidCharacterError),
+        DomError::EmptyToken => Some(DomExceptionName::SyntaxError),
+        DomError::InvalidCharacter | DomError::TokenContainsAsciiWhitespace => {
+            Some(DomExceptionName::InvalidCharacterError)
+        }
         DomError::Namespace => Some(DomExceptionName::NamespaceError),
         DomError::InUseAttribute => Some(DomExceptionName::InUseAttributeError),
         DomError::NotFound => Some(DomExceptionName::NotFoundError),

@@ -2,6 +2,18 @@
   "schema": 1,
   "sources": [
     {
+      "id": "DOMTokenList.source",
+      "path": "references/dom-token-list-idl--3071e5f26944.md",
+      "anchor": "interface-domtokenlist",
+      "block": 0,
+      "sha256": "717ff206827712969cc99d1d256665754550dca5a389fe3611800978a3f65a49",
+      "revision": "3071e5f269448350fdea79bb284eedaf17bc431e",
+      "url": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-domtokenlist",
+      "entries": [
+        "DOMTokenList"
+      ]
+    },
+    {
       "id": "AbstractRange.source",
       "path": "references/dom-range-idl--3071e5f26944.md",
       "anchor": "interface-abstractrange",
@@ -3182,6 +3194,231 @@
           "name": "assignedSlot",
           "readonly": true,
           "id": "Slottable.assignedSlot"
+        }
+      ]
+    },
+    {
+      "id": "DOMTokenList",
+      "kind": "interface",
+      "name": "DOMTokenList",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "length",
+          "readonly": true,
+          "id": "DOMTokenList.length"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "DOMString"
+            }
+          },
+          "arguments": [
+            {
+              "name": "index",
+              "type": {
+                "kind": "named",
+                "name": "unsigned long"
+              },
+              "presence": "required"
+            }
+          ],
+          "name": "item",
+          "id": "DOMTokenList.item:0",
+          "special": "getter"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "arguments": [
+            {
+              "name": "token",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "presence": "required"
+            }
+          ],
+          "name": "contains",
+          "id": "DOMTokenList.contains:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [
+            {
+              "name": "tokens",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "presence": "variadic"
+            }
+          ],
+          "name": "add",
+          "id": "DOMTokenList.add:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "undefined"
+          },
+          "arguments": [
+            {
+              "name": "tokens",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "presence": "variadic"
+            }
+          ],
+          "name": "remove",
+          "id": "DOMTokenList.remove:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "arguments": [
+            {
+              "name": "token",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "presence": "required"
+            },
+            {
+              "name": "force",
+              "type": {
+                "kind": "named",
+                "name": "boolean"
+              },
+              "presence": "optional"
+            }
+          ],
+          "name": "toggle",
+          "id": "DOMTokenList.toggle:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "arguments": [
+            {
+              "name": "token",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "presence": "required"
+            },
+            {
+              "name": "newToken",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "presence": "required"
+            }
+          ],
+          "name": "replace",
+          "id": "DOMTokenList.replace:0"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "arguments": [
+            {
+              "name": "token",
+              "type": {
+                "kind": "named",
+                "name": "DOMString"
+              },
+              "presence": "required"
+            }
+          ],
+          "name": "supports",
+          "id": "DOMTokenList.supports:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "value",
+          "readonly": false,
+          "id": "DOMTokenList.value",
+          "stringifier": true
+        },
+        {
+          "attributes": [],
+          "kind": "iterable",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "id": "DOMTokenList.iterable"
         }
       ]
     },
@@ -13255,13 +13492,6 @@
       "requirement": "Source-qualified DOMStringMap definition and its owning native/binding family; not an empty installed interface."
     },
     {
-      "name": "DOMTokenList",
-      "kind": "interface",
-      "owner": "surgeist-dom",
-      "url": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-domtokenlist",
-      "requirement": "Source-qualified DOMTokenList definition and its owning native/binding family; not an empty installed interface."
-    },
-    {
       "name": "ElementInternals",
       "kind": "interface",
       "owner": "surgeist-dom",
@@ -15136,6 +15366,128 @@
       ],
       "requirements": []
     },
+    "DOMTokenList.length/get": {
+      "kind": "native",
+      "adapter": "domtokenlist.length.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "capture_with"
+        }
+      ],
+      "requirements": []
+    },
+    "DOMTokenList.item:0/call": {
+      "kind": "native",
+      "adapter": "domtokenlist.item.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "item"
+        }
+      ],
+      "requirements": []
+    },
+    "DOMTokenList.contains:0/call": {
+      "kind": "native",
+      "adapter": "domtokenlist.contains.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "contains_with"
+        }
+      ],
+      "requirements": []
+    },
+    "DOMTokenList.add:0/call": {
+      "kind": "native",
+      "adapter": "domtokenlist.add.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "edit_token_list"
+        }
+      ],
+      "requirements": []
+    },
+    "DOMTokenList.remove:0/call": {
+      "kind": "native",
+      "adapter": "domtokenlist.remove.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "edit_token_list"
+        }
+      ],
+      "requirements": []
+    },
+    "DOMTokenList.toggle:0/call": {
+      "kind": "native",
+      "adapter": "domtokenlist.toggle.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "edit_token_list"
+        }
+      ],
+      "requirements": []
+    },
+    "DOMTokenList.replace:0/call": {
+      "kind": "native",
+      "adapter": "domtokenlist.replace.call",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "edit_token_list"
+        }
+      ],
+      "requirements": []
+    },
+    "DOMTokenList.supports:0/call": {
+      "kind": "derived",
+      "algorithm": "domtokenlist.supports.validate",
+      "owner": "surgeist-runtime",
+      "contract": "Apply the selected association's supported-token policy after DOMString conversion. Class has no defined supported tokens.",
+      "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#concept-domtokenlist-validation",
+      "inputs": [],
+      "requirements": []
+    },
+    "DOMTokenList.value/get": {
+      "kind": "native",
+      "adapter": "domtokenlist.value.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "raw_with"
+        }
+      ],
+      "requirements": []
+    },
+    "DOMTokenList.value/set": {
+      "kind": "native",
+      "adapter": "domtokenlist.value.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "attribute_name"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
     "NodeList.length/get": {
       "kind": "native",
       "adapter": "nodelist.length.get",
@@ -16032,14 +16384,19 @@
     "Element.classList/get": {
       "kind": "native",
       "adapter": "element.classlist.get",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
           "owner": "surgeist-dom",
-          "contract": "Canonical associated DOMTokenList operations and value setter; preserve SameObject and PutForwards=value.",
-          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element"
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "class"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/token_list.rs",
+          "symbol": "class_list"
         }
       ],
+      "requirements": [],
       "result_view": "live"
     },
     "Element.classList/set": {

@@ -34,6 +34,7 @@ pub(in crate::document_scripting) mod select_string_admission;
 pub(in crate::document_scripting) mod shadow_root;
 pub(in crate::document_scripting) mod slot_admission;
 pub(in crate::document_scripting) mod source_callback_reads;
+pub(in crate::document_scripting) mod token_list_admission;
 pub(in crate::document_scripting) mod tree_mutation_admission;
 pub(in crate::document_scripting) mod tree_walker_admission;
 pub(in crate::document_scripting) mod trusted_policy;
@@ -2978,7 +2979,7 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     let mut bound = Some(bound);
     let limits = DocumentGuestEventLimits {
         // The reference run measures the exact activation requirement.
-        storage_bytes: 640 * 1024,
+        storage_bytes: 704 * 1024,
         work: 10_000,
         pending_exception_reports: 2,
         node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),

@@ -272,6 +272,7 @@ const ALLOW: HtmlScriptingPolicy = HtmlScriptingPolicy {
     automation_allows: true,
 };
 const STORAGE: usize = 1_000_000;
+const ATTACHED_GUEST_STORAGE: usize = 704 * 1024;
 
 fn hooks(child_count: &[u16]) -> Option<DocumentScriptHooks<'_>> {
     const DETACH: [u16; 8] = [100, 101, 116, 97, 99, 104, 73, 102];
@@ -684,7 +685,7 @@ fn attach_event_window_with_source_limits(
         session,
         top,
         cancellation,
-        (STORAGE, 640 * 1024, adapter_work),
+        (STORAGE, ATTACHED_GUEST_STORAGE, adapter_work),
         surgeist_ledger::ProfileMode::Off,
         source_edits,
         configure,
@@ -2542,6 +2543,7 @@ fn main() {
             "document-create-event-realm" => document_create_event::borrowed_create_event_uses_the_receiving_document_realm(),
             "document-create-range" => document_create_range::document_range_keeps_canonical_live_boundaries(),
             "class-list" => class_list::class_list_observes_and_edits_the_canonical_attribute(),
+            "class-list-realm" => class_list::class_list_keeps_its_element_creation_realm(),
             "class-list-reactions" => class_list::class_list_uses_native_attribute_reactions_once(),
             "document-default-view" => document_default_view::default_view_follows_the_native_document_context(),
             "document-create-range-realm" => document_create_range::borrowed_range_factory_uses_the_receiving_document_realm(),
@@ -2731,6 +2733,7 @@ fn main() {
     document_default_view::default_view_follows_the_native_document_context();
     class_list::class_list_observes_and_edits_the_canonical_attribute();
     class_list::class_list_uses_native_attribute_reactions_once();
+    class_list::class_list_keeps_its_element_creation_realm();
     document_metadata::metadata_comes_from_the_canonical_document_receiver();
     document_metadata::metadata_getters_read_during_an_original_native_source_reaction();
     document_metadata::borrowed_metadata_getters_read_the_other_live_document();

@@ -71,6 +71,13 @@ pub(super) fn class_list_observes_and_edits_the_canonical_attribute() {
             setter.call(element, rhs);
             if (actual !== rhs || list.value !== ' a   a b ')
                 return 'forward original RHS through the dynamically reached object';
+            const frozen = Object.freeze({value: 'fixed'});
+            Object.defineProperty(element, 'classList', {value: frozen, configurable: true});
+            if (setter.call(element, rhs) !== undefined || frozen.value !== 'fixed')
+                return 'ordinary Set rejection must remain non-throwing';
+            Object.defineProperty(element, 'classList', {value: 0, configurable: true});
+            if (!throws(() => setter.call(element, rhs), 'TypeError'))
+                return 'forwarded target must be an object';
             const coercesLater = {};
             try {
                 list.add('', {toString() { throw coercesLater; }});
@@ -154,5 +161,101 @@ pub(super) fn class_list_uses_native_attribute_reactions_once() {
         })()"#,
     );
     assert_eq!(result, "ok");
+    host.stop().into_session().unwrap();
+}
+
+pub(super) fn class_list_keeps_its_element_creation_realm() {
+    let (mut session, top) = setup();
+    let snapshot = session.snapshot();
+    let html = snapshot.node(top.document().node()).unwrap().children()[0];
+    let body = snapshot.node(html).unwrap().children()[1];
+    let mut batch = DomBatch::new();
+    let detached = batch.create_html_document(top.document(), None);
+    let frame = batch.create_element_ns(&detached, Namespace::html(), "iframe");
+    let frame = session
+        .dom()
+        .apply(batch, &cancel())
+        .unwrap()
+        .created(&frame)
+        .unwrap()
+        .unwrap();
+    let (mut host, _) = attach_event_window_with_limits(
+        session,
+        top,
+        Arc::new(cancel()),
+        (8_000_000, 6_000_000, 220_000),
+        surgeist_ledger::ProfileMode::Off,
+        DomSourceLimits::new(16_000_000, 1_000_000, 200_000, 64, 64, 64, 4),
+        |_, _, _| {},
+    );
+    let permit = host.permit().unwrap();
+    window_length::edit(&mut host, DomSourceEdit::insert_before(frame, body, None));
+    let before = observe(
+        &mut host,
+        &permit,
+        r"(() => {
+        const child = window[0];
+        const first = child.document.createElement('div');
+        const late = child.document.createElement('div');
+        const get = Object.getOwnPropertyDescriptor(Element.prototype, 'classList').get;
+        const childGet = Object.getOwnPropertyDescriptor(child.Element.prototype, 'classList').get;
+        const firstList = get.call(first);
+        const local = document.createElement('div');
+        if (firstList !== childGet.call(first) || !(firstList instanceof child.DOMTokenList) ||
+            firstList instanceof DOMTokenList || childGet.call(local) !== local.classList ||
+            firstList.values !== child.Array.prototype.values || get === childGet)
+            return 'wrong first projection for borrowed methods';
+        firstList.value = 'live old';
+        if (document.adoptNode(first) !== first || document.adoptNode(late) !== late ||
+            first.ownerDocument !== document || first.classList !== firstList)
+            return 'adoption lost the list or receiving Document';
+        globalThis.classListProbe = {
+            first, late, firstList, get, prototype: child.DOMTokenList.prototype
+        };
+        return 'ok';
+    })()",
+    );
+    assert_eq!(before, "ok");
+
+    let snapshot = host.snapshot().unwrap();
+    let child = window_length::content_navigable(&snapshot, frame).unwrap();
+    let document = snapshot
+        .hosted_navigable(child)
+        .unwrap()
+        .active_document()
+        .unwrap();
+    window_length::edit(&mut host, DomSourceEdit::detach(frame));
+    host.with_native(|dom, mut hosted, _| {
+        for _ in 0..128 {
+            if dom
+                .snapshot()
+                .document(document)
+                .unwrap()
+                .navigable()
+                .is_none()
+            {
+                return;
+            }
+            hosted.run_next(dom, top.navigable(), &cancel()).unwrap();
+        }
+        panic!("native child Document was not disassociated");
+    })
+    .unwrap();
+    let after = observe(
+        &mut host,
+        &permit,
+        r"(() => {
+        const {first, late, firstList, get, prototype} = classListProbe;
+        const lateList = get.call(late);
+        first.setAttribute('class', 'retired origin');
+        lateList.add('late');
+        if (window.length !== 0 || first.classList !== firstList || firstList[1] !== 'origin' ||
+            lateList !== late.classList || late.getAttribute('class') !== 'late' ||
+            Object.getPrototypeOf(firstList) !== prototype || Object.getPrototypeOf(lateList) !== prototype)
+            return 'retirement lost existing or first-exposed classList identity';
+        return 'ok';
+    })()",
+    );
+    assert_eq!(after, "ok");
     host.stop().into_session().unwrap();
 }
