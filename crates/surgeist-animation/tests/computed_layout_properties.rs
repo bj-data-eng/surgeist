@@ -1,6 +1,6 @@
 use surgeist_animation::computed::{
-    ComputedComponent, ComputedDimension, ComputedNumeric, ComputedValue, DimensionKind,
-    DimensionPercentage,
+    ComputedComponent, ComputedDimension, ComputedInteger, ComputedNumeric, ComputedValue,
+    DimensionKind, DimensionPercentage,
 };
 use surgeist_animation::easing::Easing;
 use surgeist_animation::interpolation::{
@@ -123,6 +123,79 @@ fn gap_samples_keep_unresolved_percentages_and_switch_normal_discretely() {
     );
 }
 
+#[test]
+fn order_uses_computed_integer_rounding() {
+    let track = track([("order", integer(-3.0), integer(0.0))]);
+
+    assert_frame(&track, 0.25, [("order", integer(-2.0))]);
+    assert_frame(&track, 0.5, [("order", integer(-1.0))]);
+}
+
+#[test]
+fn visibility_uses_the_discrete_type_for_visible_hidden_and_collapse() {
+    for (from, to) in [("visible", "collapse"), ("hidden", "visible")] {
+        let track = track([("visibility", keyword(from), keyword(to))]);
+
+        assert_frame(&track, 0.5_f64.next_down(), [("visibility", keyword(from))]);
+        assert_frame(&track, 0.5, [("visibility", keyword(to))]);
+    }
+}
+
+#[test]
+fn position_switches_while_inset_longhands_use_their_computed_types() {
+    let track = track([
+        ("position", keyword("absolute"), keyword("sticky")),
+        ("top", length(16.0), percentage(0.5)),
+        ("right", computed_keyword("auto"), length(8.0)),
+        ("bottom", percentage(0.125), percentage(0.375)),
+        ("left", length(-2.0), length(6.0)),
+    ]);
+
+    assert_frame(
+        &track,
+        0.25,
+        [
+            ("position", keyword("absolute")),
+            ("top", length_percentage(12.0, 0.125)),
+            ("right", computed_keyword("auto")),
+            ("bottom", percentage(0.1875)),
+            ("left", length(0.0)),
+        ],
+    );
+    assert_frame(
+        &track,
+        0.5,
+        [
+            ("position", keyword("sticky")),
+            ("top", length_percentage(8.0, 0.25)),
+            ("right", length(8.0)),
+            ("bottom", percentage(0.25)),
+            ("left", length(2.0)),
+        ],
+    );
+}
+
+#[test]
+fn expanded_logical_inset_longhands_keep_their_own_values() {
+    let track = track([
+        ("inset-block-start", length(16.0), percentage(0.5)),
+        ("inset-block-end", length(8.0), computed_keyword("auto")),
+        ("inset-inline-start", length(-16.0), length(-8.0)),
+        ("inset-inline-end", percentage(0.125), percentage(0.375)),
+    ]);
+
+    assert_frame(
+        &track,
+        0.5,
+        [
+            ("inset-block-start", length_percentage(8.0, 0.25)),
+            ("inset-block-end", computed_keyword("auto")),
+            ("inset-inline-start", length(-12.0)),
+            ("inset-inline-end", percentage(0.25)),
+        ],
+    );
+}
+
 fn track<const N: usize>(
     endpoints: [(&str, InterpolableValue, InterpolableValue); N],
 ) -> KeyframeTrack {
@@ -177,6 +250,12 @@ fn assert_frame<const N: usize>(
             "{property} at {elapsed}"
         );
     }
+}
+
+fn integer(value: f64) -> InterpolableValue {
+    numeric(ComputedNumeric::integer(
+        ComputedInteger::new(value).unwrap(),
+    ))
 }
 
 fn number(value: f64) -> InterpolableValue {
