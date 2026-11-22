@@ -26,6 +26,8 @@ mod gaussian_accounting;
 #[cfg(not(target_arch = "wasm32"))]
 mod gaussian_transactions;
 mod gpu;
+#[path = "support/icc_png.rs"]
+pub(crate) mod icc_png;
 mod image_sampling;
 mod image_sampling_graph;
 mod image_sampling_mask;

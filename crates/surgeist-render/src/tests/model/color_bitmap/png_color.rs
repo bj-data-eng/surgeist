@@ -1,4 +1,9 @@
 use super::*;
+use crate::tests::{
+    icc_png,
+    support::{default_graph_working_format_for_test, pixel_rgba},
+};
+use crate::{renderer::Options, renderer::Renderer, stats::RenderRoute, surface::Parameters};
 
 struct ColorCase {
     chromaticities: Option<[u32; 8]>,
@@ -57,7 +62,11 @@ fn source_font(case: &ColorCase, alpha: u8) -> Vec<u8> {
         .write_image_data(&[case.source[0], case.source[1], case.source[2], alpha])
         .unwrap();
     drop(writer);
-    let mut sbix = sbix_table(&png, &[SbixStrikeFixture::new(20, true)]);
+    positioned_sbix(&png)
+}
+
+fn positioned_sbix(png: &[u8]) -> Vec<u8> {
+    let mut sbix = sbix_table(png, &[SbixStrikeFixture::new(20, true)]);
     let strike = read_be_u32(&sbix, 8) as usize;
     let record = strike + 4 + (ahem_num_glyphs() + 1) * 4;
     write_be_u16(&mut sbix, record, 2);
@@ -104,9 +113,6 @@ fn selected_png_colors_retain_converted_pixels_original_font_and_strike_placemen
 
 #[test]
 fn real_gpu_selected_png_colors_and_straight_alpha_reach_direct_and_graph_pixels() {
-    use crate::tests::support::{default_graph_working_format_for_test, pixel_rgba};
-    use crate::{renderer::Options, renderer::Renderer, surface::Parameters};
-
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let format = default_graph_working_format_for_test(&mut renderer);
     let mut surface =
@@ -168,6 +174,72 @@ fn real_gpu_selected_png_colors_and_straight_alpha_reach_direct_and_graph_pixels
                     );
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn real_gpu_selected_icc_png_preserves_converted_ink_on_both_routes() {
+    let png = icc_png::image(
+        &[128, 128, 192, 128],
+        Some(&icc_png::matrix_profile(false)),
+        &[(png::chunk::sRGB, &[0])],
+        &[],
+    );
+    let original = positioned_sbix(&png);
+    let ready = prepare(original.clone());
+    assert_eq!(ready.font().bytes(), original);
+    assert_eq!(
+        ready.bounds().ink_rect(),
+        Some(Rect::new(5.0, 11.0, 1.0, 1.0))
+    );
+    let [crate::text::GlyphPaint::Bitmap { image, .. }] = ready.paints() else {
+        panic!("the selected sbix glyph must retain its bitmap");
+    };
+    // The fixture's per-channel TRCs, P3-to-sRGB matrix and sRGB transfer
+    // give [196.976, 134.791, 216.167] after scaling to byte range.
+    assert_eq!(
+        image.content_identity().source_bytes().as_ref(),
+        [197, 135, 216, 128]
+    );
+    let mut scene = Scene::new();
+    scene.fill(
+        Rect::new(0.0, 0.0, 12.0, 16.0),
+        Color::try_rgba(20.0 / 255.0, 40.0 / 255.0, 60.0 / 255.0, 1.0).unwrap(),
+    );
+    scene.prepared_glyph_run(
+        ready,
+        Transform::identity(),
+        TextPaint::try_fill(Color::BLACK.into()).unwrap(),
+    );
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let format = default_graph_working_format_for_test(&mut renderer);
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(12.0, 16.0), 1.0)).unwrap();
+    for route in [RenderRoute::DirectVello, RenderRoute::GpuGraph] {
+        let parameters = Parameters::default();
+        let stats = if route == RenderRoute::DirectVello {
+            pollster::block_on(renderer.render(&mut surface, &scene, parameters)).unwrap()
+        } else {
+            pollster::block_on(renderer.render_forced_base_graph_for_test(
+                &mut surface,
+                &scene,
+                parameters,
+                format,
+            ))
+            .unwrap()
+            .stats
+        };
+        assert_eq!(stats.route, Some(route));
+        assert_eq!(stats.glyphs, 1);
+        let readback = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        // Source-over combines original 128/255 alpha with [20, 40, 60].
+        for ((x, y), expected) in [((5, 11), [109, 88, 138, 255]), ((4, 11), [20, 40, 60, 255])] {
+            let actual = pixel_rgba(&readback, x, y);
+            assert!(
+                actual.iter().zip(expected).all(|(a, e)| a.abs_diff(e) <= 2),
+                "route={route:?},point=({x},{y}),actual={actual:?},expected={expected:?}"
+            );
         }
     }
 }

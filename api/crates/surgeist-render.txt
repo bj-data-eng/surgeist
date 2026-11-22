@@ -284,6 +284,8 @@ pub surgeist_render::accounting::RenderWork::GradientStopVisits
 pub surgeist_render::accounting::RenderWork::GraphEdgeVisits
 pub surgeist_render::accounting::RenderWork::GraphNodeVisits
 pub surgeist_render::accounting::RenderWork::GraphProofSortMoves
+pub surgeist_render::accounting::RenderWork::IccProfileInflateBytes
+pub surgeist_render::accounting::RenderWork::IccProfileTagVisits
 pub surgeist_render::accounting::RenderWork::ImageContentHits
 pub surgeist_render::accounting::RenderWork::ImageContentMisses
 pub surgeist_render::accounting::RenderWork::ImageFirstObservedBytes
@@ -580,6 +582,8 @@ pub surgeist_render::accounting::RenderWorkFields::GradientStopVisits: T
 pub surgeist_render::accounting::RenderWorkFields::GraphEdgeVisits: T
 pub surgeist_render::accounting::RenderWorkFields::GraphNodeVisits: T
 pub surgeist_render::accounting::RenderWorkFields::GraphProofSortMoves: T
+pub surgeist_render::accounting::RenderWorkFields::IccProfileInflateBytes: T
+pub surgeist_render::accounting::RenderWorkFields::IccProfileTagVisits: T
 pub surgeist_render::accounting::RenderWorkFields::ImageContentHits: T
 pub surgeist_render::accounting::RenderWorkFields::ImageContentMisses: T
 pub surgeist_render::accounting::RenderWorkFields::ImageFirstObservedBytes: T

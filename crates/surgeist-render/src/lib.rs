@@ -84,6 +84,7 @@ pub mod text_layout;
 
 mod backend;
 mod color_mapping;
+mod color_profile;
 mod color_reduction;
 mod command;
 mod encode;

@@ -188,8 +188,12 @@ dimensions! {
         ImageContentMisses,
         /// Source payload bytes of first-observed exact image content; independent of GPU uploads.
         ImageFirstObservedBytes,
-        /// PNG chunk type/payload bytes CRC-processed, plus scanline bytes unfiltered.
+        /// PNG chunk bytes CRC-processed, profile-name bytes inspected and scanline bytes unfiltered.
         PngByteVisits,
+        /// Output-slice bytes offered to the embedded PNG ICC inflater.
+        IccProfileInflateBytes,
+        /// ICC tag records inspected while qualifying a profile and its transform.
+        IccProfileTagVisits,
         /// Decoded RGBA pixels color-converted or separately inspected for transparency.
         ImageTexelVisits,
         /// Authored command records inspected, including nested records.
@@ -339,6 +343,8 @@ impl RenderWork {
                     | Self::PathElementsEmitted
                     | Self::SerializedBytes
                     | Self::PngByteVisits
+                    | Self::IccProfileInflateBytes
+                    | Self::IccProfileTagVisits
                     | Self::ImageTexelVisits
             ),
             RenderAttemptKind::TextLayout => {
@@ -1186,6 +1192,8 @@ impl RenderWork {
             Self::ImageContentMisses => "image content misses",
             Self::ImageFirstObservedBytes => "image first observed bytes",
             Self::PngByteVisits => "png byte visits",
+            Self::IccProfileInflateBytes => "icc profile inflate bytes",
+            Self::IccProfileTagVisits => "icc profile tag visits",
             Self::ImageTexelVisits => "image texel visits",
             Self::AuthoredCommands => "authored commands",
             Self::AuthoredFills => "authored fills",

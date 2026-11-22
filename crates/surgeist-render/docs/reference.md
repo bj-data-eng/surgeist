@@ -909,8 +909,9 @@ clip and currentColor behavior. Caller paint applies to foreground operations.
 
 The supported intrinsic profile is COLRv0, a COLRv1 solid/glyph/translation/static
 clip subset, and sbix noninterlaced RGBA8 PNG with IHDR, contiguous IDAT,
-IEND and the supported `sRGB`/`gAMA`/`cHRM` source-color family. Other paint
-operations, formats and unexecuted PNG semantics refuse explicitly.
+IEND and supported `sRGB`, `gAMA`, `cHRM` and embedded RGB matrix/TRC ICC
+color. Other paint operations, formats and unexecuted PNG semantics refuse
+explicitly.
 Color and bitmap admission requires a default effective instance without
 synthesis; supported outline variation and synthesis follow the policy below.
 Malformed selected COLRv1 data cannot fall back to a COLRv0 representation.
@@ -923,17 +924,18 @@ and output extent, Adler checksum and all five scanline filters before retaining
 pixels. The inflater uses fixed-state miniz_oxide with caller-owned buffers.
 
 PNG color admission follows [PNG Third Edition (24 June 2025)](https://www.w3.org/TR/2025/REC-png-3-20250624/),
-sections 4.3, 11.3.2 and 13.13–13.14. Supported color chunks are unique, have exact
-lengths and valid 31-bit integer fields, and precede IDAT. Framing, CRC, order
-and cardinality errors remain malformed input. ICC (`iCCP`), `cICP`, HDR,
-animation and all other unexecuted ancillary semantics remain explicit
-`UnsupportedPng` refusals, including alongside supported lower-priority tags.
+sections 4.3, 11.3.2 and 13.13–13.14. Supported color chunks are unique and
+precede IDAT. Fixed payloads have exact lengths and valid 31-bit integer fields.
+An `iCCP` chunk carries a validated name and exactly one zlib stream.
+Framing, CRC, order and cardinality errors remain malformed input.
+`cICP`, HDR, animation and unexecuted ICC transforms return `UnsupportedPng`
+even when lower-priority color hints are present.
 
-An explicit `sRGB` source preserves bytes in this numeric sRGB receiver for
-all four defined intents. It overrides lower-priority gamma/chromaticities
-without evaluating their semantic calibration; their framing still must be
-valid. A selected invalid sRGB intent or physically invalid selected cHRM uses
-complete untagged sRGB fallback, rather than partially applying a lower profile.
+The native route selects `iCCP` ahead of `sRGB` and legacy hints. With no
+`iCCP`, explicit `sRGB` preserves bytes for all four defined intents and
+overrides lower-priority calibration. The framing of lower-priority chunks
+still must be valid. An invalid selected ICC profile, sRGB intent or
+chromaticity description uses the complete untagged sRGB fallback.
 This invalid-identification fallback and still-image default follow the retained
 [CSS Color 4 tagged-image](../../../references/css-color-4--CRD-css-color-4-20260908--bada647312a7.md#tagged-images)
 and [untagged-image](../../../references/css-color-4--CRD-css-color-4-20260908--bada647312a7.md#untagged)
@@ -942,6 +944,22 @@ Zero gamma is ignored. Missing source components use the native still-image
 policy: sRGB primaries/D65 when cHRM is absent, and the actual piecewise sRGB
 transfer when gamma is absent or zero. A positive gAMA instead uses its encoded
 power exponent, including values near the legal integer endpoints.
+
+The embedded ICC route admits version 2 and 4 RGB Input and Display matrix
+profiles with XYZ PCS. It executes identity, gamma and sampled curves, and
+supported version 4 parametric curves. The profile's matrix columns produce
+media-relative XYZ D50. The existing Color conversion adapts that PCS to the
+SDR sRGB destination and quantizes with terminal clipping. This native route
+selects media-relative colorimetry independently of the profile's preferred
+intent. ICC precedence skips the optional multi-process route when its
+operations are unavailable. Profile qualification covers the selected
+color transform and profile structure. Non-operative metadata payloads stay
+opaque. A structurally valid selected forward lookup table requires a supported
+decoder. See [ICC.1:2022, §§8.3–8.4, 8.10 and Annex F](https://www.color.org/specifications/ICC.1-2022-05.pdf).
+
+Ledger accounts for the ICC inflater's offered output bytes, reached tag
+records, numeric work and temporary backing. Profile preparation and pixel
+conversion use the existing PNG color phases.
 
 Chromaticities calibrate homogeneous integer XYZ columns without dividing by
 primary y; zero-y primaries and boundary whites remain admissible. Exact integer
@@ -1466,7 +1484,8 @@ readback accounting are outside this preparation contract.
 | `PathElementVisits`, `OutlinePointVisits`, `VariationTupleVisits`, `GlyphComponentVisits` | One raw contour endpoint/provider path element, point-flag record/point/delta, variation tuple or composite child edge inspected. Dependency internals are not reported as Render visits. |
 | `PaintVisits`, `ResourceProbes` | One raw COLRv1 paint node, consumed recorded layer/retained paint (including repeated placement qualification), or shared-font identity comparison. |
 | `PathElementsEmitted` | One retained glyph path element appended, including actual synthesis and clip expansion. This is the existing path-element limit unit. |
-| `SerializedBytes`, `PngByteVisits`, `ImageTexelVisits` | IDAT payload bytes copied; chunk type/payload bytes processed by CRC plus scanline bytes unfiltered; decoded RGBA pixels actually color-converted plus the separate reached transparency scan. |
+| `SerializedBytes`, `PngByteVisits`, `ImageTexelVisits` | IDAT payload bytes copied; chunk type/payload bytes processed by CRC, ICC profile-name bytes inspected and scanline bytes unfiltered; decoded RGBA pixels actually color-converted plus the separate reached transparency scan. |
+| `IccProfileInflateBytes`, `IccProfileTagVisits` | Output bytes offered to the ICC inflater; ICC tags and selected transform records inspected, including repeated extent, ordering and lookup comparisons. |
 | `PreparedTransferredBytes` | Explicit retained backing units transferred only when the complete prepared result returns successfully. This dimension cannot be caller capped. |
 
 `RetainedCpuBytes` covers actual Vec capacities multiplied by element size,
@@ -1480,7 +1499,9 @@ buffer capacities and the fixed inline miniz decoder state and its declared
 Huffman arrays. Selected PNG color compilation and conversion also admit their
 actual fixed numeric workspaces before construction, retaining the compiled
 workspace charge through pixel conversion and its real overlap with inflate and
-pixel buffers. No color LUT or per-image color heap buffer is allocated.
+pixel buffers. ICC qualification also admits the inflated profile bytes and
+tag index. Sampled curves keep the inflated backing until conversion completes.
+Pixel conversion runs in place using the compiled transform.
 Arc allocator headers, hash-table bucket overhead, dependency
 internal allocations and process/RSS usage are outside these units.
 The fixed accounting participant, bounded reserved report/profile storage and

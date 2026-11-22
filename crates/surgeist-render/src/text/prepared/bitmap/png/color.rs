@@ -10,7 +10,10 @@
 //! native image policy; no individual-CSS-color gamut mapping is selected.
 
 use super::*;
-use crate::accounting::Hold;
+use crate::{
+    accounting::Hold,
+    color_profile::{self, RgbMatrixProfile, Selection},
+};
 use surgeist_color::{
     Color as IntrinsicColor, ColorSpace, Finite, PredefinedColorSpace as Space, Transformation,
 };
@@ -21,16 +24,17 @@ const BRADFORD: IntegerMatrix = [[8951, 2664, -1614], [-7502, 17135, 367], [389,
 const D65: [i128; 3] = [31270, 32900, 35830];
 
 #[derive(Default)]
-pub(super) struct Metadata {
+pub(super) struct Metadata<'a> {
+    icc: Option<&'a [u8]>,
     srgb: Option<u8>,
     gamma: Option<u32>,
     chromaticities: Option<[u32; 8]>,
 }
 
-impl Metadata {
+impl<'a> Metadata<'a> {
     pub(super) fn read(
         &mut self,
-        chunk: &Chunk<'_>,
+        chunk: &Chunk<'a>,
         after_idat: bool,
         account: &Account,
     ) -> Result<()> {
@@ -38,6 +42,12 @@ impl Metadata {
             return Err(invalid());
         }
         match chunk.kind {
+            b"iCCP" => {
+                if self.icc.is_some() {
+                    return Err(invalid());
+                }
+                self.icc = Some(profile_stream(chunk.data, &account.at(RenderPhase::Png))?);
+            }
             b"sRGB" => {
                 if self.srgb.is_some() || chunk.data.len() != 1 {
                     return Err(invalid());
@@ -64,6 +74,27 @@ impl Metadata {
         }
         Ok(())
     }
+}
+
+fn profile_stream<'a>(payload: &'a [u8], account: &Account) -> Result<&'a [u8]> {
+    let mut previous_space = true;
+    for (index, &byte) in payload.iter().take(80).enumerate() {
+        account.work(RenderWork::PngByteVisits, 1)?;
+        if byte == 0 {
+            if previous_space {
+                return Err(invalid());
+            }
+            let [0, stream @ ..] = &payload[index + 1..] else {
+                return Err(invalid());
+            };
+            return (!stream.is_empty()).then_some(stream).ok_or_else(invalid);
+        }
+        if !matches!(byte, 0x20..=0x7e | 0xa1..=0xff) || (previous_space && byte == b' ') {
+            return Err(invalid());
+        }
+        previous_space = byte == b' ';
+    }
+    Err(invalid())
 }
 
 fn field(bytes: &[u8], account: &Account) -> Result<u32> {
@@ -94,24 +125,41 @@ struct Calibrated {
     // Numeric arrays are disposed before their admitted custody.
     _hold: Hold,
 }
-pub(super) struct Interpretation(Option<Calibrated>);
+pub(super) struct Interpretation(SourceColor);
+
+enum SourceColor {
+    Srgb,
+    Calibrated(Calibrated),
+    Icc(RgbMatrixProfile),
+}
 
 impl Interpretation {
-    pub(super) fn compile(raw: Metadata, account: &Account) -> Result<Self> {
+    pub(super) fn compile(raw: Metadata<'_>, account: &Account) -> Result<Self> {
+        // PNG Third Edition §4.3 selects iCCP before sRGB and legacy hints.
+        // Invalid selected ICC color identification uses the complete sRGB
+        // default. Unsupported ICC execution remains an explicit refusal.
+        if let Some(compressed) = raw.icc {
+            let bytes = inflate_profile(compressed, account)?;
+            return match color_profile::prepare(bytes, account)? {
+                Selection::Invalid | Selection::NonRgb => Ok(Self(SourceColor::Srgb)),
+                Selection::Unsupported => Err(GlyphPreparationError::UnsupportedPng.into()),
+                Selection::RgbMatrix(profile) => Ok(Self(SourceColor::Icc(profile))),
+            };
+        }
         if let Some(intent) = raw.srgb {
             // Both valid and semantically invalid selected sRGB identify the
             // complete sRGB fallback here. Lower-priority calibration is unused.
             if !account.coordinate(|| intent <= 3)? {
-                return Ok(Self(None));
+                return Ok(Self(SourceColor::Srgb));
             }
-            return Ok(Self(None));
+            return Ok(Self(SourceColor::Srgb));
         }
         let gamma = match raw.gamma {
             Some(value) if account.coordinate(|| value != 0)? => Some(value),
             _ => None,
         };
         if gamma.is_none() && raw.chromaticities.is_none() {
-            return Ok(Self(None));
+            return Ok(Self(SourceColor::Srgb));
         }
         // Admit destination workspace before any compiled arrays can escape
         // calibration. Its overlap with the compile workspace is real custody.
@@ -129,7 +177,7 @@ impl Interpretation {
             None => Calibration::Srgb,
             Some(values) => match calibrate(values, account)? {
                 Some(calibration) => calibration,
-                None => return Ok(Self(None)),
+                None => return Ok(Self(SourceColor::Srgb)),
             },
         };
         workspace.transfer = match gamma {
@@ -139,50 +187,32 @@ impl Interpretation {
                 Transfer::Power(evaluate(account, || 100000.0 / divisor)?)
             }
         };
-        Ok(Self(Some(Calibrated {
+        Ok(Self(SourceColor::Calibrated(Calibrated {
             workspace,
             _hold: hold,
         })))
     }
 
     pub(super) fn convert(&mut self, pixels: &mut [u8], account: &Account) -> Result<()> {
-        let Some(calibrated) = &mut self.0 else {
+        if matches!(self.0, SourceColor::Srgb) {
             return Ok(());
-        };
+        }
         account.phase(RenderPhase::PngColorConvert, || {
             let account = account.at(RenderPhase::PngColorConvert);
-            let workspace = &mut calibrated.workspace;
             for pixel in pixels.as_chunks_mut::<4>().0 {
                 account.work(RenderWork::ImageTexelVisits, 1)?;
-                match workspace.transfer {
-                    Transfer::Srgb => {
-                        let red = account.coordinate(|| pixel[0])?;
-                        let green = account.coordinate(|| pixel[1])?;
-                        let blue = account.coordinate(|| pixel[2])?;
-                        let source = IntrinsicColor::from_srgba8([red, green, blue, 255]);
-                        workspace.linear =
-                            channels(convert(source, Space::SrgbLinear, &account)?, &account)?;
+                let rgb = [
+                    account.coordinate(|| pixel[0])?,
+                    account.coordinate(|| pixel[1])?,
+                    account.coordinate(|| pixel[2])?,
+                ];
+                let xyz = match &mut self.0 {
+                    SourceColor::Srgb => return Ok(()),
+                    SourceColor::Calibrated(calibrated) => {
+                        calibrated.workspace.xyz(rgb, &account)?
                     }
-                    Transfer::Power(exponent) => {
-                        for (index, linear) in workspace.linear.iter_mut().enumerate() {
-                            let byte = account.coordinate(|| pixel[index])?;
-                            let value = account.coordinate(|| f64::from(byte))?;
-                            let sample = evaluate(&account, || value / 255.0)?;
-                            *linear = evaluate(&account, || sample.powf(exponent))?;
-                        }
-                    }
-                }
-                let xyz = match &workspace.calibration {
-                    Calibration::Srgb => convert(
-                        complete(Space::SrgbLinear, workspace.linear, &account)?,
-                        Space::XyzD65,
-                        &account,
-                    )?,
-                    Calibration::Xyz { matrix, white } => {
-                        for (row, result) in matrix.iter().zip(&mut workspace.xyz) {
-                            *result = dot(row, &workspace.linear, &account)?;
-                        }
-                        complete(*white, workspace.xyz, &account)?
+                    SourceColor::Icc(profile) => {
+                        complete(Space::XyzD50, profile.xyz_d50(rgb, &account)?, &account)?
                     }
                 };
                 channels(xyz, &account)?;
@@ -200,6 +230,38 @@ impl Interpretation {
             }
             Ok(())
         })
+    }
+}
+
+impl ConversionWorkspace {
+    fn xyz(&mut self, rgb: [u8; 3], account: &Account) -> Result<IntrinsicColor> {
+        match self.transfer {
+            Transfer::Srgb => {
+                let [red, green, blue] = rgb;
+                let source = IntrinsicColor::from_srgba8([red, green, blue, 255]);
+                self.linear = channels(convert(source, Space::SrgbLinear, account)?, account)?;
+            }
+            Transfer::Power(exponent) => {
+                for (byte, linear) in rgb.into_iter().zip(&mut self.linear) {
+                    let value = account.coordinate(|| f64::from(byte))?;
+                    let sample = evaluate(account, || value / 255.0)?;
+                    *linear = evaluate(account, || sample.powf(exponent))?;
+                }
+            }
+        }
+        match &self.calibration {
+            Calibration::Srgb => convert(
+                complete(Space::SrgbLinear, self.linear, account)?,
+                Space::XyzD65,
+                account,
+            ),
+            Calibration::Xyz { matrix, white } => {
+                for (row, result) in matrix.iter().zip(&mut self.xyz) {
+                    *result = dot(row, &self.linear, account)?;
+                }
+                complete(*white, self.xyz, account)
+            }
+        }
     }
 }
 
