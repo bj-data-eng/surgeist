@@ -369,6 +369,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     element_tasks::verify_attached_element_tasks();
     nested_dispatch::verify_nested_authored_dispatch();
     authored_toggle::verify_authored_toggle_constructor();
+    super::guest::tests::page_transition_event::page_transition_event_converts_inherited_flags_and_exposes_branded_persisted();
     super::guest::tests::attributes::detached_attribute_keeps_its_live_native_identity();
     super::guest::tests::attributes::element_methods_return_the_exact_attribute();
     super::guest::tests::attributes::refused_verified_replacement_keeps_its_exact_output();

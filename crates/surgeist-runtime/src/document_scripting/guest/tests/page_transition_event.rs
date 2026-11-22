@@ -1,7 +1,7 @@
 use super::*;
 
-#[test]
-fn page_transition_event_converts_inherited_flags_and_exposes_branded_persisted() {
+pub(in crate::document_scripting) fn page_transition_event_converts_inherited_flags_and_exposes_branded_persisted()
+ {
     let mut host = public_node_host(20_000, 200_000);
     let permit = host.permit().unwrap();
     host.in_document(&permit, |scope| {
@@ -29,4 +29,5 @@ fn page_transition_event_converts_inherited_flags_and_exposes_branded_persisted(
         )
     })
     .unwrap();
+    assert!(host.stop().into_session().is_ok());
 }

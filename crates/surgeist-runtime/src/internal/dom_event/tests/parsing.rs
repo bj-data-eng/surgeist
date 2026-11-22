@@ -11,7 +11,9 @@ fn trusted_window_load_uses_the_document_target_and_resumes_its_window_path() {
     let mut dom = session.dom();
     let host = hosted.create_host(&mut dom, &cancel).unwrap();
     let top = hosted.create_top_level(&mut dom, host, &cancel).unwrap();
-    let other = hosted.create_top_level(&mut dom, host, &cancel).unwrap();
+    let mut batch = DomBatch::new();
+    let other = batch.create_document();
+    let other = dom.apply(batch, &cancel).unwrap().document(&other).unwrap();
     let document = DomEventTarget::from(top.document().node());
     let window = DomEventTarget::from(top.global());
     let mut registry = registry();
@@ -76,7 +78,7 @@ fn trusted_window_load_uses_the_document_target_and_resumes_its_window_path() {
         registry.prepare_parsing_event(
             &mut dom,
             ParsingEvent::WindowLoad,
-            (top.global(), other.document()),
+            (top.global(), other),
             &mut creation,
             &cancel,
         ),
