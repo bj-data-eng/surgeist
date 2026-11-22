@@ -193,6 +193,9 @@ impl AnimationTypeOperations {
             (InterpolableValue::Percentage(a), InterpolableValue::Percentage(b)) => Ok(
                 InterpolableValue::percentage(InterpolablePercentage::new(a.value() + b.value())?),
             ),
+            // Selected Values 4: absent color addition selects B; unspecified
+            // accumulation uses that same nonadditive operation.
+            (InterpolableValue::Color(_), InterpolableValue::Color(_)) => Ok(value.clone()),
             (InterpolableValue::Computed(a), InterpolableValue::Computed(b)) => Ok(
                 InterpolableValue::computed(if operation == CompositeOperation::Add {
                     a.add(b)?
