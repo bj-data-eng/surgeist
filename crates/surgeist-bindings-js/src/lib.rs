@@ -114,6 +114,9 @@ pub use trusted_types::{
 pub enum EngineKind {
     /// External rusty_v8, pinned by the package manifest.
     V8,
+    /// Boa with native host object support, for Runtime qualification.
+    #[cfg(feature = "boa-qualification")]
+    Boa,
 }
 
 /// Host scalar values that can be constructed without evaluating guest source.
@@ -172,6 +175,8 @@ impl Process {
     pub fn bootstrap(kind: EngineKind) -> Result<Self, Error> {
         let engine: Box<dyn backend::Engine> = match kind {
             EngineKind::V8 => Box::new(backend::v8::Engine::bootstrap()?),
+            #[cfg(feature = "boa-qualification")]
+            EngineKind::Boa => Box::new(backend::boa::Engine::bootstrap()?),
         };
         Ok(Self {
             engine,
@@ -191,6 +196,11 @@ impl Process {
         let (engine, backing): (Box<dyn backend::Engine>, B) = match kind {
             EngineKind::V8 => {
                 let (engine, backing) = backend::v8::Engine::bootstrap_funded(fund)?;
+                (Box::new(engine), backing)
+            }
+            #[cfg(feature = "boa-qualification")]
+            EngineKind::Boa => {
+                let (engine, backing) = backend::boa::Engine::bootstrap_funded(fund)?;
                 (Box::new(engine), backing)
             }
         };
@@ -1077,7 +1087,7 @@ impl<'scope> Scope<'scope> {
     /// Callback clones share Rust behavior; each function has distinct guest
     /// identity and preserves its own creation realm.
     pub fn function(&mut self, callback: &Callback) -> Result<Value<'scope>, Error> {
-        let root = self.operations.function(callback, None, None)?;
+        let root = self.operations.function(callback, None)?;
         Ok(self.value(root))
     }
 

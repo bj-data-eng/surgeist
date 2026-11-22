@@ -235,7 +235,7 @@ pub(super) fn attached_input_exposes_canonical_value_modes_and_checkedness() {
     let refused = host.snapshot().unwrap();
     assert_eq!(refused.revision(), before.revision());
     assert_eq!(input(&refused, file).state(), empty_file);
-    assert_eq!(input(&refused, file).value(), &[]);
+    assert!(input(&refused, file).value().is_empty());
     assert_eq!(
         attribute(&refused, file, "value"),
         Some(&units("metadata", &[0xd800]))

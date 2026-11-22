@@ -6,10 +6,46 @@
 
 use std::cell::{Cell, OnceCell};
 use std::rc::{Rc, Weak};
+use std::sync::{
+    OnceLock,
+    atomic::{AtomicBool, AtomicU64, Ordering},
+};
+use std::thread::ThreadId;
 
 use crate::Error;
 use crate::conversion::registry::{CleanupCustody, CleanupRecord, Registrations};
 use crate::conversion::{CleanupFailure, CleanupFault, CleanupPrimary, CleanupStatus};
+
+static BACKEND_THREAD: OnceLock<ThreadId> = OnceLock::new();
+static BACKEND_ACTIVE: AtomicBool = AtomicBool::new(false);
+static NEXT_BACKEND_ID: AtomicU64 = AtomicU64::new(0);
+
+pub(crate) struct BackendLease;
+
+impl BackendLease {
+    pub(crate) fn acquire() -> Result<Self, Error> {
+        let thread = std::thread::current().id();
+        if *BACKEND_THREAD.get_or_init(|| thread) != thread {
+            return Err(Error::WrongThread);
+        }
+        BACKEND_ACTIVE
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| Error::OwnerAlreadyActive)?;
+        Ok(Self)
+    }
+}
+
+impl Drop for BackendLease {
+    fn drop(&mut self) {
+        BACKEND_ACTIVE.store(false, Ordering::Release);
+    }
+}
+
+pub(crate) fn next_backend_id() -> Result<u64, Error> {
+    NEXT_BACKEND_ID
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+        .map_err(|_| Error::IdentityExhausted)
+}
 
 #[derive(Clone)]
 enum Failure {

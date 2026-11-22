@@ -325,7 +325,7 @@ fn legacy_event_uses_the_receiving_document_and_requires_successful_initializati
         );
         assert_eq!(creation.occurrence_microseconds() % 100, 0);
         assert!(timestamp.is_finite());
-        assert_eq!(event.event_type().code_units(), []);
+        assert!(event.event_type().code_units().is_empty());
         assert!(!event.bubbles());
         assert!(!event.cancelable());
         assert!(!event.composed());

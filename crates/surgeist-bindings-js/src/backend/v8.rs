@@ -2,8 +2,6 @@ use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::BTreeMap;
 use std::rc::{Rc, Weak};
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::thread::ThreadId;
 
 use super::{
     CoercedString, DomExceptionProfile, ObjectPrototype, Operations, Projection,
@@ -11,7 +9,7 @@ use super::{
 };
 use crate::callback_object::CallbackObjectIdentity;
 use crate::conversion::ConversionAccount;
-use crate::owner::OwnerState;
+use crate::owner::{BackendLease, OwnerState, next_backend_id};
 use crate::{
     Arguments, Callback, Completion, ConstructorArguments, ConstructorCallback,
     ConstructorCompletion, Error, Exception, ExceptionPhase, FunctionMetadata, Intrinsic,
@@ -26,23 +24,13 @@ mod native_object;
 mod tests;
 mod window;
 
-static OWNER_THREAD: OnceLock<ThreadId> = OnceLock::new();
-static ACTIVE: AtomicBool = AtomicBool::new(false);
-static NEXT_OWNER: AtomicU64 = AtomicU64::new(0);
+static PLATFORM: OnceLock<()> = OnceLock::new();
 
 const ERROR_CONSTRUCTOR_FIELD: usize = 6;
 const DOM_EXCEPTION_PROFILE_FIELD: usize = 7;
 const WINDOW_PROTOTYPE_FIELD: usize = 8;
 const WINDOW_EVENT_TARGET_PROTOTYPE_FIELD: usize = 9;
 const CSSOM_PROTOTYPES_FIELD: usize = 10;
-
-struct ActiveOwner;
-
-impl Drop for ActiveOwner {
-    fn drop(&mut self) {
-        ACTIVE.store(false, Ordering::Release);
-    }
-}
 
 struct RootEntry {
     identity: Weak<RootIdentity>,
@@ -515,7 +503,7 @@ pub(crate) struct Engine {
     isolate: v8::OwnedIsolate,
     // Field order is deliberate: release the singleton only AFTER the entered
     // isolate has exited and been disposed. The maps are cleared by Drop first.
-    _active: ActiveOwner,
+    _active: BackendLease,
 }
 
 impl Engine {
@@ -541,24 +529,14 @@ impl Engine {
     fn bootstrap_with_funding<B, E: From<Error>>(
         fund: impl FnOnce() -> Result<B, E>,
     ) -> Result<(Self, B), E> {
-        let current = std::thread::current().id();
-        let owner = OWNER_THREAD.get_or_init(|| {
+        let active = BackendLease::acquire()?;
+        PLATFORM.get_or_init(|| {
             let platform = v8::new_default_platform(0, false).make_shared();
             v8::V8::initialize_platform(platform);
             v8::V8::initialize();
-            current
         });
-        if *owner != current {
-            return Err(Error::WrongThread.into());
-        }
-        ACTIVE
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| Error::OwnerAlreadyActive)?;
-        let active = ActiveOwner;
         let backing = fund()?;
-        let owner = NEXT_OWNER
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-            .map_err(|_| Error::IdentityExhausted)?;
+        let owner = next_backend_id()?;
         let mut isolate = v8::Isolate::new(Default::default());
         isolate.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
         let (dom_exception_key, declared_constructor_key, projection_key) = {
@@ -1098,7 +1076,7 @@ impl Entered<'_, '_, '_> {
                 let retirement_signal = retired.clone();
                 let weak = v8::Weak::with_guaranteed_finalizer(
                     scope,
-                    lifetime_function,
+                    v8::Local::<v8::Value>::from(lifetime_function),
                     // SDK second-pass callbacks cross an extern-C boundary. This
                     // callback only marks retirement: no allocation, registry
                     // access, fallible work or arbitrary capture destructor.

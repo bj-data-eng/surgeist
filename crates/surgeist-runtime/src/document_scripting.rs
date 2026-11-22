@@ -808,7 +808,11 @@ impl PreparedDocumentScriptHost {
             setup_bytes.set(bytes);
             Ok::<_, DocumentScriptError>(backing)
         };
-        let mut process = Process::bootstrap_funded(EngineKind::V8, fund_setup)?;
+        #[cfg(feature = "boa-qualification")]
+        let engine = EngineKind::Boa;
+        #[cfg(not(feature = "boa-qualification"))]
+        let engine = EngineKind::V8;
+        let mut process = Process::bootstrap_funded(engine, fund_setup)?;
         let realm = match realm_kind {
             ScriptRealmKind::Ordinary => {
                 PreparedScriptRealm::Ready(process.execution().create_realm_funded(fund_setup)?)
@@ -1028,7 +1032,7 @@ impl PreparedDocumentScriptHost {
             window_relations::install(
                 scope,
                 Rc::downgrade(owner),
-                permit,
+                permit.clone(),
                 window_relations_backing,
             )?;
             css::install_window_css_hosted(

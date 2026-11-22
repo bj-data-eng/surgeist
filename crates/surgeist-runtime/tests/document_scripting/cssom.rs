@@ -402,7 +402,7 @@ enum Admission {
     Published,
 }
 
-fn constructor_admission_rolls_back_before_publication() {
+pub(super) fn constructor_admission_rolls_back_before_publication() {
     let exact_storage = exact_limit(STORAGE, |bytes| {
         constructor_admission(bytes, limits().hosted.work)
     });
