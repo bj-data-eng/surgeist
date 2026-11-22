@@ -127,7 +127,7 @@ impl HtmlSandboxFlags {
                 crate::internal::microsyntax::tokens::HtmlSpaceTokenStep::Continue => {}
                 crate::internal::microsyntax::tokens::HtmlSpaceTokenStep::Token { start, end } => {
                     admit()?;
-                    if let Some(keyword) = keyword_with(&units[start..end], &mut admit)? {
+                    if let Some(keyword) = sandbox_keyword_with(&units[start..end], &mut admit)? {
                         keywords |= keyword.bit();
                     }
                 }
@@ -201,7 +201,7 @@ macro_rules! sandbox_keywords {
             /// Recognizes only an entire token by the source's ASCII comparison.
             /// The token's spelling, including non-scalar units, is not changed.
             pub fn from_token(token: &HtmlSpaceToken) -> Option<Self> {
-                match keyword_with(token.value().code_units(), &mut || Ok::<_, std::convert::Infallible>(())) {
+                match sandbox_keyword_with(token.value().code_units(), &mut || Ok::<_, std::convert::Infallible>(())) {
                     Ok(keyword) => keyword,
                     Err(never) => match never {},
                 }
@@ -245,7 +245,7 @@ sandbox_keywords! {
 
 /// One keyword inventory and ASCII comparison kernel serves ordinary reports,
 /// author token recognition and bounded flags-only processing.
-fn keyword_with<E>(
+pub(crate) fn sandbox_keyword_with<E>(
     units: &[u16],
     admit: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Option<HtmlSandboxKeyword>, E> {

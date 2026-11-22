@@ -1393,6 +1393,106 @@
       "entries": [
         "HTMLOptionElement"
       ]
+    },
+    {
+      "id": "HTMLAreaElement.source",
+      "path": "references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md",
+      "anchor": "htmlareaelement",
+      "block": 0,
+      "sha256": "ae9b1b85c9452ee7e1f73d79dbfd95af6c57d6f1d502031f0d456d4f06620077",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+      "entries": [
+        "HTMLAreaElement",
+        "HTMLAreaElement.includes.HyperlinkElementUtils",
+        "HTMLAreaElement.includes.HTMLHyperlinkElementUtils"
+      ]
+    },
+    {
+      "id": "HTMLAreaElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLAreaElement&#45;partial",
+      "block": 0,
+      "sha256": "9eac556fc0729fb89740c5efd25b7535685301a8ca53df3f5e8e004911cff6f0",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLAreaElement-partial",
+      "entries": [
+        "HTMLAreaElement.obsolete"
+      ]
+    },
+    {
+      "id": "HTMLLinkElement.source",
+      "path": "references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md",
+      "anchor": "htmllinkelement",
+      "block": 0,
+      "sha256": "b8370d43f4f5296f7cfd83c3e787ab0b52987a0df1d54887cf3eb5b70731a79e",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+      "entries": [
+        "HTMLLinkElement",
+        "HTMLLinkElement.includes.LinkStyle"
+      ]
+    },
+    {
+      "id": "HTMLLinkElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLLinkElement&#45;partial",
+      "block": 0,
+      "sha256": "57f88c1919fb12a39c07ae630b4fe80fbf7ac60f4acd5ccf5b187cc3dedf0064",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLLinkElement-partial",
+      "entries": [
+        "HTMLLinkElement.obsolete"
+      ]
+    },
+    {
+      "id": "HTMLStyleElement.source",
+      "path": "references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md",
+      "anchor": "htmlstyleelement",
+      "block": 0,
+      "sha256": "1a8e794fad56771620fb9066e3d971d38e41065834e6bee711647d6294a64b20",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlstyleelement",
+      "entries": [
+        "HTMLStyleElement",
+        "HTMLStyleElement.includes.LinkStyle"
+      ]
+    },
+    {
+      "id": "HTMLStyleElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLStyleElement&#45;partial",
+      "block": 0,
+      "sha256": "201694ad74e2cc82facf68abe6051e3e49cf55c56f40cbda9c7dfe43acbb3fdc",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLStyleElement-partial",
+      "entries": [
+        "HTMLStyleElement.obsolete"
+      ]
+    },
+    {
+      "id": "HTMLIFrameElement.source",
+      "path": "references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md",
+      "anchor": "htmliframeelement",
+      "block": 0,
+      "sha256": "c6b97e0932b0a3ca9b57eb5c6a0fb412ab559c6dd717fc59398d32f07456fadb",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+      "entries": [
+        "HTMLIFrameElement"
+      ]
+    },
+    {
+      "id": "HTMLIFrameElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLIFrameElement&#45;partial",
+      "block": 0,
+      "sha256": "cde248e3a1da7948dc5645c7777b020feaee1068ea3e5c224c6a2b13208d9f99",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
+      "entries": [
+        "HTMLIFrameElement.obsolete"
+      ]
     }
   ],
   "declarations": [
@@ -13312,6 +13412,1061 @@
         }
       ],
       "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLAreaElement",
+      "kind": "interface",
+      "name": "HTMLAreaElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLAreaElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "alt",
+          "readonly": false,
+          "id": "HTMLAreaElement.alt"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "coords",
+          "readonly": false,
+          "id": "HTMLAreaElement.coords"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "shape",
+          "readonly": false,
+          "id": "HTMLAreaElement.shape"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "download",
+          "readonly": false,
+          "id": "HTMLAreaElement.download"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "ping",
+          "readonly": false,
+          "id": "HTMLAreaElement.ping"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "rel",
+          "readonly": false,
+          "id": "HTMLAreaElement.rel"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            },
+            {
+              "name": "PutForwards",
+              "value": "value"
+            },
+            {
+              "name": "Reflect",
+              "value": "rel"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMTokenList"
+          },
+          "name": "relList",
+          "readonly": true,
+          "id": "HTMLAreaElement.relList"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "referrerPolicy",
+          "readonly": false,
+          "id": "HTMLAreaElement.referrerPolicy"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLAreaElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLAreaElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "noHref",
+          "readonly": false,
+          "id": "HTMLAreaElement.obsolete.noHref"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLLinkElement",
+      "kind": "interface",
+      "name": "HTMLLinkElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLLinkElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectURL"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "href",
+          "readonly": false,
+          "id": "HTMLLinkElement.href"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "DOMString"
+            }
+          },
+          "name": "crossOrigin",
+          "readonly": false,
+          "id": "HTMLLinkElement.crossOrigin"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "rel",
+          "readonly": false,
+          "id": "HTMLLinkElement.rel"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "as",
+          "readonly": false,
+          "id": "HTMLLinkElement.as"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            },
+            {
+              "name": "PutForwards",
+              "value": "value"
+            },
+            {
+              "name": "Reflect",
+              "value": "rel"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMTokenList"
+          },
+          "name": "relList",
+          "readonly": true,
+          "id": "HTMLLinkElement.relList"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "media",
+          "readonly": false,
+          "id": "HTMLLinkElement.media"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "integrity",
+          "readonly": false,
+          "id": "HTMLLinkElement.integrity"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "hreflang",
+          "readonly": false,
+          "id": "HTMLLinkElement.hreflang"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "type",
+          "readonly": false,
+          "id": "HTMLLinkElement.type"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            },
+            {
+              "name": "PutForwards",
+              "value": "value"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMTokenList"
+          },
+          "name": "sizes",
+          "readonly": true,
+          "id": "HTMLLinkElement.sizes"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "imageSrcset",
+          "readonly": false,
+          "id": "HTMLLinkElement.imageSrcset"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "imageSizes",
+          "readonly": false,
+          "id": "HTMLLinkElement.imageSizes"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "referrerPolicy",
+          "readonly": false,
+          "id": "HTMLLinkElement.referrerPolicy"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            },
+            {
+              "name": "PutForwards",
+              "value": "value"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMTokenList"
+          },
+          "name": "blocking",
+          "readonly": true,
+          "id": "HTMLLinkElement.blocking"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "disabled",
+          "readonly": false,
+          "id": "HTMLLinkElement.disabled"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "fetchPriority",
+          "readonly": false,
+          "id": "HTMLLinkElement.fetchPriority"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLLinkElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLLinkElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "charset",
+          "readonly": false,
+          "id": "HTMLLinkElement.obsolete.charset"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "rev",
+          "readonly": false,
+          "id": "HTMLLinkElement.obsolete.rev"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "target",
+          "readonly": false,
+          "id": "HTMLLinkElement.obsolete.target"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLStyleElement",
+      "kind": "interface",
+      "name": "HTMLStyleElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLStyleElement.constructor:0"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "disabled",
+          "readonly": false,
+          "id": "HTMLStyleElement.disabled"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "media",
+          "readonly": false,
+          "id": "HTMLStyleElement.media"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            },
+            {
+              "name": "PutForwards",
+              "value": "value"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMTokenList"
+          },
+          "name": "blocking",
+          "readonly": true,
+          "id": "HTMLStyleElement.blocking"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLStyleElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLStyleElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "type",
+          "readonly": false,
+          "id": "HTMLStyleElement.obsolete.type"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLIFrameElement",
+      "kind": "interface",
+      "name": "HTMLIFrameElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLIFrameElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectURL"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "src",
+          "readonly": false,
+          "id": "HTMLIFrameElement.src"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "union",
+            "members": [
+              {
+                "kind": "named",
+                "name": "TrustedHTML"
+              },
+              {
+                "kind": "named",
+                "name": "DOMString"
+              }
+            ]
+          },
+          "name": "srcdoc",
+          "readonly": false,
+          "id": "HTMLIFrameElement.srcdoc"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "name",
+          "readonly": false,
+          "id": "HTMLIFrameElement.name"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            },
+            {
+              "name": "PutForwards",
+              "value": "value"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMTokenList"
+          },
+          "name": "sandbox",
+          "readonly": true,
+          "id": "HTMLIFrameElement.sandbox"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "allow",
+          "readonly": false,
+          "id": "HTMLIFrameElement.allow"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "allowFullscreen",
+          "readonly": false,
+          "id": "HTMLIFrameElement.allowFullscreen"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "width",
+          "readonly": false,
+          "id": "HTMLIFrameElement.width"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "height",
+          "readonly": false,
+          "id": "HTMLIFrameElement.height"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "referrerPolicy",
+          "readonly": false,
+          "id": "HTMLIFrameElement.referrerPolicy"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "loading",
+          "readonly": false,
+          "id": "HTMLIFrameElement.loading"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Document"
+            }
+          },
+          "name": "contentDocument",
+          "readonly": true,
+          "id": "HTMLIFrameElement.contentDocument"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "WindowProxy"
+            }
+          },
+          "name": "contentWindow",
+          "readonly": true,
+          "id": "HTMLIFrameElement.contentWindow"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Document"
+            }
+          },
+          "arguments": [],
+          "name": "getSVGDocument",
+          "id": "HTMLIFrameElement.getSVGDocument:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLIFrameElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLIFrameElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "align",
+          "readonly": false,
+          "id": "HTMLIFrameElement.obsolete.align"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "scrolling",
+          "readonly": false,
+          "id": "HTMLIFrameElement.obsolete.scrolling"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "frameBorder",
+          "readonly": false,
+          "id": "HTMLIFrameElement.obsolete.frameBorder"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectURL"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "longDesc",
+          "readonly": false,
+          "id": "HTMLIFrameElement.obsolete.longDesc"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "marginHeight",
+          "readonly": false,
+          "id": "HTMLIFrameElement.obsolete.marginHeight"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "marginWidth",
+          "readonly": false,
+          "id": "HTMLIFrameElement.obsolete.marginWidth"
+        }
+      ],
+      "partial": true
     }
   ],
   "includes": [
@@ -13348,7 +14503,27 @@
     {"id": "HTMLAnchorElement.includes.HTMLHyperlinkElementUtils", "interface": "HTMLAnchorElement", "mixin": "HTMLHyperlinkElementUtils"},
     {"id": "HTMLButtonElement.includes.PopoverTargetAttributes", "interface": "HTMLButtonElement", "mixin": "PopoverTargetAttributes"},
     {"id": "HTMLInputElement.includes.PopoverTargetAttributes", "interface": "HTMLInputElement", "mixin": "PopoverTargetAttributes"},
-    {"id": "HTMLFrameSetElement.includes.WindowEventHandlers", "interface": "HTMLFrameSetElement", "mixin": "WindowEventHandlers"}
+    {"id": "HTMLFrameSetElement.includes.WindowEventHandlers", "interface": "HTMLFrameSetElement", "mixin": "WindowEventHandlers"},
+    {
+      "id": "HTMLAreaElement.includes.HyperlinkElementUtils",
+      "interface": "HTMLAreaElement",
+      "mixin": "HyperlinkElementUtils"
+    },
+    {
+      "id": "HTMLAreaElement.includes.HTMLHyperlinkElementUtils",
+      "interface": "HTMLAreaElement",
+      "mixin": "HTMLHyperlinkElementUtils"
+    },
+    {
+      "id": "HTMLLinkElement.includes.LinkStyle",
+      "interface": "HTMLLinkElement",
+      "mixin": "LinkStyle"
+    },
+    {
+      "id": "HTMLStyleElement.includes.LinkStyle",
+      "interface": "HTMLStyleElement",
+      "mixin": "LinkStyle"
+    }
   ],
   "externals": [
     {
@@ -13655,6 +14830,13 @@
       "owner": "surgeist-runtime",
       "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#validitystate",
       "requirement": "Pinned ValidityState binding backed by live native constraint validation."
+    },
+    {
+      "name": "LinkStyle",
+      "kind": "mixin",
+      "owner": "surgeist-runtime",
+      "url": "https://drafts.csswg.org/cssom/#the-linkstyle-interface",
+      "requirement": "Bind the exact native Link or Style stylesheet association as required by #2261."
     }
   ],
   "access_mappings": {
@@ -15454,10 +16636,28 @@
       "kind": "derived",
       "algorithm": "domtokenlist.supports.validate",
       "owner": "surgeist-runtime",
-      "contract": "Apply the selected association's supported-token policy after DOMString conversion. Class has no defined supported tokens.",
+      "contract": "After DOMString conversion, apply the selected association's defined set. Class, Link sizes and Output htmlFor have no defined set. Blocking uses HTML's render token. Rel and iframe sandbox candidates require the applicable native capability.",
       "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#concept-domtokenlist-validation",
-      "inputs": [],
-      "requirements": []
+      "inputs": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/token_list.rs",
+          "symbol": "token_list_supports"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/token_list.rs",
+          "symbol": "support_with"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Qualify the remaining rel and sandbox candidates using the actual available processing capabilities.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#linkTypes",
+          "issue": 3233
+        }
+      ]
     },
     "DOMTokenList.value/get": {
       "kind": "native",
@@ -16393,7 +17593,7 @@
         {
           "owner": "surgeist-runtime",
           "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/token_list.rs",
-          "symbol": "class_list"
+          "symbol": "element_token_list"
         }
       ],
       "requirements": [],
@@ -19065,8 +20265,21 @@
       "requirements": []
     },
     "HTMLScriptElement.blocking/get": {
-      "kind": "host",
-      "requirement": {"owner": "surgeist-dom", "contract": "Provide the associated live Script blocking DOMTokenList.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-blocking"},
+      "kind": "native",
+      "adapter": "htmlscriptelement.blocking.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/token_list.rs",
+          "symbol": "element_token_list"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "reflect_html"
+        }
+      ],
+      "requirements": [],
       "result_view": "live"
     },
     "HTMLScriptElement.blocking/set": {
@@ -19264,8 +20477,21 @@
       "requirements": [{"owner": "surgeist-dom", "contract": "Admit reached hosted speculative-load processing for actual changes.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#consider-speculative-loads", "issue": 2658}]
     },
     "HTMLAnchorElement.relList/get": {
-      "kind": "host",
-      "requirement": {"owner": "surgeist-dom", "contract": "Provide the canonical live DOMTokenList over the Anchor rel content attribute.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-a-rellist"},
+      "kind": "native",
+      "adapter": "htmlanchorelement.rellist.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/token_list.rs",
+          "symbol": "element_token_list"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "reflect_html"
+        }
+      ],
+      "requirements": [],
       "result_view": "live"
     },
     "HTMLAnchorElement.relList/set": {
@@ -24594,13 +25820,21 @@
       "requirements": []
     },
     "HTMLFormElement.relList/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Project the same live DOMTokenList over the Form's exact rel content.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-rellist",
-        "issue": 2258
-      },
+      "kind": "native",
+      "adapter": "htmlformelement.rellist.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/token_list.rs",
+          "symbol": "element_token_list"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "reflect_html"
+        }
+      ],
+      "requirements": [],
       "result_view": "live"
     },
     "HTMLFormElement.relList/set": {
@@ -24762,13 +25996,21 @@
       "requirements": []
     },
     "HTMLOutputElement.htmlFor/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Project the same live DOMTokenList over the Output's exact null-namespace for content.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-output-for",
-        "issue": 2258
-      },
+      "kind": "native",
+      "adapter": "htmloutputelement.htmlfor.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/token_list.rs",
+          "symbol": "element_token_list"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "reflect_html"
+        }
+      ],
+      "requirements": [],
       "result_view": "live"
     },
     "HTMLOutputElement.htmlFor/set": {
@@ -27723,6 +28965,981 @@
         }
       ],
       "requirements": []
+    },
+    "HTMLAreaElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlareaelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLAreaElement.alt/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose alt with the pinned Area semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+        "issue": 2258
+      }
+    },
+    "HTMLAreaElement.alt/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose alt with the pinned Area semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+        "issue": 2258
+      }
+    },
+    "HTMLAreaElement.coords/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose coords with the pinned Area semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+        "issue": 2258
+      }
+    },
+    "HTMLAreaElement.coords/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose coords with the pinned Area semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+        "issue": 2258
+      }
+    },
+    "HTMLAreaElement.shape/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose shape with the pinned Area semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+        "issue": 2258
+      }
+    },
+    "HTMLAreaElement.shape/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose shape with the pinned Area semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+        "issue": 2258
+      }
+    },
+    "HTMLAreaElement.download/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose download with the pinned Area semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+        "issue": 2258
+      }
+    },
+    "HTMLAreaElement.download/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose download with the pinned Area semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+        "issue": 2258
+      }
+    },
+    "HTMLAreaElement.ping/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose ping with the pinned Area semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+        "issue": 2258
+      }
+    },
+    "HTMLAreaElement.ping/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose ping with the pinned Area semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+        "issue": 2258
+      }
+    },
+    "HTMLAreaElement.rel/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Read the exact current null-namespace rel content using the ordinary Area DOMString reflection.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+        "issue": 2258
+      }
+    },
+    "HTMLAreaElement.rel/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-dom",
+        "contract": "Admit the reached native A and Area speculative-load effects during changes to rel.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+        "issue": 2658
+      }
+    },
+    "HTMLAreaElement.relList/get": {
+      "kind": "native",
+      "adapter": "htmlareaelement.rellist.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/token_list.rs",
+          "symbol": "element_token_list"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "reflect_html"
+        }
+      ],
+      "requirements": [],
+      "result_view": "live"
+    },
+    "HTMLAreaElement.relList/set": {
+      "kind": "forwarding",
+      "getter": "HTMLAreaElement.relList/get",
+      "target": "value",
+      "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
+    },
+    "HTMLAreaElement.referrerPolicy/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose referrerPolicy with the pinned Area semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+        "issue": 2258
+      }
+    },
+    "HTMLAreaElement.referrerPolicy/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose referrerPolicy with the pinned Area semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlareaelement",
+        "issue": 2258
+      }
+    },
+    "HTMLAreaElement.obsolete.noHref/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose noHref with the pinned Area semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLAreaElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLAreaElement.obsolete.noHref/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose noHref with the pinned Area semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLAreaElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmllinkelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLLinkElement.href/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Reflect the current Link href with the selected URL parser and the canonical node document base.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.href/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the canonical Link href contract including reached processing over the native Source edit.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 3232
+      }
+    },
+    "HTMLLinkElement.crossOrigin/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose crossOrigin with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.crossOrigin/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose crossOrigin with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.rel/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Read the exact current null-namespace rel content using the ordinary Link DOMString reflection.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.rel/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the canonical Link rel contract including reached processing over the native Source edit.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 3232
+      }
+    },
+    "HTMLLinkElement.as/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose as with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.as/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose as with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.relList/get": {
+      "kind": "native",
+      "adapter": "htmllinkelement.rellist.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/token_list.rs",
+          "symbol": "element_token_list"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "reflect_html"
+        }
+      ],
+      "requirements": [],
+      "result_view": "live"
+    },
+    "HTMLLinkElement.relList/set": {
+      "kind": "forwarding",
+      "getter": "HTMLLinkElement.relList/get",
+      "target": "value",
+      "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
+    },
+    "HTMLLinkElement.media/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Read the exact current null-namespace media content using the ordinary Link DOMString reflection.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.media/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the canonical Link media contract including reached processing over the native Source edit.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 3232
+      }
+    },
+    "HTMLLinkElement.integrity/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose integrity with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.integrity/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose integrity with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.hreflang/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose hreflang with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.hreflang/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose hreflang with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.type/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Read the exact current null-namespace type content using the ordinary Link DOMString reflection.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.type/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the canonical Link type contract including reached processing over the native Source edit.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 3232
+      }
+    },
+    "HTMLLinkElement.sizes/get": {
+      "kind": "native",
+      "adapter": "htmllinkelement.sizes.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/token_list.rs",
+          "symbol": "element_token_list"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "reflect_html"
+        }
+      ],
+      "requirements": [],
+      "result_view": "live"
+    },
+    "HTMLLinkElement.sizes/set": {
+      "kind": "forwarding",
+      "getter": "HTMLLinkElement.sizes/get",
+      "target": "value",
+      "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
+    },
+    "HTMLLinkElement.imageSrcset/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose imageSrcset with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.imageSrcset/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose imageSrcset with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.imageSizes/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose imageSizes with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.imageSizes/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose imageSizes with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.referrerPolicy/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose referrerPolicy with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.referrerPolicy/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose referrerPolicy with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.blocking/get": {
+      "kind": "native",
+      "adapter": "htmllinkelement.blocking.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/token_list.rs",
+          "symbol": "element_token_list"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "reflect_html"
+        }
+      ],
+      "requirements": [],
+      "result_view": "live"
+    },
+    "HTMLLinkElement.blocking/set": {
+      "kind": "forwarding",
+      "getter": "HTMLLinkElement.blocking/get",
+      "target": "value",
+      "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
+    },
+    "HTMLLinkElement.disabled/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Reflect presence of the Link null-namespace disabled content attribute.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.disabled/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the canonical Link disabled contract including reached processing over the native Source edit.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 3232
+      }
+    },
+    "HTMLLinkElement.fetchPriority/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose fetchPriority with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.fetchPriority/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose fetchPriority with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.obsolete.charset/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose charset with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLLinkElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.obsolete.charset/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose charset with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLLinkElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.obsolete.rev/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose rev with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLLinkElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.obsolete.rev/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose rev with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLLinkElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.obsolete.target/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose target with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLLinkElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLLinkElement.obsolete.target/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose target with the pinned Link semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLLinkElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLStyleElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlstyleelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLStyleElement.disabled/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Read and update disabled through the current native Style sheet association.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlstyleelement",
+        "issue": 2261
+      }
+    },
+    "HTMLStyleElement.disabled/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Read and update disabled through the current native Style sheet association.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlstyleelement",
+        "issue": 2261
+      }
+    },
+    "HTMLStyleElement.media/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose media with the pinned Style semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlstyleelement",
+        "issue": 2258
+      }
+    },
+    "HTMLStyleElement.media/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose media with the pinned Style semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlstyleelement",
+        "issue": 2258
+      }
+    },
+    "HTMLStyleElement.blocking/get": {
+      "kind": "native",
+      "adapter": "htmlstyleelement.blocking.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/token_list.rs",
+          "symbol": "element_token_list"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "reflect_html"
+        }
+      ],
+      "requirements": [],
+      "result_view": "live"
+    },
+    "HTMLStyleElement.blocking/set": {
+      "kind": "forwarding",
+      "getter": "HTMLStyleElement.blocking/get",
+      "target": "value",
+      "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
+    },
+    "HTMLStyleElement.obsolete.type/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose type with the pinned Style semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLStyleElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLStyleElement.obsolete.type/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose type with the pinned Style semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLStyleElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmliframeelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLIFrameElement.src/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Reflect the current Iframe src with the selected URL parser and the canonical node document base.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.src/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Apply the original Iframe src processing and verified source mutation on its actual native child relation.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2259
+      }
+    },
+    "HTMLIFrameElement.srcdoc/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Read the original Iframe srcdoc as its canonical DOMString reflection.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.srcdoc/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Apply the original Iframe srcdoc processing and verified source mutation on its actual native child relation.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2259
+      }
+    },
+    "HTMLIFrameElement.name/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose name with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.name/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose name with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.sandbox/get": {
+      "kind": "native",
+      "adapter": "htmliframeelement.sandbox.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element/token_list.rs",
+          "symbol": "element_token_list"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/token_list.rs",
+          "symbol": "reflect_html"
+        }
+      ],
+      "requirements": [],
+      "result_view": "live"
+    },
+    "HTMLIFrameElement.sandbox/set": {
+      "kind": "forwarding",
+      "getter": "HTMLIFrameElement.sandbox/get",
+      "target": "value",
+      "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
+    },
+    "HTMLIFrameElement.allow/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose allow with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.allow/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose allow with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.allowFullscreen/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose allowFullscreen with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.allowFullscreen/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose allowFullscreen with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.width/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose width with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.width/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose width with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.height/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose height with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.height/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose height with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.referrerPolicy/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose referrerPolicy with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.referrerPolicy/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose referrerPolicy with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.loading/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose loading with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.loading/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose loading with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.contentDocument/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Return the current Iframe content Document or null using the pinned document and origin checks.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.contentWindow/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Return the current child navigable WindowProxy, or null when the Iframe has no child navigable.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.getSVGDocument:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Return the accessible Iframe content Document only when it is an SVG document.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.obsolete.align/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose align with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.obsolete.align/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose align with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.obsolete.scrolling/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose scrolling with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.obsolete.scrolling/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose scrolling with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.obsolete.frameBorder/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose frameBorder with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.obsolete.frameBorder/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose frameBorder with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.obsolete.longDesc/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose longDesc with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.obsolete.longDesc/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose longDesc with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.obsolete.marginHeight/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose marginHeight with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.obsolete.marginHeight/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose marginHeight with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.obsolete.marginWidth/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose marginWidth with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
+        "issue": 2258
+      }
+    },
+    "HTMLIFrameElement.obsolete.marginWidth/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose marginWidth with the pinned Iframe semantics over the canonical native element.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
+        "issue": 2258
+      }
     }
   },
   "semantics": {

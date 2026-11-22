@@ -1,12 +1,14 @@
 //! Anchor text and scalar attributes on the native Element.
 
 use super::{
+    element::install_html_token_list,
     reflection::{self, Receiver, Reflection},
     text::collect_text,
     *,
 };
 use surgeist_bindings_js::conversion::types::DOM_STRING;
 use surgeist_dom::source::DomSourceEdit;
+use surgeist_html::elements::token_list::HtmlTokenListReflection;
 
 const BEFORE_TEXT: &[reflection::Member] = &[
     (
@@ -83,6 +85,12 @@ pub(super) fn install<'scope>(
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
     reflection::install(scope, prototype, capture, Receiver::Anchor, BEFORE_TEXT)?;
+    install_html_token_list(
+        scope,
+        prototype,
+        capture,
+        HtmlTokenListReflection::AnchorRel,
+    )?;
     let read = capture(size_of::<Capture>())?;
     let write = capture(size_of::<Capture>())?;
     let getter = scope.fixed_arity_function(

@@ -4,7 +4,8 @@ use super::character_data::CharacterKind;
 use super::*;
 use surgeist_dom::identity::DomAttrId;
 use surgeist_html::{
-    bounded::lexical::validate_custom_element_name_with, vocabulary::KnownHtmlElement,
+    bounded::lexical::validate_custom_element_name_with,
+    elements::token_list::HtmlTokenListReflection, vocabulary::KnownHtmlElement,
 };
 
 mod adjacent;
@@ -366,7 +367,8 @@ impl ElementBindings {
             super::reflection::Receiver::Element,
             REFLECTIONS,
         )?;
-        let token_list = token_list::install(scope, &global, &element, capture, fund)?;
+        token_list::install_reflection(scope, &element, capture, token_list::Reflection::Class)?;
+        let token_list = token_list::install(scope, &global, capture, fund)?;
         super::reflection::install(
             scope,
             &element,
@@ -844,6 +846,20 @@ fn install_named<'scope>(
     install(scope, global, units, parent_constructor, parent, capture)
 }
 
+pub(super) fn install_html_token_list<'scope>(
+    scope: &mut Scope<'scope>,
+    prototype: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+    reflection: HtmlTokenListReflection,
+) -> Result<(), DocumentGuestEventError> {
+    token_list::install_reflection(
+        scope,
+        prototype,
+        capture,
+        token_list::Reflection::Html(reflection),
+    )
+}
+
 fn install_html_members<'scope>(
     scope: &mut Scope<'scope>,
     interface: &'static str,
@@ -877,7 +893,35 @@ fn install_html_members<'scope>(
         }
         "HTMLMediaElement" => super::media::install(scope, constructor, prototype, capture)?,
         "HTMLAnchorElement" => super::anchor::install(scope, prototype, capture)?,
+        "HTMLAreaElement" => {
+            install_html_token_list(scope, prototype, capture, HtmlTokenListReflection::AreaRel)?;
+        }
         "HTMLScriptElement" => super::script::install(scope, prototype, capture)?,
+        "HTMLLinkElement" => {
+            for reflection in [
+                HtmlTokenListReflection::LinkRel,
+                HtmlTokenListReflection::LinkSizes,
+                HtmlTokenListReflection::LinkBlocking,
+            ] {
+                install_html_token_list(scope, prototype, capture, reflection)?;
+            }
+        }
+        "HTMLStyleElement" => {
+            install_html_token_list(
+                scope,
+                prototype,
+                capture,
+                HtmlTokenListReflection::StyleBlocking,
+            )?;
+        }
+        "HTMLIFrameElement" => {
+            install_html_token_list(
+                scope,
+                prototype,
+                capture,
+                HtmlTokenListReflection::IframeSandbox,
+            )?;
+        }
         "HTMLBodyElement" => super::body::install(scope, prototype, capture)?,
         "HTMLButtonElement" => super::button::install(scope, prototype, capture)?,
         "HTMLBRElement" => super::break_elements::install_br(scope, prototype, capture)?,

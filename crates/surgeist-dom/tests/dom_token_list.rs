@@ -12,7 +12,10 @@ use surgeist_dom::{
     },
     tree::DomTokenList,
 };
-use surgeist_html::values::{DocumentString, Namespace};
+use surgeist_html::{
+    elements::token_list::HtmlTokenListReflection,
+    values::{DocumentString, Namespace},
+};
 
 fn fixture() -> (Dom, DomTokenList) {
     let limits = DomLimits::new(
@@ -470,4 +473,94 @@ fn capture_growth_admits_overlap_and_releases_both_banks_on_failure() {
     assert_eq!(live.get(), 2 * slot);
     drop(capture);
     assert_eq!(live.get(), 0);
+}
+
+#[test]
+fn html_associations_use_the_actual_family_and_exact_content_attribute() {
+    use HtmlTokenListReflection::*;
+    let (mut dom, _) = fixture();
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let script = setup.create_element_ns(&document, Namespace::html(), "script");
+    let link = setup.create_element_ns(&document, Namespace::html(), "link");
+    let style = setup.create_element_ns(&document, Namespace::html(), "style");
+    let anchor = setup.create_element_ns(&document, Namespace::html(), "a");
+    let area = setup.create_element_ns(&document, Namespace::html(), "area");
+    let form = setup.create_element_ns(&document, Namespace::html(), "form");
+    let iframe = setup.create_element_ns(&document, Namespace::html(), "iframe");
+    let output = setup.create_element_ns(&document, Namespace::html(), "output");
+    let svg_link = setup.create_element_ns(&document, Namespace::svg(), "link");
+    let foreign_namespace = Namespace::from_uri("urn:attribute");
+    setup.set_attribute_ns(&link, foreign_namespace.clone(), "p:rel", "untouched");
+    let created = dom.apply(setup, &AtomicBool::new(false)).unwrap();
+    let snapshot = dom.snapshot();
+    let node = |ticket| {
+        snapshot
+            .node(created.created(ticket).unwrap().unwrap())
+            .unwrap()
+    };
+    assert!(DomTokenList::reflect_html(node(&svg_link), LinkRel).is_none());
+    assert!(DomTokenList::reflect_html(node(&script), StyleBlocking).is_none());
+    let link_classes = DomTokenList::class(node(&link).id());
+    assert_eq!(link_classes.html_reflection(), None);
+
+    let cases = [
+        (&script, ScriptBlocking, "blocking"),
+        (&link, LinkBlocking, "blocking"),
+        (&style, StyleBlocking, "blocking"),
+        (&anchor, AnchorRel, "rel"),
+        (&area, AreaRel, "rel"),
+        (&form, FormRel, "rel"),
+        (&link, LinkRel, "rel"),
+        (&link, LinkSizes, "sizes"),
+        (&iframe, IframeSandbox, "sandbox"),
+        (&output, OutputHtmlFor, "for"),
+    ];
+    for (ticket, reflection, attribute) in cases {
+        let list = DomTokenList::reflect_html(node(ticket), reflection).unwrap();
+        assert_eq!(list.html_reflection(), Some(reflection));
+        assert_eq!(list.element(), node(ticket).id());
+        assert!(
+            list.attribute_name()
+                .iter()
+                .copied()
+                .eq(attribute.encode_utf16())
+        );
+        assert_eq!(raw(&dom.snapshot(), list), None);
+        assert_eq!(
+            edit(
+                &mut dom,
+                list,
+                DomTokenListEdit::Add(vec![attribute.into()]),
+                limits(128)
+            ),
+            Ok(None)
+        );
+        stored(&dom, list, attribute);
+        assert_eq!(
+            dom.snapshot()
+                .node(list.element())
+                .unwrap()
+                .attributes()
+                .unwrap()
+                .get_named_item_ns(&Namespace::none(), &DocumentString::from(attribute))
+                .unwrap()
+                .value(),
+            &DocumentString::from(attribute)
+        );
+    }
+    let snapshot = dom.snapshot();
+    let attrs = snapshot
+        .node(link_classes.element())
+        .unwrap()
+        .attributes()
+        .unwrap();
+    assert_eq!(
+        attrs
+            .get_named_item_ns(&foreign_namespace, &DocumentString::from("rel"))
+            .unwrap()
+            .value(),
+        &DocumentString::from("untouched")
+    );
+    assert_eq!(raw(&snapshot, link_classes), None);
 }

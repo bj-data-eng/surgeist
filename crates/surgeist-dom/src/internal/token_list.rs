@@ -4,12 +4,14 @@ use std::ops::ControlFlow;
 
 use surgeist_html::{
     bounded::lexical::{HtmlSpaceTokenCursor, HtmlSpaceTokenStep},
+    elements::token_list::HtmlTokenListReflection,
     values::DocumentString,
+    vocabulary::KnownHtmlElement,
 };
 
 use crate::{
     DomError, DomSnapshot,
-    internal::{identity::NodeId, names::same_code_units},
+    internal::{identity::NodeId, names::same_code_units, snapshot::DomNode},
 };
 
 pub(crate) const CLASS: &[u16] = &[0x63, 0x6c, 0x61, 0x73, 0x73];
@@ -27,6 +29,7 @@ pub struct DomTokenList {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 enum Attribute {
     Class,
+    Html(HtmlTokenListReflection),
 }
 
 impl DomTokenList {
@@ -38,13 +41,37 @@ impl DomTokenList {
         }
     }
 
+    /// Associate an already-admitted Element of the declaration's exact HTML
+    /// family. A fallback HTMLUnknownElement has no specialized reflection.
+    pub fn reflect_html(node: DomNode<'_>, reflection: HtmlTokenListReflection) -> Option<Self> {
+        let element = node.as_element()?;
+        if element.has_failed_construction_interface()
+            || KnownHtmlElement::from_name(element.name()) != Some(reflection.element())
+        {
+            return None;
+        }
+        Some(Self {
+            element: node.id(),
+            attribute: Attribute::Html(reflection),
+        })
+    }
+
     pub const fn element(self) -> NodeId {
         self.element
+    }
+
+    /// The HTML declaration for this association, if it has one.
+    pub const fn html_reflection(self) -> Option<HtmlTokenListReflection> {
+        match self.attribute {
+            Attribute::Class => None,
+            Attribute::Html(reflection) => Some(reflection),
+        }
     }
 
     pub(crate) const fn attribute_name_str(self) -> &'static str {
         match self.attribute {
             Attribute::Class => "class",
+            Attribute::Html(reflection) => reflection.attribute(),
         }
     }
 
@@ -52,6 +79,7 @@ impl DomTokenList {
     pub const fn attribute_name(self) -> &'static [u16] {
         match self.attribute {
             Attribute::Class => CLASS,
+            Attribute::Html(reflection) => reflection.attribute_units(),
         }
     }
 
