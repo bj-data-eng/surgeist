@@ -69,6 +69,14 @@ pure composition boundary accepts selected property operations without owning
 effect ordering or publication. See [computed effects](reference.md#computed-keyframe-effects)
 for native versus CSS timing adapters and atomic failure behavior.
 
+CSS animation-list reconciliation uses `css_animation`. Style supplies the
+resolved effective list, rule matches, used timing and applicability. Animation
+matches occurrences from last to first, retaining native identity and captured
+playback coordinates across rule or timing edits. It returns timing comparisons
+and start/retain/stop plans. Runtime applies playback requests and publishes the
+result coherently; lifecycle event dispatch remains a separate Runtime consumer.
+See [CSS animation reconciliation](reference.md#css-animation-reconciliation).
+
 CSS transition lifecycle decisions use a separate immutable snapshot boundary in
 `transition`. Style provides atomic endpoint and matching facts; Animation
 promotes due records and decides creation, cancellation, and reversal using the

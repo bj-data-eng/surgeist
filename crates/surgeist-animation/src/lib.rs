@@ -42,6 +42,7 @@
 //! | [`transition`] | Transition tracks, lifecycle decisions, and current values. |
 //! | [`keyframe`] | Normalized tracks and caller-computed keyframe effect sampling. |
 //! | [`keyframe_input`] | Native typed keyframe normalization and computed offsets. |
+//! | [`css_animation`] | Resolved CSS animation-list retention, start, and stop plans. |
 //! | [`diagnostics`] | Numeric diagnostics shared by the typed constructors. |
 //!
 //! Transition sampling starts from [`transition::TransitionTrack`]:
@@ -137,6 +138,7 @@
 
 pub mod composition;
 pub mod computed;
+pub mod css_animation;
 pub mod diagnostics;
 pub mod easing;
 pub mod interpolation;
