@@ -331,6 +331,20 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
             .live(DocumentGuestResource::BackingBytes)
     };
     let before_retirement = live_backing();
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+                const listener = () => {};
+                for (let index = 0; index < 16; index++) {
+                    originalFirstChild.addEventListener('child-retirement-' + index, listener);
+                }
+                return 'ok';
+            })()"#,
+        ),
+        "ok"
+    );
     edit(&mut host, DomSourceEdit::detach(first));
     let snapshot = host.snapshot().unwrap();
     assert!(
@@ -359,6 +373,19 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
             ? 'ok' : 'stale or replaced WindowProxy after child removal')()"#,
     );
     assert_eq!(retired, "ok");
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+                const listener = () => {};
+                window.addEventListener('after-child-retirement', listener);
+                window.removeEventListener('after-child-retirement', listener);
+                return 'ok';
+            })()"#,
+        ),
+        "ok"
+    );
 
     edit(&mut host, DomSourceEdit::insert_before(first, body, None));
     let replacement = content_navigable(&host.snapshot().unwrap(), first).unwrap();
@@ -375,6 +402,25 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
 }
 
 pub(super) fn retired_child_keeps_the_creation_origin_of_native_nodes() {
+    verify_child_creation_origin(FirstProjection::Window);
+}
+
+pub(super) fn live_child_nodes_can_be_projected_before_the_window() {
+    verify_child_creation_origin(FirstProjection::LiveAdoptedNode);
+}
+
+pub(super) fn retired_child_nodes_can_be_projected_before_the_window() {
+    verify_child_creation_origin(FirstProjection::RetiredAdoptedNode);
+}
+
+#[derive(Clone, Copy)]
+enum FirstProjection {
+    Window,
+    LiveAdoptedNode,
+    RetiredAdoptedNode,
+}
+
+fn verify_child_creation_origin(first: FirstProjection) {
     let (mut session, top) = setup();
     let document = top.document();
     let snapshot = session.snapshot();
@@ -401,18 +447,20 @@ pub(super) fn retired_child_keeps_the_creation_origin_of_native_nodes() {
     let child_state = snapshot.hosted_navigable(child).unwrap();
     let child_document = child_state.active_document().unwrap();
     let child_global = child_state.global();
-    assert_eq!(
-        observe(
-            &mut host,
-            &permit,
-            r#"(() => {
-                const child = window[0];
-                child.HTMLDivElement.prototype.originWitness = 'original child';
-                return 'ok';
-            })()"#,
-        ),
-        "ok"
-    );
+    if matches!(first, FirstProjection::Window) {
+        assert_eq!(
+            observe(
+                &mut host,
+                &permit,
+                r#"(() => {
+                    const child = window[0];
+                    child.HTMLDivElement.prototype.originWitness = 'original child';
+                    return 'ok';
+                })()"#,
+            ),
+            "ok"
+        );
+    }
 
     let place_child_node = |host: &mut DocumentScriptHost, name: &str| {
         host.with_native(|dom, _, _| {
@@ -433,6 +481,27 @@ pub(super) fn retired_child_keeps_the_creation_origin_of_native_nodes() {
         .unwrap();
     };
     place_child_node(&mut host, "adoptedBeforeRetirement");
+    if matches!(first, FirstProjection::LiveAdoptedNode) {
+        assert_eq!(
+            observe(
+                &mut host,
+                &permit,
+                r#"(() => {
+                    const adopted = window.adoptedBeforeRetirement;
+                    const child = window[0];
+                    const prototype = Object.getPrototypeOf(adopted);
+                    if (adopted !== document.getElementById('adoptedBeforeRetirement')
+                        || prototype !== child.HTMLDivElement.prototype
+                        || prototype === HTMLDivElement.prototype) {
+                        return 'the first native projection must use the original child realm';
+                    }
+                    prototype.originWitness = 'original child';
+                    return 'ok';
+                })()"#,
+            ),
+            "ok"
+        );
+    }
     edit(&mut host, DomSourceEdit::detach(iframe));
     host.with_native(|dom, mut hosted, _| {
         for _ in 0..32 {
@@ -463,9 +532,12 @@ pub(super) fn retired_child_keeps_the_creation_origin_of_native_nodes() {
                 if (window[0] !== undefined) return 'retired child still occupies an index';
                 const before = window.adoptedBeforeRetirement;
                 const after = window.adoptedAfterRetirement;
-                if (before?.originWitness !== 'original child' || after?.originWitness !== 'original child'
+                if (before !== document.getElementById('adoptedBeforeRetirement')
+                    || after !== document.getElementById('adoptedAfterRetirement')
                     || Object.getPrototypeOf(before) !== Object.getPrototypeOf(after)
-                    || Object.getPrototypeOf(before) === HTMLDivElement.prototype) {
+                    || Object.getPrototypeOf(before) === HTMLDivElement.prototype
+                    || ((before.originWitness ?? after.originWitness) !== undefined
+                        && (before.originWitness !== 'original child' || after.originWitness !== 'original child'))) {
                     return 'child nodes lost their original creation prototype';
                 }
                 return 'ok';
