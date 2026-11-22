@@ -76,6 +76,7 @@ use surgeist_render::paint::{
 use surgeist_render::paint_gradient::{
     PaintGradientError, prepare_linear_gradient, prepare_radial_gradient,
     prepare_repeating_linear_gradient, prepare_repeating_radial_gradient,
+    prepare_repeating_zero_circle_gradient, prepare_zero_circle_gradient,
     prepare_zero_height_gradient_color,
 };
 use surgeist_render::renderer::{

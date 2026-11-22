@@ -292,6 +292,15 @@ const NORMAL_BLEND_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacemen
     failure: "internal Vello fine shader no longer has the checked Normal blend boundary",
 };
 
+// The marked program uses scaled coordinates for the norm. Zero the legacy
+// squared inputs before arithmetic because the larger field can overflow them.
+const ZERO_CIRCLE_NORM_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacement {
+    from: "let xx = x * x;\n                    let yy = y * y;\n                    var t = 0.0;\n                    var is_valid = true;\n                    if is_strip {",
+    to: "let is_zero_circle = (rad.flags & 2u) != 0u;\n                    let square_input = select(local_xy, vec2<f32>(0.0), is_zero_circle);\n                    let xx = square_input.x * square_input.x;\n                    let yy = square_input.y * square_input.y;\n                    var t = 0.0;\n                    var is_valid = true;\n                    if is_zero_circle {\n                        t = gradient_circle_norm(x, y);\n                    } else if is_strip {",
+    matches: ShaderMatchCount::Once,
+    failure: "internal Vello fine shader no longer has the checked circular norm boundary",
+};
+
 // WGSL sqrt inherits reciprocal/inverseSqrt accuracy, which supplies no finite
 // zero-input certificate. Evaluate only a normal positive argument and select
 // exact zero for squared lengths at most the smallest normal binary32 value.
@@ -300,8 +309,18 @@ const CIRCULAR_NORM_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplaceme
     from: "t = sqrt(xx + yy) - x * r1_recip;",
     to: "var radial_distance = 0.0;\n                        if (is_circular) {\n                            let squared_radius = xx + yy;\n                            radial_distance = select(sqrt(max(squared_radius, 0x1p-126f)), 0.0, squared_radius <= 0x1p-126f);\n                        } else {\n                            radial_distance = sqrt(xx + yy);\n                        }\n                        t = radial_distance - x * r1_recip;",
     matches: ShaderMatchCount::Once,
-    failure: "internal Vello fine shader no longer has the checked circular norm boundary",
+    failure: "internal Vello fine shader no longer has the checked ordinary circular norm boundary",
 };
+
+// Circle programs supply centered unit-radius geometry verified by the packer.
+// The marked draw uses the inverse brush transform directly. Private radial
+// flag 2 selects the scaled norm, with a finite positive placeholder radius.
+const CIRCLE_DRAW_LEAF_REPLACEMENTS: [ShaderSourceReplacement; 1] = [ShaderSourceReplacement {
+    from: "if abs(r0 - r1) <= GRADIENT_EPSILON {",
+    to: "if ((scene[dd] & 3u) == 3u && scene[dd + 5u] == 0x7f7fffffu && scene[dd + 6u] == 0x3f800000u) {\n                        kind = RAD_GRAD_KIND_CIRCULAR;\n                        xform = user_to_gradient;\n                        radius = 2.0;\n                        flags = 2u;\n                    } else if abs(r0 - r1) <= GRADIENT_EPSILON {",
+    matches: ShaderMatchCount::Once,
+    failure: "internal Vello draw-leaf shader no longer has the checked radial geometry boundary",
+}];
 
 // Mode 3 is a private draw-word extension, intercepted before native extension
 // or ramp lookup. Draw-leaf reads geometry after that word; coarse passes it
@@ -350,6 +369,7 @@ fn fine_shader_source(
         SET_LUM_REPLACEMENT,
         BLEND_RESULT_REPLACEMENT,
         NORMAL_BLEND_REPLACEMENT,
+        ZERO_CIRCLE_NORM_REPLACEMENT,
         CIRCULAR_NORM_REPLACEMENT,
         GRADIENT_ENDPOINT_REPLACEMENTS[0],
         GRADIENT_ENDPOINT_REPLACEMENTS[1],
@@ -481,7 +501,31 @@ fn create_fine_pipeline(
     adapt_msaa8_endpoints: bool,
 ) -> Result<CheckedComputePipeline> {
     let code = fine_shader_source(cpu, shader, adapt_msaa8_endpoints)?;
-    let source = std::str::from_utf8(&code)
+    create_rewritten_pipeline(device, generation, cpu, shader, &code)
+}
+
+fn create_draw_leaf_pipeline(
+    device: &wgpu::Device,
+    generation: &Generation,
+    cpu: &CpuAccount,
+) -> Result<CheckedComputePipeline> {
+    let shader = &SHADERS.draw_leaf;
+    let code = replace_shader_code(
+        cpu,
+        shader.wgsl.code.as_ref(),
+        &CIRCLE_DRAW_LEAF_REPLACEMENTS,
+    )?;
+    create_rewritten_pipeline(device, generation, cpu, shader, &code)
+}
+
+fn create_rewritten_pipeline(
+    device: &wgpu::Device,
+    generation: &Generation,
+    cpu: &CpuAccount,
+    shader: &ComputeShader<'_>,
+    code: &[u8],
+) -> Result<CheckedComputePipeline> {
+    let source = std::str::from_utf8(code)
         .map_err(|_| render_failed("internal shader source is not UTF-8"))?;
     CheckedComputePipeline::create(device, generation, cpu, None, shader, Some(source))
 }
@@ -626,14 +670,7 @@ impl CheckedShaderSet {
                     &SHADERS.draw_reduce,
                     None,
                 )?,
-                draw_leaf: CheckedComputePipeline::create(
-                    device,
-                    generation,
-                    cpu,
-                    None,
-                    &SHADERS.draw_leaf,
-                    None,
-                )?,
+                draw_leaf: create_draw_leaf_pipeline(device, generation, cpu)?,
                 clip_reduce: CheckedComputePipeline::create(
                     device,
                     generation,
@@ -930,6 +967,10 @@ mod cpu_tests {
                 .replace(SET_LUM_REPLACEMENT.from, SET_LUM_REPLACEMENT.to)
                 .replace(BLEND_RESULT_REPLACEMENT.from, BLEND_RESULT_REPLACEMENT.to)
                 .replace(NORMAL_BLEND_REPLACEMENT.from, NORMAL_BLEND_REPLACEMENT.to)
+                .replace(
+                    ZERO_CIRCLE_NORM_REPLACEMENT.from,
+                    ZERO_CIRCLE_NORM_REPLACEMENT.to,
+                )
                 .replace(CIRCULAR_NORM_REPLACEMENT.from, CIRCULAR_NORM_REPLACEMENT.to);
             for replacement in GRADIENT_ENDPOINT_REPLACEMENTS {
                 expected = expected.replace(replacement.from, replacement.to);
@@ -985,6 +1026,7 @@ mod cpu_tests {
             SET_LUM_REPLACEMENT,
             BLEND_RESULT_REPLACEMENT,
             NORMAL_BLEND_REPLACEMENT,
+            ZERO_CIRCLE_NORM_REPLACEMENT,
             CIRCULAR_NORM_REPLACEMENT,
             GRADIENT_ENDPOINT_REPLACEMENTS[0],
             GRADIENT_ENDPOINT_REPLACEMENTS[1],

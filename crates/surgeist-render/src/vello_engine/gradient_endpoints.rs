@@ -10,6 +10,12 @@ use super::bounded;
 pub(crate) const RAMP_WIDTH: usize = 512;
 const DESCRIPTOR_TEXELS: usize = 8;
 const PROGRAM_RECORD_TEXELS: usize = 7;
+#[cfg(feature = "render-paint")]
+const CIRCLE_RECORD_TEXELS: usize = 8;
+// Paired with r1=1, this marks decreasing radii that cannot be emitted by
+// the ordinary radial realizers. The checked draw-leaf branch consumes it.
+#[cfg(feature = "render-paint")]
+const CIRCLE_START_RADIUS_MARKER: u32 = f32::MAX.to_bits();
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PadEndpoints {
@@ -20,6 +26,19 @@ pub(crate) struct PadEndpoints {
 }
 
 impl PadEndpoints {
+    fn descriptor_words(self, kind: u32, payload: u32, count: u32, phase: u32) -> [u32; 8] {
+        [
+            kind,
+            payload,
+            count,
+            self.first,
+            self.last,
+            self.first_color,
+            self.last_color,
+            phase,
+        ]
+    }
+
     pub(crate) const fn first_position_bits(self) -> u32 {
         self.first
     }
@@ -98,11 +117,53 @@ pub(crate) struct GradientProgram<'a> {
     pub(crate) coordinates: ProgramCoordinates,
 }
 
+#[derive(Clone, Copy, Debug)]
+#[cfg(feature = "render-paint")]
+pub(crate) enum CircleCoordinates {
+    Pad,
+    Repeat {
+        span_length: f32,
+        span_fraction: f32,
+        origin_length: f32,
+        origin_fraction: f32,
+    },
+}
+
+/// Zero-circle intervals use the first coordinate in which their stops differ.
+#[derive(Clone, Copy, Debug)]
+#[cfg(feature = "render-paint")]
+pub(crate) enum CircleSegment {
+    Linear,
+    Power { exponent: f32 },
+    HintAtStart,
+    HintAtEnd,
+    HintOnLeftRing,
+    HintOnRightRing { fraction: f32 },
+}
+
+#[derive(Clone, Copy, Debug)]
+#[cfg(feature = "render-paint")]
+pub(crate) struct CircleRecord {
+    pub(crate) length: f32,
+    pub(crate) fraction: f32,
+    pub(crate) premultiplied: [f32; 4],
+    pub(crate) outgoing: CircleSegment,
+}
+
+#[derive(Clone, Copy)]
+#[cfg(feature = "render-paint")]
+pub(crate) struct CircleProgram<'a> {
+    pub(crate) records: &'a [CircleRecord],
+    pub(crate) coordinates: CircleCoordinates,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum GradientSampling<'a> {
     PadRamp(PadEndpoints),
     HorizontalDistanceStep(PadEndpoints),
     Program(GradientProgram<'a>),
+    #[cfg(feature = "render-paint")]
+    Circle(CircleProgram<'a>),
 }
 
 /// A native brush coupled to its one selected sampling interpretation.
@@ -293,10 +354,19 @@ struct OwnedProgram {
 }
 
 #[derive(Debug)]
+#[cfg(feature = "render-paint")]
+struct OwnedCircle {
+    records: AccountedVec<CircleRecord>,
+    coordinates: CircleCoordinates,
+}
+
+#[derive(Debug)]
 enum CapturedSampling {
     PadRamp(PadEndpoints),
     HorizontalDistanceStep(PadEndpoints),
     Program(OwnedProgram),
+    #[cfg(feature = "render-paint")]
+    Circle(OwnedCircle),
 }
 
 #[derive(Debug)]
@@ -321,15 +391,13 @@ impl EndpointRecords {
         if !gradient_tag(tag) {
             return match sampling {
                 GradientSampling::PadRamp(_) => Ok(()),
-                GradientSampling::HorizontalDistanceStep(_) | GradientSampling::Program(_) => {
-                    Err(correspondence())
-                }
+                _ => Err(correspondence()),
             };
         }
         let distance = scalar(account, || match sampling {
-            GradientSampling::PadRamp(_) => false,
             GradientSampling::HorizontalDistanceStep(_) => true,
             GradientSampling::Program(program) => program.coordinates.horizontal_distance(),
+            _ => false,
         })?;
         if distance && !scalar(account, || tag == DrawTag::LINEAR_GRADIENT)? {
             return Err(correspondence());
@@ -391,19 +459,7 @@ impl EndpointRecords {
                         return Err(correspondence());
                     }
                     previous = Some(record.position);
-                    for channel in record.premultiplied {
-                        if !scalar(account, || channel.is_finite())?
-                            || scalar(account, || channel < 0.0)?
-                            || scalar(account, || channel > 1.0)?
-                        {
-                            return Err(correspondence());
-                        }
-                    }
-                    for channel in &record.premultiplied[..3] {
-                        if scalar(account, || *channel > record.premultiplied[3])? {
-                            return Err(correspondence());
-                        }
-                    }
+                    validate_premultiplied(record.premultiplied, account)?;
                     if let ProgramSegment::Power { exponent } = record.outgoing
                         && (!scalar(account, || exponent.is_normal())?
                             || scalar(account, || exponent <= 0.0)?)
@@ -419,6 +475,13 @@ impl EndpointRecords {
                     endpoints: program.endpoints,
                     coordinates: program.coordinates,
                 })
+            }
+            #[cfg(feature = "render-paint")]
+            GradientSampling::Circle(program) => {
+                if !scalar(account, || tag == DrawTag::RADIAL_GRADIENT)? {
+                    return Err(correspondence());
+                }
+                CapturedSampling::Circle(OwnedCircle::capture(program, account)?)
             }
         };
         let records = match &mut self.records {
@@ -439,6 +502,168 @@ impl EndpointRecords {
             .as_ref()
             .map_or(&[], |records| records.as_slice())
     }
+}
+
+#[cfg(feature = "render-paint")]
+impl OwnedCircle {
+    fn capture(program: CircleProgram<'_>, account: &Account) -> Result<Self> {
+        let count = scalar(account, || program.records.len())?;
+        let Some((first, last)) = scalar(account, || match program.records {
+            [first, .., last] => Some((first, last)),
+            _ => None,
+        })?
+        else {
+            return Err(correspondence());
+        };
+        let words = mul(count, CIRCLE_RECORD_TEXELS, account)?;
+        account.work(RenderWork::ResourceProbes, 2)?;
+        if scalar(account, || words >= (1_usize << 30))?
+            || !matches!(last.outgoing, CircleSegment::Linear)
+        {
+            return Err(correspondence());
+        }
+        if let CircleCoordinates::Repeat {
+            span_length,
+            span_fraction,
+            origin_length,
+            origin_fraction,
+        } = program.coordinates
+            && (!scalar(account, || span_length.is_normal())?
+                || scalar(account, || span_length <= 0.0)?
+                || !scalar(account, || span_fraction.is_finite())?
+                || !scalar(account, || origin_length.is_finite())?
+                || !scalar(account, || origin_fraction.is_finite())?
+                || !scalar(account, || first.length == 0.0)?
+                || !scalar(account, || first.fraction == 0.0)?
+                || !scalar(account, || last.length == span_length)?
+                || !scalar(account, || last.fraction == span_fraction)?)
+        {
+            return Err(correspondence());
+        }
+        let mut records = account.retained(count)?;
+        let mut previous: Option<&CircleRecord> = None;
+        for record in program.records {
+            account.work(RenderWork::GradientStopVisits, 1)?;
+            if !scalar(account, || record.length.is_finite())?
+                || !scalar(account, || record.fraction.is_finite())?
+            {
+                return Err(correspondence());
+            }
+            if let Some(left) = previous {
+                let same_ring = scalar(account, || left.length == record.length)?;
+                if scalar(account, || record.length < left.length)?
+                    || (same_ring && scalar(account, || record.fraction < left.fraction)?)
+                {
+                    return Err(correspondence());
+                }
+                match left.outgoing {
+                    CircleSegment::Power { exponent } => {
+                        if !scalar(account, || exponent.is_normal())?
+                            || scalar(account, || exponent <= 0.0)?
+                        {
+                            return Err(correspondence());
+                        }
+                    }
+                    CircleSegment::HintOnLeftRing if same_ring => return Err(correspondence()),
+                    CircleSegment::HintOnRightRing { fraction } => {
+                        if same_ring || !scalar(account, || fraction.is_finite())? {
+                            return Err(correspondence());
+                        }
+                        let distance = scalar(account, || record.fraction - fraction)?;
+                        if !scalar(account, || distance.is_normal())?
+                            || scalar(account, || distance <= 0.0)?
+                        {
+                            return Err(correspondence());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            validate_premultiplied(record.premultiplied, account)?;
+            previous = Some(record);
+            let slot = records.append_slot()?;
+            account.work(RenderWork::RasterResourceCopies, 1)?;
+            slot.write(*record);
+        }
+        Ok(Self {
+            records,
+            coordinates: program.coordinates,
+        })
+    }
+
+    fn descriptor_words(&self, start: usize, account: &Account) -> Result<[u32; 8]> {
+        let payload = program_payload(start, account)?;
+        let count =
+            scalar(account, || u32::try_from(self.records.len()))?.map_err(|_| correspondence())?;
+        Ok(match self.coordinates {
+            CircleCoordinates::Pad => [6, payload, count, 0, 0, 0, 0, 0],
+            CircleCoordinates::Repeat {
+                span_length,
+                span_fraction,
+                origin_length,
+                origin_fraction,
+            } => [
+                7,
+                payload,
+                count,
+                scalar(account, || span_length.to_bits())?,
+                scalar(account, || span_fraction.to_bits())?,
+                scalar(account, || origin_length.to_bits())?,
+                scalar(account, || origin_fraction.to_bits())?,
+                0,
+            ],
+        })
+    }
+
+    fn serialize_records(&self, texels: &mut AccountedVec<u32>, account: &Account) -> Result<()> {
+        for record in &self.records {
+            account.work(RenderWork::GradientStopVisits, 1)?;
+            serialize_word(
+                texels,
+                scalar(account, || record.length.to_bits())?,
+                account,
+            )?;
+            serialize_word(
+                texels,
+                scalar(account, || record.fraction.to_bits())?,
+                account,
+            )?;
+            for channel in record.premultiplied {
+                serialize_word(texels, scalar(account, || channel.to_bits())?, account)?;
+            }
+            let (kind, operand) = match record.outgoing {
+                CircleSegment::Linear => (0, 0),
+                CircleSegment::Power { exponent } => (1, scalar(account, || exponent.to_bits())?),
+                CircleSegment::HintAtStart => (2, 0),
+                CircleSegment::HintAtEnd => (3, 0),
+                CircleSegment::HintOnLeftRing => (4, 0),
+                CircleSegment::HintOnRightRing { fraction } => {
+                    (5, scalar(account, || fraction.to_bits())?)
+                }
+            };
+            serialize_word(texels, kind, account)?;
+            serialize_word(texels, operand, account)?;
+        }
+        Ok(())
+    }
+}
+
+fn validate_premultiplied(color: [f32; 4], account: &Account) -> Result<()> {
+    for channel in color {
+        if !scalar(account, || channel.is_finite())?
+            || scalar(account, || channel < 0.0)?
+            || scalar(account, || channel > 1.0)?
+        {
+            return Err(correspondence());
+        }
+    }
+    let [red, green, blue, alpha] = color;
+    for channel in [red, green, blue] {
+        if scalar(account, || channel > alpha)? {
+            return Err(correspondence());
+        }
+    }
+    Ok(())
 }
 
 fn gradient_tag(tag: DrawTag) -> bool {
@@ -543,12 +768,18 @@ pub(crate) fn prepare(
     for record in records {
         account.work(RenderWork::ResourceProbes, 1)?;
         required = add(required, DESCRIPTOR_TEXELS, account)?;
-        if let CapturedSampling::Program(program) = &record.sampling {
-            required = add(
-                required,
-                mul(PROGRAM_RECORD_TEXELS, program.records.len(), account)?,
-                account,
-            )?;
+        let payload = match &record.sampling {
+            CapturedSampling::Program(program) => {
+                Some(mul(PROGRAM_RECORD_TEXELS, program.records.len(), account)?)
+            }
+            #[cfg(feature = "render-paint")]
+            CapturedSampling::Circle(program) => {
+                Some(mul(CIRCLE_RECORD_TEXELS, program.records.len(), account)?)
+            }
+            CapturedSampling::PadRamp(_) | CapturedSampling::HorizontalDistanceStep(_) => None,
+        };
+        if let Some(payload) = payload {
+            required = add(required, payload, account)?;
         }
     }
     // A command reserves two low bits. Qualify every possible descriptor and
@@ -603,9 +834,9 @@ pub(crate) fn prepare(
                     return Err(correspondence());
                 }
                 let distance = scalar(account, || match &record.sampling {
-                    CapturedSampling::PadRamp(_) => false,
                     CapturedSampling::HorizontalDistanceStep(_) => true,
                     CapturedSampling::Program(program) => program.coordinates.horizontal_distance(),
+                    _ => false,
                 })?;
                 if distance && !scalar(account, || tag == DrawTag::LINEAR_GRADIENT)? {
                     return Err(correspondence());
@@ -630,17 +861,26 @@ pub(crate) fn prepare(
                 if scalar(account, || ramp >= ramps.height)? {
                     return Err(correspondence());
                 }
+                #[cfg(feature = "render-paint")]
+                let circle_marker_byte = if matches!(record.sampling, CapturedSampling::Circle(_)) {
+                    if !scalar(account, || tag == DrawTag::RADIAL_GRADIENT)? {
+                        return Err(correspondence());
+                    }
+                    Some(qualify_circle_carrier(packed, byte, size, account)?)
+                } else {
+                    None
+                };
                 let flat = scalar(account, || u32::try_from(texels.len()))?
                     .map_err(|_| correspondence())?;
-                let (kind, payload, count, endpoints, phase) = match &record.sampling {
-                    CapturedSampling::PadRamp(endpoints) => (0, ramp, 0, *endpoints, 0),
+                let descriptor = match &record.sampling {
+                    CapturedSampling::PadRamp(endpoints) => {
+                        endpoints.descriptor_words(0, ramp, 0, 0)
+                    }
                     CapturedSampling::HorizontalDistanceStep(endpoints) => {
-                        (3, ramp, 0, *endpoints, 0)
+                        endpoints.descriptor_words(3, ramp, 0, 0)
                     }
                     CapturedSampling::Program(program) => {
-                        let payload = add(texels.len(), DESCRIPTOR_TEXELS, account)?;
-                        let payload = scalar(account, || u32::try_from(payload))?
-                            .map_err(|_| correspondence())?;
+                        let payload = program_payload(texels.len(), account)?;
                         let count = scalar(account, || u32::try_from(program.records.len()))?
                             .map_err(|_| correspondence())?;
                         let (kind, phase) = match program.coordinates {
@@ -651,19 +891,16 @@ pub(crate) fn prepare(
                                 (5, scalar(account, || phase.to_bits())?)
                             }
                         };
-                        (kind, payload, count, program.endpoints, phase)
+                        program
+                            .endpoints
+                            .descriptor_words(kind, payload, count, phase)
+                    }
+                    #[cfg(feature = "render-paint")]
+                    CapturedSampling::Circle(program) => {
+                        program.descriptor_words(texels.len(), account)?
                     }
                 };
-                for word in [
-                    kind,
-                    payload,
-                    count,
-                    endpoints.first,
-                    endpoints.last,
-                    endpoints.first_color,
-                    endpoints.last_color,
-                    phase,
-                ] {
+                for word in descriptor {
                     serialize_word(&mut texels, word, account)?;
                 }
                 if let CapturedSampling::Program(program) = &record.sampling {
@@ -687,10 +924,25 @@ pub(crate) fn prepare(
                         serialize_word(&mut texels, exponent, account)?;
                     }
                 }
+                #[cfg(feature = "render-paint")]
+                if let CapturedSampling::Circle(program) = &record.sampling {
+                    program.serialize_records(&mut texels, account)?;
+                }
                 let shifted = scalar(account, || flat << 2)?;
                 let command = scalar(account, || shifted | 3)?;
-                account.work(RenderWork::SerializedBytes, 4)?;
-                packed[byte..byte + 4].copy_from_slice(&command.to_ne_bytes());
+                let bytes = 4;
+                #[cfg(feature = "render-paint")]
+                let bytes = if circle_marker_byte.is_some() {
+                    8
+                } else {
+                    bytes
+                };
+                account.work(RenderWork::SerializedBytes, bytes)?;
+                #[cfg(feature = "render-paint")]
+                if let Some(marker_byte) = circle_marker_byte {
+                    write_word(packed, marker_byte, CIRCLE_START_RADIUS_MARKER)?;
+                }
+                write_word(packed, byte, command)?;
                 record_index += 1;
                 next = read_record(records, record_index, account)?;
             }
@@ -711,6 +963,39 @@ pub(crate) fn prepare(
         slot.write(0);
     }
     Ok(Some(EndpointTexture { texels, height }))
+}
+
+#[cfg(feature = "render-paint")]
+fn qualify_circle_carrier(
+    packed: &[u8],
+    byte: usize,
+    size: usize,
+    account: &Account,
+) -> Result<usize> {
+    // Locked DrawRadialGradient is index, p0.x, p0.y, p1.x, p1.y, r0, r1.
+    if !scalar(account, || size == 7)? {
+        return Err(correspondence());
+    }
+    for word in 1..=5 {
+        let coordinate = add(byte, mul(word, 4, account)?, account)?;
+        account.work(RenderWork::ResourceProbes, 1)?;
+        let bits = read_word(packed, coordinate)?;
+        if !scalar(account, || bits & 0x7fff_ffff == 0)? {
+            return Err(correspondence());
+        }
+    }
+    let end_radius = add(byte, 6 * 4, account)?;
+    account.work(RenderWork::ResourceProbes, 1)?;
+    let bits = read_word(packed, end_radius)?;
+    if !scalar(account, || bits == 1.0_f32.to_bits())? {
+        return Err(correspondence());
+    }
+    add(byte, 5 * 4, account)
+}
+
+fn program_payload(start: usize, account: &Account) -> Result<u32> {
+    let payload = add(start, DESCRIPTOR_TEXELS, account)?;
+    scalar(account, || u32::try_from(payload))?.map_err(|_| correspondence())
 }
 
 fn serialize_word(texels: &mut AccountedVec<u32>, word: u32, account: &Account) -> Result<()> {
@@ -740,6 +1025,13 @@ fn read_word(bytes: &[u8], offset: usize) -> Result<u32> {
         .try_into()
         .map_err(|_| correspondence())?;
     Ok(u32::from_ne_bytes(word))
+}
+
+fn write_word(bytes: &mut [u8], offset: usize, word: u32) -> Result<()> {
+    let end = offset.checked_add(4).ok_or_else(correspondence)?;
+    let destination = bytes.get_mut(offset..end).ok_or_else(correspondence)?;
+    destination.copy_from_slice(&word.to_ne_bytes());
+    Ok(())
 }
 
 #[cfg(test)]
@@ -802,6 +1094,186 @@ mod tests {
             .with_extend(extend);
         encoding.encode_brush(&gradient, 1.0);
         word
+    }
+
+    #[cfg(feature = "render-paint")]
+    fn circle_records() -> [CircleRecord; 2] {
+        [
+            CircleRecord {
+                length: 0.0,
+                fraction: 0.0,
+                premultiplied: [0.5, 0.0, 0.0, 0.5],
+                outgoing: CircleSegment::HintOnRightRing { fraction: 0.5 },
+            },
+            CircleRecord {
+                length: 2.0,
+                fraction: 1.0,
+                premultiplied: [0.0, 0.0, 1.0, 1.0],
+                outgoing: CircleSegment::Linear,
+            },
+        ]
+    }
+
+    #[cfg(feature = "render-paint")]
+    fn radial_carrier(radius: f32, extend: peniko::Extend) -> Encoding {
+        let mut encoding = Encoding::new();
+        let mut path = encoding.encode_path(true);
+        path.move_to(0.0, 0.0);
+        path.line_to(8.0, 0.0);
+        path.line_to(8.0, 8.0);
+        path.close();
+        path.finish(true);
+        let brush = peniko::Gradient::new_radial((0.0, 0.0), radius)
+            .with_stops([(0.0, peniko::Color::BLACK), (1.0, peniko::Color::WHITE)])
+            .with_extend(extend);
+        encoding.encode_brush(&brush, 1.0);
+        encoding
+    }
+
+    #[test]
+    #[cfg(feature = "render-paint")]
+    fn circle_repeat_packs_both_coordinates_and_marks_only_the_qualified_carrier() {
+        let encoding = radial_carrier(1.0, peniko::Extend::Pad);
+        let mut resolver = Resolver::default();
+        let mut packed = Vec::new();
+        let (layout, ramps, _) = resolver.resolve(&encoding, &mut packed);
+        let mut context = RenderAccountingContext::default();
+        context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                let mut captured = EndpointRecords::default();
+                captured.capture(
+                    0,
+                    GradientSampling::Circle(CircleProgram {
+                        records: &circle_records(),
+                        coordinates: CircleCoordinates::Repeat {
+                            span_length: 2.0,
+                            span_fraction: 1.0,
+                            origin_length: 3.0,
+                            origin_fraction: -0.25,
+                        },
+                    }),
+                    DrawTag::RADIAL_GRADIENT,
+                    account,
+                )?;
+                let texture = prepare(
+                    &layout,
+                    &mut packed,
+                    ramps,
+                    &StreamOffsets::default(),
+                    captured.as_slice(),
+                    account,
+                )?
+                .unwrap();
+                assert_eq!(texture.height, 2);
+                assert_eq!(
+                    layout.draw_data(&packed),
+                    [(512 << 2) | 3, 0, 0, 0, 0, 0x7f7f_ffff, 0x3f80_0000]
+                );
+                let words: Vec<_> = texture.texels[512..536]
+                    .iter()
+                    .map(|&word| u32::from_le(word))
+                    .collect();
+                assert_eq!(
+                    words,
+                    [
+                        7,
+                        520,
+                        2,
+                        0x4000_0000,
+                        0x3f80_0000,
+                        0x4040_0000,
+                        0xbe80_0000,
+                        0,
+                        0,
+                        0,
+                        0x3f00_0000,
+                        0,
+                        0,
+                        0x3f00_0000,
+                        5,
+                        0x3f00_0000,
+                        0x4000_0000,
+                        0x3f80_0000,
+                        0,
+                        0,
+                        0x3f80_0000,
+                        0x3f80_0000,
+                        0,
+                        0,
+                    ]
+                );
+                assert!(texture.texels[536..].iter().all(|&word| word == 0));
+                Ok(())
+            })
+            .unwrap();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::SerializedBytes), 1024 * 4 + 8);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+    }
+
+    #[test]
+    #[cfg(feature = "render-paint")]
+    fn circle_repeat_refuses_records_with_a_different_origin_or_span() {
+        let coordinates = CircleCoordinates::Repeat {
+            span_length: 2.0,
+            span_fraction: 1.0,
+            origin_length: -1.0,
+            origin_fraction: 0.75,
+        };
+        let mut wrong_origin = circle_records();
+        wrong_origin[0].fraction = -0.25;
+        let mut wrong_span = circle_records();
+        wrong_span[1].length = 3.0;
+        for records in [wrong_origin, wrong_span] {
+            let mut captured = EndpointRecords::default();
+            let result = captured.capture(
+                0,
+                GradientSampling::Circle(CircleProgram {
+                    records: &records,
+                    coordinates,
+                }),
+                DrawTag::RADIAL_GRADIENT,
+                &Account::for_test(),
+            );
+            assert_eq!(result.unwrap_err().code(), crate::ErrorCode::RenderFailed);
+            assert!(captured.as_slice().is_empty());
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "render-paint")]
+    fn circle_refuses_unrelated_native_radial_geometry_and_mode_without_marking() {
+        for (radius, extend) in [(2.0, peniko::Extend::Pad), (1.0, peniko::Extend::Repeat)] {
+            let encoding = radial_carrier(radius, extend);
+            let mut resolver = Resolver::default();
+            let mut packed = Vec::new();
+            let (layout, ramps, _) = resolver.resolve(&encoding, &mut packed);
+            let before = packed.clone();
+            let mut context = RenderAccountingContext::default();
+            let result = context.run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                let mut captured = EndpointRecords::default();
+                captured.capture(
+                    0,
+                    GradientSampling::Circle(CircleProgram {
+                        records: &circle_records(),
+                        coordinates: CircleCoordinates::Pad,
+                    }),
+                    DrawTag::RADIAL_GRADIENT,
+                    account,
+                )?;
+                prepare(
+                    &layout,
+                    &mut packed,
+                    ramps,
+                    &StreamOffsets::default(),
+                    captured.as_slice(),
+                    account,
+                )?;
+                Ok(())
+            });
+            assert_eq!(result.unwrap_err().code(), crate::ErrorCode::RenderFailed);
+            assert_eq!(packed, before);
+        }
     }
 
     #[test]

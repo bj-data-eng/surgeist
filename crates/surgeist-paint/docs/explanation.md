@@ -77,8 +77,7 @@ pixel epsilon, saturation or fabricated tiny/huge ellipse. Ordinary nonzero f64
 rounding remains part of this native policy; exact real arithmetic for every
 input is not promised.
 
-Normal geometry can feed the shared stop resolver. Remaining degenerate stop/field
-realization remains under [the radial contribution](https://github.com/bj-data-eng/surgeist/issues/332).
+Normal geometry can feed the shared stop resolver.
 In particular, zero-height mixed absolute/percentage stops can have different
 average weights when resolved against an original horizontal radius versus a
 substituted unbounded-width limit. The dedicated
@@ -87,8 +86,10 @@ selects the latter as native policy. This geometry result supplies ZeroHeight
 without embedding that later color decision or retaining an unused radius.
 Zero-width percentage positions resolve to zero through the shared stop resolver
 with basis zero. Render's [horizontal-distance consumer](../../surgeist-render/docs/reference.md#horizontal-distance-fields)
-uses those physical positions. Zero-circle realization remains separate;
-these boundaries preserve the ordered rendering requirements.
+uses those physical positions. The [zero-circle stop resolver](reference.md#zero-circle-gradient-stops)
+keeps both length and percentage coefficients for the limit of a small positive
+circle. This lets Render distinguish a sample at the center or on a stop ring
+from samples on either side.
 
 ## Gradient stop positions
 

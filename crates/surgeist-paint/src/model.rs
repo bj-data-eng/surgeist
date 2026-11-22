@@ -148,6 +148,7 @@ pub enum PaintError {
     Gradient(crate::linear_gradient::GradientGeometryError),
     GradientStops(crate::gradient_stops::GradientStopsError),
     RadialGradient(crate::radial_gradient::RadialGradientError),
+    ZeroCircleGradient(crate::zero_circle_gradient::ZeroCircleGradientError),
     ZeroHeightGradient(crate::zero_height_gradient::ZeroHeightGradientError),
     BorderImage(crate::border_image::BorderImageGeometryError),
     MissingRoot,
@@ -186,6 +187,9 @@ impl fmt::Display for PaintError {
             Self::Gradient(_) => f.write_str("linear gradient geometry is invalid"),
             Self::GradientStops(_) => f.write_str("gradient stop list is invalid"),
             Self::RadialGradient(_) => f.write_str("radial gradient geometry is invalid"),
+            Self::ZeroCircleGradient(_) => {
+                f.write_str("zero-circle gradient stops cannot be resolved")
+            }
             Self::ZeroHeightGradient(_) => {
                 f.write_str("zero-height gradient colors cannot be resolved")
             }
@@ -239,6 +243,7 @@ impl Error for PaintError {
             Self::Gradient(error) => Some(error),
             Self::GradientStops(error) => Some(error),
             Self::RadialGradient(error) => Some(error),
+            Self::ZeroCircleGradient(error) => Some(error),
             Self::ZeroHeightGradient(error) => Some(error),
             Self::BorderImage(error) => Some(error),
             Self::Budget(refusal) => Some(refusal),

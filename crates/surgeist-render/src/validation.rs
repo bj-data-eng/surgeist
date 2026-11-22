@@ -140,6 +140,8 @@ pub(crate) fn validate_paint(paint: &Paint) -> Result<()> {
         PaintKind::Color(color) => validate_color(*color, "color paint"),
         // Canonical constructors establish the immutable gradient invariants.
         PaintKind::Gradient(_) | PaintKind::RepeatingGradient(_) => Ok(()),
+        #[cfg(feature = "render-paint")]
+        PaintKind::ZeroCircleGradient(_) => Ok(()),
         PaintKind::Image(image) => validate_size(image.size(), "image size"),
     }
 }

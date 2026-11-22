@@ -15,6 +15,8 @@ use crate::accounting::{
     Account, AccountedIntoIter, AccountedVec, CpuImport, DisposalCompletion, Hold, OwnedBox,
     RenderPhase, RenderWork, SharedValue,
 };
+#[cfg(feature = "render-paint")]
+use crate::paint::zero_circle::ZeroCircleGradient;
 use crate::{
     Error, Result, capability::Capabilities, error::PrimitiveFamily, error::PrimitiveOperation,
     error::UnsupportedPrimitive, geometry, geometry::CoordinateSpaceTag, geometry::Point,
@@ -316,6 +318,8 @@ pub(crate) enum RenderPaint {
     Color(Color),
     Gradient(SharedValue<Gradient>),
     RepeatingGradient(SharedValue<RepeatingGradient>),
+    #[cfg(feature = "render-paint")]
+    ZeroCircleGradient(SharedValue<ZeroCircleGradient>),
     Image(SharedValue<Image>),
 }
 
@@ -1293,6 +1297,11 @@ impl RenderPaint {
                 let (gradient, hold) = gradient.try_clone_in(account)?;
                 Self::RepeatingGradient(shared(gradient, Some(hold), None, account)?)
             }
+            #[cfg(feature = "render-paint")]
+            PaintKind::ZeroCircleGradient(gradient) => {
+                let (gradient, hold) = gradient.try_clone_in(account)?;
+                Self::ZeroCircleGradient(shared(gradient, Some(hold), None, account)?)
+            }
             PaintKind::Gradient(gradient) => {
                 let (gradient, hold) = gradient.try_clone_in(account)?;
                 Self::Gradient(shared(gradient, Some(hold), None, account)?)
@@ -1733,7 +1742,13 @@ fn kurbo_bounds(bounds: kurbo::Rect) -> Result<OffscreenBounds> {
 }
 
 fn ensure_paint_supported(paint: &Paint, capabilities: Capabilities) -> Result<()> {
-    if matches!(paint.kind(), PaintKind::RepeatingGradient(_)) {
+    let repeating = match paint.kind() {
+        PaintKind::RepeatingGradient(_) => true,
+        #[cfg(feature = "render-paint")]
+        PaintKind::ZeroCircleGradient(gradient) => gradient.is_repeating(),
+        _ => false,
+    };
+    if repeating {
         capabilities.ensure_supported(UnsupportedPrimitive::new(
             PrimitiveFamily::PaintSources,
             PrimitiveOperation::RepeatingGradient,
@@ -1745,12 +1760,12 @@ fn ensure_paint_supported(paint: &Paint, capabilities: Capabilities) -> Result<(
 fn solid_shadow_color(paint: &Paint) -> Result<Color> {
     match paint.kind() {
         PaintKind::Color(color) => Ok(*color),
-        PaintKind::Gradient(_) | PaintKind::RepeatingGradient(_) | PaintKind::Image(_) => Err(
-            Error::unsupported_render_primitive(UnsupportedPrimitive::new(
+        _ => Err(Error::unsupported_render_primitive(
+            UnsupportedPrimitive::new(
                 PrimitiveFamily::PaintSources,
                 PrimitiveOperation::NonSolidShadowPaint,
-            )),
-        ),
+            ),
+        )),
     }
 }
 

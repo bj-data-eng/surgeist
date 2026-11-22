@@ -15,6 +15,7 @@ those modules owns the current source API.
 | Native morphology | `morphology::MorphologyInput`, `morphology::MorphologyOperator`, `morphology::PreparedMorphology`, `morphology::MorphologySource`, `morphology::prepare_morphology`, `Scene::morphology_layer` | [Native morphology](morphology.md), [admitted model](../src/morphology.rs) |
 | Gradient paints | `paint::Gradient`, `paint::RepeatingGradient`, `paint::GradientStop`, `paint::GradientHint`, `paint::Paint` | [Paint sources](../src/paint.rs), [repeating inputs](../src/paint/repeating.rs) |
 | Native Paint consumer (`render-paint`) | `paint_gradient::prepare_linear_gradient`, `paint_gradient::prepare_radial_gradient`, `paint_gradient::prepare_repeating_linear_gradient`, `paint_gradient::prepare_repeating_radial_gradient`, `paint_gradient::PaintGradientError` | [Adapter](../src/paint_gradient.rs) |
+| Native zero-circle Paint fields (`render-paint`) | `paint_gradient::prepare_zero_circle_gradient`, `prepare_repeating_zero_circle_gradient` | [Paired stop sampling](#zero-circle-paint-fields) |
 | Native zero-height Paint colors (`render-paint`) | `paint_gradient::prepare_zero_height_gradient_color` | [Color preparation](#zero-height-paint-colors) |
 | Leader-pattern admission (`render-text`) | `text_layout::prepare_leader_pattern`, `text_layout::PreparedLeaderPattern`, `text_layout::PreparedLeaderRun`, `text_layout::PreparedLeaderGroup`, `text_layout::LeaderPatternError` | [Adapter](../src/text_layout/leader.rs) |
 | Placed Text consumer (`render-text`) | `text_layout::prepare_text_layout`, `text_layout::PreparedTextScene`, `text_layout::TextLayoutLimits`, `text_layout::TextLayoutError` | [Adapter](../src/text_layout.rs) |
@@ -339,8 +340,8 @@ transform. Rotation, reflection, shear and surface scale act on that same field.
 The native [ZeroWidth contribution](https://github.com/bj-data-eng/surgeist/issues/2105)
 uses Paint's authentic case and used stops at basis zero. Percentage contributions
 vanish while length contributions, hints, omissions and source order remain real.
-Both-zero ellipses retain the ordered `ZeroWidth` case. A zero-radius circle has
-a separate infinitesimal-boundary question and is outside this consumer.
+Both-zero ellipses retain the ordered `ZeroWidth` case. The separate
+[zero-circle consumer](#zero-circle-paint-fields) retains percentage contributions.
 
 One-color lists are solid. Ordinary last positions at or below zero are solid
 last color on the nonnegative distance domain. A coincident positive threshold
@@ -460,8 +461,7 @@ basis, unsupported geometry, source/position conversion, span and storage
 diagnostics. Named-limit and setup failures retain `RenderAccountingError`.
 Positive-basis conversion qualifies hint positions as well as color positions, preserving the
 actual source item index; a hint has position ordinal zero. `ZeroCircle` and
-`ZeroHeight` remain refused by these field adapters; no substitute radius is inferred.
-Authored/computed adapters remain outside these native consumers.
+`ZeroHeight` use their own authenticated Paint results below.
 
 `RenderAttemptKind::PaintGradient` reports one standalone preparation. Ledger
 records actual geometry/result/item visits and scalar work, one actual
@@ -482,6 +482,41 @@ that pending color, and following colors emit and replace it. Endpoint and final
 pending state remain required values. `CoordinateVisits` counts each
 actual scalar inspection or calculation, including comparisons. Repeated passes
 are charged separately; a refusal retains only admitted work.
+
+## Zero-circle Paint fields
+
+With `render-paint`, `prepare_zero_circle_gradient` and
+`prepare_repeating_zero_circle_gradient` consume
+[`ZeroCircleGradientStops<Color>`](../../surgeist-paint/docs/reference.md#zero-circle-gradient-stops)
+and return owned `Paint` for fill, stroke and glyph commands. Paint supplies the
+qualified center, ordered positions and source associations. Render retains the
+two coefficients of each stop and hint.
+
+Render takes the limit of a positive radius approaching zero at each native
+sample. Distance from the center supplies the leading coordinate. At matching
+native distances, the percentage coefficients determine stop order and can
+interpolate a blend on the ring. For example, red at `−100%` and blue at `100%`
+produce a half blend at the center and blue at every positive distance. The
+analytic field preserves coincident stops and the limits of both transition-hint
+sides, using premultiplied numeric sRGBA.
+
+For a positive leading period, repetition stores the first stop as the origin
+and translates both coefficients before sampling. Comparisons account for the
+full signed translation at seams and rings, where even a small rounded phase
+error can select a different color. A zero leading period uses fraction-distance
+weights, or the existing uniform replacement weights if the full span is zero. Positive periods below
+two device pixels use length-distance weights. At exactly two leading device
+pixels, a negative fraction puts the positive-radius period below the threshold.
+All averages use the actual color stops, excluding hints from the color measure.
+
+Ledger tracks gradient conversion and output custody in the standalone
+`PaintGradient` attempt. Native preparation qualifies the field for the actual
+device transform and target. The circular carrier keeps its center, and ring
+ties are determined in qualified native coordinates. It checks whether the
+native inverse can preserve the distinction between a nonzero offset and the
+center. Unrepresentable coefficients, intervals or device-period classifications
+return typed diagnostics. Average selection happens before materializing a
+sampling program.
 
 ## Zero-height Paint colors
 
@@ -785,7 +820,7 @@ typed refusal before the frame publishes.
 | --- | --- |
 | Default features (`[]`) | Native headless GPU execution without a window. |
 | `render-text` | Optional direct Text dependency, without Text default features; immutable placed-layout and finalized leader admission, independent of window/web/accessibility adapters. |
-| `render-paint` | Optional direct Paint dependency; native positive and zero-width geometry/used-stop consumption, independent of host adapters. |
+| `render-paint` | Optional direct Paint dependency for native gradient geometry, stop positions and degenerate semantic results, independent of host adapters. |
 | `render-window` | Enables `surgeist-window` and native window attachment; live presentation requires its graphical host lifecycle. |
 | `render-web` | Enables `wgpu/webgpu`; web-canvas support requires `wasm32`. The documented wasm leaf check compiles `--lib --tests`. |
 | `render-window,render-web` on native | Additive compiled features; uses the same native live-window smoke target. |

@@ -83,11 +83,11 @@ fn log_series(z: Bound, account: &Account) -> Result<Bound> {
     nonnegative(Bound::checked(sum.lower, upper, account)?, account)
 }
 
-struct Logarithms {
+pub(super) struct Logarithms {
     ln_two: Bound,
 }
 impl Logarithms {
-    fn new(account: &Account) -> Result<Self> {
+    pub(super) fn new(account: &Account) -> Result<Self> {
         let z = Bound::ONE.real_div(Bound::exact(3.0), account)?;
         Ok(Self {
             ln_two: log_series(z, account)?,
@@ -222,14 +222,14 @@ fn parameter_bounds(left: f32, right: f32, account: &Account) -> Result<Paramete
     Ok(ParameterBounds { r, a })
 }
 
-fn linear(left: f32, right: f32, account: &Account) -> Result<()> {
+pub(super) fn linear(left: f32, right: f32, account: &Account) -> Result<()> {
     let p = parameter_bounds(left, right, account)?;
     let error = p.r.real_add(p.a, account)?;
     let quantum = quantum(account)?;
     require(account, || error.upper <= quantum)
 }
 
-fn power(
+pub(super) fn power(
     left: f32,
     hint: f32,
     right: f32,

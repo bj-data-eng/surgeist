@@ -704,6 +704,42 @@ pub fn surgeist_paint::stacking::StackingPlan<'_>::context_for_box(&self, box_id
 pub fn surgeist_paint::stacking::StackingPlan<'_>::facts(&self) -> &[surgeist_paint::stacking::BoxFacts]
 pub fn surgeist_paint::stacking::StackingPlan<'_>::root_context(&self) -> surgeist_paint::stacking::ContextView<'_>
 pub fn surgeist_paint::stacking::plan_stacking(boxes: &[surgeist_paint::stacking::BoxFacts], root_box: surgeist_paint::stacking::BoxId, options: surgeist_paint::accounting::PaintOptions) -> surgeist_paint::stacking::StackingOutcome<'_>
+pub mod surgeist_paint::zero_circle_gradient
+pub enum surgeist_paint::zero_circle_gradient::ZeroCircleGradientError
+pub surgeist_paint::zero_circle_gradient::ZeroCircleGradientError::ExpectedZeroCircle
+pub surgeist_paint::zero_circle_gradient::ZeroCircleGradientError::UnrepresentableDistribution
+pub surgeist_paint::zero_circle_gradient::ZeroCircleGradientError::UnrepresentableDistribution::left_position_index: usize
+pub surgeist_paint::zero_circle_gradient::ZeroCircleGradientError::UnrepresentableDistribution::left_source_index: usize
+pub surgeist_paint::zero_circle_gradient::ZeroCircleGradientError::UnrepresentableDistribution::right_position_index: usize
+pub surgeist_paint::zero_circle_gradient::ZeroCircleGradientError::UnrepresentableDistribution::right_source_index: usize
+impl core::convert::From<surgeist_paint::zero_circle_gradient::ZeroCircleGradientError> for surgeist_paint::PaintError
+pub fn surgeist_paint::PaintError::from(value: surgeist_paint::zero_circle_gradient::ZeroCircleGradientError) -> Self
+impl core::error::Error for surgeist_paint::zero_circle_gradient::ZeroCircleGradientError
+impl core::fmt::Display for surgeist_paint::zero_circle_gradient::ZeroCircleGradientError
+pub fn surgeist_paint::zero_circle_gradient::ZeroCircleGradientError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_paint::zero_circle_gradient::ZeroCircleGradientRecordKind<'a, C>
+pub surgeist_paint::zero_circle_gradient::ZeroCircleGradientRecordKind::Hint
+pub surgeist_paint::zero_circle_gradient::ZeroCircleGradientRecordKind::Stop
+pub surgeist_paint::zero_circle_gradient::ZeroCircleGradientRecordKind::Stop::payload: &'a C
+pub struct surgeist_paint::zero_circle_gradient::ZeroCircleGradientPosition
+impl surgeist_paint::zero_circle_gradient::ZeroCircleGradientPosition
+pub const fn surgeist_paint::zero_circle_gradient::ZeroCircleGradientPosition::fraction(self) -> f64
+pub const fn surgeist_paint::zero_circle_gradient::ZeroCircleGradientPosition::length(self) -> f64
+pub struct surgeist_paint::zero_circle_gradient::ZeroCircleGradientRecord<'a, C>
+impl<'a, C> surgeist_paint::zero_circle_gradient::ZeroCircleGradientRecord<'a, C>
+pub fn surgeist_paint::zero_circle_gradient::ZeroCircleGradientRecord<'a, C>::kind(&self) -> surgeist_paint::zero_circle_gradient::ZeroCircleGradientRecordKind<'a, C>
+pub const fn surgeist_paint::zero_circle_gradient::ZeroCircleGradientRecord<'a, C>::position(&self) -> surgeist_paint::zero_circle_gradient::ZeroCircleGradientPosition
+pub const fn surgeist_paint::zero_circle_gradient::ZeroCircleGradientRecord<'a, C>::position_index(&self) -> usize
+pub const fn surgeist_paint::zero_circle_gradient::ZeroCircleGradientRecord<'a, C>::source_index(&self) -> usize
+pub struct surgeist_paint::zero_circle_gradient::ZeroCircleGradientStops<'a, C>
+impl<'a, C> surgeist_paint::zero_circle_gradient::ZeroCircleGradientStops<'a, C>
+pub const fn surgeist_paint::zero_circle_gradient::ZeroCircleGradientStops<'a, C>::center(&self) -> surgeist_layout::geometry::Point<f64>
+pub fn surgeist_paint::zero_circle_gradient::ZeroCircleGradientStops<'a, C>::records(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_paint::zero_circle_gradient::ZeroCircleGradientRecord<'_, C>>
+pub const fn surgeist_paint::zero_circle_gradient::ZeroCircleGradientStops<'a, C>::source(&self) -> &'a [surgeist_paint::gradient_stops::GradientStopItem<C>]
+pub struct surgeist_paint::zero_circle_gradient::ZeroCircleGradientStopsOutcome<'a, C>
+pub surgeist_paint::zero_circle_gradient::ZeroCircleGradientStopsOutcome::report: core::option::Option<surgeist_paint::accounting::PaintReport>
+pub surgeist_paint::zero_circle_gradient::ZeroCircleGradientStopsOutcome::result: core::result::Result<surgeist_paint::zero_circle_gradient::ZeroCircleGradientStops<'a, C>, surgeist_paint::PaintError>
+pub fn surgeist_paint::zero_circle_gradient::resolve_zero_circle_gradient_stops<'a, C>(geometry: &surgeist_paint::radial_gradient::RadialGradientGeometry, source: &'a [surgeist_paint::gradient_stops::GradientStopItem<C>], options: surgeist_paint::accounting::PaintOptions) -> surgeist_paint::zero_circle_gradient::ZeroCircleGradientStopsOutcome<'a, C>
 pub mod surgeist_paint::zero_height_gradient
 pub enum surgeist_paint::zero_height_gradient::GradientRepeat
 pub surgeist_paint::zero_height_gradient::GradientRepeat::None
@@ -765,6 +801,7 @@ pub surgeist_paint::PaintError::MultipleRoots::other: surgeist_paint::stacking::
 pub surgeist_paint::PaintError::RadialGradient(surgeist_paint::radial_gradient::RadialGradientError)
 pub surgeist_paint::PaintError::SelfParent
 pub surgeist_paint::PaintError::SelfParent::box_id: surgeist_paint::stacking::BoxId
+pub surgeist_paint::PaintError::ZeroCircleGradient(surgeist_paint::zero_circle_gradient::ZeroCircleGradientError)
 pub surgeist_paint::PaintError::ZeroHeightGradient(surgeist_paint::zero_height_gradient::ZeroHeightGradientError)
 impl core::convert::From<surgeist_paint::gradient_stops::GradientStopsError> for surgeist_paint::PaintError
 pub fn surgeist_paint::PaintError::from(value: surgeist_paint::gradient_stops::GradientStopsError) -> Self
@@ -772,6 +809,8 @@ impl core::convert::From<surgeist_paint::paint_order::PaintInputError> for surge
 pub fn surgeist_paint::PaintError::from(error: surgeist_paint::paint_order::PaintInputError) -> Self
 impl core::convert::From<surgeist_paint::radial_gradient::RadialGradientError> for surgeist_paint::PaintError
 pub fn surgeist_paint::PaintError::from(value: surgeist_paint::radial_gradient::RadialGradientError) -> Self
+impl core::convert::From<surgeist_paint::zero_circle_gradient::ZeroCircleGradientError> for surgeist_paint::PaintError
+pub fn surgeist_paint::PaintError::from(value: surgeist_paint::zero_circle_gradient::ZeroCircleGradientError) -> Self
 impl core::convert::From<surgeist_paint::zero_height_gradient::ZeroHeightGradientError> for surgeist_paint::PaintError
 pub fn surgeist_paint::PaintError::from(value: surgeist_paint::zero_height_gradient::ZeroHeightGradientError) -> Self
 impl core::error::Error for surgeist_paint::PaintError

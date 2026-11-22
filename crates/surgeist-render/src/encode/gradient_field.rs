@@ -66,7 +66,7 @@ pub(super) fn narrow_transform(
 }
 
 // Matches vello_encoding 0.9.0 Transform::mul, preserving each association.
-fn native_product(
+pub(super) fn native_product(
     left: vello_encoding::Transform,
     right: vello_encoding::Transform,
     account: &Account,
@@ -299,7 +299,7 @@ impl ShaderScalar {
         ];
         Self::corner_bounds(quotients, account)
     }
-    fn real_sqrt(self, account: &Account) -> Result<Self> {
+    pub(super) fn real_sqrt(self, account: &Account) -> Result<Self> {
         if scalar(account, || self.lower < 0.0)? {
             return Err(invalid_geometry("uncertain native gradient square root"));
         }
@@ -332,12 +332,12 @@ impl ShaderScalar {
         }
         Ok(result)
     }
-    fn add(self, other: Self, account: &Account) -> Result<Self> {
+    pub(super) fn add(self, other: Self, account: &Account) -> Result<Self> {
         self.flushed(account)?
             .real_add(other.flushed(account)?, account)?
             .rounded(SHADER_EPSILON, account)
     }
-    fn mul(self, other: Self, account: &Account) -> Result<Self> {
+    pub(super) fn mul(self, other: Self, account: &Account) -> Result<Self> {
         self.flushed(account)?
             .real_mul(other.flushed(account)?, account)?
             .rounded(SHADER_EPSILON, account)
@@ -438,19 +438,7 @@ fn circular_native_field(
 ) -> Result<([ShaderScalar; 6], ShaderScalar)> {
     account.work(RenderWork::CoordinateVisits, 8)?;
     let (start, end) = radii; // Actual CPU-encoded radii, not an assumed unit delta.
-    let native = [
-        device.matrix[0],
-        device.matrix[1],
-        device.matrix[2],
-        device.matrix[3],
-        device.translation[0],
-        device.translation[1],
-    ];
-    let mut converted = [ShaderScalar::ZERO; 6];
-    for (output, value) in converted.iter_mut().zip(native) {
-        *output = ShaderScalar::exact(scalar(account, || f64::from(value))?);
-    }
-    let inverse = circular_inverse(converted, account)?;
+    let inverse = circular_device_inverse(device, account)?;
     let start = ShaderScalar::exact(scalar(account, || f64::from(start))?);
     let end = ShaderScalar::exact(scalar(account, || f64::from(end))?);
     let epsilon = ShaderScalar::exact(1.0 / 4096.0);
@@ -497,6 +485,20 @@ fn circular_native_field(
     let scale_y = squared.abs(account)?.sqrt(account)?.mul(ratio, account)?;
     let field = circular_product([scale_x, z, z, scale_y, z, z], line, account)?;
     Ok((field, focal))
+}
+
+fn circular_device_inverse(
+    device: vello_encoding::Transform,
+    account: &Account,
+) -> Result<[ShaderScalar; 6]> {
+    let mut converted = [ShaderScalar::ZERO; 6];
+    for (output, value) in converted
+        .iter_mut()
+        .zip(device.matrix.into_iter().chain(device.translation))
+    {
+        *output = ShaderScalar::exact(scalar(account, || f64::from(value))?);
+    }
+    circular_inverse(converted, account)
 }
 
 // Enclose the authored reference inverse with outward f64 arithmetic.
@@ -766,19 +768,141 @@ pub(super) fn qualify_radial(
     comparison_only: bool,
     account: &Account,
 ) -> Result<()> {
-    let (mut field, focal) = circular_native_field(native_device, radii, account)?;
-    // Fine arithmetic may flush a stored coefficient or focal input too.
-    for value in &mut field {
-        account.work(RenderWork::CoordinateVisits, 1)?;
-        *value = value.flushed(account)?;
-    }
+    let (field, focal) = circular_native_field(native_device, radii, account)?;
+    let field = flush_circular_field(field, account)?;
     let focal = focal.flushed(account)?;
-    let [x, y] = target_coordinates(target_extent, account)?;
+    let coordinates = target_coordinates(target_extent, account)?;
     let mut ideal = circular_ideal_field(ideal_device, account)?;
     // The native phase is focal + q/delta, including nonunit and negative starts.
     for coefficient in &mut ideal {
         *coefficient = coefficient.real_div(ShaderScalar::exact(reference.delta), account)?;
     }
+    let (native_norm, [coefficient_error, affine_error, norm_error]) = circular_sample_bounds(
+        field,
+        ideal,
+        coordinates,
+        CircularNorm::GuardedSquares,
+        account,
+    )?;
+    let focal_magnitude = focal.abs(account)?;
+    let pre_add = focal_magnitude.real_add(native_norm, account)?;
+    let e = ShaderScalar::exact(SHADER_EPSILON);
+    let addition_error = e
+        .real_mul(pre_add, account)?
+        .real_add(ShaderScalar::exact(SHADER_MIN_NORMAL), account)?;
+    let phase_bound = pre_add.real_add(addition_error, account)?;
+    // A comparison field also requires finite fine-stage arithmetic. Infinite
+    // raw coordinates would otherwise choose an unrelated endpoint color.
+    finite_fine_bound(phase_bound, account)?;
+    let focal_error = focal
+        .real_add(
+            ShaderScalar::exact(scalar(account, || reference.start / reference.delta)?),
+            account,
+        )?
+        .abs(account)?;
+    let phase_error = coefficient_error
+        .real_add(focal_error, account)?
+        .real_add(affine_error, account)?
+        .real_add(norm_error, account)?
+        .real_add(addition_error, account)?
+        // Glyph brushes retain the original phase narrowed to binary32.
+        .real_add(ShaderScalar::exact(SHADER_EPSILON), account)?;
+    qualify_radial_phase(phase_bound, phase_error, comparison_only, account)
+}
+
+#[cfg(feature = "render-paint")]
+pub(super) fn qualify_zero_circle(
+    ideal_device: kurbo::Affine,
+    native_device: vello_encoding::Transform,
+    target_extent: PhysicalSize,
+    comparison_only: bool,
+    account: &Account,
+) -> Result<f64> {
+    // The marked carrier uses draw_leaf's inverse directly. Its fine branch
+    // has no perturbed center, focal offset, or noncircular term.
+    account.work(RenderWork::CoordinateVisits, 6)?;
+    let field = circular_device_inverse(native_device, account)?;
+    let field = qualify_circle_lattice(ideal_device, native_device, field, account)?;
+    let field = flush_circular_field(field, account)?;
+    let coordinates = target_coordinates(target_extent, account)?;
+    let ideal = reference_inverse(ideal_device, account)?;
+    let (native_norm, [coefficient_error, affine_error, norm_error]) =
+        circular_sample_bounds(field, ideal, coordinates, CircularNorm::Scaled, account)?;
+    let norm_error = coefficient_error
+        .real_add(affine_error, account)?
+        .real_add(norm_error, account)?;
+    finite_fine_bound(native_norm, account)?;
+    qualify_radial_phase(native_norm, norm_error, comparison_only, account)?;
+    Ok(native_norm.upper)
+}
+
+#[cfg(feature = "render-paint")]
+fn qualify_circle_lattice(
+    ideal_device: kurbo::Affine,
+    native_device: vello_encoding::Transform,
+    mut field: [ShaderScalar; 6],
+    account: &Account,
+) -> Result<[ShaderScalar; 6]> {
+    account.work(RenderWork::CoordinateVisits, 12)?;
+    let mut native_zeros = [false; 6];
+    let mut ideal_zeros = [false; 6];
+    for (output, value) in native_zeros.iter_mut().zip(
+        native_device
+            .matrix
+            .into_iter()
+            .chain(native_device.translation),
+    ) {
+        *output = scalar(account, || value == 0.0)?;
+    }
+    for (output, value) in ideal_zeros.iter_mut().zip(ideal_device.as_coeffs()) {
+        *output = scalar(account, || value == 0.0)?;
+    }
+    let inverse_zeros = |[a, b, c, d, tx, ty]: [bool; 6]| {
+        [d, b, c, a, (d || tx) && (c || ty), (b || tx) && (a || ty)]
+    };
+    // Binary32 coefficients of magnitude >=2^-103 lie on a 2^-126
+    // lattice. Products by integer device coordinates and their sums
+    // preserve that lattice under either separate or fused evaluation.
+    // Therefore a nonzero local coordinate cannot flush into a false
+    // center. A zero needs proof from inverse operands in both maps.
+    const MIN_COEFFICIENT: f64 = f64::from_bits(920_u64 << 52); // 2^-103
+    for ((bound, native_zero), ideal_zero) in field
+        .iter_mut()
+        .zip(inverse_zeros(native_zeros))
+        .zip(inverse_zeros(ideal_zeros))
+    {
+        if native_zero && ideal_zero {
+            *bound = ShaderScalar::ZERO;
+        } else if !scalar(account, || bound.lower >= MIN_COEFFICIENT)?
+            && !scalar(account, || bound.upper <= -MIN_COEFFICIENT)?
+        {
+            return Err(invalid_geometry(
+                "circle inverse lacks a normal receiving lattice",
+            ));
+        }
+    }
+    Ok(field)
+}
+
+fn flush_circular_field(
+    mut field: [ShaderScalar; 6],
+    account: &Account,
+) -> Result<[ShaderScalar; 6]> {
+    // Fine arithmetic may flush a stored coefficient.
+    for value in &mut field {
+        account.work(RenderWork::CoordinateVisits, 1)?;
+        *value = value.flushed(account)?;
+    }
+    Ok(field)
+}
+
+fn circular_sample_bounds(
+    field: [ShaderScalar; 6],
+    ideal: [ShaderScalar; 6],
+    [x, y]: [ShaderScalar; 2],
+    norm: CircularNorm,
+    account: &Account,
+) -> Result<(ShaderScalar, [ShaderScalar; 3])> {
     let bound = |values: [ShaderScalar; 6]| -> Result<[ShaderScalar; 2]> {
         let a = values[0]
             .abs(account)?
@@ -792,20 +916,20 @@ pub(super) fn qualify_radial(
             .real_add(values[5].abs(account)?, account)?;
         Ok([a, b])
     };
-    let norm = |values: [ShaderScalar; 2]| -> Result<ShaderScalar> {
+    let euclidean = |values: [ShaderScalar; 2]| -> Result<ShaderScalar> {
         values[0]
             .real_mul(values[0], account)?
             .real_add(values[1].real_mul(values[1], account)?, account)?
             .abs(account)?
             .real_sqrt(account)
     };
-    let q = norm(bound(field)?)?;
+    let q = euclidean(bound(field)?)?;
     let mut difference = [ShaderScalar::ZERO; 6];
     for i in 0..6 {
         account.work(RenderWork::CoordinateVisits, 2)?;
         difference[i] = field[i].real_add(ideal[i].neg(account)?, account)?;
     }
-    let coefficient_error = norm(bound(difference)?)?;
+    let coefficient_error = euclidean(bound(difference)?)?;
     let e = ShaderScalar::exact(SHADER_EPSILON);
     // gamma4 covers every association of the two affine products plus xlat.
     let gamma4 = ShaderScalar::exact(4.0).real_mul(e, account)?.real_div(
@@ -834,28 +958,55 @@ pub(super) fn qualify_radial(
             account,
         )?;
     let norm_factor = squared_factor.real_mul(sqrt_factor, account)?;
-    // Depends on the checked native fine adaptation in vello_engine/shaders.rs:
-    // circular sqrt evaluates max(xx+yy,m), then selects 0 when xx+yy<=m.
-    // Three squared-length FTZ losses contribute D=3m/(1-3e). In the guarded
-    // branch, r^2 <= (m+D)/(1-gamma3); the normal branch has smaller absolute
-    // loss. This bounds zero without assuming sqrt(0) has specified accuracy.
-    let squared_absolute = ShaderScalar::exact(3.0 * SHADER_MIN_NORMAL)
-        .real_mul(ShaderScalar::ONE.real_add(gamma3, account)?, account)?;
-    // The guarded native sqrt still evaluates xx+yy first. Bound every square
-    // and either sum association before accepting the circular fine branch.
-    let squared_bound = radius
-        .real_mul(radius, account)?
-        .real_mul(squared_factor, account)?
-        .real_add(squared_absolute, account)?;
-    finite_fine_bound(squared_bound, account)?;
-    let norm_absolute = squared_absolute
-        .real_add(ShaderScalar::exact(SHADER_MIN_NORMAL), account)?
-        .real_div(
-            ShaderScalar::ONE.real_add(gamma3.neg(account)?, account)?,
-            account,
-        )?
-        .real_sqrt(account)?
-        .real_mul(sqrt_factor, account)?;
+    let (norm_factor, norm_absolute) = match norm {
+        CircularNorm::GuardedSquares => {
+            // The ordinary circular shader evaluates max(xx+yy,m), then
+            // selects zero for xx+yy<=m. Enclose either association of the
+            // squares and their FTZ loss before the guarded square root.
+            let squared_absolute = ShaderScalar::exact(3.0 * SHADER_MIN_NORMAL)
+                .real_mul(ShaderScalar::ONE.real_add(gamma3, account)?, account)?;
+            let squared_bound = radius
+                .real_mul(radius, account)?
+                .real_mul(squared_factor, account)?
+                .real_add(squared_absolute, account)?;
+            finite_fine_bound(squared_bound, account)?;
+            let absolute = squared_absolute
+                .real_add(ShaderScalar::exact(SHADER_MIN_NORMAL), account)?
+                .real_div(
+                    ShaderScalar::ONE.real_add(gamma3.neg(account)?, account)?,
+                    account,
+                )?
+                .real_sqrt(account)?
+                .real_mul(sqrt_factor, account)?;
+            (norm_factor, absolute)
+        }
+        #[cfg(feature = "render-paint")]
+        CircularNorm::Scaled => {
+            if scalar(account, || radius.upper > SHADER_MAX_DIVISOR)? {
+                return Err(invalid_geometry(
+                    "circle norm divisor outside native accuracy domain",
+                ));
+            }
+            // The marked branch divides by the maximum absolute axis only
+            // when that divisor is normal. One exact normalized axis has
+            // magnitude one, and both are bounded by one before rounding.
+            // Hence output FTZ in the two normalized divisions contributes at
+            // most 2m relative error before the squared sum and normal sqrt.
+            let division_factor = ShaderScalar::ONE.real_add(
+                ShaderScalar::exact(2.5 * SHADER_EPSILON + 2.0 * SHADER_MIN_NORMAL),
+                account,
+            )?;
+            let multiplication_factor = ShaderScalar::ONE.real_add(e, account)?;
+            let relative = norm_factor
+                .real_mul(division_factor, account)?
+                .real_mul(multiplication_factor, account)?;
+            // This covers both the all-subnormal branch returning zero and
+            // possible input FTZ on a smaller local axis, plus final FTZ.
+            let absolute =
+                ShaderScalar::exact(3.0 * SHADER_MIN_NORMAL).real_mul(relative, account)?;
+            (relative, absolute)
+        }
+    };
     let norm_error = radius
         .real_mul(
             norm_factor.real_add(ShaderScalar::exact(-1.0), account)?,
@@ -865,28 +1016,21 @@ pub(super) fn qualify_radial(
     let native_norm = radius
         .real_mul(norm_factor, account)?
         .real_add(norm_absolute, account)?;
-    let focal_magnitude = focal.abs(account)?;
-    let pre_add = focal_magnitude.real_add(native_norm, account)?;
-    let addition_error = e
-        .real_mul(pre_add, account)?
-        .real_add(ShaderScalar::exact(SHADER_MIN_NORMAL), account)?;
-    let phase_bound = pre_add.real_add(addition_error, account)?;
-    // A comparison field also requires finite fine-stage arithmetic. Infinite
-    // raw coordinates would otherwise choose an unrelated endpoint color.
-    finite_fine_bound(phase_bound, account)?;
-    let focal_error = focal
-        .real_add(
-            ShaderScalar::exact(scalar(account, || reference.start / reference.delta)?),
-            account,
-        )?
-        .abs(account)?;
-    let phase_error = coefficient_error
-        .real_add(focal_error, account)?
-        .real_add(affine_error, account)?
-        .real_add(norm_error, account)?
-        .real_add(addition_error, account)?
-        // Glyph brushes retain the original phase narrowed to binary32.
-        .real_add(ShaderScalar::exact(SHADER_EPSILON), account)?;
+    Ok((native_norm, [coefficient_error, affine_error, norm_error]))
+}
+
+enum CircularNorm {
+    GuardedSquares,
+    #[cfg(feature = "render-paint")]
+    Scaled,
+}
+
+fn qualify_radial_phase(
+    phase_bound: ShaderScalar,
+    phase_error: ShaderScalar,
+    comparison_only: bool,
+    account: &Account,
+) -> Result<()> {
     let quantum = scalar(account, || 1.0_f64 / 511.0)?;
     let quantum = scalar(account, || quantum.next_down())?;
     if !comparison_only

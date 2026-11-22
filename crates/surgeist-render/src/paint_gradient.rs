@@ -2,7 +2,9 @@
 //!
 //! [`prepare_linear_gradient`], [`prepare_radial_gradient`], [`prepare_repeating_linear_gradient`] and
 //! [`prepare_repeating_radial_gradient`] prepare owned gradient fields, and
-//! [`prepare_zero_height_gradient_color`] reduces a zero-height color measure to an owned color.
+//! [`prepare_zero_circle_gradient`] and [`prepare_repeating_zero_circle_gradient`] preserve a
+//! zero-circle field's paired positions through native sampling. [`prepare_zero_height_gradient_color`]
+//! reduces a zero-height color measure to an owned color.
 //! A refused preparation returns an [`Error`](crate::Error) that can carry a [`PaintGradientError`].
 
 use crate::{
@@ -20,12 +22,15 @@ use crate::{
     paint::GradientGeometry,
     paint::GradientHint,
     paint::GradientStop,
+    paint::Paint,
     paint::RepeatingGradient,
+    paint::zero_circle::{ZeroCirclePosition, ZeroCircleStop},
 };
 use std::mem::size_of;
 use surgeist_paint::gradient_stops::{GradientStops, UsedGradientItem};
 use surgeist_paint::linear_gradient::LinearGradientLine;
 use surgeist_paint::radial_gradient::{RadialGradientCase, RadialGradientGeometry};
+use surgeist_paint::zero_circle_gradient::{ZeroCircleGradientRecordKind, ZeroCircleGradientStops};
 use surgeist_paint::zero_height_gradient::ZeroHeightGradientColors;
 
 /// Native composition or representation refusal. Valid Paint values may exceed
@@ -174,6 +179,96 @@ pub fn prepare_repeating_radial_gradient(
             RepeatingGradient::from_accounted_paint(
                 geometry, stops, fixed, indices, positions, account,
             )
+        },
+    )
+}
+
+/// Prepares the ordinary paint for an authenticated native zero-radius circle.
+/// The field uses the positive-radius limit at each sample, retaining the
+/// percentage contribution at its center and at coincident physical rings.
+pub fn prepare_zero_circle_gradient(
+    stops: &ZeroCircleGradientStops<'_, Color>,
+    context: &mut RenderAccountingContext,
+) -> Result<Paint> {
+    prepare_zero_circle(stops, false, context)
+}
+
+/// Prepares repeating paint for an authenticated native zero-radius circle.
+/// Device-dependent selection of a pattern or its color average takes place
+/// when the field is encoded with its actual transform.
+pub fn prepare_repeating_zero_circle_gradient(
+    stops: &ZeroCircleGradientStops<'_, Color>,
+    context: &mut RenderAccountingContext,
+) -> Result<Paint> {
+    prepare_zero_circle(stops, true, context)
+}
+
+fn prepare_zero_circle(
+    stops: &ZeroCircleGradientStops<'_, Color>,
+    repeating: bool,
+    context: &mut RenderAccountingContext,
+) -> Result<Paint> {
+    context.run(
+        RenderAttemptKind::PaintGradient,
+        RenderPhase::Preparation,
+        |account| {
+            account.phase(RenderPhase::Preparation, || {
+                let coordinates = account.at(RenderPhase::Coordinates);
+                let (center, owned) = account.phase(RenderPhase::Coordinates, || {
+                    coordinates.work(RenderWork::PaintVisits, 1)?;
+                    coordinates.work(RenderWork::CoordinateVisits, 2)?;
+                    let center = stops.center();
+                    let mut color_count = 0_usize;
+                    for record in stops.records() {
+                        coordinates.work(RenderWork::GradientStopVisits, 1)?;
+                        if matches!(record.kind(), ZeroCircleGradientRecordKind::Stop { .. }) {
+                            color_count = color_count.checked_add(1).ok_or_else(|| {
+                                coordinates.capacity_error(RenderResource::RetainedCpuBytes)
+                            })?;
+                        }
+                    }
+                    let mut owned = coordinates.retained::<ZeroCircleStop>(color_count)?;
+                    for record in stops.records() {
+                        coordinates.work(RenderWork::GradientStopVisits, 1)?;
+                        coordinates.work(RenderWork::CoordinateVisits, 2)?;
+                        let input = record.position();
+                        let position = ZeroCirclePosition {
+                            length: input.length(),
+                            fraction: input.fraction(),
+                        };
+                        match record.kind() {
+                            ZeroCircleGradientRecordKind::Stop { payload } => {
+                                owned.push(ZeroCircleStop {
+                                    position,
+                                    color: *payload,
+                                    hint_after: None,
+                                })?;
+                            }
+                            ZeroCircleGradientRecordKind::Hint => {
+                                coordinates.work(RenderWork::GradientStopVisits, 1)?;
+                                let Some(previous) = owned.last_mut() else {
+                                    return Err(crate::Error::new(
+                                        crate::error::BackendErrorCode::RenderFailed,
+                                        "prepared zero-circle transition hint has no preceding stop",
+                                    ));
+                                };
+                                previous.hint_after = Some(position);
+                            }
+                        }
+                    }
+                    Ok((Point::new(center.x, center.y), owned))
+                })?;
+                account.phase(RenderPhase::Output, || {
+                    let output = account.at(RenderPhase::Output);
+                    output.work(RenderWork::PaintVisits, 1)?;
+                    let fixed = output
+                        .acquire(RenderResource::RetainedCpuBytes, size_of::<Paint>())?
+                        .into_preparation()?;
+                    let (owned, records) = owned.into_preparation()?.into_parts();
+                    let paint = Paint::zero_circle_gradient(center, owned, repeating);
+                    Ok(PreparationValue::new(paint, [Some(fixed), Some(records)]).into_retained())
+                })
+            })
         },
     )
 }
