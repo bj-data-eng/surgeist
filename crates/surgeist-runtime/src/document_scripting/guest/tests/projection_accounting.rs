@@ -58,6 +58,81 @@ fn open(host: &mut DocumentScriptHost) -> Result<(), DocumentScriptError> {
     })
 }
 
+pub(in crate::document_scripting) fn document_collection_admits_its_reference_pair() {
+    use surgeist_dom::tree::DomHtmlCollection;
+
+    struct ProjectionPayload {
+        _collection: DomHtmlCollection,
+        _query: Option<GuestBacking>,
+    }
+
+    fn open_collection(host: &mut DocumentScriptHost) -> Result<(), DocumentScriptError> {
+        let permit = host.permit().unwrap();
+        host.in_document(&permit, |scope| {
+            scope.evaluate(&units("document.forms")).map(drop)
+        })
+    }
+
+    let mut control = host(ProfileMode::Off, 200_000);
+    let native = control
+        .with_native(|dom, _, _| {
+            let snapshot = dom.snapshot();
+            let document = snapshot
+                .nodes()
+                .find_map(|node| snapshot.node(node).unwrap().as_document())
+                .unwrap()
+                .id();
+            dom.raw()
+                .get_elements_by_tag_name(document, "*".into(), 128, &AtomicBool::new(false))
+                .unwrap()
+        })
+        .unwrap();
+    let base = std::cell::Cell::new(0);
+    let permit = control.permit().unwrap();
+    control
+        .in_document(&permit, |scope| {
+            let probe = scope.project_native_object(
+                surgeist_bindings_js::ObjectPrototype::Default,
+                ProjectionPayload {
+                    _collection: native,
+                    _query: None,
+                },
+                |bytes| {
+                    base.set(bytes);
+                    Err::<GuestBacking, _>(Error::Allocation)
+                },
+            );
+            assert!(matches!(probe, Err(Error::Allocation)));
+            Ok(())
+        })
+        .unwrap();
+
+    let events = control.guest_events().unwrap();
+    let before = events.budget.used();
+    let (result, peak) = events.budget.measure_peak(|| open_collection(&mut control));
+    result.unwrap();
+    let refs = 2 * size_of::<(u32, usize)>();
+    assert_eq!(events.budget.used() - before, base.get() + refs);
+    let required = peak - before;
+    drop((events, control));
+
+    for (allowance, accepts) in [(required, true), (required - 1, false)] {
+        let mut candidate = host(ProfileMode::Off, 200_000);
+        let events = candidate.guest_events().unwrap();
+        let spare = events.limits.storage_bytes - events.budget.used() - allowance;
+        let _reserved = events.reserve(&candidate.native, spare).unwrap();
+        let result = open_collection(&mut candidate);
+        if accepts {
+            result.unwrap();
+        } else {
+            assert!(matches!(
+                result,
+                Err(DocumentScriptError::Script(Error::HostFailure(_)))
+            ));
+        }
+    }
+}
+
 pub(in crate::document_scripting) fn profiles_observe_actual_projection_without_changing_admission()
 {
     oversized_profile_setup_returns_the_unpublished_owner();
