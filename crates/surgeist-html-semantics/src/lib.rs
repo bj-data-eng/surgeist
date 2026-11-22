@@ -10,6 +10,7 @@ mod accounting_fault_tests;
 mod base;
 mod bidi;
 mod capture;
+pub mod constraint_validation;
 mod controlled_option_value;
 pub mod fieldset_disabledness;
 mod hyperlink;

@@ -521,6 +521,7 @@ impl Capture {
                     Reflection::Translate
                         | Reflection::TabIndex
                         | Reflection::InputType
+                        | Reflection::ButtonType
                         | Reflection::CanvasDimension(_)
                 ) {
                     None
@@ -582,9 +583,11 @@ impl Capture {
                             }
                         }
                     }
-                    Reflection::ButtonType => {
-                        Reflected::Keyword(Some(super::button::type_keyword(read, node, units)?))
-                    }
+                    Reflection::ButtonType => Reflected::Keyword(Some(
+                        node.as_button()
+                            .ok_or(DomError::WrongNodeKind)?
+                            .type_keyword_with(|| read.step())?,
+                    )),
                     Reflection::FormAutocomplete => {
                         Reflected::Keyword(Some(form_autocomplete_keyword_with(units, |_| {
                             read.step()

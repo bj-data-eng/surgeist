@@ -834,8 +834,7 @@ class DescriptionTests(unittest.TestCase):
             with self.subTest(member=name):
                 read = mappings[f"HTMLButtonElement.{name}/get"]
                 self.assertTrue(read.get("requirements") or read.get("requirement"))
-        for name, producer in [("labels", "control_labels"),
-                               ("willValidate", "constraint_validation_candidate")]:
+        for name, producer in [("labels", "control_labels")]:
             with self.subTest(member=name):
                 read = mappings[f"HTMLButtonElement.{name}/get"]
                 self.assertIn(producer, [item["symbol"] for item in read["producers"]])
@@ -843,6 +842,18 @@ class DescriptionTests(unittest.TestCase):
                                  {"surgeist-dom", "surgeist-runtime"})
         self.member("HTMLButtonElement.type")["attributes"][-1]["name"] = "Reflect"
         self.rejected("source declaration mismatch: HTMLButtonElement.source")
+
+    def test_live_will_validate_uses_native_candidacy(self):
+        mappings = self.data["access_mappings"]
+        for interface in ("HTMLButtonElement", "HTMLInputElement", "HTMLSelectElement", "HTMLTextAreaElement"):
+            with self.subTest(interface=interface):
+                getter = mappings[f"{interface}.willValidate/get"]
+                self.assertEqual(getter["kind"], "native")
+                self.assertFalse(getter["requirements"])
+                self.assertEqual({(item["owner"], item["symbol"]) for item in getter["producers"]},
+                                 {("surgeist-dom", "html_will_validate_with"),
+                                  ("surgeist-html-semantics", "validation_candidacy"),
+                                  ("surgeist-runtime", "will_validate")})
 
     def test_textarea_preserves_value_conversion_numeric_metadata_and_selection_overloads(self):
         textarea = self.definition("HTMLTextAreaElement")

@@ -12,6 +12,7 @@ use crate::{
 };
 use surgeist_html::values::DocumentString;
 
+mod control_validation;
 mod document_title;
 mod editability;
 mod element_id;

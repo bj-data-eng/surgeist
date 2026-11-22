@@ -321,6 +321,7 @@ pub(super) fn install<'scope>(
         AFTER_INDETERMINATE,
     )?;
     InputProperty::Value.install(scope, prototype, capture)?;
+    super::control_validation::install(scope, prototype, capture, Receiver::Input)?;
     CustomValidityControl::Input.install(scope, prototype, capture)?;
     super::reflected_element::ElementTarget::InputPopover.install(scope, prototype, capture)?;
     reflection::install(scope, prototype, capture, Receiver::Input, OBSOLETE)

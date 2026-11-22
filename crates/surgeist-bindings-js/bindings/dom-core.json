@@ -12560,12 +12560,14 @@
       "requirements": []
     },
     "HTMLSelectElement.willValidate/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose the native candidate-for-constraint-validation determination.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-willvalidate"
-      }
+      "kind": "native",
+      "adapter": "htmlselectelement.willvalidate.get",
+      "producers": [
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/control_validation.rs", "symbol": "html_will_validate_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/constraint_validation.rs", "symbol": "validation_candidacy"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/control_validation.rs", "symbol": "will_validate"}
+      ],
+      "requirements": []
     },
     "HTMLSelectElement.validity/get": {
       "kind": "host",
@@ -21125,7 +21127,7 @@
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
         {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "button_type_keyword_with"},
-        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/button.rs", "symbol": "type_keyword"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/control_validation.rs", "symbol": "type_keyword_with"}
       ],
       "requirements": []
     },
@@ -21157,23 +21159,11 @@
       "kind": "native",
       "adapter": "htmlbuttonelement.willvalidate.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
-        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/control.rs", "symbol": "constraint_validation_candidate"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/control_validation.rs", "symbol": "html_will_validate_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/constraint_validation.rs", "symbol": "validation_candidacy"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/control_validation.rs", "symbol": "will_validate"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Expose the existing Button candidacy calculation as a bounded observation of the current published Source segment, with exact type, disabled and reached ancestry facts.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-willvalidate",
-          "issue": 1235
-        },
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Authenticate the attached Button and project its reached candidacy as a Boolean under the original read admission.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-willvalidate",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLButtonElement.validity/get": {
       "kind": "native",
@@ -22632,23 +22622,11 @@
       "kind": "native",
       "adapter": "htmlinputelement.willvalidate.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
-        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/control.rs", "symbol": "constraint_validation_candidate"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/control_validation.rs", "symbol": "html_will_validate_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/constraint_validation.rs", "symbol": "validation_candidacy"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/control_validation.rs", "symbol": "will_validate"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Expose the existing Input candidacy calculation in a bounded current Source observation, with reached type, disabled, readonly and ancestry facts.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-willvalidate",
-          "issue": 1235
-        },
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Authenticate the attached Input and project reached candidacy under the original read admission.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-willvalidate",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLInputElement.validity/get": {
       "kind": "native",
@@ -23310,23 +23288,11 @@
       "kind": "native",
       "adapter": "htmltextareaelement.willvalidate.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/semantic.rs", "symbol": "query"},
-        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/control.rs", "symbol": "constraint_validation_candidate"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/control_validation.rs", "symbol": "html_will_validate_with"},
+        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/constraint_validation.rs", "symbol": "validation_candidacy"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/control_validation.rs", "symbol": "will_validate"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Expose the existing Textarea candidacy calculation as a bounded observation of the current published Source segment with reached disabled, readonly and ancestry facts.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-willvalidate",
-          "issue": 1235
-        },
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Authenticate the attached Textarea and project its reached candidacy as a Boolean under the original read admission.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-cva-willvalidate",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLTextAreaElement.validity/get": {
       "kind": "native",
