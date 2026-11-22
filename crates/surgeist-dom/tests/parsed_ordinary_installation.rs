@@ -41,7 +41,7 @@ use surgeist_dom::{
         DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress, DomSourceRequest,
     },
     style::{DomStyleAction, DomStyleInlineCspObservation, DomStyleSheetAvailability},
-    tree::DomNodeKind,
+    tree::{DomDescendantQueryRoot, DomHtmlCollectionLimits, DomNodeKind},
     url::{DomBaseFactsError, DomBaseResponse, DomImageUpdateCancellationReason},
 };
 use surgeist_html::construction::HtmlShadowRootMode;
@@ -1769,6 +1769,82 @@ fn contextual_exact_combined_owned_and_captured_admission_and_empty_result_are_r
                 assert_eq!(dom.usage(), usage);
             }
         }
+    }
+}
+
+#[test]
+fn live_class_collections_fold_ascii_only_in_a_full_quirks_document() {
+    let cases = [
+        ("<!doctype html>", HtmlDocumentMode::NoQuirks),
+        ("", HtmlDocumentMode::Quirks),
+        (
+            "<!doctype html PUBLIC '-//W3C//DTD XHTML 1.0 Transitional//EN' 'http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd'>",
+            HtmlDocumentMode::LimitedQuirks,
+        ),
+    ];
+    let cancel = AtomicBool::new(false);
+    let limits = DomHtmlCollectionLimits::new(100_000, 0, 0);
+    for (doctype, mode) in cases {
+        let (mut dom, environment) = setup();
+        let installed = install(
+            &mut dom,
+            parse(HtmlSource::utf8(format!(
+                "{doctype}<div class='ALPHA bEtA extra'></div><p class='alpha beta'></p><span class='ALPHA&#160;bEtA'></span><b class='Ä'></b>"
+            ))),
+            environment,
+        );
+        let document = installed.document();
+        assert_eq!(
+            installed
+                .snapshot()
+                .document(document)
+                .unwrap()
+                .metadata()
+                .mode(),
+            mode
+        );
+        let root = DomDescendantQueryRoot::Document(document);
+        let query = |dom: &Dom, value: &str| {
+            dom.get_elements_by_class_name(root, value.into(), 64, &cancel)
+                .unwrap()
+        };
+        let collection = query(&dom, "alpha\tbeta alpha");
+        let div = element(&installed, "div");
+        let paragraph = element(&installed, "p");
+        let span = element(&installed, "span");
+        let quirks = mode == HtmlDocumentMode::Quirks;
+        {
+            let current = dom
+                .read_html_collection(&collection, limits, || Ok::<_, DomError>(()), &cancel)
+                .unwrap();
+            assert_eq!(current.length().unwrap(), if quirks { 2 } else { 1 });
+            assert_eq!(
+                current.item(0).unwrap(),
+                Some(if quirks { div } else { paragraph })
+            );
+            assert_eq!(current.last_item().unwrap(), Some(paragraph));
+        }
+        for (value, expected) in [
+            ("ALPHA\u{a0}bEtA", Some(span)),
+            ("ä", None),
+            ("\r\x0c \t", None),
+        ] {
+            let collection = query(&dom, value);
+            let current = dom
+                .read_html_collection(&collection, limits, || Ok::<_, DomError>(()), &cancel)
+                .unwrap();
+            assert_eq!(current.item(0).unwrap(), expected);
+            assert_eq!(current.item(1).unwrap(), None);
+        }
+        let mut edit = DomBatch::new();
+        edit.set_attribute(div, "class", "alpha beta");
+        edit.remove_attribute(paragraph, "class");
+        dom.apply(edit, &cancel).unwrap();
+        let current = dom
+            .read_html_collection(&collection, limits, || Ok::<_, DomError>(()), &cancel)
+            .unwrap();
+        assert_eq!(current.length().unwrap(), 1);
+        assert_eq!(current.item(0).unwrap(), Some(div));
     }
 }
 

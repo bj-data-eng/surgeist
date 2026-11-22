@@ -133,6 +133,8 @@ mod node_list;
 mod numeric_control_attributes;
 #[path = "document_scripting/option_factory.rs"]
 mod option_factory;
+#[path = "document_scripting/ordinary_element_collections.rs"]
+mod ordinary_element_collections;
 #[path = "document_scripting/output_values.rs"]
 mod output_values;
 #[path = "document_scripting/popover_target.rs"]
@@ -2524,6 +2526,8 @@ fn main() {
             "document-collections" => document_collections::document_collections_share_live_native_identity(),
             "node-list" => node_list::node_lists_follow_current_canonical_nodes(),
             "node-list-retirement" => node_list::retired_child_roots_refuse_cached_and_first_access(),
+            "ordinary-element-traversal" => ordinary_element_collections::ordinary_element_traversal(),
+            "ordinary-element-queries" => ordinary_element_collections::ordinary_element_descendant_queries(),
             "standard-window" => standard_window::window_without_host_hooks_uses_standard_globals(),
             "standard-window-guest" => standard_window::guest_window_without_host_hooks_recovers_from_policy_refusal(),
             "media-removal-stable-state" => standard_window::guest_media_removal_reaches_the_owning_checkpoint(),
@@ -2694,6 +2698,8 @@ fn main() {
     document_collections::document_collections_share_live_native_identity();
     node_list::node_lists_follow_current_canonical_nodes();
     node_list::retired_child_roots_refuse_cached_and_first_access();
+    ordinary_element_collections::ordinary_element_traversal();
+    ordinary_element_collections::ordinary_element_descendant_queries();
     named_node_map::follows_the_native_attribute_list();
     named_node_map::verifies_attachment_before_rechecking_ownership();
     window_properties::indexed_window_children_follow_the_live_browsing_contexts();

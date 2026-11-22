@@ -33,6 +33,7 @@ mod dom_implementation;
 pub(super) use character_data::copy_native_data;
 mod all_collection;
 pub(super) mod element;
+mod element_collections;
 mod element_factory;
 mod element_mixin;
 mod fieldset;
@@ -436,7 +437,13 @@ impl DocumentPrototypes {
         )?;
         let shadow = shadow::install(scope, &fragment_constructor, &fragment, &funding.capture)?;
         non_element_parent::install(scope, &document, &fragment, funding.capture)?;
-        let collections = tag_collection::install(scope, &document, funding)?;
+        let collections = tag_collection::install(scope, funding)?;
+        element_collections::install_queries(
+            scope,
+            &document,
+            element_collections::QueryTarget::Document,
+            funding.capture,
+        )?;
         if let Some(capture) = constructors {
             tag_collection::install_window(
                 scope,

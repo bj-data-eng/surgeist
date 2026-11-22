@@ -8,7 +8,8 @@ use surgeist_dom::{
     limits::{DomLimits, DomNameLimits, DomResource},
     shadow::DomShadowRootInit,
     tree::{
-        DomHtmlAllNamedValue, DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionRead,
+        DomDescendantQueryRoot, DomHtmlAllNamedValue, DomHtmlCollection, DomHtmlCollectionLimits,
+        DomHtmlCollectionRead, DomSiblingDirection,
     },
 };
 use surgeist_html::{
@@ -46,8 +47,13 @@ fn read<'a>(
 }
 
 fn query(dom: &Dom, document: DocumentId, tag: &str) -> DomHtmlCollection {
-    dom.get_elements_by_tag_name(document, tag.into(), 1024, &AtomicBool::new(false))
-        .unwrap()
+    dom.get_elements_by_tag_name(
+        DomDescendantQueryRoot::Document(document),
+        tag.into(),
+        1024,
+        &AtomicBool::new(false),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -239,6 +245,139 @@ fn tag_name_filter_distinguishes_html_spelling_foreign_names_and_ordinary_edges(
     for (index, node) in expected.into_iter().enumerate() {
         assert_eq!(all.item(index).unwrap(), Some(node));
     }
+}
+
+#[test]
+fn element_rooted_collections_preserve_live_members_and_call_time_tag_casing() {
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let mut batch = DomBatch::new();
+    let xml = batch.create_document();
+    let html = batch.create_html_document(&xml, None);
+    let docs = dom.apply(batch, &cancel).unwrap();
+    let xml = docs.document(&xml).unwrap();
+    let html = docs.document(&html).unwrap();
+
+    let mut batch = DomBatch::new();
+    let root = batch.create_element_ns(html, Namespace::html(), "div");
+    let lower = batch.create_element_ns(html, Namespace::html(), "div");
+    let text = batch.create_text(html, "skip");
+    let foreign = batch.create_element_ns(html, Namespace::from_uri("urn:x"), "p:DIV");
+    let nested = batch.create_element_ns(html, Namespace::none(), "DIV");
+    batch.set_attribute(&foreign, "id", "foreign");
+    batch.insert_before(&nested, &lower, None);
+    for child in [&lower, &text, &foreign] {
+        batch.insert_before(child, &root, None);
+    }
+    let created = dom.apply(batch, &cancel).unwrap();
+    let id = |ticket| created.created(ticket).unwrap().unwrap();
+    let (root, lower, text, foreign, nested) =
+        (id(&root), id(&lower), id(&text), id(&foreign), id(&nested));
+    let root_query = DomDescendantQueryRoot::Element(root);
+    let children = dom.child_elements(root, &cancel).unwrap();
+    let old_tag = dom
+        .get_elements_by_tag_name(root_query, "DIV".into(), 64, &cancel)
+        .unwrap();
+    let wildcard = DocumentString::from_utf16([u16::from(b'*')]);
+    let local_name = DocumentString::from_utf16(b"DIV".map(u16::from));
+    let namespace = DocumentString::from_utf16(b"urn:x".map(u16::from));
+    let empty_namespace = TextBlock::from_utf16(vec![0x20; 32]).string(0..0).unwrap();
+    let null_names = dom
+        .get_elements_by_tag_name_ns(
+            root_query,
+            Some(empty_namespace),
+            wildcard.clone(),
+            1,
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        dom.get_elements_by_tag_name_ns(
+            root_query,
+            Some(namespace.clone()),
+            local_name.clone(),
+            7,
+            &cancel
+        ),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::HtmlCollectionQueryUnits,
+            limit: 7
+        })
+    ));
+    let exact_namespace = dom
+        .get_elements_by_tag_name_ns(root_query, Some(namespace), local_name.clone(), 8, &cancel)
+        .unwrap();
+    assert_eq!(
+        read(&dom, &exact_namespace, &cancel).item(0).unwrap(),
+        Some(foreign)
+    );
+    let expanded = dom
+        .get_elements_by_tag_name_ns(root_query, Some(wildcard), local_name, 4, &cancel)
+        .unwrap();
+    {
+        let current = read(&dom, &children, &cancel);
+        assert_eq!(current.length().unwrap(), 2);
+        assert_eq!(current.item(0).unwrap(), Some(lower));
+        assert_eq!(current.last_item().unwrap(), Some(foreign));
+        assert_eq!(
+            current.named_item(&"foreign".into()).unwrap(),
+            Some(foreign)
+        );
+    }
+    assert_eq!(
+        read(&dom, &null_names, &cancel).item(0).unwrap(),
+        Some(nested)
+    );
+    {
+        let current = read(&dom, &expanded, &cancel);
+        assert_eq!(current.item(0).unwrap(), Some(nested));
+        assert_eq!(current.item(1).unwrap(), Some(foreign));
+    }
+
+    let previous = DomSiblingDirection::Previous;
+    let next = DomSiblingDirection::Next;
+    let count = Cell::new(0);
+    let previous_with_limit = |limit| {
+        count.set(0);
+        dom.read_element_sibling(
+            text,
+            previous,
+            limit,
+            || {
+                count.set(count.get() + 1);
+                Ok::<_, DomError>(())
+            },
+            &cancel,
+        )
+    };
+    assert_eq!(previous_with_limit(1000).unwrap(), Some(lower));
+    let exact = count.get();
+    assert_eq!(previous_with_limit(exact).unwrap(), Some(lower));
+    assert!(matches!(
+        previous_with_limit(exact - 1),
+        Err(DomError::WorkLimit { resource: DomResource::HtmlCollectionWork, limit }) if limit == exact - 1
+    ));
+    assert_eq!(count.get(), exact - 1);
+    assert_eq!(
+        dom.read_element_sibling(text, next, 1000, || Ok::<_, DomError>(()), &cancel)
+            .unwrap(),
+        Some(foreign)
+    );
+
+    let mut edit = DomBatch::new();
+    edit.adopt(root, xml);
+    edit.insert_before(foreign, root, Some(lower.into()));
+    dom.apply(edit, &cancel).unwrap();
+    let current = read(&dom, &children, &cancel);
+    assert_eq!(current.item(0).unwrap(), Some(foreign));
+    assert_eq!(current.last_item().unwrap(), Some(lower));
+    assert_eq!(read(&dom, &old_tag, &cancel).item(0).unwrap(), Some(lower));
+    let new_tag = dom
+        .get_elements_by_tag_name(root_query, "DIV".into(), 64, &cancel)
+        .unwrap();
+    let current = read(&dom, &new_tag, &cancel);
+    assert_eq!(current.length().unwrap(), 1);
+    assert_eq!(current.item(0).unwrap(), Some(nested));
 }
 
 #[test]
@@ -454,7 +593,12 @@ fn query_and_read_limits_preserve_the_collection_and_return_the_first_refusal() 
     let short = large.string(0..1).unwrap();
     assert_eq!(short.len(), 1);
     assert!(matches!(
-        dom.get_elements_by_tag_name(document, short, 1, &cancel),
+        dom.get_elements_by_tag_name(
+            DomDescendantQueryRoot::Document(document),
+            short,
+            1,
+            &cancel
+        ),
         Err(DomError::ResourceLimit {
             resource: DomResource::HtmlCollectionQueryUnits,
             limit: 1
@@ -462,7 +606,12 @@ fn query_and_read_limits_preserve_the_collection_and_return_the_first_refusal() 
     ));
 
     assert!(matches!(
-        dom.get_elements_by_tag_name(document, "item".into(), 3, &cancel),
+        dom.get_elements_by_tag_name(
+            DomDescendantQueryRoot::Document(document),
+            "item".into(),
+            3,
+            &cancel
+        ),
         Err(DomError::ResourceLimit {
             resource: DomResource::HtmlCollectionQueryUnits,
             limit: 3

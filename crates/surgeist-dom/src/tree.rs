@@ -10,7 +10,7 @@
 //! filter, request and progress types drive its traversal.
 //! `DomTreeWalkerId` and `DomTreeWalker` describe a separate live walker with a
 //! settable current node and source-defined navigation in seven directions.
-//! `DomHtmlCollection` retains one exact Document and an element filter.
+//! `DomHtmlCollection` retains one exact root and an ordinary element filter.
 //! Qualify a new `DomHtmlCollectionRead` to read its current members.
 //! `DomNodeList` retains a node's ordinary children or a Document name filter.
 //! `DomNodeListRead` provides its current length and indexed members.
@@ -33,8 +33,8 @@ pub use crate::internal::snapshot::{
     DomTagName, DomTreeOrder, DomTreeScope,
 };
 pub use crate::internal::store::{
-    DomHtmlAllCollection, DomHtmlAllCollectionRead, DomHtmlAllNamedValue, DomHtmlCollection,
-    DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead,
+    DomDescendantQueryRoot, DomHtmlAllCollection, DomHtmlAllCollectionRead, DomHtmlAllNamedValue,
+    DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead,
     DomNodeIteratorFilterRequest, DomNodeIteratorMatchRequest, DomNodeList, DomNodeListRead,
     DomWindowNamedElements,
 };

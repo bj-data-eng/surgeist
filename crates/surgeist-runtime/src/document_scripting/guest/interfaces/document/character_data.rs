@@ -127,6 +127,12 @@ impl CharacterBindings {
             &names,
             funding.capture,
         )?;
+        super::element_collections::install_siblings(
+            scope,
+            &prototype,
+            tree_mutations::Receiver::CharacterData,
+            funding.capture,
+        )?;
         let (text_constructor, text_prototype) = Self::install_kind(
             scope,
             &interface,
@@ -537,13 +543,41 @@ pub(in crate::document_scripting::guest::interfaces) fn copy_native_data(
     events: &GuestEvents,
     units: &[u16],
 ) -> Result<(DocumentString, GuestBacking), DocumentGuestEventError> {
+    let backing = events.reserve(owner, native_data_bytes(units)?)?;
+    Ok((materialize_native_data(events, units)?, backing))
+}
+
+pub(super) fn copy_native_name_pair(
+    owner: &NativeOwner,
+    events: &GuestEvents,
+    namespace: Option<&[u16]>,
+    local_name: &[u16],
+) -> Result<(Option<DocumentString>, DocumentString, GuestBacking), DocumentGuestEventError> {
+    let namespace_bytes = namespace.map(native_data_bytes).transpose()?.unwrap_or(0);
+    let bytes = native_data_bytes(local_name)?
+        .checked_add(namespace_bytes)
+        .ok_or(DocumentScriptNativeError::StorageLimit)?;
+    let backing = events.reserve(owner, bytes)?;
+    let namespace = namespace
+        .map(|units| materialize_native_data(events, units))
+        .transpose()?;
+    let local_name = materialize_native_data(events, local_name)?;
+    Ok((namespace, local_name, backing))
+}
+
+fn native_data_bytes(units: &[u16]) -> Result<usize, DocumentScriptNativeError> {
     let overhead = size_of::<Vec<u16>>() + 2 * size_of::<usize>();
-    let bytes = units
+    units
         .len()
         .checked_mul(size_of::<u16>())
         .and_then(|bytes| bytes.checked_add(overhead))
-        .ok_or(DocumentScriptNativeError::StorageLimit)?;
-    let backing = events.reserve(owner, bytes)?;
+        .ok_or(DocumentScriptNativeError::StorageLimit)
+}
+
+fn materialize_native_data(
+    events: &GuestEvents,
+    units: &[u16],
+) -> Result<DocumentString, DocumentGuestEventError> {
     let mut copied = Vec::new();
     copied
         .try_reserve_exact(units.len())
@@ -554,5 +588,5 @@ pub(in crate::document_scripting::guest::interfaces) fn copy_native_data(
     let work = u64::try_from(units.len()).map_err(|_| DocumentGuestEventError::WorkLimit)?;
     events.charge_work(work)?;
     copied.extend_from_slice(units);
-    Ok((DocumentString::from_utf16(copied), backing))
+    Ok(DocumentString::from_utf16(copied))
 }

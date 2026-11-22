@@ -54,7 +54,7 @@ impl Dom {
     /// Returns an error for a foreign or unavailable node, invalid Source
     /// read custody, or cancellation.
     pub fn child_nodes(&self, node: NodeId, cancel: &AtomicBool) -> Result<DomNodeList, DomError> {
-        self.validate_collection_root(node, cancel, |_| Ok(()))?;
+        self.with_collection_root(node, cancel, |_, _, _| Ok(()))?;
         Ok(DomNodeList(Filter::Children(node)))
     }
 

@@ -14173,26 +14173,38 @@
     "ParentNode.children/get": {
       "kind": "native",
       "adapter": "parentnode.children.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "element_children"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element_collections.rs", "symbol": "element_children"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "child_elements"}
+      ],
       "requirements": [],
       "result_view": "live"
     },
     "ParentNode.firstElementChild/get": {
       "kind": "native",
       "adapter": "parentnode.firstelementchild.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "element_children"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element_collections.rs", "symbol": "read_element_child"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "item"}
+      ],
       "requirements": []
     },
     "ParentNode.lastElementChild/get": {
       "kind": "native",
       "adapter": "parentnode.lastelementchild.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "element_children"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element_collections.rs", "symbol": "read_element_child"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "last_item"}
+      ],
       "requirements": []
     },
     "ParentNode.childElementCount/get": {
       "kind": "native",
       "adapter": "parentnode.childelementcount.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "element_children"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element_collections.rs", "symbol": "read_element_child"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "length"}
+      ],
       "requirements": []
     },
     "ParentNode.prepend:0/call": {
@@ -14252,13 +14264,19 @@
     "NonDocumentTypeChildNode.previousElementSibling/get": {
       "kind": "native",
       "adapter": "nondocumenttypechildnode.previouselementsibling.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "previous_element_sibling"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element_collections.rs", "symbol": "element_sibling"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "read_element_sibling"}
+      ],
       "requirements": []
     },
     "NonDocumentTypeChildNode.nextElementSibling/get": {
       "kind": "native",
       "adapter": "nondocumenttypechildnode.nextelementsibling.get",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "next_element_sibling"}],
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element_collections.rs", "symbol": "element_sibling"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "read_element_sibling"}
+      ],
       "requirements": []
     },
     "ChildNode.before:0/call": {
@@ -14718,43 +14736,31 @@
       "requirements": []
     },
     "Document.getElementsByTagName:0/call": {
-      "kind": "derived",
-      "algorithm": "document.getelementsbytagname_0.call",
-      "owner": "surgeist-dom",
-      "contract": "Project live ordinary descendant Elements using source wildcard and HTML-document qualified-name casing rules; matching is not CSS selector execution.",
-      "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
+      "kind": "native",
+      "adapter": "document.getelementsbytagname.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element_collections.rs", "symbol": "descendant_elements"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "get_elements_by_tag_name"}
       ],
       "requirements": [],
       "result_view": "live"
     },
     "Document.getElementsByTagNameNS:0/call": {
-      "kind": "derived",
-      "algorithm": "document.getelementsbytagnamens_0.call",
-      "owner": "surgeist-dom",
-      "contract": "Project live ordinary descendant Elements by normalized namespace/local-name wildcards, preserving exact namespace and local-name identity.",
-      "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
+      "kind": "native",
+      "adapter": "document.getelementsbytagnamens.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element_collections.rs", "symbol": "descendant_elements"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "get_elements_by_tag_name_ns"}
       ],
       "requirements": [],
       "result_view": "live"
     },
     "Document.getElementsByClassName:0/call": {
-      "kind": "derived",
-      "algorithm": "document.getelementsbyclassname_0.call",
-      "owner": "surgeist-dom",
-      "contract": "Project live ordinary descendant Elements containing all requested ASCII-whitespace-separated class tokens, with the actual document quirks-mode case rule.",
-      "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-document",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
+      "kind": "native",
+      "adapter": "document.getelementsbyclassname.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element_collections.rs", "symbol": "descendant_elements"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "get_elements_by_class_name"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -15445,43 +15451,31 @@
       ]
     },
     "Element.getElementsByTagName:0/call": {
-      "kind": "derived",
-      "algorithm": "element.getelementsbytagname_0.call",
-      "owner": "surgeist-dom",
-      "contract": "Project live ordinary descendant Elements using source wildcard and HTML-document qualified-name casing rules; matching is not CSS selector execution.",
-      "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
+      "kind": "native",
+      "adapter": "element.getelementsbytagname.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element_collections.rs", "symbol": "descendant_elements"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "get_elements_by_tag_name"}
       ],
       "requirements": [],
       "result_view": "live"
     },
     "Element.getElementsByTagNameNS:0/call": {
-      "kind": "derived",
-      "algorithm": "element.getelementsbytagnamens_0.call",
-      "owner": "surgeist-dom",
-      "contract": "Project live ordinary descendant Elements by normalized namespace/local-name wildcards, preserving exact namespace and local-name identity.",
-      "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
+      "kind": "native",
+      "adapter": "element.getelementsbytagnamens.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element_collections.rs", "symbol": "descendant_elements"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "get_elements_by_tag_name_ns"}
       ],
       "requirements": [],
       "result_view": "live"
     },
     "Element.getElementsByClassName:0/call": {
-      "kind": "derived",
-      "algorithm": "element.getelementsbyclassname_0.call",
-      "owner": "surgeist-dom",
-      "contract": "Project live ordinary descendant Elements containing all requested ASCII-whitespace-separated class tokens, with the actual document quirks-mode case rule.",
-      "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-element",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/document.rs", "symbol": "mode"}
+      "kind": "native",
+      "adapter": "element.getelementsbyclassname.call",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element_collections.rs", "symbol": "descendant_elements"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "get_elements_by_class_name"}
       ],
       "requirements": [],
       "result_view": "live"

@@ -18,6 +18,7 @@ pub(super) fn install<'scope>(
     names: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
+    super::element_collections::install_parent(scope, prototype, receiver, capture)?;
     super::tree_mutations::install_parent(scope, prototype, receiver, names, capture)?;
     let handler = capture(size_of::<(Capture, Receiver)>())?;
     let function = scope.fixed_arity_function(

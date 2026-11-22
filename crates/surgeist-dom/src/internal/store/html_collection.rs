@@ -2,17 +2,20 @@ use std::ops::ControlFlow;
 
 use super::{
     collection_read::{CollectionRead, Meter},
+    node_iterator::traversal::OrdinaryTree,
     read_source::HostedReadError,
     *,
 };
 use crate::internal::{
-    document::DomDocumentClass,
+    document::{DomDocumentClass, DomDocumentMetadata},
     hosted::{DomHostedBrowsingContextId, DomHostedEntry, DomHostedError, DomHostedGlobalId},
-    names::{in_html_namespace_with, qualified_equals_with, same_code_units},
-    snapshot::{DomNode, DomNodeKind},
+    names::{ascii_lower, in_html_namespace_with, qualified_equals_with, same_code_units},
+    snapshot::{DomNode, DomNodeKind, DomSiblingDirection},
 };
 
 use surgeist_html::{
+    bounded::lexical::{HtmlSpaceTokenCursor, HtmlSpaceTokenStep},
+    construction::HtmlDocumentMode,
     values::HtmlNameInput,
     vocabulary::{
         HtmlDocumentCollection, HtmlDocumentCollectionMatch, KnownHtmlElement,
@@ -22,6 +25,71 @@ use surgeist_html::{
 
 const ID: &[u16] = &[0x69, 0x64];
 const NAME: &[u16] = &[0x6e, 0x61, 0x6d, 0x65];
+const CLASS: &[u16] = &[0x63, 0x6c, 0x61, 0x73, 0x73];
+const WILDCARD: &[u16] = &[0x2a];
+
+fn document_metadata<'a, E: From<DomError>>(
+    snapshot: &'a DomSnapshot,
+    root: DomNode<'a>,
+    step: impl FnMut() -> Result<(), E>,
+) -> Result<&'a DomDocumentMetadata, E> {
+    let document = match root.owner_document() {
+        Some(document) => snapshot.node_with(document.node(), step)?,
+        None => root,
+    };
+    match document.kind() {
+        DomNodeKind::Document(metadata) => Ok(metadata),
+        _ => Err(DomError::WrongNodeKind.into()),
+    }
+}
+
+fn matches_expanded_name<E>(
+    name: &(impl HtmlNameInput + ?Sized),
+    namespace: Option<&DocumentString>,
+    local_name: &DocumentString,
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    let namespace_matches = match (name.namespace_uri(), namespace) {
+        (_, Some(query)) if query.code_units() == WILDCARD => true,
+        (Some(stored), Some(query)) => {
+            same_code_units(stored.code_units(), query.code_units(), &mut step)?
+        }
+        (None, None) => true,
+        _ => false,
+    };
+    Ok(namespace_matches
+        && (local_name.code_units() == WILDCARD
+            || same_code_units(
+                name.local_name().code_units(),
+                local_name.code_units(),
+                step,
+            )?))
+}
+
+fn scan_class_tokens<T, E>(
+    units: &[u16],
+    mut step: impl FnMut() -> Result<(), E>,
+    mut visit: impl FnMut(&[u16]) -> Result<ControlFlow<T>, E>,
+) -> Result<Option<T>, E> {
+    for _ in 0..HtmlSpaceTokenCursor::BEGIN_WORK {
+        step()?;
+    }
+    let mut cursor = HtmlSpaceTokenCursor::new(units);
+    loop {
+        for _ in 0..HtmlSpaceTokenCursor::STEP_WORK {
+            step()?;
+        }
+        match cursor.step() {
+            HtmlSpaceTokenStep::Continue => (),
+            HtmlSpaceTokenStep::Token { start, end } => {
+                if let ControlFlow::Break(value) = visit(&units[start..end])? {
+                    return Ok(Some(value));
+                }
+            }
+            HtmlSpaceTokenStep::Done => return Ok(None),
+        }
+    }
+}
 
 fn window_name_element<E>(
     element: &(impl HtmlNameInput + ?Sized),
@@ -43,16 +111,51 @@ fn window_name_element<E>(
     ))
 }
 
-/// A live collection of ordinary descendants of one exact Document.
+/// The exact Document or Element that owns a descendant query.
+#[derive(Clone, Copy, Debug)]
+pub enum DomDescendantQueryRoot {
+    /// Query the descendants of a Document.
+    Document(DocumentId),
+    /// Query the descendants of an Element, including a detached Element.
+    Element(NodeId),
+}
+
+impl DomDescendantQueryRoot {
+    fn node(self) -> NodeId {
+        match self {
+            Self::Document(document) => document.node(),
+            Self::Element(element) => element,
+        }
+    }
+
+    fn validate(self, kind: DomNodeKind<'_>) -> Result<(), DomError> {
+        match (self, kind) {
+            (Self::Document(_), DomNodeKind::Document(_))
+            | (Self::Element(_), DomNodeKind::Element(_)) => Ok(()),
+            _ => Err(DomError::WrongNodeKind),
+        }
+    }
+}
+
+/// A live collection of ordinary elements rooted at one exact node.
 #[derive(Debug)]
 pub struct DomHtmlCollection {
-    document: DocumentId,
+    root: NodeId,
     filter: Filter,
 }
 
 #[derive(Debug)]
 enum Filter {
-    TagName(DocumentString),
+    Children,
+    TagName {
+        qualified_name: DocumentString,
+        class: DomDocumentClass,
+    },
+    TagNameNs {
+        namespace: Option<DocumentString>,
+        local_name: DocumentString,
+    },
+    ClassName(DocumentString),
     WindowName(DocumentString),
     All,
     AllName(DocumentString),
@@ -138,7 +241,7 @@ impl DomHtmlCollectionLimits {
 pub struct DomHtmlCollectionRead<'dom, A> {
     view: CollectionRead<'dom, A>,
     collection: &'dom DomHtmlCollection,
-    class: DomDocumentClass,
+    class_quirks: bool,
     limits: DomHtmlCollectionLimits,
 }
 
@@ -180,7 +283,7 @@ impl std::fmt::Debug for DomHtmlCollectionNames {
 impl<A> std::fmt::Debug for DomHtmlCollectionRead<'_, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DomHtmlCollectionRead")
-            .field("document", &self.collection.document)
+            .field("root", &self.collection.root)
             .field("stamp", &self.view.snapshot.stamp())
             .finish_non_exhaustive()
     }
@@ -190,21 +293,141 @@ impl Dom {
     /// Form a live tag-name collection and admit the query's complete backing.
     pub fn get_elements_by_tag_name(
         &self,
-        document: DocumentId,
+        root: DomDescendantQueryRoot,
         qualified_name: DocumentString,
         max_retained_query_units: usize,
         cancel: &AtomicBool,
     ) -> Result<DomHtmlCollection, DomError> {
-        self.validate_collection_document(document, cancel)?;
+        let class = self.with_collection_root(root.node(), cancel, |snapshot, node, step| {
+            root.validate(node.kind())?;
+            Ok(document_metadata(snapshot, node, step)?.class())
+        })?;
         admit(
             qualified_name.retained_units(),
             max_retained_query_units,
             DomResource::HtmlCollectionQueryUnits,
         )?;
         Ok(DomHtmlCollection {
-            document,
-            filter: Filter::TagName(qualified_name),
+            root: root.node(),
+            filter: Filter::TagName {
+                qualified_name,
+                class,
+            },
         })
+    }
+
+    /// Form a live namespace and local-name collection and admit both strings.
+    pub fn get_elements_by_tag_name_ns(
+        &self,
+        root: DomDescendantQueryRoot,
+        namespace: Option<DocumentString>,
+        local_name: DocumentString,
+        max_retained_query_units: usize,
+        cancel: &AtomicBool,
+    ) -> Result<DomHtmlCollection, DomError> {
+        self.with_collection_root(root.node(), cancel, |_, node, _| root.validate(node.kind()))?;
+        let namespace = namespace.filter(|namespace| !namespace.is_empty());
+        let retained = local_name
+            .retained_units()
+            .checked_add(namespace.as_ref().map_or(0, DocumentString::retained_units))
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(
+            retained,
+            max_retained_query_units,
+            DomResource::HtmlCollectionQueryUnits,
+        )?;
+        Ok(DomHtmlCollection {
+            root: root.node(),
+            filter: Filter::TagNameNs {
+                namespace,
+                local_name,
+            },
+        })
+    }
+
+    /// Form a live collection of descendants whose classes contain the query.
+    pub fn get_elements_by_class_name(
+        &self,
+        root: DomDescendantQueryRoot,
+        classes: DocumentString,
+        max_retained_query_units: usize,
+        cancel: &AtomicBool,
+    ) -> Result<DomHtmlCollection, DomError> {
+        self.with_collection_root(root.node(), cancel, |_, node, _| root.validate(node.kind()))?;
+        admit(
+            classes.retained_units(),
+            max_retained_query_units,
+            DomResource::HtmlCollectionQueryUnits,
+        )?;
+        Ok(DomHtmlCollection {
+            root: root.node(),
+            filter: Filter::ClassName(classes),
+        })
+    }
+
+    /// Form a live collection of a Document, Element or Fragment's direct elements.
+    pub fn child_elements(
+        &self,
+        parent: NodeId,
+        cancel: &AtomicBool,
+    ) -> Result<DomHtmlCollection, DomError> {
+        self.with_collection_root(parent, cancel, |_, node, _| match node.kind() {
+            DomNodeKind::Document(_)
+            | DomNodeKind::Element(_)
+            | DomNodeKind::DocumentFragment
+            | DomNodeKind::ShadowRoot(_) => Ok(()),
+            _ => Err(DomError::WrongNodeKind),
+        })?;
+        Ok(DomHtmlCollection {
+            root: parent,
+            filter: Filter::Children,
+        })
+    }
+
+    /// Read the closest ordinary Element sibling in the selected direction.
+    /// Each native lookup uses the current Source scope and caller admission.
+    pub fn read_element_sibling<E: From<DomError>>(
+        &self,
+        node: NodeId,
+        direction: DomSiblingDirection,
+        work_limit: u64,
+        admission: impl Fn() -> Result<(), E>,
+        cancel: &AtomicBool,
+    ) -> Result<Option<NodeId>, E> {
+        let view = self.open_collection_read(
+            node,
+            DomResource::HtmlCollectionWork,
+            work_limit,
+            admission,
+            cancel,
+        )?;
+        if !matches!(
+            view.node(node)?.kind(),
+            DomNodeKind::Element(_)
+                | DomNodeKind::Text(_)
+                | DomNodeKind::CdataSection(_)
+                | DomNodeKind::Comment(_)
+                | DomNodeKind::ProcessingInstruction(_)
+        ) {
+            return Err(DomError::WrongNodeKind.into());
+        }
+        let Some((parent, ordinal)) = view.position(node)? else {
+            return Ok(None);
+        };
+        let parent = view.node(parent)?;
+        let (before, from_node) = parent
+            .children()
+            .split_at_checked(ordinal)
+            .ok_or(DomError::NotFound)?;
+        let first = |sibling: DomNode<'_>| Ok(ControlFlow::Break(sibling.id()));
+        match direction {
+            DomSiblingDirection::Previous => {
+                view.visit_elements(before.iter().rev().copied(), first)
+            }
+            DomSiblingDirection::Next => {
+                view.visit_elements(from_node.iter().skip(1).copied(), first)
+            }
+        }
     }
 
     /// Form a live collection of every ordinary Element descendant.
@@ -215,7 +438,7 @@ impl Dom {
     ) -> Result<DomHtmlAllCollection, DomError> {
         self.validate_collection_document(document, cancel)?;
         Ok(DomHtmlAllCollection(DomHtmlCollection {
-            document,
+            root: document.node(),
             filter: Filter::All,
         }))
     }
@@ -229,7 +452,7 @@ impl Dom {
     ) -> Result<DomHtmlCollection, DomError> {
         self.validate_collection_document(document, cancel)?;
         Ok(DomHtmlCollection {
-            document,
+            root: document.node(),
             filter: Filter::Document(filter),
         })
     }
@@ -260,7 +483,7 @@ impl Dom {
         let empty = name.is_empty();
         let retained = name.retained_units();
         let collection = DomHtmlCollection {
-            document,
+            root: document.node(),
             filter: Filter::WindowName(name),
         };
         let read = self.read_html_collection(
@@ -361,7 +584,7 @@ impl Dom {
             }
 
             let collection = DomHtmlCollection {
-                document,
+                root: document.node(),
                 filter: Filter::WindowName(name),
             };
             let elements = DomHtmlCollectionRead {
@@ -371,7 +594,7 @@ impl Dom {
                     meter,
                 },
                 collection: &collection,
-                class: metadata.class(),
+                class_quirks: false,
                 limits: DomHtmlCollectionLimits::new(work_limit, 0, 0),
             };
             let matches = if first.is_some() {
@@ -404,7 +627,7 @@ impl Dom {
         })
     }
 
-    /// Revalidate the collection's Document against the current read authority.
+    /// Revalidate the collection's root against the current read authority.
     pub fn read_html_collection<'dom, A, E>(
         &'dom self,
         collection: &'dom DomHtmlCollection,
@@ -417,20 +640,20 @@ impl Dom {
         E: From<DomError>,
     {
         let view = self.open_collection_read(
-            collection.document.node(),
+            collection.root,
             DomResource::HtmlCollectionWork,
             limits.work,
             admission,
             cancel,
         )?;
-        let DomNodeKind::Document(metadata) = view.node(collection.document.node())?.kind() else {
-            return Err(DomError::WrongNodeKind.into());
-        };
-        let class = metadata.class();
+        let root = view.node(collection.root)?;
+        let class_quirks = matches!(collection.filter, Filter::ClassName(_))
+            && document_metadata(&view.snapshot, root, || view.meter.step())?.mode()
+                == HtmlDocumentMode::Quirks;
         Ok(DomHtmlCollectionRead {
             view,
             collection,
-            class,
+            class_quirks,
             limits,
         })
     }
@@ -461,6 +684,12 @@ where
         &self,
         mut visit: impl FnMut(DomNode<'_>) -> Result<ControlFlow<T>, E>,
     ) -> Result<Option<T>, E> {
+        if matches!(&self.collection.filter, Filter::Children) {
+            let root = self.view.node(self.collection.root)?;
+            return self
+                .view
+                .visit_elements(root.children().iter().copied(), visit);
+        }
         if matches!(
             &self.collection.filter,
             Filter::Document(HtmlDocumentCollection::Applets)
@@ -468,37 +697,96 @@ where
             self.view.meter.step()?;
             return Ok(None);
         }
-        self.view
-            .descendants(self.collection.document.node(), |node| {
-                if let Some(element) = node.as_element() {
-                    let matches = match &self.collection.filter {
-                        Filter::TagName(query) => {
-                            query.code_units() == [0x2a]
-                                || qualified_equals_with(
-                                    element.name(),
-                                    query,
-                                    self.class == DomDocumentClass::Html
-                                        && in_html_namespace_with(element.name(), || {
-                                            self.view.meter.step()
-                                        })?,
-                                    || self.view.meter.step(),
-                                )?
-                        }
-                        Filter::WindowName(name) => {
-                            self.element_matches_name(node, name, ElementNameScope::Window)?
-                        }
-                        Filter::All => true,
-                        Filter::AllName(name) => {
-                            self.element_matches_name(node, name, ElementNameScope::All)?
-                        }
-                        Filter::Document(filter) => self.matches_document_filter(node, *filter)?,
-                    };
-                    if matches {
-                        return visit(node);
+        if let Filter::ClassName(query) = &self.collection.filter
+            && scan_class_tokens(
+                query.code_units(),
+                || self.view.meter.step(),
+                |_| Ok(ControlFlow::Break(())),
+            )?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        self.view.descendants(self.collection.root, |node| {
+            if let Some(element) = node.as_element() {
+                let matches = match &self.collection.filter {
+                    Filter::TagName {
+                        qualified_name,
+                        class,
+                    } => {
+                        qualified_name.code_units() == WILDCARD
+                            || qualified_equals_with(
+                                element.name(),
+                                qualified_name,
+                                *class == DomDocumentClass::Html
+                                    && in_html_namespace_with(element.name(), || {
+                                        self.view.meter.step()
+                                    })?,
+                                || self.view.meter.step(),
+                            )?
                     }
+                    Filter::TagNameNs {
+                        namespace,
+                        local_name,
+                    } => matches_expanded_name(
+                        element.name(),
+                        namespace.as_ref(),
+                        local_name,
+                        || self.view.meter.step(),
+                    )?,
+                    Filter::ClassName(classes) => self.matches_classes(node, classes)?,
+                    Filter::WindowName(name) => {
+                        self.element_matches_name(node, name, ElementNameScope::Window)?
+                    }
+                    Filter::Children | Filter::All => true,
+                    Filter::AllName(name) => {
+                        self.element_matches_name(node, name, ElementNameScope::All)?
+                    }
+                    Filter::Document(filter) => self.matches_document_filter(node, *filter)?,
+                };
+                if matches {
+                    return visit(node);
                 }
-                Ok(ControlFlow::Continue(()))
+            }
+            Ok(ControlFlow::Continue(()))
+        })
+    }
+
+    fn matches_classes(&self, node: DomNode<'_>, query: &DocumentString) -> Result<bool, E> {
+        let attributes = node.attributes().ok_or(DomError::WrongNodeKind)?;
+        let step = || self.view.meter.step();
+        let Some(classes) = attributes.get_null_namespace_attribute_with(CLASS, step)? else {
+            return Ok(false);
+        };
+        let missing = scan_class_tokens(query.code_units(), step, |requested| {
+            let found = scan_class_tokens(classes.value().code_units(), step, |candidate| {
+                let matches = if self.class_quirks {
+                    if candidate.len() != requested.len() {
+                        return Ok(ControlFlow::Continue(()));
+                    }
+                    for (&candidate, &requested) in candidate.iter().zip(requested) {
+                        step()?;
+                        if ascii_lower(candidate) != ascii_lower(requested) {
+                            return Ok(ControlFlow::Continue(()));
+                        }
+                    }
+                    true
+                } else {
+                    same_code_units(candidate, requested, step)?
+                };
+                Ok(if matches {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                })
+            })?;
+            Ok(if found.is_some() {
+                ControlFlow::Continue(())
+            } else {
+                ControlFlow::Break(())
             })
+        })?;
+        Ok(missing.is_none())
     }
 
     fn first_two_matches(
@@ -566,6 +854,24 @@ where
             index -= 1;
             Ok(ControlFlow::Continue(()))
         })
+    }
+
+    /// Read the last current element in collection order.
+    pub fn last_item(&self) -> Result<Option<NodeId>, E> {
+        if matches!(&self.collection.filter, Filter::Children) {
+            let root = self.view.node(self.collection.root)?;
+            return self
+                .view
+                .visit_elements(root.children().iter().rev().copied(), |node| {
+                    Ok(ControlFlow::Break(node.id()))
+                });
+        }
+        let mut last = None;
+        self.walk::<()>(|node| {
+            last = Some(node.id());
+            Ok(ControlFlow::Continue(()))
+        })?;
+        Ok(last)
     }
 
     /// Read the first current element with the exact ID or eligible name.
@@ -842,7 +1148,7 @@ where
                     DomResource::HtmlCollectionQueryUnits,
                 )?;
                 Ok(DomHtmlAllNamedValue::Collection(DomHtmlCollection {
-                    document: self.0.collection.document,
+                    root: self.0.collection.root,
                     filter: Filter::AllName(name.clone()),
                 }))
             }
