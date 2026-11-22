@@ -113,10 +113,124 @@ pub(super) fn follows_the_native_attribute_list() {
                 || element.getAttribute('data-exact') !== null || map.length !== 3) {
                 return 'removing by either name must return the original detached Attr';
             }
+            const detached = document.createElement('span');
+            detached.setAttribute('text', 'regular');
+            detached.setAttribute('99', 'past the index range');
+            detached.setAttribute('0', 'collides with an index');
+            const keys = detached.attributes;
+            if (Reflect.ownKeys(keys).join() !== '0,1,2,text,99'
+                || keys[0] !== detached.getAttributeNode('text')
+                || keys.getNamedItem('0').value !== 'collides with an index'
+                || keys[99] !== undefined || Object.getOwnPropertyDescriptor(keys, '99') !== undefined) {
+                return 'numeric attribute names and supported indices must keep their separate rules';
+            }
+            const duplicate = document.createElement('div');
+            duplicate.setAttributeNS('urn:first', '99', 'first');
+            duplicate.setAttributeNS('urn:second', '99', 'second');
+            const duplicateMap = duplicate.attributes;
+            if (duplicateMap.length !== 2) return 'the fixture needs two expanded Attr names';
+            let visibility = 0;
+            Object.setPrototypeOf(duplicateMap, new Proxy({}, {
+                getOwnPropertyDescriptor(_, key) {
+                    if (key === '99' && ++visibility === 1)
+                        return {value: 'mask', configurable: true};
+                    return undefined;
+                }
+            }));
+            if (Reflect.ownKeys(duplicateMap).join() !== '0,1' || visibility !== 1) {
+                return 'equal qualified names must share one visibility observation';
+            }
+            const moving = document.createElement('div');
+            moving.setAttribute('before', 'removed during enumeration');
+            moving.setAttribute('99', 'runs the later name check');
+            const movingMap = moving.attributes;
+            Object.setPrototypeOf(movingMap, new Proxy({}, {
+                getOwnPropertyDescriptor(_, key) {
+                    if (key === '99') {
+                        NamedNodeMap.prototype.removeNamedItem.call(movingMap, 'before');
+                        Object.defineProperty(movingMap, 'before', {value: 3, configurable: true});
+                        Object.defineProperty(movingMap, 'later', {value: 4, configurable: true});
+                    }
+                    return undefined;
+                }
+            }));
+            if (Reflect.ownKeys(movingMap).join() !== '0,1,before,99,later'
+                || moving.hasAttribute('before') || movingMap.before !== 3 || movingMap.later !== 4) {
+                return 'a name emitted before reentry must occur once in the final key list';
+            }
+            const shrinking = document.createElement('div');
+            shrinking.setAttribute('before', 'runs the first name check');
+            shrinking.setAttribute('99', 'removed before its own visibility check');
+            const shrinkingMap = shrinking.attributes;
+            const probes = [];
+            Object.setPrototypeOf(shrinkingMap, new Proxy({}, {
+                getOwnPropertyDescriptor(_, key) {
+                    probes.push(key);
+                    if (key === 'before') {
+                        NamedNodeMap.prototype.removeNamedItem.call(shrinkingMap, '99');
+                    }
+                    return undefined;
+                }
+            }));
+            if (Reflect.ownKeys(shrinkingMap).join() !== '0,1,before'
+                || probes.join() !== 'before' || shrinking.hasAttribute('99')) {
+                return 'a removed candidate must be skipped before prototype lookup';
+            }
             return 'ok';
         })()"#,
     );
     assert_eq!(mutations, "ok");
+    let prototype_order = observe(
+        &mut host,
+        &permit,
+        "Object.getOwnPropertyNames(NamedNodeMap.prototype).join()",
+    );
+    let reentry = observe(
+        &mut host,
+        &permit,
+        r#"(() => {
+            const element = document.createElement('div');
+            element.setAttribute('removed', 'original');
+            element.setAttribute('masked', 'original');
+            const map = element.attributes;
+            Object.setPrototypeOf(map, new Proxy({}, {
+                getOwnPropertyDescriptor(_, key) {
+                    NamedNodeMap.prototype.removeNamedItem.call(map, key);
+                    if (key === 'removed') return undefined;
+                    Object.defineProperty(map, key, {value: 7, configurable: true});
+                    return {value: 'inherited', configurable: true};
+                }
+            }));
+            const removed = Reflect.getOwnPropertyDescriptor(map, 'removed');
+            const masked = Reflect.getOwnPropertyDescriptor(map, 'masked');
+
+            const xml = document.implementation.createDocument('urn:map', 'root', null);
+            const origin = xml.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+            origin.setAttribute('ENTRY', 'XML spelling');
+            origin.setAttribute('entry', 'HTML lookup');
+            const attrs = origin.attributes;
+            const lower = origin.getAttributeNode('entry');
+            Object.setPrototypeOf(attrs, new Proxy({}, {
+                getOwnPropertyDescriptor(_, key) {
+                    if (key === 'ENTRY') document.adoptNode(origin);
+                    return undefined;
+                }
+            }));
+            const adopted = Reflect.getOwnPropertyDescriptor(attrs, 'ENTRY');
+            return [
+                removed?.value === null && !element.hasAttribute('removed'),
+                masked?.value === 7 && !element.hasAttribute('masked'),
+                adopted?.value === lower && origin.ownerDocument === document
+            ].join(';');
+        })()"#,
+    );
+    assert_eq!(
+        (prototype_order.as_str(), reentry.as_str()),
+        (
+            "length,item,getNamedItem,getNamedItemNS,setNamedItem,setNamedItemNS,removeNamedItem,removeNamedItemNS,constructor",
+            "true;true;true"
+        )
+    );
     let snapshot = host.snapshot().unwrap();
     assert_eq!(
         snapshot.node(element).unwrap().attributes().unwrap().len(),
