@@ -33,6 +33,10 @@ use std::sync::Arc;
 
 use crate::interpolation::{DiscreteValue, InterpolationProgress, checked_interpolate};
 
+mod layer_size;
+#[doc(inline)]
+pub use layer_size::{LayerSize, LayerSizeAxis};
+
 mod repeatable;
 #[doc(inline)]
 pub use repeatable::RepeatableList;
@@ -826,6 +830,8 @@ pub enum ComputedComponent {
     Numeric(ComputedNumeric),
     Ratio(ComputedRatio),
     Position(ComputedPosition),
+    /// A guarded image-layer size with matching keyword constants.
+    Size(LayerSize),
     Discrete(DiscreteValue),
 }
 
@@ -920,6 +926,9 @@ impl ComputedValue {
                             || (!first.is_degenerate() && !second.is_degenerate())
                     }
                     (ComputedComponent::Position(_), ComputedComponent::Position(_)) => true,
+                    (ComputedComponent::Size(first), ComputedComponent::Size(second)) => {
+                        first.compatible(second)
+                    }
                     (ComputedComponent::Discrete(first), ComputedComponent::Discrete(second)) => {
                         first == second
                     }
@@ -940,6 +949,9 @@ fn combine_component(
         (ComputedComponent::Position(first), ComputedComponent::Position(second)) => Ok(
             ComputedComponent::Position(first.combine(second, operation)?),
         ),
+        (ComputedComponent::Size(first), ComputedComponent::Size(second)) => {
+            Ok(ComputedComponent::Size(first.combine(second, operation)?))
+        }
         (ComputedComponent::Ratio(first), ComputedComponent::Ratio(second)) => {
             Ok(ComputedComponent::Ratio(match operation {
                 ComputedOperation::Interpolate(progress) => first.interpolate(*second, progress)?,

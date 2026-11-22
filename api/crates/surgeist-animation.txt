@@ -137,6 +137,7 @@ pub surgeist_animation::computed::ComputedComponent::Discrete(surgeist_animation
 pub surgeist_animation::computed::ComputedComponent::Numeric(surgeist_animation::computed::ComputedNumeric)
 pub surgeist_animation::computed::ComputedComponent::Position(surgeist_animation::computed::ComputedPosition)
 pub surgeist_animation::computed::ComputedComponent::Ratio(surgeist_animation::computed::ComputedRatio)
+pub surgeist_animation::computed::ComputedComponent::Size(surgeist_animation::computed::LayerSize)
 pub enum surgeist_animation::computed::ComputedErrorKind
 pub surgeist_animation::computed::ComputedErrorKind::Capacity
 pub surgeist_animation::computed::ComputedErrorKind::DegenerateRatio
@@ -159,6 +160,12 @@ pub surgeist_animation::computed::DimensionKind::Frequency
 pub surgeist_animation::computed::DimensionKind::Length
 pub surgeist_animation::computed::DimensionKind::Resolution
 pub surgeist_animation::computed::DimensionKind::Time
+pub enum surgeist_animation::computed::LayerSize
+pub surgeist_animation::computed::LayerSize::Contain
+pub surgeist_animation::computed::LayerSize::Cover
+pub surgeist_animation::computed::LayerSize::Explicit
+pub surgeist_animation::computed::LayerSize::Explicit::horizontal: surgeist_animation::computed::LayerSizeAxis
+pub surgeist_animation::computed::LayerSize::Explicit::vertical: surgeist_animation::computed::LayerSizeAxis
 pub enum surgeist_animation::computed::MathNode
 pub surgeist_animation::computed::MathNode::Combine
 pub surgeist_animation::computed::MathNode::Combine::first: usize
@@ -249,6 +256,11 @@ impl surgeist_animation::computed::DimensionPercentage
 pub const fn surgeist_animation::computed::DimensionPercentage::dimension(self) -> surgeist_animation::computed::ComputedDimension
 pub fn surgeist_animation::computed::DimensionPercentage::new(dimension: surgeist_animation::computed::ComputedDimension, percentage: f64) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
 pub const fn surgeist_animation::computed::DimensionPercentage::percentage(self) -> f64
+pub struct surgeist_animation::computed::LayerSizeAxis
+impl surgeist_animation::computed::LayerSizeAxis
+pub const fn surgeist_animation::computed::LayerSizeAxis::auto() -> Self
+pub fn surgeist_animation::computed::LayerSizeAxis::numeric(value: surgeist_animation::computed::ComputedNumeric) -> core::result::Result<Self, surgeist_animation::computed::ComputedError>
+pub const fn surgeist_animation::computed::LayerSizeAxis::numeric_value(&self) -> core::option::Option<&surgeist_animation::computed::ComputedNumeric>
 pub struct surgeist_animation::computed::MathContext
 impl surgeist_animation::computed::MathContext
 pub fn surgeist_animation::computed::MathContext::new() -> Self
