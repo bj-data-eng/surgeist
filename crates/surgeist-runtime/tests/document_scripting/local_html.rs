@@ -108,10 +108,16 @@ pub(super) fn window_listener_attaches_to_the_visible_prefix_before_eof() {
                     event.eventPhase === Event.AT_TARGET && event.isTrusted && !event.bubbles &&
                     !event.cancelable && event.timeStamp >= 0 &&
                     document.readyState === "complete" ? "load" : "bad load");
-                Promise.resolve().then(() => lifecycle.push("microtask"));
+                Promise.resolve().then(() => {
+                    lifecycle.push(event.currentTarget === window && window.event === event &&
+                        event.eventPhase === Event.AT_TARGET ? "microtask" : "bad microtask");
+                    window.removeEventListener("load", removedByJob);
+                });
                 setTimeout(() => lifecycle.push("timer"), 0);
                 globalThis.trustedLoad = event;
             });
+            function removedByJob() { lifecycle.push("bad removed listener"); }
+            window.addEventListener("load", removedByJob);
             window.addEventListener("load", () => lifecycle.push("last load"), { once: true });
             window.addEventListener("pageshow", function(event) {
                 const path = event.composedPath();
@@ -241,7 +247,7 @@ pub(super) fn window_listener_attaches_to_the_visible_prefix_before_eof() {
     eval(
         &mut host,
         &permit,
-        r#"Number(lifecycle.join(",") === "interactive,content,complete,load")"#,
+        r#"Number(lifecycle.join(",") === "interactive,content,complete,load,microtask")"#,
         1.0,
     );
     assert!(matches!(
@@ -251,7 +257,7 @@ pub(super) fn window_listener_attaches_to_the_visible_prefix_before_eof() {
     eval(
         &mut host,
         &permit,
-        r#"Number(lifecycle.join(",") === "interactive,content,complete,load,last load,pageshow,microtask" &&
+        r#"Number(lifecycle.join(",") === "interactive,content,complete,load,microtask,last load,pageshow" &&
             trustedLoad.target === document && trustedLoad.currentTarget === null &&
             trustedLoad.eventPhase === Event.NONE && trustedLoad.composedPath().length === 0)"#,
         1.0,
@@ -306,7 +312,7 @@ pub(super) fn window_listener_attaches_to_the_visible_prefix_before_eof() {
     eval(
         &mut host,
         &permit,
-        r#"Number(lifecycle.join(",") === "interactive,content,complete,load,last load,pageshow,microtask,timer")"#,
+        r#"Number(lifecycle.join(",") === "interactive,content,complete,load,microtask,last load,pageshow,timer")"#,
         1.0,
     );
     assert!(matches!(
@@ -412,7 +418,13 @@ fn refuses_retired_document() {
 
 fn eval(host: &mut DocumentScriptHost, permit: &DocumentScriptPermit, source: &str, expected: f64) {
     if let Err(error) = host.in_document(permit, |scope| {
-        assert_script_number(scope, source, expected)
+        let observed = scope.evaluate(&source.encode_utf16().collect::<Vec<_>>())?;
+        let expected = scope.primitive(Primitive::Number(expected))?;
+        assert!(
+            scope.strict_equals(&observed, &expected)?,
+            "failed assertion: {source}"
+        );
+        Ok(())
     }) {
         let mut cause = std::error::Error::source(&error);
         while let Some(error) = cause {
