@@ -76,7 +76,7 @@ pub(super) fn window_listener_attaches_to_the_visible_prefix_before_eof() {
             globalThis.prefix = document.getElementById("p");
             globalThis.prefixText = prefix.firstChild;
             globalThis.observed = 0;
-            EventTarget.prototype.addEventListener.call(window, "parser-observation", function(event) {
+            window.addEventListener("parser-observation", function(event) {
                 if (this === window && event.currentTarget === window) observed++;
             }, { once: true });
             return prefixText.data === "A" && prefix.ownerDocument === document;
@@ -135,7 +135,7 @@ pub(super) fn window_listener_attaches_to_the_visible_prefix_before_eof() {
         &mut host,
         &permit,
         r#"Number((() => {
-            EventTarget.prototype.dispatchEvent.call(window, new Event("parser-observation"));
+            window.dispatchEvent(new Event("parser-observation"));
             return observed === 1 && prefix === document.getElementById("p")
                 && prefixText === prefix.firstChild && prefixText.data === "A😀&β";
         })())"#,
