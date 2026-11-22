@@ -10,22 +10,20 @@ use super::{
 use surgeist_dom::tree::DomNode;
 use surgeist_html::bounded::attributes::{HtmlButtonSubmitterFact, button_type_keyword_with};
 
-const BEFORE_FORM: &[reflection::Member] = &[
-    (
-        &ascii(b"command"),
-        &ascii(b"get command"),
-        &ascii(b"set command"),
-        &ascii(b"command"),
-        Reflection::ButtonCommand,
-    ),
-    (
-        &ascii(b"disabled"),
-        &ascii(b"get disabled"),
-        &ascii(b"set disabled"),
-        &ascii(b"disabled"),
-        Reflection::Boolean,
-    ),
-];
+const COMMAND: &[reflection::Member] = &[(
+    &ascii(b"command"),
+    &ascii(b"get command"),
+    &ascii(b"set command"),
+    &ascii(b"command"),
+    Reflection::ButtonCommand,
+)];
+const DISABLED: &[reflection::Member] = &[(
+    &ascii(b"disabled"),
+    &ascii(b"get disabled"),
+    &ascii(b"set disabled"),
+    &ascii(b"disabled"),
+    Reflection::Boolean,
+)];
 
 const AFTER_FORM: &[reflection::Member] = &[
     (
@@ -84,11 +82,13 @@ pub(super) fn install<'scope>(
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
-    reflection::install(scope, prototype, capture, Receiver::Button, BEFORE_FORM)?;
+    reflection::install(scope, prototype, capture, Receiver::Button, COMMAND)?;
+    super::reflected_element::ElementTarget::CommandFor.install(scope, prototype, capture)?;
+    reflection::install(scope, prototype, capture, Receiver::Button, DISABLED)?;
     form_owner::install(scope, prototype, capture, FormOwnerGetter::Button)?;
     reflection::install(scope, prototype, capture, Receiver::Button, AFTER_FORM)?;
     CustomValidityControl::Button.install(scope, prototype, capture)?;
-    super::popover_target::install(scope, prototype, capture, Receiver::Button)
+    super::reflected_element::ElementTarget::ButtonPopover.install(scope, prototype, capture)
 }
 
 pub(super) fn type_keyword(

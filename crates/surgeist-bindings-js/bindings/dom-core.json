@@ -20972,38 +20972,19 @@
       "kind": "native",
       "adapter": "htmlbuttonelement.commandforelement.get",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/button.rs", "symbol": "explicit_command_for"},
-        {"owner": "surgeist-html-semantics", "path": "crates/surgeist-html-semantics/src/semantics/command_targets.rs", "symbol": "associated_element"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/reflected_element.rs", "symbol": "html_command_for_with"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflected_element.rs", "symbol": "read_reflected_element"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-dom",
-          "contract": "Resolve the fresh reflected associated element under the current Source scope, including weak target validity and commandfor identifier fallback.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-button-commandforelement",
-          "issue": 1235
-        },
-        {
-          "owner": "surgeist-runtime",
-          "contract": "Project the exact nullable associated Element with the attached realm's native wrapper identity.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-button-commandforelement",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLButtonElement.commandForElement/set": {
       "kind": "native",
       "adapter": "htmlbuttonelement.commandforelement.set",
       "producers": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_command_for_element"}
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_command_for_element"},
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflected_element.rs", "symbol": "write_reflected_element"}
       ],
-      "requirements": [
-        {
-          "owner": "surgeist-bindings-js",
-          "contract": "Convert a nullable Element with its authentic platform-object brand and project its exact native identity into the Source setter.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-button-commandforelement",
-          "issue": 2258
-        }
-      ]
+      "requirements": []
     },
     "HTMLButtonElement.disabled/get": {
       "kind": "native",
@@ -23831,7 +23812,7 @@
       "adapter": "popovertargetattributes.popovertargetelement.get",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot/reflected_element.rs", "symbol": "html_popover_target_with"},
-        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/popover_target.rs", "symbol": "read_popover_target"}
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflected_element.rs", "symbol": "read_reflected_element"}
       ],
       "requirements": []
     },
@@ -23840,7 +23821,7 @@
       "adapter": "popovertargetattributes.popovertargetelement.set",
       "producers": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_popover_target_element"},
-        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/popover_target.rs", "symbol": "write_popover_target"}
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflected_element.rs", "symbol": "write_reflected_element"}
       ],
       "requirements": []
     },

@@ -173,8 +173,8 @@ are invented from ticket indices.
 
 `DomButton::explicit_command_for` and the Button and Input
 `explicit_popover_target` accessors read stored weak references.
-`DomNode::html_popover_target_with` resolves live popover reflection with
-caller-admitted reads on the current native view. HTML semantic captures
+`DomNode::html_command_for_with` and `html_popover_target_with` resolve
+live reflection with caller-admitted reads on the current native view. HTML semantic captures
 retain their scoped command and popover queries. The association uses the
 first exact ID when the explicit slot is null. An out-of-scope explicit
 target remains stored and the getter returns null. Capture closes actual

@@ -1,10 +1,24 @@
 //! Live association over the recorded ordinary and shadow-including edges.
 
 use super::{DomError, DomNode, NodeId, ascii_units};
+use crate::internal::reflected::ReflectedTarget;
 
+const COMMAND_FOR: &[u16] = &ascii_units(b"commandfor");
 const POPOVER_TARGET: &[u16] = &ascii_units(b"popovertarget");
 
 impl DomNode<'_> {
+    /// Resolve the command-for Element for an actual HTML Button.
+    ///
+    /// `step` admits reached lookups and comparisons. `reserve` admits
+    /// traversal backing. Returns the first native or caller refusal.
+    pub fn html_command_for_with<E: From<DomError>, Backing>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+        reserve: impl FnMut(usize) -> Result<Backing, E>,
+    ) -> Result<Option<NodeId>, E> {
+        self.associated_element_with(ReflectedTarget::CommandFor, step, reserve)
+    }
+
     /// Resolve the reflected Element for an actual HTML Button or Input.
     ///
     /// An explicit weak target uses ordinary target ancestry and
@@ -15,20 +29,31 @@ impl DomNode<'_> {
     /// traversal backing. Returns the first native or caller refusal.
     pub fn html_popover_target_with<E: From<DomError>, Backing>(
         self,
+        step: impl FnMut() -> Result<(), E>,
+        reserve: impl FnMut(usize) -> Result<Backing, E>,
+    ) -> Result<Option<NodeId>, E> {
+        self.associated_element_with(ReflectedTarget::PopoverTarget, step, reserve)
+    }
+
+    fn associated_element_with<E: From<DomError>, Backing>(
+        self,
+        attribute: ReflectedTarget,
         mut step: impl FnMut() -> Result<(), E>,
         reserve: impl FnMut(usize) -> Result<Backing, E>,
     ) -> Result<Option<NodeId>, E> {
         step()?;
-        let attributes = self.attributes().ok_or(DomError::WrongNodeKind)?;
-        let content = attributes.get_null_namespace_attribute_with(POPOVER_TARGET, &mut step)?;
-        step()?;
-        let explicit = if let Some(button) = self.as_button() {
-            button.explicit_popover_target()
-        } else if let Some(input) = self.as_input() {
-            input.explicit_popover_target()
-        } else {
-            return Err(DomError::WrongNodeKind.into());
+        let name = match attribute {
+            ReflectedTarget::CommandFor => COMMAND_FOR,
+            ReflectedTarget::PopoverTarget => POPOVER_TARGET,
         };
+        let attributes = self.attributes().ok_or(DomError::WrongNodeKind)?;
+        let content = attributes.get_null_namespace_attribute_with(name, &mut step)?;
+        step()?;
+        let explicit = self
+            .node
+            .reflected_targets()
+            .and_then(|targets| targets.get(attribute))
+            .ok_or(DomError::WrongNodeKind)?;
         if let Some(target) = explicit {
             let target = self.snapshot.node_with(target, &mut step)?;
             return self.scopes_explicit_target(target, &mut step);
