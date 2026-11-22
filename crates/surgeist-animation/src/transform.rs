@@ -274,7 +274,7 @@ pub(crate) enum TransformInterpolation {
 
 enum PairPart {
     Functions(math::FunctionPair, usize),
-    Matrix(math::Decomposed, math::Decomposed, usize),
+    Matrix(TransformMatrix, TransformMatrix, usize),
 }
 
 /// Preflight decomposition before interpolating any prefix, so a singular
@@ -306,17 +306,17 @@ pub(crate) fn interpolate(
             ))
         };
         if let Some((a, b, suffix)) = matrices {
-            // Check both endpoint singularities before either decomposition.
-            if math::singular(a) || math::singular(b) {
-                return Ok(TransformInterpolation::Discrete);
-            }
-            let a = math::decompose(a).map_err(|error| error.at_index(index))?;
-            let b = math::decompose(b).map_err(|error| error.at_index(index))?;
             parts.push(PairPart::Matrix(a, b, index));
             if suffix {
                 break;
             }
         }
+    }
+    if parts.iter().any(|part| match part {
+        PairPart::Matrix(a, b, _) => math::singular(*a) || math::singular(*b),
+        PairPart::Functions(_, _) => false,
+    }) {
+        return Ok(TransformInterpolation::Discrete);
     }
     let functions = parts
         .into_iter()
@@ -324,7 +324,12 @@ pub(crate) fn interpolate(
             let (result, index) = match part {
                 PairPart::Functions(pair, index) => (pair.sample(progress), index),
                 PairPart::Matrix(a, b, index) => (
-                    math::interpolate_matrix(a, b, progress).map(TransformFunction::Matrix),
+                    math::decompose(a)
+                        .and_then(|a| {
+                            math::decompose(b)
+                                .and_then(|b| math::interpolate_matrix(a, b, progress))
+                        })
+                        .map(TransformFunction::Matrix),
                     index,
                 ),
             };
