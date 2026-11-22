@@ -476,3 +476,58 @@ pub(super) fn window_properties_refuses_alternate_receiver() {
         .unwrap();
     assert_eq!(String::from_utf16(&result).unwrap(), "ok");
 }
+
+pub(super) fn window_properties_direct_assignment_preserves_storage_and_inheritance() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let script = r#"(() => {
+        const names = Object.getPrototypeOf(Window.prototype);
+        const target = EventTarget.prototype;
+        for (const key of ["newName", "0", Symbol("name"), "constructor"]) {
+            const assigned = Reflect.set(names, key, 17);
+            if (Object.hasOwn(names, key)) {
+                return "direct assignment must not create " + String(key)
+                    + " on WindowProperties; Reflect.set returned " + assigned;
+            }
+            const ordinary = Object.create(names);
+            if (!Reflect.set(names, key, 17, ordinary)
+                || !Object.hasOwn(ordinary, key) || ordinary[key] !== 17) {
+                return "assignment must store " + String(key) + " on an ordinary receiver";
+            }
+        }
+        for (const key of ["inheritedSetter", "0", Symbol("setter")]) {
+            let received;
+            const thrown = {};
+            Object.defineProperty(target, key, {
+                configurable: true,
+                get() { throw new Error("assignment must not invoke the getter"); },
+                set(value) {
+                    if (value === thrown) throw thrown;
+                    received = [this, value];
+                },
+            });
+            if (!Reflect.set(names, key, 42)
+                || received?.[0] !== names || received[1] !== 42 || Object.hasOwn(names, key)) {
+                return "an inherited setter must receive the original WindowProperties object";
+            }
+            let caught;
+            try { Reflect.set(names, key, thrown); } catch (error) { caught = error; }
+            if (caught !== thrown) return "assignment must propagate the inherited setter exception";
+            delete target[key];
+        }
+        window.windowAssignmentControl = 19;
+        if (window !== globalThis || !Object.hasOwn(window, "windowAssignmentControl")
+            || window.windowAssignmentControl !== 19
+            || Object.hasOwn(names, "windowAssignmentControl")) {
+            return "ordinary Window assignment must use the same exposed global receiver";
+        }
+        return "ok";
+    })()"#;
+    let result = host
+        .in_document(&permit, |scope| {
+            let value = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&value)
+        })
+        .unwrap();
+    assert_eq!(String::from_utf16(&result).unwrap(), "ok");
+}

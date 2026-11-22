@@ -157,6 +157,8 @@ mod window_length;
 mod window_timers;
 #[path = "document_scripting/wpt_window_startup.rs"]
 mod wpt_window_startup;
+#[path = "document_scripting/tag_collection.rs"]
+mod tag_collection;
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -2478,8 +2480,10 @@ fn main() {
             "window-event-target-lookup" => window_document::window_resolves_the_inherited_event_target_operations(),
             "window-properties-full" => window_document::window_properties_full_assignment_regression(),
             "window-properties-alternate-assignment" => window_document::window_properties_refuses_alternate_receiver(),
+            "window-properties-direct-storage" => window_document::window_properties_direct_assignment_preserves_storage_and_inheritance(),
             "wpt-window-startup" => wpt_window_startup::starts_unmodified_harness_with_native_timers(),
             "html-collection-indexed-assignment" => wpt_window_startup::refuses_unsupported_html_collection_index_assignment(),
+            "html-collection-properties" => tag_collection::reflects_live_tag_collection_properties(),
             "standard-window" => standard_window::window_without_host_hooks_uses_standard_globals(),
             "standard-window-guest" => standard_window::guest_window_without_host_hooks_recovers_from_policy_refusal(),
             "media-removal-stable-state" => standard_window::guest_media_removal_reaches_the_owning_checkpoint(),
