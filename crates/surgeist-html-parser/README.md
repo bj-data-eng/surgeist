@@ -10,6 +10,21 @@ records and retains none of it. The `detail` cargo feature, on by default,
 provides the detail types and readers; a build that turns it off refuses a
 non-empty selection with `HtmlParseDetailUnavailable`.
 
+The `live` module drives bounded decoded input into a host's canonical tree.
+The local profile requires a plain HTML doctype, explicit `html`, `head` and
+`body` starts, and an explicit `head` end. It admits balanced `div` and `span`,
+`id` and `class` attributes, text and comments. The parser retains the original
+tokenizer, input position and open-element identities across a pause. The host
+publishes each reached tree edit atomically and can borrow the active Document
+between advances. A refused edit stays pending with its original token.
+
+Explicit EOF allows the original end token to reach stop parsing. The one-shot
+continuation gives the host the EOF anchor and pending stack pops. The profile
+refuses markup that would introduce parser scripts, and the hosted caller
+supplies the independent load-delay qualification before handoff. After
+cancellation or abandonment, abort releases parser custody and preserves edits
+the host already published.
+
 The [detailed parsing guide](../../docs/reference/html-operations.md#decoded-unicode-parsing)
 records supported profiles, explicit external facts, bounded ownership and
 terminal cleanup. The [coverage matrix](docs/conformance-coverage.md) connects

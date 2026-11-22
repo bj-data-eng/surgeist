@@ -47,6 +47,7 @@ mod foreign;
 mod formatting;
 mod frameset;
 pub(crate) mod head;
+pub(crate) mod live;
 #[cfg(test)]
 mod outcome_tests;
 pub(crate) mod parse;

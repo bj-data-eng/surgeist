@@ -142,6 +142,12 @@ impl FrozenUtf16 {
         &self.text
     }
 
+    /// The canonical receiver admitted this backing before publishing its
+    /// own occurrence. Release will retire only the parser's debit.
+    pub(crate) fn mark_shared(&mut self) {
+        self.allocation.mark_shared();
+    }
+
     /// The consumer owns both text and its accounting. Later construction may
     /// transfer logical domains; dropping this ticket alone is not a refund.
     pub(crate) fn into_parts(self) -> (DocumentString, DocumentStringAllocation) {

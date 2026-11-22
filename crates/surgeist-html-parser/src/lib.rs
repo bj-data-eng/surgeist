@@ -29,6 +29,8 @@ mod detail;
 #[cfg(feature = "detail")]
 mod detail_view;
 mod keyed;
+/// Bounded decoded input for the canonical hosted tree.
+pub mod live;
 mod meta_csp;
 #[cfg_attr(not(feature = "detail"), allow(dead_code))]
 mod parser;

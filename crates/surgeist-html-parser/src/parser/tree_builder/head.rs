@@ -734,9 +734,12 @@ impl<'source> HeadStage<'source> {
         }
         if !accept_eof {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if matches!(
-                state.pending.as_ref().map(|token| &token.payload),
-                Some(Payload::Eof)
+            if super::end::eof_is_held(
+                matches!(
+                    state.pending.as_ref().map(|token| &token.payload),
+                    Some(Payload::Eof)
+                ),
+                accept_eof,
             ) {
                 return Ok(None);
             }
@@ -873,7 +876,7 @@ fn release_fixture_vector<T>(
     let empty = OwnedVec::new(resource)?;
     std::mem::replace(vector, empty).release(c)
 }
-fn validate_source(
+pub(super) fn validate_source(
     source: &HtmlSource,
     token: &Token,
     c: &mut ParseControl,

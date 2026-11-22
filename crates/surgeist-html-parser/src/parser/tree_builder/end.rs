@@ -25,6 +25,16 @@ pub(super) enum EndPhase {
     VerifyComplete,
     Done,
 }
+
+pub(super) fn admit_stop_parsing(c: &mut ParseControl) -> Result<EndPhase, HtmlParseStop> {
+    write(size_of::<Option<EndPhase>>(), 1, c)?;
+    Ok(EndPhase::InsertionPoint)
+}
+
+pub(super) fn eof_is_held(is_eof: bool, accept_eof: bool) -> bool {
+    is_eof && !accept_eof
+}
+
 impl HeadState<'_> {
     fn set_end(&mut self, phase: EndPhase, c: &mut ParseControl) -> Result<(), HeadError> {
         write(size_of::<Option<EndPhase>>(), 1, c)?;
@@ -50,7 +60,7 @@ impl HeadState<'_> {
             .kernel
             .session
             .qualify_standalone_completion(c, &script.capability, false)?;
-        self.set_end(EndPhase::InsertionPoint, c)?;
+        self.end = Some(admit_stop_parsing(c)?);
         Ok(HeadStep::Consumed)
     }
     /// One fixed phase or one canonical pop per step. Long traversals and tasks
