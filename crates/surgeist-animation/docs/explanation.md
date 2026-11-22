@@ -145,6 +145,14 @@ whole-list compatibility. This also keeps authored CSS/SVG parsing with CSS and
 resolved geometry with its consuming owner. See the
 [command contract](reference.md#native-shape-and-path-commands).
 
+Computed clip paths retain their complete branch above the same shape kernel.
+Opaque source identities are guarded without URL parsing, resource lookup or
+geometry execution. Pairing a shape with a different branch switches the whole
+value; pairing shapes preserves their shared compatibility and typed errors.
+Property names do not select interpolation policy: Masking's numeric-looking
+mask-border properties remain discrete because their property tables require it.
+See [computed Masking values](reference.md#computed-masking-values).
+
 Box and text shadows share one normalized list algebra above their supplied
 resolved geometry and premultiplied colors. Input guards remain distinct from
 sampled values, so easing extrapolation does not trigger authored range checks.

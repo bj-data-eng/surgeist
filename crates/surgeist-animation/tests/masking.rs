@@ -3,18 +3,297 @@
 use surgeist_animation::computed::{
     ComputedComponent, ComputedDimension, ComputedNumeric, ComputedValue, DimensionKind,
 };
-use surgeist_animation::easing::Easing;
-use surgeist_animation::interpolation::{DiscreteValue, InterpolableValue, PropertyKey};
+use surgeist_animation::easing::{Easing, LinearControlPointInput, LinearEasing};
+use surgeist_animation::interpolation::{
+    DiscreteValue, InterpolableValue, InterpolationError, InterpolationOutcome, InterpolationPair,
+    InterpolationProgress, PropertyKey,
+};
 use surgeist_animation::keyframe::{
     KeyframeAnimationId, KeyframeSegment, KeyframeTiming, KeyframeTrack,
 };
+use surgeist_animation::masking::{ClipPathValue, ClipSource, ClipSourceErrorKind};
 use surgeist_animation::progress::UnitRatio;
-use surgeist_animation::sample::{SampleValue, SampledPropertyResult};
+use surgeist_animation::sample::{SampleClassification, SampleValue, SampledPropertyResult};
+use surgeist_animation::shape::{
+    BasicShape, Circle, CommandPath, CommandShape, Endpoint, FillRule, LengthPercentage, Radius,
+    ReferenceBox, ShapeCommand, ShapeComponent, ShapeValue,
+};
 use surgeist_animation::time::{AnimationDelay, AnimationDuration, ElapsedTime};
 use surgeist_animation::timing::{
     AnimationDirection, AnimationPlayState, FillMode, IterationCount,
 };
 use surgeist_animation::transition::{TransitionTrack, TransitionTrackId};
+
+#[test]
+fn opaque_clip_sources_reject_blank_and_control_inputs_and_retain_exact_identity() {
+    for value in ["", " ", "\u{2003}"] {
+        assert_eq!(
+            ClipSource::new(value).unwrap_err().kind(),
+            ClipSourceErrorKind::Blank
+        );
+    }
+    for value in ["a\nb", "a\u{0}b", "a\u{85}b"] {
+        assert!(matches!(
+            ClipSource::new(value).unwrap_err().kind(),
+            ClipSourceErrorKind::ControlCharacter { .. }
+        ));
+    }
+    // This is an opaque already resolved identity, not an authored URL parser.
+    let source = ClipSource::new("https://example.test/a.svg#Clip").unwrap();
+    assert_eq!(source.as_str(), "https://example.test/a.svg#Clip");
+    assert_ne!(
+        source,
+        ClipSource::new("https://example.test/a.svg#clip").unwrap()
+    );
+    assert_eq!(
+        ClipSource::new(" source identity ").unwrap().as_str(),
+        " source identity "
+    );
+}
+
+#[test]
+fn clip_path_branch_conflicts_switch_complete_values_through_public_samplers() {
+    let values = [
+        ClipPathValue::None,
+        ClipPathValue::Source(ClipSource::new("https://example.test/a.svg#clip").unwrap()),
+        ClipPathValue::Source(ClipSource::new("https://example.test/b.svg#clip").unwrap()),
+        ClipPathValue::Box(ReferenceBox::BorderBox),
+        ClipPathValue::Box(ReferenceBox::FillBox),
+        circle(10.0, ReferenceBox::BorderBox),
+    ];
+    for from in &values {
+        for to in &values {
+            if matches!(
+                (from, to),
+                (ClipPathValue::Shape(_), ClipPathValue::Shape(_))
+            ) {
+                continue;
+            }
+            for p in [0.25, 0.5_f64.next_down(), 0.5, 0.75] {
+                let expected = clip(if p < 0.5 { from.clone() } else { to.clone() });
+                let pair = clip_pair(from.clone(), to.clone());
+                assert_eq!(
+                    pair.sample(progress(p)),
+                    InterpolationOutcome::Value(expected.clone())
+                );
+                if from != to {
+                    assert_samples(
+                        "clip-path",
+                        clip(from.clone()),
+                        clip(to.clone()),
+                        p,
+                        &expected,
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn numeric_clip_shapes_delegate_interpolation_and_preserve_reference_identity() {
+    assert_samples(
+        "clip-path",
+        clip(circle(10.0, ReferenceBox::BorderBox)),
+        clip(circle(30.0, ReferenceBox::BorderBox)),
+        0.5,
+        &clip(circle(20.0, ReferenceBox::BorderBox)),
+    );
+    let from = circle(10.0, ReferenceBox::BorderBox);
+    let to = circle(30.0, ReferenceBox::PaddingBox);
+    let pair = clip_pair(from.clone(), to.clone());
+    for p in [-1.0, 0.5_f64.next_down(), 0.5, 2.0] {
+        assert_eq!(
+            pair.sample(progress(p)),
+            InterpolationOutcome::Value(clip(if p < 0.5 { from.clone() } else { to.clone() }))
+        );
+    }
+}
+
+#[test]
+fn mixed_path_and_shape_clip_values_keep_shape_output_even_at_exact_endpoints() {
+    let commands = |x| vec![ShapeCommand::Line(Endpoint::To(point(x, 20.0)))];
+    let from = ClipPathValue::Shape(ShapeValue::new(
+        ReferenceBox::BorderBox,
+        BasicShape::Path(
+            CommandPath::new(point(0.0, 0.0), commands(10.0), FillRule::Nonzero).unwrap(),
+        ),
+    ));
+    let to = ClipPathValue::Shape(ShapeValue::new(
+        ReferenceBox::BorderBox,
+        BasicShape::Shape(
+            CommandShape::new(point(0.0, 0.0), commands(30.0), FillRule::Nonzero).unwrap(),
+        ),
+    ));
+    for p in [0.0, 0.5, 1.0] {
+        let expected = clip(ClipPathValue::Shape(ShapeValue::new(
+            ReferenceBox::BorderBox,
+            BasicShape::Shape(
+                CommandShape::new(
+                    point(0.0, 0.0),
+                    commands(10.0 + 20.0 * p),
+                    FillRule::Nonzero,
+                )
+                .unwrap(),
+            ),
+        )));
+        assert_eq!(
+            clip_pair(from.clone(), to.clone()).sample(progress(p)),
+            InterpolationOutcome::Value(expected.clone())
+        );
+        let (track, transition) = tracks(
+            "clip-path",
+            clip(from.clone()),
+            clip(to.clone()),
+            Easing::linear(),
+        );
+        let time = ElapsedTime::from_secs(p).unwrap();
+        assert_value(
+            &track.sample(time, AnimationPlayState::Running)[0],
+            "clip-path",
+            &expected,
+        );
+        // CSS transitions hold their supplied start value through the delay
+        // boundary. Once interpolation starts, the shared shape rule applies.
+        let transition_expected = if p == 0.0 {
+            clip(from.clone())
+        } else {
+            expected
+        };
+        let transition_sample = transition.sample(time, AnimationPlayState::Running);
+        if p == 1.0 {
+            assert_eq!(
+                transition_sample.classification(),
+                SampleClassification::Finished
+            );
+            assert_eq!(transition_sample.value(), &SampleValue::None);
+        } else {
+            assert_value(&transition_sample, "clip-path", &transition_expected);
+        }
+    }
+}
+
+#[test]
+fn clip_shape_extrapolation_retains_finite_negative_radii_and_owned_inputs() {
+    let from = circle(10.0, ReferenceBox::BorderBox);
+    let to = circle(30.0, ReferenceBox::BorderBox);
+    let pair = clip_pair(from.clone(), to.clone());
+    let retained = pair.sample(progress(-1.0));
+    assert_eq!(
+        retained,
+        InterpolationOutcome::Value(clip(circle(-10.0, ReferenceBox::BorderBox)))
+    );
+    assert_eq!(
+        pair.sample(progress(1.5)),
+        InterpolationOutcome::Value(clip(circle(40.0, ReferenceBox::BorderBox)))
+    );
+    assert_eq!(pair.from(), &clip(from));
+    assert_eq!(pair.to(), &clip(to));
+    assert_eq!(
+        retained,
+        InterpolationOutcome::Value(clip(circle(-10.0, ReferenceBox::BorderBox)))
+    );
+}
+
+#[test]
+fn clip_shape_failures_retain_typed_diagnostics_and_complete_endpoints_then_recover() {
+    let from = circle(0.0, ReferenceBox::BorderBox);
+    let to = circle(f64::MAX, ReferenceBox::BorderBox);
+    let pair = clip_pair(from.clone(), to.clone());
+    let InterpolationOutcome::ShapeFailure(error) = pair.sample(progress(2.0)) else {
+        panic!("expected shape failure")
+    };
+    assert_eq!(error.property().as_str(), "clip-path");
+    assert_eq!(error.progress().value(), 2.0);
+    assert_eq!(error.error().component(), Some(ShapeComponent::Radius));
+    assert_eq!(error.from(), &clip(from.clone()));
+    assert_eq!(error.to(), &clip(to.clone()));
+    assert!(std::error::Error::source(&InterpolationError::Shape(error)).is_some());
+    assert_eq!(
+        pair.sample(progress(0.0)),
+        InterpolationOutcome::Value(clip(from))
+    );
+    assert_eq!(
+        pair.sample(progress(1.0)),
+        InterpolationOutcome::Value(clip(to))
+    );
+}
+
+#[test]
+fn clip_path_branch_fallback_precedes_unrelated_shape_arithmetic() {
+    let from = circle(f64::MAX, ReferenceBox::BorderBox);
+    assert_eq!(
+        clip_pair(from, ClipPathValue::None).sample(progress(2.0)),
+        InterpolationOutcome::Value(clip(ClipPathValue::None))
+    );
+}
+
+#[test]
+fn keyframe_and_transition_clip_failures_remain_sample_local_and_recover() {
+    let from = clip(circle(0.0, ReferenceBox::BorderBox));
+    let to = clip(circle(f64::MAX, ReferenceBox::BorderBox));
+    let easing = Easing::linear_function(
+        LinearEasing::new(vec![
+            LinearControlPointInput {
+                input: 0.0,
+                output: 0.0,
+            },
+            LinearControlPointInput {
+                input: 1.0,
+                output: 2.0,
+            },
+        ])
+        .unwrap(),
+    );
+    let (track, transition) = tracks("clip-path", from.clone(), to.clone(), easing);
+    let time = ElapsedTime::from_secs(0.75).unwrap();
+    let sampled = track.sample(time, AnimationPlayState::Running);
+    for sample in [
+        &sampled[0],
+        &transition.sample(time, AnimationPlayState::Running),
+    ] {
+        assert_eq!(sample.classification(), SampleClassification::Failed);
+        let SampleValue::Error(InterpolationError::Shape(error)) = sample.value() else {
+            panic!("expected typed shape error")
+        };
+        assert_eq!(error.progress().value(), 1.5);
+        assert_eq!(error.from(), &from);
+        assert_eq!(error.to(), &to);
+    }
+    let zero = ElapsedTime::from_secs(0.0).unwrap();
+    assert_value(
+        &track.sample(zero, AnimationPlayState::Running)[0],
+        "clip-path",
+        &from,
+    );
+    assert_value(
+        &transition.sample(zero, AnimationPlayState::Running),
+        "clip-path",
+        &from,
+    );
+}
+
+fn point(x: f64, y: f64) -> surgeist_animation::computed::ComputedPosition {
+    surgeist_animation::computed::ComputedPosition::new(px(x), px(y)).unwrap()
+}
+fn circle(radius: f64, reference: ReferenceBox) -> ClipPathValue {
+    ClipPathValue::Shape(ShapeValue::new(
+        reference,
+        BasicShape::Circle(Circle::new(
+            Radius::Numeric(LengthPercentage::new(px(radius)).unwrap()),
+            point(0.0, 0.0),
+        )),
+    ))
+}
+fn clip(value: ClipPathValue) -> InterpolableValue {
+    InterpolableValue::clip_path(value)
+}
+fn progress(value: f64) -> InterpolationProgress {
+    InterpolationProgress::new(value).unwrap()
+}
+fn clip_pair(from: ClipPathValue, to: ClipPathValue) -> InterpolationPair {
+    InterpolationPair::new(PropertyKey::new("clip-path").unwrap(), clip(from), clip(to)).unwrap()
+}
 
 // Masking 1's property tables select discrete animation even for the numeric
 // mask-border values whose value definitions delegate to Backgrounds 3.

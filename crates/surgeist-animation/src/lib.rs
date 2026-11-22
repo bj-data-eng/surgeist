@@ -40,6 +40,7 @@
 //! | [`grid`] | Structured computed Grid tracks and fixed-repeat interpolation. |
 //! | [`shadow`] | Resolved box/text shadows, padding and ordered list combination. |
 //! | [`shape`] | Computed circle, ellipse, inset and polygon interpolation. |
+//! | [`masking`] | Computed clip-path branches over opaque sources, boxes and shapes. |
 //! | [`transform`] | Resolved transform functions, matrix interpolation and list combination. |
 //! | [`sample`] | Sampled property results and next-frame hints. |
 //! | [`transition`] | Transition tracks, lifecycle decisions, and current values. |
@@ -148,6 +149,7 @@ pub mod grid;
 pub mod interpolation;
 pub mod keyframe;
 pub mod keyframe_input;
+pub mod masking;
 pub mod playback;
 pub mod progress;
 pub mod sample;

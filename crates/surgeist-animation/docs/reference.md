@@ -899,6 +899,51 @@ Track samples classify these failures as `Failed`; a later valid progress can
 recover. Property applicability, transitionability, addition and accumulation
 remain outside this capability.
 
+## Computed Masking values
+
+`masking::ClipPathValue` retains `None`, an opaque `ClipSource`, a box-only
+`shape::ReferenceBox`, or a complete `ShapeValue`. `ClipSource::new` rejects
+blank text and control characters, preserving the caller's exact identity.
+Its typed `ClipSourceError` identifies the invalid category and a control
+character's byte index. Style/resources own URL syntax, absolutization, security
+and availability; this guard neither parses URLs nor accesses resources.
+
+`InterpolableValue::clip_path` enters the normal pair, keyframe and transition
+samplers. Two shape branches delegate directly to `ShapeValue::interpolate`,
+including numeric basic shapes, native Shape/Path commands, reference-box and
+command compatibility, extrapolation and mixed-source output kind. Failure uses
+the existing `ShapeInterpolationFailure`, retaining the complete clip-path
+endpoints, property, eased progress and original typed shape diagnostic. A later
+representable sample can recover. Every other branch pairing selects the whole
+starting value below 0.5 and ending value at or above 0.5. No source is fetched,
+box outline generated, or semantic reference box equated from used geometry.
+
+An omitted shape reference box is supplied explicitly by the property's owner.
+The shape sampler retains its mixed Shape/Path result kind at exact interpolation
+endpoints. CSS transitions separately hold their supplied start value through
+the delay boundary; subsequent interpolation delegates normally.
+
+The selected [Masking property tables](../../../references/css-masking-1--CRD-css-masking-1-20210805--79ff953b4747.md)
+make `mask-image`, `mask-mode`, `mask-repeat`, `mask-clip`, `mask-origin`,
+`mask-composite`, `mask-border-source`, `mask-border-mode`, `mask-border-slice`,
+`mask-border-width`, `mask-border-outset`, `mask-border-repeat`, `clip-rule`
+and `mask-type` discrete. Callers select the existing complete discrete family
+for these values. Backgrounds value-definition reuse does not change their
+animation type, including numeric mask-border operands.
+
+Legacy `clip` rectangles use four `ComputedValue` length-or-discrete-`auto`
+components in top/right/bottom/left order. Matching `auto` remains symbolic;
+other corresponding lengths interpolate, including negative offsets. One
+`auto`/length conflict makes the complete rectangle discrete. Whole `auto` is a
+separate single-component branch and also switches discretely against a rectangle.
+The sampler never resolves an edge against border-box dimensions or aliases
+`rect(auto, auto, auto, auto)` to whole `auto`.
+
+Shorthands contribute through their effective longhands; `mask` also resets the
+six mask-border longhands. Repeatable `mask-position`/`mask-size` list sampling,
+authored lowering, resource and SVG resolution, applicability, computed-style
+publication and downstream clipping/masking execution remain separate consumers.
+
 ## Integration boundary
 
 Use the public module paths for API access. The modules expose typed time,
@@ -1133,6 +1178,7 @@ basis is guessed.
 | Normalized box/text shadow lists | `supported` | Supplied resolved geometry and explicit colors, inset-aware end padding, whole-value discrete fallback, ordered addition and accumulation. |
 | Discrete value switching | `supported` | `surgeist-animation` switches discrete values at the interpolation midpoint. |
 | Computed numeric records, normalized positions, ratios and symbolic math | `supported` | Typed computed components combine without contextual evaluation or early clamping. |
+| Computed clip-path branches | `supported` | Supplied opaque sources, boxes and complete shapes retain whole-value fallback and typed shape failures. |
 | Computed circle, ellipse, inset and polygon interpolation | `supported` | Explicit reference boxes, guarded numeric domains, whole-shape compatibility and typed sample-local errors. |
 | Native shape/path command interpolation | `supported` | Matching forms, effective anchors and fill rules; mixed pairs return Shape, with explicit arc-flag extrapolation. |
 | Shape addition/accumulation | `deferred` | Composition operations remain outside the shape value model. |

@@ -17,6 +17,7 @@ use crate::computed::{ComputedError, ComputedValue, RepeatableList};
 use crate::diagnostics::{NumericError, NumericInput};
 use crate::easing::EasedProgress;
 use crate::grid::{GridError, GridValue};
+use crate::masking::ClipPathValue;
 use crate::progress::UnitRatio;
 use crate::shadow::{ShadowError, ShadowList};
 use crate::shape::{ShapeError, ShapeValue};
@@ -40,6 +41,7 @@ pub enum ValueFamily {
     Shape,
     Shadow,
     Grid,
+    ClipPath,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -101,6 +103,7 @@ pub enum InterpolableValue {
     Shape(ShapeValue),
     Shadow(ShadowList),
     Grid(GridValue),
+    ClipPath(ClipPathValue),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -405,6 +408,7 @@ fn value_family_name(family: ValueFamily) -> &'static str {
         ValueFamily::Shape => "shape",
         ValueFamily::Shadow => "shadow",
         ValueFamily::Grid => "grid",
+        ValueFamily::ClipPath => "clip-path",
     }
 }
 
@@ -705,6 +709,10 @@ impl InterpolableValue {
         Self::Computed(value)
     }
 
+    pub fn clip_path(value: ClipPathValue) -> Self {
+        Self::ClipPath(value)
+    }
+
     pub fn shape(value: ShapeValue) -> Self {
         Self::Shape(value)
     }
@@ -730,6 +738,7 @@ impl InterpolableValue {
             Self::Shape(_) => ValueFamily::Shape,
             Self::Shadow(_) => ValueFamily::Shadow,
             Self::Grid(_) => ValueFamily::Grid,
+            Self::ClipPath(_) => ValueFamily::ClipPath,
         }
     }
 }
@@ -883,6 +892,17 @@ impl InterpolationPair {
                             error,
                         })
                     }
+                }
+            }
+            (InterpolableValue::ClipPath(from), InterpolableValue::ClipPath(to)) => {
+                match from.interpolate(to, progress) {
+                    Ok(value) => InterpolationOutcome::Value(InterpolableValue::ClipPath(value)),
+                    Err(error) => InterpolationOutcome::ShapeFailure(ShapeInterpolationFailure {
+                        property: self.property.clone(),
+                        endpoints: Arc::clone(&self.endpoints),
+                        progress,
+                        error,
+                    }),
                 }
             }
             (InterpolableValue::Shape(from), InterpolableValue::Shape(to)) => {

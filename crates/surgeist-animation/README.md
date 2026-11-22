@@ -10,13 +10,19 @@ timing, easing, computed numeric composition, repeatable lists, immutable
 effect-stack folds and replacement decisions,
 logarithmic ratio interpolation, normalized positions, premultiplied colors,
 computed basic shapes and native shape/path command lists, resolved 2D/3D
-transforms, box/text shadow lists, and discrete switching. Basic shapes retain
-explicit reference boxes and use whole-value fallback for incompatible pairs.
+transforms, box/text shadow lists, computed clip-path branches, and discrete
+switching. Basic shapes retain explicit reference boxes and use whole-value
+fallback for incompatible pairs.
 Contextual calculations retain
 source identity in symbolic combination plans. Transform lists support identity
 padding, common primitives, suffix matrix interpolation, list addition and
 accumulation. Shadow lists preserve inset matching, transparent padding,
 ordered addition and component-based accumulation of supplied computed values.
+Clip paths retain opaque supplied sources, geometric boxes and complete shape
+payloads. Compatible shapes use the shared kernel; other branches switch as a
+whole. Masking's discrete property policy and legacy clip rectangles can use
+the existing discrete and computed-component families. Repeatable mask
+position/size lists remain outside the current capability.
 Explicit transform/composite diagnostic markers retain typed
 unsupported outcomes. CSS lowering, contextual evaluation, final
 clamping, runtime scheduling, and root integration belong to their respective
