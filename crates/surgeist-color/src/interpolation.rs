@@ -8,6 +8,7 @@ use crate::finite::{Finite, UnitInterval, closest_finite};
 use crate::wide::{Wide, power_of_two};
 use crate::{ColorSpace as Space, HueInterpolation as Hue, InterpolationMethod as Method};
 use core::fmt;
+mod range;
 
 /// A numerical interpolation result in the selected interpolation space.
 ///
@@ -342,37 +343,43 @@ fn interpolate_components(
             // A common coordinate factors out of the premultiplied sum.
             return Some(Wide::from_f64(x));
         }
-        let x = Wide::from_f64(x);
-        let y = Wide::from_f64(y);
-        let Some(((a, b), alpha)) = alphas.zip(alpha) else {
-            return Some(interpolate(x, y));
+        let left = Wide::from_f64(x);
+        let right = Wide::from_f64(y);
+        let numerator = match alphas {
+            None => interpolate(left, right),
+            Some((a, b)) if in_unit_interval => interpolate(left.multiply(a), right.multiply(b)),
+            Some((a, b)) => {
+                // Retain the product residuals so endpoint premultiplication
+                // preserves a lane's slope before extrapolation.
+                let (first, first_low) = left.multiply_with_error(a);
+                let (second, second_low) = right.multiply_with_error(b);
+                interpolate(first, second).add(interpolate(first_low, second_low))
+            }
         };
-        let numerator = if in_unit_interval {
-            interpolate(x.multiply(a), y.multiply(b))
-        } else {
-            // Retain the product residuals so endpoint premultiplication
-            // cannot erase a lane's slope before extrapolation.
-            let (first, first_low) = x.multiply_with_error(a);
-            let (second, second_low) = y.multiply_with_error(b);
-            interpolate(first, second).add(interpolate(first_low, second_low))
-        };
-        if alpha.is_zero() {
-            return Some(numerator);
-        }
-        let result = numerator.divide(alpha);
-        if !result.exceeds_finite_range() {
+        let divisor = alpha.filter(|alpha| !alpha.is_zero());
+        let result = divisor.map_or(numerator, |alpha| numerator.divide(alpha));
+        if !result.near_finite_limit() {
             return Some(result);
         }
-
-        // At the edge of the finite range, rounding the numerator before
-        // division can make a representable quotient appear to overflow.
-        // Re-evaluate using the more heavily weighted coordinate as anchor.
-        let first_weight = a.add_product(a.negated(), t);
-        let second_weight = b.multiply(t);
-        Some(if first_weight.magnitude_order(second_weight).is_lt() {
-            affine(y, x, first_weight.divide(alpha))
+        // Rounding the numerator and divisor can misclassify samples on
+        // either side of the range boundary. Test the exact weighted ratio
+        // before committing to a finite sample or an overflow diagnostic.
+        if !in_unit_interval
+            && range::exceeds(
+                (x, aa.unwrap_or(1.0)),
+                (y, ba.unwrap_or(1.0)),
+                progress,
+                divisor.map(Wide::to_f64),
+            )
+        {
+            return Some(result.multiply_fixed(2.0));
+        }
+        // A unit blend is bounded by its finite input components. The exact
+        // comparison gives the same guarantee for this extrapolated lane.
+        Some(if result.exceeds_finite_range() {
+            Wide::from_f64(result.to_finite().get())
         } else {
-            affine(x, y, second_weight.divide(alpha))
+            result
         })
     });
     (channels, alpha)

@@ -152,6 +152,10 @@ impl Wide {
         self.exponent > 1023
     }
 
+    pub(super) fn near_finite_limit(self) -> bool {
+        self.exponent >= 1023
+    }
+
     /// Adds a product with one significand rounding, even when the product
     /// lies outside binary64 or nearly cancels the addend.
     pub(super) fn add_product(self, first: Self, second: Self) -> Self {
