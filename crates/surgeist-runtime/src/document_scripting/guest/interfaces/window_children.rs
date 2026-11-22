@@ -227,6 +227,10 @@ impl ChildRelations {
         self.child.global
     }
 
+    pub(super) fn document(&self) -> DocumentId {
+        self.child.document
+    }
+
     fn call<'scope>(
         &self,
         scope: &mut Scope<'scope>,

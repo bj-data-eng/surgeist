@@ -352,6 +352,8 @@ impl DocumentPrototypes {
         capture: CaptureFunding<'_>,
         site: super::window_children::WindowSite,
     ) -> Result<(), DocumentGuestEventError> {
+        let global = scope.global()?;
+        install_window_document(scope, &global, capture(size_of::<Capture>())?)?;
         tag_collection::install_window(scope, capture, &self.collections, site)
     }
 
@@ -581,15 +583,7 @@ impl DocumentBindings {
             &origin.retain,
         )?;
         element.install_option_factory(scope, &global, capture)?;
-        let getter = capture(size_of::<Capture>())?;
-        install_getter(
-            scope,
-            &global,
-            &ascii(b"document"),
-            &ascii(b"get document"),
-            false,
-            Callback::new(move |scope, arguments| getter.window_document(scope, arguments)),
-        )?;
+        install_window_document(scope, &global, capture(size_of::<Capture>())?)?;
         let attached = budget.phase(|| {
             scope.project_retained_native_object(
                 ObjectPrototype::Object(&prototype),
@@ -698,6 +692,21 @@ impl DocumentBindings {
     pub(super) fn reap_nodes(&self, process: &mut Process, retired: &Cell<bool>) {
         self.ordinary.reap(process, retired);
     }
+}
+
+fn install_window_document<'scope>(
+    scope: &mut Scope<'scope>,
+    global: &Value<'scope>,
+    getter: Capture,
+) -> Result<(), Error> {
+    install_getter(
+        scope,
+        global,
+        &ascii(b"document"),
+        &ascii(b"get document"),
+        false,
+        Callback::new(move |scope, arguments| getter.window_document(scope, arguments)),
+    )
 }
 
 fn open_node_pin<'scope>(
@@ -1012,19 +1021,27 @@ impl Capture {
         scope: &mut Scope<'scope>,
         arguments: Arguments<'scope>,
     ) -> Result<Completion<'scope>, Error> {
-        let global = scope.global()?;
-        if !scope.strict_equals(arguments.receiver(), &global)? {
+        let (owner, events) = self.active(scope)?;
+        let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+        let attached = if self.origin.is_some() {
+            public.window(scope)?
+        } else {
+            scope.global()?
+        };
+        let receiver = arguments.receiver();
+        if !scope.strict_equals(receiver, &attached)? {
+            if let Some(child) =
+                scope.child_window_payload::<super::window_children::ChildRelations>(receiver)?
+            {
+                let result = public.project_node(scope, &owner, &events, child.document().node());
+                return complete(scope, &events, result);
+            }
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"Window required"))?,
             ));
         }
-        let (owner, events) = self.active(scope)?;
         let result = events.budget.phase(|| {
-            let bindings = &events
-                .public
-                .as_ref()
-                .ok_or(Error::ExpiredIdentity)?
-                .document;
+            let bindings = &public.document;
             self.callbacks.with_accounted_read(
                 &owner,
                 &events,
