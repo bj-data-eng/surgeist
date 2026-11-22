@@ -81,6 +81,14 @@ retains and evaluates the original calculations. This keeps authored CSS and
 contextual resolution outside Animation while allowing later effect stacks to
 add or accumulate underlying values before interpolating their endpoints.
 
+Resolved 2D transforms are executable Animation values, separate from CSS's
+authored functions and Render's scene geometry. Keeping the typed list until
+sampling preserves matching prefixes and rotation turns; flattening it eagerly
+would lose that meaning. Consumers supply resolved CSS-pixel lengths and update
+them when reference-box facts change. Animation owns interpolation and checked
+affine algebra; consumers own transform-origin placement and singular visibility.
+This requires no dependency on Layout, Shape, Paint or Render.
+
 ## App-native motion
 
 This remains distinct from app-native motion work. A future `surgeist-motion`

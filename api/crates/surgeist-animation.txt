@@ -292,6 +292,9 @@ pub surgeist_animation::interpolation::InterpolationComponent::ColorPremultiplie
 pub surgeist_animation::interpolation::InterpolationComponent::ColorPremultipliedRed
 pub surgeist_animation::interpolation::InterpolationComponent::Number
 pub surgeist_animation::interpolation::InterpolationComponent::Percentage
+pub surgeist_animation::interpolation::InterpolationComponent::Transform
+pub surgeist_animation::interpolation::InterpolationComponent::Transform::component: surgeist_animation::transform::TransformComponent
+pub surgeist_animation::interpolation::InterpolationComponent::Transform::function_index: core::option::Option<usize>
 pub enum surgeist_animation::interpolation::InterpolationError
 pub surgeist_animation::interpolation::InterpolationError::Computed(surgeist_animation::interpolation::ComputedInterpolationFailure)
 pub surgeist_animation::interpolation::InterpolationError::EmptyDiscreteValue
@@ -401,6 +404,8 @@ pub fn surgeist_animation::interpolation::PropertyKey::new(name: impl core::conv
 pub struct surgeist_animation::interpolation::TransformValue
 impl surgeist_animation::interpolation::TransformValue
 pub fn surgeist_animation::interpolation::TransformValue::kind(&self) -> &str
+pub fn surgeist_animation::interpolation::TransformValue::resolved(list: surgeist_animation::transform::ResolvedTransformList) -> Self
+pub fn surgeist_animation::interpolation::TransformValue::resolved_list(&self) -> core::option::Option<&surgeist_animation::transform::ResolvedTransformList>
 pub fn surgeist_animation::interpolation::TransformValue::unsupported(kind: impl core::convert::Into<alloc::string::String>) -> Self
 pub fn surgeist_animation::interpolation::TransformValue::unsupported_from_shared(kind: alloc::sync::Arc<str>) -> Self
 pub fn surgeist_animation::interpolation::TransformValue::unsupported_from_text(kind: &str) -> Self
@@ -811,6 +816,72 @@ pub const fn surgeist_animation::timing::TimingSample::phase(self) -> surgeist_a
 pub const fn surgeist_animation::timing::TimingSample::play_state(self) -> surgeist_animation::timing::AnimationPlayState
 pub const fn surgeist_animation::timing::TimingSample::simple_progress(self) -> core::option::Option<surgeist_animation::timing::PhaseProgress>
 pub const fn surgeist_animation::timing::TimingSample::timing_error(self) -> core::option::Option<surgeist_animation::timing::EffectTimingError>
+pub mod surgeist_animation::transform
+pub enum surgeist_animation::transform::TransformComponent
+pub surgeist_animation::transform::TransformComponent::Angle
+pub surgeist_animation::transform::TransformComponent::MatrixCoefficient(usize)
+pub surgeist_animation::transform::TransformComponent::ScaleX
+pub surgeist_animation::transform::TransformComponent::ScaleY
+pub surgeist_animation::transform::TransformComponent::TranslationX
+pub surgeist_animation::transform::TransformComponent::TranslationY
+pub enum surgeist_animation::transform::TransformFunction
+pub surgeist_animation::transform::TransformFunction::Matrix(surgeist_animation::transform::TransformMatrix)
+pub surgeist_animation::transform::TransformFunction::Rotate(surgeist_animation::transform::TransformAngle)
+pub surgeist_animation::transform::TransformFunction::Scale
+pub surgeist_animation::transform::TransformFunction::Scale::x: surgeist_animation::transform::ScaleFactor
+pub surgeist_animation::transform::TransformFunction::Scale::y: core::option::Option<surgeist_animation::transform::ScaleFactor>
+pub surgeist_animation::transform::TransformFunction::ScaleX(surgeist_animation::transform::ScaleFactor)
+pub surgeist_animation::transform::TransformFunction::ScaleY(surgeist_animation::transform::ScaleFactor)
+pub surgeist_animation::transform::TransformFunction::Skew
+pub surgeist_animation::transform::TransformFunction::Skew::x: surgeist_animation::transform::TransformAngle
+pub surgeist_animation::transform::TransformFunction::Skew::y: core::option::Option<surgeist_animation::transform::TransformAngle>
+pub surgeist_animation::transform::TransformFunction::SkewX(surgeist_animation::transform::TransformAngle)
+pub surgeist_animation::transform::TransformFunction::SkewY(surgeist_animation::transform::TransformAngle)
+pub surgeist_animation::transform::TransformFunction::Translate
+pub surgeist_animation::transform::TransformFunction::Translate::x: surgeist_animation::transform::CssPixels
+pub surgeist_animation::transform::TransformFunction::Translate::y: core::option::Option<surgeist_animation::transform::CssPixels>
+pub surgeist_animation::transform::TransformFunction::TranslateX(surgeist_animation::transform::CssPixels)
+pub surgeist_animation::transform::TransformFunction::TranslateY(surgeist_animation::transform::CssPixels)
+pub struct surgeist_animation::transform::CssPixels(_)
+impl surgeist_animation::transform::CssPixels
+pub const surgeist_animation::transform::CssPixels::ZERO: Self
+pub fn surgeist_animation::transform::CssPixels::new(value: f64) -> core::result::Result<Self, surgeist_animation::transform::TransformError>
+pub const fn surgeist_animation::transform::CssPixels::value(self) -> f64
+impl core::cmp::Eq for surgeist_animation::transform::CssPixels
+pub struct surgeist_animation::transform::ResolvedTransformList
+impl surgeist_animation::transform::ResolvedTransformList
+pub fn surgeist_animation::transform::ResolvedTransformList::added_to(&self, other: &Self) -> Self
+pub fn surgeist_animation::transform::ResolvedTransformList::functions(&self) -> &[surgeist_animation::transform::TransformFunction]
+pub fn surgeist_animation::transform::ResolvedTransformList::new(functions: alloc::vec::Vec<surgeist_animation::transform::TransformFunction>) -> Self
+pub fn surgeist_animation::transform::ResolvedTransformList::to_matrix(&self) -> core::result::Result<surgeist_animation::transform::TransformMatrix, surgeist_animation::transform::TransformError>
+pub struct surgeist_animation::transform::ScaleFactor(_)
+impl surgeist_animation::transform::ScaleFactor
+pub const surgeist_animation::transform::ScaleFactor::ONE: Self
+pub fn surgeist_animation::transform::ScaleFactor::new(value: f64) -> core::result::Result<Self, surgeist_animation::transform::TransformError>
+pub const fn surgeist_animation::transform::ScaleFactor::value(self) -> f64
+impl core::cmp::Eq for surgeist_animation::transform::ScaleFactor
+pub struct surgeist_animation::transform::TransformAngle(_)
+impl surgeist_animation::transform::TransformAngle
+pub const surgeist_animation::transform::TransformAngle::ZERO: Self
+pub fn surgeist_animation::transform::TransformAngle::from_degrees(value: f64) -> core::result::Result<Self, surgeist_animation::transform::TransformError>
+pub fn surgeist_animation::transform::TransformAngle::from_radians(value: f64) -> core::result::Result<Self, surgeist_animation::transform::TransformError>
+pub fn surgeist_animation::transform::TransformAngle::from_turns(value: f64) -> core::result::Result<Self, surgeist_animation::transform::TransformError>
+pub const fn surgeist_animation::transform::TransformAngle::radians(self) -> f64
+impl core::cmp::Eq for surgeist_animation::transform::TransformAngle
+pub struct surgeist_animation::transform::TransformError
+impl surgeist_animation::transform::TransformError
+pub const fn surgeist_animation::transform::TransformError::component(&self) -> surgeist_animation::transform::TransformComponent
+pub const fn surgeist_animation::transform::TransformError::function_index(&self) -> core::option::Option<usize>
+pub const fn surgeist_animation::transform::TransformError::value(&self) -> f64
+impl core::error::Error for surgeist_animation::transform::TransformError
+impl core::fmt::Display for surgeist_animation::transform::TransformError
+pub fn surgeist_animation::transform::TransformError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::transform::TransformMatrix(_)
+impl surgeist_animation::transform::TransformMatrix
+pub const surgeist_animation::transform::TransformMatrix::IDENTITY: Self
+pub const fn surgeist_animation::transform::TransformMatrix::coefficients(self) -> [f64; 6]
+pub fn surgeist_animation::transform::TransformMatrix::new(coefficients: [f64; 6]) -> core::result::Result<Self, surgeist_animation::transform::TransformError>
+impl core::cmp::Eq for surgeist_animation::transform::TransformMatrix
 pub mod surgeist_animation::transition
 pub enum surgeist_animation::transition::TransitionDecisionErrorKind
 pub surgeist_animation::transition::TransitionDecisionErrorKind::DuplicateChange

@@ -17,6 +17,7 @@ use crate::computed::{ComputedError, ComputedValue};
 use crate::diagnostics::{NumericError, NumericInput};
 use crate::easing::EasedProgress;
 use crate::progress::UnitRatio;
+use crate::transform::{ResolvedTransformList, TransformComponent, TransformInterpolation};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PropertyKey {
@@ -66,7 +67,13 @@ pub struct DiscreteValue {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransformValue {
-    kind: Arc<str>,
+    payload: TransformPayload,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TransformPayload {
+    Unsupported(Arc<str>),
+    Resolved(ResolvedTransformList),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,6 +125,10 @@ pub enum InterpolationComponent {
     ColorPremultipliedGreen,
     ColorPremultipliedBlue,
     ColorAlpha,
+    Transform {
+        function_index: Option<usize>,
+        component: TransformComponent,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -287,6 +298,7 @@ fn interpolation_component_name(component: InterpolationComponent) -> &'static s
         InterpolationComponent::ColorPremultipliedGreen => "color premultiplied green",
         InterpolationComponent::ColorPremultipliedBlue => "color premultiplied blue",
         InterpolationComponent::ColorAlpha => "color alpha",
+        InterpolationComponent::Transform { .. } => "transform",
     }
 }
 
@@ -457,28 +469,49 @@ impl DiscreteValue {
 }
 
 impl TransformValue {
+    /// Constructs an explicit unsupported-capability marker without interpreting text.
     pub fn unsupported(kind: impl Into<String>) -> Self {
         Self {
-            kind: unsupported_kind(kind),
+            payload: TransformPayload::Unsupported(unsupported_kind(kind)),
         }
     }
 
     /// Copies exact marker text; empty or Unicode-whitespace-only text becomes `unsupported`.
     pub fn unsupported_from_text(kind: &str) -> Self {
         Self {
-            kind: Arc::from(unsupported_text(kind)),
+            payload: TransformPayload::Unsupported(Arc::from(unsupported_text(kind))),
         }
     }
 
     /// Takes shared marker text, allocating only for empty or Unicode-whitespace-only fallback.
     pub fn unsupported_from_shared(kind: Arc<str>) -> Self {
         Self {
-            kind: unsupported_shared(kind),
+            payload: TransformPayload::Unsupported(unsupported_shared(kind)),
         }
     }
 
+    /// Creates a concrete resolved transform payload for normal track sampling.
+    pub fn resolved(list: ResolvedTransformList) -> Self {
+        Self {
+            payload: TransformPayload::Resolved(list),
+        }
+    }
+
+    /// Borrows the concrete list; diagnostic markers always return `None`.
+    pub fn resolved_list(&self) -> Option<&ResolvedTransformList> {
+        match &self.payload {
+            TransformPayload::Resolved(list) => Some(list),
+            TransformPayload::Unsupported(_) => None,
+        }
+    }
+
+    /// Returns marker text, or `resolved-2d` for a concrete payload.
+    /// Inspect [`Self::resolved_list`] to distinguish payloads from marker text.
     pub fn kind(&self) -> &str {
-        &self.kind
+        match &self.payload {
+            TransformPayload::Unsupported(kind) => kind,
+            TransformPayload::Resolved(_) => "resolved-2d",
+        }
     }
 }
 
@@ -672,8 +705,8 @@ impl InterpolationPair {
                 let value = if progress.value() < 0.5 { from } else { to };
                 InterpolationOutcome::Value(InterpolableValue::discrete(value.clone()))
             }
-            (InterpolableValue::Transform(_), InterpolableValue::Transform(_)) => {
-                self.unsupported(ValueFamily::Transform, "transform interpolation deferred")
+            (InterpolableValue::Transform(from), InterpolableValue::Transform(to)) => {
+                self.sample_transform(from, to, progress)
             }
             (InterpolableValue::Composite(_), InterpolableValue::Composite(_)) => {
                 self.unsupported(ValueFamily::Composite, "composite interpolation deferred")
@@ -695,6 +728,40 @@ impl InterpolationPair {
                 from.clone(),
                 to.clone(),
             )),
+        }
+    }
+
+    fn sample_transform(
+        &self,
+        from: &TransformValue,
+        to: &TransformValue,
+        progress: InterpolationProgress,
+    ) -> InterpolationOutcome {
+        let (Some(from), Some(to)) = (from.resolved_list(), to.resolved_list()) else {
+            return self.unsupported(ValueFamily::Transform, "transform interpolation deferred");
+        };
+        if let Some(endpoint) = self.exact_endpoint(progress) {
+            return endpoint;
+        }
+        match crate::transform::interpolate(from, to, progress.value()) {
+            Ok(TransformInterpolation::Value(list)) => InterpolationOutcome::Value(
+                InterpolableValue::transform(TransformValue::resolved(list)),
+            ),
+            Ok(TransformInterpolation::Discrete) => {
+                InterpolationOutcome::Value(if progress.value() < 0.5 {
+                    self.endpoints.from.clone()
+                } else {
+                    self.endpoints.to.clone()
+                })
+            }
+            Err(error) => self.arithmetic_failure(
+                progress,
+                InterpolationComponent::Transform {
+                    function_index: error.function_index(),
+                    component: error.component(),
+                },
+                error.value(),
+            ),
         }
     }
 
