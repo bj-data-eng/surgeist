@@ -313,6 +313,63 @@ pub fn surgeist_animation::keyframe::KeyframeTrack::sample(&self, elapsed: surge
 pub fn surgeist_animation::keyframe::KeyframeTrack::sample_into(&self, elapsed: surgeist_animation::time::ElapsedTime, play_state: surgeist_animation::timing::AnimationPlayState, output: &mut alloc::vec::Vec<surgeist_animation::sample::SampledPropertyResult>)
 pub fn surgeist_animation::keyframe::KeyframeTrack::segments(&self) -> &[surgeist_animation::keyframe::KeyframeSegment]
 pub const fn surgeist_animation::keyframe::KeyframeTrack::timing(&self) -> surgeist_animation::keyframe::KeyframeTiming
+pub mod surgeist_animation::keyframe_input
+pub enum surgeist_animation::keyframe_input::CompositeOperation
+pub surgeist_animation::keyframe_input::CompositeOperation::Accumulate
+pub surgeist_animation::keyframe_input::CompositeOperation::Add
+pub surgeist_animation::keyframe_input::CompositeOperation::Replace
+pub enum surgeist_animation::keyframe_input::KeyframeInputErrorKind
+pub surgeist_animation::keyframe_input::KeyframeInputErrorKind::DuplicateProperty
+pub surgeist_animation::keyframe_input::KeyframeInputErrorKind::InvalidEasing
+pub surgeist_animation::keyframe_input::KeyframeInputErrorKind::InvalidOffset
+pub surgeist_animation::keyframe_input::KeyframeInputErrorKind::OffsetOrder
+pub enum surgeist_animation::keyframe_input::KeyframeInputLocation
+pub surgeist_animation::keyframe_input::KeyframeInputLocation::Easing(usize)
+pub surgeist_animation::keyframe_input::KeyframeInputLocation::Frame(usize)
+pub surgeist_animation::keyframe_input::KeyframeInputLocation::Property(usize)
+pub enum surgeist_animation::keyframe_input::KeyframesInput<V, E>
+pub surgeist_animation::keyframe_input::KeyframesInput::Absent
+pub surgeist_animation::keyframe_input::KeyframesInput::PropertyIndexed(surgeist_animation::keyframe_input::PropertyIndexedInput<V, E>)
+pub surgeist_animation::keyframe_input::KeyframesInput::Sequence(alloc::vec::Vec<surgeist_animation::keyframe_input::KeyframeInput<V, E>>)
+impl<V, E> surgeist_animation::keyframe_input::KeyframesInput<V, E>
+pub fn surgeist_animation::keyframe_input::KeyframesInput<V, E>::normalize(self) -> core::result::Result<surgeist_animation::keyframe_input::NormalizedKeyframes<V>, surgeist_animation::keyframe_input::KeyframeInputError<E>>
+pub struct surgeist_animation::keyframe_input::KeyframeInput<V, E>
+pub surgeist_animation::keyframe_input::KeyframeInput::composite: core::option::Option<surgeist_animation::keyframe_input::CompositeOperation>
+pub surgeist_animation::keyframe_input::KeyframeInput::easing: core::result::Result<surgeist_animation::easing::Easing, E>
+pub surgeist_animation::keyframe_input::KeyframeInput::offset: core::option::Option<f64>
+pub surgeist_animation::keyframe_input::KeyframeInput::properties: alloc::vec::Vec<(surgeist_animation::interpolation::PropertyKey, core::option::Option<V>)>
+impl<V, E> core::default::Default for surgeist_animation::keyframe_input::KeyframeInput<V, E>
+pub fn surgeist_animation::keyframe_input::KeyframeInput<V, E>::default() -> Self
+pub struct surgeist_animation::keyframe_input::KeyframeInputError<E>
+impl<E> surgeist_animation::keyframe_input::KeyframeInputError<E>
+pub const fn surgeist_animation::keyframe_input::KeyframeInputError<E>::easing_error(&self) -> core::option::Option<&E>
+pub const fn surgeist_animation::keyframe_input::KeyframeInputError<E>::kind(&self) -> surgeist_animation::keyframe_input::KeyframeInputErrorKind
+pub const fn surgeist_animation::keyframe_input::KeyframeInputError<E>::location(&self) -> surgeist_animation::keyframe_input::KeyframeInputLocation
+pub const fn surgeist_animation::keyframe_input::KeyframeInputError<E>::offset(&self) -> core::option::Option<f64>
+pub const fn surgeist_animation::keyframe_input::KeyframeInputError<E>::previous_offset(&self) -> core::option::Option<f64>
+pub const fn surgeist_animation::keyframe_input::KeyframeInputError<E>::property(&self) -> core::option::Option<&surgeist_animation::interpolation::PropertyKey>
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_animation::keyframe_input::KeyframeInputError<E>
+pub fn surgeist_animation::keyframe_input::KeyframeInputError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E: core::fmt::Display> core::fmt::Display for surgeist_animation::keyframe_input::KeyframeInputError<E>
+pub fn surgeist_animation::keyframe_input::KeyframeInputError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::keyframe_input::NormalizedKeyframe<V>
+impl<V> surgeist_animation::keyframe_input::NormalizedKeyframe<V>
+pub const fn surgeist_animation::keyframe_input::NormalizedKeyframe<V>::composite(&self) -> core::option::Option<surgeist_animation::keyframe_input::CompositeOperation>
+pub const fn surgeist_animation::keyframe_input::NormalizedKeyframe<V>::computed_offset(&self) -> surgeist_animation::progress::UnitRatio
+pub const fn surgeist_animation::keyframe_input::NormalizedKeyframe<V>::easing(&self) -> &surgeist_animation::easing::Easing
+pub fn surgeist_animation::keyframe_input::NormalizedKeyframe<V>::effective_composite(&self, effect: surgeist_animation::keyframe_input::CompositeOperation) -> surgeist_animation::keyframe_input::CompositeOperation
+pub fn surgeist_animation::keyframe_input::NormalizedKeyframe<V>::properties(&self) -> &[(surgeist_animation::interpolation::PropertyKey, V)]
+pub const fn surgeist_animation::keyframe_input::NormalizedKeyframe<V>::specified_offset(&self) -> core::option::Option<surgeist_animation::progress::UnitRatio>
+pub struct surgeist_animation::keyframe_input::NormalizedKeyframes<V>
+impl<V> surgeist_animation::keyframe_input::NormalizedKeyframes<V>
+pub fn surgeist_animation::keyframe_input::NormalizedKeyframes<V>::frames(&self) -> &[surgeist_animation::keyframe_input::NormalizedKeyframe<V>]
+pub struct surgeist_animation::keyframe_input::PropertyIndexedInput<V, E>
+pub surgeist_animation::keyframe_input::PropertyIndexedInput::composites: alloc::vec::Vec<core::option::Option<surgeist_animation::keyframe_input::CompositeOperation>>
+pub surgeist_animation::keyframe_input::PropertyIndexedInput::easings: alloc::vec::Vec<core::result::Result<surgeist_animation::easing::Easing, E>>
+pub surgeist_animation::keyframe_input::PropertyIndexedInput::offsets: alloc::vec::Vec<core::option::Option<f64>>
+pub surgeist_animation::keyframe_input::PropertyIndexedInput::properties: alloc::vec::Vec<(surgeist_animation::interpolation::PropertyKey, alloc::vec::Vec<core::option::Option<V>>)>
+impl<V, E> core::default::Default for surgeist_animation::keyframe_input::PropertyIndexedInput<V, E>
+pub fn surgeist_animation::keyframe_input::PropertyIndexedInput<V, E>::default() -> Self
 pub mod surgeist_animation::progress
 pub struct surgeist_animation::progress::EasingInput
 impl surgeist_animation::progress::EasingInput

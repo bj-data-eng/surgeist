@@ -18,8 +18,7 @@
 //! tracks, including computed endpoints, rectangular color spaces, and property
 //! support policy.
 //!
-//! Each public type has one path, through the module that owns it. The ten
-//! modules are:
+//! Each public type has one path, through the module that owns it.
 //!
 //! | Module | Owns |
 //! | --- | --- |
@@ -32,6 +31,7 @@
 //! | [`sample`] | Sampled property results and next-frame hints. |
 //! | [`transition`] | Transition tracks, the entry point for transitions. |
 //! | [`keyframe`] | Keyframe tracks, the entry point for keyframe animations. |
+//! | [`keyframe_input`] | Native typed keyframe normalization and computed offsets. |
 //! | [`diagnostics`] | Numeric diagnostics shared by the typed constructors. |
 //!
 //! Transition sampling starts from [`transition::TransitionTrack`]:
@@ -129,6 +129,7 @@ pub mod diagnostics;
 pub mod easing;
 pub mod interpolation;
 pub mod keyframe;
+pub mod keyframe_input;
 pub mod progress;
 pub mod sample;
 pub mod time;

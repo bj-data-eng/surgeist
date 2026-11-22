@@ -4,9 +4,10 @@ CSS animation and transition timing contracts for Surgeist integrators. This
 Rust library samples normalized tracks into typed property values, completion
 states, and next-frame hints.
 
-Version 0.1.0 supports timing, easing, numeric and percentage interpolation,
-premultiplied color interpolation, and discrete switching. Transform and
-composite interpolation return typed unsupported outcomes. CSS lowering,
+Version 0.1.0 supports typed native keyframe normalization, timing, easing,
+numeric and percentage interpolation, premultiplied color interpolation, and
+discrete switching. Transform and composite interpolation return typed
+unsupported outcomes. CSS lowering,
 runtime scheduling, and root integration belong to their respective owners.
 
 ## Start
