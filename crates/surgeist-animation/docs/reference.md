@@ -7,7 +7,8 @@ and the library import name `surgeist_animation`. It declares no runtime
 dependencies, features, or explicit minimum Rust version. The dev-only
 `stats_alloc` dependency instruments allocation measurements.
 
-[src/lib.rs](../src/lib.rs) declares the public modules `diagnostics`, `easing`,
+[src/lib.rs](../src/lib.rs) declares the public modules `computed`,
+`diagnostics`, `easing`,
 `interpolation`, `keyframe`, `keyframe_input`, `progress`, `sample`, `time`,
 `timeline`, `timing`, and `transition`, and the constant `CRATE_NAME`. Each public
 type has one path through its owning module, such as
@@ -157,8 +158,10 @@ new timing options and supplied play observations explicitly affect new results.
 `KeyframeTrack::sample_into(elapsed, play_state, &mut output)` replaces an
 existing `Vec<SampledPropertyResult>` with one owned result per property, in
 first-appearance order. It retains the buffer's capacity and allocates nothing
-during sampling when capacity is sufficient, including unsupported and failed
-results. `sample()` returns the same ordered results in a newly allocated vector.
+during primitive sampling when capacity is sufficient, including unsupported
+and failed results. Computed component records and symbolic plans allocate their
+new immutable result storage; they do not share the primitive zero-allocation
+promise. `sample()` returns the same ordered results in a newly allocated vector.
 Tracks retain their original `segments()` order independently of their lookup
 index. Sampling remains stateless; retained results do not borrow their track.
 
@@ -259,6 +262,64 @@ Equality and hashing retain their content semantics wherever those traits are
 implemented. Owned values and their clones remain usable after caller text is
 dropped and across threads. See [key preparation](how-to.md#prepare-property-keys-and-value-text).
 
+## Computed numeric combination
+
+`computed::ComputedValue` holds a complete property's ordered components.
+`interpolate`, `add`, and `accumulate` preserve operand order and return complete
+results. Different component counts, incompatible types, or differing discrete
+components switch the entire property at progress 0.5. Addition/accumulation of
+such incompatible records selects the second record. Compatibility is checked
+before arithmetic, so a later discrete conflict cannot leave an earlier numeric
+component partially interpolated. Callers select property-specific animation
+types and expand authored shorthands; this is the by-computed-value operation.
+
+`ComputedNumeric` admits finite numbers and percentages, computed integers,
+canonical dimensions, dimension-percentage mixes and contextual math sources.
+`DimensionKind` fixes units to px, deg, s, Hz or dppx. Percentages are unrestricted
+finite ratios. Compatible mixes combine both terms independently, normalize
+zero terms, and retain percentages without consulting layout. Number-percentage
+mixes and different dimension kinds are incompatible. `ComputedPosition` accepts
+only length/percentage x/y offsets already normalized from the top-left corner;
+its axes combine independently. Authored edge keywords and writing-mode mapping
+belong to caller lowering.
+
+`ComputedInteger` stores the integral finite binary64 values. Caller lowering
+converts exact authored quantities into this declared computed precision.
+Interpolation rounds nearest with ties toward positive infinity, so -1.5 becomes
+-1. Addition and accumulation use checked finite arithmetic. Values beyond a
+property's range remain valid intermediates: callers clamp only after their
+complete interpolation/addition/accumulation sequence.
+
+`ComputedRatio` preserves the supplied nonnegative pair, including zero and
+positive infinity. Either zero or infinite component makes interpolation
+degenerate, including at exact endpoints. `compare` compares quotients without
+floating-point cross-product overflow, returning `None` for 0/0 and
+infinity/infinity. Component equality and quotient comparison are distinct.
+Nondegenerate interpolation is geometric in the quotient, uses logarithms, and
+returns result/1; exact endpoints retain their original pair. Ratios are not
+additive, so addition/accumulation selects the second ratio. A degenerate ratio
+causes whole-property discrete interpolation, while other compatible components
+still add normally during addition/accumulation.
+
+`MathContext` identifies a caller's complete immutable resolution context;
+`context.source(type)` creates a distinct identity for one computed calculation
+there. Clones preserve identity. The caller retains the mapping from each
+`MathSource` to its original calculation and context for as long as unresolved
+results are needed. These handles do not store authored CSS or evaluate it.
+`math_nodes()` exposes a flat postorder plan whose last node is the result.
+Every combination node refers only to preceding operand indices and records its
+numeric type and operation. Integer interpolation nodes include integer rounding.
+The plan represents symbolic calc composition without duplicating a CSS parser
+or function inventory. Construction uses checked allocation/index arithmetic,
+has no arbitrary resource cap, and returns `Capacity` on reserving failure.
+
+Use `InterpolableValue::computed(record)` in ordinary transition/keyframe
+endpoints. A computed sample-local failure produces `SampleClassification::Failed`
+and `InterpolationError::Computed`, retaining both endpoints and a semantic
+`ComputedError` with its operation and component index. Nonfinite arithmetic,
+ratio underflow and capacity refusal are distinct error kinds. Later endpoint
+samples can recover. See [the computed-value example](how-to.md#combine-computed-property-values).
+
 ## Integration boundary
 
 Use the public module paths for API access. The modules expose typed time,
@@ -326,7 +387,8 @@ supported interpolation produces `SampleClassification::Failed` and
 | Cubic-bezier, steps, linear keyword, and CSS `linear()` easing | `supported` | `surgeist-animation` evaluates typed easing, including canonical linear control points. |
 | Number, unrestricted percentage, and explicit premultiplied color interpolation | `supported` | `surgeist-animation` interpolates finite values with checked arithmetic and explicit color spaces. |
 | Discrete value switching | `supported` | `surgeist-animation` switches discrete values at the interpolation midpoint. |
-| Transform and composite interpolation | `typed-unsupported` | Values are represented and produce typed unsupported samples rather than fallback values. |
+| Computed numeric records, normalized positions, ratios and symbolic math | `supported` | Typed computed components combine without contextual evaluation or early clamping. |
+| Transform and opaque composite-marker interpolation | `typed-unsupported` | Markers produce typed unsupported samples rather than fallback values. |
 | CSS parsing, cascade, transition generation, keyframe lookup, endpoint synthesis, property transitionability, allow-discrete policy, and shorthand/list expansion | `deferred/root-owned` | Root/style normalize authored declarations into this crate's typed tracks. |
 | Runtime clocks, scheduling, lifecycle, invalidation, pause bookkeeping, and external input changes | `deferred/root-owned` | Runtime/root decide when to sample and pass `ElapsedTime` plus play state. |
 | Color-space conversion, gamut mapping, clipping, and final property range clamping | `root-owned` | Root/consumers prepare interpolation-space values and apply downstream output policy. |

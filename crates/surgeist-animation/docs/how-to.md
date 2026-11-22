@@ -55,6 +55,49 @@ The assertion verifies an active sample halfway through a one-second animation.
 Each property produces one sample. Use the sample's classification, value,
 completion status, and next-frame hint together; see the [reference](reference.md).
 
+## Combine computed property values
+
+Supply computed canonical units and retain percentages until their caller-owned
+context can resolve them. For a length-percentage property, 10px to 50% at the
+midpoint produces 5px plus 25%:
+
+```rust
+use surgeist_animation::computed::{
+    ComputedComponent, ComputedDimension, ComputedNumeric, ComputedValue,
+    DimensionKind, NumericLiteral,
+};
+use surgeist_animation::interpolation::{InterpolableValue, InterpolationProgress};
+
+let length = ComputedNumeric::dimension(
+    ComputedDimension::new(DimensionKind::Length, 10.0).unwrap(),
+);
+let percentage = ComputedNumeric::percentage(0.5).unwrap();
+let from = ComputedValue::single(ComputedComponent::Numeric(length));
+let to = ComputedValue::single(ComputedComponent::Numeric(percentage));
+let result = from.interpolate(&to, InterpolationProgress::new(0.5).unwrap()).unwrap();
+let ComputedComponent::Numeric(numeric) = &result.components()[0] else {
+    panic!("expected computed numeric component");
+};
+let Some(NumericLiteral::Mix(mix)) = numeric.as_literal() else {
+    panic!("expected independent length and percentage terms");
+};
+assert_eq!(mix.dimension().value(), 5.0);
+assert_eq!(mix.percentage(), 0.25);
+let sampled_value = InterpolableValue::computed(result);
+```
+
+Use these wrapped records as ordinary transition/keyframe endpoints. Use `add`
+or `accumulate` to combine an underlying record with an effect's endpoint before
+interpolation. Keep intermediate negative values: clamp only the final composed
+result to the target property's range. Differing discrete components switch the
+whole record; they do not leave interpolated numeric components behind.
+
+For contextual math, create a `MathContext` for the complete immutable resolution
+context and a distinct `source(type)` for each computed calculation. Retain a
+caller-owned map from those handles to the original calculations. A
+`ComputedNumeric::source(handle)` participates in the same operations, producing
+the typed postorder plan described in the [reference](reference.md#computed-numeric-combination).
+
 ## Reuse keyframe sample storage
 
 Keep one output buffer across samples. Given the `track` above:

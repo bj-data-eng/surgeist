@@ -152,6 +152,12 @@ impl SampledPropertyResult {
             InterpolationOutcome::ArithmeticFailure(result) => {
                 Self::arithmetic_failure(timing, result)
             }
+            InterpolationOutcome::ComputedFailure(result) => Self {
+                classification: SampleClassification::Failed,
+                completion: failed_completion(timing.phase()),
+                next_frame: next_frame_for_timing(timing),
+                value: SampleValue::Error(InterpolationError::Computed(result)),
+            },
             InterpolationOutcome::Unsupported(error) => Self::unsupported(error),
         }
     }
@@ -467,7 +473,7 @@ mod tests {
             IterationCount::finite(1.0).unwrap(),
             AnimationDirection::Normal,
             FillMode::Backwards,
-            half_progress_easing(),
+            overflow_easing(),
         )
         .unwrap()
         .sample(
@@ -484,7 +490,7 @@ mod tests {
 
     #[test]
     fn running_active_interpolation_arithmetic_failure_is_failed_running_and_may_change() {
-        let timing = timing(FillMode::None).sample(
+        let timing = overflow_timing(FillMode::None).sample(
             ElapsedTime::from_secs(1.5).unwrap(),
             AnimationPlayState::Running,
         );
@@ -498,7 +504,7 @@ mod tests {
 
     #[test]
     fn paused_interpolation_arithmetic_failure_is_running_but_stable() {
-        let timing = timing(FillMode::None).sample(
+        let timing = overflow_timing(FillMode::None).sample(
             ElapsedTime::from_secs(1.5).unwrap(),
             AnimationPlayState::Paused,
         );
@@ -518,7 +524,7 @@ mod tests {
             IterationCount::finite(1.0).unwrap(),
             AnimationDirection::Normal,
             FillMode::Backwards,
-            half_progress_easing(),
+            overflow_easing(),
         )
         .unwrap()
         .sample(
@@ -541,7 +547,7 @@ mod tests {
             IterationCount::finite(2.5).unwrap(),
             AnimationDirection::Normal,
             FillMode::Forwards,
-            Easing::linear(),
+            overflow_easing(),
         )
         .unwrap()
         .sample(
@@ -676,25 +682,37 @@ mod tests {
         .unwrap()
     }
 
-    fn overflow_pair() -> InterpolationPair {
-        InterpolationPair::new(
-            PropertyKey::new("opacity").unwrap(),
-            InterpolableValue::number(InterpolableNumber::new(f64::MAX).unwrap()),
-            InterpolableValue::number(InterpolableNumber::new(-f64::MAX).unwrap()),
+    fn overflow_timing(fill_mode: FillMode) -> TimingParameters {
+        TimingParameters::try_new(
+            AnimationDelay::from_secs(1.0).unwrap(),
+            AnimationDuration::from_secs(1.0).unwrap(),
+            IterationCount::finite(1.0).unwrap(),
+            AnimationDirection::Normal,
+            fill_mode,
+            overflow_easing(),
         )
         .unwrap()
     }
 
-    fn half_progress_easing() -> Easing {
+    fn overflow_pair() -> InterpolationPair {
+        InterpolationPair::new(
+            PropertyKey::new("opacity").unwrap(),
+            InterpolableValue::number(InterpolableNumber::new(0.0).unwrap()),
+            InterpolableValue::number(InterpolableNumber::new(f64::MAX).unwrap()),
+        )
+        .unwrap()
+    }
+
+    fn overflow_easing() -> Easing {
         Easing::linear_function(
             LinearEasing::new(vec![
                 LinearControlPointInput {
                     input: 0.0,
-                    output: 0.5,
+                    output: 2.0,
                 },
                 LinearControlPointInput {
                     input: 1.0,
-                    output: 0.5,
+                    output: 2.0,
                 },
             ])
             .unwrap(),

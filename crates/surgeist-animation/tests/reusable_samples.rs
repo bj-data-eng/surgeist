@@ -163,7 +163,7 @@ fn values_and_complete_diagnostics_outlive_the_originating_track() {
     assert_discrete(&samples[0], "display", "visible", active());
     assert_unsupported(&samples[1]);
     assert_arithmetic_failure(&samples[2]);
-    assert_number(&endpoint[2], "overflow", -f64::MAX, finished_fill());
+    assert_number(&endpoint[2], "overflow", f64::MAX, finished_fill());
 }
 
 #[test]
@@ -312,7 +312,7 @@ fn reusable_diagnostics_stay_owned_after_replacement_and_track_drop() {
     assert_eq!(output.len(), 3);
     assert_discrete(&output[0], "display", "visible", finished_fill());
     assert_unsupported(&output[1]);
-    assert_number(&output[2], "overflow", -f64::MAX, finished_fill());
+    assert_number(&output[2], "overflow", f64::MAX, finished_fill());
 }
 
 fn interleaved_segments() -> Vec<KeyframeSegment> {
@@ -347,7 +347,15 @@ fn diagnostic_track() -> KeyframeTrack {
         vec![
             display,
             transform,
-            segment("overflow", 0.0, 1.0, f64::MAX, -f64::MAX),
+            KeyframeSegment::new(
+                property("overflow"),
+                ratio(0.0),
+                ratio(1.0),
+                number(0.0),
+                number(f64::MAX),
+                overflow_easing(),
+            )
+            .unwrap(),
         ],
         timing(0.0, 1.0, AnimationDirection::Normal, FillMode::Both),
     )
@@ -527,9 +535,30 @@ fn assert_arithmetic_failure(sample: &SampledPropertyResult) {
     };
     assert_eq!(diagnostic.property().as_str(), "overflow");
     assert_eq!(diagnostic.family(), ValueFamily::Number);
-    assert_eq!(diagnostic.from(), &number(f64::MAX));
-    assert_eq!(diagnostic.to(), &number(-f64::MAX));
-    assert_eq!(diagnostic.progress().value(), 0.5);
+    assert_eq!(diagnostic.from(), &number(0.0));
+    assert_eq!(diagnostic.to(), &number(f64::MAX));
+    assert_eq!(diagnostic.progress().value(), 2.0);
     assert_eq!(diagnostic.component(), InterpolationComponent::Number);
-    assert_eq!(diagnostic.value(), f64::NEG_INFINITY);
+    assert_eq!(diagnostic.value(), f64::INFINITY);
+}
+
+fn overflow_easing() -> Easing {
+    use surgeist_animation::easing::{LinearControlPointInput, LinearEasing};
+    Easing::linear_function(
+        LinearEasing::new(vec![
+            LinearControlPointInput {
+                input: 0.0,
+                output: 0.0,
+            },
+            LinearControlPointInput {
+                input: 0.5,
+                output: 2.0,
+            },
+            LinearControlPointInput {
+                input: 1.0,
+                output: 1.0,
+            },
+        ])
+        .unwrap(),
+    )
 }

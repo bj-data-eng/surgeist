@@ -64,6 +64,14 @@ is local to a sample and can recover at a later endpoint. Next-frame hints also
 account for play state, so paused samples remain stable until external input.
 See the [reference](reference.md) for the exact contracts and limitations.
 
+Computed property records combine as a unit: incompatible or differing discrete
+components switch the complete record. Numeric components retain canonical
+dimensions and independent percentage terms. Source/context identities preserve
+unresolved computed calculations in flat symbolic operation plans; the caller
+retains and evaluates the original calculations. This keeps authored CSS and
+contextual resolution outside Animation while allowing later effect stacks to
+add or accumulate underlying values before interpolating their endpoints.
+
 ## App-native motion
 
 This remains distinct from app-native motion work. A future `surgeist-motion`

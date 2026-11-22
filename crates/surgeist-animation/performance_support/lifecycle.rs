@@ -116,7 +116,7 @@ pub fn endpoints(family: Family, bias: f64) -> (InterpolableValue, InterpolableV
             InterpolableValue::composite(CompositeValue::unsupported("shadow-a")),
             InterpolableValue::composite(CompositeValue::unsupported("shadow-b")),
         ),
-        Family::ArithmeticFailure => (number(f64::MAX), number(-f64::MAX)),
+        Family::ArithmeticFailure => (number(0.0), number(f64::MAX)),
     }
 }
 
@@ -161,7 +161,11 @@ pub fn transition(family: Family, curve: Curve) -> TransitionTrack {
         to,
         AnimationDuration::from_secs(0.2).unwrap(),
         AnimationDelay::from_secs(0.0).unwrap(),
-        curve.easing(),
+        if matches!(family, Family::ArithmeticFailure) {
+            family.easing()
+        } else {
+            curve.easing()
+        },
     )
     .unwrap()
 }
@@ -198,7 +202,11 @@ pub fn segments(
                 UnitRatio::new((segment + 1) as f64 / per_property as f64).unwrap(),
                 from,
                 to,
-                curve.easing(),
+                if matches!(family, Family::ArithmeticFailure) {
+                    family.easing()
+                } else {
+                    curve.easing()
+                },
             )
             .unwrap(),
         );
