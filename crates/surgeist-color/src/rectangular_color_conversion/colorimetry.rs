@@ -7,8 +7,8 @@
 //! also present in frozen WebKit ColorConversion.cpp:286–345. §19 is informative;
 //! it supplies coefficients consistent with the normative conversion routes.
 
-use super::wide::Wide;
 use crate::PredefinedColorSpace;
+use crate::wide::Wide;
 
 type Matrix = [[f64; 3]; 3];
 

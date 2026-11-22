@@ -89,6 +89,9 @@ pub surgeist_color::HueInterpolation::Decreasing
 pub surgeist_color::HueInterpolation::Increasing
 pub surgeist_color::HueInterpolation::Longer
 pub surgeist_color::HueInterpolation::Shorter
+#[non_exhaustive] pub enum surgeist_color::InterpolationComponent
+pub surgeist_color::InterpolationComponent::Alpha
+pub surgeist_color::InterpolationComponent::Channel(usize)
 #[non_exhaustive] pub enum surgeist_color::InterpolationError
 pub surgeist_color::InterpolationError::HueRequiresPolarSpace
 impl core::error::Error for surgeist_color::InterpolationError
@@ -200,6 +203,7 @@ pub fn surgeist_color::Color::interpolated(self, second: Self, method: surgeist_
 pub fn surgeist_color::Color::new(space: surgeist_color::ColorSpace, channels: [core::option::Option<surgeist_color::Finite>; 3], alpha: core::option::Option<surgeist_color::UnitInterval>) -> Self
 pub const fn surgeist_color::Color::opaque_black() -> Self
 pub fn surgeist_color::Color::prepared_for_interpolation(self, destination: surgeist_color::ColorSpace) -> Self
+pub fn surgeist_color::Color::sample_interpolation(self, second: Self, method: surgeist_color::InterpolationMethod, progress: surgeist_color::Finite) -> core::result::Result<surgeist_color::InterpolationSample, surgeist_color::InterpolationSampleError>
 pub fn surgeist_color::Color::serialization_family(&self) -> surgeist_color::SerializationFamily
 pub const fn surgeist_color::Color::space(&self) -> surgeist_color::ColorSpace
 pub const fn surgeist_color::Color::srgb_bytes(&self) -> core::option::Option<[u8; 3]>
@@ -252,6 +256,17 @@ impl surgeist_color::InterpolationMethod
 pub const fn surgeist_color::InterpolationMethod::hue(self) -> core::option::Option<surgeist_color::HueInterpolation>
 pub const fn surgeist_color::InterpolationMethod::space(self) -> surgeist_color::ColorSpace
 pub const fn surgeist_color::InterpolationMethod::try_new(space: surgeist_color::ColorSpace, hue: core::option::Option<surgeist_color::HueInterpolation>) -> core::result::Result<Self, surgeist_color::InterpolationError>
+pub struct surgeist_color::InterpolationSample
+impl surgeist_color::InterpolationSample
+pub const fn surgeist_color::InterpolationSample::alpha(self) -> core::option::Option<surgeist_color::Finite>
+pub const fn surgeist_color::InterpolationSample::channels(self) -> [core::option::Option<surgeist_color::Finite>; 3]
+pub const fn surgeist_color::InterpolationSample::space(self) -> surgeist_color::ColorSpace
+pub struct surgeist_color::InterpolationSampleError
+impl surgeist_color::InterpolationSampleError
+pub const fn surgeist_color::InterpolationSampleError::component(self) -> surgeist_color::InterpolationComponent
+impl core::error::Error for surgeist_color::InterpolationSampleError
+impl core::fmt::Display for surgeist_color::InterpolationSampleError
+pub fn surgeist_color::InterpolationSampleError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_color::OperationOwner
 impl surgeist_color::OperationOwner
 pub const fn surgeist_color::OperationOwner::layout_bytes() -> usize

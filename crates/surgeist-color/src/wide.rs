@@ -4,7 +4,7 @@
 //! significand normally; cancellation can therefore discard small contributions.
 //! No intermediate is narrowed to a complete binary64 color coordinate.
 //!
-//! Exponent bound for these fixed, nonrecursive paths: finite inputs start in
+//! Exponent bound for the fixed conversion paths: finite inputs start in
 //! [-1074, 1023]. Every nonzero fixed coefficient has magnitude between 2^-14
 //! and 2^10. A coefficient operation changes the normalized exponent by at most
 //! 15; adding two normalized binary64 significands changes the larger exponent
@@ -15,6 +15,9 @@
 //! 3*(1074 + 50*64) + 50*64 + 4 < 20000. Therefore the largest rational-power
 //! integer product is below 20000*563, far inside i32. No external input needs
 //! an exponent assertion, saturation, or an intermediate-range error.
+//! Interpolation adds at most three finite-input exponents in a product and
+//! subtracts a fourth during division. Alignment and normalization in this
+//! fixed path keep the exponent comfortably within i32.
 
 use crate::finite::{Finite, closest_finite};
 
@@ -95,7 +98,10 @@ impl Wide {
     }
 
     pub(super) fn multiply_fixed(self, value: f64) -> Self {
-        let other = Self::from_f64(value);
+        self.multiply(Self::from_f64(value))
+    }
+
+    pub(super) fn multiply(self, other: Self) -> Self {
         Self::normalized(
             self.significand * other.significand,
             self.exponent + other.exponent,
@@ -103,11 +109,41 @@ impl Wide {
     }
 
     pub(super) fn divide_fixed(self, value: f64) -> Self {
-        let other = Self::from_f64(value);
+        self.divide(Self::from_f64(value))
+    }
+
+    /// Divides by a nonzero operand.
+    pub(super) fn divide(self, other: Self) -> Self {
         Self::normalized(
             self.significand / other.significand,
             self.exponent - other.exponent,
         )
+    }
+
+    pub(super) fn is_zero(self) -> bool {
+        self.significand == 0.0
+    }
+
+    /// Adds a product with one significand rounding, even when the product
+    /// lies outside binary64 or nearly cancels the addend.
+    pub(super) fn add_product(self, first: Self, second: Self) -> Self {
+        if self.is_zero() || first.is_zero() || second.is_zero() {
+            return self.add(first.multiply(second));
+        }
+        let product_exponent = first.exponent + second.exponent;
+        let exponent = self.exponent.max(product_exponent);
+        let factor = first.significand * power_of_two(product_exponent - exponent);
+        let addend = self.significand * power_of_two(self.exponent - exponent);
+        Self::normalized(factor.mul_add(second.significand, addend), exponent)
+    }
+
+    /// Absolute integer significand and its base-two exponent.
+    pub(super) fn unsigned_parts(self) -> (u64, i32) {
+        if self.is_zero() {
+            return (0, 0);
+        }
+        let fraction = self.significand.to_bits() & ((1_u64 << 52) - 1);
+        (fraction | (1_u64 << 52), self.exponent - 52)
     }
 
     /// Only the fixed positive rational exponents of these color formulas enter.
@@ -165,7 +201,11 @@ impl Wide {
     /// The final binary64 channel. A value beyond binary64 is the signed
     /// closest finite value, `f64::MAX`; underflow rounds toward zero.
     pub(super) fn to_finite(self) -> Finite {
-        closest_finite(if self.significand == 0.0 {
+        closest_finite(self.to_f64())
+    }
+
+    pub(super) fn to_f64(self) -> f64 {
+        if self.significand == 0.0 {
             self.significand
         } else if self.exponent > 1023 {
             f64::INFINITY.copysign(self.significand)
@@ -177,11 +217,11 @@ impl Wide {
             (self.significand * power_of_two(self.exponent + 1074)) * f64::from_bits(1)
         } else {
             self.significand * power_of_two(self.exponent)
-        })
+        }
     }
 }
 
-fn power_of_two(exponent: i32) -> f64 {
+pub(super) fn power_of_two(exponent: i32) -> f64 {
     if exponent < -1074 {
         0.0
     } else if exponent < -1022 {

@@ -31,12 +31,20 @@ stored value using floating-point equality.
 `ColorSpace` covers predefined RGB/XYZ spaces, HSL/HWB, Lab/LCH and
 Oklab/Oklch. `RectangularCoordinates`, `HslCoordinates`, `HwbCoordinates` and
 `PolarCoordinates` hold `Finite` coordinates for the corresponding numerical
-conversion APIs. Every operation is total: conversion preserves finite extended
+conversion APIs. Conversion preserves finite extended
 coordinates, and a result beyond binary64 is the signed closest finite value
 (the CSS Values 4 closest supported value). This is a numeric-range rule only;
 no gamut map is applied. The implementation uses
 binary64 significand arithmetic, not exact-real or correctly rounded arithmetic.
 Source-specific numerical policies remain documented in the conversion modules.
+
+`Color::sample_interpolation` uses the same endpoint preparation and
+premultiplied kernel as ordinary interpolation and accepts any `Finite`
+progress. It returns an `InterpolationSample` in the selected space, with
+optional finite channels and alpha. Alpha can lie outside the unit interval.
+The checked sampler reports the component if its final value is out of range.
+Ordinary and controlled interpolation take `UnitInterval` progress and return
+`Color` under the closest-finite policy.
 
 `SerializationFamily` selects the resolved spelling independently of authored
 text. `SerializationRequest::HtmlCompatible` uses hexadecimal output only when

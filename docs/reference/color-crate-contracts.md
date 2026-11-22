@@ -199,13 +199,17 @@ and applies no gamut mapping.
 `InterpolationMethod::try_new` is the one fallible Color constructor: it
 rejects a hue strategy on a rectangular space with
 `InterpolationError::HueRequiresPolarSpace` and defaults polar omission to
-`Shorter`; its `hue()` returns the effective strategy. Progress is a
-`UnitInterval`, so its range is established by the type and no extrapolation is
-possible. The two-color operation prepares the first and second operands in
+`Shorter`; its `hue()` returns the effective strategy. Ordinary and controlled
+interpolation take `UnitInterval` progress. The two-color operation prepares the first and second operands in
 that order, carries analogous missing components, uses the existing
 premultiplied-alpha calculation with hue excluded, preserves both-missing
 components, applies the selected hue arc and keeps the interpolated alpha in
-`[0,1]`. CSS's ordered mix fold retains the existing zero-total two-operand
+`[0,1]`. `Color::sample_interpolation` accepts `Finite` progress and uses the
+same numerical preparation and premultiplied components. Its
+`InterpolationSample` carries finite or missing channels and finite or
+missing alpha in the selected space. Finite alpha can extrapolate outside the
+unit interval. A component outside the final finite range reports a checked
+error. CSS's ordered mix fold retains the existing zero-total two-operand
 progress of 0.5, omitted-weight normalization and final alpha multiplier; it
 requests the color-function family after the fold. These steps do not become an
 alternative native CSS resolver.

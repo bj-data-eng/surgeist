@@ -128,6 +128,43 @@ impl Color {
         crate::interpolation::interpolate(self, second, method, progress)
     }
 
+    /// Samples two resolved colors at any finite progress.
+    ///
+    /// Endpoint conversion uses the ordinary closest-finite conversion rule.
+    /// The sample preserves missing components and finite extended alpha.
+    /// A final component outside the finite range returns an error.
+    ///
+    /// ```
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use surgeist_color::{Color, ColorSpace, Finite, InterpolationMethod, UnitInterval};
+    ///
+    /// let first = Color::new(ColorSpace::Lab, [Finite::new(25.0), None, None], UnitInterval::new(0.0));
+    /// let second = Color::new(ColorSpace::Lab, [Finite::new(50.0), None, None], UnitInterval::new(1.0));
+    /// let method = InterpolationMethod::try_new(ColorSpace::Lab, None)?;
+    /// let sample = first.sample_interpolation(second, method, Finite::new(2.0).unwrap())?;
+    /// assert_eq!(sample.alpha().map(Finite::get), Some(2.0));
+    /// assert_eq!(sample.channels()[0].map(Finite::get), Some(50.0));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// An interpolation sample has a separate type from resolved color.
+    ///
+    /// ```compile_fail,E0308
+    /// use surgeist_color::{Color, InterpolationSample};
+    /// fn resolved(sample: InterpolationSample) -> Color {
+    ///     sample
+    /// }
+    /// ```
+    pub fn sample_interpolation(
+        self,
+        second: Self,
+        method: crate::InterpolationMethod,
+        progress: Finite,
+    ) -> Result<crate::InterpolationSample, crate::InterpolationSampleError> {
+        crate::interpolation::sample(self, second, method, progress)
+    }
+
     /// Executes one fixed transformation after the caller's work admission.
     #[must_use]
     pub fn transformed(self, transformation: Transformation) -> Self {
