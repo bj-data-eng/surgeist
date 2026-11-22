@@ -265,14 +265,10 @@ fn interpolate_components(
             affine(first, second, t)
         }
     };
-    let weights = aa.zip(ba).map(|(a, b)| {
-        let a = Wide::from_f64(a);
-        let b = Wide::from_f64(b);
-        // a*(1-t), formed without narrowing the complement beforehand.
-        let first = a.add_product(a.negated(), t);
-        let second = b.multiply(t);
-        (first, second, interpolate(a, b))
-    });
+    let alphas = aa
+        .zip(ba)
+        .map(|(a, b)| (Wide::from_f64(a), Wide::from_f64(b)));
+    let alpha = alphas.map(|(a, b)| interpolate(a, b));
 
     let a = first.channels();
     let b = second.channels();
@@ -314,37 +310,44 @@ fn interpolate_components(
             };
             return Some(Wide::from_f64(angle.rem_euclid(360.0)));
         }
-        if x.to_bits() == y.to_bits() && weights.is_none_or(|(_, _, alpha)| !alpha.is_zero()) {
+        if x.to_bits() == y.to_bits() && alpha.is_none_or(|alpha| !alpha.is_zero()) {
             // A common coordinate factors out of the premultiplied sum.
             return Some(Wide::from_f64(x));
         }
         let x = Wide::from_f64(x);
         let y = Wide::from_f64(y);
-        Some(match weights {
-            None => interpolate(x, y),
-            Some((first, second, alpha)) if !alpha.is_zero() => {
-                // Since first + second = alpha, factor the more heavily
-                // weighted coordinate out of the premultiplied sum. Forming
-                // both endpoint products first loses even representable
-                // channel differences when their rounded products agree.
-                if first.magnitude_order(second).is_lt() {
-                    affine(y, x, first.divide(alpha))
-                } else {
-                    affine(x, y, second.divide(alpha))
-                }
-            }
-            Some((first, second, _)) if in_unit_interval => {
-                x.multiply(first).add(y.multiply(second))
-            }
-            Some((_, second, _)) => {
-                // With zero alpha the terms have opposite weights. The
-                // un-divided premultiplied channel is their difference.
-                let (difference, low) = y.add_with_error(x.negated());
-                difference.multiply(second).add_product(low, second)
-            }
+        let Some(((a, b), alpha)) = alphas.zip(alpha) else {
+            return Some(interpolate(x, y));
+        };
+        let numerator = if in_unit_interval {
+            interpolate(x.multiply(a), y.multiply(b))
+        } else {
+            // Retain the product residuals so endpoint premultiplication
+            // cannot erase a lane's slope before extrapolation.
+            let (first, first_low) = x.multiply_with_error(a);
+            let (second, second_low) = y.multiply_with_error(b);
+            interpolate(first, second).add(interpolate(first_low, second_low))
+        };
+        if alpha.is_zero() {
+            return Some(numerator);
+        }
+        let result = numerator.divide(alpha);
+        if !result.exceeds_finite_range() {
+            return Some(result);
+        }
+
+        // At the edge of the finite range, rounding the numerator before
+        // division can make a representable quotient appear to overflow.
+        // Re-evaluate using the more heavily weighted coordinate as anchor.
+        let first_weight = a.add_product(a.negated(), t);
+        let second_weight = b.multiply(t);
+        Some(if first_weight.magnitude_order(second_weight).is_lt() {
+            affine(y, x, first_weight.divide(alpha))
+        } else {
+            affine(x, y, second_weight.divide(alpha))
         })
     });
-    (channels, weights.map(|(_, _, alpha)| alpha))
+    (channels, alpha)
 }
 
 fn affine(first: Wide, second: Wide, progress: Wide) -> Wide {

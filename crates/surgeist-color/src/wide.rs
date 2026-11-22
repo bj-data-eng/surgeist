@@ -122,6 +122,16 @@ impl Wide {
         )
     }
 
+    pub(super) fn multiply_with_error(self, other: Self) -> (Self, Self) {
+        let exponent = self.exponent + other.exponent;
+        let product = self.significand * other.significand;
+        let low = self.significand.mul_add(other.significand, -product);
+        (
+            Self::normalized(product, exponent),
+            Self::normalized(low, exponent),
+        )
+    }
+
     pub(super) fn divide_fixed(self, value: f64) -> Self {
         self.divide(Self::from_f64(value))
     }
@@ -136,6 +146,10 @@ impl Wide {
 
     pub(super) fn is_zero(self) -> bool {
         self.significand == 0.0
+    }
+
+    pub(super) fn exceeds_finite_range(self) -> bool {
+        self.exponent > 1023
     }
 
     /// Adds a product with one significand rounding, even when the product
