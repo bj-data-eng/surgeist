@@ -61,20 +61,16 @@ fn unsupported_sample_retains_both_endpoints_after_track_destruction() {
         CompletionStatus::Unsupported,
         NextFrameHint::StableUntilExternalInput,
     );
-    let SampleValue::Unsupported(InterpolationError::UnsupportedFamily {
-        property,
-        family,
-        from,
-        to,
-        reason,
-    }) = retained.value()
+    let SampleValue::Unsupported(InterpolationError::UnsupportedFamily(error)) = retained.value()
     else {
         panic!("expected unsupported family")
     };
-    assert_eq!(property.as_str(), "transform");
-    assert_eq!(*family, ValueFamily::Transform);
-    assert_eq!(*reason, "transform interpolation deferred");
-    let (InterpolableValue::Transform(from), InterpolableValue::Transform(to)) = (from, to) else {
+    assert_eq!(error.property().as_str(), "transform");
+    assert_eq!(error.family(), ValueFamily::Transform);
+    assert_eq!(error.reason(), "transform interpolation deferred");
+    let (InterpolableValue::Transform(from), InterpolableValue::Transform(to)) =
+        (error.from(), error.to())
+    else {
         panic!("expected transform endpoints")
     };
     assert_eq!(from.kind(), "translate");

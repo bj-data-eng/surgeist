@@ -8,7 +8,7 @@ Version 0.1.0 supports snapshot-based CSS animation reconciliation and transitio
 decisions, typed native keyframe normalization and computed interval sampling,
 timing, easing, computed numeric composition, background/mask position and size
 layers, repeatable lists, immutable effect-stack folds and replacement decisions,
-logarithmic ratio interpolation, normalized positions, premultiplied colors,
+logarithmic ratio interpolation, normalized positions, standard-space colors,
 computed basic shapes and native shape/path command lists, resolved 2D/3D
 transforms, box/text shadow lists, computed clip-path branches, and discrete
 switching. Basic shapes retain explicit reference boxes and use whole-value
@@ -30,6 +30,10 @@ Grid values retain track/function kinds, fixed and automatic repeats, subgrid
 name lists and symbolic percentages. Compatible tracks combine numerically;
 automatic repeats and incompatible structures select complete values. Native
 Grid addition and accumulation share the same component traversal.
+Resolved color pairs use a supplied interpolation method and the Color crate's
+finite-progress sampler. The result retains missing components and extended
+alpha. [Color sampling](docs/reference.md#standard-space-color-sampling)
+describes the endpoint and result types.
 Explicit transform/composite diagnostic markers retain typed
 unsupported outcomes. CSS lowering, contextual evaluation, final
 clamping, runtime scheduling, and root integration belong to their respective

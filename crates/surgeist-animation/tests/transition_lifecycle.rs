@@ -719,7 +719,7 @@ fn unavailable_property_interpolation_is_typed_and_does_not_hide_delay_values() 
         .unwrap_err();
     assert!(matches!(
         error.interpolation_error(),
-        Some(InterpolationError::UnsupportedFamily { .. })
+        Some(InterpolationError::UnsupportedFamily(_))
     ));
 }
 

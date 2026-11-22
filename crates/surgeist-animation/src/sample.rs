@@ -164,6 +164,12 @@ impl SampledPropertyResult {
                 next_frame: next_frame_for_timing(timing),
                 value: SampleValue::Error(InterpolationError::Palette(result)),
             },
+            InterpolationOutcome::ColorFailure(result) => Self {
+                classification: SampleClassification::Failed,
+                completion: failed_completion(timing.phase()),
+                next_frame: next_frame_for_timing(timing),
+                value: SampleValue::Error(InterpolationError::Color(result)),
+            },
             InterpolationOutcome::ShapeFailure(result) => Self {
                 classification: SampleClassification::Failed,
                 completion: failed_completion(timing.phase()),
@@ -664,13 +670,12 @@ mod tests {
             ElapsedTime::from_secs(1.5).unwrap(),
             AnimationPlayState::Running,
         );
-        let error = InterpolationError::UnsupportedFamily {
-            property: PropertyKey::new("filter").unwrap(),
-            family: ValueFamily::Discrete,
-            from: InterpolableValue::discrete(DiscreteValue::new("a").unwrap()),
-            to: InterpolableValue::discrete(DiscreteValue::new("b").unwrap()),
-            reason: "property support policy rejected interpolation",
-        };
+        let error = InterpolationError::unsupported_family(
+            PropertyKey::new("filter").unwrap(),
+            InterpolableValue::discrete(DiscreteValue::new("a").unwrap()),
+            InterpolableValue::discrete(DiscreteValue::new("b").unwrap()),
+            "property support policy rejected interpolation",
+        );
         let result = SampledPropertyResult::from_timing_and_interpolation_outcome(
             timing,
             &PropertyKey::new("filter").unwrap(),

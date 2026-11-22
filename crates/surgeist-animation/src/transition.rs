@@ -101,12 +101,41 @@ impl TransitionTrack {
             });
         }
 
-        Ok(Self {
+        let pair = InterpolationPair::new(property, from, to)
+            .map_err(|error| TransitionError::Interpolation(Box::new(error)))?;
+        Ok(Self::with_pair(id, pair, duration, delay, easing))
+    }
+
+    /// Builds a track from an admitted pair, including a color pair with
+    /// its resolved operands and caller-selected interpolation method.
+    pub fn from_pair(
+        id: TransitionTrackId,
+        pair: InterpolationPair,
+        duration: AnimationDuration,
+        delay: AnimationDelay,
+        easing: Easing,
+    ) -> Result<Self, TransitionError> {
+        if pair.from() == pair.to() {
+            return Err(TransitionError::EquivalentEndpoints {
+                property: pair.property().clone(),
+                value: pair.from().clone(),
+            });
+        }
+        Ok(Self::with_pair(id, pair, duration, delay, easing))
+    }
+
+    fn with_pair(
+        id: TransitionTrackId,
+        pair: InterpolationPair,
+        duration: AnimationDuration,
+        delay: AnimationDelay,
+        easing: Easing,
+    ) -> Self {
+        Self {
             id,
-            pair: InterpolationPair::new(property, from, to)
-                .map_err(|error| TransitionError::Interpolation(Box::new(error)))?,
+            pair,
             timing: TimingParameters::for_transition(delay, duration, easing),
-        })
+        }
     }
 
     pub const fn id(&self) -> TransitionTrackId {

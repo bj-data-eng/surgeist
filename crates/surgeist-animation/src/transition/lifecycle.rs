@@ -464,6 +464,9 @@ impl<T: Clone> RunningTransition<T> {
                 InterpolationOutcome::PaletteFailure(error) => {
                     return Err(InterpolationError::Palette(error).into());
                 }
+                InterpolationOutcome::ColorFailure(error) => {
+                    return Err(InterpolationError::Color(error).into());
+                }
                 InterpolationOutcome::ShapeFailure(error) => {
                     return Err(InterpolationError::Shape(error).into());
                 }

@@ -1158,9 +1158,9 @@ rectangular interpolation space (`Srgb` or `Oklab`), premultiplied components,
 and alpha. Root supplies values in the intended space. This crate interpolates
 premultiplied components and alpha directly.
 
-Downstream clamping and color conversion are root/consumer responsibilities.
-This crate does not clip values, gamut-map, unpremultiply, resolve missing color
-components, convert between spaces, or apply final property range policy.
+This explicit premultiplied path continues to serve shadow and filter
+composition. Consumers select their common operands and apply downstream
+gamut mapping and final property range policy.
 
 Permanent unsupported behavior is a stable unsupported outcome.
 Recoverable sample-local arithmetic failure is a failed sample that can later recover.
@@ -1169,6 +1169,31 @@ composite interpolation, produces `SampleClassification::Unsupported` and
 `SampleValue::Unsupported`. Finite arithmetic overflow during an otherwise
 supported interpolation produces `SampleClassification::Failed` and
 `SampleValue::Error`, and later endpoint samples can recover.
+
+## Standard-space color sampling
+
+`InterpolationPair::resolved_colors` accepts two resolved `surgeist_color::Color`
+values and their selected `surgeist_color::InterpolationMethod`. The colors
+may start in different spaces. `KeyframeSegment::from_pair` and
+`TransitionTrack::from_pair` admit this pair with their normal timing and
+offset validation. Construct one pair per interval when methods differ.
+Computed keyframes can supply `InterpolableValue::resolved_color` endpoints
+and `AnimationTypeOperations::for_color` for the selected method.
+
+Active sampling passes the finite eased progress unchanged. Color owns the
+ordered conversion, missing-component carry and fill, hue arc, premultiplication
+and unpremultiplication. A running sample is `InterpolableValue::ColorSample`
+with its selected space, optional finite channels, and optional extended
+alpha. At a delay hold, the sampled value is the held resolved endpoint.
+Arithmetic failures retain the property, eased progress, original endpoints
+and typed Color cause through `ColorInterpolationFailure`. A later sample can
+recover on the same track.
+
+Style resolves contextual colors and selects the method. Reusing a checked
+sample as an interpolation endpoint requires a separate sampled-endpoint
+contract. The resolved pair takes only resolved colors, and generic admission
+reports `UnsupportedFamily` for same-family interpolation of a sampled color.
+Color addition and default accumulation select the effect operand.
 
 ## Normalized filter lists and filter images
 
@@ -1400,7 +1425,7 @@ basis is guessed.
 | Typed native keyframe inputs and missing-offset computation | `supported` | `keyframe_input` normalizes sequences and property-indexed inputs while preserving specified offsets and caller payloads. |
 | Computed keyframe effect sampling and native endpoint fallback | `supported` | `keyframe::ComputedKeyframes` selects sparse property intervals, preserves overlap branches, composes endpoints, and samples supplied property operations. |
 | Cubic-bezier, steps, linear keyword, and CSS `linear()` easing | `supported` | `surgeist-animation` evaluates typed easing, including canonical linear control points. |
-| Number, unrestricted percentage, and explicit premultiplied color interpolation | `supported` | `surgeist-animation` interpolates finite values with checked arithmetic and explicit color spaces. |
+| Number, unrestricted percentage, and color interpolation | `supported` | Resolved colors delegate to Color with a selected method. The explicit premultiplied path retains its checked component algebra. |
 | Normalized filter lists and native filter images | `supported` | Supplied resolved functions, identity end padding, URL/incompatible whole-value fallback, ordered composition and executed generic-image delegation. |
 | Normalized box/text shadow lists | `supported` | Supplied resolved geometry and explicit colors, inset-aware end padding, whole-value discrete fallback, ordered addition and accumulation. |
 | Discrete value switching | `supported` | `surgeist-animation` switches discrete values at the interpolation midpoint. |

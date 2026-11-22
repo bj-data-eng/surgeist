@@ -110,9 +110,11 @@ See [transition decisions](reference.md#css-transition-lifecycle-decisions).
 ## Values and failure semantics
 
 Unrestricted finite percentages and eased progress preserve values outside the
-unit interval. Explicit premultiplied color spaces avoid ambiguity about the
-representation being interpolated. Consumers retain responsibility for conversion,
-gamut mapping, and final property clamping.
+unit interval. A resolved color pair keeps the method selected by the consumer
+and delegates conversion, missing components, hue and premultiplication to
+Color. Explicit premultiplied operands for shadow and filter composition use
+their component algebra. Consumers retain responsibility for contextual
+resolution, display gamut mapping, and final property clamping.
 
 Unsupported interpolation is a permanent capability outcome; arithmetic failure
 is local to a sample and can recover at a later endpoint. Next-frame hints also
