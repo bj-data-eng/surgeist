@@ -763,8 +763,9 @@ belong to caller lowering.
 
 `ComputedInteger` stores the integral finite binary64 values. Caller lowering
 converts exact authored quantities into this declared computed precision.
-Interpolation rounds nearest with ties toward positive infinity, so -1.5 becomes
--1. Addition and accumulation use checked finite arithmetic. Values beyond a
+Interpolation rounds the exact affine result to the nearest integer with ties
+toward positive infinity, so -1.5 becomes -1, then represents it at computed
+precision. Addition and accumulation use checked finite arithmetic. Values beyond a
 property's range remain valid intermediates: callers clamp only after their
 complete interpolation/addition/accumulation sequence.
 
@@ -797,6 +798,42 @@ and `InterpolationError::Computed`, retaining both endpoints and a semantic
 `ComputedError` with its operation and component index. Nonfinite arithmetic,
 ratio underflow and capacity refusal are distinct error kinds. Later endpoint
 samples can recover. See [the computed-value example](how-to.md#combine-computed-property-values).
+
+## Computed Multi-column properties
+
+Style supplies the effective longhands from the pinned
+[Multi-column property definitions](../../../references/css-multicol-1--CR-css-multicol-1-20240516--0768f4526ac5.md)
+and the [Sizing 4 column-width forms](../../../references/css-sizing-4--WD-css-sizing-4-20260904--faaa86589559.md#column-sizing).
+Use the normal transition or keyframe sampling interfaces with these operands.
+
+| Longhand | Operand and sampling behavior |
+| --- | --- |
+| `column-count` | `ComputedInteger` for counts and `DiscreteValue` for `auto`. Counts round to the nearest integer, with a tie toward positive infinity. A count and `auto` switch at the eased midpoint. |
+| `column-width` | `ComputedComponent::BoxSize` wraps a checked `ComputedSize`. Length-percentages and matching functional `fit-content()` arguments combine numerically. Incompatible whole sizes switch at the eased midpoint. |
+| `column-gap` | Shared Alignment length-percentage and `normal` sampling. |
+| `column-rule-width` | A supplied computed pixel length. Samples may be fractional and retain signed overshoot. |
+| `column-rule-color` | A resolved color endpoint and the caller's [selected interpolation method](#standard-space-color-sampling). |
+| `column-rule-style`, `column-span`, `column-fill` | Complete `DiscreteValue` endpoints switch at the eased midpoint. |
+
+`CalcSize` separates the basis from a bounded symbolic calculation. It
+substitutes nested calculations, reduces a pure-length basis to `any`, and
+normalizes a basis containing percentages to `100%`. In that last case,
+only percentages originating in the basis become ratios of the bound `size`.
+Matching canonical bases combine. An `any` basis adopts the other basis.
+An explicit `calc-size()` can also interpolate with a length-percentage or a
+compatible intrinsic keyword. The plan preserves the scopes of both `size`
+and percentage bindings for downstream evaluation. Preparation limits the
+stored plan and expanded calculation to 4,096 nodes. Over-budget pairs switch
+as whole values. A failed endpoint preparation can be preserved with
+`ComputedSize::unavailable_calc_size`.
+See the pinned [calculation preparation and interpolation rules](../../../references/css-values-5-attribute-substitution-definitions--WD-css-values-5-20241111--af984ef26b39.md#interp-calc-size).
+
+Style supplies property animation policy, computed lengths and percentage
+contexts, and expands the `columns` and `column-rule` shorthands. Consumers
+apply the final property range after composition. Layout owns used column
+geometry and Paint owns rule drawing.
+The [Multi-column tests](../tests/multicolumn_properties.rs) exercise these
+operands through Animation's public interfaces.
 
 ## Computed font properties
 
@@ -1438,6 +1475,7 @@ basis is guessed.
 | Normalized box/text shadow lists | `supported` | Supplied resolved geometry and explicit colors, inset-aware end padding, whole-value discrete fallback, ordered addition and accumulation. |
 | Discrete value switching | `supported` | `surgeist-animation` switches discrete values at the interpolation midpoint. |
 | Computed numeric records, normalized positions, ratios and symbolic math | `supported` | Typed computed components combine without contextual evaluation or early clamping. |
+| Computed Multi-column longhands | `supported` | Supplied computed endpoints, exact integer rounding, intrinsic and symbolic size sampling, selected Color methods and discrete switching. |
 | Computed clip-path branches | `supported` | Supplied opaque sources, boxes and complete shapes retain whole-value fallback and typed shape failures. |
 | Computed font numeric/discrete families and symbolic palette sampling | `supported` | Effective computed operands, fractional numeric samples, whole discrete selection and flat Oklab palette mix plans; Style resolves palette entries. |
 | Computed circle, ellipse, inset and polygon interpolation | `supported` | Explicit reference boxes, guarded numeric domains, whole-shape compatibility and typed sample-local errors. |

@@ -33,6 +33,18 @@ use std::sync::Arc;
 
 use crate::interpolation::{DiscreteValue, InterpolationProgress, checked_interpolate};
 
+mod box_size;
+#[doc(inline)]
+pub use box_size::{ComputedSize, ComputedSizeValue};
+
+mod calc_size;
+#[doc(inline)]
+pub use calc_size::{
+    CalcSize, CalcSizeBasis, CalcSizeCalculation, CalcSizeFootprint, CalcSizeNode, SizingKeyword,
+};
+
+mod integer;
+
 mod layer_size;
 #[doc(inline)]
 pub use layer_size::{LayerSize, LayerSizeAxis};
@@ -170,20 +182,19 @@ impl ComputedInteger {
         other: Self,
         progress: InterpolationProgress,
     ) -> Result<Self, ComputedError> {
-        let value = scalar(
-            self.value,
-            other.value,
-            ComputedOperation::Interpolate(progress),
-        )?;
-        // Adding .5 first can round the predecessor of .5 up to 1. Compare the
-        // fractional part instead. Integral large magnitudes need no increment.
-        let lower = value.floor();
-        let rounded = if value - lower < 0.5 {
-            lower
+        if progress.value() == 1.0 {
+            return Ok(other);
+        }
+        if progress.value() == 0.0 || self.value == other.value {
+            return Ok(self);
+        }
+        let value = integer::interpolate(self.value, other.value, progress.value());
+        if value.is_finite() {
+            Ok(Self { value })
         } else {
-            lower + 1.0
-        };
-        Self::new(rounded)
+            Err(ComputedError::new(ComputedErrorKind::NonFiniteResult)
+                .during(ComputedOperation::Interpolate(progress)))
+        }
     }
 
     pub fn add(&self, other: &Self) -> Result<Self, ComputedError> {
@@ -832,6 +843,8 @@ pub enum ComputedComponent {
     Position(ComputedPosition),
     /// A guarded image-layer size with matching keyword constants.
     Size(LayerSize),
+    /// A complete computed size, including intrinsic sizing forms.
+    BoxSize(ComputedSize),
     Discrete(DiscreteValue),
 }
 
@@ -929,6 +942,9 @@ impl ComputedValue {
                     (ComputedComponent::Size(first), ComputedComponent::Size(second)) => {
                         first.compatible(second)
                     }
+                    (ComputedComponent::BoxSize(first), ComputedComponent::BoxSize(second)) => {
+                        first.compatible(second, operation)
+                    }
                     (ComputedComponent::Discrete(first), ComputedComponent::Discrete(second)) => {
                         first == second
                     }
@@ -952,6 +968,9 @@ fn combine_component(
         (ComputedComponent::Size(first), ComputedComponent::Size(second)) => {
             Ok(ComputedComponent::Size(first.combine(second, operation)?))
         }
+        (ComputedComponent::BoxSize(first), ComputedComponent::BoxSize(second)) => Ok(
+            ComputedComponent::BoxSize(first.combine(second, operation)?),
+        ),
         (ComputedComponent::Ratio(first), ComputedComponent::Ratio(second)) => {
             Ok(ComputedComponent::Ratio(match operation {
                 ComputedOperation::Interpolate(progress) => first.interpolate(*second, progress)?,

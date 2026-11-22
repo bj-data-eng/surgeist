@@ -119,6 +119,18 @@ fn integers_round_nearest_with_positive_infinity_ties() {
 }
 
 #[test]
+fn integer_interpolation_preserves_the_supplied_endpoint_zero() {
+    let positive = integer(0.0);
+    let negative = integer(-0.0);
+    for (start, end) in [(positive, negative), (negative, positive)] {
+        for (fraction, expected) in [(0.0, start), (1.0, end)] {
+            let actual = start.interpolate(end, progress(fraction)).unwrap();
+            assert_eq!(actual.value().to_bits(), expected.value().to_bits());
+        }
+    }
+}
+
+#[test]
 fn dimensions_and_percentage_mixes_keep_independent_components_and_canonical_units() {
     for kind in [
         DimensionKind::Length,
