@@ -260,7 +260,12 @@ fn collection_names_keep_output_custody_and_reject_a_revoked_executor() {
         .unwrap()
         .unwrap();
     let collection = dom
-        .get_elements_by_tag_name(document, "div".into(), 64, &cancel)
+        .get_elements_by_tag_name(
+            crate::tree::DomDescendantQueryRoot::Document(document),
+            "div".into(),
+            64,
+            &cancel,
+        )
         .unwrap();
     let executor = dom.bind_source_event_executor(&cancel).unwrap();
     let event = {

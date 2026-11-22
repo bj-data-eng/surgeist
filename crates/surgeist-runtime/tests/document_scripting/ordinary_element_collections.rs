@@ -111,6 +111,7 @@ pub(super) fn ordinary_element_descendant_queries() {
         const exactQualified = root.getElementsByTagName('p:DIV');
         const expanded = root.getElementsByTagNameNS(svgNS, 'DIV');
         const requested = root.getElementsByClassName('Token\rToken Alpha');
+        const folded = root.getElementsByClassName('token');
         if (!(qualified instanceof HTMLCollection) || qualified.length !== 3
             || qualified[0] !== html || qualified[1] !== svg || qualified[2] !== shield
             || exactQualified.length !== 1 || exactQualified[0] !== prefixed
@@ -126,7 +127,7 @@ pub(super) fn ordinary_element_descendant_queries() {
             || root.getElementsByTagNameNS('*', '*').length !== 6)
             return 'namespace and local-name wildcards must apply independently and empty namespace means null';
         if (requested.length !== 2 || requested[0] !== html || requested[1] !== svg
-            || root.getElementsByClassName('token').length !== 0
+            || folded.length !== 2 || folded[0] !== html || folded[1] !== svg
             || root.getElementsByClassName(' \t\n\r\f').length !== 0
             || root.getElementsByClassName('Token\u00a0Alpha')[0] !== prefixed
             || document.getElementsByClassName('Token Alpha')[0] !== root)
@@ -138,6 +139,22 @@ pub(super) fn ordinary_element_descendant_queries() {
             try { invoke(); return 'invalid query accepted'; }
             catch (error) { if (!(error instanceof TypeError)) throw error; }
         }
+        const calls = [];
+        const namespaceArgument = {toString() { calls.push('namespace'); return svgNS; }};
+        try {
+            root.getElementsByTagNameNS(namespaceArgument);
+            return 'an omitted local name was accepted';
+        } catch (error) { if (!(error instanceof TypeError)) throw error; }
+        if (calls.length !== 0) return 'required arity must be validated before converting a namespace';
+        const conversionMatch = document.createElementNS(svgNS, 'fresh');
+        const converted = root.getElementsByTagNameNS(namespaceArgument, {toString() {
+            calls.push('local name');
+            root.appendChild(conversionMatch);
+            return 'fresh';
+        }});
+        if (calls.join() !== 'namespace,local name' || converted.length !== 1 || converted[0] !== conversionMatch)
+            return 'expanded-name conversion must precede selection and read the current tree';
+        conversionMatch.remove();
         svg.removeAttribute('class');
         prefixed.setAttribute('class', 'Token Alpha');
         root.insertBefore(svg, html);
@@ -149,7 +166,7 @@ pub(super) fn ordinary_element_descendant_queries() {
         const current = root.getElementsByTagName('DIV');
         if (root.ownerDocument !== xml || current.length !== 1 || current[0] !== svg
             || qualified.length !== 3 || ![...qualified].includes(html)
-            || expanded.length !== 2 || requested.length !== 2)
+            || expanded.length !== 2 || requested.length !== 2 || folded.length !== 0)
             return 'retained filters and new XML-mode queries must keep their specified semantics after adoption';
         return 'ok';
     })()",

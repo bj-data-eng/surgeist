@@ -59,7 +59,7 @@ fn open(host: &mut DocumentScriptHost) -> Result<(), DocumentScriptError> {
 }
 
 pub(in crate::document_scripting) fn document_collection_admits_its_reference_pair() {
-    use surgeist_dom::tree::DomHtmlCollection;
+    use surgeist_dom::tree::{DomDescendantQueryRoot, DomHtmlCollection};
 
     struct ProjectionPayload {
         _collection: DomHtmlCollection,
@@ -83,7 +83,12 @@ pub(in crate::document_scripting) fn document_collection_admits_its_reference_pa
                 .unwrap()
                 .id();
             dom.raw()
-                .get_elements_by_tag_name(document, "*".into(), 128, &AtomicBool::new(false))
+                .get_elements_by_tag_name(
+                    DomDescendantQueryRoot::Document(document),
+                    "*".into(),
+                    128,
+                    &AtomicBool::new(false),
+                )
                 .unwrap()
         })
         .unwrap();

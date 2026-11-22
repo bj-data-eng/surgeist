@@ -391,6 +391,12 @@ impl ElementBindings {
             capture,
         )?;
         adjacent::install(scope, &element, capture)?;
+        super::element_collections::install_queries(
+            scope,
+            &element,
+            super::element_collections::QueryTarget::Element,
+            capture,
+        )?;
         super::parent_node::install(
             scope,
             &element,
@@ -403,6 +409,12 @@ impl ElementBindings {
             &element,
             super::tree_mutations::Receiver::Element,
             &unscopables,
+            capture,
+        )?;
+        super::element_collections::install_siblings(
+            scope,
+            &element,
+            super::tree_mutations::Receiver::Element,
             capture,
         )?;
         let base = scope.callback_object(&element)?;

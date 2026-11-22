@@ -331,6 +331,22 @@ fn legacy_methods_and_alias_keep_registered_realms() {
                     return 'NodeLists follow the exact native receiver and original creation realm';
                 globalThis.originalLegacyChildren = foreignChildren;
                 globalThis.originalLegacyNames = foreignNames;
+                const documentChildren = Object.getOwnPropertyDescriptor(Document.prototype, 'children').get;
+                const foreignDocumentChildren = Object.getOwnPropertyDescriptor(foreignLegacyDocument.prototype, 'children').get;
+                const originalElements = documentChildren.call(originLegacyDocument);
+                const originalDescendants = Document.prototype.getElementsByTagName.call(originLegacyDocument, '*');
+                const namespacedDescendants = Document.prototype.getElementsByTagNameNS.call(originLegacyDocument, '*', 'body');
+                const elementClassQuery = Element.prototype.getElementsByClassName.call(originalRoot, 'absent');
+                if (!(originalElements instanceof foreignHTMLCollection) || originalElements[0] !== originalRoot
+                    || originalElements !== originLegacyDocument.children || originalElements instanceof HTMLCollection
+                    || !(foreignDocumentChildren.call(document) instanceof HTMLCollection)
+                    || !(originalDescendants instanceof foreignHTMLCollection) || originalDescendants[0] !== originalRoot
+                    || !(foreignLegacyDocument.prototype.getElementsByTagName.call(document, '*') instanceof HTMLCollection)
+                    || !(namespacedDescendants instanceof foreignHTMLCollection) || namespacedDescendants[0] !== originalBody
+                    || !(elementClassQuery instanceof foreignHTMLCollection) || elementClassQuery.length !== 0)
+                    return 'Element collections inherit the exact native root realm when called across realms';
+                globalThis.originalLegacyElements = originalElements;
+                globalThis.originalLegacyDescendants = originalDescendants;
                 const poison = new Proxy({}, {get() { throw 0; }, ownKeys() { throw 0; }});
                 for (const name of ['clear', 'captureEvents', 'releaseEvents']) {
                     const foreign = Object.getOwnPropertyDescriptor(foreignLegacyDocument.prototype, name).value;
@@ -360,7 +376,12 @@ fn legacy_methods_and_alias_keep_registered_realms() {
             scope.callback_object(&forms)?.associated_realm().identity(),
             scope.callback_object(&value)?.associated_realm().identity()
         );
-        for name in ["originalLegacyChildren", "originalLegacyNames"] {
+        for name in [
+            "originalLegacyChildren",
+            "originalLegacyNames",
+            "originalLegacyElements",
+            "originalLegacyDescendants",
+        ] {
             let list = evaluate(scope, name)?;
             assert_eq!(
                 scope.callback_object(&list)?.associated_realm().identity(),
@@ -442,7 +463,11 @@ fn legacy_methods_and_alias_keep_registered_realms() {
                     && originLegacyDocument.childNodes === originalLegacyChildren
                     && [...originalLegacyChildren].includes(originalLegacyRoot)
                     && originalLegacyNames.length === 0
-                    && originLegacyDocument.getElementsByName('absent') instanceof foreignNodeList;
+                    && originLegacyDocument.getElementsByName('absent') instanceof foreignNodeList
+                    && originLegacyDocument.children === originalLegacyElements
+                    && originalLegacyElements[0] === originalLegacyRoot
+                    && originalLegacyDescendants[0] === originalLegacyRoot
+                    && originLegacyDocument.getElementsByClassName('absent') instanceof foreignHTMLCollection;
             })()
         "#)?;
         assert!(scope.boolean(&result)?);

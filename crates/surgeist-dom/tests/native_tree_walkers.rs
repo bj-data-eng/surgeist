@@ -470,7 +470,12 @@ fn active_source_owns_search_work_and_suspended_operations_cannot_escape_it() {
         .unwrap()
         .unwrap();
     let collection = dom
-        .get_elements_by_tag_name(document, "*".into(), 128, &cancel)
+        .get_elements_by_tag_name(
+            surgeist_dom::tree::DomDescendantQueryRoot::Document(document),
+            "*".into(),
+            128,
+            &cancel,
+        )
         .unwrap();
     let collection_limits = surgeist_dom::tree::DomHtmlCollectionLimits::new(100_000, 16, 1024);
     let limits = DomSourceLimits::new(32_000_000, 1_000_000, 1_000_000, 64, 4096, 4096, 4);

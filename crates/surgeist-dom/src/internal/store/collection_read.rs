@@ -23,23 +23,28 @@ pub(super) struct Meter<'dom, A> {
 }
 
 impl Dom {
-    pub(super) fn validate_collection_root(
+    pub(super) fn with_collection_root<T>(
         &self,
         root: NodeId,
         cancel: &AtomicBool,
-        check_kind: impl FnOnce(DomNodeKind<'_>) -> Result<(), DomError>,
-    ) -> Result<(), DomError> {
+        read: impl FnOnce(
+            &DomSnapshot,
+            DomNode<'_>,
+            &mut dyn FnMut() -> Result<(), DomError>,
+        ) -> Result<T, DomError>,
+    ) -> Result<T, DomError> {
         if root.owner() != self.owner {
             return Err(DomError::ForeignOwner);
         }
         self.require_source_entry(cancel)?;
         let source = self.qualify_read_source(cancel)?;
         let snapshot = self.snapshot();
-        let root = snapshot.node_with(root, || match &source {
+        let mut step = || match &source {
             Some(source) => source.step(cancel),
             None => check_cancel(cancel),
-        })?;
-        check_kind(root.kind())
+        };
+        let root = snapshot.node_with(root, &mut step)?;
+        read(&snapshot, root, &mut step)
     }
 
     pub(super) fn validate_collection_document(
@@ -47,7 +52,7 @@ impl Dom {
         document: DocumentId,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.validate_collection_root(document.node(), cancel, |kind| match kind {
+        self.with_collection_root(document.node(), cancel, |_, root, _| match root.kind() {
             DomNodeKind::Document(_) => Ok(()),
             _ => Err(DomError::WrongNodeKind),
         })
@@ -137,6 +142,22 @@ where
 {
     pub(super) fn node(&self, node: NodeId) -> Result<DomNode<'_>, E> {
         self.snapshot.node_with(node, || self.meter.step())
+    }
+
+    pub(super) fn visit_elements<T>(
+        &self,
+        nodes: impl IntoIterator<Item = NodeId>,
+        mut visit: impl FnMut(DomNode<'_>) -> Result<ControlFlow<T>, E>,
+    ) -> Result<Option<T>, E> {
+        for id in nodes {
+            let node = self.node(id)?;
+            if node.as_element().is_some()
+                && let ControlFlow::Break(result) = visit(node)?
+            {
+                return Ok(Some(result));
+            }
+        }
+        Ok(None)
     }
 
     pub(super) fn descendants<T>(

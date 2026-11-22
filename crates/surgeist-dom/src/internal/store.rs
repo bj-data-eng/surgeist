@@ -133,9 +133,9 @@ use crate::internal::view_transition::*;
 pub(crate) use bank::owned::{EmptyPath, OwnedBank};
 pub(crate) use bank::{Bank, Iter as BankIter};
 pub use html_collection::{
-    DomHtmlAllCollection, DomHtmlAllCollectionRead, DomHtmlAllNamedValue, DomHtmlCollection,
-    DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead, DomWindowNamedElements,
-    DomWindowNamedValue,
+    DomDescendantQueryRoot, DomHtmlAllCollection, DomHtmlAllCollectionRead, DomHtmlAllNamedValue,
+    DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead,
+    DomWindowNamedElements, DomWindowNamedValue,
 };
 pub use node_list::{DomNodeList, DomNodeListRead};
 pub(crate) use shared::SharedVec;

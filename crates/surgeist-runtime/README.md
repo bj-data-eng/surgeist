@@ -590,6 +590,12 @@ of ordinary HTML descendants. NodeList indexing returns the canonical node
 wrappers, and its iteration methods use the original Array intrinsics for
 the collection's realm.
 
+`ParentNode.children` returns the same live `HTMLCollection` for each root.
+The first, last, and count getters read the current direct Elements, and
+Element and CharacterData sibling getters skip non-Element siblings. The
+Document and Element descendant queries return live collections over the
+ordinary tree and apply the standard tag, namespace, and class filters.
+
 An attachment can enable callable Window timers with `WindowTimerLimits`.
 `setTimeout` keeps the callable and arguments in the attached Window's realm.
 `clearTimeout` releases the registration. Runtime orders admitted timers by
