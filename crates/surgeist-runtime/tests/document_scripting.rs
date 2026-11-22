@@ -119,6 +119,8 @@ mod legend_form;
 mod local_html;
 #[path = "document_scripting/marquee.rs"]
 mod marquee;
+#[path = "document_scripting/named_node_map.rs"]
+mod named_node_map;
 #[path = "document_scripting/native_media_status.rs"]
 mod native_media_status;
 #[path = "document_scripting/numeric_control_attributes.rs"]
@@ -2531,6 +2533,8 @@ fn main() {
             "form-associated-custom-elements" => form_associated_custom_elements::attached_form_associated_custom_elements_deliver_native_reactions(),
             "window-length" => window_length::attached_window_length_tracks_current_native_children(),
             "window-named-properties" => window_properties::named_window_elements_follow_the_live_document(),
+            "named-node-map" => named_node_map::follows_the_native_attribute_list(),
+            "named-node-map-verification" => named_node_map::verifies_attachment_before_rechecking_ownership(),
             "window-indexed-properties" => window_properties::indexed_window_children_follow_the_live_browsing_contexts(),
             "window-retired-origin" => window_properties::retired_child_keeps_the_creation_origin_of_native_nodes(),
             "window-live-origin-first-node" => window_properties::live_child_nodes_can_be_projected_before_the_window(),
@@ -2676,6 +2680,8 @@ fn main() {
     window_document::window_projects_the_live_document_and_node_brands();
     window_length::attached_window_length_tracks_current_native_children();
     window_properties::named_window_elements_follow_the_live_document();
+    named_node_map::follows_the_native_attribute_list();
+    named_node_map::verifies_attachment_before_rechecking_ownership();
     window_properties::indexed_window_children_follow_the_live_browsing_contexts();
     window_properties::retired_child_keeps_the_creation_origin_of_native_nodes();
     window_properties::live_child_nodes_can_be_projected_before_the_window();
