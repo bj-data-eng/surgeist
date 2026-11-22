@@ -77,6 +77,8 @@ mod control_autocomplete;
 mod control_custom_validity;
 #[path = "document_scripting/control_validation.rs"]
 mod control_validation;
+#[path = "document_scripting/cssom.rs"]
+mod cssom;
 #[path = "document_scripting/dialog_close.rs"]
 mod dialog_close;
 #[path = "document_scripting/dialog_methods.rs"]
@@ -2569,6 +2571,9 @@ fn main() {
                 native_window_dom_exception_admission_and_hook_collision();
                 native_window_dom_exception_meters_typed_diagnostics();
             }
+            "native-css-style-sheet" => {
+                cssom::native_window_constructs_a_stylesheet_with_a_live_rule_list()
+            }
             "css-namespace" => native_window_exposes_css_escape(),
             "css-namespace-admission" => native_window_css_admission(),
             "css-namespace-collision" => {
@@ -2696,6 +2701,7 @@ fn main() {
     native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion();
     native_window_dom_exception_admission_and_hook_collision();
     native_window_dom_exception_meters_typed_diagnostics();
+    cssom::native_window_constructs_a_stylesheet_with_a_live_rule_list();
     native_window_exposes_css_escape();
     native_window_css_admission();
     native_window_css_hook_collision_preserves_the_original_session();
