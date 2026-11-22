@@ -277,8 +277,9 @@ fn unsupported_sample_distinction_uses_public_modules() {
     assert!(matches!(
         sample.value(),
         animation::sample::SampleValue::Unsupported(
-            animation::interpolation::InterpolationError::UnsupportedFamily { property, family: animation::interpolation::ValueFamily::Transform, .. }
-        ) if property.as_str() == "transform"
+            animation::interpolation::InterpolationError::UnsupportedFamily(error)
+        ) if error.property().as_str() == "transform"
+            && error.family() == animation::interpolation::ValueFamily::Transform
     ));
 }
 

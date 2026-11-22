@@ -20,9 +20,10 @@
 //! Callers pass effective [`time::ElapsedTime`] values that already account for
 //! the runtime clock and track start time. Paused sampling is explicit through
 //! [`timing::AnimationPlayState::Paused`]; advancing wall-clock time alone does not make a
-//! paused sample unstable. Root supplies normalized transition and keyframe
-//! tracks, including computed endpoints, rectangular color spaces, and property
-//! support policy.
+//! paused sample unstable. Consumers supply normalized transition and keyframe
+//! tracks, computed endpoints, and property support policy. Resolved color pairs
+//! use caller-selected methods. Explicit premultiplied values arrive in their
+//! common rectangular space.
 //!
 //! Each public type has one path, through the module that owns it.
 //!

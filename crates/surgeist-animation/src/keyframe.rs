@@ -350,22 +350,46 @@ impl KeyframeSegment {
         to: InterpolableValue,
         easing: Easing,
     ) -> Result<Self, KeyframeError> {
-        if from_offset.value() >= to_offset.value() {
-            return Err(KeyframeError::DegenerateSegment {
-                property,
-                offset: from_offset,
-            });
-        }
-
+        Self::check_offsets(&property, from_offset, to_offset)?;
         let pair = InterpolationPair::new(property, from, to)
             .map_err(|error| KeyframeError::Interpolation(Box::new(error)))?;
-
         Ok(Self {
             pair,
             from_offset,
             to_offset,
             easing,
         })
+    }
+
+    /// Builds a segment from an admitted pair, including resolved colors
+    /// whose interpolation method was selected by the caller.
+    pub fn from_pair(
+        pair: InterpolationPair,
+        from_offset: UnitRatio,
+        to_offset: UnitRatio,
+        easing: Easing,
+    ) -> Result<Self, KeyframeError> {
+        Self::check_offsets(pair.property(), from_offset, to_offset)?;
+        Ok(Self {
+            pair,
+            from_offset,
+            to_offset,
+            easing,
+        })
+    }
+
+    fn check_offsets(
+        property: &PropertyKey,
+        from_offset: UnitRatio,
+        to_offset: UnitRatio,
+    ) -> Result<(), KeyframeError> {
+        if from_offset.value() >= to_offset.value() {
+            return Err(KeyframeError::DegenerateSegment {
+                property: property.clone(),
+                offset: from_offset,
+            });
+        }
+        Ok(())
     }
 
     pub fn property(&self) -> &PropertyKey {
@@ -536,9 +560,10 @@ fn sample_property<'a, T>(
     let after = entries.partition_point(|entry| start_offset(entry).value() <= progress.value());
     let segment = segment_at(after - 1);
     let outcome = if let Some(local_progress) = segment_local_progress(segment, progress) {
-        let interpolation_progress = if timing.phase() == TimingPhase::Before {
-            // CSS delay fill holds the directed endpoint without applying the
-            // outgoing easing, including functions with non-unit endpoints.
+        let before = timing.phase() == TimingPhase::Before;
+        let interpolation_progress = if before {
+            // CSS delay fill holds the directed endpoint without applying
+            // the outgoing easing, including functions with non-unit endpoints.
             InterpolationProgress::new(local_progress.value())
         } else {
             InterpolationProgress::from_eased(
@@ -547,9 +572,17 @@ fn sample_property<'a, T>(
                     .evaluate_with_before_flag(local_progress, timing.easing_before_flag()),
             )
         };
-        interpolation_progress
-            .ok()
-            .map(|interpolation_progress| segment.pair.sample(interpolation_progress))
+        interpolation_progress.ok().map(|progress| {
+            if before
+                && matches!(segment.from(), InterpolableValue::ResolvedColor(_))
+                && let Some(endpoint) = segment.pair.exact_endpoint(progress)
+            {
+                // Hold the resolved color before conversion or missing carry.
+                endpoint
+            } else {
+                segment.pair.sample(progress)
+            }
+        })
     } else {
         None
     };

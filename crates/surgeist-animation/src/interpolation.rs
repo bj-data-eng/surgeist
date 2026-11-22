@@ -1,17 +1,17 @@
 //! Interpolable value contracts and checked sampling.
 //!
 //! This module owns neutral values that can be sampled without property-specific
-//! clamping. Percentages are unrestricted finite ratios, colors carry an
-//! explicit interpolation space and premultiplied components, and arithmetic
-//! overflow is reported separately from permanently unsupported interpolation.
-//!
-//! Root and consumers own downstream color-space conversion, gamut mapping or
-//! clipping, unpremultiplication, missing-component resolution, and final
-//! property range clamping. This module interpolates supplied premultiplied
-//! components and alpha directly without conversion or clipping.
+//! clamping. Percentages are unrestricted finite ratios. Supplied resolved
+//! colors use a caller-selected method and Color's checked numerical sampler.
+//! The explicit premultiplied color values used by shadows and filters retain
+//! their direct component algebra. Consumers own contextual resolution,
+//! display gamut mapping, and final property clamping.
 
 use core::fmt;
 use std::sync::Arc;
+use surgeist_color::{
+    Color, Finite, InterpolationMethod, InterpolationSample, InterpolationSampleError,
+};
 
 use crate::computed::{ComputedError, ComputedValue, RepeatableList};
 use crate::diagnostics::{NumericError, NumericInput};
@@ -94,11 +94,23 @@ pub struct CompositeValue {
     kind: Arc<str>,
 }
 
+/// An owned resolved color awaiting the interpolation method for its pair.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedColorValue(Arc<Color>);
+
+impl ResolvedColorValue {
+    pub fn color(&self) -> Color {
+        *self.0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum InterpolableValue {
     Number(InterpolableNumber),
     Percentage(InterpolablePercentage),
     Color(InterpolableColor),
+    ResolvedColor(ResolvedColorValue),
+    ColorSample(InterpolationSample),
     Discrete(DiscreteValue),
     Transform(TransformValue),
     Composite(CompositeValue),
@@ -114,7 +126,7 @@ pub enum InterpolableValue {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct InterpolationProgress {
-    value: f64,
+    value: Finite,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -127,6 +139,7 @@ pub struct InterpolationPair {
 struct InterpolationEndpoints {
     from: InterpolableValue,
     to: InterpolableValue,
+    color_method: Option<InterpolationMethod>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -139,6 +152,7 @@ pub enum InterpolationOutcome {
     GridFailure(GridInterpolationFailure),
     FilterFailure(FilterInterpolationFailure),
     PaletteFailure(PaletteInterpolationFailure),
+    ColorFailure(ColorInterpolationFailure),
     Unsupported(InterpolationError),
 }
 
@@ -322,6 +336,62 @@ impl PaletteInterpolationFailure {
     }
 }
 
+/// A failed resolved color sample with the supplied operands and eased progress.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColorInterpolationFailure {
+    property: PropertyKey,
+    endpoints: Arc<InterpolationEndpoints>,
+    progress: InterpolationProgress,
+    error: InterpolationSampleError,
+}
+
+impl ColorInterpolationFailure {
+    pub const fn property(&self) -> &PropertyKey {
+        &self.property
+    }
+    pub fn from(&self) -> &InterpolableValue {
+        &self.endpoints.from
+    }
+    pub fn to(&self) -> &InterpolableValue {
+        &self.endpoints.to
+    }
+    pub const fn progress(&self) -> InterpolationProgress {
+        self.progress
+    }
+    pub const fn error(&self) -> &InterpolationSampleError {
+        &self.error
+    }
+}
+
+/// A pair whose value family has no applicable interpolation capability.
+///
+/// A sampled diagnostic shares its admitted endpoints with the pair.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnsupportedInterpolation {
+    property: PropertyKey,
+    family: ValueFamily,
+    endpoints: Arc<InterpolationEndpoints>,
+    reason: &'static str,
+}
+
+impl UnsupportedInterpolation {
+    pub const fn property(&self) -> &PropertyKey {
+        &self.property
+    }
+    pub const fn family(&self) -> ValueFamily {
+        self.family
+    }
+    pub fn from(&self) -> &InterpolableValue {
+        &self.endpoints.from
+    }
+    pub fn to(&self) -> &InterpolableValue {
+        &self.endpoints.to
+    }
+    pub const fn reason(&self) -> &'static str {
+        self.reason
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum InterpolationError {
     EmptyPropertyKey,
@@ -337,6 +407,7 @@ pub enum InterpolationError {
     Grid(GridInterpolationFailure),
     Filter(FilterInterpolationFailure),
     Palette(PaletteInterpolationFailure),
+    Color(ColorInterpolationFailure),
     MismatchedFamilies {
         property: PropertyKey,
         from: ValueFamily,
@@ -351,16 +422,36 @@ pub enum InterpolationError {
         from_value: InterpolableColor,
         to_value: InterpolableColor,
     },
-    UnsupportedFamily {
-        property: PropertyKey,
-        family: ValueFamily,
-        from: InterpolableValue,
-        to: InterpolableValue,
-        reason: &'static str,
-    },
+    UnsupportedFamily(UnsupportedInterpolation),
     NonFiniteProgress {
         value: f64,
     },
+}
+
+impl InterpolationError {
+    /// Reports a caller-selected unsupported operation for a value pair.
+    /// Operands in different families produce a family-mismatch diagnostic.
+    pub fn unsupported_family(
+        property: PropertyKey,
+        from: InterpolableValue,
+        to: InterpolableValue,
+        reason: &'static str,
+    ) -> Self {
+        let family = from.family();
+        if family != to.family() {
+            return mismatched_families(property, from, to);
+        }
+        Self::UnsupportedFamily(UnsupportedInterpolation {
+            property,
+            family,
+            endpoints: Arc::new(InterpolationEndpoints {
+                from,
+                to,
+                color_method: None,
+            }),
+            reason,
+        })
+    }
 }
 
 impl fmt::Display for InterpolationError {
@@ -395,6 +486,13 @@ impl fmt::Display for InterpolationError {
                 result.error
             ),
             Self::Palette(result) => write!(
+                f,
+                "interpolating {} at progress {} failed: {}",
+                result.property.as_str(),
+                result.progress.value(),
+                result.error
+            ),
+            Self::Color(result) => write!(
                 f,
                 "interpolating {} at progress {} failed: {}",
                 result.property.as_str(),
@@ -441,16 +539,12 @@ impl fmt::Display for InterpolationError {
                 color_space_name(*from),
                 color_space_name(*to)
             ),
-            Self::UnsupportedFamily {
-                property,
-                family,
-                reason,
-                ..
-            } => write!(
+            Self::UnsupportedFamily(result) => write!(
                 f,
-                "property {} does not support {} interpolation: {reason}",
-                property.as_str(),
-                value_family_name(*family)
+                "property {} does not support {} interpolation: {}",
+                result.property.as_str(),
+                value_family_name(result.family),
+                result.reason,
             ),
             Self::NonFiniteProgress { value } => {
                 write!(f, "interpolation progress must be finite, got {value}")
@@ -469,6 +563,7 @@ impl std::error::Error for InterpolationError {
             Self::Grid(result) => Some(&result.error),
             Self::Filter(result) => Some(&result.error),
             Self::Palette(result) => Some(&result.error),
+            Self::Color(result) => Some(&result.error),
             _ => None,
         }
     }
@@ -770,6 +865,11 @@ impl InterpolableValue {
         Self::Color(value)
     }
 
+    /// Retains a resolved color for a caller-selected interpolation pair.
+    pub fn resolved_color(value: Color) -> Self {
+        Self::ResolvedColor(ResolvedColorValue(Arc::new(value)))
+    }
+
     pub fn discrete(value: DiscreteValue) -> Self {
         Self::Discrete(value)
     }
@@ -818,7 +918,7 @@ impl InterpolableValue {
         match self {
             Self::Number(_) => ValueFamily::Number,
             Self::Percentage(_) => ValueFamily::Percentage,
-            Self::Color(_) => ValueFamily::Color,
+            Self::Color(_) | Self::ResolvedColor(_) | Self::ColorSample(_) => ValueFamily::Color,
             Self::Discrete(_) => ValueFamily::Discrete,
             Self::Transform(_) => ValueFamily::Transform,
             Self::Composite(_) => ValueFamily::Composite,
@@ -882,10 +982,7 @@ impl NonFiniteInterpolationResult {
 
 impl InterpolationProgress {
     pub fn new(value: f64) -> Result<Self, InterpolationError> {
-        if !value.is_finite() {
-            return Err(InterpolationError::NonFiniteProgress { value });
-        }
-
+        let value = Finite::new(value).ok_or(InterpolationError::NonFiniteProgress { value })?;
         Ok(Self { value })
     }
 
@@ -894,7 +991,7 @@ impl InterpolationProgress {
     }
 
     pub const fn value(self) -> f64 {
-        self.value
+        self.value.get()
     }
 }
 
@@ -906,6 +1003,24 @@ impl InterpolationPair {
     ) -> Result<Self, InterpolationError> {
         if from.family() != to.family() {
             return Err(mismatched_families(property, from, to));
+        }
+
+        let unsupported_color = match (&from, &to) {
+            (InterpolableValue::ColorSample(_), _) | (_, InterpolableValue::ColorSample(_)) => {
+                Some("a checked color sample cannot be used as a resolved endpoint")
+            }
+            (InterpolableValue::ResolvedColor(_), InterpolableValue::ResolvedColor(_)) => {
+                Some("resolved colors require an explicit interpolation method")
+            }
+            (InterpolableValue::ResolvedColor(_), _) | (_, InterpolableValue::ResolvedColor(_)) => {
+                Some("resolved and premultiplied color operands cannot be paired")
+            }
+            _ => None,
+        };
+        if let Some(reason) = unsupported_color {
+            return Err(InterpolationError::unsupported_family(
+                property, from, to, reason,
+            ));
         }
 
         match (&from, &to) {
@@ -925,8 +1040,44 @@ impl InterpolationPair {
 
         Ok(Self {
             property,
-            endpoints: Arc::new(InterpolationEndpoints { from, to }),
+            endpoints: Arc::new(InterpolationEndpoints {
+                from,
+                to,
+                color_method: None,
+            }),
         })
+    }
+
+    /// Takes resolved colors in any supported source spaces and the method
+    /// selected for this pair. The sample is a checked Color result.
+    pub fn resolved_colors(
+        property: PropertyKey,
+        from: Color,
+        to: Color,
+        method: InterpolationMethod,
+    ) -> Self {
+        Self::with_color_method(
+            property,
+            ResolvedColorValue(Arc::new(from)),
+            ResolvedColorValue(Arc::new(to)),
+            method,
+        )
+    }
+
+    pub(crate) fn with_color_method(
+        property: PropertyKey,
+        from: ResolvedColorValue,
+        to: ResolvedColorValue,
+        method: InterpolationMethod,
+    ) -> Self {
+        Self {
+            property,
+            endpoints: Arc::new(InterpolationEndpoints {
+                from: InterpolableValue::ResolvedColor(from),
+                to: InterpolableValue::ResolvedColor(to),
+                color_method: Some(method),
+            }),
+        }
     }
 
     pub fn property(&self) -> &PropertyKey {
@@ -951,6 +1102,22 @@ impl InterpolationPair {
             }
             (InterpolableValue::Color(from), InterpolableValue::Color(to)) => {
                 self.sample_color(*from, *to, progress)
+            }
+            (InterpolableValue::ResolvedColor(from), InterpolableValue::ResolvedColor(to))
+                if let Some(method) = self.endpoints.color_method =>
+            {
+                match from
+                    .color()
+                    .sample_interpolation(to.color(), method, progress.value)
+                {
+                    Ok(value) => InterpolationOutcome::Value(InterpolableValue::ColorSample(value)),
+                    Err(error) => InterpolationOutcome::ColorFailure(ColorInterpolationFailure {
+                        property: self.property.clone(),
+                        endpoints: Arc::clone(&self.endpoints),
+                        progress,
+                        error,
+                    }),
+                }
             }
             (InterpolableValue::Discrete(from), InterpolableValue::Discrete(to)) => {
                 let value = if progress.value() < 0.5 { from } else { to };
@@ -1156,7 +1323,10 @@ impl InterpolationPair {
         }
     }
 
-    fn exact_endpoint(&self, progress: InterpolationProgress) -> Option<InterpolationOutcome> {
+    pub(crate) fn exact_endpoint(
+        &self,
+        progress: InterpolationProgress,
+    ) -> Option<InterpolationOutcome> {
         if progress.value() == 0.0 {
             return Some(InterpolationOutcome::Value(self.endpoints.from.clone()));
         }
@@ -1180,13 +1350,14 @@ impl InterpolationPair {
     }
 
     fn unsupported(&self, family: ValueFamily, reason: &'static str) -> InterpolationOutcome {
-        InterpolationOutcome::Unsupported(InterpolationError::UnsupportedFamily {
-            property: self.property.clone(),
-            family,
-            from: self.endpoints.from.clone(),
-            to: self.endpoints.to.clone(),
-            reason,
-        })
+        InterpolationOutcome::Unsupported(InterpolationError::UnsupportedFamily(
+            UnsupportedInterpolation {
+                property: self.property.clone(),
+                family,
+                endpoints: Arc::clone(&self.endpoints),
+                reason,
+            },
+        ))
     }
 }
 
@@ -1933,11 +2104,9 @@ mod tests {
         .unwrap();
         assert!(matches!(
             transform.sample(InterpolationProgress::new(0.5).unwrap()),
-            InterpolationOutcome::Unsupported(InterpolationError::UnsupportedFamily {
-                family: ValueFamily::Transform,
-                reason: "transform interpolation deferred",
-                ..
-            })
+            InterpolationOutcome::Unsupported(InterpolationError::UnsupportedFamily(error))
+                if error.family() == ValueFamily::Transform
+                    && error.reason() == "transform interpolation deferred"
         ));
 
         let composite = InterpolationPair::new(
@@ -1949,28 +2118,17 @@ mod tests {
         let composite_result = composite.sample(InterpolationProgress::new(0.5).unwrap());
         assert!(matches!(
             composite_result,
-            InterpolationOutcome::Unsupported(InterpolationError::UnsupportedFamily {
-                family: ValueFamily::Composite,
-                reason: "composite interpolation deferred",
-                ..
-            })
+            InterpolationOutcome::Unsupported(InterpolationError::UnsupportedFamily(ref error))
+                if error.family() == ValueFamily::Composite
+                    && error.reason() == "composite interpolation deferred"
         ));
-        if let InterpolationOutcome::Unsupported(InterpolationError::UnsupportedFamily {
-            property,
-            from,
-            to,
-            ..
-        }) = composite_result
+        if let InterpolationOutcome::Unsupported(InterpolationError::UnsupportedFamily(error)) =
+            composite_result
         {
-            assert_eq!(property.as_str(), "box-shadow");
-            assert_eq!(
-                from,
-                InterpolableValue::composite(CompositeValue::unsupported("shadow-list"))
-            );
-            assert_eq!(
-                to,
-                InterpolableValue::composite(CompositeValue::unsupported("shadow-list"))
-            );
+            assert_eq!(error.property().as_str(), "box-shadow");
+            let value = InterpolableValue::composite(CompositeValue::unsupported("shadow-list"));
+            assert_eq!(error.from(), &value);
+            assert_eq!(error.to(), &value);
         }
     }
 

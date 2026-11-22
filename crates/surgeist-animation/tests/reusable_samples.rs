@@ -496,27 +496,21 @@ fn assert_unsupported(sample: &SampledPropertyResult) {
             NextFrameHint::StableUntilExternalInput,
         ),
     );
-    let SampleValue::Unsupported(InterpolationError::UnsupportedFamily {
-        property,
-        family,
-        from,
-        to,
-        reason,
-    }) = sample.value()
+    let SampleValue::Unsupported(InterpolationError::UnsupportedFamily(error)) = sample.value()
     else {
         panic!("expected unsupported transform diagnostic, got {sample:?}");
     };
-    assert_eq!(property.as_str(), "transform");
-    assert_eq!(*family, ValueFamily::Transform);
+    assert_eq!(error.property().as_str(), "transform");
+    assert_eq!(error.family(), ValueFamily::Transform);
     assert_eq!(
-        from,
+        error.from(),
         &InterpolableValue::transform(TransformValue::unsupported("translate"))
     );
     assert_eq!(
-        to,
+        error.to(),
         &InterpolableValue::transform(TransformValue::unsupported("scale"))
     );
-    assert_eq!(*reason, "transform interpolation deferred");
+    assert_eq!(error.reason(), "transform interpolation deferred");
 }
 
 fn assert_arithmetic_failure(sample: &SampledPropertyResult) {

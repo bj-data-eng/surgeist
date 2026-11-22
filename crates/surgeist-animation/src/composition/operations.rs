@@ -7,11 +7,13 @@ use crate::grid::GridError;
 use crate::interpolation::{
     InterpolableNumber, InterpolablePercentage, InterpolableValue, InterpolationError,
     InterpolationOutcome, InterpolationPair, InterpolationProgress, PropertyKey, TransformValue,
+    ValueFamily,
 };
 use crate::keyframe_input::CompositeOperation;
 use crate::shadow::ShadowError;
 use crate::transform::TransformError;
 use core::fmt;
+use surgeist_color::InterpolationMethod;
 
 /// Selects a generic animation type after the property's own rule is consulted.
 ///
@@ -22,7 +24,7 @@ use core::fmt;
 pub enum AnimationType {
     Discrete,
     /// Combines computed components or delegates to the selected property rules
-    /// for transforms, shadows, filters, Grid track values and font palettes.
+    /// for transforms, shadows, filters, Grid tracks, font palettes and colors.
     ByComputedValue,
     RepeatableList,
 }
@@ -35,10 +37,23 @@ pub enum AnimationType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AnimationTypeOperations {
     animation_type: AnimationType,
+    color_method: Option<InterpolationMethod>,
 }
 impl AnimationTypeOperations {
     pub const fn new(animation_type: AnimationType) -> Self {
-        Self { animation_type }
+        Self {
+            animation_type,
+            color_method: None,
+        }
+    }
+
+    /// Selects the supplied color method for resolved endpoints in
+    /// by-computed-value operations.
+    pub const fn for_color(method: InterpolationMethod) -> Self {
+        Self {
+            animation_type: AnimationType::ByComputedValue,
+            color_method: Some(method),
+        }
     }
     pub const fn animation_type(self) -> AnimationType {
         self.animation_type
@@ -138,7 +153,20 @@ impl PropertyValueOperations for AnimationTypeOperations {
                 }),
             };
         }
-        let pair = match InterpolationPair::new(property.clone(), start.clone(), end.clone()) {
+        let pair = match (start, end, self.color_method) {
+            (
+                InterpolableValue::ResolvedColor(start),
+                InterpolableValue::ResolvedColor(end),
+                Some(method),
+            ) => Ok(InterpolationPair::with_color_method(
+                property.clone(),
+                start.clone(),
+                end.clone(),
+                method,
+            )),
+            _ => InterpolationPair::new(property.clone(), start.clone(), end.clone()),
+        };
+        let pair = match pair {
             Ok(pair) => pair,
             Err(
                 InterpolationError::MismatchedFamilies { .. }
@@ -166,6 +194,9 @@ impl PropertyValueOperations for AnimationTypeOperations {
             }
             InterpolationOutcome::PaletteFailure(error) => {
                 Err(InterpolationError::Palette(error).into())
+            }
+            InterpolationOutcome::ColorFailure(error) => {
+                Err(InterpolationError::Color(error).into())
             }
             InterpolationOutcome::Unsupported(error) => Err(error.into()),
         }
@@ -221,7 +252,9 @@ impl AnimationTypeOperations {
             ),
             // Selected Values 4: absent color addition selects B; unspecified
             // accumulation uses that same nonadditive operation.
-            (InterpolableValue::Color(_), InterpolableValue::Color(_)) => Ok(value.clone()),
+            (a, b) if a.family() == ValueFamily::Color && b.family() == ValueFamily::Color => {
+                Ok(value.clone())
+            }
             // Palette addition belongs to its symbolic value owner. Unspecified
             // accumulation uses the same operation, retaining the effect palette.
             (InterpolableValue::Palette(a), InterpolableValue::Palette(b)) => {

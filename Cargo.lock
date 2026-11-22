@@ -4483,6 +4483,7 @@ name = "surgeist-animation"
 version = "0.1.0"
 dependencies = [
  "stats_alloc",
+ "surgeist-color",
 ]
 
 [[package]]

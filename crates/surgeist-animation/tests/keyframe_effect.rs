@@ -72,6 +72,9 @@ impl PropertyValueOperations for Operations {
             InterpolationOutcome::PaletteFailure(error) => {
                 Err(InterpolationError::Palette(error).into())
             }
+            InterpolationOutcome::ColorFailure(error) => {
+                Err(InterpolationError::Color(error).into())
+            }
             InterpolationOutcome::ShapeFailure(error) => {
                 Err(InterpolationError::Shape(error).into())
             }

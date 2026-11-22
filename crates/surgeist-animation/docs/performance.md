@@ -86,9 +86,9 @@ output-vector allocation. Retained results can extend shared storage lifetimes.
 ## Reassessment
 
 The [measurement procedure](how-to.md#measure-sampling-performance) documents the
-retained throughput and allocation tools. Offline commands require the existing
-dev-only `stats_alloc` dependency in the Cargo cache; the library has no runtime
-dependencies. Behavioral and allocation checks remain executable in the crate.
+retained throughput and allocation tools. Offline commands load
+`surgeist-color` from the workspace and require the dev-only `stats_alloc`
+dependency in the Cargo cache.
 
 These timings came from one host without CPU pinning or frequency control.
 Allocation counts do not measure fragmentation, peak memory, or contention.

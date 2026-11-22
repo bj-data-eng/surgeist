@@ -4,9 +4,9 @@ The project's own license is [MIT](LICENSE).
 
 ## Dependencies
 
-The [manifest](Cargo.toml) declares no runtime dependencies. Allocation
-measurements use the development dependency **stats_alloc 0.1.10**, distributed
-by Marcus Griep:
+The [manifest](Cargo.toml) declares the MIT-licensed workspace crate
+`surgeist-color` as a runtime dependency. Allocation measurements use the
+development dependency **stats_alloc 0.1.10**, distributed by Marcus Griep:
 
 - License: MIT, as declared upstream; see the local
   [licensing record and missing-text limitation](licenses/stats_alloc/NOTICE.md).
