@@ -103,6 +103,8 @@ mod get_element_by_id;
 mod hidden_reflection;
 #[path = "document_scripting/html_prototype_order.rs"]
 mod html_prototype_order;
+#[path = "document_scripting/image_factory.rs"]
+mod image_factory;
 #[path = "document_scripting/input_attributes.rs"]
 mod input_attributes;
 #[path = "document_scripting/input_list.rs"]
@@ -2511,6 +2513,7 @@ fn main() {
             "input-list" => input_list::attached_input_list_follows_the_first_exact_id_in_its_tree(),
             "input-attributes" => input_attributes::attached_input_reflections_use_canonical_attributes(),
             "numeric-control-attributes" => numeric_control_attributes::attached_controls_reflect_native_integer_attributes(),
+            "image-factory" => image_factory::attached_image_factory_creates_and_qualifies_native_nodes(),
             "option-factory" => option_factory::attached_option_factory_creates_clean_native_selectedness(),
             "option-factory-admission" => option_factory::attached_option_factory_uses_its_original_source_limits(),
             "range-indicator-bindings" => range_indicator_bindings::attached_range_indicators_reflect_native_numbers(),
@@ -2638,6 +2641,7 @@ fn main() {
     input_list::attached_input_list_follows_the_first_exact_id_in_its_tree();
     input_attributes::attached_input_reflections_use_canonical_attributes();
     numeric_control_attributes::attached_controls_reflect_native_integer_attributes();
+    image_factory::attached_image_factory_creates_and_qualifies_native_nodes();
     option_factory::attached_option_factory_creates_clean_native_selectedness();
     option_factory::attached_option_factory_uses_its_original_source_limits();
     range_indicator_bindings::attached_range_indicators_reflect_native_numbers();
