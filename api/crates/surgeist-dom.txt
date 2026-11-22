@@ -904,6 +904,8 @@ impl surgeist_dom::form::select::DomSelectedcontent<'_>
 pub fn surgeist_dom::form::select::DomSelectedcontent<'_>::disabled(self) -> bool
 pub fn surgeist_dom::form::select::DomSelectedcontent<'_>::id(self) -> surgeist_dom::identity::NodeId
 pub struct surgeist_dom::form::DomButton<'a>
+impl surgeist_dom::form::DomButton<'_>
+pub fn surgeist_dom::form::DomButton<'_>::type_keyword_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::Fn() -> core::result::Result<(), E>) -> core::result::Result<&'static str, E>
 impl<'a> surgeist_dom::form::DomButton<'a>
 pub fn surgeist_dom::form::DomButton<'a>::explicit_command_for(self) -> core::option::Option<surgeist_dom::identity::NodeId>
 pub fn surgeist_dom::form::DomButton<'a>::explicit_popover_target(self) -> core::option::Option<surgeist_dom::identity::NodeId>
@@ -3762,6 +3764,8 @@ impl surgeist_dom::tree::DomNode<'_>
 pub fn surgeist_dom::tree::DomNode<'_>::html_table_part_with<E: core::convert::From<surgeist_dom::DomError>>(self, part: surgeist_dom::tree::DomHtmlTablePart, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
 impl surgeist_dom::tree::DomNode<'_>
 pub fn surgeist_dom::tree::DomNode<'_>::html_table_row_index_with<E: core::convert::From<surgeist_dom::DomError>>(self, kind: surgeist_html_semantics::table_rows::HtmlTableRowIndexKind, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<usize>, E>
+impl surgeist_dom::tree::DomNode<'_>
+pub fn surgeist_dom::tree::DomNode<'_>::html_will_validate_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::Fn() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
 impl surgeist_dom::tree::DomNode<'_>
 pub fn surgeist_dom::tree::DomNode<'_>::tab_index_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<i32, E>
 impl<'a> surgeist_dom::tree::DomNode<'a>

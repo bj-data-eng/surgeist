@@ -258,6 +258,7 @@ pub(super) fn install<'scope>(
         &ascii(b"get textLength"),
         TextareaRead::TextLength,
     )?;
+    super::control_validation::install(scope, prototype, capture, Receiver::Textarea)?;
     CustomValidityControl::Textarea.install(scope, prototype, capture)
 }
 

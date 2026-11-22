@@ -22,6 +22,7 @@ mod break_elements;
 mod button;
 mod canvas;
 mod character_data;
+mod control_validation;
 mod custom_validity;
 mod data_time;
 mod details;

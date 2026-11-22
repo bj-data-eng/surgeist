@@ -64,7 +64,10 @@ receiver. A proven HTML null definition establishes a negative classification.
 The finite subject and work budgets admit these records and their context
 validation.
 Fieldset collections, Legend delegation, first-Legend disabledness and constraint
-candidacy remain HTML semantic queries over the current captured tree. Slot
+candidacy are HTML semantic queries over the current captured tree.
+`DomNode::html_will_validate_with` reads live candidacy for Button, Input,
+Select and TextArea from the caller's current published Source segment. It
+uses ordinary ancestry and the shared first-Legend disabledness rule. Slot
 supplementation rebuilds actual control facts into that same context, preserving
 Slot directionality/inert facts. `DomHtmlCaptureLimits` bounds each ordinary adapter vector
 by subjects (nullable reference facts use twice subjects) and adapter work by work; the same explicit finite work value
@@ -79,8 +82,9 @@ Native HTML Button composes that same private native-control storage and reset
 adapter with its own public `button_state()` / `DomNode::as_button()` view.
 `set_custom_validity` also applies to Button. Actual form association, native
 parser flag and custom message obey the same fresh clone/import and preserving
-adoption rules. Disabledness, Auto submit role, source form settings and constraint
-candidacy are current HTML semantic queries; no activation, submission or event
+adoption rules. `DomButton::type_keyword_with` resolves the Auto submit role
+from live native facts. Captured Button queries also expose disabledness,
+submitter role, source form settings and constraint candidacy. No activation, submission or event
 execution is introduced.
 
 ## Select, Option, Optgroup and Selectedcontent

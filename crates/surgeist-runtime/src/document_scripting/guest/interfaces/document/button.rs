@@ -2,13 +2,10 @@
 
 use super::{
     custom_validity::CustomValidityControl,
-    element::HTML_NAMESPACE,
     form_owner::{self, FormOwnerGetter},
     reflection::{self, Receiver, Reflection},
     *,
 };
-use surgeist_dom::tree::DomNode;
-use surgeist_html::bounded::attributes::{HtmlButtonSubmitterFact, button_type_keyword_with};
 
 const COMMAND: &[reflection::Member] = &[(
     &ascii(b"command"),
@@ -87,42 +84,7 @@ pub(super) fn install<'scope>(
     reflection::install(scope, prototype, capture, Receiver::Button, DISABLED)?;
     form_owner::install(scope, prototype, capture, FormOwnerGetter::Button)?;
     reflection::install(scope, prototype, capture, Receiver::Button, AFTER_FORM)?;
+    super::control_validation::install(scope, prototype, capture, Receiver::Button)?;
     CustomValidityControl::Button.install(scope, prototype, capture)?;
     super::reflected_element::ElementTarget::ButtonPopover.install(scope, prototype, capture)
-}
-
-pub(super) fn type_keyword(
-    read: &NativeRead<'_>,
-    node: DomNode<'_>,
-    raw: Option<&[u16]>,
-) -> Result<&'static str, DocumentGuestEventError> {
-    button_type_keyword_with(
-        raw,
-        |_| read.step(),
-        |fact| {
-            let name = match fact {
-                HtmlButtonSubmitterFact::CommandAttributePresent => &ascii(b"command")[..],
-                HtmlButtonSubmitterFact::CommandforAttributePresent => &ascii(b"commandfor")[..],
-                HtmlButtonSubmitterFact::ParentIsSelect => {
-                    read.step()?;
-                    let Some(parent) = node.parent() else {
-                        return Ok(false);
-                    };
-                    let parent = read.node(parent)?;
-                    read.step()?;
-                    return Ok(parent.as_element().is_some_and(|parent| {
-                        let name = parent.name();
-                        name.local_name().code_units() == ascii(b"select")
-                            && name
-                                .namespace_uri()
-                                .is_some_and(|uri| uri.code_units() == HTML_NAMESPACE)
-                    }));
-                }
-            };
-            let attributes = node.attributes().ok_or(DomError::WrongNodeKind)?;
-            Ok(attributes
-                .get_null_namespace_attribute_with(name, || read.step())?
-                .is_some())
-        },
-    )
 }

@@ -100,6 +100,7 @@ pub(super) fn install_select<'scope>(
         &ascii(b"set selectedIndex"),
     )?;
     strings::install(scope, prototype, capture, StringMember::SelectValue)?;
+    super::control_validation::install(scope, prototype, capture, Receiver::Select)?;
     CustomValidityControl::Select.install(scope, prototype, capture)
 }
 
