@@ -104,6 +104,7 @@ pub(crate) mod parsed_installation;
 pub(crate) mod payload;
 pub(crate) mod pending_associations;
 mod range;
+pub use range::DomOwnedRange;
 mod reflected;
 pub(crate) mod registry;
 #[cfg(test)]
@@ -2072,6 +2073,8 @@ pub struct Dom {
     media_removals: media_removal::Bank,
     dispatch_custody: dispatch::CustodyBank,
     node_retirements: Option<Arc<node_retirement::Index>>,
+    range_releases: Option<Arc<range::Releases>>,
+    range_release_records: usize,
     event_recipients: Option<Arc<event::Owner>>,
     event_registry: Option<crate::internal::event::RegistryObservation>,
     owner: DomOwnerId,
@@ -2169,6 +2172,8 @@ impl Dom {
             next_fullscreen_exit: 1,
             dispatch_custody: dispatch::CustodyBank::default(),
             node_retirements: None,
+            range_releases: None,
+            range_release_records: 0,
             event_recipients: None,
             event_registry: None,
             inline_styles: None,
@@ -2283,7 +2288,11 @@ impl Dom {
         if let Some(owner) = &self.event_recipients {
             owner.admit_limits(limits.event_recipients())?;
         }
-        admit(self.state.ranges.len(), limits.ranges, DomResource::Ranges)?;
+        admit(
+            self.state.ranges.len().max(self.range_release_records),
+            limits.ranges,
+            DomResource::Ranges,
+        )?;
         admit(
             self.state.node_iterators.retained_slots(),
             limits.node_iterators,

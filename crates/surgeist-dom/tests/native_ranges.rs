@@ -82,6 +82,168 @@ fn associate(dom: &mut Dom, document: DocumentId, id: DomRangeId) {
 }
 
 #[test]
+fn released_ownership_preserves_all_active_associations_and_other_ranges() {
+    let mut dom = Dom::new(limits(2)).unwrap();
+    let cancel = AtomicBool::new(false);
+    let (first, parent) = document_and_parent(&mut dom);
+    let (second, _) = document_and_parent(&mut dom);
+    let independent = at(&mut dom, first, (parent, 0), (parent, 0));
+    let owned = dom
+        .create_owned_range(first, source_limits(), &cancel)
+        .unwrap();
+    let id = owned.id();
+    assert_eq!(
+        bounds(&dom.snapshot(), id),
+        ((first.node(), 0), (first.node(), 0))
+    );
+    associate(&mut dom, first, id);
+    let mut moved = DomBatch::new();
+    moved.set_range_end(id, second.node(), 0);
+    moved.set_active_range(second, Some(id.into()));
+    apply(&mut dom, moved);
+    let both = dom.snapshot();
+    assert_eq!(active(&both, first), Some(id));
+    assert_eq!(active(&both, second), Some(id));
+
+    drop(owned);
+    assert_eq!(dom.snapshot().stamp(), both.stamp());
+    dom.reap_released_ranges(&cancel).unwrap();
+    assert_eq!(dom.snapshot().stamp(), both.stamp());
+
+    let mut clear_first = DomBatch::new();
+    clear_first.set_active_range(first, None);
+    apply(&mut dom, clear_first);
+    dom.reap_released_ranges(&cancel).unwrap();
+    assert_eq!(active(&dom.snapshot(), second), Some(id));
+    assert_eq!(dom.usage().ranges(), 2);
+
+    let mut clear_second = DomBatch::new();
+    clear_second.set_active_range(second, None);
+    apply(&mut dom, clear_second);
+    let before_reap = dom.snapshot().stamp();
+    assert!(matches!(
+        dom.reap_released_ranges(&AtomicBool::new(true)),
+        Err(DomError::Cancelled)
+    ));
+    assert_eq!(dom.snapshot().stamp(), before_reap);
+    dom.reap_released_ranges(&cancel).unwrap();
+    assert_eq!(
+        dom.changes_since(before_reap).unwrap().changes(),
+        [DomChange::RangeRetired(id)]
+    );
+    assert_eq!(dom.usage().ranges(), 1);
+    assert_eq!(
+        bounds(&dom.snapshot(), independent),
+        ((parent, 0), (parent, 0))
+    );
+    assert_eq!(active(&both, first), Some(id));
+    assert_eq!(active(&both, second), Some(id));
+    let replacement = dom
+        .create_owned_range(second, source_limits(), &cancel)
+        .unwrap();
+    assert_ne!(replacement.id(), id);
+    assert_eq!(dom.snapshot().range(id).unwrap_err(), DomError::StaleRange);
+}
+
+#[test]
+fn failed_creation_and_stale_ownership_leave_reused_generations_untouched() {
+    let mut dom = Dom::new(limits(1)).unwrap();
+    let cancel = AtomicBool::new(false);
+    let (document, _) = document_and_parent(&mut dom);
+    let before = dom.snapshot().stamp();
+    assert!(matches!(
+        dom.create_owned_range(document, source_limits(), &AtomicBool::new(true)),
+        Err(DomError::Cancelled)
+    ));
+    assert_eq!(dom.snapshot().stamp(), before);
+    assert_eq!(dom.usage().ranges(), 0);
+
+    let owned = dom
+        .create_owned_range(document, source_limits(), &cancel)
+        .unwrap();
+    let id = owned.id();
+    let mut retire = DomBatch::new();
+    retire.retire_range(id);
+    apply(&mut dom, retire);
+    assert!(matches!(
+        dom.create_owned_range(document, source_limits(), &cancel),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::Ranges,
+            ..
+        })
+    ));
+    let replacement = at(
+        &mut dom,
+        document,
+        (document.node(), 0),
+        (document.node(), 0),
+    );
+    let replaced = dom.snapshot().stamp();
+    drop(owned);
+    dom.reap_released_ranges(&cancel).unwrap();
+    assert_eq!(dom.snapshot().stamp(), replaced);
+    assert_ne!(replacement, id);
+    assert_eq!(dom.snapshot().range(id).unwrap_err(), DomError::StaleRange);
+    assert!(dom.snapshot().range(replacement).is_ok());
+}
+
+#[test]
+fn common_ancestor_is_ordinary_and_does_not_walk_past_refusal() {
+    let mut dom = dom();
+    let (document, parent) = document_and_parent(&mut dom);
+    let mut batch = DomBatch::new();
+    let branch = batch.create_element_ns(document, Namespace::html(), "div");
+    let first = batch.create_text(document, "first");
+    let last = batch.create_text(document, "last");
+    batch.insert_before(&first, &branch, None);
+    batch.insert_before(&branch, parent, None);
+    batch.insert_before(&last, parent, None);
+    let receipt = apply(&mut dom, batch);
+    let first = receipt.created(&first).unwrap().unwrap();
+    let last = receipt.created(&last).unwrap().unwrap();
+    let id = at(&mut dom, document, (first, 1), (last, 2));
+    let snapshot = dom.snapshot();
+    let mut steps = 0;
+    assert_eq!(
+        snapshot
+            .range_common_ancestor_with(id, || {
+                steps += 1;
+                Ok::<_, DomError>(())
+            })
+            .unwrap(),
+        parent
+    );
+    assert!(steps > 1);
+    let mut calls = 0;
+    assert_eq!(
+        snapshot.range_common_ancestor_with(id, || {
+            calls += 1;
+            if calls == 2 {
+                Err(DomError::Cancelled)
+            } else {
+                Ok(())
+            }
+        }),
+        Err(DomError::Cancelled)
+    );
+    assert_eq!(calls, 2);
+    let mut retire = DomBatch::new();
+    retire.retire_range(id);
+    apply(&mut dom, retire);
+    assert_eq!(
+        dom.snapshot()
+            .range_common_ancestor_with(id, || Ok::<_, DomError>(())),
+        Err(DomError::StaleRange)
+    );
+    assert_eq!(
+        snapshot
+            .range_common_ancestor_with(id, || Ok::<_, DomError>(()))
+            .unwrap(),
+        parent
+    );
+}
+
+#[test]
 fn native_creation_publishes_document_zero_and_complete_change_evidence_without_implicit_association()
  {
     let mut dom = dom();

@@ -16,3 +16,4 @@ pub use crate::internal::range::{
 pub use crate::internal::source::{
     DomDesignModeRangeDisposition, DomSourceDesignModeRequest, DomSourceDesignModeStep,
 };
+pub use crate::internal::store::DomOwnedRange;

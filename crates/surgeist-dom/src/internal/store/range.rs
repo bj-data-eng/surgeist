@@ -8,6 +8,10 @@ use crate::{
 };
 use std::cmp::Ordering as Position;
 
+mod ownership;
+pub use ownership::DomOwnedRange;
+pub(super) use ownership::Releases;
+
 #[cfg(test)]
 mod admission_tests;
 #[cfg(test)]

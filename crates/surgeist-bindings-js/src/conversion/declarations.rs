@@ -327,6 +327,78 @@ pub(crate) const WINDOW_CSS_NAME: &[u16] = &[67, 83, 83];
 pub(crate) const WINDOW_CSS_ESCAPE_NAME: &[u16] = &[101, 115, 99, 97, 112, 101];
 pub(crate) const WINDOW_CSS_ESCAPE_ARITY: u32 = 1;
 
+/// Selected argument `Range.setStart:0/offset` (not overload selection).
+pub fn range_set_start_0_offset() -> Argument<IntegerType> {
+    Argument::new(
+        "Range.setStart:0/offset",
+        1,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `Range.setEnd:0/offset` (not overload selection).
+pub fn range_set_end_0_offset() -> Argument<IntegerType> {
+    Argument::new(
+        "Range.setEnd:0/offset",
+        1,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+fn default_range_collapse_0_to_start(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<bool>, Failure> {
+    Ok(cx.plain(false))
+}
+
+/// Selected argument `Range.collapse:0/toStart` (not overload selection).
+pub fn range_collapse_0_to_start() -> Argument<Type<bool>> {
+    Argument::new(
+        "Range.collapse:0/toStart",
+        0,
+        true,
+        types::BOOLEAN,
+        Some(default_range_collapse_0_to_start),
+    )
+}
+
+/// Selected argument `Range.compareBoundaryPoints:0/how` (not overload selection).
+pub fn range_compare_boundary_points_0_how() -> Argument<IntegerType> {
+    Argument::new(
+        "Range.compareBoundaryPoints:0/how",
+        0,
+        false,
+        IntegerType::new(IntegerKind::UnsignedShort, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `Range.isPointInRange:0/offset` (not overload selection).
+pub fn range_is_point_in_range_0_offset() -> Argument<IntegerType> {
+    Argument::new(
+        "Range.isPointInRange:0/offset",
+        1,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `Range.comparePoint:0/offset` (not overload selection).
+pub fn range_compare_point_0_offset() -> Argument<IntegerType> {
+    Argument::new(
+        "Range.comparePoint:0/offset",
+        1,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
 fn default_dom_exception_constructor_0_message(
     cx: &mut Conversion<'_, '_>,
 ) -> Result<Converted<DomString>, Failure> {

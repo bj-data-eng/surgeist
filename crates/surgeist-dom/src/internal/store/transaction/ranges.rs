@@ -82,6 +82,13 @@ pub(in crate::internal::store) struct DependencyMemberships {
 }
 
 impl RangeDependencies {
+    pub fn has_associated_documents(&self, id: DomRangeId) -> bool {
+        self.associations.get(id.slot).is_some_and(|association| {
+            association.id == id
+                && (association.existing.is_some() || association.created.is_some())
+        })
+    }
+
     pub fn adopt_custody(
         &self,
         registry: &bank::CustodyRegistry,

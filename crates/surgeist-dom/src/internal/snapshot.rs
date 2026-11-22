@@ -95,6 +95,20 @@ pub struct DomSnapshot {
     pub(crate) script_registration: Option<crate::internal::hosted::ScriptRegistrationKey>,
 }
 
+fn range_container_depth<E: From<DomError>>(
+    mut node: NodeId,
+    mut parent: impl FnMut(NodeId) -> Result<Option<NodeId>, E>,
+) -> Result<usize, E> {
+    let mut depth = 0usize;
+    while let Some(next) = parent(node)? {
+        node = next;
+        depth = depth
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+    }
+    Ok(depth)
+}
+
 impl DomSnapshot {
     pub fn range(
         &self,
@@ -111,6 +125,39 @@ impl DomSnapshot {
             .and_then(|slot| slot.record.as_ref())
             .ok_or(DomError::StaleRange)?;
         Ok(crate::internal::range::DomRange { id, record })
+    }
+
+    /// Read the nearest common inclusive ancestor of the exact live Range's
+    /// two containers along ordinary parent edges in this snapshot.
+    pub fn range_common_ancestor_with<E: From<DomError>>(
+        &self,
+        id: crate::internal::range::DomRangeId,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<NodeId, E> {
+        step()?;
+        let range = self.range(id)?;
+        let mut start = range.start().container();
+        let mut end = range.end().container();
+        if start == end {
+            return Ok(start);
+        }
+        let mut parent =
+            |node| -> Result<Option<NodeId>, E> { Ok(self.node_with(node, &mut step)?.parent()) };
+        let mut start_depth = range_container_depth(start, &mut parent)?;
+        let mut end_depth = range_container_depth(end, &mut parent)?;
+        while start_depth > end_depth {
+            start = parent(start)?.ok_or(DomError::RangePublicationUnavailable)?;
+            start_depth -= 1;
+        }
+        while end_depth > start_depth {
+            end = parent(end)?.ok_or(DomError::RangePublicationUnavailable)?;
+            end_depth -= 1;
+        }
+        while start != end {
+            start = parent(start)?.ok_or(DomError::RangePublicationUnavailable)?;
+            end = parent(end)?.ok_or(DomError::RangePublicationUnavailable)?;
+        }
+        Ok(start)
     }
     pub fn incomplete_hosted_operation(
         &self,

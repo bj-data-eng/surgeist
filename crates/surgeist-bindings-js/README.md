@@ -211,6 +211,12 @@ uninitialized native Event factory. The base Event aliases create a fresh
 instance in the receiving Document's creation realm, including factory-created
 detached Documents. Unsupported names throw a method-realm `NotSupportedError`.
 
+`Document.createRange` and `new Range()` project a fresh canonical live Range
+with native boundary custody. `AbstractRange` reads and `commonAncestorContainer`
+observe the current DOM. `setStart` and `setEnd` use exact UTF-16 offsets and
+the native Source boundary mutation. Collection queues release through DOM's
+owned Range record, preserving active Document associations.
+
 [Runtime's native document attachment](../surgeist-runtime/README.md) installs
 the standard `CSS` namespace in the selected Window realm. `CSS.escape` uses
 the generated required DOMString argument descriptor and the native CSSOM

@@ -494,6 +494,7 @@ def render_member(member, names):
         "constructor": ({"arguments"}, set()),
         "attribute": ({"name", "type", "readonly"}, {"stringifier"}),
         "operation": ({"type", "arguments"}, {"name", "static", "special"}),
+        "stringifier": (set(), set()),
         "constant": ({"name", "type", "value"}, set()),
         "iterable": ({"type"}, set()),
         "dictionary_member": ({"name", "type", "required"}, {"default"}),
@@ -550,6 +551,8 @@ def render_member(member, names):
         special = member.get("special")
         require(special in {None, "getter", "setter", "deleter"}, "unknown special operation")
         return prefix + ("static " if member.get("static", False) else "") + (special + " " if special else "") + render_type(member["type"], names) + (" " + member["name"] if member.get("name") else "") + "(" + arguments(member["arguments"], names) + ");"
+    if kind == "stringifier":
+        return prefix + "stringifier;"
     if kind == "constant":
         require(type(member["value"]) is int, "selected constants are integers")
         return prefix + "const " + render_type(member["type"], names) + " " + member["name"] + " = " + str(member["value"]) + ";"
@@ -617,6 +620,8 @@ def render_definition(definition, names):
 def mapping_keys(member):
     if member["kind"] == "constructor":
         return [member["id"] + "/construct"]
+    if member["kind"] == "stringifier":
+        return [member["id"] + "/call"]
     if member["kind"] == "operation":
         if member.get("special") == "setter" and "name" not in member:
             return [member["id"] + "/index-set"]

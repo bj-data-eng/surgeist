@@ -2,6 +2,26 @@
   "schema": 1,
   "sources": [
     {
+      "id": "AbstractRange.source",
+      "path": "references/dom-range-idl--3071e5f26944.md",
+      "anchor": "interface-abstractrange",
+      "block": 0,
+      "sha256": "3bd2ce772c774736088165b89b41bc29a1a0db636d0702512cff85e704d0b2e0",
+      "revision": "3071e5f269448350fdea79bb284eedaf17bc431e",
+      "url": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-abstractrange",
+      "entries": ["AbstractRange"]
+    },
+    {
+      "id": "Range.source",
+      "path": "references/dom-range-idl--3071e5f26944.md",
+      "anchor": "interface-range",
+      "block": 0,
+      "sha256": "b72fc894a0d6c832a34220f0d3a8d3152557fdc539577707ae35fce9c0552a33",
+      "revision": "3071e5f269448350fdea79bb284eedaf17bc431e",
+      "url": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-range",
+      "entries": ["Range"]
+    },
+    {
       "id": "TreeWalker.source",
       "path": "references/dom-traversal-idl--3071e5f26944.md",
       "anchor": "interface-treewalker",
@@ -1364,6 +1384,390 @@
     }
   ],
   "declarations": [
+    {
+      "id": "AbstractRange",
+      "kind": "interface",
+      "name": "AbstractRange",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "id": "AbstractRange.startContainer",
+          "kind": "attribute",
+          "name": "startContainer",
+          "type": {"kind": "named", "name": "Node"},
+          "readonly": true,
+          "attributes": []
+        },
+        {
+          "id": "AbstractRange.startOffset",
+          "kind": "attribute",
+          "name": "startOffset",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "readonly": true,
+          "attributes": []
+        },
+        {
+          "id": "AbstractRange.endContainer",
+          "kind": "attribute",
+          "name": "endContainer",
+          "type": {"kind": "named", "name": "Node"},
+          "readonly": true,
+          "attributes": []
+        },
+        {
+          "id": "AbstractRange.endOffset",
+          "kind": "attribute",
+          "name": "endOffset",
+          "type": {"kind": "named", "name": "unsigned long"},
+          "readonly": true,
+          "attributes": []
+        },
+        {
+          "id": "AbstractRange.collapsed",
+          "kind": "attribute",
+          "name": "collapsed",
+          "type": {"kind": "named", "name": "boolean"},
+          "readonly": true,
+          "attributes": []
+        }
+      ]
+    },
+    {
+      "id": "Range",
+      "kind": "interface",
+      "name": "Range",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "id": "Range.constructor:0",
+          "kind": "constructor",
+          "attributes": [],
+          "arguments": []
+        },
+        {
+          "id": "Range.commonAncestorContainer",
+          "kind": "attribute",
+          "name": "commonAncestorContainer",
+          "type": {"kind": "named", "name": "Node"},
+          "readonly": true,
+          "attributes": []
+        },
+        {
+          "id": "Range.setStart:0",
+          "kind": "operation",
+          "name": "setStart",
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [
+            {
+              "name": "node",
+              "type": {"kind": "named", "name": "Node"},
+              "presence": "required"
+            },
+            {
+              "name": "offset",
+              "type": {"kind": "named", "name": "unsigned long"},
+              "presence": "required"
+            }
+          ],
+          "attributes": []
+        },
+        {
+          "id": "Range.setEnd:0",
+          "kind": "operation",
+          "name": "setEnd",
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [
+            {
+              "name": "node",
+              "type": {"kind": "named", "name": "Node"},
+              "presence": "required"
+            },
+            {
+              "name": "offset",
+              "type": {"kind": "named", "name": "unsigned long"},
+              "presence": "required"
+            }
+          ],
+          "attributes": []
+        },
+        {
+          "id": "Range.setStartBefore:0",
+          "kind": "operation",
+          "name": "setStartBefore",
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [
+            {
+              "name": "node",
+              "type": {"kind": "named", "name": "Node"},
+              "presence": "required"
+            }
+          ],
+          "attributes": []
+        },
+        {
+          "id": "Range.setStartAfter:0",
+          "kind": "operation",
+          "name": "setStartAfter",
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [
+            {
+              "name": "node",
+              "type": {"kind": "named", "name": "Node"},
+              "presence": "required"
+            }
+          ],
+          "attributes": []
+        },
+        {
+          "id": "Range.setEndBefore:0",
+          "kind": "operation",
+          "name": "setEndBefore",
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [
+            {
+              "name": "node",
+              "type": {"kind": "named", "name": "Node"},
+              "presence": "required"
+            }
+          ],
+          "attributes": []
+        },
+        {
+          "id": "Range.setEndAfter:0",
+          "kind": "operation",
+          "name": "setEndAfter",
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [
+            {
+              "name": "node",
+              "type": {"kind": "named", "name": "Node"},
+              "presence": "required"
+            }
+          ],
+          "attributes": []
+        },
+        {
+          "id": "Range.collapse:0",
+          "kind": "operation",
+          "name": "collapse",
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [
+            {
+              "name": "toStart",
+              "type": {"kind": "named", "name": "boolean"},
+              "presence": "optional",
+              "default": {"kind": "boolean", "value": false}
+            }
+          ],
+          "attributes": []
+        },
+        {
+          "id": "Range.selectNode:0",
+          "kind": "operation",
+          "name": "selectNode",
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [
+            {
+              "name": "node",
+              "type": {"kind": "named", "name": "Node"},
+              "presence": "required"
+            }
+          ],
+          "attributes": []
+        },
+        {
+          "id": "Range.selectNodeContents:0",
+          "kind": "operation",
+          "name": "selectNodeContents",
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [
+            {
+              "name": "node",
+              "type": {"kind": "named", "name": "Node"},
+              "presence": "required"
+            }
+          ],
+          "attributes": []
+        },
+        {
+          "id": "Range.START_TO_START",
+          "kind": "constant",
+          "name": "START_TO_START",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "value": 0,
+          "attributes": []
+        },
+        {
+          "id": "Range.START_TO_END",
+          "kind": "constant",
+          "name": "START_TO_END",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "value": 1,
+          "attributes": []
+        },
+        {
+          "id": "Range.END_TO_END",
+          "kind": "constant",
+          "name": "END_TO_END",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "value": 2,
+          "attributes": []
+        },
+        {
+          "id": "Range.END_TO_START",
+          "kind": "constant",
+          "name": "END_TO_START",
+          "type": {"kind": "named", "name": "unsigned short"},
+          "value": 3,
+          "attributes": []
+        },
+        {
+          "id": "Range.compareBoundaryPoints:0",
+          "kind": "operation",
+          "name": "compareBoundaryPoints",
+          "type": {"kind": "named", "name": "short"},
+          "arguments": [
+            {
+              "name": "how",
+              "type": {"kind": "named", "name": "unsigned short"},
+              "presence": "required"
+            },
+            {
+              "name": "sourceRange",
+              "type": {"kind": "named", "name": "Range"},
+              "presence": "required"
+            }
+          ],
+          "attributes": []
+        },
+        {
+          "id": "Range.deleteContents:0",
+          "kind": "operation",
+          "name": "deleteContents",
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [],
+          "attributes": [{"name": "CEReactions"}]
+        },
+        {
+          "id": "Range.extractContents:0",
+          "kind": "operation",
+          "name": "extractContents",
+          "type": {"kind": "named", "name": "DocumentFragment"},
+          "arguments": [],
+          "attributes": [{"name": "CEReactions"}, {"name": "NewObject"}]
+        },
+        {
+          "id": "Range.cloneContents:0",
+          "kind": "operation",
+          "name": "cloneContents",
+          "type": {"kind": "named", "name": "DocumentFragment"},
+          "arguments": [],
+          "attributes": [{"name": "CEReactions"}, {"name": "NewObject"}]
+        },
+        {
+          "id": "Range.insertNode:0",
+          "kind": "operation",
+          "name": "insertNode",
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [
+            {
+              "name": "node",
+              "type": {"kind": "named", "name": "Node"},
+              "presence": "required"
+            }
+          ],
+          "attributes": [{"name": "CEReactions"}]
+        },
+        {
+          "id": "Range.surroundContents:0",
+          "kind": "operation",
+          "name": "surroundContents",
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [
+            {
+              "name": "newParent",
+              "type": {"kind": "named", "name": "Node"},
+              "presence": "required"
+            }
+          ],
+          "attributes": [{"name": "CEReactions"}]
+        },
+        {
+          "id": "Range.cloneRange:0",
+          "kind": "operation",
+          "name": "cloneRange",
+          "type": {"kind": "named", "name": "Range"},
+          "arguments": [],
+          "attributes": [{"name": "NewObject"}]
+        },
+        {
+          "id": "Range.detach:0",
+          "kind": "operation",
+          "name": "detach",
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [],
+          "attributes": []
+        },
+        {
+          "id": "Range.isPointInRange:0",
+          "kind": "operation",
+          "name": "isPointInRange",
+          "type": {"kind": "named", "name": "boolean"},
+          "arguments": [
+            {
+              "name": "node",
+              "type": {"kind": "named", "name": "Node"},
+              "presence": "required"
+            },
+            {
+              "name": "offset",
+              "type": {"kind": "named", "name": "unsigned long"},
+              "presence": "required"
+            }
+          ],
+          "attributes": []
+        },
+        {
+          "id": "Range.comparePoint:0",
+          "kind": "operation",
+          "name": "comparePoint",
+          "type": {"kind": "named", "name": "short"},
+          "arguments": [
+            {
+              "name": "node",
+              "type": {"kind": "named", "name": "Node"},
+              "presence": "required"
+            },
+            {
+              "name": "offset",
+              "type": {"kind": "named", "name": "unsigned long"},
+              "presence": "required"
+            }
+          ],
+          "attributes": []
+        },
+        {
+          "id": "Range.intersectsNode:0",
+          "kind": "operation",
+          "name": "intersectsNode",
+          "type": {"kind": "named", "name": "boolean"},
+          "arguments": [
+            {
+              "name": "node",
+              "type": {"kind": "named", "name": "Node"},
+              "presence": "required"
+            }
+          ],
+          "attributes": []
+        },
+        {
+          "id": "Range.stringifier",
+          "kind": "stringifier",
+          "attributes": []
+        }
+      ],
+      "inherits": "AbstractRange"
+    },
     {
       "id": "TreeWalker",
       "kind": "interface",
@@ -12944,13 +13348,6 @@
       "requirement": "Project the live named radio group and its source-defined value from the canonical associated elements."
     },
     {
-      "name": "Range",
-      "kind": "interface",
-      "owner": "surgeist-dom",
-      "url": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#interface-range",
-      "requirement": "Source-qualified Range definition and its owning native/binding family; not an empty installed interface."
-    },
-    {
       "name": "SVGElement",
       "kind": "interface",
       "owner": "surgeist-runtime",
@@ -13031,6 +13428,427 @@
     }
   ],
   "access_mappings": {
+    "Document.createRange:0/call": {
+      "kind": "native",
+      "adapter": "document.createrange.call",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range.rs",
+          "symbol": "create_range"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/range/ownership.rs",
+          "symbol": "create_owned_range"
+        }
+      ],
+      "requirements": [],
+      "result_view": "live"
+    },
+    "Range.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "range.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range.rs",
+          "symbol": "construct_range"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/range/ownership.rs",
+          "symbol": "create_owned_range"
+        }
+      ],
+      "requirements": [],
+      "result_view": "live"
+    },
+    "Range.commonAncestorContainer/get": {
+      "kind": "native",
+      "adapter": "range.commonancestorcontainer.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range.rs",
+          "symbol": "read_boundary"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
+          "symbol": "range_common_ancestor_with"
+        }
+      ],
+      "requirements": []
+    },
+    "Range.detach:0/call": {
+      "kind": "derived",
+      "algorithm": "range.detach.noop",
+      "owner": "surgeist-runtime",
+      "contract": "After authentic Range brand validation, return undefined without editing its lifetime or boundaries.",
+      "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-detach",
+      "inputs": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range.rs",
+          "symbol": "detach_range"
+        }
+      ],
+      "requirements": []
+    },
+    "AbstractRange.startContainer/get": {
+      "kind": "native",
+      "adapter": "abstractrange.startcontainer.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range.rs",
+          "symbol": "read_boundary"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
+          "symbol": "range"
+        }
+      ],
+      "requirements": []
+    },
+    "AbstractRange.startOffset/get": {
+      "kind": "native",
+      "adapter": "abstractrange.startoffset.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range.rs",
+          "symbol": "read_boundary"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
+          "symbol": "range"
+        }
+      ],
+      "requirements": []
+    },
+    "AbstractRange.endContainer/get": {
+      "kind": "native",
+      "adapter": "abstractrange.endcontainer.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range.rs",
+          "symbol": "read_boundary"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
+          "symbol": "range"
+        }
+      ],
+      "requirements": []
+    },
+    "AbstractRange.endOffset/get": {
+      "kind": "native",
+      "adapter": "abstractrange.endoffset.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range.rs",
+          "symbol": "read_boundary"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
+          "symbol": "range"
+        }
+      ],
+      "requirements": []
+    },
+    "AbstractRange.collapsed/get": {
+      "kind": "native",
+      "adapter": "abstractrange.collapsed.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range.rs",
+          "symbol": "read_boundary"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/snapshot.rs",
+          "symbol": "range"
+        }
+      ],
+      "requirements": []
+    },
+    "Range.setStart:0/call": {
+      "kind": "native",
+      "adapter": "range.setstart.call",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range.rs",
+          "symbol": "set_projection_boundary"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/range.rs",
+          "symbol": "set_range_boundary"
+        }
+      ],
+      "requirements": []
+    },
+    "Range.setEnd:0/call": {
+      "kind": "native",
+      "adapter": "range.setend.call",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/range.rs",
+          "symbol": "set_projection_boundary"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/range.rs",
+          "symbol": "set_range_boundary"
+        }
+      ],
+      "requirements": []
+    },
+    "Range.setStartBefore:0/call": {
+      "kind": "native",
+      "adapter": "range.setstartbefore.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the canonical Range boundary operation as one admitted native result, with original identity and publication semantics.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-setstartbefore",
+          "issue": 3227
+        }
+      ]
+    },
+    "Range.setStartAfter:0/call": {
+      "kind": "native",
+      "adapter": "range.setstartafter.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the canonical Range boundary operation as one admitted native result, with original identity and publication semantics.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-setstartafter",
+          "issue": 3227
+        }
+      ]
+    },
+    "Range.setEndBefore:0/call": {
+      "kind": "native",
+      "adapter": "range.setendbefore.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the canonical Range boundary operation as one admitted native result, with original identity and publication semantics.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-setendbefore",
+          "issue": 3227
+        }
+      ]
+    },
+    "Range.setEndAfter:0/call": {
+      "kind": "native",
+      "adapter": "range.setendafter.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the canonical Range boundary operation as one admitted native result, with original identity and publication semantics.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-setendafter",
+          "issue": 3227
+        }
+      ]
+    },
+    "Range.collapse:0/call": {
+      "kind": "native",
+      "adapter": "range.collapse.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the canonical Range boundary operation as one admitted native result, with original identity and publication semantics.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-collapse",
+          "issue": 3227
+        }
+      ]
+    },
+    "Range.selectNode:0/call": {
+      "kind": "native",
+      "adapter": "range.selectnode.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the canonical Range boundary operation as one admitted native result, with original identity and publication semantics.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-selectnode",
+          "issue": 3227
+        }
+      ]
+    },
+    "Range.selectNodeContents:0/call": {
+      "kind": "native",
+      "adapter": "range.selectnodecontents.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the canonical Range boundary operation as one admitted native result, with original identity and publication semantics.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-selectnodecontents",
+          "issue": 3227
+        }
+      ]
+    },
+    "Range.compareBoundaryPoints:0/call": {
+      "kind": "native",
+      "adapter": "range.compareboundarypoints.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose the source-qualified canonical Range position or intersection algorithm, with ordered root and boundary validation.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-compareboundarypoints",
+          "issue": 3227
+        }
+      ]
+    },
+    "Range.deleteContents:0/call": {
+      "kind": "native",
+      "adapter": "range.deletecontents.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the canonical Range content operation, including exact partial selection, live boundary maintenance, and reached Source effects.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-deletecontents",
+          "issue": 3228
+        }
+      ]
+    },
+    "Range.extractContents:0/call": {
+      "kind": "native",
+      "adapter": "range.extractcontents.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the canonical Range content operation, including exact partial selection, live boundary maintenance, and reached Source effects.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-extractcontents",
+          "issue": 3228
+        }
+      ]
+    },
+    "Range.cloneContents:0/call": {
+      "kind": "native",
+      "adapter": "range.clonecontents.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the canonical Range content operation, including exact partial selection, live boundary maintenance, and reached Source effects.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-clonecontents",
+          "issue": 3228
+        }
+      ]
+    },
+    "Range.insertNode:0/call": {
+      "kind": "native",
+      "adapter": "range.insertnode.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the canonical Range content operation, including exact partial selection, live boundary maintenance, and reached Source effects.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-insertnode",
+          "issue": 3228
+        }
+      ]
+    },
+    "Range.surroundContents:0/call": {
+      "kind": "native",
+      "adapter": "range.surroundcontents.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the canonical Range content operation, including exact partial selection, live boundary maintenance, and reached Source effects.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-surroundcontents",
+          "issue": 3228
+        }
+      ]
+    },
+    "Range.cloneRange:0/call": {
+      "kind": "native",
+      "adapter": "range.clonerange.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Provide the canonical Range boundary operation as one admitted native result, with original identity and publication semantics.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-clonerange",
+          "issue": 3227
+        }
+      ]
+    },
+    "Range.isPointInRange:0/call": {
+      "kind": "native",
+      "adapter": "range.ispointinrange.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose the source-qualified canonical Range position or intersection algorithm, with ordered root and boundary validation.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-ispointinrange",
+          "issue": 3227
+        }
+      ]
+    },
+    "Range.comparePoint:0/call": {
+      "kind": "native",
+      "adapter": "range.comparepoint.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose the source-qualified canonical Range position or intersection algorithm, with ordered root and boundary validation.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-comparepoint",
+          "issue": 3227
+        }
+      ]
+    },
+    "Range.intersectsNode:0/call": {
+      "kind": "native",
+      "adapter": "range.intersectsnode.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Expose the source-qualified canonical Range position or intersection algorithm, with ordered root and boundary validation.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-intersectsnode",
+          "issue": 3227
+        }
+      ]
+    },
+    "Range.stringifier/call": {
+      "kind": "native",
+      "adapter": "range.tostring.call",
+      "producers": [],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Produce the source-qualified UTF-16 text selected by the live Range boundaries under native read admission.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-range-stringifier",
+          "issue": 3228
+        }
+      ]
+    },
     "HTMLSelectElement.constructor:0/construct": {
       "kind": "native",
       "adapter": "htmlselectelement.constructor.construct",
@@ -14948,12 +15766,6 @@
           "symbol": "dispatch_document_global_association_with"
         }
       ],
-      "requirements": []
-    },
-    "Document.createRange:0/call": {
-      "kind": "native",
-      "adapter": "document.createrange.call",
-      "producers": [{"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "create_range"}],
       "requirements": []
     },
     "Document.createNodeIterator:0/call": {

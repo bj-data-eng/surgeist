@@ -522,6 +522,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::canvas_dimension_admission::canvas_dimension_write_preserves_original_source_refusal();
     super::guest::tests::range_indicator_admission::meter_read_admits_only_its_reached_input();
     super::guest::tests::document_event_admission::legacy_creation_releases_each_owner();
+    super::guest::tests::document_range_admission::live_range_cleanup_keeps_native_associations();
+    super::guest::tests::document_range_admission::refused_range_creation_releases_prepared_projection();
     super::guest::tests::range_indicator_admission::progress_max_preserves_source_noop_and_refusal(
     );
     super::guest::tests::control_autocomplete_admission::autocomplete_read_stops_after_six_reached_tokens();
