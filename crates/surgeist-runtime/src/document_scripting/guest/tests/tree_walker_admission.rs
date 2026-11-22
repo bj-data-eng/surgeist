@@ -24,7 +24,10 @@ fn fixture() -> (DocumentScriptHost, DocumentScriptPermit) {
     host.in_document(&permit, |scope| {
         scope
             .evaluate(&units(
-                "globalThis.walker = document.createTreeWalker(walkerRoot, NodeFilter.SHOW_TEXT)",
+                r#"
+                globalThis.walker = document.createTreeWalker(walkerRoot, NodeFilter.SHOW_TEXT);
+                globalThis.walkerResult = undefined;
+                "#,
             ))
             .map(drop)
     })
