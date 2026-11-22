@@ -260,6 +260,70 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
     );
     assert_eq!(nested, "ok");
 
+    let receivers = observe(
+        &mut host,
+        &permit,
+        r#"(() => {
+            const child = originalFirstChild;
+            const parentLength = Object.getOwnPropertyDescriptor(window, 'length').get;
+            const childLength = Object.getOwnPropertyDescriptor(child, 'length').get;
+            const childSelf = Object.getOwnPropertyDescriptor(child, 'self');
+            try {
+                if (parentLength.call(child) !== 1 || childLength.call(window) !== 2
+                    || Reflect.get(child, 'length', originalSecondChild) !== 0
+                    || Object.getOwnPropertyDescriptor(window, 'window').get.call(child) !== child) {
+                    return "Window accessors must observe the supplied Window receiver";
+                }
+                const replacement = {};
+                if (!Reflect.set(window, 'self', replacement, child)
+                    || child.self !== replacement || window.self !== window) {
+                    return "a replaceable member must be written on the supplied Window";
+                }
+                Object.defineProperty(child, 'self', childSelf);
+            } catch (_) {
+                return "Window accessors rejected an authentic alternate receiver";
+            }
+            try {
+                childLength.call(Object.create(child));
+                return "Window accessors accepted an unrelated receiver";
+            } catch (error) {
+                if (error.name !== "TypeError") return "incorrect Window brand error";
+            }
+            return "ok";
+        })()"#,
+    );
+    let event_target = observe(
+        &mut host,
+        &permit,
+        r#"(() => {
+            const child = originalFirstChild;
+            let calls = 0;
+            function observe(event) {
+                if (this === child && event.currentTarget === child && event.target === child) {
+                    ++calls;
+                }
+            }
+            try {
+                child.addEventListener('window-receiver', observe);
+                if (!EventTarget.prototype.dispatchEvent.call(child, new Event('window-receiver'))
+                    || calls !== 1) return "borrowed dispatch did not use the native child target";
+                EventTarget.prototype.removeEventListener.call(child, 'window-receiver', observe);
+                if (!child.dispatchEvent(new Event('window-receiver')) || calls !== 1) {
+                    return "native child listener removal did not settle";
+                }
+                EventTarget.prototype.addEventListener.call(child, 'window-receiver', observe);
+                if (!child.dispatchEvent(new Event('window-receiver')) || calls !== 2) {
+                    return "borrowed registration did not reach native child dispatch";
+                }
+                child.removeEventListener('window-receiver', observe);
+            } catch (_) {
+                return "inherited EventTarget operations rejected the authentic child";
+            }
+            return "ok";
+        })()"#,
+    );
+    assert_eq!((receivers.as_str(), event_target.as_str()), ("ok", "ok"));
+
     let accounting = host.guest_accounting().unwrap();
     let live_backing = || {
         accounting.snapshot().unwrap().unwrap().scopes[0]
