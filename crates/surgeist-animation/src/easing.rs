@@ -38,6 +38,15 @@ pub struct CubicBezier {
     y2: f64,
 }
 
+/// A finite control point published by a validated linear easing function.
+///
+/// Callers cannot construct a point through an unchecked constructor:
+///
+/// ```compile_fail,E0599
+/// use surgeist_animation::easing::LinearControlPoint;
+///
+/// let _ = LinearControlPoint::new(f64::NAN, f64::INFINITY);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LinearControlPoint {
     input: f64,
