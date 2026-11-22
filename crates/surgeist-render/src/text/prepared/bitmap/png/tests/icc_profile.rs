@@ -137,7 +137,9 @@ fn selected_icc_v4_monitor_with_non_d50_white_falls_back_to_srgb() {
 fn tag_offset(profile: &[u8], signature: &[u8; 4]) -> usize {
     let count = u32::from_be_bytes(profile[128..132].try_into().unwrap()) as usize;
     let entry = profile[132..132 + count * 12]
-        .chunks_exact(12)
+        .as_chunks::<12>()
+        .0
+        .iter()
         .find(|entry| &entry[..4] == signature)
         .unwrap();
     u32::from_be_bytes(entry[4..8].try_into().unwrap()) as usize
@@ -184,6 +186,20 @@ fn selected_well_formed_icc_lut8_and_a_to_b_refuse_as_unsupported() {
             GlyphPreparationError::UnsupportedPng,
         );
     }
+}
+
+#[test]
+fn selected_icc_a_to_b_with_outer_padding_refuses_as_unsupported() {
+    // The last B curve has a 16-bit gamma. Its two alignment bytes follow
+    // the complete mAB payload and are excluded from the tag's declared size.
+    let mut transform = lut_a_to_b_transform();
+    transform[64..68].copy_from_slice(&1_u32.to_be_bytes());
+    transform.extend_from_slice(&0x0200_u16.to_be_bytes());
+    let profile = lut_profile_with_transform(transform, b"XYZ ");
+    assert_diagnostic(
+        &png_with_lower_profiles(&profile),
+        GlyphPreparationError::UnsupportedPng,
+    );
 }
 
 #[test]
