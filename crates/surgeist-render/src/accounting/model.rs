@@ -281,9 +281,14 @@ impl RenderWork {
             || self.supported_for(RenderAttemptKind::Displacement)
             || self.supported_for(RenderAttemptKind::DisplacementMap)
             || self.supported_for(RenderAttemptKind::DropShadow)
+            || self.supported_for(RenderAttemptKind::IccProfile)
     }
     pub(crate) const fn supported_for(self, kind: RenderAttemptKind) -> bool {
         match kind {
+            RenderAttemptKind::IccProfile => matches!(
+                self,
+                Self::IccProfileTagVisits | Self::CoordinateVisits | Self::StorageRelocations
+            ),
             RenderAttemptKind::Offset
             | RenderAttemptKind::Gaussian
             | RenderAttemptKind::Lighting
@@ -518,7 +523,7 @@ dimensions! {
 pub enum RenderPhase {
     /// Complete operation interval; the general-limit ancestor of preparation.
     Attempt,
-    /// Whole glyph/Text operation with legacy limits and direct CPU backing custody.
+    /// Standalone preparation with direct CPU backing custody and any applicable legacy limits.
     Preparation,
     /// Whole-layout validation and once-only semantic input admission.
     TextPreflight,
@@ -611,9 +616,13 @@ pub enum RenderPhase {
     ReadbackCleanup,
     /// Selected bitmap glyph validation during native scene encoding.
     NativeGlyphBitmap,
+    /// Standalone validation and compilation of an ICC source profile.
+    IccProfilePrepare,
+    /// Standalone conversion of ICC device coordinates to resolved colors.
+    IccProfileConvert,
 }
 impl RenderPhase {
-    pub(crate) const ALL: [Self; 47] = [
+    pub(crate) const ALL: [Self; 49] = [
         Self::Attempt,
         Self::Preparation,
         Self::TextPreflight,
@@ -661,6 +670,8 @@ impl RenderPhase {
         Self::ReadbackResolve,
         Self::ReadbackCleanup,
         Self::NativeGlyphBitmap,
+        Self::IccProfilePrepare,
+        Self::IccProfileConvert,
     ];
     pub(crate) const fn index(self) -> usize {
         self as usize
@@ -677,6 +688,7 @@ impl RenderPhase {
             Self::Bitmap => Some(Self::GlyphPrepare),
             Self::Png => Some(Self::Bitmap),
             Self::PngColorPrepare | Self::PngColorConvert => Some(Self::Png),
+            Self::IccProfilePrepare | Self::IccProfileConvert => Some(Self::Preparation),
             Self::Coordinates => Some(Self::Preparation),
             Self::Output => Some(Self::Preparation),
             Self::Cleanup => Some(Self::Preparation),
@@ -765,6 +777,8 @@ impl RenderPhase {
             Self::ReadbackSubmit => "readback_submit",
             Self::ReadbackResolve => "readback_resolve",
             Self::ReadbackCleanup => "readback_cleanup",
+            Self::IccProfilePrepare => "icc_profile_prepare",
+            Self::IccProfileConvert => "icc_profile_convert",
         }
     }
 }
@@ -1045,6 +1059,8 @@ pub enum RenderAttemptKind {
     Morphology,
     /// Standalone resolved native drop-shadow admission.
     DropShadow,
+    /// Standalone ICC source-profile preparation or device-coordinate conversion.
+    IccProfile,
 }
 /// Semantic terminal outcome, separate from last-successful frame statistics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

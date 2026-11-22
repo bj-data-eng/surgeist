@@ -56,6 +56,7 @@ pub surgeist_render::accounting::RenderAttemptKind::DropShadow
 pub surgeist_render::accounting::RenderAttemptKind::Frame
 pub surgeist_render::accounting::RenderAttemptKind::Gaussian
 pub surgeist_render::accounting::RenderAttemptKind::GlyphRun
+pub surgeist_render::accounting::RenderAttemptKind::IccProfile
 pub surgeist_render::accounting::RenderAttemptKind::ImageRepeat
 pub surgeist_render::accounting::RenderAttemptKind::LeaderPattern
 pub surgeist_render::accounting::RenderAttemptKind::Lighting
@@ -176,6 +177,8 @@ pub surgeist_render::accounting::RenderPhase::FramePrepare
 pub surgeist_render::accounting::RenderPhase::GlyphPrepare
 pub surgeist_render::accounting::RenderPhase::GpuPrepare
 pub surgeist_render::accounting::RenderPhase::GradientPrepare
+pub surgeist_render::accounting::RenderPhase::IccProfileConvert
+pub surgeist_render::accounting::RenderPhase::IccProfilePrepare
 pub surgeist_render::accounting::RenderPhase::Initialization
 pub surgeist_render::accounting::RenderPhase::Kernel
 pub surgeist_render::accounting::RenderPhase::Lower
@@ -1276,6 +1279,58 @@ pub fn surgeist_render::geometry::Transform::translation(x: f64, y: f64) -> surg
 pub fn surgeist_render::geometry::Transform::try_new(values: [f64; 6]) -> surgeist_render::Result<Self>
 impl core::default::Default for surgeist_render::geometry::Transform
 pub fn surgeist_render::geometry::Transform::default() -> Self
+pub mod surgeist_render::icc
+pub enum surgeist_render::icc::IccPcsSpace
+pub surgeist_render::icc::IccPcsSpace::Lab
+pub surgeist_render::icc::IccPcsSpace::XyzD50
+pub enum surgeist_render::icc::IccProfileClass
+pub surgeist_render::icc::IccProfileClass::ColorSpace
+pub surgeist_render::icc::IccProfileClass::Display
+pub surgeist_render::icc::IccProfileClass::Input
+pub surgeist_render::icc::IccProfileClass::Output
+#[non_exhaustive] pub enum surgeist_render::icc::IccProfileError
+pub surgeist_render::icc::IccProfileError::ExcludedClass
+pub surgeist_render::icc::IccProfileError::IncompatibleColor
+pub surgeist_render::icc::IccProfileError::InvalidCoordinate
+pub surgeist_render::icc::IccProfileError::InvalidProfile
+pub surgeist_render::icc::IccProfileError::NumericOutput
+pub surgeist_render::icc::IccProfileError::UnsupportedTransform
+pub surgeist_render::icc::IccProfileError::UnsupportedVersion
+impl core::convert::From<surgeist_render::icc::IccProfileError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::icc::IccProfileError) -> Self
+impl core::error::Error for surgeist_render::icc::IccProfileError
+impl core::fmt::Display for surgeist_render::icc::IccProfileError
+pub fn surgeist_render::icc::IccProfileError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_render::icc::IccRenderingIntent
+pub surgeist_render::icc::IccRenderingIntent::AbsoluteColorimetric
+pub surgeist_render::icc::IccRenderingIntent::MediaRelativeColorimetric
+pub surgeist_render::icc::IccRenderingIntent::Perceptual
+pub surgeist_render::icc::IccRenderingIntent::Saturation
+pub struct surgeist_render::icc::IccDeviceColor
+impl surgeist_render::icc::IccDeviceColor
+pub fn surgeist_render::icc::IccDeviceColor::channels(&self) -> &[f64]
+pub const fn surgeist_render::icc::IccDeviceColor::space(self) -> surgeist_render::icc::IccDeviceSpace
+pub struct surgeist_render::icc::IccDeviceSpace
+impl surgeist_render::icc::IccDeviceSpace
+pub const fn surgeist_render::icc::IccDeviceSpace::channel_count(self) -> usize
+pub const fn surgeist_render::icc::IccDeviceSpace::signature(self) -> [u8; 4]
+pub struct surgeist_render::icc::IccPcsColor
+impl surgeist_render::icc::IccPcsColor
+pub const fn surgeist_render::icc::IccPcsColor::coordinates(self) -> [f64; 3]
+pub const fn surgeist_render::icc::IccPcsColor::intent(self) -> surgeist_render::icc::IccRenderingIntent
+pub const fn surgeist_render::icc::IccPcsColor::space(self) -> surgeist_render::icc::IccPcsSpace
+pub fn surgeist_render::icc::IccPcsColor::try_new(space: surgeist_render::icc::IccPcsSpace, coordinates: [f64; 3], intent: surgeist_render::icc::IccRenderingIntent) -> surgeist_render::Result<Self>
+pub struct surgeist_render::icc::IccProfile<'a>
+impl<'a> surgeist_render::icc::IccProfile<'a>
+pub const fn surgeist_render::icc::IccProfile<'a>::class(self) -> surgeist_render::icc::IccProfileClass
+pub fn surgeist_render::icc::IccProfile<'a>::device_color(&self, channels: &[f64]) -> surgeist_render::Result<surgeist_render::icc::IccDeviceColor>
+pub const fn surgeist_render::icc::IccProfile<'a>::device_space(self) -> surgeist_render::icc::IccDeviceSpace
+pub fn surgeist_render::icc::IccProfile<'a>::from_pcs(&self, color: surgeist_render::icc::IccPcsColor, context: &mut surgeist_render::accounting::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::icc::IccDeviceColor>
+pub fn surgeist_render::icc::IccProfile<'a>::inspect(bytes: &'a [u8], context: &mut surgeist_render::accounting::RenderAccountingContext) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::icc::IccProfile<'a>::pcs_space(self) -> surgeist_render::icc::IccPcsSpace
+pub fn surgeist_render::icc::IccProfile<'a>::to_pcs(&self, intent: surgeist_render::icc::IccRenderingIntent, color: &surgeist_render::icc::IccDeviceColor, context: &mut surgeist_render::accounting::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::icc::IccPcsColor>
+impl core::fmt::Debug for surgeist_render::icc::IccProfile<'_>
+pub fn surgeist_render::icc::IccProfile<'_>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub mod surgeist_render::image
 pub enum surgeist_render::image::Extend
 pub surgeist_render::image::Extend::Pad
@@ -2764,6 +2819,7 @@ pub surgeist_render::ErrorCode::GeometryRealization
 pub surgeist_render::ErrorCode::GlyphPreparation
 pub surgeist_render::ErrorCode::GradientHint
 pub surgeist_render::ErrorCode::GradientRealization
+pub surgeist_render::ErrorCode::IccProfile
 pub surgeist_render::ErrorCode::ImageUploadFailed
 pub surgeist_render::ErrorCode::InvalidInput
 pub surgeist_render::ErrorCode::LeaderPattern
@@ -2798,6 +2854,7 @@ pub const fn surgeist_render::Error::geometry_realization_diagnostic(&self) -> c
 pub const fn surgeist_render::Error::glyph_preparation_diagnostic(&self) -> core::option::Option<&surgeist_render::text::GlyphPreparationError>
 pub const fn surgeist_render::Error::gradient_hint_diagnostic(&self) -> core::option::Option<&surgeist_render::paint::GradientHintError>
 pub const fn surgeist_render::Error::gradient_realization_diagnostic(&self) -> core::option::Option<&surgeist_render::paint::GradientRealizationError>
+pub const fn surgeist_render::Error::icc_profile_diagnostic(&self) -> core::option::Option<&surgeist_render::icc::IccProfileError>
 pub fn surgeist_render::Error::invalid_value(name: impl core::convert::Into<alloc::string::String>, value: impl core::fmt::Display, rule: &'static str) -> Self
 pub const fn surgeist_render::Error::invalid_value_diagnostic(&self) -> core::option::Option<&surgeist_render::diagnostic::InvalidValue>
 pub fn surgeist_render::Error::leader_pattern_diagnostic(&self) -> core::option::Option<&surgeist_render::text_layout::LeaderPatternError>
@@ -2822,6 +2879,8 @@ impl core::convert::From<surgeist_render::displacement::DisplacementPreparationE
 pub fn surgeist_render::Error::from(value: surgeist_render::displacement::DisplacementPreparationError) -> Self
 impl core::convert::From<surgeist_render::gaussian::GaussianPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::gaussian::GaussianPreparationError) -> Self
+impl core::convert::From<surgeist_render::icc::IccProfileError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::icc::IccProfileError) -> Self
 impl core::convert::From<surgeist_render::lighting::LightingPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::lighting::LightingPreparationError) -> Self
 impl core::convert::From<surgeist_render::morphology::MorphologyPreparationError> for surgeist_render::Error

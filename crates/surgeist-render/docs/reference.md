@@ -193,6 +193,34 @@ The caller supplies an accounting context and can reuse it after a refusal.
 
 [local-minde]: https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#css-gamut-mapping
 
+## Native ICC profile conversion
+
+`icc::IccProfile::inspect` checks caller-supplied immutable ICC v2 or v4 bytes
+for header and directory framing, common metadata, and an eligible Input,
+Display, Output, or ColorSpace class. The view exposes the device signature,
+channel count, and PCS. Each conversion qualifies the selected transform at
+the point of use. An Input profile can supply only a forward direction.
+
+`to_pcs` requests an explicit rendering intent and returns actual D50 XYZ or
+Lab values tagged with that intent. `from_pcs` uses the incoming PCS value's
+intent to select the reverse transform. Checked device colors retain the profile
+encoding's channel order. Native float operations accept signed and extended
+coordinates within the supported finite ICC range. A returned device color
+contains that profile's output coordinates in device scale.
+
+The native operation executes v4 `D2B0` through `D2B3` and `B2D0` through
+`B2D3` for their matching intents. Absent or unsupported routes return
+`IccProfileError::UnsupportedTransform`. Malformed profile data and numerical
+output failures have separate typed diagnostics. Runtime owns resource
+retrieval, and document bindings supply the resolved bytes and intent.
+[ICC.1:2022, §§6.3.4, 8.10 and 10.16](https://www.color.org/specifications/ICC.1-2022-05.pdf#page=45)
+
+Native inspection and conversion use the `IccProfile` accounting attempt.
+The `IccProfilePrepare` and `IccProfileConvert` phases measure tag reads,
+numeric work, and conversion time. Scratch custody closes before the
+operation returns the fixed-size numerical result. The profile bytes stay
+borrowed from the caller throughout the attempt.
+
 ## Gradient paints
 
 `Gradient` supplies ordinary linear, positive elliptical radial, horizontal-distance

@@ -34,6 +34,7 @@ fn phrase(code: ErrorCode) -> &'static str {
         ErrorCode::ReadbackFailed => "readback failed",
         ErrorCode::PresentFailed => "presented output failed",
         ErrorCode::UnsupportedBackend => "unsupported backend",
+        ErrorCode::IccProfile => "icc profile refused",
     }
 }
 
@@ -66,6 +67,7 @@ const CODES: &[ErrorCode] = &[
     ErrorCode::ReadbackFailed,
     ErrorCode::PresentFailed,
     ErrorCode::UnsupportedBackend,
+    ErrorCode::IccProfile,
 ];
 
 #[test]

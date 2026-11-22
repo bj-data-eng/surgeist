@@ -12,6 +12,7 @@ use crate::{Error, Result};
 
 mod lut;
 mod mpe;
+pub(crate) mod native;
 
 pub(crate) enum Selection {
     Invalid,
@@ -100,8 +101,7 @@ type ProfileResult<T> = std::result::Result<T, ProfileError>;
 
 fn prepare_transform(bytes: AccountedVec<u8>, account: &Account) -> ProfileResult<Transform> {
     let header = Header::read(&bytes, account)?;
-    let contiguous = matches!(header.version, [4, 0x40..=0x49, 0, 0]);
-    let table = read_tag_table(&bytes, contiguous, account)?;
+    let table = read_tag_table(&bytes, header.contiguous_tags(), account)?;
     let version = header.version[0];
     if !matches!(version, 2 | 4) {
         return Err(ProfileError::Unsupported);
@@ -113,21 +113,7 @@ fn prepare_transform(bytes: AccountedVec<u8>, account: &Account) -> ProfileResul
         return Err(ProfileError::Unsupported);
     }
 
-    // These entries are required for both RGB source models. Relative PCS
-    // matrix columns already include chromatic adaptation and scaling.
-    required_tag(&table, b"desc", account)?;
-    required_tag(&table, b"cprt", account)?;
-    let white = xyz_tag(&table, &bytes, b"wtpt", account)?;
-    for component in white {
-        if account.coordinate(|| component <= 0.0)? {
-            return Err(ProfileError::Invalid);
-        }
-    }
-
-    // ICC v4 captures the monitor's white in chromatically adapted PCS.
-    if version == 4 && &header.class == b"mntr" && !is_d50(white, account)? {
-        return Err(ProfileError::Invalid);
-    }
+    media_white(&header, &table, &bytes, account)?;
 
     // ICC.1:2022 §8.10.2 selects a supported DToB1 for this intent first.
     // Unsupported operations leave the original bytes for the AToB or matrix
@@ -156,6 +142,27 @@ fn prepare_transform(bytes: AccountedVec<u8>, account: &Account) -> ProfileResul
     Ok(Transform::Matrix(prepare_matrix(
         &table, bytes, version, account,
     )?))
+}
+
+fn media_white(
+    header: &Header,
+    table: &[Tag],
+    bytes: &[u8],
+    account: &Account,
+) -> ProfileResult<[f64; 3]> {
+    required_tag(table, b"desc", account)?;
+    required_tag(table, b"cprt", account)?;
+    let white = xyz_tag(table, bytes, b"wtpt", account)?;
+    for component in white {
+        if account.coordinate(|| component <= 0.0)? {
+            return Err(ProfileError::Invalid);
+        }
+    }
+    // A v4 monitor declares the chromatically adapted PCS white.
+    if header.version[0] == 4 && &header.class == b"mntr" && !is_d50(white, account)? {
+        return Err(ProfileError::Invalid);
+    }
+    Ok(white)
 }
 
 fn prepare_matrix(
@@ -216,6 +223,7 @@ fn xyz_tag(
     Ok(components)
 }
 
+#[derive(Clone, Copy)]
 struct Header {
     version: [u8; 4],
     class: [u8; 4],
@@ -224,6 +232,10 @@ struct Header {
 }
 
 impl Header {
+    fn contiguous_tags(self) -> bool {
+        matches!(self.version, [4, 0x40..=0x49, 0, 0])
+    }
+
     fn read(bytes: &[u8], account: &Account) -> ProfileResult<Self> {
         let header = bytes.get(..128).ok_or(ProfileError::Invalid)?;
         let size = account.coordinate(|| u32_at(header, 0))??;
@@ -282,21 +294,20 @@ fn is_d50(components: [f64; 3], account: &Account) -> Result<bool> {
 }
 
 fn is_color_space(signature: &[u8; 4]) -> bool {
-    matches!(
-        signature,
-        b"XYZ "
-            | b"Lab "
-            | b"Luv "
-            | b"YCbr"
-            | b"Yxy "
-            | b"RGB "
-            | b"GRAY"
-            | b"HSV "
-            | b"HLS "
-            | b"CMYK"
-            | b"CMY "
-            | [b'2'..=b'9' | b'A'..=b'F', b'C', b'L', b'R']
-    )
+    device_channel_count(signature).is_some()
+}
+
+fn device_channel_count(signature: &[u8; 4]) -> Option<u8> {
+    match signature {
+        b"GRAY" => Some(1),
+        b"XYZ " | b"Lab " | b"Luv " | b"YCbr" | b"Yxy " | b"RGB " | b"HSV " | b"HLS " | b"CMY " => {
+            Some(3)
+        }
+        b"CMYK" => Some(4),
+        [digit @ b'2'..=b'9', b'C', b'L', b'R'] => Some(digit - b'0'),
+        [digit @ b'A'..=b'F', b'C', b'L', b'R'] => Some(digit - b'A' + 10),
+        _ => None,
+    }
 }
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
