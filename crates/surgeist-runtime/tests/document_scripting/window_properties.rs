@@ -12,7 +12,7 @@ pub(super) fn named_window_elements_follow_the_live_document() {
         attach_event_window_with_work(session, top, Arc::new(cancel()), 160_000, |_, _, _| {});
     let permit = host.permit().unwrap();
     let named_key = DocumentString::from_utf16([0x57, 0xd800, 0, 0xdc00]);
-    let element = host
+    let (element, second_duplicate) = host
         .with_native(|dom, _, _| {
             let snapshot = dom.snapshot();
             let html = snapshot.node(document.node()).unwrap().children()[0];
@@ -20,12 +20,21 @@ pub(super) fn named_window_elements_follow_the_live_document() {
             let mut batch = DomBatch::new();
             let element = batch.create_element_ns(document, Namespace::html(), "div");
             let shadowed = batch.create_element_ns(document, Namespace::html(), "div");
+            let first_duplicate = batch.create_element_ns(document, Namespace::html(), "span");
+            let second_duplicate = batch.create_element_ns(document, Namespace::html(), "span");
             batch.set_attribute(&element, "id", named_key.clone());
             batch.set_attribute(&shadowed, "id", "addEventListener");
+            batch.set_attribute(&first_duplicate, "id", "windowCollection");
+            batch.set_attribute(&second_duplicate, "id", "windowCollection");
             batch.insert_before(&element, body, None);
             batch.insert_before(&shadowed, body, None);
+            batch.insert_before(&first_duplicate, body, None);
+            batch.insert_before(&second_duplicate, body, None);
             let commit = dom.apply(batch, &cancel()).unwrap();
-            commit.created(&element).unwrap().unwrap()
+            (
+                commit.created(&element).unwrap().unwrap(),
+                commit.created(&second_duplicate).unwrap().unwrap(),
+            )
         })
         .unwrap();
 
@@ -37,6 +46,19 @@ pub(super) fn named_window_elements_follow_the_live_document() {
             const node = document.getElementById(key);
             if (node === null) return "fixture must contain the native element";
             if (window[key] !== node) return "Window must expose the exact live named element";
+            let assignedReceiver;
+            Object.defineProperty(window, 'windowAccessorReceiver', {
+                get() { return this; },
+                set(value) { assignedReceiver = [this, value]; },
+                configurable: true
+            });
+            function readReceiver() { return windowAccessorReceiver; }
+            if (readReceiver() !== window || readReceiver() !== window) return "global getter exposed the inner Window";
+            windowAccessorReceiver = node;
+            if (assignedReceiver?.[0] !== window || assignedReceiver?.[1] !== node) {
+                return "global setter exposed the inner Window";
+            }
+            Reflect.deleteProperty(window, 'windowAccessorReceiver');
             const names = Object.getPrototypeOf(Window.prototype);
             const descriptor = Object.getOwnPropertyDescriptor(names, key);
             if (descriptor?.value !== node || !descriptor.writable || descriptor.enumerable
@@ -52,6 +74,11 @@ pub(super) fn named_window_elements_follow_the_live_document() {
             if (!Reflect.set(window, key, marker) || window[key] !== marker
                 || !Object.hasOwn(window, key) || !Reflect.deleteProperty(window, key)
                 || window[key] !== node) return "an ordinary Window own property must shadow the name";
+            const collection = window.windowCollection;
+            if (!(collection instanceof HTMLCollection) || collection.length !== 2
+                || collection[0] !== document.getElementById('windowCollection')
+                || collection[0] === collection[1]) return "incorrect collection projection";
+            globalThis.originalWindowCollection = collection;
             globalThis.originalNamedElement = node;
             return "ok";
         })()"#,
@@ -61,6 +88,7 @@ pub(super) fn named_window_elements_follow_the_live_document() {
     host.with_native(|dom, _, _| {
         let mut batch = DomBatch::new();
         batch.set_attribute(element, "id", "renamedWindowElement");
+        batch.detach(second_duplicate);
         dom.apply(batch, &cancel()).unwrap();
     })
     .unwrap();
@@ -68,7 +96,10 @@ pub(super) fn named_window_elements_follow_the_live_document() {
         &mut host,
         &permit,
         r#"(() => window['W\uD800\u0000\uDC00'] === undefined
-            && window.renamedWindowElement === originalNamedElement ? 'ok' : 'stale Window name')()"#,
+            && window.renamedWindowElement === originalNamedElement
+            && originalWindowCollection.length === 1
+            && window.windowCollection === originalWindowCollection[0]
+            ? 'ok' : 'stale Window name or collection')()"#,
     );
     assert_eq!(renamed, "ok");
 }
@@ -123,6 +154,8 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
                 || first !== window.firstNativeChild || second !== window.secondNativeChild) {
                 return "indices and names must share stable child WindowProxy identities";
             }
+            if (first.window !== first || first.self !== first || first.parent !== window
+                || first.closed !== false) return "child proxy must expose its live Window relations";
             const descriptor = Reflect.getOwnPropertyDescriptor(window, '0');
             if (descriptor?.value !== first || descriptor.writable || !descriptor.enumerable
                 || !descriptor.configurable || Reflect.ownKeys(window).slice(0, 2).join(',') !== '0,1') {
@@ -136,6 +169,7 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
             }
             globalThis.originalFirstChild = first;
             globalThis.originalSecondChild = second;
+            globalThis.originalFirstPrototype = Object.getPrototypeOf(first);
             return "ok";
         })()"#,
     );
@@ -156,6 +190,8 @@ pub(super) fn indexed_window_children_follow_the_live_browsing_contexts() {
         r#"(() => window.length === 1 && window[0] === originalSecondChild
             && window[0] !== originalFirstChild && window[1] === undefined
             && window.firstNativeChild === undefined && window.secondNativeChild === originalSecondChild
+            && originalFirstChild.closed === true && originalSecondChild.closed === false
+            && Object.getPrototypeOf(originalFirstChild) === originalFirstPrototype
             ? 'ok' : 'stale or replaced WindowProxy after child removal')()"#,
     );
     assert_eq!(retired, "ok");
