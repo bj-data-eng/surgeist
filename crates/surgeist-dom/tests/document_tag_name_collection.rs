@@ -14,6 +14,7 @@ use surgeist_dom::{
 use surgeist_html::{
     construction::HtmlShadowRootMode,
     values::{DocumentString, Namespace, TextBlock},
+    vocabulary::HtmlDocumentCollection,
 };
 
 const COLLECTION: DomHtmlCollectionLimits = DomHtmlCollectionLimits::new(200_000, 32, 8192);
@@ -266,6 +267,64 @@ fn all_collection_uses_html_name_eligibility_and_retains_the_full_live_query() {
     );
     assert_eq!(read(&dom, &retained, &cancel).length().unwrap(), 1);
     assert_eq!(read(&dom, &retained, &cancel).item(0).unwrap(), Some(frame));
+}
+
+#[test]
+fn document_collection_filters_track_present_attributes_and_current_identity() {
+    let foreign_owner = dom();
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let root = batch.create_element(&document, "root");
+    let anchor = batch.create_element_ns(&document, Namespace::html(), "p:a");
+    let area = batch.create_element_ns(&document, Namespace::html(), "area");
+    let foreign = batch.create_element_ns(&document, Namespace::svg(), "a");
+    batch.set_attribute(&anchor, "name", "");
+    batch.set_attribute(&area, "name", "");
+    batch.set_attribute(&foreign, "name", "");
+    batch.insert_before(&root, &document, None);
+    for child in [&anchor, &area, &foreign] {
+        batch.insert_before(child, &root, None);
+    }
+    let created = dom.apply(batch, &cancel).unwrap();
+    let document = created.document(&document).unwrap();
+    let root = created.created(&root).unwrap().unwrap();
+    let anchor = created.created(&anchor).unwrap().unwrap();
+    let links = dom
+        .document_html_collection(document, HtmlDocumentCollection::Links, &cancel)
+        .unwrap();
+    let anchors = dom
+        .document_html_collection(document, HtmlDocumentCollection::Anchors, &cancel)
+        .unwrap();
+    let applets = dom
+        .document_html_collection(document, HtmlDocumentCollection::Applets, &cancel)
+        .unwrap();
+    assert_eq!(read(&dom, &links, &cancel).length().unwrap(), 0);
+    assert_eq!(read(&dom, &anchors, &cancel).length().unwrap(), 1);
+    assert_eq!(read(&dom, &anchors, &cancel).item(0).unwrap(), Some(anchor));
+    {
+        let empty = read(&dom, &applets, &cancel);
+        assert_eq!(empty.length().unwrap(), 0);
+        cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(empty.length(), Err(DomError::Cancelled));
+        cancel.store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    let mut edit = DomBatch::new();
+    edit.remove_attribute(anchor, "name");
+    dom.apply(edit, &cancel).unwrap();
+    assert_eq!(read(&dom, &anchors, &cancel).length().unwrap(), 0);
+    let mut edit = DomBatch::new();
+    edit.set_attribute(anchor, "name", "");
+    edit.detach(root);
+    dom.apply(edit, &cancel).unwrap();
+    assert_eq!(read(&dom, &links, &cancel).length().unwrap(), 0);
+    assert_eq!(read(&dom, &anchors, &cancel).length().unwrap(), 0);
+    assert!(matches!(
+        foreign_owner.read_html_collection(&links, COLLECTION, || Ok::<_, DomError>(()), &cancel),
+        Err(DomError::ForeignOwner)
+    ));
 }
 
 #[test]

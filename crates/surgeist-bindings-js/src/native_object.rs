@@ -143,6 +143,14 @@ impl Drop for AbortProjection<'_, '_> {
 }
 
 impl<'scope> Scope<'scope> {
+    /// The retained backing to admit for one private native reference slot.
+    ///
+    /// The caller must keep the admitted backing alive while the slot exists.
+    /// This reports the backend's record size, excluding allocator overhead.
+    pub fn native_reference_storage_bytes(&self) -> usize {
+        self.operations.native_reference_storage_bytes()
+    }
+
     pub(crate) fn native_projection_bytes<T, Storage>(&self) -> Result<usize, Error> {
         self.operations
             .native_object_storage_bytes()
@@ -156,7 +164,6 @@ impl<'scope> Scope<'scope> {
         count: usize,
     ) -> Result<usize, Error> {
         let references = self
-            .operations
             .native_reference_storage_bytes()
             .checked_mul(count)
             .ok_or(Error::Allocation)?;
@@ -608,7 +615,8 @@ impl<'scope> Scope<'scope> {
 
     /// Set or clear a private engine-traced object reference. A slot does not
     /// root the receiver or its reference outside the guest heap. Native
-    /// consumers own slot assignment and admission; guest property changes,
+    /// consumers own slot assignment and [admission](Self::native_reference_storage_bytes).
+    /// Guest property changes,
     /// including freezing the receiver, do not change private slots.
     pub fn set_native_object_reference<T: 'static>(
         &mut self,

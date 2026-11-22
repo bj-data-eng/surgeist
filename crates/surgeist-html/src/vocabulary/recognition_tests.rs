@@ -68,3 +68,42 @@ near_miss_tests!(
 );
 near_miss_tests!(mathml_element_near_misses_are_rejected, KnownMathmlElement);
 near_miss_tests!(svg_element_near_misses_are_rejected, KnownSvgElement);
+#[test]
+fn document_collection_membership_uses_exact_element_and_attribute_spelling() {
+    use super::{HtmlDocumentCollection as Filter, HtmlDocumentCollectionMatch as Match};
+
+    for (filter, name, expected) in [
+        (Filter::Images, "img", Match::Included),
+        (Filter::Images, "IMG", Match::Excluded),
+        (Filter::Embeds, "embed", Match::Included),
+        (Filter::Embeds, "object", Match::Excluded),
+        (
+            Filter::Links,
+            "a",
+            Match::AttributePresent(&[104, 114, 101, 102]),
+        ),
+        (
+            Filter::Links,
+            "area",
+            Match::AttributePresent(&[104, 114, 101, 102]),
+        ),
+        (Filter::Links, "link", Match::Excluded),
+        (Filter::Forms, "form", Match::Included),
+        (Filter::Scripts, "script", Match::Included),
+        (
+            Filter::Anchors,
+            "a",
+            Match::AttributePresent(&[110, 97, 109, 101]),
+        ),
+        (Filter::Anchors, "area", Match::Excluded),
+        (Filter::Applets, "applet", Match::Excluded),
+        (Filter::Applets, "object", Match::Excluded),
+    ] {
+        let units: Vec<u16> = name.encode_utf16().collect();
+        assert_eq!(
+            filter.match_local_name(&units),
+            expected,
+            "{filter:?} {name}"
+        );
+    }
+}

@@ -209,13 +209,14 @@ impl MapProjection {
         let read = scope.open_callback_object(&self.read)?;
         let keys = scope.open_callback_object(&self.keys)?;
         let named_getter = scope.open_callback_object(&self.named_getter)?;
+        let admit = cached_projection_admission(scope, owner, events, 2)?;
         let map = scope.project_native_object_with_collection_properties(
             ObjectPrototype::Object(prototype),
             Map { element },
             &read,
             &keys,
             &named_getter,
-            |bytes| events.reserve(owner, bytes),
+            admit,
         )?;
         scope.set_native_object_reference::<Map>(&map, ELEMENT_REFERENCE, Some(receiver))?;
         scope.set_native_object_reference::<GuestNodeProjection>(

@@ -16747,79 +16747,67 @@
       "requirements": []
     },
     "Document.html.images/get": {
-      "kind": "derived",
-      "algorithm": "document.html.images.get",
-      "owner": "surgeist-html-semantics",
-      "contract": "Return the SameObject live Document collection selecting HTML img descendants in ordinary tree order, preserving the actual XML/HTML namespace and content-attribute predicates.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-images",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"}
+      "kind": "native",
+      "adapter": "document.images.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/tag_collection.rs", "symbol": "document_element_collection"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "document_html_collection"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/vocabulary.rs", "symbol": "match_local_name"}
       ],
       "requirements": [],
       "result_view": "live"
     },
     "Document.html.embeds/get": {
-      "kind": "derived",
-      "algorithm": "document.html.embeds.get",
-      "owner": "surgeist-html-semantics",
-      "contract": "Return the SameObject live Document collection selecting HTML embed descendants in ordinary tree order, preserving the actual XML/HTML namespace and content-attribute predicates.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-embeds",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"}
+      "kind": "native",
+      "adapter": "document.embeds.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/tag_collection.rs", "symbol": "document_element_collection"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "document_html_collection"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/vocabulary.rs", "symbol": "match_local_name"}
       ],
       "requirements": [],
       "result_view": "live"
     },
     "Document.html.plugins/get": {
-      "kind": "derived",
-      "algorithm": "document.html.plugins.get",
-      "owner": "surgeist-html-semantics",
-      "contract": "Return the SameObject live Document collection selecting the same live collection returned for embeds in ordinary tree order, preserving the actual XML/HTML namespace and content-attribute predicates.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-plugins",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"}
+      "kind": "native",
+      "adapter": "document.plugins.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/tag_collection.rs", "symbol": "document_element_collection"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "document_html_collection"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/vocabulary.rs", "symbol": "match_local_name"}
       ],
       "requirements": [],
       "result_view": "live"
     },
     "Document.html.links/get": {
-      "kind": "derived",
-      "algorithm": "document.html.links.get",
-      "owner": "surgeist-html-semantics",
-      "contract": "Return the SameObject live Document collection selecting HTML a/area descendants with an href attribute in ordinary tree order, preserving the actual XML/HTML namespace and content-attribute predicates.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-links",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"}
+      "kind": "native",
+      "adapter": "document.links.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/tag_collection.rs", "symbol": "document_element_collection"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "document_html_collection"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/vocabulary.rs", "symbol": "match_local_name"}
       ],
       "requirements": [],
       "result_view": "live"
     },
     "Document.html.forms/get": {
-      "kind": "derived",
-      "algorithm": "document.html.forms.get",
-      "owner": "surgeist-html-semantics",
-      "contract": "Return the SameObject live Document collection selecting HTML form descendants in ordinary tree order, preserving the actual XML/HTML namespace and content-attribute predicates.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-forms",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"}
+      "kind": "native",
+      "adapter": "document.forms.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/tag_collection.rs", "symbol": "document_element_collection"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "document_html_collection"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/vocabulary.rs", "symbol": "match_local_name"}
       ],
       "requirements": [],
       "result_view": "live"
     },
     "Document.html.scripts/get": {
-      "kind": "derived",
-      "algorithm": "document.html.scripts.get",
-      "owner": "surgeist-html-semantics",
-      "contract": "Return the SameObject live Document collection selecting HTML script descendants in ordinary tree order, preserving the actual XML/HTML namespace and content-attribute predicates.",
-      "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-scripts",
-      "inputs": [
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "tree_order"},
-        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/snapshot.rs", "symbol": "attribute"}
+      "kind": "native",
+      "adapter": "document.scripts.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/tag_collection.rs", "symbol": "document_element_collection"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "document_html_collection"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/vocabulary.rs", "symbol": "match_local_name"}
       ],
       "requirements": [],
       "result_view": "live"
@@ -26392,26 +26380,24 @@
     "Document.obsolete.anchors/get": {
       "kind": "native",
       "adapter": "document.anchors.get",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "An admitted same-object live HTMLCollection with the source-selected Document filter and canonical identity is required.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-anchors"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/tag_collection.rs", "symbol": "document_element_collection"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "document_html_collection"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/vocabulary.rs", "symbol": "match_local_name"}
+      ],
+      "requirements": [],
+      "result_view": "live"
     },
     "Document.obsolete.applets/get": {
       "kind": "native",
       "adapter": "document.applets.get",
-      "producers": [],
-      "requirements": [
-        {
-          "owner": "surgeist-runtime",
-          "contract": "An admitted same-object live HTMLCollection with the source-selected Document filter and canonical identity is required.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-applets"
-        }
-      ]
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/tag_collection.rs", "symbol": "document_element_collection"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "document_html_collection"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/vocabulary.rs", "symbol": "match_local_name"}
+      ],
+      "requirements": [],
+      "result_view": "live"
     },
     "Document.obsolete.all/get": {
       "kind": "native",

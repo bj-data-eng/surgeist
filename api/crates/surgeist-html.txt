@@ -7041,6 +7041,20 @@ pub surgeist_html::vocabulary::ElementNamespace::Html
 pub surgeist_html::vocabulary::ElementNamespace::MathMl
 pub surgeist_html::vocabulary::ElementNamespace::Other
 pub surgeist_html::vocabulary::ElementNamespace::Svg
+pub enum surgeist_html::vocabulary::HtmlDocumentCollection
+pub surgeist_html::vocabulary::HtmlDocumentCollection::Anchors
+pub surgeist_html::vocabulary::HtmlDocumentCollection::Applets
+pub surgeist_html::vocabulary::HtmlDocumentCollection::Embeds
+pub surgeist_html::vocabulary::HtmlDocumentCollection::Forms
+pub surgeist_html::vocabulary::HtmlDocumentCollection::Images
+pub surgeist_html::vocabulary::HtmlDocumentCollection::Links
+pub surgeist_html::vocabulary::HtmlDocumentCollection::Scripts
+impl surgeist_html::vocabulary::HtmlDocumentCollection
+pub const fn surgeist_html::vocabulary::HtmlDocumentCollection::match_local_name(self, units: &[u16]) -> surgeist_html::vocabulary::HtmlDocumentCollectionMatch
+pub enum surgeist_html::vocabulary::HtmlDocumentCollectionMatch
+pub surgeist_html::vocabulary::HtmlDocumentCollectionMatch::AttributePresent(&'static [u16])
+pub surgeist_html::vocabulary::HtmlDocumentCollectionMatch::Excluded
+pub surgeist_html::vocabulary::HtmlDocumentCollectionMatch::Included
 pub enum surgeist_html::vocabulary::HtmlEventHandlerApplicability
 pub surgeist_html::vocabulary::HtmlEventHandlerApplicability::AllHtmlElements
 pub surgeist_html::vocabulary::HtmlEventHandlerApplicability::BodyElement
