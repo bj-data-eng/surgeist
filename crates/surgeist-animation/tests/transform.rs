@@ -59,10 +59,9 @@ fn make_pair(from: ResolvedTransformList, to: ResolvedTransformList) -> Interpol
     .unwrap()
 }
 fn sampled(pair: &InterpolationPair, progress: f64) -> ResolvedTransformList {
-    let InterpolationOutcome::Value(InterpolableValue::Transform(value)) =
-        pair.sample(InterpolationProgress::new(progress).unwrap())
-    else {
-        panic!("expected resolved transform at {progress}");
+    let outcome = pair.sample(InterpolationProgress::new(progress).unwrap());
+    let InterpolationOutcome::Value(InterpolableValue::Transform(value)) = outcome else {
+        panic!("expected resolved transform at {progress}, got {outcome:?}");
     };
     value.resolved_list().unwrap().clone()
 }
@@ -302,6 +301,99 @@ fn singular_endpoint_falls_back_for_the_whole_value_and_switches_at_half() {
     let pair = make_pair(from.clone(), to.clone());
     assert_eq!(sampled(&pair, 0.499), from);
     assert_eq!(sampled(&pair, 0.5), to);
+}
+
+#[test]
+fn later_singular_matrix_selects_whole_value_before_prefix_arithmetic() {
+    let from = list(vec![
+        matrix([f64::MAX, f64::MAX, 0., 1., 0., 0.]),
+        matrix([0., 0., 0., 1., 0., 0.]),
+    ]);
+    let to = list(vec![
+        matrix([1., 0., 0., 1., 0., 0.]),
+        matrix([1., 0., 0., 1., 10., 20.]),
+    ]);
+    let pair = make_pair(from.clone(), to.clone());
+    assert_eq!(sampled(&pair, 0.25), from);
+    assert_eq!(sampled(&pair, 0.75), to);
+}
+
+#[test]
+fn singular_matrix_fallback_precedes_overflowing_matched_rotation() {
+    let from = list(vec![
+        TransformFunction::Rotate(TransformAngle::from_radians(-f64::MAX).unwrap()),
+        matrix([0., 0., 0., 1., 0., 0.]),
+    ]);
+    let to = list(vec![
+        TransformFunction::Rotate(TransformAngle::from_radians(f64::MAX).unwrap()),
+        matrix([1., 0., 0., 1., 10., 20.]),
+    ]);
+    let pair = make_pair(from.clone(), to.clone());
+    assert_eq!(sampled(&pair, 0.25), from);
+    assert_eq!(sampled(&pair, 0.75), to);
+}
+
+#[test]
+fn matching_matrix_pairs_keep_following_function_interpolation() {
+    let pair = make_pair(
+        list(vec![
+            matrix([1., 0., 0., 1., 10., 20.]),
+            TransformFunction::Rotate(deg(0.)),
+        ]),
+        list(vec![
+            matrix([1., 0., 0., 1., 30., 40.]),
+            TransformFunction::Rotate(deg(720.)),
+        ]),
+    );
+    let result = sampled(&pair, 0.5);
+    assert_eq!(
+        result.functions(),
+        &[
+            matrix([1., 0., 0., 1., 20., 30.]),
+            TransformFunction::Rotate(deg(360.))
+        ]
+    );
+}
+
+#[test]
+fn exact_half_turn_matrix_rotation_tie_preserves_the_pinned_direction() {
+    let pair = make_pair(
+        list(vec![matrix([0., 1., -1., 0., 0., 0.])]),
+        list(vec![matrix([0., -1., 1., 0., 0., 0.])]),
+    );
+    assert_matrix(&sampled(&pair, 0.5), [1., 0., 0., 1., 0., 0.]);
+}
+
+#[test]
+fn every_2d_function_accepts_matching_identity_padding_in_both_directions() {
+    for function in [
+        matrix([2., 0., 0., 3., 10., 20.]),
+        TransformFunction::Translate {
+            x: px(10.),
+            y: None,
+        },
+        TransformFunction::TranslateX(px(10.)),
+        TransformFunction::TranslateY(px(10.)),
+        TransformFunction::Scale {
+            x: scale(2.),
+            y: None,
+        },
+        TransformFunction::ScaleX(scale(2.)),
+        TransformFunction::ScaleY(scale(2.)),
+        TransformFunction::Rotate(deg(30.)),
+        TransformFunction::Skew {
+            x: deg(30.),
+            y: None,
+        },
+        TransformFunction::SkewX(deg(30.)),
+        TransformFunction::SkewY(deg(30.)),
+    ] {
+        let left = sampled(&make_pair(list(vec![]), list(vec![function])), 0.5);
+        let right = sampled(&make_pair(list(vec![function]), list(vec![])), 0.5);
+        assert_eq!(left, right);
+        assert_eq!(left.functions().len(), 1);
+        assert!(left.to_matrix().is_ok());
+    }
 }
 
 #[test]
