@@ -73,59 +73,126 @@ overflowing division or subtraction intermediates. Unrepresentable results retur
 and decreasing document reports have separate typed categories. These errors are
 distinct from a normal unresolved result. Arithmetic uses floating-point rounding.
 
-## Playback ownership and coordinate observation
+## Playback ownership and native controls
 
 `playback::AnimationRecords` owns one animation creation-order universe across
-the caller's documents. Creating a record sets unresolved start and hold times,
-rate one and optional timeline/effect associations. The records boundary exposes
-idle association changes and retirement, with no controls that change playback
-time. Association changes therefore have no pending readiness or finished work
-to process in any state constructible through this API.
+its caller's documents. Creation sets unresolved start and hold times, rate one,
+a resolved ready completion and a distinct pending finished completion. Opaque
+animation/effect handles reject foreign and retired registrations, and removed
+slots are never reused. Creation order stays fixed across transfers and timeline
+changes. There is no process-global static registry.
 
-Opaque `AnimationId` and `EffectId` handles retain their owner identity. Foreign
-handles and retired registrations return separate typed errors; removed slots
-are never reused. Creation order remains stable across transfers, timeline
-reassignment and other records' retirement. `animations()` enumerates live
-records in creation order. There is no process-global static registry: consumers
-share the owner for their global animation list.
+`PlaybackContext` captures a single supplied snapshot per timeline identity.
+Duplicate identities are rejected. Commands require facts for each affected
+association, including an effect's displaced owner. Missing required facts are
+errors; an explicitly inactive timeline is valid. An identical association is a
+no-op before fetching new facts. All fallible work happens on affected candidate
+records before the owner graph and returned requests commit together.
 
-`register_effect` accepts validated `EffectFacts`, either derived from
-`EffectTiming` or constructed with a nonnegative finite/infinite end time.
-`create` and `assign_effect` enforce at most one animation per effect. Assigning
-an already-owned effect detaches its previous animation, and identical assignment
-is a no-op. Invalid requests and exhausted identity/capacity checks preserve the
-existing ownership graph. Retirement releases registration ownership; an effect
-must be detached before its registration can be retired. This is not `cancel()`
-and does not destroy host objects or dispatch lifecycle events.
+`register_effect` accepts validated `EffectFacts` derived from `EffectTiming` or
+constructed with a nonnegative finite/infinite end time. `create` and
+`apply(AssignEffect)` enforce at most one owner per effect. Transfer detaches the
+previous owner and updates its pending readiness and finished state.
+`update_effect` supplies changed timing/setup facts, advances their checked
+revision, reschedules affected readiness and updates finished state. Its revision
+changes even when end time is equal, since effect setup may have changed.
 
-`snapshot(animation, timeline)` checks supplied timeline identity against the
-record's association. Missing required facts, a mismatched timeline and an
-unexpected timeline on a detached record are errors. A supplied inactive
-timeline is valid and yields unresolved current time. Snapshots own their
-captured associations and effect facts, which remain unchanged through later
-reassignment or retirement.
+`create(timeline, effect, context)` returns `CreatedAnimation`: its animation
+identity plus the initial completion registrations and any displaced-owner
+requests. `apply(animation, command, context)` is the canonical mutating front
+door and returns `Vec<PlaybackRequest>` in source order:
 
-`PlaybackCoordinates` is a separate immutable value combining the existing
-`AnimationSnapshot` and optional held animation time. Current time uses hold
-first, including when both start and hold are resolved. Otherwise the existing
-checked timeline-to-animation conversion supplies current time. Missing/inactive
-timeline or unresolved start yields unresolved; arithmetic limits remain typed
-errors. This observes supplied state without performing seek, clamping or a
-playback state transition.
+| Command | Behavior |
+| --- | --- |
+| `Seek`, `SetStartTime` | Apply the complete seek/start-time procedures, pending rate application, synchronous pause completion and finished-state update. Unresolved seek is rejected with native TypeError when current time is resolved. |
+| `Play`, `Pause` | Select source rewind/hold/start behavior and schedule deferred readiness. Pending task replacement retains the pending ready completion identity. |
+| `SetPlaybackRate` | Change committed rate synchronously, preserving current time on monotonic timelines and applying the source finite-timeline sign-flip rule. |
+| `UpdatePlaybackRate`, `Reverse` | Stage seamless changes, synchronize through pending readiness, or use the finished/idle branches. Reverse requires an active timeline and failures preserve the original staged rate. |
+| `Tick` | Update finished state from the supplied frame, using unconstrained time so nonmonotonic timelines can leave finished. |
+| `Finish` | Seek to the direction's limit, perform applicable ready settlement and synchronously request finished settlement/event queueing. Zero effective rate and positive infinite end are InvalidStateError cases. |
+| `Cancel` | Clear current time, retain effect association, reset pending tasks and return ready/finished abort and replacement outcomes plus a cancel event. Initial idle cancellation produces no notification. |
+| `AssignTimeline`, `AssignEffect` | Apply association changes, reschedule affected readiness and update finished state. |
 
-`observe` derives the no-pending-task play-state predicates in source order and
-produces a read-only `PlaybackObservation`. Paused takes precedence over
-finished; zero rate does not imply paused. The observation builds a coherent
-`EffectTimingInput` for an associated effect, or an unassociated input when there
-is no effect. Callers cannot independently overwrite its play state and current
-time. See the [coordinate example](../src/playback.rs).
+The source current-time calculation gives hold time precedence over start time,
+including when both are resolved. Start assignment captures previous current
+time after its inactive-timeline hold adjustment but before applying staged rate.
+Normal playback clamps at the direction's boundary; an explicit seek preserves
+overshoot as hold time. Paused precedes finished, and zero rate alone does not
+imply paused. Registry snapshots derive their full observations from pending
+state and effective rate, with no independently editable observation flags.
 
-Full playback control remains outside this boundary: pending play/pause and
-readiness generations, current/start-time setters with their pending/finished
-effects, seamless rate changes and reverse; then finished-state updates,
-completion identities, finish/cancel and ordered deferred/event requests.
-Runtime retains actual scheduling, coherent publication, event dispatch and
-document-facing API projection.
+### Deferred requests and completion identity
+
+`ScheduleReadiness` always means asynchronous execution, even if the effect is
+immediately ready. Runtime owns the actual processing point. Capture the
+`ReadinessToken` and return it to `complete_ready` with a `ReadinessInput` carrying
+the active timeline timestamp when setup/suspension became ready. This timestamp
+can precede the dispatch context timestamp. Readiness rejects stale generations,
+foreign owners, mismatched identities, unfinished setup and contradictory
+monotonic time/capability reports without consuming the token. Effect/timeline
+changes invalidate old readiness generations while preserving the current
+pending ready completion. Completing readiness resolves ready before invoking
+its finished-state update.
+
+The selected Level 1 play steps 9–10 cancel pending work before their redundant
+play return. On a nonmonotonic timeline with resolved start and unresolved
+hold/seek, repeating play can therefore leave the reused ready completion
+pending with no pending task. The ordinary public-call witness is retained in
+[the controls tests](../tests/playback_controls.rs). The pinned
+[WebKit witness](../../../references/style-animation-host-determinations-webkit-native-animation-host--73aa6c89e2cb.md)
+adds a Level 2 pending-auto-aligned-start readiness condition with an explicit
+FIXME. That separate producer/source behavior is not imported here.
+
+Ready starts resolved and is replaced when new work becomes pending from a
+nonpending state. Pending play/pause replacement reuses that identity.
+Cancellation with a pending task applies its staged rate, aborts old ready and
+creates a resolved replacement; without a pending task ready/rate stay unchanged.
+Finished starts pending. Leaving finished after resolution creates a fresh
+pending identity. `CompletionState::Aborted` is the native AbortError outcome;
+resolved completions are never rewritten as aborted.
+
+`ScheduleFinishNotification` has a distinct token with different semantics.
+`process_finish` rechecks live state and uses the **current** finished completion.
+Timing edits or cancellation do not automatically invalidate an already queued
+notification. Entering and then leaving finished before its callback produces
+no finish settlement/event. Synchronous `Finish` cancels the queued token and
+notifies immediately; a later callback with that token is stale. One live
+notification per animation is deduplicated. These rules retain the selected WA1
+[finished-state procedure](../../../references/web-animations-1--WD-web-animations-1-20230605--e814a799ef24.md#updating-the-finished-state).
+
+`QueueEvent` carries an immutable animation-coordinate current time, timeline
+coordinate, captured conversion snapshot, creation order and a separate scheduled
+origin-relative sorting key. Finish converts associated-effect end through the
+#588 animation-to-origin wrapper; cancel converts timeline time directly. An
+inactive or missing timeline gives unresolved timeline time and sorting key.
+A resolved zero remains distinct. Runtime owns document routing, native event metadata,
+stable sorting, dispatch and completion adapters under #594/#595/#596. Model
+commands and timing edits do not manufacture a new document frame.
+
+### Snapshots, numeric limits and retirement
+
+`snapshot(animation, timeline)` retains its existing identity-checking input
+shape. It returns read-only coordinates, effect/setup revision, pending tokens,
+completion snapshots and a coherent full `observation()`. Archived values remain
+unchanged after later model transitions.
+
+`PlaybackCoordinates` remains the independent immutable start/rate/timeline plus
+optional hold value. It reuses checked #588 coordinate math. Its `observe` helper
+represents a supplied state **without pending work**; registered animations use
+`AnimationRecordSnapshot::observation()` so pending pause/play and staged rates
+participate in play-state derivation. Both observations produce guarded #589
+`EffectTimingInput` values.
+
+Failures preserve all affected records, associations, identities and outstanding
+tokens. Arithmetic retains #588's typed errors, with a separate unrepresentable
+finite sign-flip start-time category. Identity/revision/generation counters use
+checked increments. Retirement releases a neutral idle registration without
+pending readiness or finish notification; active records must first complete
+cancellation/deferred processing. Retirement is not cancel and does not destroy
+host objects. An associated effect must be detached before its registration can
+be retired.
+
+See the [module example](../src/playback.rs) for context-aware creation and play.
 
 ## Effect timing and relevance
 

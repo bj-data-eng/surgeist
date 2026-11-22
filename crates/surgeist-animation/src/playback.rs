@@ -1,14 +1,34 @@
-//! Checked animation/effect ownership and immutable playback-coordinate observations.
+//! Checked animation ownership, playback transitions and deferred native requests.
 //!
 //! [`AnimationRecords`] owns one global creation-order list across its caller's
 //! documents. Handles belong to that owner and removed slots are never reused.
-//! Records begin with unresolved start/hold times and rate one. This boundary
-//! supports idle association changes and explicit record retirement; playback
-//! controls and deferred completion processing are not provided by this boundary.
+//! Records begin with unresolved start/hold times and rate one. [`PlaybackCommand`]
+//! drives checked transitions using one supplied [`PlaybackContext`]. Every
+//! operation commits atomically before returning source-ordered [`PlaybackRequest`]
+//! values; Runtime executes scheduling, settlements and event publication externally.
 //!
 //! [`PlaybackCoordinates`] evaluates supplied immutable time state without
 //! mutating a record or pretending to perform a seek/play-control procedure.
 //! No clock, scheduler, document query, or Runtime dependency is involved.
+//!
+//! ```
+//! use surgeist_animation::playback::{AnimationRecords, EffectFacts, PlaybackCommand, PlaybackContext};
+//! use surgeist_animation::time::TimelineTime;
+//! use surgeist_animation::timeline::{TimelineId, TimelineMonotonicity, TimelineSnapshot};
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let frame = TimelineSnapshot::new(TimelineId::new(1), Some(TimelineTime::from_millis(0.0)?),
+//!     TimelineMonotonicity::Monotonic, None);
+//! let context = PlaybackContext::new(vec![frame])?;
+//! let mut model = AnimationRecords::new();
+//! let effect = model.register_effect(EffectFacts::try_new(100.0)?)?;
+//! let created = model.create(Some(frame.id()), Some(&effect), &context)?;
+//! let animation = created.animation();
+//! let requests = model.apply(animation, PlaybackCommand::Play { auto_rewind: true }, &context)?;
+//! assert!(!requests.is_empty()); // Runtime schedules the returned readiness work asynchronously.
+//! assert!(model.snapshot(animation, Some(frame))?.pending_task().is_some());
+//! # Ok(())
+//! # }
+//! ```
 //!
 //! ```
 //! use surgeist_animation::playback::{EffectFacts, PlaybackCoordinates};
@@ -34,6 +54,15 @@
 //! use surgeist_animation::playback::AnimationId;
 //! let forged = AnimationId { index: 0, owner: std::sync::Arc::new(()) };
 //! ```
+
+mod control;
+
+pub use control::{
+    CompletionId, CompletionKind, CompletionSnapshot, CompletionState, CreatedAnimation,
+    EffectReadiness, FinishNotificationToken, PendingTaskKind, PlaybackCommand, PlaybackContext,
+    PlaybackEventIntent, PlaybackEventKind, PlaybackOperation, PlaybackRequest, ReadinessInput,
+    ReadinessToken,
+};
 
 use core::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -90,13 +119,6 @@ impl Hash for EffectId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CreationOrder(u64);
 
-/// Whether an association request changed the owner graph.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AssociationChange {
-    Unchanged,
-    Changed,
-}
-
 /// Validated associated-effect facts used for playback-state observation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EffectFacts {
@@ -139,6 +161,20 @@ pub enum PlaybackErrorKind {
     EffectInUse,
     IdentityExhausted,
     Capacity,
+    TypeError,
+    InvalidState {
+        operation: PlaybackOperation,
+    },
+    StaleReadiness,
+    StaleFinishNotification,
+    NotReady,
+    InvalidReadiness,
+    UnrepresentableStartTime,
+    RecordInUse,
+    AssociationContext,
+    DuplicateTimeline {
+        timeline: TimelineId,
+    },
     MissingTimeline {
         expected: TimelineId,
     },
@@ -285,9 +321,17 @@ impl PlaybackObservation {
 pub struct EffectSnapshot {
     id: EffectId,
     facts: EffectFacts,
+    revision: EffectRevision,
 }
 
+/// A checked effect-setup revision used by readiness snapshots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectRevision(u64);
+
 impl EffectSnapshot {
+    pub const fn revision(&self) -> EffectRevision {
+        self.revision
+    }
     pub const fn id(&self) -> &EffectId {
         &self.id
     }
@@ -303,6 +347,7 @@ pub struct AnimationRecordSnapshot {
     order: CreationOrder,
     effect: Option<EffectSnapshot>,
     coordinates: PlaybackCoordinates,
+    control: control::State,
 }
 
 impl AnimationRecordSnapshot {
@@ -325,33 +370,50 @@ impl AnimationRecordSnapshot {
             .map(TimelineSnapshot::id)
     }
     pub fn observation(&self) -> Result<PlaybackObservation, PlaybackError> {
-        self.coordinates.observe(
-            self.effect.as_ref().map(EffectSnapshot::facts),
-            AnimationReplaceState::Active,
-        )
+        self.control.observation(&control::Work {
+            id: self.id.clone(),
+            order: self.order,
+            timeline: self.coordinates.animation.timeline(),
+            effect: self.effect.clone(),
+        })
+    }
+    pub fn pending_task(&self) -> Option<&ReadinessToken> {
+        self.control.pending.as_ref()
+    }
+    pub fn finish_notification(&self) -> Option<&FinishNotificationToken> {
+        self.control.notification.as_ref()
+    }
+    pub const fn ready(&self) -> &CompletionSnapshot {
+        &self.control.ready
+    }
+    pub const fn finished(&self) -> &CompletionSnapshot {
+        &self.control.finished
+    }
+    pub fn pending_playback_rate(&self) -> Option<PlaybackRate> {
+        self.control.staged_rate()
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct AnimationRecord {
     order: CreationOrder,
     timeline: Option<TimelineId>,
     effect: Option<EffectId>,
-    coordinates: PlaybackCoordinates,
+    state: control::State,
 }
 #[derive(Debug)]
 struct EffectRecord {
     facts: EffectFacts,
+    revision: EffectRevision,
     animation: Option<AnimationId>,
 }
 
-/// One creation-order universe with unique effect ownership and checked handles.
+/// One creation-order universe with checked playback and unique effect ownership.
 ///
-/// Registered records remain initially idle. Association changes are therefore
-/// complete for every state constructible here: there are no pending tasks or
-/// finished completions to reschedule. Coordinate evaluation is independent and
-/// immutable. Retirement removes registration, not a runtime animation or DOM
-/// object; the caller owns its lifecycle. Handles never resurrect after removal.
+/// Commands prepare only affected records and validate all supplied facts before
+/// committing the graph and returning requests. Retirement requires neutral idle
+/// state without pending readiness or finish notification; it is not a substitute
+/// for cancellation. Handles never resurrect after removal.
 #[derive(Debug)]
 pub struct AnimationRecords {
     owner: Arc<()>,
@@ -385,42 +447,70 @@ impl AnimationRecords {
         };
         self.effects.push(Some(EffectRecord {
             facts,
+            revision: EffectRevision(0),
             animation: None,
         }));
         Ok(id)
     }
+    /// Creates an animation and transfers an optional effect through the same checked owner.
     pub fn create(
         &mut self,
         timeline: Option<TimelineId>,
         effect: Option<&EffectId>,
-    ) -> Result<AnimationId, PlaybackError> {
-        if let Some(effect) = effect {
-            self.effect(effect)?;
-        }
+        context: &PlaybackContext,
+    ) -> Result<CreatedAnimation, PlaybackError> {
+        let previous_owner = effect
+            .map(|id| self.effect(id).map(|record| record.animation.clone()))
+            .transpose()?
+            .flatten();
         let next = self
             .next_order
             .checked_add(1)
             .ok_or_else(|| PlaybackError::new(PlaybackErrorKind::IdentityExhausted))?;
-        let coordinates = PlaybackCoordinates::new(
-            AnimationSnapshot::new(PlaybackRate::new(1.0)?, None, None),
-            None,
-        );
-        self.animations
-            .try_reserve(1)
-            .map_err(|_| PlaybackError::new(PlaybackErrorKind::Capacity))?;
         let id = AnimationId {
             owner: self.owner.clone(),
             index: self.animations.len(),
         };
-        self.animations.push(Some(AnimationRecord {
+        let state = control::State::new(&id)?;
+        let mut requests = vec![
+            PlaybackRequest::CreateCompletion(state.ready.clone()),
+            PlaybackRequest::CreateCompletion(state.finished.clone()),
+        ];
+        let mut record = AnimationRecord {
             order: CreationOrder(self.next_order),
             timeline,
-            effect: None,
-            coordinates,
-        }));
+            effect: effect.cloned(),
+            state,
+        };
+        let displaced = if let Some(previous) = previous_owner {
+            let mut record = self.animation(&previous)?.clone();
+            record.effect = None;
+            let work = self.work(&previous, &record, context)?;
+            record.state.reschedule(&work, &mut requests)?;
+            record
+                .state
+                .update_finished(&work, false, false, &mut requests)?;
+            Some((previous, record))
+        } else {
+            None
+        };
+        let work = self.work(&id, &record, context)?;
+        record
+            .state
+            .update_finished(&work, false, false, &mut requests)?;
+        self.animations
+            .try_reserve(1)
+            .map_err(|_| PlaybackError::new(PlaybackErrorKind::Capacity))?;
+        if let Some((id, record)) = displaced {
+            self.commit_record(&id, record);
+        }
+        self.animations.push(Some(record));
         self.next_order = next;
         self.apply_effect(&id, None, effect);
-        Ok(id)
+        Ok(CreatedAnimation {
+            animation: id,
+            requests,
+        })
     }
     /// Iterates live animation identities in their original global creation order.
     pub fn animations(&self) -> impl Iterator<Item = AnimationId> + '_ {
@@ -434,37 +524,147 @@ impl AnimationRecords {
                 })
             })
     }
-    pub fn assign_timeline(
+    /// Applies one complete transition atomically, returning requests in source order.
+    pub fn apply(
         &mut self,
         id: &AnimationId,
-        timeline: Option<TimelineId>,
-    ) -> Result<AssociationChange, PlaybackError> {
-        if self.animation(id)?.timeline == timeline {
-            return Ok(AssociationChange::Unchanged);
-        }
-        for (index, record) in self.animations.iter_mut().enumerate() {
-            if index == id.index
-                && let Some(record) = record
-            {
+        command: PlaybackCommand,
+        context: &PlaybackContext,
+    ) -> Result<Vec<PlaybackRequest>, PlaybackError> {
+        let mut record = self.animation(id)?.clone();
+        let mut requests = Vec::new();
+        match command {
+            PlaybackCommand::AssignTimeline(timeline) => {
+                if record.timeline == timeline {
+                    return Ok(requests);
+                }
                 record.timeline = timeline;
+                let work = self.work(id, &record, context)?;
+                record.state.timeline_changed(&work, &mut requests)?;
+                self.commit_record(id, record);
+            }
+            PlaybackCommand::AssignEffect(effect) => {
+                let old = record.effect.clone();
+                let previous = effect
+                    .as_ref()
+                    .map(|effect| self.effect(effect).map(|record| record.animation.clone()))
+                    .transpose()?
+                    .flatten();
+                if old == effect {
+                    return Ok(requests);
+                }
+                record.effect = effect.clone();
+                let work = self.work(id, &record, context)?;
+                record.state.reschedule(&work, &mut requests)?;
+                let displaced = if let Some(previous) = previous.filter(|previous| previous != id) {
+                    let mut record = self.animation(&previous)?.clone();
+                    record.effect = None;
+                    let work = self.work(&previous, &record, context)?;
+                    record.state.reschedule(&work, &mut requests)?;
+                    record
+                        .state
+                        .update_finished(&work, false, false, &mut requests)?;
+                    Some((previous, record))
+                } else {
+                    None
+                };
+                record
+                    .state
+                    .update_finished(&work, false, false, &mut requests)?;
+                if let Some((id, record)) = displaced {
+                    self.commit_record(&id, record);
+                }
+                self.commit_record(id, record);
+                self.apply_effect(id, old.as_ref(), effect.as_ref());
+            }
+            command => {
+                let work = self.work(id, &record, context)?;
+                record.state.command(&command, &work, &mut requests)?;
+                self.commit_record(id, record);
             }
         }
-        Ok(AssociationChange::Changed)
+        Ok(requests)
     }
-    pub fn assign_effect(
+    /// Completes the still-current readiness token at a deferred native processing point.
+    pub fn complete_ready(
         &mut self,
-        id: &AnimationId,
-        effect: Option<&EffectId>,
-    ) -> Result<AssociationChange, PlaybackError> {
-        let old = self.animation(id)?.effect.clone();
-        if let Some(effect) = effect {
-            self.effect(effect)?;
+        token: &ReadinessToken,
+        input: ReadinessInput,
+        context: &PlaybackContext,
+    ) -> Result<Vec<PlaybackRequest>, PlaybackError> {
+        let id = token.animation();
+        let mut record = self.animation(id)?.clone();
+        if record.state.pending.as_ref() != Some(token) {
+            return Err(PlaybackError::new(PlaybackErrorKind::StaleReadiness));
         }
-        if old.as_ref() == effect {
-            return Ok(AssociationChange::Unchanged);
+        let work = self.work(id, &record, context)?;
+        let mut requests = Vec::new();
+        record
+            .state
+            .complete_ready(token, input, &work, &mut requests)?;
+        self.commit_record(id, record);
+        Ok(requests)
+    }
+    /// Runs a queued finish recheck against live state and the current completion identity.
+    pub fn process_finish(
+        &mut self,
+        token: &FinishNotificationToken,
+        context: &PlaybackContext,
+    ) -> Result<Vec<PlaybackRequest>, PlaybackError> {
+        let id = token.animation();
+        let mut record = self.animation(id)?.clone();
+        if record.state.notification.as_ref() != Some(token) {
+            return Err(PlaybackError::new(
+                PlaybackErrorKind::StaleFinishNotification,
+            ));
         }
-        self.apply_effect(id, old.as_ref(), effect);
-        Ok(AssociationChange::Changed)
+        let work = self.work(id, &record, context)?;
+        let mut requests = Vec::new();
+        record.state.process_finish(token, &work, &mut requests)?;
+        self.commit_record(id, record);
+        Ok(requests)
+    }
+    /// Publishes changed effect/setup facts, rescheduling pending readiness without changing its completion identity.
+    pub fn update_effect(
+        &mut self,
+        id: &EffectId,
+        facts: EffectFacts,
+        context: &PlaybackContext,
+    ) -> Result<Vec<PlaybackRequest>, PlaybackError> {
+        let effect = self.effect(id)?;
+        let revision = EffectRevision(
+            effect
+                .revision
+                .0
+                .checked_add(1)
+                .ok_or_else(|| PlaybackError::new(PlaybackErrorKind::IdentityExhausted))?,
+        );
+        let owner = effect.animation.clone();
+        let mut requests = Vec::new();
+        let updated = if let Some(owner) = owner {
+            let mut record = self.animation(&owner)?.clone();
+            let mut work = self.work(&owner, &record, context)?;
+            work.effect = Some(EffectSnapshot {
+                id: id.clone(),
+                facts,
+                revision,
+            });
+            record.state.reschedule(&work, &mut requests)?;
+            record
+                .state
+                .update_finished(&work, false, false, &mut requests)?;
+            Some((owner, record))
+        } else {
+            None
+        };
+        if let Some((id, record)) = updated {
+            self.commit_record(&id, record);
+        }
+        if let Some(Some(effect)) = self.effects.get_mut(id.index) {
+            effect.facts = facts;
+            effect.revision = revision;
+        }
+        Ok(requests)
     }
     pub fn effect_owner(&self, id: &EffectId) -> Result<Option<AnimationId>, PlaybackError> {
         Ok(self.effect(id)?.animation.clone())
@@ -501,26 +701,24 @@ impl AnimationRecords {
                 self.effect(id).map(|record| EffectSnapshot {
                     id: id.clone(),
                     facts: record.facts,
+                    revision: record.revision,
                 })
             })
             .transpose()?;
-        let coordinates = PlaybackCoordinates::new(
-            AnimationSnapshot::new(
-                record.coordinates.animation.playback_rate(),
-                record.coordinates.animation.start_time(),
-                timeline,
-            ),
-            record.coordinates.hold,
-        );
+        let coordinates = record.state.coordinates(timeline);
         Ok(AnimationRecordSnapshot {
             id: id.clone(),
             order: record.order,
             effect,
             coordinates,
+            control: record.state.clone(),
         })
     }
+
     pub fn remove_animation(&mut self, id: &AnimationId) -> Result<(), PlaybackError> {
-        self.animation(id)?;
+        if !self.animation(id)?.state.can_retire() {
+            return Err(PlaybackError::new(PlaybackErrorKind::RecordInUse));
+        }
         for record in self.effects.iter_mut().flatten() {
             if record.animation.as_ref() == Some(id) {
                 record.animation = None;
@@ -561,6 +759,36 @@ impl AnimationRecords {
             .get(id.index)
             .and_then(Option::as_ref)
             .ok_or_else(|| PlaybackError::new(PlaybackErrorKind::StaleEffect))
+    }
+    fn work(
+        &self,
+        id: &AnimationId,
+        record: &AnimationRecord,
+        context: &PlaybackContext,
+    ) -> Result<control::Work, PlaybackError> {
+        let timeline = context.timeline(record.timeline)?;
+        let effect = record
+            .effect
+            .as_ref()
+            .map(|id| {
+                self.effect(id).map(|record| EffectSnapshot {
+                    id: id.clone(),
+                    facts: record.facts,
+                    revision: record.revision,
+                })
+            })
+            .transpose()?;
+        Ok(control::Work {
+            id: id.clone(),
+            order: record.order,
+            timeline,
+            effect,
+        })
+    }
+    fn commit_record(&mut self, id: &AnimationId, record: AnimationRecord) {
+        if let Some(slot) = self.animations.get_mut(id.index) {
+            *slot = Some(record);
+        }
     }
     // Called only after every external handle and fallible creation step is checked.
     // Iteration avoids indexing panic paths while updating both directions atomically.
@@ -605,11 +833,18 @@ mod tests {
         let effect = records
             .register_effect(EffectFacts::try_new(10.0).unwrap())
             .unwrap();
-        let animation = records.create(None, Some(&effect)).unwrap();
+        let animation = records
+            .create(None, Some(&effect), &PlaybackContext::default())
+            .unwrap()
+            .animation()
+            .clone();
         let before = records.snapshot(&animation, None).unwrap();
         records.next_order = u64::MAX;
         assert_eq!(
-            records.create(None, Some(&effect)).unwrap_err().kind(),
+            records
+                .create(None, Some(&effect), &PlaybackContext::default())
+                .unwrap_err()
+                .kind(),
             &PlaybackErrorKind::IdentityExhausted
         );
         assert_eq!(records.snapshot(&animation, None).unwrap(), before);

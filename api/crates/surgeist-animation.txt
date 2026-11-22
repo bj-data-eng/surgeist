@@ -688,27 +688,81 @@ pub surgeist_animation::keyframe_input::PropertyIndexedInput::properties: alloc:
 impl<V, E> core::default::Default for surgeist_animation::keyframe_input::PropertyIndexedInput<V, E>
 pub fn surgeist_animation::keyframe_input::PropertyIndexedInput<V, E>::default() -> Self
 pub mod surgeist_animation::playback
-pub enum surgeist_animation::playback::AssociationChange
-pub surgeist_animation::playback::AssociationChange::Changed
-pub surgeist_animation::playback::AssociationChange::Unchanged
+pub enum surgeist_animation::playback::CompletionKind
+pub surgeist_animation::playback::CompletionKind::Finished
+pub surgeist_animation::playback::CompletionKind::Ready
+pub enum surgeist_animation::playback::CompletionState
+pub surgeist_animation::playback::CompletionState::Aborted
+pub surgeist_animation::playback::CompletionState::Pending
+pub surgeist_animation::playback::CompletionState::Resolved
+pub enum surgeist_animation::playback::EffectReadiness
+pub surgeist_animation::playback::EffectReadiness::Pending
+pub surgeist_animation::playback::EffectReadiness::Ready
+pub enum surgeist_animation::playback::PendingTaskKind
+pub surgeist_animation::playback::PendingTaskKind::Pause
+pub surgeist_animation::playback::PendingTaskKind::Play
+pub enum surgeist_animation::playback::PlaybackCommand
+pub surgeist_animation::playback::PlaybackCommand::AssignEffect(core::option::Option<surgeist_animation::playback::EffectId>)
+pub surgeist_animation::playback::PlaybackCommand::AssignTimeline(core::option::Option<surgeist_animation::timeline::TimelineId>)
+pub surgeist_animation::playback::PlaybackCommand::Cancel
+pub surgeist_animation::playback::PlaybackCommand::Finish
+pub surgeist_animation::playback::PlaybackCommand::Pause
+pub surgeist_animation::playback::PlaybackCommand::Play
+pub surgeist_animation::playback::PlaybackCommand::Play::auto_rewind: bool
+pub surgeist_animation::playback::PlaybackCommand::Reverse
+pub surgeist_animation::playback::PlaybackCommand::Seek(core::option::Option<surgeist_animation::time::AnimationTime>)
+pub surgeist_animation::playback::PlaybackCommand::SetPlaybackRate(surgeist_animation::time::PlaybackRate)
+pub surgeist_animation::playback::PlaybackCommand::SetStartTime(core::option::Option<surgeist_animation::time::TimelineTime>)
+pub surgeist_animation::playback::PlaybackCommand::Tick
+pub surgeist_animation::playback::PlaybackCommand::UpdatePlaybackRate(surgeist_animation::time::PlaybackRate)
 pub enum surgeist_animation::playback::PlaybackErrorKind
 pub surgeist_animation::playback::PlaybackErrorKind::Arithmetic(surgeist_animation::time::TimeError)
+pub surgeist_animation::playback::PlaybackErrorKind::AssociationContext
 pub surgeist_animation::playback::PlaybackErrorKind::Capacity
+pub surgeist_animation::playback::PlaybackErrorKind::DuplicateTimeline
+pub surgeist_animation::playback::PlaybackErrorKind::DuplicateTimeline::timeline: surgeist_animation::timeline::TimelineId
 pub surgeist_animation::playback::PlaybackErrorKind::EffectInUse
 pub surgeist_animation::playback::PlaybackErrorKind::ForeignAnimation
 pub surgeist_animation::playback::PlaybackErrorKind::ForeignEffect
 pub surgeist_animation::playback::PlaybackErrorKind::IdentityExhausted
 pub surgeist_animation::playback::PlaybackErrorKind::InvalidEffectEnd
 pub surgeist_animation::playback::PlaybackErrorKind::InvalidEffectEnd::value: f64
+pub surgeist_animation::playback::PlaybackErrorKind::InvalidReadiness
+pub surgeist_animation::playback::PlaybackErrorKind::InvalidState
+pub surgeist_animation::playback::PlaybackErrorKind::InvalidState::operation: surgeist_animation::playback::PlaybackOperation
 pub surgeist_animation::playback::PlaybackErrorKind::MissingTimeline
 pub surgeist_animation::playback::PlaybackErrorKind::MissingTimeline::expected: surgeist_animation::timeline::TimelineId
+pub surgeist_animation::playback::PlaybackErrorKind::NotReady
+pub surgeist_animation::playback::PlaybackErrorKind::RecordInUse
 pub surgeist_animation::playback::PlaybackErrorKind::StaleAnimation
 pub surgeist_animation::playback::PlaybackErrorKind::StaleEffect
+pub surgeist_animation::playback::PlaybackErrorKind::StaleFinishNotification
+pub surgeist_animation::playback::PlaybackErrorKind::StaleReadiness
 pub surgeist_animation::playback::PlaybackErrorKind::TimelineMismatch
 pub surgeist_animation::playback::PlaybackErrorKind::TimelineMismatch::actual: surgeist_animation::timeline::TimelineId
 pub surgeist_animation::playback::PlaybackErrorKind::TimelineMismatch::expected: surgeist_animation::timeline::TimelineId
+pub surgeist_animation::playback::PlaybackErrorKind::TypeError
 pub surgeist_animation::playback::PlaybackErrorKind::UnexpectedTimeline
 pub surgeist_animation::playback::PlaybackErrorKind::UnexpectedTimeline::actual: surgeist_animation::timeline::TimelineId
+pub surgeist_animation::playback::PlaybackErrorKind::UnrepresentableStartTime
+pub enum surgeist_animation::playback::PlaybackEventKind
+pub surgeist_animation::playback::PlaybackEventKind::Cancel
+pub surgeist_animation::playback::PlaybackEventKind::Finish
+pub enum surgeist_animation::playback::PlaybackOperation
+pub surgeist_animation::playback::PlaybackOperation::Finish
+pub surgeist_animation::playback::PlaybackOperation::Pause
+pub surgeist_animation::playback::PlaybackOperation::Play
+pub surgeist_animation::playback::PlaybackOperation::Reverse
+pub enum surgeist_animation::playback::PlaybackRequest
+pub surgeist_animation::playback::PlaybackRequest::CancelFinishNotification(surgeist_animation::playback::FinishNotificationToken)
+pub surgeist_animation::playback::PlaybackRequest::CancelReadiness(surgeist_animation::playback::ReadinessToken)
+pub surgeist_animation::playback::PlaybackRequest::CreateCompletion(surgeist_animation::playback::CompletionSnapshot)
+pub surgeist_animation::playback::PlaybackRequest::QueueEvent(surgeist_animation::playback::PlaybackEventIntent)
+pub surgeist_animation::playback::PlaybackRequest::ScheduleFinishNotification(surgeist_animation::playback::FinishNotificationToken)
+pub surgeist_animation::playback::PlaybackRequest::ScheduleReadiness(surgeist_animation::playback::ReadinessToken)
+pub surgeist_animation::playback::PlaybackRequest::SettleCompletion
+pub surgeist_animation::playback::PlaybackRequest::SettleCompletion::completion: surgeist_animation::playback::CompletionId
+pub surgeist_animation::playback::PlaybackRequest::SettleCompletion::state: surgeist_animation::playback::CompletionState
 pub struct surgeist_animation::playback::AnimationId
 impl core::cmp::Eq for surgeist_animation::playback::AnimationId
 impl core::cmp::PartialEq for surgeist_animation::playback::AnimationId
@@ -720,23 +774,42 @@ impl surgeist_animation::playback::AnimationRecordSnapshot
 pub const fn surgeist_animation::playback::AnimationRecordSnapshot::coordinates(&self) -> surgeist_animation::playback::PlaybackCoordinates
 pub const fn surgeist_animation::playback::AnimationRecordSnapshot::creation_order(&self) -> surgeist_animation::playback::CreationOrder
 pub const fn surgeist_animation::playback::AnimationRecordSnapshot::effect(&self) -> core::option::Option<&surgeist_animation::playback::EffectSnapshot>
+pub fn surgeist_animation::playback::AnimationRecordSnapshot::finish_notification(&self) -> core::option::Option<&surgeist_animation::playback::FinishNotificationToken>
+pub const fn surgeist_animation::playback::AnimationRecordSnapshot::finished(&self) -> &surgeist_animation::playback::CompletionSnapshot
 pub const fn surgeist_animation::playback::AnimationRecordSnapshot::id(&self) -> &surgeist_animation::playback::AnimationId
 pub fn surgeist_animation::playback::AnimationRecordSnapshot::observation(&self) -> core::result::Result<surgeist_animation::playback::PlaybackObservation, surgeist_animation::playback::PlaybackError>
+pub fn surgeist_animation::playback::AnimationRecordSnapshot::pending_playback_rate(&self) -> core::option::Option<surgeist_animation::time::PlaybackRate>
+pub fn surgeist_animation::playback::AnimationRecordSnapshot::pending_task(&self) -> core::option::Option<&surgeist_animation::playback::ReadinessToken>
+pub const fn surgeist_animation::playback::AnimationRecordSnapshot::ready(&self) -> &surgeist_animation::playback::CompletionSnapshot
 pub fn surgeist_animation::playback::AnimationRecordSnapshot::timeline(&self) -> core::option::Option<surgeist_animation::timeline::TimelineId>
 pub struct surgeist_animation::playback::AnimationRecords
 impl surgeist_animation::playback::AnimationRecords
 pub fn surgeist_animation::playback::AnimationRecords::animations(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_animation::playback::AnimationId> + '_
-pub fn surgeist_animation::playback::AnimationRecords::assign_effect(&mut self, id: &surgeist_animation::playback::AnimationId, effect: core::option::Option<&surgeist_animation::playback::EffectId>) -> core::result::Result<surgeist_animation::playback::AssociationChange, surgeist_animation::playback::PlaybackError>
-pub fn surgeist_animation::playback::AnimationRecords::assign_timeline(&mut self, id: &surgeist_animation::playback::AnimationId, timeline: core::option::Option<surgeist_animation::timeline::TimelineId>) -> core::result::Result<surgeist_animation::playback::AssociationChange, surgeist_animation::playback::PlaybackError>
-pub fn surgeist_animation::playback::AnimationRecords::create(&mut self, timeline: core::option::Option<surgeist_animation::timeline::TimelineId>, effect: core::option::Option<&surgeist_animation::playback::EffectId>) -> core::result::Result<surgeist_animation::playback::AnimationId, surgeist_animation::playback::PlaybackError>
+pub fn surgeist_animation::playback::AnimationRecords::apply(&mut self, id: &surgeist_animation::playback::AnimationId, command: surgeist_animation::playback::PlaybackCommand, context: &surgeist_animation::playback::PlaybackContext) -> core::result::Result<alloc::vec::Vec<surgeist_animation::playback::PlaybackRequest>, surgeist_animation::playback::PlaybackError>
+pub fn surgeist_animation::playback::AnimationRecords::complete_ready(&mut self, token: &surgeist_animation::playback::ReadinessToken, input: surgeist_animation::playback::ReadinessInput, context: &surgeist_animation::playback::PlaybackContext) -> core::result::Result<alloc::vec::Vec<surgeist_animation::playback::PlaybackRequest>, surgeist_animation::playback::PlaybackError>
+pub fn surgeist_animation::playback::AnimationRecords::create(&mut self, timeline: core::option::Option<surgeist_animation::timeline::TimelineId>, effect: core::option::Option<&surgeist_animation::playback::EffectId>, context: &surgeist_animation::playback::PlaybackContext) -> core::result::Result<surgeist_animation::playback::CreatedAnimation, surgeist_animation::playback::PlaybackError>
 pub fn surgeist_animation::playback::AnimationRecords::effect_owner(&self, id: &surgeist_animation::playback::EffectId) -> core::result::Result<core::option::Option<surgeist_animation::playback::AnimationId>, surgeist_animation::playback::PlaybackError>
 pub fn surgeist_animation::playback::AnimationRecords::new() -> Self
+pub fn surgeist_animation::playback::AnimationRecords::process_finish(&mut self, token: &surgeist_animation::playback::FinishNotificationToken, context: &surgeist_animation::playback::PlaybackContext) -> core::result::Result<alloc::vec::Vec<surgeist_animation::playback::PlaybackRequest>, surgeist_animation::playback::PlaybackError>
 pub fn surgeist_animation::playback::AnimationRecords::register_effect(&mut self, facts: surgeist_animation::playback::EffectFacts) -> core::result::Result<surgeist_animation::playback::EffectId, surgeist_animation::playback::PlaybackError>
 pub fn surgeist_animation::playback::AnimationRecords::remove_animation(&mut self, id: &surgeist_animation::playback::AnimationId) -> core::result::Result<(), surgeist_animation::playback::PlaybackError>
 pub fn surgeist_animation::playback::AnimationRecords::remove_effect(&mut self, id: &surgeist_animation::playback::EffectId) -> core::result::Result<(), surgeist_animation::playback::PlaybackError>
 pub fn surgeist_animation::playback::AnimationRecords::snapshot(&self, id: &surgeist_animation::playback::AnimationId, timeline: core::option::Option<surgeist_animation::timeline::TimelineSnapshot>) -> core::result::Result<surgeist_animation::playback::AnimationRecordSnapshot, surgeist_animation::playback::PlaybackError>
+pub fn surgeist_animation::playback::AnimationRecords::update_effect(&mut self, id: &surgeist_animation::playback::EffectId, facts: surgeist_animation::playback::EffectFacts, context: &surgeist_animation::playback::PlaybackContext) -> core::result::Result<alloc::vec::Vec<surgeist_animation::playback::PlaybackRequest>, surgeist_animation::playback::PlaybackError>
 impl core::default::Default for surgeist_animation::playback::AnimationRecords
 pub fn surgeist_animation::playback::AnimationRecords::default() -> Self
+pub struct surgeist_animation::playback::CompletionId
+impl surgeist_animation::playback::CompletionId
+pub const fn surgeist_animation::playback::CompletionId::animation(&self) -> &surgeist_animation::playback::AnimationId
+pub const fn surgeist_animation::playback::CompletionId::kind(&self) -> surgeist_animation::playback::CompletionKind
+pub struct surgeist_animation::playback::CompletionSnapshot
+impl surgeist_animation::playback::CompletionSnapshot
+pub const fn surgeist_animation::playback::CompletionSnapshot::id(&self) -> &surgeist_animation::playback::CompletionId
+pub const fn surgeist_animation::playback::CompletionSnapshot::state(&self) -> surgeist_animation::playback::CompletionState
+pub struct surgeist_animation::playback::CreatedAnimation
+impl surgeist_animation::playback::CreatedAnimation
+pub const fn surgeist_animation::playback::CreatedAnimation::animation(&self) -> &surgeist_animation::playback::AnimationId
+pub fn surgeist_animation::playback::CreatedAnimation::requests(&self) -> &[surgeist_animation::playback::PlaybackRequest]
 pub struct surgeist_animation::playback::CreationOrder(_)
 pub struct surgeist_animation::playback::EffectFacts
 impl surgeist_animation::playback::EffectFacts
@@ -749,10 +822,18 @@ impl core::cmp::PartialEq for surgeist_animation::playback::EffectId
 pub fn surgeist_animation::playback::EffectId::eq(&self, other: &Self) -> bool
 impl core::hash::Hash for surgeist_animation::playback::EffectId
 pub fn surgeist_animation::playback::EffectId::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_animation::playback::EffectRevision(_)
 pub struct surgeist_animation::playback::EffectSnapshot
 impl surgeist_animation::playback::EffectSnapshot
 pub const fn surgeist_animation::playback::EffectSnapshot::facts(&self) -> surgeist_animation::playback::EffectFacts
 pub const fn surgeist_animation::playback::EffectSnapshot::id(&self) -> &surgeist_animation::playback::EffectId
+pub const fn surgeist_animation::playback::EffectSnapshot::revision(&self) -> surgeist_animation::playback::EffectRevision
+pub struct surgeist_animation::playback::FinishNotificationToken
+impl surgeist_animation::playback::FinishNotificationToken
+pub const fn surgeist_animation::playback::FinishNotificationToken::animation(&self) -> &surgeist_animation::playback::AnimationId
+pub struct surgeist_animation::playback::PlaybackContext
+impl surgeist_animation::playback::PlaybackContext
+pub fn surgeist_animation::playback::PlaybackContext::new(timelines: alloc::vec::Vec<surgeist_animation::timeline::TimelineSnapshot>) -> core::result::Result<Self, surgeist_animation::playback::PlaybackError>
 pub struct surgeist_animation::playback::PlaybackCoordinates
 impl surgeist_animation::playback::PlaybackCoordinates
 pub const fn surgeist_animation::playback::PlaybackCoordinates::animation(self) -> surgeist_animation::timeline::AnimationSnapshot
@@ -771,11 +852,29 @@ impl core::error::Error for surgeist_animation::playback::PlaybackError
 pub fn surgeist_animation::playback::PlaybackError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_animation::playback::PlaybackError
 pub fn surgeist_animation::playback::PlaybackError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_animation::playback::PlaybackEventIntent
+impl surgeist_animation::playback::PlaybackEventIntent
+pub const fn surgeist_animation::playback::PlaybackEventIntent::animation(&self) -> &surgeist_animation::playback::AnimationId
+pub const fn surgeist_animation::playback::PlaybackEventIntent::animation_snapshot(&self) -> surgeist_animation::timeline::AnimationSnapshot
+pub const fn surgeist_animation::playback::PlaybackEventIntent::creation_order(&self) -> surgeist_animation::playback::CreationOrder
+pub const fn surgeist_animation::playback::PlaybackEventIntent::current_time(&self) -> core::option::Option<surgeist_animation::time::AnimationTime>
+pub const fn surgeist_animation::playback::PlaybackEventIntent::kind(&self) -> surgeist_animation::playback::PlaybackEventKind
+pub const fn surgeist_animation::playback::PlaybackEventIntent::scheduled_time(&self) -> core::option::Option<surgeist_animation::time::OriginRelativeTime>
+pub const fn surgeist_animation::playback::PlaybackEventIntent::timeline_time(&self) -> core::option::Option<surgeist_animation::time::TimelineTime>
 pub struct surgeist_animation::playback::PlaybackObservation
 impl surgeist_animation::playback::PlaybackObservation
 pub const fn surgeist_animation::playback::PlaybackObservation::current_time(self) -> core::option::Option<surgeist_animation::time::AnimationTime>
 pub const fn surgeist_animation::playback::PlaybackObservation::effect_input(self) -> surgeist_animation::timing::EffectTimingInput
 pub const fn surgeist_animation::playback::PlaybackObservation::play_state(self) -> surgeist_animation::timing::EffectPlayState
+pub struct surgeist_animation::playback::ReadinessInput
+impl surgeist_animation::playback::ReadinessInput
+pub const fn surgeist_animation::playback::ReadinessInput::new(timeline: surgeist_animation::timeline::TimelineSnapshot, effect: surgeist_animation::playback::EffectReadiness) -> Self
+pub struct surgeist_animation::playback::ReadinessToken
+impl surgeist_animation::playback::ReadinessToken
+pub const fn surgeist_animation::playback::ReadinessToken::animation(&self) -> &surgeist_animation::playback::AnimationId
+pub const fn surgeist_animation::playback::ReadinessToken::effect(&self) -> core::option::Option<&surgeist_animation::playback::EffectSnapshot>
+pub const fn surgeist_animation::playback::ReadinessToken::kind(&self) -> surgeist_animation::playback::PendingTaskKind
+pub const fn surgeist_animation::playback::ReadinessToken::timeline(&self) -> core::option::Option<surgeist_animation::timeline::TimelineId>
 pub mod surgeist_animation::progress
 pub struct surgeist_animation::progress::EasingInput
 impl surgeist_animation::progress::EasingInput

@@ -1,5 +1,6 @@
 use surgeist_animation::playback::{
-    AnimationRecords, AssociationChange, EffectFacts, PlaybackCoordinates, PlaybackErrorKind,
+    AnimationRecords, EffectFacts, PlaybackCommand, PlaybackContext, PlaybackCoordinates,
+    PlaybackErrorKind, PlaybackRequest,
 };
 use surgeist_animation::time::{AnimationTime, PlaybackRate, TimelineTime};
 use surgeist_animation::timeline::{
@@ -16,6 +17,10 @@ fn timeline(id: u64, time: Option<f64>) -> TimelineSnapshot {
         TimelineMonotonicity::Monotonic,
         None,
     )
+}
+
+fn record_context() -> PlaybackContext {
+    PlaybackContext::new(vec![timeline(1, None), timeline(2, None)]).unwrap()
 }
 
 fn coordinates(
@@ -37,9 +42,21 @@ fn coordinates(
 #[test]
 fn creation_has_unresolved_times_unit_rate_and_unique_global_order() {
     let mut records = AnimationRecords::new();
-    let a = records.create(None, None).unwrap();
-    let b = records.create(Some(TimelineId::new(2)), None).unwrap();
-    let c = records.create(Some(TimelineId::new(1)), None).unwrap();
+    let a = records
+        .create(None, None, &record_context())
+        .unwrap()
+        .animation()
+        .clone();
+    let b = records
+        .create(Some(TimelineId::new(2)), None, &record_context())
+        .unwrap()
+        .animation()
+        .clone();
+    let c = records
+        .create(Some(TimelineId::new(1)), None, &record_context())
+        .unwrap()
+        .animation()
+        .clone();
     let snapshots = [
         records.snapshot(&a, None).unwrap(),
         records.snapshot(&b, Some(timeline(2, Some(10.0)))).unwrap(),
@@ -67,16 +84,36 @@ fn effect_transfer_detaches_previous_animation_atomically_and_noops_identical_as
     let effect = records
         .register_effect(EffectFacts::from_timing(&EffectTiming::default()))
         .unwrap();
-    let a = records.create(None, Some(&effect)).unwrap();
-    let b = records.create(None, None).unwrap();
+    let a = records
+        .create(None, Some(&effect), &record_context())
+        .unwrap()
+        .animation()
+        .clone();
+    let b = records
+        .create(None, None, &record_context())
+        .unwrap()
+        .animation()
+        .clone();
     let captured = records.snapshot(&a, None).unwrap();
     assert_eq!(
-        records.assign_effect(&a, Some(&effect)).unwrap(),
-        AssociationChange::Unchanged
+        records
+            .apply(
+                &a,
+                PlaybackCommand::AssignEffect(Some(effect.clone())),
+                &record_context()
+            )
+            .unwrap(),
+        Vec::<PlaybackRequest>::new()
     );
     assert_eq!(
-        records.assign_effect(&b, Some(&effect)).unwrap(),
-        AssociationChange::Changed
+        records
+            .apply(
+                &b,
+                PlaybackCommand::AssignEffect(Some(effect.clone())),
+                &record_context()
+            )
+            .unwrap(),
+        Vec::<PlaybackRequest>::new()
     );
     assert_eq!(records.effect_owner(&effect).unwrap(), Some(b.clone()));
     assert_eq!(records.snapshot(&a, None).unwrap().effect(), None);
@@ -90,8 +127,10 @@ fn effect_transfer_detaches_previous_animation_atomically_and_noops_identical_as
         records.snapshot(&a, None).unwrap().creation_order()
     );
     assert_eq!(
-        records.assign_effect(&b, None).unwrap(),
-        AssociationChange::Changed
+        records
+            .apply(&b, PlaybackCommand::AssignEffect(None), &record_context())
+            .unwrap(),
+        Vec::<PlaybackRequest>::new()
     );
     assert_eq!(records.effect_owner(&effect).unwrap(), None);
 }
@@ -102,9 +141,17 @@ fn creation_with_an_owned_effect_transfers_ownership_without_reordering_previous
     let effect = records
         .register_effect(EffectFacts::try_new(100.0).unwrap())
         .unwrap();
-    let a = records.create(None, Some(&effect)).unwrap();
+    let a = records
+        .create(None, Some(&effect), &record_context())
+        .unwrap()
+        .animation()
+        .clone();
     let a_order = records.snapshot(&a, None).unwrap().creation_order();
-    let b = records.create(None, Some(&effect)).unwrap();
+    let b = records
+        .create(None, Some(&effect), &record_context())
+        .unwrap()
+        .animation()
+        .clone();
     assert_eq!(records.snapshot(&a, None).unwrap().effect(), None);
     assert_eq!(records.effect_owner(&effect).unwrap(), Some(b.clone()));
     assert_eq!(
@@ -121,29 +168,49 @@ fn foreign_handles_are_rejected_without_detaching_either_models_effect() {
     let effect = first
         .register_effect(EffectFacts::try_new(10.0).unwrap())
         .unwrap();
-    let a = first.create(None, Some(&effect)).unwrap();
+    let a = first
+        .create(None, Some(&effect), &record_context())
+        .unwrap()
+        .animation()
+        .clone();
     let foreign_effect = other
         .register_effect(EffectFacts::try_new(20.0).unwrap())
         .unwrap();
-    let foreign_animation = other.create(None, Some(&foreign_effect)).unwrap();
+    let foreign_animation = other
+        .create(None, Some(&foreign_effect), &record_context())
+        .unwrap()
+        .animation()
+        .clone();
     assert_ne!(effect, foreign_effect);
     assert_ne!(a, foreign_animation);
     let original = first.snapshot(&a, None).unwrap();
     assert_eq!(
         first
-            .assign_effect(&a, Some(&foreign_effect))
+            .apply(
+                &a,
+                PlaybackCommand::AssignEffect(Some(foreign_effect.clone())),
+                &record_context()
+            )
             .unwrap_err()
             .kind(),
         &PlaybackErrorKind::ForeignEffect
     );
     assert_eq!(
         first
-            .assign_effect(&foreign_animation, Some(&effect))
+            .apply(
+                &foreign_animation,
+                PlaybackCommand::AssignEffect(Some(effect.clone())),
+                &record_context()
+            )
             .unwrap_err()
             .kind(),
         &PlaybackErrorKind::ForeignAnimation
     );
-    assert!(first.create(None, Some(&foreign_effect)).is_err());
+    assert!(
+        first
+            .create(None, Some(&foreign_effect), &record_context())
+            .is_err()
+    );
     assert_eq!(first.snapshot(&a, None).unwrap(), original);
     assert_eq!(first.effect_owner(&effect).unwrap(), Some(a.clone()));
     assert_eq!(
@@ -162,10 +229,24 @@ fn transfer_releases_the_targets_old_effect_and_the_sources_animation() {
     let right = records
         .register_effect(EffectFacts::try_new(20.0).unwrap())
         .unwrap();
-    let a = records.create(None, Some(&left)).unwrap();
-    let b = records.create(None, Some(&right)).unwrap();
+    let a = records
+        .create(None, Some(&left), &record_context())
+        .unwrap()
+        .animation()
+        .clone();
+    let b = records
+        .create(None, Some(&right), &record_context())
+        .unwrap()
+        .animation()
+        .clone();
     let captured = records.snapshot(&a, None).unwrap();
-    records.assign_effect(&a, Some(&right)).unwrap();
+    records
+        .apply(
+            &a,
+            PlaybackCommand::AssignEffect(Some(right.clone())),
+            &record_context(),
+        )
+        .unwrap();
     assert_eq!(records.effect_owner(&left).unwrap(), None);
     assert_eq!(records.effect_owner(&right).unwrap(), Some(a.clone()));
     assert_eq!(records.snapshot(&b, None).unwrap().effect(), None);
@@ -182,7 +263,11 @@ fn removed_handles_stay_stale_and_live_effects_require_explicit_detachment() {
     let effect = records
         .register_effect(EffectFacts::try_new(10.0).unwrap())
         .unwrap();
-    let a = records.create(None, Some(&effect)).unwrap();
+    let a = records
+        .create(None, Some(&effect), &record_context())
+        .unwrap()
+        .animation()
+        .clone();
     assert_eq!(
         records.remove_effect(&effect).unwrap_err().kind(),
         &PlaybackErrorKind::EffectInUse
@@ -201,17 +286,33 @@ fn removed_handles_stay_stale_and_live_effects_require_explicit_detachment() {
     let next_effect = records
         .register_effect(EffectFacts::try_new(20.0).unwrap())
         .unwrap();
-    let b = records.create(None, Some(&next_effect)).unwrap();
+    let b = records
+        .create(None, Some(&next_effect), &record_context())
+        .unwrap()
+        .animation()
+        .clone();
     assert_ne!(a, b);
     assert_ne!(effect, next_effect);
-    assert!(records.assign_effect(&b, Some(&effect)).is_err());
+    assert!(
+        records
+            .apply(
+                &b,
+                PlaybackCommand::AssignEffect(Some(effect.clone())),
+                &record_context()
+            )
+            .is_err()
+    );
     assert_eq!(records.effect_owner(&next_effect).unwrap(), Some(b));
 }
 
 #[test]
 fn supplied_timeline_distinguishes_missing_inactive_wrong_and_detached() {
     let mut records = AnimationRecords::new();
-    let a = records.create(Some(TimelineId::new(1)), None).unwrap();
+    let a = records
+        .create(Some(TimelineId::new(1)), None, &record_context())
+        .unwrap()
+        .animation()
+        .clone();
     assert_eq!(
         records.snapshot(&a, None).unwrap_err().kind(),
         &PlaybackErrorKind::MissingTimeline {
@@ -239,13 +340,19 @@ fn supplied_timeline_distinguishes_missing_inactive_wrong_and_detached() {
     );
     assert_eq!(
         records
-            .assign_timeline(&a, Some(TimelineId::new(1)))
+            .apply(
+                &a,
+                PlaybackCommand::AssignTimeline(Some(TimelineId::new(1))),
+                &record_context()
+            )
             .unwrap(),
-        AssociationChange::Unchanged
+        Vec::<PlaybackRequest>::new()
     );
     assert_eq!(
-        records.assign_timeline(&a, None).unwrap(),
-        AssociationChange::Changed
+        records
+            .apply(&a, PlaybackCommand::AssignTimeline(None), &record_context())
+            .unwrap(),
+        Vec::<PlaybackRequest>::new()
     );
     assert_eq!(
         records

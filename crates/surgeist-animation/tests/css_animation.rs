@@ -5,7 +5,9 @@ use surgeist_animation::css_animation::{
     CssAnimationName, CssAnimationSlot, CssAnimationStopReason, ResolvedCssAnimation,
 };
 use surgeist_animation::keyframe::KeyframeTiming;
-use surgeist_animation::playback::{AnimationId, AnimationRecords, PlaybackCoordinates};
+use surgeist_animation::playback::{
+    AnimationId, AnimationRecords, PlaybackContext, PlaybackCoordinates,
+};
 use surgeist_animation::time::{
     AnimationDelay, AnimationDuration, AnimationTime, PlaybackRate, TimelineTime,
 };
@@ -55,7 +57,10 @@ fn list(slots: Vec<CssAnimationSlot<Rule>>) -> CssAnimationList<Rule> {
     CssAnimationList::new(slots, CssAnimationEligibility::Eligible).unwrap()
 }
 fn id(owner: &mut AnimationRecords) -> AnimationId {
-    owner.create(None, None).unwrap()
+    let created = owner
+        .create(None, None, &PlaybackContext::default())
+        .unwrap();
+    created.animation().clone()
 }
 fn coordinates(current: Option<f64>, held: bool) -> PlaybackCoordinates {
     let timeline = TimelineSnapshot::new(
