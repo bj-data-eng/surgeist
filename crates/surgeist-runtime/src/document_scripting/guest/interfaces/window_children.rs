@@ -5,6 +5,7 @@ use crate::document_scripting::window_relations::{self, Member, Relation};
 use surgeist_bindings_js::{ChildWindow, IntegerKind, IntegerMode, IntegerValue, ValueKind};
 use surgeist_dom::{
     DomSnapshot,
+    document::DomDocumentMetadata,
     hosted::history::DomHostedNavigable,
     hosted::{DomHostedBrowsingContextId, DomHostedError, DomHostedNavigableId},
     identity::DomStamp,
@@ -110,26 +111,22 @@ impl Child {
         let record = read
             .snapshot
             .captured_hosted_navigable_with(self.navigable, &mut || read.step())?;
-        self.is_live_at(read, record)
+        if !self.is_active_in(record)? {
+            return Ok(false);
+        }
+        read.node(self.document.node())?
+            .as_document()
+            .ok_or(DomError::WrongNodeKind)?
+            .captured_fully_active_with(&mut || read.step())
     }
 
-    fn is_live_at(
-        self,
-        read: &NativeRead<'_>,
-        record: DomHostedNavigable<'_>,
-    ) -> Result<bool, DocumentGuestEventError> {
+    fn is_active_in(self, record: DomHostedNavigable<'_>) -> Result<bool, DocumentGuestEventError> {
         if (record.global(), record.browsing_context()) != (self.global, self.context) {
             return Err(DocumentScriptNativeError::ProjectionCustody.into());
         }
-        if record.is_retiring()
-            || record.is_retired()
-            || record.active_document() != Some(self.document)
-        {
-            return Ok(false);
-        }
-        read.snapshot
-            .document(self.document)?
-            .captured_fully_active_with(&mut || read.step())
+        Ok(!record.is_retiring()
+            && !record.is_retired()
+            && record.active_document() == Some(self.document))
     }
 }
 
@@ -338,14 +335,9 @@ impl PublicEventBindings {
                 }
                 return Ok(Some(AssociatedWindow { child: None }));
             }
-            let child = self
+            let (child, custody) = self
                 .qualified_child(read, target, attached, record, document)?
                 .ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
-            let custody = if child.is_live_at(read, record)? {
-                ChildCustody::Live
-            } else {
-                ChildCustody::AssociatedInactive
-            };
             Ok(Some(AssociatedWindow {
                 child: Some((child, custody)),
             }))
@@ -410,24 +402,13 @@ impl PublicEventBindings {
             else {
                 return Ok(None);
             };
-            let Some(child) = self.qualified_child(
+            self.qualified_child(
                 read,
                 attachment.target.navigable(),
                 attached,
                 record,
                 document,
-            )?
-            else {
-                return Ok(None);
-            };
-            let custody = if child.is_live_at(read, record)? {
-                ChildCustody::Live
-            } else if child.is_associated(read.snapshot.document(document)?) {
-                ChildCustody::AssociatedInactive
-            } else {
-                ChildCustody::OriginOnly
-            };
-            Ok(Some((child, custody)))
+            )
         })
     }
 
@@ -438,25 +419,26 @@ impl PublicEventBindings {
         attached: DomHostedGlobalId,
         record: DomHostedNavigable<'_>,
         document: DocumentId,
-    ) -> Result<Option<Child>, DocumentGuestEventError> {
+    ) -> Result<Option<(Child, ChildCustody)>, DocumentGuestEventError> {
         if record.traversable() != target || record.container().is_none() {
             return Ok(None);
         }
         let child = describe_child(read, record, document)?;
-        let top = read.node(self.callbacks.permit.document.node())?;
-        let DomNodeKind::Document(top) = top.kind() else {
-            return Err(DocumentScriptNativeError::ProjectionCustody.into());
+        let top = document_metadata(read, self.callbacks.permit.document)?;
+        let node = read.node(document.node())?;
+        let DomNodeKind::Document(metadata) = node.kind() else {
+            return Err(DomError::WrongNodeKind.into());
         };
+        if metadata.origin() != top.origin() {
+            return Ok(None);
+        }
+        let associated = metadata.document_environment().browsing_context()
+            == HtmlBrowsingContextPresence::Present;
+        if associated && record.active_document() != Some(document) {
+            return Err(DocumentScriptNativeError::ProjectionCustody.into());
+        }
         let mut cursor = record;
-        let mut document = document;
-        while cursor.id() != target {
-            let node = read.node(document.node())?;
-            let DomNodeKind::Document(metadata) = node.kind() else {
-                return Err(DocumentScriptNativeError::ProjectionCustody.into());
-            };
-            if metadata.origin() != top.origin() {
-                return Ok(None);
-            }
+        loop {
             let parent = cursor
                 .parent()
                 .or(cursor.former_parent())
@@ -464,14 +446,30 @@ impl PublicEventBindings {
             cursor = read
                 .snapshot
                 .captured_hosted_navigable_with(parent, &mut || read.step())?;
-            document = read
+            let document = read
                 .snapshot
                 .global_document_with(cursor.global(), &mut || read.step())?;
+            if cursor.id() == target {
+                if cursor.global() != attached || document != self.callbacks.permit.document {
+                    return Err(DocumentScriptNativeError::ProjectionCustody.into());
+                }
+                break;
+            }
+            if document_metadata(read, document)?.origin() != top.origin() {
+                return Ok(None);
+            }
         }
-        if cursor.global() != attached || document != self.callbacks.permit.document {
-            return Err(DocumentScriptNativeError::ProjectionCustody.into());
-        }
-        Ok(Some(child))
+        let captured_document = node.as_document().ok_or(DomError::WrongNodeKind)?;
+        let custody = if child.is_active_in(record)?
+            && captured_document.captured_fully_active_with(&mut || read.step())?
+        {
+            ChildCustody::Live
+        } else if associated {
+            ChildCustody::AssociatedInactive
+        } else {
+            ChildCustody::OriginOnly
+        };
+        Ok(Some((child, custody)))
     }
 
     fn establish_child_from_attached<'scope>(
@@ -495,6 +493,16 @@ impl PublicEventBindings {
             .as_ref()
             .map(|root| scope.import(root).map_err(Into::into))
             .transpose()
+    }
+}
+
+fn document_metadata<'read>(
+    read: &'read NativeRead<'_>,
+    document: DocumentId,
+) -> Result<&'read DomDocumentMetadata, DocumentGuestEventError> {
+    match read.node(document.node())?.kind() {
+        DomNodeKind::Document(metadata) => Ok(metadata),
+        _ => Err(DomError::WrongNodeKind.into()),
     }
 }
 
