@@ -3085,6 +3085,7 @@ fn qualified_base_freezing_and_link_parser_history_transfer_without_native_respo
     assert_eq!(frozen.document(), result.document());
     assert_eq!(frozen.revision(), &revision);
     assert_eq!(frozen.response(), DomBaseResponse::ParsedCompleted);
+    assert_eq!(document.document_base_url(), Ok(parsed.serialization()));
     let link = result
         .snapshot()
         .node(element(&result, "link"))
@@ -3094,6 +3095,17 @@ fn qualified_base_freezing_and_link_parser_history_transfer_without_native_respo
     assert_eq!(link.parser_document(), Some(result.document()));
     assert!(link.history().created_by_node_document_parser());
     assert!(!link.flags().explicitly_enabled());
+    let mut removal = DomBatch::new();
+    removal.detach(base);
+    dom.apply(removal, &AtomicBool::new(false)).unwrap();
+    let current = dom.snapshot();
+    let updated = current.document(result.document()).unwrap();
+    assert_eq!(updated.first_base().unwrap(), None);
+    assert_eq!(
+        updated.document_base_url(),
+        Ok(environment.url().serialization())
+    );
+    assert_eq!(document.document_base_url(), Ok(parsed.serialization()));
 }
 
 #[test]

@@ -554,6 +554,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     html_reflection::heading_offset_reflects_the_distinct_getter_and_setter_ranges();
     super::guest::tests::source_callback_reads::editable_ancestry_queries_consume_the_enclosing_attribute_source();
     super::guest::tests::source_callback_reads::translation_queries_consume_the_enclosing_attribute_source();
+    super::guest::tests::source_callback_reads::base_uri_reads_consume_the_enclosing_attribute_source();
     tree_mutations::native_mutation_mixins_preserve_original_operands_and_conversion_order();
     super::guest::tests::tree_mutation_admission::normalized_operands_admit_exact_backing_and_work(
     );
