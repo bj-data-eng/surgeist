@@ -110,6 +110,10 @@ pub(super) fn collection_names_follow_prototype_own_descriptors(
                         if (value !== sentinel) return label + " changed the thrown value";
                     }
                 }
+                Object.setPrototypeOf(prototype, new Proxy(collection, {}));
+                if (own() !== undefined || ownKeys().includes("supported")) {
+                    return "proxy-mediated cycle exposed a name";
+                }
                 return "ok";
             })"#,
         ))?;
