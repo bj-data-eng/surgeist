@@ -139,17 +139,18 @@ calls the byte sequence an encoding declaration that only looks like an at-rule,
 says no `@charset` rule exists: one that is actually parsed is an unrecognized
 rule, dropped as invalid. The stylesheet fronts (`CssParser::parse_sheet`,
 `parse_sheet_bytes` and `parse_sheet_utf16`) therefore consume the exact
-declaration at the start of the decoded text: it yields no rule and no diagnostic,
-so a stylesheet that begins with it has a clean report that
-`into_validation_result` accepts. The declaration is the byte sequence above, found
+declaration at the start of the decoded text. The declaration contributes no rule
+or diagnostic, and `into_validation_result` accepts a report with no other
+diagnostics. The declaration is the byte sequence above, found
 in the text by `surgeist_css_parser::input::encoding_declaration`, the same
 function the decoder selects an encoding by, so decoded bytes and the same text
-passed to `parse_sheet` give the same report. Whether the label names an encoding
-does not matter to the report, and neither does which source selected the
-encoding: a protocol label, the environment encoding or a byte order mark decides
-over the declaration, which is still consumed. A byte order mark is removed by
-decoding, so the declaration after it is at the start of the text. A U+FEFF
-character in the text given to `parse_sheet` is not removed and precedes the
+passed to `parse_sheet` give the same report. The parser consumes the leading
+declaration regardless of whether its label selects an encoding. A byte order
+mark or valid protocol label can select the encoding first. Without either,
+an unrecognized declaration label leaves the environment encoding or UTF-8
+as the fallback. Decoding removes the byte order mark, so a declaration after
+it is at the start of the text. A U+FEFF character in the text given to
+`parse_sheet` is not removed and precedes the
 declaration, which is then not at the start. `parse_sheet_utf16` finds the
 declaration in its preprocessed text (Syntax 3 §3.3: CR, FF and CRLF become one
 LF, and NUL becomes U+FFFD), so it differs from the text and byte fronts in two
