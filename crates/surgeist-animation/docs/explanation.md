@@ -43,13 +43,15 @@ inputs. Relevance is an Animation-owned predicate over those supplied facts;
 consumers own target enumeration, lifecycle changes and invalidation. See
 [effect timing](reference.md#effect-timing-and-relevance).
 
-`AnimationRecords` owns the pure animation/effect association graph and global
-creation order. Idle registrations have no pending work, so their association
-operations can complete without a scheduler. Separately, immutable
-`PlaybackCoordinates` reuse the time-conversion owner, apply hold precedence and
-derive coherent no-pending-task observations for effect sampling. Playback
-controls and completion/event processing are not exposed by this records API.
-See [playback ownership](reference.md#playback-ownership-and-coordinate-observation).
+`AnimationRecords` owns the pure association graph, creation order and complete
+playback transitions. Commands consume explicit timeline/effect facts, prepare
+only affected records and commit their state together with ordered readiness,
+completion and playback-event requests. Runtime executes those requests at the
+prescribed deferred processing points and owns publication and dispatch. Ready
+task generations reject stale work; finish-notification tokens instead recheck
+live state and the current completion identity. Immutable `PlaybackCoordinates`
+still provide independent checked coordinate observations. See
+[playback ownership](reference.md#playback-ownership-and-native-controls).
 
 Native keyframe inputs have a separate normalization boundary in
 `keyframe_input`. It owns offset validation, property-track merging, list
