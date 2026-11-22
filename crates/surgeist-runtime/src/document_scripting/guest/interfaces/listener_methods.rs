@@ -163,6 +163,16 @@ impl Capture {
                     GuestReceiver::Window(_) => {
                         events.register_retained(owner, scope, key, options, observed, None)?;
                     }
+                    GuestReceiver::ChildWindow(window) => {
+                        events.register_retained(
+                            owner,
+                            scope,
+                            key,
+                            options,
+                            observed,
+                            Some(TargetRetirement::ChildWindow(window.clone())),
+                        )?;
+                    }
                     GuestReceiver::Node { lifetime, .. } => {
                         events.register_retained(
                             owner,
@@ -170,7 +180,7 @@ impl Capture {
                             key,
                             options,
                             observed,
-                            lifetime.clone(),
+                            lifetime.clone().map(TargetRetirement::Node),
                         )?;
                     }
                 }

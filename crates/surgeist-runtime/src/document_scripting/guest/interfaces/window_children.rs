@@ -17,7 +17,7 @@ pub(super) struct Children {
 }
 
 struct Entry {
-    child: Child,
+    relations: Rc<ChildRelations>,
     proxy: ChildWindow,
     next: Option<Box<Entry>>,
     _backing: GuestBacking,
@@ -98,7 +98,7 @@ impl Child {
             };
             let Some(ancestor) = public
                 .window_children
-                .lookup(parent, read.events, |entry| Ok(entry.child))?
+                .lookup(parent, read.events, |entry| Ok(entry.relations.child))?
             else {
                 return Ok(false);
             };
@@ -145,9 +145,10 @@ impl Child {
     }
 }
 
-pub(super) struct ChildRelations {
+pub(in crate::document_scripting::guest) struct ChildRelations {
     callbacks: Rc<Callbacks>,
     child: Child,
+    retired: Cell<bool>,
     _backing: GuestBacking,
 }
 
@@ -207,6 +208,14 @@ pub(in crate::document_scripting) fn call_child_window_relation<'scope>(
 }
 
 impl ChildRelations {
+    pub(in crate::document_scripting::guest) fn is_retired(&self) -> bool {
+        self.retired.get()
+    }
+
+    pub(in crate::document_scripting::guest) fn global(&self) -> DomHostedGlobalId {
+        self.child.global
+    }
+
     fn call<'scope>(
         &self,
         scope: &mut Scope<'scope>,
@@ -271,21 +280,19 @@ impl ChildRelations {
     }
 }
 
-pub(in crate::document_scripting::guest) fn child_window_event_global<'scope>(
+pub(in crate::document_scripting::guest) fn child_window_event_receiver<'scope>(
     scope: &Scope<'scope>,
     receiver: &Value<'scope>,
     owner: &NativeOwner,
     events: &GuestEvents,
-) -> Result<Option<DomHostedGlobalId>, DocumentGuestEventError> {
+) -> Result<Option<Rc<ChildRelations>>, DocumentGuestEventError> {
     let Some(relations) = scope.child_window_payload::<ChildRelations>(receiver)? else {
         return Ok(None);
     };
-    relations.callbacks.with_read(owner, events, |read, _| {
-        Ok(relations
-            .child
-            .is_live(read)?
-            .then_some(relations.child.global))
-    })
+    let live = relations
+        .callbacks
+        .with_read(owner, events, |read, _| relations.child.is_live(read))?;
+    Ok(live.then_some(relations))
 }
 
 pub(in crate::document_scripting::guest) fn was_child_window<'scope>(
@@ -344,9 +351,10 @@ impl Children {
         let mut complete = true;
         let mut cursor = &mut *live;
         while let Some(entry) = cursor.as_ref() {
-            match entry.child.is_retired(snapshot) {
+            match entry.relations.child.is_retired(snapshot) {
                 Ok(true) => {
                     if let Some(mut entry) = cursor.take() {
+                        entry.relations.retired.set(true);
                         *cursor = entry.next.take();
                         entry.next = retired.take();
                         retired = Some(entry);
@@ -405,7 +413,7 @@ impl Children {
         let mut next = children.as_deref();
         while let Some(entry) = next {
             events.step()?;
-            if matches(entry.child) {
+            if matches(entry.relations.child) {
                 return project(entry).map(Some);
             }
             next = entry.next.as_deref();
@@ -543,7 +551,7 @@ impl Capture {
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
         let registry = &public.window_children;
         if let Some(proxy) = registry.lookup(context, events, |candidate| {
-            if candidate.child != child {
+            if candidate.relations.child != child {
                 Err(DocumentScriptNativeError::ProjectionCustody.into())
             } else {
                 Ok(candidate.proxy.open(scope)?)
@@ -562,6 +570,7 @@ impl Capture {
         let source = Rc::new(ChildRelations {
             callbacks: self.callbacks.clone(),
             child,
+            retired: Cell::new(false),
             _backing: events.reserve(owner, bytes)?,
         });
         let document_registry = self.callbacks.with_read(owner, events, |read, _| {
@@ -612,7 +621,7 @@ impl Capture {
         public.publish_origin(origin)?;
         let next = children.take();
         *children = Some(Box::new(Entry {
-            child,
+            relations: source,
             proxy,
             next,
             _backing: backing,

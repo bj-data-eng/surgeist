@@ -4,6 +4,7 @@ use surgeist_bindings_js::{Arguments, FunctionMetadata, NativeObject, ValueKind}
 pub(super) enum GuestReceiver {
     Projected(Rc<NativeObject<GuestTargetProjection>>),
     Window(DomHostedGlobalId),
+    ChildWindow(Rc<interfaces::ChildRelations>),
     Node {
         node: surgeist_dom::identity::NodeId,
         lifetime: Option<Rc<interfaces::NodeLifetime>>,
@@ -15,6 +16,7 @@ impl GuestReceiver {
         match self {
             Self::Projected(projection) => projection.payload().native.clone().into(),
             Self::Window(global) => (*global).into(),
+            Self::ChildWindow(window) => window.global().into(),
             Self::Node { node, .. } => (*node).into(),
         }
     }
@@ -48,8 +50,8 @@ pub(super) fn event_receiver<'scope>(
         return Ok(Some(GuestReceiver::Window(attachment.target.global())));
     }
     Ok(
-        interfaces::child_window_event_global(scope, receiver, owner, events)?
-            .map(GuestReceiver::Window),
+        interfaces::child_window_event_receiver(scope, receiver, owner, events)?
+            .map(GuestReceiver::ChildWindow),
     )
 }
 

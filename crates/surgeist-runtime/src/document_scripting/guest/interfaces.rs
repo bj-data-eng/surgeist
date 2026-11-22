@@ -12,7 +12,7 @@ mod toggle_event;
 mod trusted_policy;
 mod window_children;
 pub(in crate::document_scripting) use window_children::call_child_window_relation;
-pub(super) use window_children::{child_window_event_global, was_child_window};
+pub(super) use window_children::{ChildRelations, child_window_event_receiver, was_child_window};
 
 use super::*;
 pub(in crate::document_scripting) use custom_elements::document_registry as creation_document_registry;
@@ -215,19 +215,21 @@ impl PublicEventBindings {
         self.document.reap_nodes(process, retired);
     }
 
-    pub(super) fn reap_windows(&self, native: &NativeOwner, process: &mut Process) {
+    pub(super) fn reap_windows(&self, native: &NativeOwner, process: &mut Process) -> bool {
         let Ok(session) = native.session.try_borrow() else {
-            return;
+            return false;
         };
         if session.read_dom().pending_source_edit().is_some() {
-            return;
+            return false;
         }
         let snapshot = session.snapshot();
         drop(session);
-        if self.window_children.reap(&snapshot) {
+        let retired = self.window_children.reap(&snapshot);
+        if retired {
             // Settle expired engine roots at the same native boundary.
             drop(process.execution());
         }
+        retired
     }
 
     pub(super) fn install_window(
