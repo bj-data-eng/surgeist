@@ -313,6 +313,15 @@ pub(super) fn install<'scope>(
         BEFORE_INDETERMINATE,
     )?;
     InputProperty::Flag(InputFlag::Indeterminate).install(scope, prototype, capture)?;
+    let get = capture(size_of::<Capture>())?;
+    install_getter(
+        scope,
+        prototype,
+        &ascii(b"list"),
+        &ascii(b"get list"),
+        true,
+        Callback::new(move |scope, arguments| get.read_input_list(scope, arguments)),
+    )?;
     reflection::install(
         scope,
         prototype,
@@ -328,6 +337,46 @@ pub(super) fn install<'scope>(
 }
 
 impl Capture {
+    fn read_input_list<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+    ) -> Result<Completion<'scope>, Error> {
+        let receiver = Receiver::Input;
+        let Some(GuestNode::Element(id)) = tree::projected_node(scope, arguments.receiver())?
+        else {
+            return Ok(Completion::Throw(
+                scope.type_error(receiver.error_message())?,
+            ));
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            let target = self.callbacks.with_read(&owner, &events, |read, _| {
+                let node = read.node(id)?;
+                if !receiver.matches(node, || read.step())? {
+                    return Ok(None);
+                }
+                let input = node.as_input().ok_or(DomError::WrongNodeKind)?;
+                Ok(Some(input.suggestions_source_with(
+                    || read.step(),
+                    |bytes| read.reserve(bytes),
+                )?))
+            })?;
+            let Some(target) = target else {
+                return Ok(Completion::Throw(
+                    scope.type_error(receiver.error_message())?,
+                ));
+            };
+            Ok(Completion::Return(self.project_observation(
+                scope,
+                &owner,
+                &events,
+                Observation::Node(target),
+            )?))
+        })();
+        tree::tree_completion(scope, &events, result)
+    }
+
     fn read_input_property<'scope>(
         &self,
         scope: &mut Scope<'scope>,

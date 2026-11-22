@@ -197,3 +197,78 @@ fn descendant_search_returns_first_refusal_and_releases_current_and_replaced_bac
     let (answer, used, _) = read(&after, reached - 1, scratch, &key);
     assert_eq!((answer, used), (Err(Refusal::Work), reached - 1));
 }
+
+#[test]
+fn input_suggestions_preserve_first_refusal_and_release_traversal_backing() {
+    let mut dom = dom();
+    dom.set_limits(dom.limits().with_input_processing(4096, 65_536).unwrap())
+        .unwrap();
+    let mut batch = DomBatch::new();
+    let doc = batch.create_document();
+    let root = batch.create_fragment(&doc);
+    let branch = child(&mut batch, &doc, &root);
+    let input = batch.create_element_ns(&doc, Namespace::html(), "input");
+    batch.insert_before(&input, &root, None);
+    batch.set_attribute(&input, "list", "suggestions");
+    let target = batch.create_element_ns(&doc, Namespace::html(), "datalist");
+    batch.insert_before(&target, &branch, None);
+    batch.set_attribute(&target, "id", "suggestions");
+    let commit = apply(&mut dom, batch);
+    let [input, target] = [input, target].map(|ticket| commit.created(&ticket).unwrap().unwrap());
+
+    let read = |snapshot: &DomSnapshot, work_cap, scratch_cap| {
+        let attempted = Cell::new(0);
+        let held = Cell::new(0);
+        let requested = Cell::new(0);
+        let result = snapshot
+            .node(input)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .suggestions_source_with(
+                || {
+                    let previous = attempted.get();
+                    attempted.set(previous + 1);
+                    if previous == work_cap {
+                        return Err(Refusal::Work);
+                    }
+                    Ok(())
+                },
+                |bytes| {
+                    requested.set(bytes);
+                    if bytes > scratch_cap {
+                        return Err(Refusal::Scratch);
+                    }
+                    held.set(held.get() + bytes);
+                    Ok(ScratchDebit { held: &held, bytes })
+                },
+            );
+        assert_eq!(held.get(), 0);
+        (result, attempted.get(), requested.get())
+    };
+
+    let before = dom.snapshot();
+    let (found, work, scratch) = read(&before, usize::MAX, usize::MAX);
+    assert_eq!(found, Ok(Some(target)));
+    assert!(scratch > 0);
+    assert_eq!(read(&before, work, scratch).0, Ok(Some(target)));
+    assert_eq!(read(&before, work, scratch - 1).0, Err(Refusal::Scratch));
+    assert_eq!(read(&before, 0, 0), (Err(Refusal::Work), 1, 0));
+    for cap in 0..work {
+        let (result, attempted, _) = read(&before, cap, scratch);
+        assert_eq!(result, Err(Refusal::Work));
+        assert_eq!(attempted, cap + 1);
+    }
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "password");
+    apply(&mut dom, batch);
+    assert_eq!(read(&dom.snapshot(), usize::MAX, 0).0, Ok(None));
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "text");
+    batch.set_attribute(input, "list", "");
+    apply(&mut dom, batch);
+    assert_eq!(read(&dom.snapshot(), usize::MAX, 0).0, Ok(None));
+    assert_eq!(read(&before, work, scratch).0, Ok(Some(target)));
+}

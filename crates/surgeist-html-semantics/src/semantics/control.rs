@@ -1294,39 +1294,27 @@ impl<'a> HtmlSemanticSession<'a> {
         element: &'a HtmlCapturedElement,
         frames: &mut Vec<HtmlCapturedChildIds<'a>>,
     ) -> ControlResult<Option<HtmlCaptureSubjectId>> {
-        // Absence/empty and a non-applicable state independently establish null.
-        // Do not inspect unrelated type, raw contents or topology for those proofs.
-        let Some(raw) = self.attribute(element, "list")? else {
-            self.charge(1)?;
-            return Ok(None);
-        };
-        if raw.value().is_empty() {
-            self.charge(1)?;
-            return Ok(None);
-        }
-        if !surgeist_html::bounded::attributes::input_list_applies(
-            self.control_input_type(element)?,
-        ) {
-            self.charge(1)?;
-            return Ok(None);
-        }
-        self.interpreter
-            .admit_attribute_raw(Some(raw.value()))
-            .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
-        let root = self.control_root(subject)?;
-        let candidate = self.control_find(&root, Some(raw.value()), true, frames)?;
-        let source = if let Some(candidate) = candidate {
-            let node = self.node(&candidate)?;
-            if let HtmlCapturedNodeKind::Element(element) = node.kind()
-                && self.known(element)? == Some(KnownHtmlElement::Datalist)
-            {
-                Some(candidate)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        let list = self.attribute(element, "list")?.map(Attribute::value);
+        let source = crate::input_suggestions::input_suggestions_source::<_, _, ControlStop>(
+            &mut (&mut *self, frames),
+            list,
+            |(session, _)| Ok(session.control_input_type(element)?),
+            |(session, frames), list| {
+                session
+                    .interpreter
+                    .admit_attribute_raw(Some(list))
+                    .map_err(|e| session.stop(HtmlSemanticFailureKind::Attribute(e)))?;
+                let root = session.control_root(subject)?;
+                session.control_find(&root, Some(list), true, frames)
+            },
+            |(session, _), candidate| {
+                let node = session.node(candidate)?;
+                match node.kind() {
+                    HtmlCapturedNodeKind::Element(element) => Ok(session.known(element)?),
+                    _ => Ok(None),
+                }
+            },
+        )?;
         self.charge(1)?;
         Ok(source)
     }

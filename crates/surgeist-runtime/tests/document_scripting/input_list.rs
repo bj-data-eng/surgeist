@@ -3,9 +3,23 @@
 use super::*;
 
 pub(super) fn attached_input_list_follows_the_first_exact_id_in_its_tree() {
-    let (session, top) = setup();
-    let (mut host, _) =
-        attach_event_window_with_work(session, top, Arc::new(cancel()), 160_000, |_, _, _| {});
+    let mut dom = native_dom();
+    dom.set_limits(
+        dom.limits()
+            .with_input_processing(2_000_000, 2_000_000_000)
+            .unwrap(),
+    )
+    .unwrap();
+    let mut session = DomSession::new(dom, limits()).unwrap();
+    let (_, top) = create(&mut session);
+    let (mut host, _) = attach_event_window_with_source_limits(
+        session,
+        top,
+        Arc::new(cancel()),
+        160_000,
+        DomSourceLimits::new(16_000_000, 200_000, 20_000_000, 64, 64, 64, 2),
+        |_, _, _| {},
+    );
     let permit = host.permit().unwrap();
     let result = host
         .in_document(&permit, |scope| {
@@ -84,6 +98,14 @@ pub(super) fn attached_input_list_follows_the_first_exact_id_in_its_tree() {
             let value = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
             scope.to_utf16(&value)
         })
-        .unwrap();
+        .unwrap_or_else(|error| {
+            if let DocumentScriptError::Script(Error::HostFailure(failure)) = &error {
+                panic!("Input list native failure: {:?}", std::error::Error::source(failure));
+            }
+            panic!("Input list guest execution: {error:?}");
+        });
     assert_eq!(String::from_utf16(&result).unwrap(), "ok");
+    host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
+        .unwrap();
+    host.stop().into_session().unwrap();
 }
