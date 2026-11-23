@@ -272,24 +272,25 @@ impl Capture {
         let (owner, events) = self.active(scope)?;
         let result = (|| {
             events.step()?;
+            // The traced list can outlive the canonical node.
+            let origin = self
+                .callbacks
+                .with_read(&owner, &events, |read, attached| {
+                    let node = read.node(node.node())?;
+                    Ok(node.relevant_global()?.filter(|origin| *origin != attached))
+                })?;
             if let Some(list) = scope
                 .native_object_reference::<GuestNodeProjection>(receiver, CHILD_LIST_REFERENCE)?
             {
-                self.callbacks
-                    .with_read(&owner, &events, |read, _| read.node(node.node()).map(drop))?;
                 return Ok(list);
             }
-            let (native, origin) =
-                self.callbacks
-                    .with_read(&owner, &events, |read, attached| {
-                        let node = read.node(node.node())?;
-                        let origin = node.relevant_global()?.filter(|origin| *origin != attached);
-                        let dom = read
-                            .dom
-                            .try_borrow()
-                            .map_err(|_| DocumentScriptNativeError::Busy)?;
-                        Ok((dom.raw().child_nodes(node.id(), read.cancel)?, origin))
-                    })?;
+            let native = self.callbacks.with_read(&owner, &events, |read, _| {
+                let dom = read
+                    .dom
+                    .try_borrow()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                Ok(dom.raw().child_nodes(node.node(), read.cancel)?)
+            })?;
             let list = List {
                 native,
                 custody: ListCustody::ChildNodes,

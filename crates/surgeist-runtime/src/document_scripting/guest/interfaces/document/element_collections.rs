@@ -284,27 +284,24 @@ impl Capture {
         let (owner, events) = self.active(scope)?;
         let result = (|| {
             events.step()?;
+            // The traced collection can outlive its canonical parent.
+            let origin = self
+                .callbacks
+                .with_read(&owner, &events, |read, attached| {
+                    collection_origin(read.node(parent.node())?, attached)
+                })?;
             if let Some(collection) =
                 scope.native_object_reference::<GuestNodeProjection>(wrapper, CHILDREN_REFERENCE)?
             {
-                self.callbacks.with_read(&owner, &events, |read, _| {
-                    read.node(parent.node()).map(drop)
-                })?;
                 return Ok(Completion::Return(collection));
             }
-            let (collection, origin) =
-                self.callbacks
-                    .with_read(&owner, &events, |read, attached| {
-                        let origin = collection_origin(read.node(parent.node())?, attached)?;
-                        let dom = read
-                            .dom
-                            .try_borrow()
-                            .map_err(|_| DocumentScriptNativeError::Busy)?;
-                        Ok((
-                            dom.raw().child_elements(parent.node(), read.cancel)?,
-                            origin,
-                        ))
-                    })?;
+            let collection = self.callbacks.with_read(&owner, &events, |read, _| {
+                let dom = read
+                    .dom
+                    .try_borrow()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                Ok(dom.raw().child_elements(parent.node(), read.cancel)?)
+            })?;
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
             let value = public.with_collection_projection(&events, origin, |projection| {
                 projection.project_for_root(
