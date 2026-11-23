@@ -25,14 +25,15 @@ use surgeist_html::bounded::attributes::{
     HtmlHiddenSetterInput, HtmlTableSpanRule, button_command_readback_with,
     closedby_processing_with, contenteditable_processing_with, contenteditable_setter_state_with,
     control_autocomplete_idl_with, control_length_reflection_with, control_length_setter_value,
-    crossorigin_processing_with, dir_keyword_with, enterkeyhint_keyword_with,
-    fetchpriority_processing_with, form_autocomplete_keyword_with, form_enctype_keyword_with,
-    form_enctype_override_keyword_with, form_method_keyword_with,
+    crossorigin_processing_with, decoding_processing_with, dir_keyword_with,
+    enterkeyhint_keyword_with, fetchpriority_processing_with, form_autocomplete_keyword_with,
+    form_enctype_keyword_with, form_enctype_override_keyword_with, form_method_keyword_with,
     form_method_override_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
     hidden_processing_with, hidden_setter_action_with, inputmode_keyword_with,
     link_as_keyword_with, loading_processing_with, popover_keyword_with,
     popover_target_action_with, referrerpolicy_processing_with, table_cell_scope_keyword_with,
     template_shadow_root_mode_keyword_with, template_shadow_root_slot_assignment_keyword_with,
+    unsigned_long_reflection_with, unsigned_long_setter_value,
 };
 use surgeist_html::bounded::input::input_colorspace_with;
 use surgeist_html::bounded::marquee::{
@@ -40,9 +41,6 @@ use surgeist_html::bounded::marquee::{
 };
 use surgeist_html::bounded::numeric::{
     HtmlNumericParseError, integer_long_work_bound, parse_integer_long,
-};
-use surgeist_html::bounded::select::{
-    select_size_reflection_setter_value, select_size_reflection_with,
 };
 use surgeist_html::elements::dialog::computed_dialog_closed_by;
 use surgeist_html::elements::media::HtmlCanvasDimension;
@@ -58,6 +56,7 @@ pub(super) enum Reflection {
     CrossOrigin,
     ReferrerPolicy,
     FetchPriority,
+    Decoding,
     Loading,
     LinkAs,
     Boolean,
@@ -89,7 +88,7 @@ pub(super) enum Reflection {
     SignedLongOne,
     ControlLength,
     ControlDimension(HtmlControlDimensionRule),
-    SelectSize,
+    UnsignedLong,
     CanvasDimension(HtmlCanvasDimension),
     MarqueeUnsigned(HtmlMarqueeUnsignedReflection),
     MarqueeLoop,
@@ -158,6 +157,7 @@ pub(super) enum Receiver {
     Frameset,
     Input,
     Iframe,
+    Image,
     Label,
     Legend,
     Marquee,
@@ -288,6 +288,10 @@ impl Receiver {
                 step()?;
                 html_element_is(node, "HTMLIFrameElement")
             }
+            Self::Image => {
+                step()?;
+                html_element_is(node, "HTMLImageElement")
+            }
             Self::Input => {
                 step()?;
                 node.as_element().is_some_and(|element| {
@@ -403,6 +407,7 @@ impl Receiver {
             Self::Frameset => const { &ascii(b"HTMLFrameSetElement required") },
             Self::Input => const { &ascii(b"HTMLInputElement required") },
             Self::Iframe => const { &ascii(b"HTMLIFrameElement required") },
+            Self::Image => const { &ascii(b"HTMLImageElement required") },
             Self::Label => const { &ascii(b"HTMLLabelElement required") },
             Self::Legend => const { &ascii(b"HTMLLegendElement required") },
             Self::Marquee => const { &ascii(b"HTMLMarqueeElement required") },
@@ -605,6 +610,9 @@ impl Capture {
                     Reflection::Loading => Reflected::Keyword(Some(
                         loading_processing_with(units, |_| read.step())?.canonical_keyword(),
                     )),
+                    Reflection::Decoding => Reflected::Keyword(Some(
+                        decoding_processing_with(units, |_| read.step())?.canonical_keyword(),
+                    )),
                     Reflection::FetchPriority => Reflected::Keyword(Some(
                         fetchpriority_processing_with(units, |_| read.step())?.canonical_keyword(),
                     )),
@@ -765,10 +773,9 @@ impl Capture {
                     Reflection::ControlDimension(rule) => {
                         Reflected::Unsigned(rule.read_with(units, |_| read.step())?)
                     }
-                    Reflection::SelectSize => Reflected::Unsigned(select_size_reflection_with(
-                        stored.map(|value| value.value()),
-                        || read.step(),
-                    )?),
+                    Reflection::UnsignedLong => {
+                        Reflected::Unsigned(unsigned_long_reflection_with(units, || read.step())?)
+                    }
                     Reflection::MarqueeUnsigned(rule) => Reflected::Unsigned(
                         rule.read_with(stored.map(|value| value.value()), || read.step())?,
                     ),
@@ -865,6 +872,16 @@ impl Capture {
                     .run(scope, |cx| cx.value(&DOM_STRING.nullable(), input))
                     .map_err(Error::from)?;
                 scope.check_active()?;
+                if matches!(receiver, Receiver::Image) {
+                    let current = self.callbacks.with_read(&owner, &events, |read, _| {
+                        receiver.matches(read.node(id)?, || read.step())
+                    })?;
+                    if !current {
+                        return Ok(Completion::Throw(
+                            scope.type_error(receiver.error_message())?,
+                        ));
+                    }
+                }
                 converted
                     .get()
                     .as_ref()
@@ -873,7 +890,7 @@ impl Capture {
             } else if matches!(
                 reflection,
                 Reflection::HeadingOffset
-                    | Reflection::SelectSize
+                    | Reflection::UnsignedLong
                     | Reflection::ControlDimension(_)
                     | Reflection::TableSpan(_)
                     | Reflection::MarqueeUnsigned(_)
@@ -899,6 +916,9 @@ impl Capture {
                     Reflection::ControlDimension(_)
                         | Reflection::MarqueeUnsigned(_)
                         | Reflection::CanvasDimension(_)
+                ) || matches!(
+                    (reflection, receiver),
+                    (Reflection::UnsignedLong, Receiver::Image)
                 ) {
                     let current = self.callbacks.with_read(&owner, &events, |read, _| {
                         receiver.matches(read.node(id)?, || read.step())
@@ -911,7 +931,7 @@ impl Capture {
                 }
                 let value = match reflection {
                     Reflection::HeadingOffset => heading_offset_setter_value(value),
-                    Reflection::SelectSize => select_size_reflection_setter_value(value),
+                    Reflection::UnsignedLong => unsigned_long_setter_value(value),
                     Reflection::ControlDimension(rule) => {
                         let Ok(value) = rule.setter_value(value) else {
                             return Ok(Completion::Throw(
@@ -1069,6 +1089,7 @@ impl Capture {
                             | Receiver::Frameset
                             | Receiver::Input
                             | Receiver::Iframe
+                            | Receiver::Image
                             | Receiver::Label
                             | Receiver::Legend
                             | Receiver::Marquee

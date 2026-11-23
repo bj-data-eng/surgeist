@@ -302,12 +302,14 @@ pub(super) fn inactive_image_keyword_effects_and_refused_reentry_keep_native_sta
             )
             .map(drop)
     }));
-    let first = failure.cause::<DocumentGuestEventError>().unwrap();
+    let first = failure
+        .cause::<DomSourceDriveError>()
+        .expect("adoption must retain its original Source failure");
     assert!(
         matches!(
             first,
-            DocumentGuestEventError::Document(DocumentScriptError::Native(
-                DocumentScriptNativeError::Dom(DomError::ImageProcessingUnavailable)
+            DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+                DomError::ImageProcessingUnavailable
             ))
         ),
         "unexpected reentry failure: {first:?}"
@@ -315,15 +317,17 @@ pub(super) fn inactive_image_keyword_effects_and_refused_reentry_keep_native_sta
     let repeated = native_failure(host.checkpoint());
     assert!(std::ptr::eq(
         first,
-        repeated.cause::<DocumentGuestEventError>().unwrap()
+        repeated.cause::<DomSourceDriveError>().unwrap()
     ));
     let after = host.snapshot().unwrap();
     assert_eq!(after.stamp(), before.stamp());
+    assert!(after.incomplete_source_operation().is_none());
     assert_eq!(after.node(id).unwrap().owner_document(), owner);
     assert!(after.node(id).unwrap().attribute(&"alt".into()).is_none());
     assert_eq!(wait(&host, id).id(), removed.id());
     host.stop().into_session().unwrap();
 }
+
 pub(super) fn inactive_image_setters_follow_the_original_child_realm() {
     let (mut session, top) = setup();
     let document = top.document();

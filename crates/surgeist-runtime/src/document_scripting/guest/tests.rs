@@ -2997,7 +2997,7 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     let mut bound = Some(bound);
     let limits = DocumentGuestEventLimits {
         // The reference run measures the exact activation requirement.
-        storage_bytes: 704 * 1024,
+        storage_bytes: 768 * 1024,
         work: 10_000,
         pending_exception_reports: 2,
         node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),

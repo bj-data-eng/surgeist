@@ -40,7 +40,7 @@ const SELECT_REFLECTIONS: &[reflection::Member] = &[
         &ascii(b"get size"),
         &ascii(b"set size"),
         &ascii(b"size"),
-        Reflection::SelectSize,
+        Reflection::UnsignedLong,
     ),
 ];
 

@@ -14,9 +14,9 @@ pub use crate::internal::attributes::bounded_rules::{
     HtmlHiddenSetterInput, HtmlIntegerAttributeRead, HtmlWritingSuggestionsProcessing,
     button_submitter_context_with, button_type_keyword_with, closedby_processing_with,
     contenteditable_processing_with, contenteditable_setter_state_with,
-    crossorigin_processing_with, dir_keyword_with, enterkeyhint_keyword_with,
-    fetchpriority_processing_with, form_autocomplete_keyword_with, form_enctype_keyword_with,
-    form_enctype_override_keyword_with, form_method_keyword_with,
+    crossorigin_processing_with, decoding_processing_with, dir_keyword_with,
+    enterkeyhint_keyword_with, fetchpriority_processing_with, form_autocomplete_keyword_with,
+    form_enctype_keyword_with, form_enctype_override_keyword_with, form_method_keyword_with,
     form_method_override_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
     hidden_processing_with, hidden_setter_action_with, input_list_applies, input_readonly_applies,
     input_submitter_context, inputmode_keyword_with, loading_processing_with, popover_keyword_with,
@@ -45,6 +45,9 @@ pub use crate::internal::attributes::meta_processing::{
 };
 pub use crate::internal::attributes::navigable_target::HtmlTargetRecovery;
 pub use crate::internal::attributes::scalar::table_span::HtmlTableSpanRule;
+pub use crate::internal::attributes::scalar::{
+    unsigned_long_reflection_with, unsigned_long_setter_value,
+};
 pub use crate::internal::attributes::table_header_scope::bounded_scope::{
     table_cell_scope_keyword_with, th_scope_state, th_scope_work_bound,
 };

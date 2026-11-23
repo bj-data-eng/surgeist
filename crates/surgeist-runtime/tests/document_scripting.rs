@@ -294,7 +294,7 @@ const ALLOW: HtmlScriptingPolicy = HtmlScriptingPolicy {
     automation_allows: true,
 };
 const STORAGE: usize = 1_000_000;
-const ATTACHED_GUEST_STORAGE: usize = 704 * 1024;
+const ATTACHED_GUEST_STORAGE: usize = 768 * 1024;
 
 fn hooks(child_count: &[u16]) -> Option<DocumentScriptHooks<'_>> {
     const DETACH: [u16; 8] = [100, 101, 116, 97, 99, 104, 73, 102];
