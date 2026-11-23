@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_text::font::FontBaseline;
 
 fn baseline_size<S: LayoutScalar>(axis: GridAxisKind, grid: f64, stacking: f64) -> Size<S> {
     let px = S::from_f64;
@@ -234,7 +235,7 @@ fn grid_axis_baseline_tree<S: LayoutScalar>(
 fn assert_grid_axis_baselines_align_without_changing_packing<S: LayoutScalar>(named: bool) {
     let mut differences = Vec::new();
     let reference = if named {
-        GridBaselineReference::Named(BaselineName::Central)
+        GridBaselineReference::Named(FontBaseline::Central)
     } else {
         GridBaselineReference::Physical
     };
@@ -318,7 +319,7 @@ fn named_central_grid_axis_baselines_preserve_packing_f64() {
 
 fn assert_named_lane_baseline_controls<S: LayoutScalar>() {
     for axis in [GridAxisKind::Column, GridAxisKind::Row] {
-        let named = GridBaselineReference::Named(BaselineName::Central);
+        let named = GridBaselineReference::Named(FontBaseline::Central);
         let active =
             grid_axis_baseline_tree::<S>(Display::GridLanes, axis, named, AlignItems::Baseline)
                 // A host Size result supplies no named baseline fact. It must not

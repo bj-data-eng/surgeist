@@ -2,11 +2,12 @@
 use super::placement::checked_shift_projection;
 use super::*;
 use crate::{Display, InlineMetricsOf, WritingMode};
+use surgeist_text::font::FontBaseline;
 
 fn participant<S: LayoutScalar>(
     input: &crate::NodeInputOf<S>,
     output: ComputeOutputOf<S>,
-    name: crate::BaselineName,
+    name: FontBaseline,
     margin: Edges<S>,
 ) -> Result<AtomicInlineBoxParticipant<S>, LayoutErrorKindOf<S, ()>> {
     atomic_inline_box_participant(
@@ -32,11 +33,11 @@ fn facts<S: LayoutScalar>() -> crate::NamedBaselinesOf<S> {
     };
     crate::NamedBaselinesOf::unknown()
         .with(
-            crate::BaselineName::Alphabetic,
+            FontBaseline::Alphabetic,
             crate::BaselinePairOf::new(fact(2.0), fact(3.0)),
         )
         .with(
-            crate::BaselineName::Central,
+            FontBaseline::Central,
             crate::BaselinePairOf::new(fact(6.0), fact(7.0)),
         )
 }
@@ -63,8 +64,8 @@ fn shifts_match_actual_named_preference_before_displacing_both_scalars() {
                     ..crate::NodeInputOf::default()
                 };
                 for (name, expected) in [
-                    (crate::BaselineName::Alphabetic, alphabetic),
-                    (crate::BaselineName::Central, central),
+                    (FontBaseline::Alphabetic, alphabetic),
+                    (FontBaseline::Central, central),
                 ] {
                     let demand = named_atomic_demand(
                         &BlockChildProjection::from_node(&input),
@@ -115,7 +116,7 @@ fn shifted_demand_keeps_unknown_axis_absence_margin_and_scroll_contracts_both_sc
                 ..crate::NodeInputOf::default()
             };
             assert!(matches!(
-                participant(&input, plain, crate::BaselineName::Central, Edges::ZERO),
+                participant(&input, plain, FontBaseline::Central, Edges::ZERO),
                 Err(LayoutErrorKindOf::MissingContext(
                     crate::LayoutMissingContext::NamedInlineBaseline
                 ))
@@ -124,11 +125,11 @@ fn shifted_demand_keeps_unknown_axis_absence_margin_and_scroll_contracts_both_sc
                 crate::BaselineCoordinateOf::try_new(PhysicalAxis::Horizontal, n(6.0)).unwrap(),
             );
             let wrong = plain.with_named_baselines(crate::NamedBaselinesOf::unknown().with(
-                crate::BaselineName::Central,
+                FontBaseline::Central,
                 crate::BaselinePairOf::new(wrong, wrong),
             ));
             assert!(matches!(
-                participant(&input, wrong, crate::BaselineName::Central, Edges::ZERO),
+                participant(&input, wrong, FontBaseline::Central, Edges::ZERO),
                 Err(LayoutErrorKindOf::InvalidInput(
                     LayoutInvalidInputOf::InlineBaseline(
                         crate::InlineBaselineError::AxisMismatch {
@@ -149,13 +150,13 @@ fn shifted_demand_keeps_unknown_axis_absence_margin_and_scroll_contracts_both_sc
             // Margin under edge13; central(-2+13)/2=5.5. These are raw
             // matched local coordinates; amount is consumed only downstream.
             assert_eq!(
-                participant(&input, absent, crate::BaselineName::Alphabetic, margin)
+                participant(&input, absent, FontBaseline::Alphabetic, margin)
                     .unwrap()
                     .first_baseline,
                 Some(n(13.0))
             );
             assert_eq!(
-                participant(&input, absent, crate::BaselineName::Central, margin)
+                participant(&input, absent, FontBaseline::Central, margin)
                     .unwrap()
                     .first_baseline,
                 Some(n(5.5))
@@ -166,21 +167,21 @@ fn shifted_demand_keeps_unknown_axis_absence_margin_and_scroll_contracts_both_sc
                 ..input.clone()
             };
             assert_eq!(
-                participant(&scrolling, absent, crate::BaselineName::Alphabetic, margin)
+                participant(&scrolling, absent, FontBaseline::Alphabetic, margin)
                     .unwrap()
                     .first_baseline,
                 Some(n(10.0))
             );
 
             let mismatched = InlineMetricsOf::try_new(
-                crate::InlineBaselineContext::Named(crate::BaselineName::Alphabetic),
+                crate::InlineBaselineContext::Named(FontBaseline::Alphabetic),
                 n(8.0),
                 n(10.0),
             )
             .unwrap();
             let error = validate_metric_reference::<u32, S, ()>(
                 1,
-                crate::InlineBaselineContext::Named(crate::BaselineName::Central),
+                crate::InlineBaselineContext::Named(FontBaseline::Central),
                 mismatched,
                 input.vertical_align,
             )

@@ -1,6 +1,7 @@
 //! Captured scope facts reach real Layout geometry. Ahem's retained tables and
 //! CSS2 10.8.1 aligned subtrees supply the independent metric/edge expectations.
 use crate::test_support::readback::{self, Phase};
+use surgeist_text::font::FontBaseline;
 #[path = "scope_alignment/census_failure_usage.rs"]
 mod census_failure_usage;
 #[path = "scope_alignment/resource_comparisons.rs"]
@@ -556,7 +557,7 @@ impl Case {
                 0,
                 NodeInputOf {
                     display: Display::Block,
-                    inline_baseline_context: InlineBaselineContext::Named(BaselineName::Alphabetic),
+                    inline_baseline_context: InlineBaselineContext::Named(FontBaseline::Alphabetic),
                     size: Size::new(
                         PreferredSizeOf::px(S::from_f64(width)),
                         PreferredSizeOf::AUTO,
@@ -575,7 +576,7 @@ impl Case {
             let numeric = matches!(self.shape, Shape::NumericChild | Shape::NativePairChild)
                 && control.node >= 22;
             let metrics = InlineMetricsOf::try_new(
-                InlineBaselineContext::Named(BaselineName::Alphabetic),
+                InlineBaselineContext::Named(FontBaseline::Alphabetic),
                 S::from_f64(if forced {
                     4.0
                 } else if numeric {
@@ -625,7 +626,7 @@ impl Case {
                     NodeInputOf {
                         display: Display::InlineBlock,
                         inline_baseline_context: InlineBaselineContext::Named(
-                            BaselineName::Alphabetic,
+                            FontBaseline::Alphabetic,
                         ),
                         baseline_source: BaselineSource::First,
                         vertical_align: edge,
@@ -1265,7 +1266,7 @@ fn edges<S: LayoutScalar>() {
                 assert_eq!(actual.location.y.to_f64(), top);
                 assert_eq!(actual.size, Size::new(S::from_f64(6.0), S::from_f64(10.0)));
                 assert_eq!(
-                    actual.named_baselines.get(BaselineName::Alphabetic).first(),
+                    actual.named_baselines.get(FontBaseline::Alphabetic).first(),
                     BaselineFactOf::Available(
                         BaselineCoordinateOf::try_new(PhysicalAxis::Vertical, S::from_f64(4.0))
                             .unwrap()

@@ -6,10 +6,10 @@ use crate::geometry::{PhysicalAxis, PhysicalSide};
 use crate::group_alignment::{NumericError, add, scalar};
 use crate::output::{NamedBaselineDemand, NamedBaselineSet};
 use crate::{
-    BaselineCoordinateOf, BaselineFactOf, BaselineName, BaselinePairOf, BaselinesOf,
-    ComputeOutputOf, FlowAxes, InlineBaselineContext, LayoutScalar, LayoutTextNumericError,
-    NamedBaselinesOf, Point, Size,
+    BaselineCoordinateOf, BaselineFactOf, BaselinePairOf, BaselinesOf, ComputeOutputOf, FlowAxes,
+    InlineBaselineContext, LayoutScalar, LayoutTextNumericError, NamedBaselinesOf, Point, Size,
 };
+use surgeist_text::font::FontBaseline;
 
 /// Coordinates have already been made relative to the actual used origin.
 /// Measured retains its real projection frame, not canonical placement proof.
@@ -133,10 +133,10 @@ impl Pair {
     }
 }
 
-fn name_index(name: BaselineName) -> usize {
+fn name_index(name: FontBaseline) -> usize {
     match name {
-        BaselineName::Alphabetic => 0,
-        BaselineName::Central => 1,
+        FontBaseline::Alphabetic => 0,
+        FontBaseline::Central => 1,
     }
 }
 
@@ -242,7 +242,7 @@ impl PendingBaselines {
             .transpose()?;
         let mut next = Self::new();
         next.generic(first, last);
-        for name in [BaselineName::Alphabetic, BaselineName::Central] {
+        for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
             let pair = output.named_baselines.get(name);
             let fact = |value: BaselineFactOf<S>| match value {
                 BaselineFactOf::Unknown => Ok(Fact::Unknown),
@@ -293,7 +293,7 @@ impl PendingBaselines {
             last: point(self.last)?,
         };
         let mut named = NamedBaselinesOf::absent();
-        for name in [BaselineName::Alphabetic, BaselineName::Central] {
+        for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
             let pair = self.named[name_index(name)];
             let fact = |value| -> Result<_, NumericError> {
                 Ok(match value {

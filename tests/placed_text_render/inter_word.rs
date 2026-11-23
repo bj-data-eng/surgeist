@@ -1,5 +1,6 @@
 //! Native Layout allocation reaches actual Render glyph operations unchanged.
 use super::*;
+use surgeist::text::font::FontBaseline;
 
 const AHEM: &[u8] = include_bytes!("../../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
@@ -272,9 +273,9 @@ fn capture(
                 writing_mode: frame.writing_mode(),
                 inline_baseline_context: layout::InlineBaselineContext::Named(
                     if orientation == text::selection::LineOrientation::Vertical {
-                        layout::BaselineName::Central
+                        FontBaseline::Central
                     } else {
-                        layout::BaselineName::Alphabetic
+                        FontBaseline::Alphabetic
                     },
                 ),
                 text_align: layout::TextAlign::Justify,

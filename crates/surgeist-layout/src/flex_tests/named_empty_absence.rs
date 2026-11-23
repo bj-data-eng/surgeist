@@ -2,6 +2,7 @@
 use super::*;
 use crate::engine::ComputeSession;
 use crate::output::{NamedBaselineDemand, NamedBaselineSet};
+use surgeist_text::font::FontBaseline;
 
 #[derive(Clone, Copy, Debug)]
 enum Children {
@@ -115,7 +116,7 @@ fn empty_eligible_set<S: LayoutScalar>(children: Children, fixed: bool) {
                 usize::from(!matches!(children, Children::Empty))
             );
             for run_mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
-                for name in [BaselineName::Alphabetic, BaselineName::Central] {
+                for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
                     for set in [NamedBaselineSet::First, NamedBaselineSet::Last] {
                         let demand = NamedBaselineDemand::Fact { name, set };
                         let mut session = ComputeSession::unobserved(&tree, Vec::new());
@@ -152,7 +153,7 @@ fn nonempty_remains_unknown<S: LayoutScalar>() {
                     assert!(!tree.has_leaf_measurement(1));
                     assert!(!tree.has_leaf_measurement(2));
                     for run_mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
-                        for name in [BaselineName::Alphabetic, BaselineName::Central] {
+                        for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
                             for set in [NamedBaselineSet::First, NamedBaselineSet::Last] {
                                 let demand = NamedBaselineDemand::Fact { name, set };
                                 let mut session = ComputeSession::unobserved(&tree, Vec::new());
@@ -212,7 +213,7 @@ fn physical_last_zero_is_preserved<S: LayoutScalar>() {
     for demand in [
         NamedBaselineDemand::None,
         NamedBaselineDemand::Fact {
-            name: BaselineName::Central,
+            name: FontBaseline::Central,
             set: NamedBaselineSet::Last,
         },
     ] {

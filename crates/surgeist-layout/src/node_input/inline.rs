@@ -1,3 +1,4 @@
+use surgeist_text::font::FontBaseline;
 use surgeist_text::supplied_line::BidiLevel;
 
 use super::super::{DefaultScalar, LayoutScalar};
@@ -9,7 +10,7 @@ use super::{Clear, Direction};
 pub enum InlineBaselineContext {
     #[default]
     Physical,
-    Named(crate::BaselineName),
+    Named(FontBaseline),
 }
 
 /// The child's own, non-inherited choice of alignment baseline set.

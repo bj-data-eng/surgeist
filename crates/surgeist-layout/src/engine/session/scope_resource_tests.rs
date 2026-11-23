@@ -9,6 +9,7 @@ use crate::text_layout::{TextControlBinding, TextOriginBinding, TextParagraphBin
 use crate::*;
 use std::sync::Arc;
 use surgeist_text as text;
+use surgeist_text::font::FontBaseline;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 const WORK: usize = 4_194_304;
@@ -203,7 +204,7 @@ impl Fixture {
                 0,
                 NodeInputOf {
                     display: Display::Block,
-                    inline_baseline_context: InlineBaselineContext::Named(BaselineName::Alphabetic),
+                    inline_baseline_context: InlineBaselineContext::Named(FontBaseline::Alphabetic),
                     size: Size::new(PreferredSizeOf::px(20.0), PreferredSizeOf::AUTO),
                     ..NodeInputOf::default()
                 },
@@ -226,7 +227,7 @@ impl Fixture {
                     InlineBoundaryInputOf::contribution(
                         kind,
                         InlineMetricsOf::try_new(
-                            InlineBaselineContext::Named(BaselineName::Alphabetic),
+                            InlineBaselineContext::Named(FontBaseline::Alphabetic),
                             0.0,
                             0.0,
                         )

@@ -1,6 +1,7 @@
 #[path = "../observation.rs"]
 pub(crate) mod observation;
 use observation::{Observation, observe};
+use surgeist_text::font::FontBaseline;
 /// Compare the complete old numeric packet expectation after classification.
 impl<S: layout::LayoutScalar> Observation<S> {
     pub fn matches_numeric_fields(&self, expected: &layout::NodeOutputOf<S>) -> bool {
@@ -428,7 +429,7 @@ pub fn assert_grid_alignment_reference_inputs(
         {
             let reference = if expected.contains(&path) {
                 seen.push(path.clone());
-                layout::GridBaselineReference::Named(layout::BaselineName::Central)
+                layout::GridBaselineReference::Named(FontBaseline::Central)
             } else {
                 layout::GridBaselineReference::Physical
             };
@@ -568,7 +569,7 @@ fn compare_captured_with_projection(
 pub(super) fn assert_named_atomic_paragraph_inputs(root: &Node) -> Result<(), Error> {
     let tree = TestTree::from_golden(root, None)?;
     assert_eq!(tree.nodes.len(), 4);
-    let expected = layout::InlineBaselineContext::Named(layout::BaselineName::Central);
+    let expected = layout::InlineBaselineContext::Named(FontBaseline::Central);
     assert_eq!(
         tree.nodes[0]
             .layout_input
@@ -1518,7 +1519,7 @@ fn parse_atomic_paragraph_metrics(
         }
     }
     let metrics = layout::InlineMetrics::try_new(
-        layout::InlineBaselineContext::Named(layout::BaselineName::Central),
+        layout::InlineBaselineContext::Named(FontBaseline::Central),
         0.0,
         0.0,
     )
@@ -2992,7 +2993,7 @@ impl TestTree {
                 .clone();
             let reference = match capture.reference {
                 grid_alignment_reference::Reference::Central => {
-                    layout::GridBaselineReference::Named(layout::BaselineName::Central)
+                    layout::GridBaselineReference::Named(FontBaseline::Central)
                 }
             };
             input.grid_baseline_references = layout::GridBaselineReferences {
@@ -3007,7 +3008,7 @@ impl TestTree {
                 .ok_or_else(|| Error::new("named atomic paragraph requires an actual box"))?
                 .clone();
             input.inline_baseline_context =
-                layout::InlineBaselineContext::Named(layout::BaselineName::Central);
+                layout::InlineBaselineContext::Named(FontBaseline::Central);
             layout_input = layout::LayoutInput::box_input(input);
         }
         if node.style.get("source-tag") == Some("br")
@@ -3039,7 +3040,7 @@ impl TestTree {
                 .ok_or_else(|| Error::new("prepared paragraph requires its actual box container"))?
                 .clone();
             input.inline_baseline_context =
-                layout::InlineBaselineContext::Named(layout::BaselineName::Central);
+                layout::InlineBaselineContext::Named(FontBaseline::Central);
             layout_input = layout::LayoutInput::box_input(input);
         }
         if let Some(participation) = node.atomic_inline_participation {

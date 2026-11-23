@@ -3,6 +3,7 @@
 //! authored box role differs. No post-capture mutation or fabricated handle.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use surgeist_text::font::FontBaseline;
 
 fn outflow_native(
     raw: &str,
@@ -28,7 +29,7 @@ fn outflow_native(
         ..ahem_style(font_size, line_height)
     };
     let extent = text::source::Range::new(0, original.text().len());
-    let typography = if name(mode) == BaselineName::Central {
+    let typography = if name(mode) == FontBaseline::Central {
         text::analyzed::AnalysisTypography::Upright {
             computed_direction: ParagraphBaseDirection::LeftToRight,
         }
@@ -93,7 +94,7 @@ fn outflow_native(
         WritingMode::SidewaysLr => text::selection::LineOrientation::SidewaysCounterclockwise,
     };
     let mut options = text::prepared::PreparationOptions::default().with_orientation(orientation);
-    if name(mode) == BaselineName::Alphabetic {
+    if name(mode) == FontBaseline::Alphabetic {
         options = options.with_baseline_reference(text::font::FontBaseline::Alphabetic);
     }
     Native {
@@ -168,7 +169,7 @@ fn static_ports<S: LayoutScalar>() {
             display: Display::Block,
             position: Position::Absolute,
             writing_mode: mode,
-            inline_baseline_context: InlineBaselineContext::Named(BaselineName::Central),
+            inline_baseline_context: InlineBaselineContext::Named(FontBaseline::Central),
             size: Size::new(px(2.0), px(2.0)),
             ..NodeInputOf::default()
         };

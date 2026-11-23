@@ -1,8 +1,9 @@
 //! A selected named baseline may lie outside its actual box without a strut.
 use super::*;
+use surgeist_text::font::FontBaseline;
 
 fn no_strut<S: LayoutScalar>() {
-    let reference = crate::InlineBaselineContext::Named(crate::BaselineName::Central);
+    let reference = crate::InlineBaselineContext::Named(FontBaseline::Central);
     let participant = AtomicInlineBoxParticipant {
         baseline_reference: reference,
         source_index: 0,

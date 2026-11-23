@@ -1,5 +1,6 @@
 //! Atomic Top/Bottom aligns actual margin edges in physical line directions.
 use super::*;
+use surgeist_text::font::FontBaseline;
 
 fn single_signed_top<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
@@ -154,8 +155,8 @@ fn edge_geometry_matrix<S: l::LayoutScalar>() {
         for direction in [l::Direction::Ltr, l::Direction::Rtl] {
             for context in [
                 l::InlineBaselineContext::Physical,
-                l::InlineBaselineContext::Named(l::BaselineName::Alphabetic),
-                l::InlineBaselineContext::Named(l::BaselineName::Central),
+                l::InlineBaselineContext::Named(FontBaseline::Alphabetic),
+                l::InlineBaselineContext::Named(FontBaseline::Central),
             ] {
                 // Margins, single span, single forward/right-over border,
                 // taller-peer forward Top/Bottom, taller-peer right Top/Bottom.
@@ -276,11 +277,10 @@ fn edge_geometry_matrix<S: l::LayoutScalar>() {
                                     );
                                     absent(node(entries, 2).named_baselines);
                                 }
-                                for name in [l::BaselineName::Alphabetic, l::BaselineName::Central]
-                                {
+                                for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
                                     let pair = node(entries, 0).named_baselines.get(name);
                                     if peer && context == l::InlineBaselineContext::Named(name) {
-                                        let anchor = if name == l::BaselineName::Central {
+                                        let anchor = if name == FontBaseline::Central {
                                             15.0
                                         } else if matches!(
                                             mode,
@@ -379,7 +379,7 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
         assert!(host.hits.iter().map(Cell::get).sum::<usize>() > hits);
         warm.apply_to(&mut host).unwrap();
         let after = EdgeSpec {
-            context: l::InlineBaselineContext::Named(l::BaselineName::Central),
+            context: l::InlineBaselineContext::Named(FontBaseline::Central),
             alignment: l::VerticalAlignOf::Bottom,
             margins: (3.0, 5.0),
             ..before
@@ -434,7 +434,7 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
             );
             named(
                 node(entries, 0).named_baselines,
-                l::BaselineName::Central,
+                FontBaseline::Central,
                 if mode == l::WritingMode::HorizontalTb {
                     l::PhysicalAxis::Vertical
                 } else {
@@ -491,8 +491,8 @@ fn explicit_control_offsets<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
     for context in [
         l::InlineBaselineContext::Physical,
-        l::InlineBaselineContext::Named(l::BaselineName::Alphabetic),
-        l::InlineBaselineContext::Named(l::BaselineName::Central),
+        l::InlineBaselineContext::Named(FontBaseline::Alphabetic),
+        l::InlineBaselineContext::Named(FontBaseline::Central),
     ] {
         for (alignment, y) in [
             (l::VerticalAlignOf::Top, 2.0),

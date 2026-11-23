@@ -1,5 +1,6 @@
 //! Nonformatted completion and existing physical absolute-box responsibilities.
 use super::*;
+use surgeist_text::font::FontBaseline;
 mod late;
 
 fn length<S: l::LayoutScalar>(value: f64) -> l::LengthOf<S> {
@@ -187,9 +188,7 @@ fn nonformatted<S: l::LayoutScalar>() {
             crate::layout::observation::phase(&batch, true),
         ] {
             assert_eq!(node(entries, 1).location, l::Point::new(n(child_x), n(0.0)));
-            let pair = node(entries, 0)
-                .named_baselines
-                .get(l::BaselineName::Central);
+            let pair = node(entries, 0).named_baselines.get(FontBaseline::Central);
             assert_eq!(
                 (pair.first(), pair.last()),
                 (l::BaselineFactOf::Absent, l::BaselineFactOf::Absent)

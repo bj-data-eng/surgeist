@@ -7,6 +7,7 @@ use crate::{
     OrthogonalFallbackLimitOf, OrthogonalFallbackOf, ParentFormattingContext, PreferredSizeOf,
     SizingOperation, SizingRequestOf, TrackComponentOf, Traverse, WrappingInput, WritingMode,
 };
+use surgeist_text::font::FontBaseline;
 
 const ROOT: u32 = 0;
 const HIDDEN: u32 = 1;
@@ -353,7 +354,7 @@ fn assert_hidden_numeric_replay<S: LayoutScalar>() {
     for hidden_first in [true, false] {
         let mut tree = shared_tree::<S>(hidden_first, false);
         let metrics = crate::InlineMetricsOf::try_new(
-            crate::InlineBaselineContext::Named(crate::BaselineName::Alphabetic),
+            crate::InlineBaselineContext::Named(FontBaseline::Alphabetic),
             S::from_f64(8.0),
             S::from_f64(10.0),
         )

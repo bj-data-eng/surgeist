@@ -9,6 +9,7 @@ use crate::output::{
 use crate::scalar::round_layout_coordinate;
 use crate::scroll::rounding::rebuild_rounded_canonical_scroll_geometry;
 use crate::{LayoutScalar, Point, Traverse};
+use surgeist_text::font::FontBaseline;
 
 pub(crate) fn round_layout<Tree, M>(
     tree: &mut Tree,
@@ -482,10 +483,7 @@ fn finalize_named_baselines<S: LayoutScalar, M>(
             })
     };
     let mut result = crate::NamedBaselinesOf::unknown();
-    for name in [
-        crate::BaselineName::Alphabetic,
-        crate::BaselineName::Central,
-    ] {
+    for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         let pair = facts.get(name);
         result = result.with(
             name,

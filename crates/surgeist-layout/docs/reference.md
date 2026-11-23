@@ -170,8 +170,9 @@ previously optimized output.
 
 `NodeInputOf::inline_baseline_context` selects the numeric line's alignment
 reference. `InlineBaselineContext::Physical` is the default raw coordinate
-operation. `Named(BaselineName::Alphabetic)` and `Named(BaselineName::Central)`
-request matching named baselines. The caller resolves the name from its
+operation. `Named(FontBaseline::Alphabetic)` and `Named(FontBaseline::Central)`
+request matching named baselines; `FontBaseline` is
+`surgeist_text::font::FontBaseline`. The caller resolves the name from its
 typographic context; writing mode alone does not choose it. A parent's request
 does not change the child's own alignment context.
 
@@ -295,7 +296,7 @@ unsupported producer named authority.
 
 `NodeInputOf::grid_baseline_references` supplies resolved references for this
 Grid container's local Column and Row alignment contexts. Both default to
-`GridBaselineReference::Physical`. A `Named(BaselineName)` value is an explicit
+`GridBaselineReference::Physical`. A `Named(FontBaseline)` value is an explicit
 normalized choice; writing mode does not choose a name. An inherited shared
 subgrid context retains the actual owning axis's reference, including before
 that context has any baseline target. A standalone context keeps its own input.

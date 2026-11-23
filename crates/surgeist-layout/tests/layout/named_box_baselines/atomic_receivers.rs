@@ -1,10 +1,11 @@
 //! Actual atomic provenance supplies a named strut only on a real receiver.
 use super::*;
+use surgeist_text::font::FontBaseline;
 
 fn receiver_tree<S: l::LayoutScalar>(native_edge: bool, tail: bool) -> Host<S> {
     let mode = l::WritingMode::HorizontalTb;
     let direction = l::Direction::Ltr;
-    let central = l::InlineBaselineContext::Named(l::BaselineName::Central);
+    let central = l::InlineBaselineContext::Named(FontBaseline::Central);
     let mut host = Host::<S>::new(root(mode, direction, central));
     let mut first = atomic(mode, direction, 10.0, (0.0, 0.0));
     first.vertical_align = l::VerticalAlignOf::Top;
@@ -53,9 +54,7 @@ fn actual_atomic_central_receiver<S: l::LayoutScalar>(native_edge: bool) {
         assert_eq!(node(entries, 0).source_index, l::SourceIndex::new(0));
         assert_eq!(node(entries, 1).source_index, l::SourceIndex::new(0));
         absent(node(entries, 1).named_baselines);
-        let pair = node(entries, 0)
-            .named_baselines
-            .get(l::BaselineName::Central);
+        let pair = node(entries, 0).named_baselines.get(FontBaseline::Central);
         assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
         assert_eq!(pair.last(), l::BaselineFactOf::Unknown);
     }
@@ -86,9 +85,7 @@ fn actual_atomic_central_receiver<S: l::LayoutScalar>(native_edge: bool) {
         // Synthesis belongs to the parent receiver, not the child's own table.
         absent(node(entries, 1).named_baselines);
         absent(node(entries, 2).named_baselines);
-        let pair = node(entries, 0)
-            .named_baselines
-            .get(l::BaselineName::Central);
+        let pair = node(entries, 0).named_baselines.get(FontBaseline::Central);
         assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
         source_fact(pair.last(), l::PhysicalAxis::Vertical, 15.0);
     }
@@ -117,7 +114,7 @@ fn actual_atomic_native_after_line_receiver_uses_central_margin_baseline_f64() {
 struct ReceiverSpec<S: l::LayoutScalar> {
     mode: l::WritingMode,
     direction: l::Direction,
-    name: l::BaselineName,
+    name: FontBaseline,
     alignment: l::VerticalAlignOf<S>,
     native_edge: bool,
     signed: bool,
@@ -202,7 +199,7 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                 (_, l::Direction::Ltr) => 0.0,
                 (_, l::Direction::Rtl) => 80.0,
             };
-            for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+            for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
                 for alignment in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
                     for native_edge in [false, true] {
                         for signed_margins in [false, true] {
@@ -286,7 +283,7 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                             let full = matrix_tree::<S>(spec, true)
                                 .compute(mode, &[])
                                 .unwrap_or_else(|error| panic!("full {spec:?}: {error:?}"));
-                            let (tail_cross, anchor) = if name == l::BaselineName::Alphabetic {
+                            let (tail_cross, anchor) = if name == FontBaseline::Alphabetic {
                                 (values[1], values[3])
                             } else {
                                 (values[2], values[4])
@@ -418,9 +415,7 @@ fn receiver_incoming_authority<S: l::LayoutScalar>() {
                 absent(node(entries, 2).named_baselines);
                 // T contributes only Top/Bottom extent6. Incoming source A's
                 // resolved5/5 is the ONLY authority for receiving Central15.
-                let pair = node(entries, 0)
-                    .named_baselines
-                    .get(l::BaselineName::Central);
+                let pair = node(entries, 0).named_baselines.get(FontBaseline::Central);
                 assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
                 source_fact(pair.last(), l::PhysicalAxis::Vertical, 15.0);
             }
@@ -448,7 +443,7 @@ fn available_tree<S: l::LayoutScalar>(
     });
     // Ordinary Block lines establish first2/last8. The Central
     // producer has real12-unit content in its fixed10 border; no font is used.
-    let heights = if spec.name == l::BaselineName::Alphabetic {
+    let heights = if spec.name == FontBaseline::Alphabetic {
         (2.0, 6.0)
     } else {
         (4.0, 8.0)
@@ -461,42 +456,42 @@ fn receiver_available_preferences<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
     for (name, preference, height, last, tail_y) in [
         (
-            l::BaselineName::Alphabetic,
+            FontBaseline::Alphabetic,
             l::BaselineSource::First,
             24.0,
             16.0,
             10.0,
         ),
         (
-            l::BaselineName::Alphabetic,
+            FontBaseline::Alphabetic,
             l::BaselineSource::Last,
             20.0,
             18.0,
             12.0,
         ),
         (
-            l::BaselineName::Alphabetic,
+            FontBaseline::Alphabetic,
             l::BaselineSource::Auto,
             20.0,
             18.0,
             12.0,
         ),
         (
-            l::BaselineName::Central,
+            FontBaseline::Central,
             l::BaselineSource::First,
             21.0,
             13.0,
             10.0,
         ),
         (
-            l::BaselineName::Central,
+            FontBaseline::Central,
             l::BaselineSource::Last,
             21.0,
             18.0,
             15.0,
         ),
         (
-            l::BaselineName::Central,
+            FontBaseline::Central,
             l::BaselineSource::Auto,
             21.0,
             18.0,
@@ -558,7 +553,7 @@ fn receiver_available_preferences<S: l::LayoutScalar>() {
     let spec = ReceiverSpec {
         mode,
         direction: l::Direction::Ltr,
-        name: l::BaselineName::Alphabetic,
+        name: FontBaseline::Alphabetic,
         alignment: l::VerticalAlignOf::Bottom,
         native_edge: true,
         signed: true,
@@ -567,7 +562,7 @@ fn receiver_available_preferences<S: l::LayoutScalar>() {
     // A's own dominant name differs; its actual ordinary children still export
     // the requested Alpha facts. The receiver must not substitute A's own name.
     host.change(1, |input| {
-        input.inline_baseline_context = l::InlineBaselineContext::Named(l::BaselineName::Central)
+        input.inline_baseline_context = l::InlineBaselineContext::Named(FontBaseline::Central)
     });
     let batch = host.compute(mode, &[]).unwrap();
     for entries in [
@@ -579,7 +574,7 @@ fn receiver_available_preferences<S: l::LayoutScalar>() {
         assert_eq!(node(entries, 2).location.y, n(14.0));
         let pair = node(entries, 0)
             .named_baselines
-            .get(l::BaselineName::Alphabetic);
+            .get(FontBaseline::Alphabetic);
         assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
         source_fact(pair.last(), l::PhysicalAxis::Vertical, 20.0);
     }
@@ -637,7 +632,7 @@ fn barrier_tree<S: l::LayoutScalar>(
 }
 fn receiver_source_barriers<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
-    for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+    for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         for native_edge in [false, true] {
             let spec = ReceiverSpec {
                 mode,
@@ -662,7 +657,7 @@ fn receiver_source_barriers<S: l::LayoutScalar>() {
                     ] {
                         assert_eq!(node(entries, 0).size.height, n(20.0));
                         let own = node(entries, 1).named_baselines.get(name);
-                        let q = if name == l::BaselineName::Alphabetic {
+                        let q = if name == FontBaseline::Alphabetic {
                             6.0
                         } else {
                             3.0
@@ -705,10 +700,10 @@ fn receiver_source_barriers<S: l::LayoutScalar>() {
                     } else {
                         let batch = full_host.compute(mode, &[]).unwrap();
                         let (last, y) = match (name, unknown_first) {
-                            (l::BaselineName::Alphabetic, true) => (36.0, 30.0),
-                            (l::BaselineName::Alphabetic, false) => (26.0, 20.0),
-                            (l::BaselineName::Central, true) => (33.0, 30.0),
-                            (l::BaselineName::Central, false) => (23.0, 20.0),
+                            (FontBaseline::Alphabetic, true) => (36.0, 30.0),
+                            (FontBaseline::Alphabetic, false) => (26.0, 20.0),
+                            (FontBaseline::Central, true) => (33.0, 30.0),
+                            (FontBaseline::Central, false) => (23.0, 20.0),
                         };
                         for entries in [
                             crate::layout::observation::phase(&batch, false),
@@ -755,10 +750,10 @@ fn refused_tree<S: l::LayoutScalar>(spec: ReceiverSpec<S>, kind: RefusedSource) 
             );
         }
         RefusedSource::OtherName => {
-            let other = if spec.name == l::BaselineName::Alphabetic {
-                l::BaselineName::Central
+            let other = if spec.name == FontBaseline::Alphabetic {
+                FontBaseline::Central
             } else {
-                l::BaselineName::Alphabetic
+                FontBaseline::Alphabetic
             };
             host.change(1, |input| {
                 input.inline_baseline_context = l::InlineBaselineContext::Named(other)
@@ -789,7 +784,7 @@ fn refused_tree<S: l::LayoutScalar>(spec: ReceiverSpec<S>, kind: RefusedSource) 
 }
 fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
-    for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+    for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         for alignment in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
             for native_edge in [false, true] {
                 let spec = ReceiverSpec {
@@ -825,7 +820,7 @@ fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
                                 source_fact(
                                     fact,
                                     l::PhysicalAxis::Horizontal,
-                                    if name == l::BaselineName::Alphabetic {
+                                    if name == FontBaseline::Alphabetic {
                                         14.0
                                     } else {
                                         17.0
@@ -837,16 +832,16 @@ fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
                             assert_eq!(own.last(), l::BaselineFactOf::Unknown);
                         }
                         if matches!(kind, RefusedSource::OtherName) {
-                            let other = if name == l::BaselineName::Alphabetic {
-                                l::BaselineName::Central
+                            let other = if name == FontBaseline::Alphabetic {
+                                FontBaseline::Central
                             } else {
-                                l::BaselineName::Alphabetic
+                                FontBaseline::Alphabetic
                             };
                             named(
                                 node(entries, 1).named_baselines,
                                 other,
                                 l::PhysicalAxis::Vertical,
-                                if other == l::BaselineName::Alphabetic {
+                                if other == FontBaseline::Alphabetic {
                                     10.0
                                 } else {
                                     5.0
@@ -949,7 +944,7 @@ fn atomic_receiver_refuses_unknown_other_name_axis_and_keeps_control_refs_f64() 
     receiver_refusals_and_lazy_completion::<f64>();
 }
 
-fn sizing_receiver_tree<S: l::LayoutScalar>(name: l::BaselineName, native_edge: bool) -> Host<S> {
+fn sizing_receiver_tree<S: l::LayoutScalar>(name: FontBaseline, native_edge: bool) -> Host<S> {
     let mode = l::WritingMode::HorizontalTb;
     let reference = l::InlineBaselineContext::Named(name);
     let mut outside = root(mode, l::Direction::Ltr, l::InlineBaselineContext::Physical);
@@ -1004,10 +999,10 @@ fn sizing_receiver_tree<S: l::LayoutScalar>(name: l::BaselineName, native_edge: 
 fn receiver_sizing_cache<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
     for native_edge in [false, true] {
-        for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+        for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
             let mut host = sizing_receiver_tree::<S>(name, native_edge);
             let cold = host.compute(mode, &[]).unwrap();
-            let (height, last) = if name == l::BaselineName::Alphabetic {
+            let (height, last) = if name == FontBaseline::Alphabetic {
                 (46.0, 26.0)
             } else {
                 (43.0, 23.0)
@@ -1119,10 +1114,10 @@ fn receiver_sizing_cache<S: l::LayoutScalar>() {
             warm.apply_to(&mut host).unwrap();
             // A style/name change recomputes the same topology and
             // compares to a fresh public host, then returns to the old name.
-            let other = if name == l::BaselineName::Alphabetic {
-                l::BaselineName::Central
+            let other = if name == FontBaseline::Alphabetic {
+                FontBaseline::Central
             } else {
-                l::BaselineName::Alphabetic
+                FontBaseline::Alphabetic
             };
             host.change(1, |input| {
                 input.inline_baseline_context = l::InlineBaselineContext::Named(other)
@@ -1159,7 +1154,7 @@ fn deferred_atomic_receiver_qualifies_size_only_source_and_warm_cache_f64() {
 
 fn receiver_balance_replay<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
-    for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+    for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         for native_edge in [false, true] {
             for style in [l::TextWrapStyle::Auto, l::TextWrapStyle::Balance] {
                 let spec = ReceiverSpec {
@@ -1179,7 +1174,7 @@ fn receiver_balance_replay<S: l::LayoutScalar>() {
                     host.push(Some(0), l::LayoutInputOf::box_input(next));
                 }
                 let batch = host.compute(mode, &[]).unwrap();
-                let (alpha, last, first_y, second_y) = if name == l::BaselineName::Alphabetic {
+                let (alpha, last, first_y, second_y) = if name == FontBaseline::Alphabetic {
                     (true, 26.0, 14.0, 20.0)
                 } else {
                     (false, 23.0, 12.0, 20.0)
@@ -1220,9 +1215,9 @@ fn receiver_balance_replay<S: l::LayoutScalar>() {
                         );
                     }
                     let pair = node(entries, 0).named_baselines.get(if alpha {
-                        l::BaselineName::Alphabetic
+                        FontBaseline::Alphabetic
                     } else {
-                        l::BaselineName::Central
+                        FontBaseline::Central
                     });
                     assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
                     source_fact(pair.last(), l::PhysicalAxis::Vertical, last);

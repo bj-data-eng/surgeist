@@ -1,5 +1,6 @@
 use super::*;
 use crate::engine::depth_tests::on_bounded_stack;
+use surgeist_text::font::FontBaseline;
 
 fn assert_captured_named_chain<S: LayoutScalar>(depth: u32, source: BaselineSource) {
     premises();
@@ -52,7 +53,7 @@ fn assert_captured_named_chain<S: LayoutScalar>(depth: u32, source: BaselineSour
                     } else {
                         Display::InlineBlock
                     },
-                    inline_baseline_context: InlineBaselineContext::Named(BaselineName::Alphabetic),
+                    inline_baseline_context: InlineBaselineContext::Named(FontBaseline::Alphabetic),
                     baseline_source: source,
                     vertical_align: VerticalAlignOf::Baseline,
                     size: Size::new(px(width(node)), px(20.0)),
@@ -101,7 +102,7 @@ fn assert_captured_named_chain<S: LayoutScalar>(depth: u32, source: BaselineSour
             crate::SourceIndex::new(usize::from(node != 0)),
             "node {node}"
         );
-        let pair = actual.named_baselines.get(BaselineName::Alphabetic);
+        let pair = actual.named_baselines.get(FontBaseline::Alphabetic);
         let (first, last) = if node == depth {
             (8.0, 18.0)
         } else {

@@ -3,6 +3,7 @@ use crate::engine::session::FloatChildTrial;
 use crate::output::{NamedBaselineDemand, NamedBaselineSet};
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::*;
+use surgeist_text::font::FontBaseline;
 
 fn request<S: LayoutScalar>(width: f64, mode: RunMode) -> ComputeInputOf<S> {
     ComputeInputOf::for_child(
@@ -53,7 +54,7 @@ fn with_session<S: LayoutScalar>(
 fn tree<S: LayoutScalar>() -> PublicLayoutTreeOf<S> {
     let block = NodeInputOf {
         display: Display::Block,
-        inline_baseline_context: InlineBaselineContext::Named(BaselineName::Alphabetic),
+        inline_baseline_context: InlineBaselineContext::Named(FontBaseline::Alphabetic),
         ..NodeInputOf::default()
     };
     let metrics = InlineMetricsOf::try_new(
@@ -229,7 +230,7 @@ fn numeric_control_memo_restores_source_edges_hidden_breaks_and_exact_width() {
 #[test]
 fn numeric_control_memo_keeps_named_demand_distinct_from_known_size_observation() {
     fn lane<S: LayoutScalar>() {
-        let named = InlineBaselineContext::Named(BaselineName::Alphabetic);
+        let named = InlineBaselineContext::Named(FontBaseline::Alphabetic);
         let tree = tree::<S>()
             .children(1, [7])
             .style(
@@ -259,17 +260,17 @@ fn numeric_control_memo_keeps_named_demand_distinct_from_known_size_observation(
             let input = request(60.0, RunMode::ComputeSize);
             let unknown = session.compute_child(1, input).unwrap();
             assert_eq!(
-                unknown.named_baselines.get(BaselineName::Alphabetic).last(),
+                unknown.named_baselines.get(FontBaseline::Alphabetic).last(),
                 BaselineFactOf::Unknown
             );
             let demanded = input.with_named_baseline_demand(NamedBaselineDemand::Fact {
-                name: BaselineName::Alphabetic,
+                name: FontBaseline::Alphabetic,
                 set: NamedBaselineSet::Last,
             });
             let actual = session.compute_child(1, demanded).unwrap();
             assert_eq!(actual.size, Size::new(S::from_f64(60.0), S::from_f64(20.0)));
             assert_eq!(
-                actual.named_baselines.get(BaselineName::Alphabetic).last(),
+                actual.named_baselines.get(FontBaseline::Alphabetic).last(),
                 BaselineFactOf::Available(
                     BaselineCoordinateOf::try_new(PhysicalAxis::Vertical, S::ZERO).unwrap()
                 )

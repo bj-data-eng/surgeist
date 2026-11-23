@@ -5,6 +5,7 @@ use super::*;
 use crate::test_support::readback::{self, Phase};
 use std::cell::RefCell;
 use surgeist_text as text;
+use surgeist_text::font::FontBaseline;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
@@ -46,11 +47,11 @@ fn px<S: LayoutScalar>(value: f64) -> PreferredSizeOf<S> {
 fn vertical(mode: WritingMode) -> bool {
     mode != WritingMode::HorizontalTb
 }
-fn name(mode: WritingMode) -> BaselineName {
+fn name(mode: WritingMode) -> FontBaseline {
     if matches!(mode, WritingMode::VerticalRl | WritingMode::VerticalLr) {
-        BaselineName::Central
+        FontBaseline::Central
     } else {
-        BaselineName::Alphabetic
+        FontBaseline::Alphabetic
     }
 }
 fn size<S: LayoutScalar>(mode: WritingMode, inline: f64, cross: f64) -> Size<S> {
@@ -125,7 +126,7 @@ fn native(
         ..ahem_style(font_size, line_height)
     };
     let extent = text::source::Range::new(0, original.text().len());
-    let typography = if name(mode) == BaselineName::Central {
+    let typography = if name(mode) == FontBaseline::Central {
         text::analyzed::AnalysisTypography::Upright {
             computed_direction: ParagraphBaseDirection::LeftToRight,
         }
@@ -190,7 +191,7 @@ fn native(
         WritingMode::SidewaysLr => text::selection::LineOrientation::SidewaysCounterclockwise,
     };
     let mut options = text::prepared::PreparationOptions::default().with_orientation(orientation);
-    if name(mode) == BaselineName::Alphabetic {
+    if name(mode) == FontBaseline::Alphabetic {
         options = options.with_baseline_reference(text::font::FontBaseline::Alphabetic);
     }
     Native {
@@ -467,7 +468,7 @@ fn alpha<S: LayoutScalar>() {
                 } else {
                     PhysicalAxis::Vertical
                 };
-                let pair = child_box.named_baselines.get(BaselineName::Alphabetic);
+                let pair = child_box.named_baselines.get(FontBaseline::Alphabetic);
                 if vertical(mode) {
                     fact(pair.first(), axis, 20.0 - local_first);
                     fact(pair.last(), axis, 20.0 - local_last);
@@ -586,7 +587,7 @@ fn central<S: LayoutScalar>() {
             );
             let child_box = output(&batch, 2);
             assert_eq!(child_box.size, size(mode, 20.0, 20.0));
-            let pair = child_box.named_baselines.get(BaselineName::Central);
+            let pair = child_box.named_baselines.get(FontBaseline::Central);
             fact(pair.first(), PhysicalAxis::Horizontal, child_c);
             fact(pair.last(), PhysicalAxis::Horizontal, child_c);
             // Positive line-over is physical right in both vertical flows.
@@ -654,7 +655,7 @@ fn normalized<S: LayoutScalar>() {
         fact(
             output(&batch, 2)
                 .named_baselines
-                .get(BaselineName::Alphabetic)
+                .get(FontBaseline::Alphabetic)
                 .first(),
             PhysicalAxis::Vertical,
             8.0,
@@ -713,7 +714,7 @@ fn normalized<S: LayoutScalar>() {
     fact(
         output(&batch, 2)
             .named_baselines
-            .get(BaselineName::Alphabetic)
+            .get(FontBaseline::Alphabetic)
             .first(),
         PhysicalAxis::Vertical,
         12.0,
@@ -1150,7 +1151,7 @@ fn precision_participant<S: LayoutScalar>(
         // Actual normalized four-unit used control metrics, not supplied font
         // baseline facts. Before/after 4/0 stays inside Ahem's actual 8/2 line.
         let metrics = InlineMetricsOf::try_new(
-            InlineBaselineContext::Named(BaselineName::Alphabetic),
+            InlineBaselineContext::Named(FontBaseline::Alphabetic),
             n(4.0),
             n(4.0),
         )
@@ -1248,7 +1249,7 @@ fn precision_success<S: LayoutScalar>(control: bool, spacer: f64, translated_par
         } else {
             let pair = output(&batch, 2)
                 .named_baselines
-                .get(BaselineName::Alphabetic);
+                .get(FontBaseline::Alphabetic);
             assert_eq!(
                 (pair.first(), pair.last()),
                 (BaselineFactOf::Absent, BaselineFactOf::Absent)
@@ -1418,7 +1419,7 @@ fn precision_tiny_atomic<S: LayoutScalar>() {
     assert_eq!(output(&batch, 2).location.y, n(4.0));
     let pair = output(&batch, 2)
         .named_baselines
-        .get(BaselineName::Alphabetic);
+        .get(FontBaseline::Alphabetic);
     assert_eq!(
         (pair.first(), pair.last()),
         (BaselineFactOf::Absent, BaselineFactOf::Absent)

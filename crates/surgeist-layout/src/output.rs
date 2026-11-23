@@ -5,6 +5,7 @@ use super::{
 };
 use crate::geometry::{FlowAxes, PhysicalSide};
 use crate::scroll::SettledAutoScrollbarState;
+use surgeist_text::font::FontBaseline;
 
 /// The resolved formatting algorithm of the generated parent containing a box.
 ///
@@ -115,14 +116,14 @@ pub(crate) enum NamedBaselineSet {
 pub(crate) enum NamedBaselineDemand {
     None,
     Fact {
-        name: crate::BaselineName,
+        name: FontBaseline,
         set: NamedBaselineSet,
     },
 }
 
 impl NamedBaselineDemand {
     pub(crate) fn for_source(
-        name: crate::BaselineName,
+        name: FontBaseline,
         source: crate::BaselineSource,
         display: crate::Display,
     ) -> Self {
@@ -139,7 +140,7 @@ impl NamedBaselineDemand {
     pub(crate) fn selected_fact<S: LayoutScalar>(
         self,
         facts: NamedBaselinesOf<S>,
-    ) -> Option<(crate::BaselineName, BaselineFactOf<S>)> {
+    ) -> Option<(FontBaseline, BaselineFactOf<S>)> {
         match self {
             Self::None => None,
             Self::Fact { name, set } => {
@@ -1171,18 +1172,18 @@ impl<S: LayoutScalar> NamedBaselinesOf<S> {
         }
     }
     #[must_use]
-    pub const fn with(mut self, name: crate::BaselineName, pair: BaselinePairOf<S>) -> Self {
+    pub const fn with(mut self, name: FontBaseline, pair: BaselinePairOf<S>) -> Self {
         match name {
-            crate::BaselineName::Alphabetic => self.alphabetic = pair,
-            crate::BaselineName::Central => self.central = pair,
+            FontBaseline::Alphabetic => self.alphabetic = pair,
+            FontBaseline::Central => self.central = pair,
         }
         self
     }
     #[must_use]
-    pub const fn get(self, name: crate::BaselineName) -> BaselinePairOf<S> {
+    pub const fn get(self, name: FontBaseline) -> BaselinePairOf<S> {
         match name {
-            crate::BaselineName::Alphabetic => self.alphabetic,
-            crate::BaselineName::Central => self.central,
+            FontBaseline::Alphabetic => self.alphabetic,
+            FontBaseline::Central => self.central,
         }
     }
     pub(crate) fn clamped_to_border(
@@ -1196,10 +1197,7 @@ impl<S: LayoutScalar> NamedBaselinesOf<S> {
             other => Ok(other),
         };
         let mut result = self;
-        for name in [
-            crate::BaselineName::Alphabetic,
-            crate::BaselineName::Central,
-        ] {
+        for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
             let pair = self.get(name);
             result = result.with(
                 name,

@@ -1,6 +1,7 @@
 //! One real face supplies different script references on a shared named line.
 //! Raw metrics/outlines remain unchanged; Render consumes actual paint origins.
 use super::*;
+use surgeist::text::font::FontBaseline;
 
 const AHEM: &[u8] = include_bytes!("../../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 const ALPHA: text::font::FontBaseline = text::font::FontBaseline::Alphabetic;
@@ -258,7 +259,7 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
                 display: layout::Display::Block,
                 writing_mode: mode,
                 inline_baseline_context: layout::InlineBaselineContext::Named(
-                    layout::BaselineName::Alphabetic,
+                    FontBaseline::Alphabetic,
                 ),
                 size: layout::Size::new(px(40.0), px(40.0)),
                 ..layout::NodeInput::DEFAULT
@@ -322,7 +323,7 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
         .single_box()
         .expect("root produces one box");
     for output in [root.unrounded_output(), root.final_output()] {
-        let pair = output.named_baselines.get(layout::BaselineName::Alphabetic);
+        let pair = output.named_baselines.get(FontBaseline::Alphabetic);
         let fact = layout::BaselineFactOf::Available(
             layout::BaselineCoordinateOf::try_new(axis, common as f32).unwrap(),
         );

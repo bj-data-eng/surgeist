@@ -1,6 +1,7 @@
 //! Used-Alphabetic knowledge, physical box ownership, and transactional joins.
 use super::*;
 use std::cell::RefCell;
+use surgeist_text::font::FontBaseline;
 
 fn atomic_capture(
     system: &mut t::System,
@@ -153,7 +154,7 @@ const MODES: [l::WritingMode; 4] = [
     l::WritingMode::VerticalLr,
 ];
 fn named_context() -> l::InlineBaselineContext {
-    l::InlineBaselineContext::Named(l::BaselineName::Alphabetic)
+    l::InlineBaselineContext::Named(FontBaseline::Alphabetic)
 }
 fn clockwise(mode: l::WritingMode) -> bool {
     mode != l::WritingMode::HorizontalTb
@@ -1103,13 +1104,13 @@ fn replay<S: l::LayoutScalar>() {
         let final_node = node(crate::layout::observation::phase(&batch, true), 1);
         assert_eq!(raw.location, l::Point::new(n(7.25), n(9.5)));
         let l::BaselineFactOf::Available(raw_name) =
-            raw.named_baselines.get(l::BaselineName::Alphabetic).first()
+            raw.named_baselines.get(FontBaseline::Alphabetic).first()
         else {
             panic!("formatted normalized Text must supply its name")
         };
         let l::BaselineFactOf::Available(final_name) = final_node
             .named_baselines
-            .get(l::BaselineName::Alphabetic)
+            .get(FontBaseline::Alphabetic)
             .first()
         else {
             panic!("canonical packet must retain its name")

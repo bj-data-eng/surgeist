@@ -3,6 +3,7 @@
 use super::capture_authority::{CanonicalField, CurrentDomain, CurrentRequirements, Selector};
 use super::*;
 use serde::{Deserialize, Serialize};
+use surgeist_text::font::FontBaseline;
 
 #[derive(Debug, PartialEq)]
 pub enum QualificationError {
@@ -2074,8 +2075,8 @@ fn node_facts(output: super::observation::Observation<Scalar>) -> Result<NodeFac
         padding: edges(padding)?,
         margin: edges(margin)?,
         named_baselines: NamedFacts {
-            alphabetic: pair(named_baselines.get(layout::BaselineName::Alphabetic))?,
-            central: pair(named_baselines.get(layout::BaselineName::Central))?,
+            alphabetic: pair(named_baselines.get(FontBaseline::Alphabetic))?,
+            central: pair(named_baselines.get(FontBaseline::Central))?,
         },
         scroll: match scroll_geometry {
             None => Scroll::Absent,

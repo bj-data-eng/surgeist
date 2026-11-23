@@ -2,6 +2,7 @@
 use super::super::supplemental::rtl_font;
 use super::*;
 use std::cell::RefCell;
+use surgeist_text::font::FontBaseline;
 
 const MODES: [l::WritingMode; 2] = [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr];
 fn c(mode: l::WritingMode) -> f64 {
@@ -1375,7 +1376,7 @@ fn guards<S: l::LayoutScalar>() {
     );
     standalone(&cw, None);
     for mode in MODES {
-        for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+        for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
             let (mut host, binding) = paragraph_scene::<S>(&cw, mode, l::Direction::Ltr, 40.0);
             host.change(0, |input| {
                 input.inline_baseline_context = l::InlineBaselineContext::Named(name)

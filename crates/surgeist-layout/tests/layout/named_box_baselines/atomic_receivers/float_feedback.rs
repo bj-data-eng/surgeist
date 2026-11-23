@@ -2,6 +2,7 @@
 use super::super::{Host, absent, atomic, n, node, px, request, root};
 use std::{convert::Infallible, slice};
 use surgeist_layout as l;
+use surgeist_text::font::FontBaseline;
 use surgeist_text::supplied_line::BidiLevel;
 
 struct TriangleHost<S: l::LayoutScalar> {
@@ -112,7 +113,7 @@ impl<S: l::LayoutScalar> TriangleHost<S> {
         let mut inner = Host::new(root(
             mode,
             direction,
-            l::InlineBaselineContext::Named(l::BaselineName::Central),
+            l::InlineBaselineContext::Named(FontBaseline::Central),
         ));
         let float = l::NodeInputOf {
             display: l::Display::Block,
@@ -172,7 +173,7 @@ fn assert_triangle_packet<S: l::LayoutScalar>(
         assert_eq!(root.location, l::Point::ZERO);
         assert_eq!(root.size, l::Size::new(n(100.0), n(30.0)));
         assert_eq!(root.source_index, l::SourceIndex::new(0));
-        let pair = root.named_baselines.get(l::BaselineName::Central);
+        let pair = root.named_baselines.get(FontBaseline::Central);
         assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
         if tail {
             match pair.last() {

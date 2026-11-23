@@ -1,9 +1,10 @@
 //! A finite exclusion changes available width, not a named baseline reference.
 use super::*;
+use surgeist_text::font::FontBaseline;
 
 fn common_named_reference<S: LayoutScalar>() {
     let n = S::from_f64;
-    let reference = crate::InlineBaselineContext::Named(crate::BaselineName::Central);
+    let reference = crate::InlineBaselineContext::Named(FontBaseline::Central);
     let metrics = InlineMetricsOf::try_new(reference, n(8.0), n(10.0)).unwrap();
     let boundary = InlineBoundaryControlOf::new(
         0,

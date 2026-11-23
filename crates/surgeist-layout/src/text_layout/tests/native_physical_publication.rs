@@ -3,6 +3,7 @@
 use super::*;
 use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
+use surgeist_text::font::FontBaseline;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 const WIDTH: f64 = 100_000_000.0;
@@ -174,7 +175,7 @@ fn paragraph(control: bool) -> Paragraph {
 }
 
 fn tree<S: LayoutScalar>(paragraph: &Paragraph, control: bool) -> PublicLayoutTreeOf<S> {
-    let named = InlineBaselineContext::Named(BaselineName::Central);
+    let named = InlineBaselineContext::Named(FontBaseline::Central);
     let tree = PublicLayoutTreeOf::new()
         .children(0, [9, 1, 2])
         .children(9, [])
@@ -344,7 +345,7 @@ fn qualify<S: LayoutScalar>(control: bool) {
             text::geometry::Rect::new(9.0, 10.0, 4.0, 20.0)
         );
         let output = readback::single_box_output(&batch, 2, Phase::Unrounded);
-        let pair = output.named_baselines.get(BaselineName::Central);
+        let pair = output.named_baselines.get(FontBaseline::Central);
         assert_eq!(
             (pair.first(), pair.last()),
             (BaselineFactOf::Absent, BaselineFactOf::Absent)
@@ -371,7 +372,7 @@ fn qualify<S: LayoutScalar>(control: bool) {
             .find(|entry| entry.node() == 0)
             .unwrap()
             .output();
-        let pair = parent.named_baselines.get(BaselineName::Central);
+        let pair = parent.named_baselines.get(FontBaseline::Central);
         let expected = BaselineFactOf::Available(
             BaselineCoordinateOf::try_new(PhysicalAxis::Horizontal, n(11.0)).unwrap(),
         );

@@ -415,8 +415,6 @@ pub use sizing::{
     PreferredSizeCalcBasis, PreferredSizeOf, SizingCalculation, SizingCalculationError,
     SizingCalculationOf,
 };
-/// Baseline names, independent of any font-design or placed-box coordinate.
-pub use surgeist_text::font::FontBaseline as BaselineName;
 pub use tree::{LayoutBatchSink, LayoutTree, Traverse};
 pub use value::{
     AspectRatio, AspectRatioOf, AvailableSpace, AvailableSpaceOf, AxisSizingRequest,

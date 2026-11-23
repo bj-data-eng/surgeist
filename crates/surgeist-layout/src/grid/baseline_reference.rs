@@ -1,9 +1,10 @@
 use super::*;
 use crate::output::{NamedBaselineDemand, NamedBaselineSet};
 use crate::{
-    BaselineFactOf, BaselineName, FlowAxes, GridBaselineError, GridBaselineReference,
-    GridBaselineReferences, ItemAlignmentPosition, PhysicalSide,
+    BaselineFactOf, FlowAxes, GridBaselineError, GridBaselineReference, GridBaselineReferences,
+    ItemAlignmentPosition, PhysicalSide,
 };
+use surgeist_text::font::FontBaseline;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum GridBaselineSelectionError {
@@ -142,10 +143,10 @@ pub(super) fn select_grid_baseline<S: LayoutScalar>(
                         PhysicalSide::Bottom | PhysicalSide::Right => extent,
                     };
                     let coordinate = match name {
-                        BaselineName::Alphabetic => under,
-                        BaselineName::Central => extent / S::from_f64(2.0),
+                        FontBaseline::Alphabetic => under,
+                        FontBaseline::Central => extent / S::from_f64(2.0),
                     };
-                    if name == BaselineName::Central && extent > S::ZERO && coordinate == S::ZERO {
+                    if name == FontBaseline::Central && extent > S::ZERO && coordinate == S::ZERO {
                         return Err(GridBaselineSelectionError::Invalid(
                             GridBaselineError::UnrepresentableCoordinate,
                         ));

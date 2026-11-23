@@ -1,5 +1,6 @@
 //! Independently derived named-source, allocation and replay acceptance.
 use super::*;
+use surgeist_text::font::FontBaseline;
 mod late;
 
 struct Scene<S: l::LayoutScalar> {
@@ -205,7 +206,7 @@ fn qualify_native_pair<S: l::LayoutScalar>(
     let batch = solve(&host, vec![binding], size.0, size.1);
     let pair = node(crate::layout::observation::phase(&batch, false), 0)
         .named_baselines
-        .get(l::BaselineName::Central);
+        .get(FontBaseline::Central);
     for (fact, expected) in [(pair.first(), expected[0]), (pair.last(), expected[1])] {
         let coordinate =
             l::BaselineCoordinateOf::try_new(l::PhysicalAxis::Horizontal, n(expected)).unwrap();
@@ -285,7 +286,7 @@ fn sources_and_signed_margins<S: l::LayoutScalar>() {
     .unwrap();
     let pair = node(crate::layout::observation::phase(&qualifier, false), 0)
         .named_baselines
-        .get(l::BaselineName::Central);
+        .get(FontBaseline::Central);
     assert_eq!(
         (pair.first(), pair.last()),
         (l::BaselineFactOf::Absent, l::BaselineFactOf::Absent)
@@ -537,7 +538,7 @@ fn unknown_and_wrong_axis<S: l::LayoutScalar>() {
         .unwrap();
         let pair = node(crate::layout::observation::phase(&qualified, false), 0)
             .named_baselines
-            .get(l::BaselineName::Central);
+            .get(FontBaseline::Central);
         if unknown {
             assert_eq!(
                 (pair.first(), pair.last()),
@@ -625,7 +626,7 @@ fn frames_content_and_replay<S: l::LayoutScalar>() {
             t::geometry::Rect::new(c_global - 2.0, 14.0, 6.0, 14.0),
         );
         let final_parent = node(crate::layout::observation::phase(&batch, true), 1);
-        let pair = final_parent.named_baselines.get(l::BaselineName::Central);
+        let pair = final_parent.named_baselines.get(FontBaseline::Central);
         let l::BaselineFactOf::Available(named) = pair.first() else {
             panic!("actual named frame required")
         };
@@ -884,7 +885,7 @@ fn physical_none_signed_margins<S: l::LayoutScalar>() {
     .unwrap();
     let pair = node(crate::layout::observation::phase(&qualified, false), 0)
         .named_baselines
-        .get(l::BaselineName::Central);
+        .get(FontBaseline::Central);
     assert_eq!(
         (pair.first(), pair.last()),
         (l::BaselineFactOf::Absent, l::BaselineFactOf::Absent)
@@ -916,7 +917,7 @@ fn physical_none_signed_margins<S: l::LayoutScalar>() {
             let child = node(entries, 2);
             assert_eq!(child.size, l::Size::new(n(6.0), n(14.0)));
             assert_eq!(child.location, l::Point::new(n(cross - 2.0), n(1.0)));
-            let pair = child.named_baselines.get(l::BaselineName::Central);
+            let pair = child.named_baselines.get(FontBaseline::Central);
             assert_eq!(
                 (pair.first(), pair.last()),
                 (l::BaselineFactOf::Absent, l::BaselineFactOf::Absent)

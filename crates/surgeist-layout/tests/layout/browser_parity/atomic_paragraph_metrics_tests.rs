@@ -1,5 +1,6 @@
 use super::*;
 use serde_json::{Value, json};
+use surgeist_text::font::FontBaseline;
 fn certificate() -> Value {
     json!({"profile":1,"font":{"sha256":"e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c","family":"ahem","size":10,"style":"normal","weight":400,"stretch":"normal","loaded":true},"writingMode":"vertical-rl","direction":"rtl","textOrientation":"mixed","dominantBaseline":"auto","alignmentBaseline":"auto","verticalAlign":"baseline","lineFit":"leading","reference":"central","before":0,"after":0,"lineHeight":0,"order":[{"kind":"atomic","child":0,"source":1,"bidiLevel":1},{"kind":"break","child":1,"source":2,"reference":"central","before":0,"after":0},{"kind":"atomic","child":2,"source":3,"bidiLevel":1}]})
 }
@@ -94,7 +95,7 @@ fn named_atomic_reader_rejects_real_child_and_reference_mismatches() {
 #[test]
 fn checked_zero_central_metrics_work_in_both_scalar_lanes() {
     fn lane<S: layout::LayoutScalar>() {
-        let reference = layout::InlineBaselineContext::Named(layout::BaselineName::Central);
+        let reference = layout::InlineBaselineContext::Named(FontBaseline::Central);
         let metrics = layout::InlineMetricsOf::<S>::try_new(reference, S::ZERO, S::ZERO).unwrap();
         assert_eq!(metrics.reference(), reference);
         assert_eq!(metrics.after_baseline(), S::ZERO);

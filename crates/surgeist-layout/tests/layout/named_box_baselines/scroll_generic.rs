@@ -1,7 +1,8 @@
 use super::*;
+use surgeist_text::font::FontBaseline;
 
 fn last_physical_scroll_baseline<S: l::LayoutScalar>() {
-    let name = l::BaselineName::Alphabetic;
+    let name = FontBaseline::Alphabetic;
     let mode = l::WritingMode::HorizontalTb;
     let clip = l::ComputedOverflow::try_new(l::Overflow::Clip, l::Overflow::Clip).unwrap();
     let hidden = l::ComputedOverflow::try_new(l::Overflow::Hidden, l::Overflow::Hidden).unwrap();
@@ -31,7 +32,7 @@ fn last_physical_scroll_baseline<S: l::LayoutScalar>() {
 }
 
 fn first_physical_scroll_baseline<S: l::LayoutScalar>() {
-    let name = l::BaselineName::Alphabetic;
+    let name = FontBaseline::Alphabetic;
     let mode = l::WritingMode::HorizontalTb;
     let clip = l::ComputedOverflow::try_new(l::Overflow::Clip, l::Overflow::Clip).unwrap();
     let hidden = l::ComputedOverflow::try_new(l::Overflow::Hidden, l::Overflow::Hidden).unwrap();
@@ -77,7 +78,7 @@ fn flex_alignment_uses_block_scroll_end_baseline_in_both_lanes() {
 }
 
 fn nested_physical_scroll_baseline<S: l::LayoutScalar>() {
-    let name = l::BaselineName::Alphabetic;
+    let name = FontBaseline::Alphabetic;
     let mode = l::WritingMode::HorizontalTb;
     let clip = l::ComputedOverflow::try_new(l::Overflow::Clip, l::Overflow::Clip).unwrap();
     let hidden = l::ComputedOverflow::try_new(l::Overflow::Hidden, l::Overflow::Hidden).unwrap();
@@ -127,7 +128,7 @@ fn flex_alignment_uses_nested_block_scroll_baseline_in_both_lanes() {
 }
 
 fn legacy_physical_scroll_baseline<S: l::LayoutScalar>() {
-    let name = l::BaselineName::Alphabetic;
+    let name = FontBaseline::Alphabetic;
     let mode = l::WritingMode::HorizontalTb;
     let hidden = l::ComputedOverflow::try_new(l::Overflow::Hidden, l::Overflow::Hidden).unwrap();
 
@@ -179,7 +180,7 @@ fn scroll_export_target<S: l::LayoutScalar>(
     peer_height: f64,
     target_height: f64,
 ) -> Host<S> {
-    let name = l::BaselineName::Alphabetic;
+    let name = FontBaseline::Alphabetic;
     let mode = l::WritingMode::HorizontalTb;
     let mut outer = root(mode, l::Direction::Ltr, l::InlineBaselineContext::Physical);
     outer.display = l::Display::Flex;
@@ -215,7 +216,7 @@ fn freeze_column_items<S: l::LayoutScalar>(host: &mut Host<S>, display: l::Displ
 }
 
 fn scroll_container_export<S: l::LayoutScalar>(display: l::Display) {
-    let name = l::BaselineName::Alphabetic;
+    let name = FontBaseline::Alphabetic;
     let mode = l::WritingMode::HorizontalTb;
     let clip = l::ComputedOverflow::try_new(l::Overflow::Clip, l::Overflow::Clip).unwrap();
     let hidden = l::ComputedOverflow::try_new(l::Overflow::Hidden, l::Overflow::Hidden).unwrap();
