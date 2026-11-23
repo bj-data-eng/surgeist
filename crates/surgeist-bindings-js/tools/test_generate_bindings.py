@@ -7,6 +7,7 @@ Cargo, downloads, or the repository target directory. Run through pisct run.
 """
 
 import copy
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -328,6 +329,61 @@ class DescriptionTests(unittest.TestCase):
     def rejected(self, message):
         with self.assertRaisesRegex(g.DescriptionError, message):
             g.generate(self.data)
+
+    def test_source_matched_selection_rejects_indistinguishable_types(self):
+        definitions = [
+            ("""[Exposed=Window]
+interface Fixture {
+  undefined call((DOMString or USVString) value);
+};
+""", [("DOMString", "USVString")]),
+            ("""[Exposed=Window]
+interface Fixture {
+  undefined call(double value);
+  undefined call(long value);
+};
+""", [("double",), ("long",)]),
+        ]
+        revision = "1" * 40
+        source_url = f"https://example.invalid/{revision}/fixture"
+        for source, signatures in definitions:
+            with self.subTest(signatures=signatures), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "fixture.md").write_text(f"{revision}\n\n```webidl\n{source}```\n", encoding="utf-8")
+                members = []
+                mappings = {}
+                for ordinal, types in enumerate(signatures):
+                    named_types = [{"kind": "named", "name": name} for name in types]
+                    input_type = named_types[0] if len(named_types) == 1 else {
+                        "kind": "union", "members": named_types,
+                    }
+                    member_id = f"Fixture.call:{ordinal}"
+                    members.append({
+                        "id": member_id, "kind": "operation", "name": "call", "attributes": [],
+                        "type": {"kind": "named", "name": "undefined"},
+                        "arguments": [{"name": "value", "type": input_type, "presence": "required"}],
+                    })
+                    mappings[member_id + "/call"] = {
+                        "kind": "derived", "algorithm": "fixture.call", "owner": "surgeist-bindings-js",
+                        "contract": "Exercise declaration validation.", "source": source_url,
+                        "inputs": [], "requirements": [],
+                    }
+                data = {
+                    "schema": 1,
+                    "sources": [{
+                        "id": "Fixture.source", "path": "fixture.md", "anchor": "", "block": 0,
+                        "sha256": hashlib.sha256(source.encode()).hexdigest(), "revision": revision,
+                        "url": source_url, "entries": ["Fixture"],
+                    }],
+                    "declarations": [{
+                        "id": "Fixture", "name": "Fixture", "kind": "interface",
+                        "attributes": [{"name": "Exposed", "value": "Window"}], "members": members,
+                    }],
+                    "includes": [], "externals": [], "access_mappings": mappings,
+                    "semantics": self.data["semantics"],
+                }
+                with self.assertRaisesRegex(g.DescriptionError, "indistinguishable"):
+                    g.generate(data, root)
 
     def test_actual_retained_blocks_and_generated_bytes_correspond(self):
         # This is an explicit generated-artifact contract. Source token equality
