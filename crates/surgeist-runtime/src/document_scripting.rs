@@ -7,8 +7,9 @@ use std::rc::{Rc, Weak};
 use std::sync::{Arc, atomic::AtomicBool};
 
 use surgeist_bindings_js::{
-    Callback, Completion, Error, HeapObservation, HostFailureSlot, Primitive, Process,
-    PropertyDescriptor, PropertyKey, Realm, RealmAuthority, RealmId, RecordFailure, Root, Scope,
+    Callback, Completion, EngineInstructionCount, Error, HeapObservation, HostFailureSlot,
+    Primitive, Process, PropertyDescriptor, PropertyKey, Realm, RealmAuthority, RealmId,
+    RecordFailure, Root, Scope,
     css::{self, CssNamespaceLimits},
     dom_exception::{self, DomExceptionLimits},
 };
@@ -1657,7 +1658,39 @@ impl DocumentScriptHost {
         Ok(result?)
     }
 
-    /// Observe the heap of the current attached document's execution owner.
+    /// Begin counting reached engine instructions for this execution owner.
+    /// Repeated calls preserve the original observation interval.
+    pub fn enable_engine_instruction_counting(
+        &mut self,
+        permit: &DocumentScriptPermit,
+    ) -> Result<(), DocumentScriptError> {
+        self.check_permit(permit)?;
+        self.observe()?;
+        let engine = self
+            .engine
+            .as_mut()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        Ok(engine.process.enable_instruction_counting()?)
+    }
+
+    /// Read this owner's reached instructions across its realms. The
+    /// attached owner can still be sampled after a terminal bindings refusal.
+    /// Sampling performs no guest entry or native cleanup.
+    pub fn observe_engine_instructions(
+        &self,
+        permit: &DocumentScriptPermit,
+    ) -> Result<EngineInstructionCount, DocumentScriptNativeError> {
+        self.check_permit(permit)?;
+        let engine = self
+            .engine
+            .as_ref()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        Ok(engine.process.instruction_count())
+    }
+
+    /// Sample the current thread's shallow collector accounting after
+    /// qualifying the attached owner. The collector spans all Boa contexts
+    /// and successive execution owners on the thread.
     pub fn observe_engine_heap(
         &mut self,
         permit: &DocumentScriptPermit,

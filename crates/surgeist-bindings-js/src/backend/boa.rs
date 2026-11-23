@@ -10,7 +10,7 @@ use std::{
 use boa_engine::{
     Context, JsError, JsObject, JsResult, JsString, JsSymbol, JsValue,
     builtins::promise::ResolvingFunctions,
-    context::{HostHooks, intrinsics::Intrinsics},
+    context::{HostHooks, InstructionCount, intrinsics::Intrinsics},
     module::IdleModuleLoader,
     object::{
         builtins::JsPromise,
@@ -21,8 +21,8 @@ use boa_engine::{
 };
 
 use crate::{
-    Error, Exception, ExceptionPhase, HeapObservation, Realm, RealmBacking, RealmIdentity,
-    RealmKey, Root, RootBacking, RootIdentity,
+    EngineInstructionCount, Error, Exception, ExceptionPhase, HeapObservation, Realm, RealmBacking,
+    RealmIdentity, RealmKey, Root, RootBacking, RootIdentity,
     callback_object::CallbackObjectIdentity,
     owner::{BackendLease, OwnerState},
     preparation::{Guard, Request},
@@ -486,11 +486,28 @@ impl super::Engine for Engine {
         self.state.owner.clone()
     }
 
+    fn enable_instruction_counting(&mut self) -> Result<(), Error> {
+        self.state.owner.available()?;
+        self.context.enable_instruction_counting();
+        Ok(())
+    }
+
+    fn instruction_count(&self) -> EngineInstructionCount {
+        match self.context.instruction_count() {
+            InstructionCount::Disabled => EngineInstructionCount::Disabled,
+            InstructionCount::Exact(count) => EngineInstructionCount::Exact(count),
+            InstructionCount::Overflowed => EngineInstructionCount::Overflowed,
+            _ => EngineInstructionCount::Unavailable,
+        }
+    }
+
     fn observe_heap(&mut self) -> Result<HeapObservation, Error> {
         self.state.owner.available()?;
         let sample = boa_gc::heap_statistics().ok_or(Error::BackendUnavailable)?;
         Ok(HeapObservation {
             used_bytes: sample.bytes_allocated,
+            collections_entered: sample.collections,
+            cumulative_shallow_bytes: sample.cumulative_bytes_allocated,
         })
     }
 

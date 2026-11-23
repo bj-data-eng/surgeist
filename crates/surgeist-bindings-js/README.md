@@ -88,10 +88,15 @@ Exception capture never invokes a guest `toString` or `stack` getter. Explicit
 Checkpoints are shared across realms and continue past ordinary throws from
 raw microtasks. Promise rejection reporting belongs to the host adapter.
 Native module resolution remains disabled.
-The engine owns guest execution, allocation and collection. A heap observation
-reports shallow collector bytes for the current thread. It excludes separate
-buffers and process memory. The isolated WPT worker enforces its deadline
-through process supervision.
+The engine owns guest execution, allocation and collection. Instruction counting
+starts explicitly and reports reached VM dispatches across one owner's realms,
+including reentry and jobs when they execute. The count remains readable after
+an execution refusal while the owner is held. A heap observation reports
+current and cumulative shallow box bytes and entered collection cycles for the
+thread's collector across all contexts and owners. Separate buffers and process
+memory are outside its scope. These measurements are separate from Rust
+binding charges. The isolated WPT worker enforces its deadline through process
+supervision.
 
 The private [`backend::Engine`](src/backend/mod.rs) trait isolates rooted values,
 conversions, invocation, exception capture, job entry and destruction from binding
