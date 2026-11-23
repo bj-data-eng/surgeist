@@ -64,21 +64,13 @@ pub(super) fn install<'scope>(
     fragment: &Value<'scope>,
     capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
 ) -> Result<Value<'scope>, DocumentGuestEventError> {
-    let (_, prototype) = install_derived_interface(
+    let name = &ascii(b"ShadowRoot");
+    let (constructor, prototype) = prepare_derived_interface(
         scope,
         fragment,
         fragment_constructor,
-        FunctionMetadata {
-            name: &ascii(b"ShadowRoot"),
-            length: 0,
-        },
+        FunctionMetadata { name, length: 0 },
         &illegal_constructor(capture)?,
-    )?;
-    custom_elements::install_node_getter(
-        scope,
-        &prototype,
-        custom_elements::Receiver::DocumentOrShadowRoot,
-        capture,
     )?;
     for (member, key, name) in [
         (Member::Mode, &ascii(b"mode")[..], &ascii(b"get mode")[..]),
@@ -114,6 +106,14 @@ pub(super) fn install<'scope>(
             Callback::new(move |scope, arguments| handler.shadow_member(scope, arguments, member)),
         )?;
     }
+    custom_elements::install_node_getter(
+        scope,
+        &prototype,
+        custom_elements::Receiver::DocumentOrShadowRoot,
+        capture,
+    )?;
+    let global = scope.global()?;
+    install_interface(scope, &global, name, &constructor, &prototype)?;
     Ok(prototype)
 }
 

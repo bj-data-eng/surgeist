@@ -23,7 +23,7 @@ pub(super) fn install<'scope>(
     node_constructor: &Value<'scope>,
     funding: &OriginInterfaceFunding<'_>,
 ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
-    let (_, prototype) = install_derived_interface(
+    let (constructor, prototype) = prepare_derived_interface(
         scope,
         node,
         node_constructor,
@@ -98,6 +98,11 @@ pub(super) fn install<'scope>(
             },
         )?;
     }
+    {
+        let global = scope.global()?;
+        install_interface(scope, &global, ATTR, &constructor, &prototype)?;
+    }
+    drop(constructor);
     let observed = scope.callback_object(&prototype)?;
     scope.retain_callback_object(observed, funding.retain)
 }

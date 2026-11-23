@@ -499,8 +499,8 @@ pub(super) fn install<'scope>(
             configurable: false,
         },
     )?;
-    document::install_interface(scope, window, INTERFACE, &constructor, &prototype)?;
     install_definition_methods(scope, &prototype, capture)?;
+    document::install_interface(scope, window, INTERFACE, &constructor, &prototype)?;
     let (object, identity) = scope.project_custom_element_registry(
         ObjectPrototype::Object(&prototype),
         |payload, holder| Ok::<_, DocumentGuestEventError>((fund(payload)?, fund(holder)?)),

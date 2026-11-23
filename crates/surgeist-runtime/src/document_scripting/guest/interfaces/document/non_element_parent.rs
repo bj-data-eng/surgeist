@@ -7,34 +7,29 @@ const GET_ELEMENT_BY_ID: &[u16] = &ascii(b"getElementById");
 
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
-    document: &Value<'scope>,
-    fragment: &Value<'scope>,
+    prototype: &Value<'scope>,
+    receiver: Receiver,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
-    for (receiver, prototype) in [
-        (Receiver::Document, document),
-        (Receiver::Fragment, fragment),
-    ] {
-        let handler = capture(size_of::<(Capture, Receiver)>())?;
-        let function = scope.fixed_arity_function(
-            &Callback::new(move |scope, arguments| {
-                handler.get_element_by_id(scope, arguments, receiver)
-            }),
-            FunctionMetadata {
-                name: GET_ELEMENT_BY_ID,
-                length: 1,
-            },
-        )?;
-        define_data(
-            scope,
-            prototype,
-            PropertyKey::String(GET_ELEMENT_BY_ID),
-            &function,
-            true,
-            true,
-            true,
-        )?;
-    }
+    let handler = capture(size_of::<(Capture, Receiver)>())?;
+    let function = scope.fixed_arity_function(
+        &Callback::new(move |scope, arguments| {
+            handler.get_element_by_id(scope, arguments, receiver)
+        }),
+        FunctionMetadata {
+            name: GET_ELEMENT_BY_ID,
+            length: 1,
+        },
+    )?;
+    define_data(
+        scope,
+        prototype,
+        PropertyKey::String(GET_ELEMENT_BY_ID),
+        &function,
+        true,
+        true,
+        true,
+    )?;
     Ok(())
 }
 

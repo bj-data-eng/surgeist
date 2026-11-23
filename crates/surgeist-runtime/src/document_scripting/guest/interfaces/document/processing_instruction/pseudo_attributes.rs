@@ -24,10 +24,10 @@ pub(in crate::document_scripting::guest::interfaces::document) fn install<'scope
         (&ascii(b"hasAttributes")[..], Method::HasAny, 0, 0),
         (&ascii(b"getAttributeNames")[..], Method::Names, 0, 0),
         (&ascii(b"getAttribute")[..], Method::Get, 1, 1),
-        (&ascii(b"hasAttribute")[..], Method::Has, 1, 1),
         (&ascii(b"setAttribute")[..], Method::Set, 2, 2),
         (&ascii(b"removeAttribute")[..], Method::Remove, 1, 1),
         (&ascii(b"toggleAttribute")[..], Method::Toggle, 1, 2),
+        (&ascii(b"hasAttribute")[..], Method::Has, 1, 1),
     ] {
         let handler = capture(size_of::<(Capture, Method, u32)>())?;
         let callback = scope.bounded_function(

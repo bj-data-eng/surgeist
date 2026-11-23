@@ -25,11 +25,12 @@ pub(super) fn element_attribute_methods_observe_and_remove_canonical_attributes(
                         !desc.enumerable || !desc.writable || !desc.configurable) return 'descriptor ' + name;
                     last = index;
                 }
-                const ordered = ['slot', 'hasAttributes', 'getAttributeNames', 'getAttribute',
+                const ordered = ['slot', 'attributes', 'shadowRoot', 'customElementRegistry',
+                    'hasAttributes', 'getAttributeNames', 'getAttribute',
                     'getAttributeNS', 'setAttribute', 'setAttributeNS', 'removeAttribute',
                     'removeAttributeNS', 'hasAttribute', 'hasAttributeNS', 'getAttributeNode',
                     'getAttributeNodeNS', 'setAttributeNode', 'setAttributeNodeNS',
-                    'removeAttributeNode', 'attachShadow', 'shadowRoot', 'customElementRegistry'];
+                    'removeAttributeNode', 'attachShadow'];
                 if (keys.filter(key => ordered.includes(key)).join() !== ordered.join())
                     return 'attribute declaration order';
                 const element = document.createElement('div');

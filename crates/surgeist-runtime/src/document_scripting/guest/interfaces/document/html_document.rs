@@ -63,18 +63,49 @@ impl Member {
     }
 }
 
-pub(super) fn install<'scope>(
+pub(super) fn install_state<'scope>(
     scope: &mut Scope<'scope>,
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
-    let members: [Attribute<'_>; 4] = [
-        (
+    let handler = capture(size_of::<Capture>())?;
+    install_getter(
+        scope,
+        prototype,
+        &ascii(b"referrer"),
+        &ascii(b"get referrer"),
+        true,
+        Callback::new(move |scope, arguments| handler.document_referrer(scope, arguments)),
+    )?;
+    install_members(
+        scope,
+        prototype,
+        capture,
+        &[(
             Member::Cookie,
-            &ascii(b"cookie")[..],
-            &ascii(b"get cookie")[..],
-            Some(&ascii(b"set cookie")[..]),
-        ),
+            &ascii(b"cookie"),
+            &ascii(b"get cookie"),
+            Some(&ascii(b"set cookie")),
+        )],
+    )?;
+    let handler = capture(size_of::<Capture>())?;
+    install_getter(
+        scope,
+        prototype,
+        &ascii(b"readyState"),
+        &ascii(b"get readyState"),
+        true,
+        Callback::new(move |scope, arguments| handler.document_readiness(scope, arguments)),
+    )?;
+    Ok(())
+}
+
+pub(super) fn install_tree<'scope>(
+    scope: &mut Scope<'scope>,
+    prototype: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    let members: [Attribute<'_>; 3] = [
         (
             Member::Dir,
             &ascii(b"dir")[..],
@@ -94,26 +125,7 @@ pub(super) fn install<'scope>(
             None,
         ),
     ];
-    install_members(scope, prototype, capture, &members)?;
-    let handler = capture(size_of::<Capture>())?;
-    install_getter(
-        scope,
-        prototype,
-        &ascii(b"referrer"),
-        &ascii(b"get referrer"),
-        true,
-        Callback::new(move |scope, arguments| handler.document_referrer(scope, arguments)),
-    )?;
-    let handler = capture(size_of::<Capture>())?;
-    install_getter(
-        scope,
-        prototype,
-        &ascii(b"readyState"),
-        &ascii(b"get readyState"),
-        true,
-        Callback::new(move |scope, arguments| handler.document_readiness(scope, arguments)),
-    )?;
-    Ok(())
+    install_members(scope, prototype, capture, &members)
 }
 
 pub(super) fn install_obsolete_colors<'scope>(

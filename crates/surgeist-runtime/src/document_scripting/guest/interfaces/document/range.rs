@@ -46,7 +46,6 @@ enum Observed {
 
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
-    document: &Value<'scope>,
     funding: &OriginInterfaceFunding<'_>,
 ) -> Result<Prototypes, DocumentGuestEventError> {
     let abstract_prototype = scope.object(ObjectPrototype::Default)?;
@@ -158,25 +157,6 @@ pub(super) fn install<'scope>(
             true,
         )?;
     }
-    for (value, name) in [
-        (0.0, &ascii(b"START_TO_START")[..]),
-        (1.0, &ascii(b"START_TO_END")),
-        (2.0, &ascii(b"END_TO_END")),
-        (3.0, &ascii(b"END_TO_START")),
-    ] {
-        let value = scope.primitive(Primitive::Number(value))?;
-        for receiver in [&constructor, &prototype] {
-            define_data(
-                scope,
-                receiver,
-                PropertyKey::String(name),
-                &value,
-                false,
-                true,
-                false,
-            )?;
-        }
-    }
     let detach = (funding.capture)(size_of::<Capture>())?;
     let name = &ascii(b"detach");
     let method = scope.fixed_arity_function(
@@ -192,9 +172,20 @@ pub(super) fn install<'scope>(
         true,
         true,
     )?;
+    install_constants(scope, &constructor, &prototype, interface_constants::RANGE)?;
     install_interface(scope, &global, RANGE, &constructor, &prototype)?;
+    let prototype = scope.callback_object(&prototype)?;
+    Ok(Prototypes {
+        range: scope.retain_callback_object(prototype, funding.retain)?,
+    })
+}
 
-    let factory = (funding.capture)(size_of::<Capture>())?;
+pub(super) fn install_factory<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    let factory = capture(size_of::<Capture>())?;
     let name = &ascii(b"createRange");
     let method = scope.fixed_arity_function(
         &Callback::new(move |scope, arguments| factory.create_range(scope, arguments)),
@@ -209,10 +200,7 @@ pub(super) fn install<'scope>(
         true,
         true,
     )?;
-    let prototype = scope.callback_object(&prototype)?;
-    Ok(Prototypes {
-        range: scope.retain_callback_object(prototype, funding.retain)?,
-    })
+    Ok(())
 }
 
 fn install_boundary_getter<'scope>(

@@ -7,7 +7,6 @@ use surgeist_bindings_js::{
 
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
-    document: &Value<'scope>,
     (text_constructor, text_prototype): (&Value<'scope>, &Value<'scope>),
     funding: &OriginInterfaceFunding<'_>,
 ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
@@ -21,7 +20,16 @@ pub(super) fn install<'scope>(
         },
         &illegal_constructor(funding.capture)?,
     )?;
-    let handler = (funding.capture)(size_of::<Capture>())?;
+    let observed = scope.callback_object(&prototype)?;
+    scope.retain_callback_object(observed, funding.retain)
+}
+
+pub(in crate::document_scripting::guest::interfaces::document) fn install_factory<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    let handler = capture(size_of::<Capture>())?;
     let name = &ascii(b"createCDATASection");
     let factory = scope.fixed_arity_function(
         &Callback::new(move |scope, arguments| handler.create_cdata_section(scope, arguments)),
@@ -36,8 +44,7 @@ pub(super) fn install<'scope>(
         true,
         true,
     )?;
-    let observed = scope.callback_object(&prototype)?;
-    scope.retain_callback_object(observed, funding.retain)
+    Ok(())
 }
 
 impl Capture {

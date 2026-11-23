@@ -1,7 +1,6 @@
 //! Read-only Node comparisons over the current canonical snapshot.
 
 use super::*;
-use surgeist_dom::tree::DomDocumentPosition;
 
 #[derive(Clone, Copy)]
 enum Comparison {
@@ -17,10 +16,10 @@ pub(super) fn install<'scope>(
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
     for (name, comparison) in [
-        (&ascii(b"contains")[..], Comparison::Containment),
-        (&ascii(b"isSameNode")[..], Comparison::Identity),
         (&ascii(b"isEqualNode")[..], Comparison::Equality),
+        (&ascii(b"isSameNode")[..], Comparison::Identity),
         (&ascii(b"compareDocumentPosition")[..], Comparison::Position),
+        (&ascii(b"contains")[..], Comparison::Containment),
     ] {
         let handler = capture(size_of::<(Capture, Comparison)>())?;
         let method = scope.fixed_arity_function(
@@ -38,55 +37,6 @@ pub(super) fn install<'scope>(
             true,
             true,
         )?;
-    }
-    Ok(())
-}
-
-pub(in crate::document_scripting::guest::interfaces::document) fn install_position_constants<
-    'scope,
->(
-    scope: &mut Scope<'scope>,
-    constructor: &Value<'scope>,
-    prototype: &Value<'scope>,
-) -> Result<(), Error> {
-    for (name, bits) in [
-        (
-            &ascii(b"DOCUMENT_POSITION_DISCONNECTED")[..],
-            DomDocumentPosition::DISCONNECTED,
-        ),
-        (
-            &ascii(b"DOCUMENT_POSITION_PRECEDING")[..],
-            DomDocumentPosition::PRECEDING,
-        ),
-        (
-            &ascii(b"DOCUMENT_POSITION_FOLLOWING")[..],
-            DomDocumentPosition::FOLLOWING,
-        ),
-        (
-            &ascii(b"DOCUMENT_POSITION_CONTAINS")[..],
-            DomDocumentPosition::CONTAINS,
-        ),
-        (
-            &ascii(b"DOCUMENT_POSITION_CONTAINED_BY")[..],
-            DomDocumentPosition::CONTAINED_BY,
-        ),
-        (
-            &ascii(b"DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC")[..],
-            DomDocumentPosition::IMPLEMENTATION_SPECIFIC,
-        ),
-    ] {
-        let value = scope.primitive(Primitive::Number(f64::from(bits)))?;
-        for target in [constructor, prototype] {
-            define_data(
-                scope,
-                target,
-                PropertyKey::String(name),
-                &value,
-                false,
-                true,
-                false,
-            )?;
-        }
     }
     Ok(())
 }

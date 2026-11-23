@@ -231,7 +231,8 @@ impl ElementBindings {
     ) -> Result<Self, DocumentGuestEventError> {
         let global = scope.global()?;
         let (constructor, element) =
-            install(scope, &global, ELEMENT, node_constructor, node, capture)?;
+            prepare_illegal_constructor(scope, ELEMENT, node_constructor, node, capture)?;
+        publish_interface(scope, &global, ELEMENT, &constructor)?;
         let unscopables = super::tree_mutations::unscopables(scope, &element)?;
         let yes = scope.primitive(Primitive::Boolean(true))?;
         define_data(
@@ -243,20 +244,16 @@ impl ElementBindings {
             true,
             true,
         )?;
-        let (_, mathml) = install(
-            scope,
-            &global,
-            MATHML_ELEMENT,
-            &constructor,
-            &element,
-            capture,
-        )?;
+        let (mathml_constructor, mathml) =
+            prepare_illegal_constructor(scope, MATHML_ELEMENT, &constructor, &element, capture)?;
+        publish_interface(scope, &global, MATHML_ELEMENT, &mathml_constructor)?;
         super::element_mixin::install(
             scope,
             &mathml,
             capture,
             super::reflection::Receiver::Mathml,
         )?;
+        finalize_interface_prototype(scope, MATHML_ELEMENT, &mathml_constructor, &mathml)?;
         let svg = svg::SvgBindings::install(scope, &global, &constructor, &element, capture, fund)?;
         let (html_constructor, html) = install_html_constructor(
             scope,
@@ -378,15 +375,7 @@ impl ElementBindings {
             super::reflection::Receiver::Element,
             SLOT_REFLECTION,
         )?;
-        attribute::install(scope, &element, capture)?;
         let attribute_map = attribute::map::install(scope, &global, &element, capture, fund)?;
-        super::slot::install_slottable(
-            scope,
-            &element,
-            capture,
-            super::slot::SlottableReceiver::Element,
-        )?;
-        super::shadow::install_attachment(scope, &element, capture)?;
         let handler = capture(size_of::<(Capture, ElementMember)>())?;
         install_getter(
             scope,
@@ -404,14 +393,35 @@ impl ElementBindings {
             custom_elements::Receiver::Element,
             capture,
         )?;
-        adjacent::install(scope, &element, capture)?;
+        super::element_collections::install_parent(
+            scope,
+            &element,
+            super::tree_mutations::Receiver::Element,
+            capture,
+        )?;
+        super::element_collections::install_siblings(
+            scope,
+            &element,
+            super::tree_mutations::Receiver::Element,
+            capture,
+        )?;
+        super::slot::install_slottable(
+            scope,
+            &element,
+            capture,
+            super::slot::SlottableReceiver::Element,
+        )?;
+
+        attribute::install(scope, &element, capture)?;
+        super::shadow::install_attachment(scope, &element, capture)?;
         super::element_collections::install_queries(
             scope,
             &element,
             super::element_collections::QueryTarget::Element,
             capture,
         )?;
-        super::parent_node::install(
+        adjacent::install(scope, &element, capture)?;
+        super::parent_node::install_operations(
             scope,
             &element,
             super::tree_mutations::Receiver::Element,
@@ -425,12 +435,7 @@ impl ElementBindings {
             &unscopables,
             capture,
         )?;
-        super::element_collections::install_siblings(
-            scope,
-            &element,
-            super::tree_mutations::Receiver::Element,
-            capture,
-        )?;
+        finalize_interface_prototype(scope, ELEMENT, &constructor, &element)?;
         let base = scope.callback_object(&element)?;
         let mathml = scope.callback_object(&mathml)?;
         Ok(Self {
@@ -584,29 +589,27 @@ fn install<'scope>(
     parent: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(Value<'scope>, Value<'scope>), DocumentGuestEventError> {
+    let (constructor, prototype) =
+        prepare_illegal_constructor(scope, name, parent_constructor, parent, capture)?;
+    install_interface(scope, global, name, &constructor, &prototype)?;
+    Ok((constructor, prototype))
+}
+
+fn prepare_illegal_constructor<'scope>(
+    scope: &mut Scope<'scope>,
+    name: &[u16],
+    parent_constructor: &Value<'scope>,
+    parent: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(Value<'scope>, Value<'scope>), DocumentGuestEventError> {
     let callback = illegal_constructor(capture)?;
-    Ok(install_constructor(
+    Ok(prepare_constructor(
         scope,
-        global,
         name,
         parent_constructor,
         parent,
         &callback,
     )?)
-}
-
-fn install_constructor<'scope>(
-    scope: &mut Scope<'scope>,
-    global: &Value<'scope>,
-    name: &[u16],
-    parent_constructor: &Value<'scope>,
-    parent: &Value<'scope>,
-    callback: &ConstructorCallback,
-) -> Result<(Value<'scope>, Value<'scope>), Error> {
-    let (constructor, prototype) =
-        prepare_constructor(scope, name, parent_constructor, parent, callback)?;
-    install_interface(scope, global, name, &constructor, &prototype)?;
-    Ok((constructor, prototype))
 }
 
 fn prepare_constructor<'scope>(

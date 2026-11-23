@@ -154,20 +154,16 @@ impl SvgBindings {
         capture: CaptureFunding<'_>,
         fund: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
     ) -> Result<Self, DocumentGuestEventError> {
-        let base = install_named(
-            scope,
-            global,
-            "SVGElement",
-            element_constructor,
-            element,
-            capture,
-        )?;
+        let name = &ascii(b"SVGElement");
+        let base = prepare_illegal_constructor(scope, name, element_constructor, element, capture)?;
+        publish_interface(scope, global, name, &base.0)?;
         super::super::element_mixin::install(
             scope,
             &base.1,
             capture,
             super::super::reflection::Receiver::Svg,
         )?;
+        finalize_interface_prototype(scope, name, &base.0, &base.1)?;
         let graphics = install_named(
             scope,
             global,

@@ -53,7 +53,6 @@ type CurrentRead<'dom> =
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
     global: &Value<'scope>,
-    document: &Value<'scope>,
     funding: &OriginInterfaceFunding<'_>,
 ) -> Result<Projection, DocumentGuestEventError> {
     let prototype = scope.object(ObjectPrototype::Default)?;
@@ -106,7 +105,6 @@ pub(super) fn install<'scope>(
         true,
         true,
     )?;
-    install_interface(scope, global, INTERFACE, &constructor, &prototype)?;
     let iterator = scope.well_known_symbol(WellKnownSymbol::Iterator)?;
     let values = scope.intrinsic(Intrinsic::ArrayValues)?;
     define_data(
@@ -118,16 +116,7 @@ pub(super) fn install<'scope>(
         false,
         true,
     )?;
-
-    let getter = (funding.capture)(size_of::<Capture>())?;
-    install_getter(
-        scope,
-        document,
-        &ascii(b"all"),
-        &ascii(b"get all"),
-        true,
-        Callback::new(move |scope, arguments| getter.document_all(scope, arguments)),
-    )?;
+    install_interface(scope, global, INTERFACE, &constructor, &prototype)?;
     let read = collection_function(scope, funding, &[], 2, Read::Property)?;
     let call = collection_function(scope, funding, &[], 0, Read::Call)?;
     let keys = (funding.capture)(size_of::<Capture>())?;
@@ -150,6 +139,23 @@ pub(super) fn install<'scope>(
         named_getter: scope.retain_callback_object(named_getter, funding.retain)?,
         call: scope.retain_callback_object(call, funding.retain)?,
     })
+}
+
+pub(super) fn install_document_getter<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    let getter = capture(size_of::<Capture>())?;
+    install_getter(
+        scope,
+        document,
+        &ascii(b"all"),
+        &ascii(b"get all"),
+        true,
+        Callback::new(move |scope, arguments| getter.document_all(scope, arguments)),
+    )?;
+    Ok(())
 }
 
 fn collection_function<'scope>(

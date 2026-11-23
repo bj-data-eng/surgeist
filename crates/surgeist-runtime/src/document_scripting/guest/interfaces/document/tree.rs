@@ -12,7 +12,6 @@ mod clone;
 mod comparison;
 mod namespace;
 pub(super) use clone::install_import;
-pub(super) use comparison::install_position_constants;
 
 #[derive(Clone, Copy)]
 enum Method {
@@ -42,12 +41,27 @@ pub(super) fn install<'scope>(
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
+    let handler = capture(size_of::<Capture>())?;
+    let name = &ascii(b"normalize");
+    let callback = scope.fixed_arity_function(
+        &Callback::new(move |scope, arguments| handler.normalize_node(scope, arguments)),
+        FunctionMetadata { name, length: 0 },
+    )?;
+    define_data(
+        scope,
+        prototype,
+        PropertyKey::String(name),
+        &callback,
+        true,
+        true,
+        true,
+    )?;
     clone::install(scope, prototype, capture)?;
     comparison::install(scope, prototype, capture)?;
     namespace::install(scope, prototype, capture)?;
     for (key, method, length) in [
-        (&ascii(b"appendChild")[..], Method::Append, 1),
         (&ascii(b"insertBefore")[..], Method::Insert, 2),
+        (&ascii(b"appendChild")[..], Method::Append, 1),
         (&ascii(b"replaceChild")[..], Method::Replace, 2),
         (&ascii(b"removeChild")[..], Method::Remove, 1),
     ] {
@@ -66,21 +80,6 @@ pub(super) fn install<'scope>(
             true,
         )?;
     }
-    let handler = capture(size_of::<Capture>())?;
-    let name = &ascii(b"normalize");
-    let callback = scope.fixed_arity_function(
-        &Callback::new(move |scope, arguments| handler.normalize_node(scope, arguments)),
-        FunctionMetadata { name, length: 0 },
-    )?;
-    define_data(
-        scope,
-        prototype,
-        PropertyKey::String(name),
-        &callback,
-        true,
-        true,
-        true,
-    )?;
     Ok(())
 }
 
