@@ -65,6 +65,8 @@ struct FloatTrialRequest<Node, S: LayoutScalar> {
 enum RequestProgress<'input, Node, S: LayoutScalar> {
     Complete(CompletedRequest<'input, Node, S>),
     GridObservation(Box<OrdinaryGridObservation<'input, Node, S>>),
+    /// An intrinsic probe, which runs in an observation session of its own.
+    GridProbe(Box<GridContextRequest<'input, Node, S>>),
     Qualification(crate::block::entry::EntryQuery<Node, S>),
     SourceFloat(Box<crate::block::entry::EntryFloat<'input, Node, S>>),
     FloatTrial(FloatTrialRequest<Node, S>),
@@ -160,8 +162,9 @@ enum GridCompletion<Node, S: LayoutScalar> {
     /// A contextual computation caches and memoizes nothing; its receipt is
     /// the Grid result its parent consumes.
     Context {
-        /// Where the writes of the computation begin in the session's capture.
-        effects_start: usize,
+        /// Where the writes of the computation begin in the session's capture;
+        /// `None` for a computation that captures nothing.
+        effects_start: Option<usize>,
     },
 }
 
@@ -246,6 +249,8 @@ type SessionBlock<'input, Tree> =
 enum StagedDestination<'input, Node, S: LayoutScalar> {
     Qualification,
     GridObservation,
+    /// An intrinsic probe of `node`.
+    GridProbe(Node),
     FloatTrial(FloatTrialRequest<Node, S>),
     SourceFloat {
         request: FloatTrialRequest<Node, S>,
@@ -333,12 +338,13 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         let result = self.drive_staged_requests(request, &mut pending, &mut staged);
         result.map_err(|mut stop| {
             while let Some(mut trial) = staged.pop() {
-                trial
-                    .session
-                    .close_context_captures(&mut trial.pending.grids);
+                trial.session.close_held_captures(
+                    &mut trial.pending.grid_observations,
+                    &mut trial.pending.grids,
+                );
                 stop = trial.session.unwind_blocks(trial.pending.blocks, stop);
             }
-            self.close_context_captures(&mut pending.grids);
+            self.close_held_captures(&mut pending.grid_observations, &mut pending.grids);
             self.unwind_blocks(pending.blocks, stop)
         })
     }
@@ -377,6 +383,9 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 }
                 progress @ RequestProgress::GridObservation(_) => {
                     request = self.stage_grid_observation(progress, staged)?;
+                }
+                RequestProgress::GridProbe(probe) => {
+                    request = self.stage_grid_probe(*probe, staged)?;
                 }
                 RequestProgress::Qualification(query) => {
                     request = self.stage_qualification(query, staged)?;
@@ -485,6 +494,28 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         Ok(request)
     }
 
+    /// Runs an intrinsic probe in a disposable observation session of its own,
+    /// as the synchronous observation did. Only what the parent consumes of
+    /// the observation, the Text dependencies it accepts, outlives it.
+    fn stage_grid_probe(
+        &mut self,
+        probe: GridContextRequest<'input, Tree::Node, Tree::Scalar>,
+        staged: &mut Vec<StagedTrial<'input, Tree>>,
+    ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
+        let node = probe.node();
+        staged.try_reserve(1).map_err(|_| reserve_error(node))?;
+        let parent = staged
+            .last_mut()
+            .map_or(&mut *self, |active| &mut active.session);
+        let session = parent.grid_observation_session(node)?;
+        staged.push(StagedTrial {
+            destination: StagedDestination::GridProbe(node),
+            session,
+            pending: PendingRequests::new(),
+        });
+        Ok(Request::ContextGrid(Box::new(probe.observed())))
+    }
+
     fn advance_grid_observation_request(
         &mut self,
         request: SessionRequest<'input, Tree>,
@@ -547,6 +578,11 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 drop(finished.session);
                 Request::Complete(output)
             }
+            StagedDestination::GridProbe(node) => {
+                parent.accept_grid_observation(node, &finished.session)?;
+                drop(finished.session);
+                Request::Complete(output)
+            }
             StagedDestination::Qualification => {
                 drop(finished.session);
                 Request::Complete(output)
@@ -604,16 +640,49 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         }
     }
 
-    /// Closes the effect captures of the contextual Grid requests a failure
-    /// left suspended, innermost first. They have no writes to replay.
-    fn close_context_captures(
+    /// Closes the effect capture of a contextual Grid request, if it opened
+    /// one, and returns the writes it captured.
+    fn close_context_capture(
         &mut self,
+        start: Option<usize>,
+    ) -> Option<crate::engine::StagedEffects<Tree::Node, Tree::Scalar>> {
+        start.and_then(|start| self.end_effect_capture(start))
+    }
+
+    /// Closes the effect captures the requests a failure left suspended hold:
+    /// those of their contextual Grid computations and of the preparations their
+    /// track sizing traversals wait in. They have no writes to replay. A
+    /// capture closes after every capture opened within it, whichever request
+    /// holds it: an observation is below the requests it issues, and a
+    /// computation's own capture opened before the preparations of its track
+    /// sizing.
+    fn close_held_captures(
+        &mut self,
+        observations: &mut Vec<GridObservationRequest<'input, Tree::Node, Tree::Scalar>>,
         grids: &mut Vec<GridRequest<'input, Tree::Node, Tree::Scalar>>,
     ) {
-        while let Some(grid) = grids.pop() {
-            if let GridCompletion::Context { effects_start } = grid.completion {
-                self.end_effect_capture(effects_start);
+        let mut starts = Vec::new();
+        for observation in observations.iter_mut() {
+            observation.computation.take_captures(&mut starts);
+        }
+        observations.clear();
+        while let Some(mut grid) = grids.pop() {
+            grid.computation.take_captures(&mut starts);
+            if let GridCompletion::Context {
+                effects_start: Some(effects_start),
+            } = grid.completion
+            {
+                starts.push(effects_start);
             }
+        }
+        self.close_latest_first(starts);
+    }
+
+    /// Closes the effect captures that began at `starts`, the latest first.
+    pub(super) fn close_latest_first(&mut self, mut starts: Vec<usize>) {
+        starts.sort_unstable_by(|first, second| second.cmp(first));
+        for start in starts {
+            self.end_effect_capture(start);
         }
     }
 
@@ -698,6 +767,9 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 Request::AdvanceGrid => self.advance_grid(pending)?,
                 Request::GridObservation(source) => {
                     return Ok(RequestProgress::GridObservation(source));
+                }
+                Request::ContextGrid(request) if request.is_probe() => {
+                    return Ok(RequestProgress::GridProbe(request));
                 }
                 Request::ContextGrid(request) => self.begin_context_grid(*request, pending)?,
                 request @ Request::GridObservationRun(_) => {
@@ -1132,20 +1204,22 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         pending: &mut SessionPending<'input, Tree>,
     ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let node = request.node();
-        let effects_start = self.begin_effect_capture(super::CaptureKind::Request);
+        let effects_start = request
+            .captures()
+            .then(|| self.begin_effect_capture(super::CaptureKind::Request));
         let started = begin_grid_context_computation(self, request)
             .and_then(|mut computation| computation.advance(self).map(|step| (computation, step)));
         let (computation, step) = match started {
             Ok(started) => started,
             Err(error) => {
                 // The failed computation leaves no writes to replay.
-                self.end_effect_capture(effects_start);
+                self.close_context_capture(effects_start);
                 return Err(error.into());
             }
         };
         match step {
             ControlFlow::Break(result) => {
-                let result = result.with_effects(self.end_effect_capture(effects_start));
+                let result = result.with_effects(self.close_context_capture(effects_start));
                 Ok(Request::Complete(CompletedRequest::Context(Box::new(
                     result,
                 ))))
@@ -1154,7 +1228,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 // The capture stays open for the computation to close; a
                 // failure to schedule it closes the capture here.
                 if pending.grids.try_reserve(1).is_err() {
-                    self.end_effect_capture(effects_start);
+                    self.close_context_capture(effects_start);
                     return Err(reserve_error(node).into());
                 }
                 let mut pending_child = None;
@@ -1165,7 +1239,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 ) {
                     Ok(request) => request,
                     Err(error) => {
-                        self.end_effect_capture(effects_start);
+                        self.close_context_capture(effects_start);
                         return Err(error);
                     }
                 };
@@ -1202,7 +1276,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                         )
                     }
                     GridCompletion::Context { effects_start } => {
-                        let result = result.with_effects(self.end_effect_capture(effects_start));
+                        let result = result.with_effects(self.close_context_capture(effects_start));
                         Ok(Request::Complete(CompletedRequest::Context(Box::new(
                             result,
                         ))))

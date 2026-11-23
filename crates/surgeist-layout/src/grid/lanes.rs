@@ -278,7 +278,7 @@ pub(super) struct LanePacking<S: LayoutScalar> {
     inherited_geometry: Option<(UsedGridAxisGeometryOf<S>, UsedGridAxisGeometryOf<S>)>,
 }
 
-pub(super) struct LanePackingChild<Node, S: LayoutScalar> {
+pub(super) struct LanePackingChild<'input, Node, S: LayoutScalar> {
     node: Node,
     measurement: LaneMarginBoxMeasurement<S>,
     source_slot: usize,
@@ -286,17 +286,47 @@ pub(super) struct LanePackingChild<Node, S: LayoutScalar> {
     start: usize,
     span: usize,
     grid_axis_size: S,
+    /// The intrinsic probe of a subgrid item, which its executor may suspend;
+    /// an item without one is an ordinary child computation.
+    probe: Option<Box<GridContextRequest<'input, Node, S>>>,
 }
 
-impl<Node: Copy, S: LayoutScalar> LanePackingChild<Node, S> {
+impl<'input, Node: Copy, S: LayoutScalar> LanePackingChild<'input, Node, S> {
     pub(super) fn request(&self) -> (Node, ComputeInputOf<S>) {
         (self.node, self.measurement.input())
     }
 }
 
-type LanePackingStep<Node, S, M> = LayoutResultOf<
+impl<'input, Node: Copy + Eq, S: LayoutScalar> LanePackingChild<'input, Node, S> {
+    /// Takes the contextual Grid computation this child stands for, if any.
+    pub(super) fn take_context(&mut self) -> Option<Box<GridContextRequest<'input, Node, S>>> {
+        self.probe.take()
+    }
+
+    /// Computes the child on the native stack.
+    pub(super) fn compute_sync<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+    ) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        match self.take_context() {
+            Some(request) => Ok(request.compute_sync(tree)?.into_output()),
+            None => {
+                let (node, input) = self.request();
+                tree.compute_child(node, input)
+            }
+        }
+    }
+}
+
+type LanePackingStep<'input, Node, S, M> = LayoutResultOf<
     Node,
-    ControlFlow<Result<PackedLanePlacement<S>, LanePlacementError>, LanePackingChild<Node, S>>,
+    ControlFlow<
+        Result<PackedLanePlacement<S>, LanePlacementError>,
+        LanePackingChild<'input, Node, S>,
+    >,
     S,
     M,
 >;
@@ -348,7 +378,7 @@ impl<S: LayoutScalar> LanePacking<S> {
         &mut self,
         tree: &mut Tree,
         source: &LanePackingSource<'input, '_, Tree::Node, S>,
-    ) -> LanePackingStep<Tree::Node, S, M>
+    ) -> LanePackingStep<'input, Tree::Node, S, M>
     where
         Tree: Compute<'input, M, Scalar = S>,
     {
@@ -483,7 +513,7 @@ impl<S: LayoutScalar> LanePacking<S> {
                     inherits_grid_axis,
                 },
             )?;
-            let measured_child = LanePackingChild {
+            let mut measured_child = LanePackingChild {
                 node: child,
                 measurement,
                 source_slot,
@@ -491,6 +521,7 @@ impl<S: LayoutScalar> LanePacking<S> {
                 start,
                 span,
                 grid_axis_size,
+                probe: None,
             };
             // Host-measured leaves retain the caller's measurement boundary.
             if !has_subgrid || tree.has_leaf_measurement(child) {
@@ -549,27 +580,19 @@ impl<S: LayoutScalar> LanePacking<S> {
                 .inherited_geometry
                 .as_ref()
                 .expect("inherited stacking probes retain their parent geometry");
-            let output = match tree.observe_grid_overflow(
+            measured_child.probe = Some(Box::new(GridContextRequest::intrinsic(
+                ContextRun::Probe,
                 child,
-                GridOverflowProbe {
-                    layout: GridOverflowLayout::Intrinsic(GridIntrinsicProbe {
-                        input,
-                        stage: sizing_stage,
-                        kind: GridIntrinsicProbeKind::AllocatedPrefix,
-                        intrinsic_minimum: Size::NONE,
-                        source: parent_source,
-                        parent_column_geometry: Some(column_geometry),
-                        parent_row_geometry: Some(row_geometry),
-                        parent_flow: constants.flow_axes,
-                    }),
-                },
-            )? {
-                GridOverflowObservation::Intrinsic(observation) => observation.output,
-                GridOverflowObservation::Children(_) => {
-                    unreachable!("a stacking intrinsic probe returns its prepared output")
-                }
-            };
-            self.accept(source, measured_child, output);
+                input,
+                Size::NONE,
+                sizing_stage,
+                GridIntrinsicProbeKind::AllocatedPrefix,
+                parent_source,
+                Some(column_geometry),
+                Some(row_geometry),
+                constants.flow_axes,
+            )));
+            return Ok(ControlFlow::Continue(measured_child));
         }
         Ok(ControlFlow::Break(Ok(PackedLanePlacement::new(
             grid_axis,
@@ -583,7 +606,7 @@ impl<S: LayoutScalar> LanePacking<S> {
     pub(super) fn accept<Node>(
         &mut self,
         source: &LanePackingSource<'_, '_, Node, S>,
-        child: LanePackingChild<Node, S>,
+        child: LanePackingChild<'_, Node, S>,
         output: ComputeOutputOf<S>,
     ) {
         let LanePackingChild {
@@ -858,7 +881,7 @@ where
                 Err(error) => return Ok(Err(error)),
             };
             loop {
-                let output = tree.compute_child(child.node, child.input())?;
+                let output = child.request(input).compute_sync(tree)?.into_output();
                 if role.accept_child(input, &mut child, output)? {
                     break;
                 }
@@ -1034,11 +1057,39 @@ pub(super) struct LaneIntrinsicChild<Node, S: LayoutScalar> {
     query: Option<GridMinimumQuery<S>>,
     prepared: ComputeInputOf<S>,
     source_slot: usize,
+    /// A nested container that requires a context, so that its queries are
+    /// contextual Grid computations.
+    contextual: bool,
 }
 
-impl<Node, S: LayoutScalar> LaneIntrinsicChild<Node, S> {
-    pub(super) fn input(&self) -> ComputeInputOf<S> {
-        self.query.as_ref().expect("active lane query").input()
+impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicChild<Node, S> {
+    /// The computation the current query of the child waits on.
+    pub(super) fn request<'input>(
+        &self,
+        input: LaneIntrinsicTrackSizeInput<'input, '_, Node, S>,
+    ) -> TrackChildRequest<'input, Node, S> {
+        let query_input = self.query.as_ref().expect("active lane query").input();
+        if !self.contextual {
+            return TrackChildRequest::child(self.node, query_input);
+        }
+        let container = input
+            .placements
+            .nested_container_input(self.source_slot)
+            .copied()
+            .expect("a contextual lane child retains its nested container");
+        let child_style = input.placements.item_input(self.source_slot);
+        let child_flow = FlowAxes::new(child_style.writing_mode, child_style.direction);
+        TrackChildRequest::context(Box::new(GridContextRequest::standalone(
+            self.node,
+            self.node,
+            query_input,
+            container,
+            input
+                .grid
+                .query
+                .stage
+                .mapped(input.constants.flow_axes, child_flow),
+        )))
     }
 }
 
@@ -1147,33 +1198,17 @@ impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicRole<Node, S> {
             };
             let (prepared, query) = prepare_lane_contribution(child, minimum, purpose)?;
             let span = GridTrackSpan::new(start + 1, end + 1);
-            if let Some(container) = placements
+            let contextual = placements
                 .nested_container_input(source_slot)
-                .filter(|container| container.requires_context())
-            {
-                let child_flow = FlowAxes::new(child_style.writing_mode, child_style.direction);
-                let output = query.compute(child, |request| {
-                    Ok(compute_grid_with_context_source(
-                        tree,
-                        child,
-                        request,
-                        Size::NONE,
-                        *container,
-                        grid.query.stage.mapped(constants.flow_axes, child_flow),
-                        |_| Ok(GridParentContext::none()),
-                    )?
-                    .output)
-                })?;
-                self.accept(child, span, prepared, input, source_slot, output)?;
-            } else {
-                return Ok(Ok(Some(LaneIntrinsicChild {
-                    node: child,
-                    span,
-                    query: Some(query),
-                    prepared,
-                    source_slot,
-                })));
-            }
+                .is_some_and(|container| container.requires_context());
+            return Ok(Ok(Some(LaneIntrinsicChild {
+                node: child,
+                span,
+                query: Some(query),
+                prepared,
+                source_slot,
+                contextual,
+            })));
         }
     }
 
@@ -2339,11 +2374,11 @@ pub(super) struct LanePlacementGeometry<S: LayoutScalar> {
 type LanePlacementStart<Node, S, M> =
     LayoutResultOf<Node, ControlFlow<GridChildrenLayout<Node, S>, LanePlacementPacking<S>>, S, M>;
 
-type LanePlacementStep<Node, S, M> = LayoutResultOf<
+type LanePlacementStep<'input, Node, S, M> = LayoutResultOf<
     Node,
     ControlFlow<
         ControlFlow<GridChildrenLayout<Node, S>, LanePlacementGeometry<S>>,
-        LanePackingChild<Node, S>,
+        LanePackingChild<'input, Node, S>,
     >,
     S,
     M,
@@ -2564,7 +2599,7 @@ impl<S: LayoutScalar> LanePlacementPacking<S> {
         &mut self,
         tree: &mut Tree,
         input: &GridLanesLayoutInput<'input, '_, Tree::Node, S>,
-    ) -> LanePlacementStep<Tree::Node, S, M>
+    ) -> LanePlacementStep<'input, Tree::Node, S, M>
     where
         Tree: Compute<'input, M, Scalar = S>,
     {
@@ -2587,7 +2622,7 @@ impl<S: LayoutScalar> LanePlacementPacking<S> {
     pub(super) fn accept<Node>(
         &mut self,
         input: &GridLanesLayoutInput<'_, '_, Node, S>,
-        child: LanePackingChild<Node, S>,
+        child: LanePackingChild<'_, Node, S>,
         output: ComputeOutputOf<S>,
     ) {
         let context = self
@@ -3187,9 +3222,8 @@ where
     };
     let geometry = loop {
         match packing.advance(tree, &input)? {
-            ControlFlow::Continue(child) => {
-                let (node, request) = child.request();
-                let output = tree.compute_child(node, request)?;
+            ControlFlow::Continue(mut child) => {
+                let output = child.compute_sync(tree)?;
                 packing.accept(&input, child, output);
             }
             ControlFlow::Break(ControlFlow::Break(layout)) => {

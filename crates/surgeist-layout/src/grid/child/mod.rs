@@ -528,6 +528,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridItemCollection<'input, Node, 
                 child: container,
                 stage,
                 parent_context,
+                run: ContextRun::Item,
             };
             let fingerprint = ContextualFingerprint::of(&request).map(Box::new);
             return Ok(Some(GridFlowChild::Contextual(Box::new(

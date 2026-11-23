@@ -321,16 +321,6 @@ impl<S: LayoutScalar> GridMinimumContentSuggestion<S> {
     }
 }
 
-/// Execute the planned used-minimum query through the caller's real child
-/// boundary, preserving its normal box and selected baseline facts.
-pub(in crate::grid) fn compute_grid_minimum_contribution<Node: Copy, S: LayoutScalar, M>(
-    node: Node,
-    context: GridMinimumContext<'_, '_, S>,
-    query: impl FnMut(ComputeInputOf<S>) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M>,
-) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M> {
-    GridMinimumQuery::begin(node, context)?.compute(node, query)
-}
-
 /// A minimum contribution may need a content suggestion before it can issue
 /// the final child request with a known border extent.
 pub(in crate::grid) enum GridMinimumQuery<S: LayoutScalar> {

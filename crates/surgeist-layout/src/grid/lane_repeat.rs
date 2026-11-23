@@ -26,7 +26,7 @@ pub(super) struct LaneRepeatProbe<'input, Node, S: LayoutScalar> {
     gap: S,
     constants: Constants<S>,
     tracks: InitializedGridTracks<'input, Node, S>,
-    sizing: IntrinsicRepeatSizing<Node, S>,
+    sizing: IntrinsicRepeatSizing<'input, Node, S>,
 }
 
 type RepeatPreparation<'input, Node, S, M> = LayoutResultOf<
@@ -168,9 +168,9 @@ where
     })))
 }
 
-type RepeatStep<Node, S, M> = LayoutResultOf<
+type RepeatStep<'input, Node, S, M> = LayoutResultOf<
     Node,
-    ControlFlow<LaneRepeatExpansion<'static>, (Node, ComputeInputOf<S>)>,
+    ControlFlow<LaneRepeatExpansion<'static>, TrackChildRequest<'input, Node, S>>,
     S,
     M,
 >;
@@ -182,7 +182,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> LaneRepeatProbe<'input, Node, S> 
         node: Node,
         style: &GridContainerProjection<'input, S>,
         parent: &GridParentContext<S, Node>,
-    ) -> RepeatStep<Node, S, M>
+    ) -> RepeatStep<'input, Node, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -204,6 +204,22 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> LaneRepeatProbe<'input, Node, S> 
         self.sizing.accept(node, &input, output)
     }
 
+    /// Closes the effect captures a traversal the probe waits on holds.
+    pub(super) fn take_captures(&mut self, starts: &mut Vec<usize>) {
+        self.sizing.take_captures(starts);
+    }
+
+    pub(super) fn accept_context<M>(
+        &mut self,
+        node: Node,
+        style: &GridContainerProjection<'input, S>,
+        parent: &GridParentContext<S, Node>,
+        result: GridComputeResult<Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let input = repeat_input(self.axis, &self.tracks, style, &self.constants, parent);
+        self.sizing.accept_context(node, &input, result)
+    }
+
     pub(super) fn compute<Tree, M>(
         &mut self,
         tree: &mut Tree,
@@ -214,15 +230,23 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> LaneRepeatProbe<'input, Node, S> 
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        loop {
-            match self.advance(tree, node, style, parent)? {
-                ControlFlow::Continue((child, request)) => {
-                    let output = tree.compute_child(child, request)?;
-                    self.accept(node, style, parent, output)?;
+        let result = (|| {
+            loop {
+                match self.advance(tree, node, style, parent)? {
+                    ControlFlow::Continue(request) => {
+                        let result = request.compute_sync(tree)?;
+                        self.accept_context(node, style, parent, result)?;
+                    }
+                    ControlFlow::Break(expansion) => return Ok(expansion),
                 }
-                ControlFlow::Break(expansion) => return Ok(expansion),
             }
+        })();
+        if result.is_err() {
+            let mut starts = Vec::new();
+            self.take_captures(&mut starts);
+            close_captures_latest_first(tree, starts);
         }
+        result
     }
 
     fn finish<M>(

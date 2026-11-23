@@ -113,13 +113,13 @@ use axis::{GridAxisMappingInput, GridAxisMappingReport, map_grid_axis};
 use baseline_reference::*;
 use child::*;
 pub(crate) use context_request::GridContextRequest;
-use context_request::GridParentContextSource;
+use context_request::{ContextRun, GridParentContextSource};
 use input::{
     GridChildInput, GridContainerInput, GridContainerProjection, GridItemProjection,
     order_modified_indexes,
 };
 use intrinsic_stage::{
-    GridIntrinsicProbe, GridIntrinsicProbeKind, GridTrackSizing, IntrinsicSubgridSource,
+    GridIntrinsicProbeKind, GridTrackSizing, IntrinsicSubgridSource, TrackChildRequest,
 };
 use lane_repeat::{LaneRepeatExpansion, LaneRepeatPlacement, LaneRepeatProbe};
 use lanes::{
@@ -178,6 +178,18 @@ impl GridComputationReport {
     }
 }
 
+/// Closes the effect captures that began at `starts`, the latest first, as
+/// nested captures must close.
+fn close_captures_latest_first<'input, Tree, M>(tree: &mut Tree, mut starts: Vec<usize>)
+where
+    Tree: Compute<'input, M>,
+{
+    starts.sort_unstable_by(|first, second| second.cmp(first));
+    for start in starts {
+        tree.end_effect_capture(start);
+    }
+}
+
 pub(crate) fn compute_grid<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
@@ -221,16 +233,10 @@ pub(crate) struct GridChild<'input, Node, S: LayoutScalar> {
 }
 
 enum GridChildPhase<'input, Node, S: LayoutScalar> {
-    Track {
-        node: Node,
-        input: ComputeInputOf<S>,
-    },
-    AcceptedTrack {
-        node: Node,
-        input: ComputeInputOf<S>,
-    },
-    InitialLanePacking(LanePackingChild<Node, S>),
-    FinalLanePacking(LanePackingChild<Node, S>),
+    Track(TrackChildRequest<'input, Node, S>),
+    AcceptedTrack(TrackChildRequest<'input, Node, S>),
+    InitialLanePacking(LanePackingChild<'input, Node, S>),
+    FinalLanePacking(LanePackingChild<'input, Node, S>),
     InFlow(GridFlowChild<'input, Node, S>),
     Refresh {
         node: Node,
@@ -247,6 +253,12 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridChild<'input, Node, S> {
         match &mut self.phase {
             GridChildPhase::InFlow(child) => child.take_context_request(),
             GridChildPhase::Refresh { request, .. } => request.take().map(|request| *request),
+            GridChildPhase::Track(request) | GridChildPhase::AcceptedTrack(request) => {
+                request.take_context().map(|request| *request)
+            }
+            GridChildPhase::InitialLanePacking(child) | GridChildPhase::FinalLanePacking(child) => {
+                child.take_context().map(|request| *request)
+            }
             _ => None,
         }
     }
@@ -255,8 +267,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridChild<'input, Node, S> {
 impl<Node: Copy, S: LayoutScalar> GridChild<'_, Node, S> {
     pub(crate) fn request(&self) -> (Node, ComputeInputOf<S>) {
         match &self.phase {
-            GridChildPhase::Track { node, input }
-            | GridChildPhase::AcceptedTrack { node, input } => (*node, *input),
+            GridChildPhase::Track(request) | GridChildPhase::AcceptedTrack(request) => {
+                (request.node, request.input)
+            }
             GridChildPhase::InitialLanePacking(child) | GridChildPhase::FinalLanePacking(child) => {
                 child.request()
             }
@@ -375,6 +388,7 @@ where
         child,
         stage,
         parent_context,
+        run: _,
     } = request;
     tree.meter()
         .charge(LayoutWork::ContextualGridComputation, 1);
@@ -557,9 +571,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
                         pass.finish()?
                     }
                     GridPassWork::Accepted(accepted) => {
-                        if let ControlFlow::Continue((node, input)) = accepted.advance(tree)? {
+                        if let ControlFlow::Continue(request) = accepted.advance(tree)? {
                             return Ok(ControlFlow::Continue(GridRequest::Child(GridChild {
-                                phase: GridChildPhase::AcceptedTrack { node, input },
+                                phase: GridChildPhase::AcceptedTrack(request),
                             })));
                         }
                         let Some(GridPassWork::Accepted(accepted)) = self.pass.take() else {
@@ -578,9 +592,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
                 let next = match tracks {
                     GridTrackPassPhase::Repeat(repeat) => {
                         let expansion = match repeat.advance(tree, self.node)? {
-                            ControlFlow::Continue((node, input)) => {
+                            ControlFlow::Continue(request) => {
                                 return Ok(ControlFlow::Continue(GridRequest::Child(GridChild {
-                                    phase: GridChildPhase::Track { node, input },
+                                    phase: GridChildPhase::Track(request),
                                 })));
                             }
                             ControlFlow::Break(expansion) => expansion,
@@ -595,13 +609,13 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
                         continue;
                     }
                     GridTrackPassPhase::Sizing(tracks) => {
-                        if let ControlFlow::Continue((node, input)) =
+                        if let ControlFlow::Continue(request) =
                             tracks
                                 .sizing
                                 .advance(tree, self.node, &tracks.source.track_input())?
                         {
                             return Ok(ControlFlow::Continue(GridRequest::Child(GridChild {
-                                phase: GridChildPhase::Track { node, input },
+                                phase: GridChildPhase::Track(request),
                             })));
                         }
                         let Some(GridTrackPassPhase::Sizing(tracks)) = self.tracks.take() else {
@@ -672,6 +686,23 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
         }
     }
 
+    /// Closes the effect captures the traversals of the computation's track
+    /// sizing hold, innermost first.
+    pub(crate) fn take_captures(&mut self, starts: &mut Vec<usize>) {
+        match (&mut self.tracks, &mut self.pass) {
+            (Some(GridTrackPassPhase::Repeat(repeat)), _) => {
+                repeat.take_captures(starts);
+            }
+            (Some(GridTrackPassPhase::Sizing(tracks)), _) => {
+                tracks.sizing.take_captures(starts);
+            }
+            (_, Some(GridPassWork::Accepted(accepted))) => {
+                accepted.take_captures(starts);
+            }
+            _ => {}
+        }
+    }
+
     pub(crate) fn accept_observation<M>(
         &mut self,
         completion: OrdinaryGridObservationCompletion<'input, Node, S>,
@@ -690,7 +721,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        if let GridChildPhase::Track { .. } = child.phase {
+        if let GridChildPhase::Track(_) = child.phase {
             let tracks = self.tracks.as_mut().expect("active track request");
             return match tracks {
                 GridTrackPassPhase::Repeat(repeat) => repeat.accept(self.node, output),
@@ -713,7 +744,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
         }
         match self.pass.as_mut().expect("active Grid pass") {
             GridPassWork::Accepted(accepted) => {
-                assert!(matches!(child.phase, GridChildPhase::AcceptedTrack { .. }));
+                assert!(matches!(child.phase, GridChildPhase::AcceptedTrack(_)));
                 accepted.accept(output)
             }
             GridPassWork::Placement(pass) => pass.accept(tree, child, output),
@@ -733,6 +764,32 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
+        match child.phase {
+            GridChildPhase::Track(_) => {
+                let tracks = self.tracks.as_mut().expect("active track request");
+                return match tracks {
+                    GridTrackPassPhase::Repeat(repeat) => repeat.accept_context(self.node, result),
+                    GridTrackPassPhase::LaneExtent(_) => {
+                        unreachable!("lane packing owns its child receipt")
+                    }
+                    GridTrackPassPhase::Sizing(tracks) => tracks.sizing.accept_context(
+                        self.node,
+                        &tracks.source.track_input(),
+                        result,
+                    ),
+                };
+            }
+            GridChildPhase::AcceptedTrack(_) => {
+                let Some(GridPassWork::Accepted(accepted)) = self.pass.as_mut() else {
+                    unreachable!("an accepted track request belongs to accepted sizing");
+                };
+                return accepted.accept_context(result);
+            }
+            GridChildPhase::InitialLanePacking(_) => {
+                return self.accept_child(tree, child, result.into_output());
+            }
+            _ => {}
+        }
         match self.pass.as_mut().expect("active Grid pass") {
             GridPassWork::Placement(pass) => pass.accept_context(tree, child, result),
             GridPassWork::Accepted(_)
@@ -763,6 +820,11 @@ impl<Node, S: LayoutScalar> GridComputeResult<Node, S> {
         self.output
     }
 
+    /// The scrollbar gutter the computation settled on, if it had one.
+    pub(crate) fn effective_gutter(&self) -> Option<Edges<S>> {
+        self.effective_gutter
+    }
+
     /// The receipt with the writes its computation staged.
     pub(crate) fn with_effects(
         mut self,
@@ -772,7 +834,7 @@ impl<Node, S: LayoutScalar> GridComputeResult<Node, S> {
         self
     }
 
-    fn from_output(output: ComputeOutputOf<S>) -> Self {
+    pub(super) fn from_output(output: ComputeOutputOf<S>) -> Self {
         Self {
             output,
             report: GridComputationReport::default(),
@@ -919,7 +981,8 @@ enum GridOverflowLayout<'input, 'a, Node, S: LayoutScalar> {
         GridLanesLayoutInput<'input, 'a, Node, S>,
         GridContainerContext<S>,
     ),
-    Intrinsic(GridIntrinsicProbe<'input, 'a, Node, S>),
+    /// An intrinsic probe that owns the parent facts it is computed from.
+    Context(Box<GridContextRequest<'input, Node, S>>),
     #[cfg(test)]
     RootPrefix {
         input: ComputeInputOf<S>,
@@ -958,10 +1021,14 @@ impl<'input, Node, S: LayoutScalar> GridOverflowProbe<'input, '_, Node, S> {
                     ControlFlow::Continue(placement) => placement.compute(tree)?,
                 }
             }
-            GridOverflowLayout::Intrinsic(input) => {
-                return input
-                    .observe(tree, node)
-                    .map(GridOverflowObservation::Intrinsic);
+            GridOverflowLayout::Context(request) => {
+                let result = request.compute_in_session(tree)?;
+                return Ok(GridOverflowObservation::Intrinsic(
+                    intrinsic_stage::GridIntrinsicObservation {
+                        output: result.output,
+                        effective_gutter: result.effective_gutter,
+                    },
+                ));
             }
             #[cfg(test)]
             GridOverflowLayout::RootPrefix { input, stage } => {
@@ -1670,6 +1737,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPass<'input, Node, S> {
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         match (&mut self.children, child.phase) {
+            (Some(GridPassChildren::PackLanes(lanes)), GridChildPhase::FinalLanePacking(child)) => {
+                let input = lanes.source.input(&self.output, self.scroll_box);
+                lanes.packing.accept(&input, child, result.into_output());
+                Ok(())
+            }
             (Some(GridPassChildren::InFlowLanes(lanes)), GridChildPhase::InFlow(child)) => {
                 let input = lanes.source.input(&self.output, self.scroll_box);
                 lanes.collection.accept_context(
@@ -1771,10 +1843,7 @@ where
         GridTrackPassPhase::LaneExtent(_) => unreachable!("a new track pass starts before packing"),
     };
     let projected = source.track_input();
-    while let ControlFlow::Continue((child, request)) = sizing.advance(tree, node, &projected)? {
-        let output = tree.compute_child(child, request)?;
-        sizing.accept(node, &projected, output)?;
-    }
+    sizing.drive_sync::<Tree, M>(tree, node, &projected)?;
     let resolved = sizing.finish(node, source.track_input())?;
     let (source, resolved, extent) =
         if let Some(packing) = source.begin_lane_extent(tree, node, &resolved) {
@@ -1785,9 +1854,8 @@ where
             };
             let extent = loop {
                 match lanes.advance(tree)? {
-                    ControlFlow::Continue(child) => {
-                        let (node, input) = child.request();
-                        let output = tree.compute_child(node, input)?;
+                    ControlFlow::Continue(mut child) => {
+                        let output = child.compute_sync(tree)?;
                         lanes.accept(child, output);
                     }
                     ControlFlow::Break(extent) => break extent,
@@ -1805,10 +1873,7 @@ where
         }
         ControlFlow::Continue(GridPassWork::Placement(pass)) => pass.compute(tree),
         ControlFlow::Continue(GridPassWork::Accepted(mut accepted)) => {
-            while let ControlFlow::Continue((child, request)) = accepted.advance(tree)? {
-                let output = tree.compute_child(child, request)?;
-                accepted.accept(output)?;
-            }
+            accepted.drive_sync(tree)?;
             match accepted.finish(tree)? {
                 ControlFlow::Break(result) => Ok(result),
                 ControlFlow::Continue(pass) => pass.compute(tree),
@@ -1837,15 +1902,19 @@ struct GridRepeatPass<'input, Node, S: LayoutScalar> {
     probe: Box<LaneRepeatProbe<'input, Node, S>>,
 }
 
-type GridRepeatStep<Node, S, M> = LayoutResultOf<
+type GridRepeatStep<'input, Node, S, M> = LayoutResultOf<
     Node,
-    ControlFlow<LaneRepeatExpansion<'static>, (Node, ComputeInputOf<S>)>,
+    ControlFlow<LaneRepeatExpansion<'static>, TrackChildRequest<'input, Node, S>>,
     S,
     M,
 >;
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> GridRepeatPass<'input, Node, S> {
-    fn advance<Tree, M>(&mut self, tree: &mut Tree, node: Node) -> GridRepeatStep<Node, S, M>
+    fn advance<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+    ) -> GridRepeatStep<'input, Node, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -1865,6 +1934,23 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridRepeatPass<'input, Node, S> {
             output,
         )
     }
+
+    fn take_captures(&mut self, starts: &mut Vec<usize>) {
+        self.probe.take_captures(starts);
+    }
+
+    fn accept_context<M>(
+        &mut self,
+        node: Node,
+        result: GridComputeResult<Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        self.probe.accept_context(
+            node,
+            &self.source.style,
+            &self.source.parent_context,
+            result,
+        )
+    }
 }
 
 struct GridPassPreparationSource<'input, Node, S: LayoutScalar> {
@@ -1881,7 +1967,7 @@ struct GridPassPreparationSource<'input, Node, S: LayoutScalar> {
 
 struct GridTrackPass<'input, Node, S: LayoutScalar> {
     source: GridPassSource<'input, Node, S>,
-    sizing: GridTrackSizing<Node, S>,
+    sizing: GridTrackSizing<'input, Node, S>,
 }
 
 struct GridInitialLanePacking<'input, Node, S: LayoutScalar> {
@@ -1890,11 +1976,11 @@ struct GridInitialLanePacking<'input, Node, S: LayoutScalar> {
     packing: LanePacking<S>,
 }
 
-type GridLaneExtentStep<Node, S, M> =
-    LayoutResultOf<Node, ControlFlow<Option<S>, LanePackingChild<Node, S>>, S, M>;
+type GridLaneExtentStep<'input, Node, S, M> =
+    LayoutResultOf<Node, ControlFlow<Option<S>, LanePackingChild<'input, Node, S>>, S, M>;
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> GridInitialLanePacking<'input, Node, S> {
-    fn advance<Tree, M>(&mut self, tree: &mut Tree) -> GridLaneExtentStep<Node, S, M>
+    fn advance<Tree, M>(&mut self, tree: &mut Tree) -> GridLaneExtentStep<'input, Node, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -1907,7 +1993,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridInitialLanePacking<'input, No
         })
     }
 
-    fn accept(&mut self, child: LanePackingChild<Node, S>, output: ComputeOutputOf<S>) {
+    fn accept(&mut self, child: LanePackingChild<'input, Node, S>, output: ComputeOutputOf<S>) {
         let source = self.source.lane_packing_source(&self.resolved);
         self.packing.accept(&source, child, output);
     }
@@ -2488,11 +2574,14 @@ type GridPassPreparationStep<'input, Node, S, M> = LayoutResultOf<
 struct GridAcceptedSizing<'input, Node, S: LayoutScalar> {
     source: GridAcceptedSource<'input, Node, S>,
     tracks: FinalGridLayoutTracks<S>,
-    receiver: FinalGridTrackSizing<Node, S>,
+    receiver: FinalGridTrackSizing<'input, Node, S>,
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> GridAcceptedSizing<'input, Node, S> {
-    fn advance<Tree, M>(&mut self, tree: &mut Tree) -> intrinsic_stage::TrackSizingStep<Node, S, M>
+    fn advance<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+    ) -> intrinsic_stage::TrackSizingStep<'input, Node, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -2503,6 +2592,40 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridAcceptedSizing<'input, Node, 
     fn accept<M>(&mut self, output: ComputeOutputOf<S>) -> LayoutResultOf<Node, (), S, M> {
         self.receiver
             .accept(self.source.output.node, self.source.track_source(), output)
+    }
+
+    pub(super) fn take_captures(&mut self, starts: &mut Vec<usize>) {
+        self.receiver.sizing.take_captures(starts);
+    }
+
+    /// Runs the track sizing to its end on the native stack.
+    fn drive_sync<Tree, M>(&mut self, tree: &mut Tree) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let node = self.source.output.node;
+        let result = (|| {
+            while let ControlFlow::Continue(request) = self.advance(tree)? {
+                let result = request.compute_sync(tree)?;
+                self.accept_context(result)?;
+            }
+            Ok(())
+        })();
+        if result.is_err() {
+            let mut starts = Vec::new();
+            self.take_captures(&mut starts);
+            close_captures_latest_first(tree, starts);
+        }
+        let _ = node;
+        result
+    }
+
+    fn accept_context<M>(
+        &mut self,
+        result: GridComputeResult<Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        self.receiver
+            .accept_context(self.source.output.node, self.source.track_source(), result)
     }
 
     fn finish<Tree, M>(self, tree: &mut Tree) -> GridPassStart<'input, Node, S, M>
@@ -4319,12 +4442,7 @@ where
         receiver,
     } = begin_final_grid_tracks(tree, node, &input)?;
     if let Some(mut receiver) = receiver {
-        while let ControlFlow::Continue((child, request)) =
-            receiver.advance(tree, node, input.track_source())?
-        {
-            let output = tree.compute_child(child, request)?;
-            receiver.accept(node, input.track_source(), output)?;
-        }
+        receiver.drive_sync(tree, node, || input.track_source())?;
         let resolved = receiver.finish(node, input.track_source())?;
         tracks.columns = resolved.columns;
         tracks.rows = resolved.rows;
@@ -4362,19 +4480,19 @@ struct FinalGridLayoutTracks<S: LayoutScalar> {
     percent_basis: LogicalSizeOf<Option<S>>,
 }
 
-struct FinalGridTrackPreparation<Node, S: LayoutScalar> {
+struct FinalGridTrackPreparation<'input, Node, S: LayoutScalar> {
     tracks: FinalGridLayoutTracks<S>,
-    receiver: Option<FinalGridTrackSizing<Node, S>>,
+    receiver: Option<FinalGridTrackSizing<'input, Node, S>>,
 }
 
-struct FinalGridTrackSizing<Node, S: LayoutScalar> {
+struct FinalGridTrackSizing<'input, Node, S: LayoutScalar> {
     context: GridContainerContext<S>,
     available: LogicalSizeOf<AxisSizingRequestOf<S>>,
-    sizing: GridTrackSizing<Node, S>,
+    sizing: GridTrackSizing<'input, Node, S>,
 }
 
-impl<Node: Copy + Eq, S: LayoutScalar> FinalGridTrackSizing<Node, S> {
-    fn input<'input, 'a>(
+impl<'input, Node: Copy + Eq, S: LayoutScalar> FinalGridTrackSizing<'input, Node, S> {
+    fn input<'a>(
         context: std::borrow::Cow<'a, GridContainerContext<S>>,
         available: LogicalSizeOf<AxisSizingRequestOf<S>>,
         source: GridTrackSource<'input, 'a, Node, S>,
@@ -4394,12 +4512,12 @@ impl<Node: Copy + Eq, S: LayoutScalar> FinalGridTrackSizing<Node, S> {
         }
     }
 
-    fn advance<'input, Tree, M>(
+    fn advance<Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
         source: GridTrackSource<'input, '_, Node, S>,
-    ) -> intrinsic_stage::TrackSizingStep<Node, S, M>
+    ) -> intrinsic_stage::TrackSizingStep<'input, Node, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -4414,7 +4532,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> FinalGridTrackSizing<Node, S> {
     fn accept<M>(
         &mut self,
         node: Node,
-        source: GridTrackSource<'_, '_, Node, S>,
+        source: GridTrackSource<'input, '_, Node, S>,
         output: ComputeOutputOf<S>,
     ) -> LayoutResultOf<Node, (), S, M> {
         let input = Self::input(
@@ -4425,10 +4543,51 @@ impl<Node: Copy + Eq, S: LayoutScalar> FinalGridTrackSizing<Node, S> {
         self.sizing.accept(node, &input, output)
     }
 
+    /// Runs the track sizing to its end on the native stack. A failure closes
+    /// the effect captures the traversals it holds.
+    fn drive_sync<'a, Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        source: impl Fn() -> GridTrackSource<'input, 'a, Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        'input: 'a,
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let result = (|| {
+            while let ControlFlow::Continue(request) = self.advance(tree, node, source())? {
+                let result = request.compute_sync(tree)?;
+                self.accept_context(node, source(), result)?;
+            }
+            Ok(())
+        })();
+        if result.is_err() {
+            let mut starts = Vec::new();
+            self.sizing.take_captures(&mut starts);
+            close_captures_latest_first(tree, starts);
+        }
+        result
+    }
+
+    fn accept_context<M>(
+        &mut self,
+        node: Node,
+        source: GridTrackSource<'input, '_, Node, S>,
+        result: GridComputeResult<Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let input = Self::input(
+            std::borrow::Cow::Borrowed(&self.context),
+            self.available,
+            source,
+        );
+        self.sizing.accept_context(node, &input, result)
+    }
+
     fn finish<M>(
         self,
         node: Node,
-        source: GridTrackSource<'_, '_, Node, S>,
+        source: GridTrackSource<'input, '_, Node, S>,
     ) -> GridTrackResolutionResult<Node, S, M> {
         let Self {
             context,
@@ -4440,14 +4599,14 @@ impl<Node: Copy + Eq, S: LayoutScalar> FinalGridTrackSizing<Node, S> {
     }
 }
 
-type FinalGridTrackStart<Node, S, M> =
-    LayoutResultOf<Node, FinalGridTrackPreparation<Node, S>, S, M>;
+type FinalGridTrackStart<'input, Node, S, M> =
+    LayoutResultOf<Node, FinalGridTrackPreparation<'input, Node, S>, S, M>;
 
 fn begin_final_grid_tracks<'input, Tree, M>(
     tree: &Tree,
     node: Tree::Node,
     input: &GridChildLayoutInput<'input, '_, Tree::Node, Tree::Scalar>,
-) -> FinalGridTrackStart<Tree::Node, Tree::Scalar, M>
+) -> FinalGridTrackStart<'input, Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
