@@ -816,7 +816,7 @@ impl core::fmt::Display for RootContextMismatch {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(match self {
             Self::Position => "the root context's position differs from the node's input",
-            Self::WritingMode => "the root context's writing mode differs from the node's input",
+            Self::WritingMode => "the root context's non-horizontal writing mode or hypothetical block offset needs a definite local size or an auto-sized grid with fixed tracks",
             Self::Display => "the root context's display differs from the node's input",
             Self::BoxEdges => "the root context's box edges differ from the node's input",
             Self::Insets => "the root context's insets differ from the node's input",

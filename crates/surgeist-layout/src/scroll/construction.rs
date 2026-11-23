@@ -326,7 +326,7 @@ impl<S: LayoutScalar> core::fmt::Display for CanonicalScrollGeometryErrorOf<S> {
             Self::Range(_) => f.write_str("the scroll range is invalid"),
             Self::RoundedRect { fact, .. } => write!(
                 f,
-                "the rounded {} is invalid",
+                "the {} or its rounded form is invalid",
                 match fact {
                     CanonicalScrollRectFact::BorderBox => "border box",
                     CanonicalScrollRectFact::TargetBorderBox => "target border box",

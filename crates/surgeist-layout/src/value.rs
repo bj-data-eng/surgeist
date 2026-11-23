@@ -515,8 +515,8 @@ pub enum LengthPercentageErrorOf<S: LayoutScalar = DefaultScalar> {
 impl<S: LayoutScalar> core::fmt::Display for LengthPercentageErrorOf<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::InvalidAbsolutePx(_) => f.write_str("absolute length coefficient must be finite"),
-            Self::InvalidPercentFraction(_) => f.write_str("percentage coefficient must be finite"),
+            Self::InvalidAbsolutePx(_) => f.write_str("the absolute length coefficient is invalid"),
+            Self::InvalidPercentFraction(_) => f.write_str("the percentage coefficient is invalid"),
         }
     }
 }

@@ -261,11 +261,10 @@ impl core::fmt::Display for BlockFragmentationFailure {
                 )
             }
             Self::InvalidGeometry => f.write_str(
-                "a fragmentainer frame or fragment geometry is not finite, non-negative or \
-                 consistent",
+                "a fragmentainer frame or fragment geometry is not finite, is negative or is inconsistent",
             ),
             Self::InvalidSource => f.write_str(
-                "the supplied fragmentation source is inconsistent with the tree or the request",
+                "the fragmentation source is inconsistent with the tree or the request",
             ),
         }
     }

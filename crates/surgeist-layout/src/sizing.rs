@@ -33,9 +33,9 @@ pub enum CalcSizeCalculationErrorOf<S: LayoutScalar> {
 impl<S: LayoutScalar> core::fmt::Display for CalcSizeCalculationErrorOf<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::InvalidAbsolutePx(_) => f.write_str("absolute length coefficient must be finite"),
-            Self::InvalidPercentFraction(_) => f.write_str("percentage coefficient must be finite"),
-            Self::InvalidSizeFraction(_) => f.write_str("size coefficient must be finite"),
+            Self::InvalidAbsolutePx(_) => f.write_str("the absolute length coefficient is invalid"),
+            Self::InvalidPercentFraction(_) => f.write_str("the percentage coefficient is invalid"),
+            Self::InvalidSizeFraction(_) => f.write_str("the size coefficient is invalid"),
         }
     }
 }

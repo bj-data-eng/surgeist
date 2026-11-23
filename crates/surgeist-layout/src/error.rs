@@ -650,7 +650,7 @@ impl core::fmt::Display for LayoutInternalInvariant {
             Self::MissingLeafMeasurementProvider => {
                 "the tree supplied no leaf measurement for a node that requires one"
             }
-            Self::MissingStagedUnroundedOutput => "a staged unrounded output is missing",
+            Self::MissingStagedUnroundedOutput => "a staged output that the phase needs is missing",
             Self::InvalidOutputGeometryPhase => {
                 "a staged output was consumed in a different geometry or readback phase"
             }
@@ -1009,7 +1009,7 @@ impl<S: LayoutScalar, M> fmt::Display for LayoutErrorKindOf<S, M> {
                 "justification advance {advance} exceeds the available line budget {available}"
             ),
             Self::TextNumeric { value, .. } => {
-                write!(f, "text value {value} failed a numeric conversion")
+                write!(f, "numeric operation on the value {value} failed")
             }
             Self::InternalInvariant(_) => f.write_str("an internal layout invariant was violated"),
         }

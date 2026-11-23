@@ -551,17 +551,17 @@ pub type InlineBoundaryEdgeError = InlineBoundaryEdgeErrorOf<DefaultScalar>;
 impl<S: LayoutScalar> core::fmt::Display for InlineBoundaryEdgeErrorOf<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(match self {
-            Self::InvalidMargin(_) => "inline margin must be finite",
-            Self::InvalidBorder(_) => "inline border must be finite and nonnegative",
-            Self::InvalidPadding(_) => "inline padding must be finite and nonnegative",
-            Self::InvalidBorderPaddingAdvance(_) => "inline border/padding sum must be finite",
-            Self::InvalidFlowAdvance(_) => "inline signed flow must be finite",
+            Self::InvalidMargin(_) => "the inline margin is invalid",
+            Self::InvalidBorder(_) => "the inline border is invalid",
+            Self::InvalidPadding(_) => "the inline padding is invalid",
+            Self::InvalidBorderPaddingAdvance(_) => "the inline border and padding sum is invalid",
+            Self::InvalidFlowAdvance(_) => "the inline signed flow is invalid",
             Self::LostMargin { .. } => "inline signed flow lost its nonzero margin",
             Self::LostBorderPaddingAdvance { .. } => {
                 "inline signed flow lost its nonzero strip extent"
             }
             Self::MarginRequiresBoxEdge { .. } => {
-                "a nonzero inline margin requires a BoxEdge operation"
+                "a nonzero inline margin requires an operation that gives the inline box an edge"
             }
         })
     }
