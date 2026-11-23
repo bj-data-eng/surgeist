@@ -129,6 +129,7 @@ pub(super) enum Receiver {
     LocalString(super::local_strings::Interface),
     Template,
     Anchor,
+    Area,
     Script,
     Body,
     Button,
@@ -209,6 +210,10 @@ impl Receiver {
             Self::Anchor => {
                 step()?;
                 html_element_is(node, "HTMLAnchorElement")
+            }
+            Self::Area => {
+                step()?;
+                html_element_is(node, "HTMLAreaElement")
             }
             Self::Script => {
                 step()?;
@@ -354,6 +359,7 @@ impl Receiver {
             Self::LocalString(interface) => interface.error_message(),
             Self::Template => const { &ascii(b"HTMLTemplateElement required") },
             Self::Anchor => const { &ascii(b"HTMLAnchorElement required") },
+            Self::Area => const { &ascii(b"HTMLAreaElement required") },
             Self::Script => const { &ascii(b"HTMLScriptElement required") },
             Self::Body => const { &ascii(b"HTMLBodyElement required") },
             Self::Button => const { &ascii(b"HTMLButtonElement required") },
@@ -1025,6 +1031,7 @@ impl Capture {
                     if matches!(
                         receiver,
                         Receiver::Anchor
+                            | Receiver::Area
                             | Receiver::Script
                             | Receiver::Body
                             | Receiver::Button

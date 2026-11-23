@@ -63,6 +63,8 @@ use surgeist_runtime::{
 
 #[path = "document_scripting/anchor_attributes.rs"]
 mod anchor_attributes;
+#[path = "document_scripting/area_attributes.rs"]
+mod area_attributes;
 #[path = "document_scripting/body_reflections.rs"]
 mod body_reflections;
 #[path = "document_scripting/button_attributes.rs"]
@@ -2624,6 +2626,7 @@ fn main() {
             "member-collection-realm" => member_collection_lifetime::member_collections_keep_the_root_creation_realm_after_retirement(),
             "member-collection-stale" => member_collection_lifetime::destroyed_member_roots_preserve_the_first_native_failure(),
             "anchor-attributes" => anchor_attributes::anchor_text_and_scalar_attributes_use_live_native_source(),
+            "area-attributes" => area_attributes::area_attributes_follow_canonical_source_and_receivers(),
             "input-list" => input_list::attached_input_list_follows_the_first_exact_id_in_its_tree(),
             "input-attributes" => input_attributes::attached_input_reflections_use_canonical_attributes(),
             "numeric-control-attributes" => numeric_control_attributes::attached_controls_reflect_native_integer_attributes(),
@@ -2798,6 +2801,7 @@ fn main() {
     textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state();
     input_state::attached_input_exposes_canonical_value_modes_and_checkedness();
     anchor_attributes::anchor_text_and_scalar_attributes_use_live_native_source();
+    area_attributes::area_attributes_follow_canonical_source_and_receivers();
     script_async::script_async_keeps_native_flag_and_content_coherent();
     script_async::script_keyword_reflections_follow_exact_live_attributes();
     map_datalist_collections::map_areas_and_datalist_options_are_distinct_live_associations();

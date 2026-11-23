@@ -77,9 +77,12 @@ pub(super) fn window_listener_attaches_to_the_visible_prefix_before_eof() {
             .unwrap();
         (top, parser)
     };
+    let mut guest = guest_limits();
+    // Leave adapter work for the retained load and pageshow sequence.
+    guest.work = 20_000;
     let mut host = prepare(session, cancellation.clone())
         .with_window_timer_limits(WindowTimerLimits::new(4, 2, 4096))
-        .enable_with_guest_event_registry(top, ALLOW, None, &mut registry, guest_limits())
+        .enable_with_guest_event_registry(top, ALLOW, None, &mut registry, guest)
         .unwrap();
     let permit = host.permit().unwrap();
     assert_eq!(permit.document(), top.document());
