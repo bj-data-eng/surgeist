@@ -448,6 +448,7 @@ impl<'input, Node: Copy, S: LayoutScalar> SubgridItemLoan<'input, Node, S> {
     }
 }
 
+#[cfg(test)]
 pub(in crate::grid) fn subgrid_child_parent_context<'input, Node, S: LayoutScalar>(
     input: SubgridChildParentContextInput<'input, '_, Node, S>,
 ) -> Result<GridParentContext<S, Node>, SubgridChildContextError<S>>
@@ -1275,6 +1276,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> SubgridBaselineRefresh<Node, S> {
                 child,
                 stage,
                 parent_context,
+                run: ContextRun::Item,
             };
             // The refresh exists to give the item the ancestor baseline
             // groups the first pass could not know. The recomputation returns

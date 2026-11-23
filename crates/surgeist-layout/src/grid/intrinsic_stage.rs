@@ -216,8 +216,8 @@ fn intrinsic_grid<'input, 'a, Node: Copy, S: LayoutScalar>(
     }
 }
 
-pub(super) struct IntrinsicRepeatSizing<Node, S: LayoutScalar> {
-    collection: ContributionCollection<Node, S>,
+pub(super) struct IntrinsicRepeatSizing<'input, Node, S: LayoutScalar> {
+    collection: ContributionCollection<'input, Node, S>,
     frame: RepeatSizingFrame<S>,
 }
 
@@ -226,10 +226,14 @@ enum RepeatSizingFrame<S> {
     Tentative(Vec<S>),
 }
 
-type IntrinsicRepeatStep<Node, S, M> =
-    LayoutResultOf<Node, ControlFlow<GridAxisTrackPhases<S>, (Node, ComputeInputOf<S>)>, S, M>;
+type IntrinsicRepeatStep<'input, Node, S, M> = LayoutResultOf<
+    Node,
+    ControlFlow<GridAxisTrackPhases<S>, TrackChildRequest<'input, Node, S>>,
+    S,
+    M,
+>;
 
-impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicRepeatSizing<Node, S> {
+impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicRepeatSizing<'input, Node, S> {
     pub(super) fn new() -> Self {
         Self {
             collection: ContributionCollection::new(StageMinContent::Discard),
@@ -237,12 +241,12 @@ impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicRepeatSizing<Node, S> {
         }
     }
 
-    pub(super) fn advance<'input, Tree, M>(
+    pub(super) fn advance<Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
         input: &GridTrackResolutionInput<'input, '_, Node, S>,
-    ) -> IntrinsicRepeatStep<Node, S, M>
+    ) -> IntrinsicRepeatStep<'input, Node, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -285,11 +289,32 @@ impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicRepeatSizing<Node, S> {
     pub(super) fn accept<M>(
         &mut self,
         node: Node,
-        input: &GridTrackResolutionInput<'_, '_, Node, S>,
+        input: &GridTrackResolutionInput<'input, '_, Node, S>,
         output: ComputeOutputOf<S>,
     ) -> LayoutResultOf<Node, (), S, M> {
         self.collection
-            .accept(node, self.frame.source(input), output)
+            .accept(node, self.frame.source(input), output, None)
+    }
+
+    /// Closes the effect captures a traversal the sizing waits on holds.
+    pub(super) fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        self.collection.close_captures::<Tree, M>(tree);
+    }
+
+    /// Accepts the receipt of a contextual Grid computation the sizing waited
+    /// on.
+    pub(super) fn accept_context<M>(
+        &mut self,
+        node: Node,
+        input: &GridTrackResolutionInput<'input, '_, Node, S>,
+        result: GridComputeResult<Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let gutter = result.effective_gutter();
+        self.collection
+            .accept(node, self.frame.source(input), result.into_output(), gutter)
     }
 }
 
@@ -327,31 +352,72 @@ where
     Tree: Compute<'input, M>,
 {
     let mut sizing = GridTrackSizing::begin(node, &input, run)?;
-    loop {
-        match sizing.advance(tree, node, &input)? {
-            ControlFlow::Break(()) => return sizing.finish(node, input),
-            ControlFlow::Continue((child, request)) => {
-                let result = tree.compute_child(child, request)?;
-                sizing.accept(node, &input, result)?;
-            }
+    sizing.drive_sync::<Tree, M>(tree, node, &input)?;
+    sizing.finish(node, input)
+}
+
+/// A computation a track sizing step waits on: an ordinary child, or a
+/// contextual Grid its executor may suspend.
+pub(crate) struct TrackChildRequest<'input, Node, S: LayoutScalar> {
+    pub(super) node: Node,
+    pub(super) input: ComputeInputOf<S>,
+    context: Option<Box<GridContextRequest<'input, Node, S>>>,
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> TrackChildRequest<'input, Node, S> {
+    pub(super) fn child(node: Node, input: ComputeInputOf<S>) -> Self {
+        Self {
+            node,
+            input,
+            context: None,
+        }
+    }
+
+    pub(super) fn context(request: Box<GridContextRequest<'input, Node, S>>) -> Self {
+        Self {
+            node: request.node(),
+            input: request.input(),
+            context: Some(request),
+        }
+    }
+
+    /// Takes the contextual Grid computation this request stands for, if any.
+    pub(super) fn take_context(&mut self) -> Option<Box<GridContextRequest<'input, Node, S>>> {
+        self.context.take()
+    }
+
+    /// Computes the request on the native stack. The receipt of an ordinary
+    /// child carries nothing but its geometry.
+    pub(super) fn compute_sync<Tree, M>(
+        self,
+        tree: &mut Tree,
+    ) -> LayoutResultOf<Node, GridComputeResult<Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        match self.context {
+            Some(request) => request.compute_sync(tree),
+            None => Ok(GridComputeResult::from_output(
+                tree.compute_child(self.node, self.input)?,
+            )),
         }
     }
 }
 
 /// What a track sizing step waits on.
-pub(super) enum DeferredTrack<Node, S: LayoutScalar> {
+pub(super) enum DeferredTrack<'input, Node, S: LayoutScalar> {
     /// A child to compute.
-    Child(Node, ComputeInputOf<S>),
+    Child(TrackChildRequest<'input, Node, S>),
     /// The traversal of subgrid items, with the intrinsic-minimum facts of its
     /// axis's tracks.
     Traversal(Vec<bool>),
     Done,
 }
 
-pub(super) type TrackSizingStep<Node, S, M> =
-    LayoutResultOf<Node, ControlFlow<(), (Node, ComputeInputOf<S>)>, S, M>;
+pub(super) type TrackSizingStep<'input, Node, S, M> =
+    LayoutResultOf<Node, ControlFlow<(), TrackChildRequest<'input, Node, S>>, S, M>;
 
-pub(super) struct GridTrackSizing<Node, S: LayoutScalar> {
+pub(super) struct GridTrackSizing<'input, Node, S: LayoutScalar> {
     columns: Option<Vec<S>>,
     rows: Option<Vec<S>>,
     column_preparation: Option<GridAxisTrackPreparation<S>>,
@@ -361,11 +427,13 @@ pub(super) struct GridTrackSizing<Node, S: LayoutScalar> {
     spaces: LogicalSizeOf<GridAxisTrackSpace<S>>,
     receiver: bool,
     phase: usize,
-    active: Option<Box<TrackAxisWork<Node, S>>>,
+    active: Option<Box<TrackAxisWork<'input, Node, S>>>,
+    /// The scrollbar gutter the probe the sizing waits on observed.
+    probe_gutter: Option<Edges<S>>,
 }
 
-struct TrackAxisWork<Node, S: LayoutScalar> {
-    collection: ContributionCollection<Node, S>,
+struct TrackAxisWork<'input, Node, S: LayoutScalar> {
+    collection: ContributionCollection<'input, Node, S>,
     mode: TrackAxisMode<S>,
 }
 
@@ -387,7 +455,7 @@ const TRACK_PHASES: [GridSizingPhase; 4] = [
     GridSizingPhase::RevisitSecond,
 ];
 
-impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
+impl<'input, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'input, Node, S> {
     pub(super) fn intrinsic() -> Self {
         Self {
             columns: None,
@@ -403,10 +471,11 @@ impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
             receiver: false,
             phase: 0,
             active: None,
+            probe_gutter: None,
         }
     }
 
-    pub(super) fn begin<'input, 'source, M>(
+    pub(super) fn begin<'source, M>(
         node: Node,
         input: &GridTrackResolutionInput<'input, 'source, Node, S>,
         run: GridTrackRun<'input, 'source, '_, Node, S>,
@@ -494,17 +563,18 @@ impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
             row_min_content: None,
             phase: if unchanged { TRACK_PHASES.len() } else { 0 },
             active: None,
+            probe_gutter: None,
         })
     }
 
     /// The next step of the sizing, which may wait on the traversal of subgrid
     /// items instead of running it.
-    pub(super) fn advance_deferred<'input, Tree, M>(
+    pub(super) fn advance_deferred<Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
         input: &GridTrackResolutionInput<'input, '_, Node, S>,
-    ) -> LayoutResultOf<Node, DeferredTrack<Node, S>, S, M>
+    ) -> LayoutResultOf<Node, DeferredTrack<'input, Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -528,11 +598,23 @@ impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
                 .active
                 .take()
                 .expect("current axis owns its active work");
-            let source = self.source(node, input, &active.mode)?;
-            let result = match active.collection.advance_deferred(tree, node, source)? {
-                DeferredContribution::Child(child, request) => {
+            // A failure leaves the work in place, for the captures its
+            // traversal holds to close.
+            let step = match self.source(node, input, &active.mode) {
+                Ok(source) => active.collection.advance_deferred(tree, node, source),
+                Err(error) => Err(error),
+            };
+            let step = match step {
+                Ok(step) => step,
+                Err(error) => {
                     self.active = Some(active);
-                    return Ok(DeferredTrack::Child(child, request));
+                    return Err(error);
+                }
+            };
+            let result = match step {
+                DeferredContribution::Child(request) => {
+                    self.active = Some(active);
+                    return Ok(DeferredTrack::Child(request));
                 }
                 DeferredContribution::Traversal(facts) => {
                     self.active = Some(active);
@@ -624,38 +706,38 @@ impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
         Ok(DeferredTrack::Done)
     }
 
-    /// The next step of the sizing, running a traversal of subgrid items to
-    /// its end on the native stack.
-    pub(super) fn advance<'input, Tree, M>(
+    /// The next step of the sizing: a computation it waits on, which may be
+    /// one of a traversal of subgrid items it runs along the way.
+    pub(super) fn advance<Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
         input: &GridTrackResolutionInput<'input, '_, Node, S>,
-    ) -> TrackSizingStep<Node, S, M>
+    ) -> TrackSizingStep<'input, Node, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         loop {
             match self.advance_deferred(tree, node, input)? {
                 DeferredTrack::Done => return Ok(ControlFlow::Break(())),
-                DeferredTrack::Child(child, request) => {
-                    return Ok(ControlFlow::Continue((child, request)));
+                DeferredTrack::Child(request) => {
+                    return Ok(ControlFlow::Continue(request));
                 }
-                DeferredTrack::Traversal(facts) => {
+                DeferredTrack::Traversal(_) => {
                     let Some(mut active) = self.active.take() else {
                         return Err(grid_track_sizing_error(
                             node,
                             SpanningContributionError::InvalidIncidence,
                         ));
                     };
-                    let source = self.source(node, input, &active.mode)?;
-                    let grid = source.grid_for(node, active.collection.purpose())?;
-                    let result = active.collection.beginning(node).and_then(|beginning| {
-                        let traversal = beginning.traverse_to_end(tree, grid, &facts)?;
-                        beginning.finish_traversal(tree, node, grid, traversal)
+                    let progress = self.source(node, input, &active.mode).and_then(|source| {
+                        let grid = source.grid_for(node, active.collection.purpose())?;
+                        active.collection.advance_traversal(tree, node, grid)
                     });
                     self.active = Some(active);
-                    result?;
+                    if let TraversalProgress::Request(request) = progress? {
+                        return Ok(ControlFlow::Continue(request));
+                    }
                 }
             }
         }
@@ -663,7 +745,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
 
     /// Visits the root items of the traversal the sizing waits on until one is
     /// a wrapper whose children remain to be traversed.
-    pub(super) fn next_wrapper<'input, Tree, M>(
+    pub(super) fn next_wrapper<Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
@@ -685,8 +767,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
         result
     }
 
-    /// Takes the report of the traversal the sizing waited on.
-    pub(super) fn finish_traversal<'input, Tree, M>(
+    /// Takes the report of the traversal the sizing waited on and begins
+    /// collecting the contributions it leads to.
+    pub(super) fn begin_finish<Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
@@ -696,31 +779,150 @@ impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
+        let _ = tree;
         let Some(mut active) = self.active.take() else {
             return Err(grid_track_sizing_error(
                 node,
                 SpanningContributionError::InvalidIncidence,
             ));
         };
-        let source = self.source(node, input, &active.mode)?;
-        let result = active
-            .collection
-            .finish_traversal(tree, node, source, traversal);
+        let result = self.source(node, input, &active.mode).and_then(|source| {
+            let grid = source.grid_for(node, active.collection.purpose())?;
+            active
+                .collection
+                .beginning(node)?
+                .begin_finish(node, grid, traversal);
+            Ok(())
+        });
         self.active = Some(active);
         result
+    }
+
+    /// The next leaf query of the contributions being collected, or `None`
+    /// once they are collected.
+    pub(super) fn advance_finish<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        input: &GridTrackResolutionInput<'input, '_, Node, S>,
+    ) -> LayoutResultOf<Node, Option<TrackChildRequest<'input, Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Some(mut active) = self.active.take() else {
+            return Err(grid_track_sizing_error(
+                node,
+                SpanningContributionError::InvalidIncidence,
+            ));
+        };
+        let progress = self.source(node, input, &active.mode).and_then(|source| {
+            let grid = source.grid_for(node, active.collection.purpose())?;
+            active
+                .collection
+                .beginning(node)?
+                .advance_finish(tree, node, grid)
+        });
+        self.active = Some(active);
+        Ok(match progress? {
+            TraversalProgress::Request(request) => Some(request),
+            TraversalProgress::Done => None,
+        })
+    }
+
+    pub(super) fn accept_finish<M>(
+        &mut self,
+        node: Node,
+        input: &GridTrackResolutionInput<'input, '_, Node, S>,
+        output: ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let Some(mut active) = self.active.take() else {
+            return Err(grid_track_sizing_error(
+                node,
+                SpanningContributionError::InvalidIncidence,
+            ));
+        };
+        let result = self.source(node, input, &active.mode).and_then(|source| {
+            let grid = source.grid_for(node, active.collection.purpose())?;
+            active
+                .collection
+                .beginning(node)?
+                .accept_finish(node, grid, output)
+        });
+        self.active = Some(active);
+        result
+    }
+
+    /// Closes the effect captures a traversal the sizing waits on holds.
+    pub(super) fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        if let Some(active) = self.active.as_mut() {
+            active.collection.close_captures::<Tree, M>(tree);
+        }
+    }
+
+    /// Runs the sizing to its end on the native stack. A failure closes the
+    /// effect captures the traversals it holds.
+    pub(super) fn drive_sync<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        input: &GridTrackResolutionInput<'input, '_, Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let result = (|| {
+            while let ControlFlow::Continue(request) = self.advance(tree, node, input)? {
+                let result = request.compute_sync(tree)?;
+                self.accept_context(node, input, result)?;
+            }
+            Ok(())
+        })();
+        if result.is_err() {
+            self.close_captures::<Tree, M>(tree);
+        }
+        result
+    }
+
+    /// Accepts the gutter a probe of a root item of the traversal the sizing
+    /// waits on observed.
+    pub(super) fn accept_root_probe(&mut self, gutter: Option<Edges<S>>) {
+        if let Some(Some(beginning)) = self
+            .active
+            .as_mut()
+            .map(|active| active.collection.beginning_mut())
+        {
+            beginning.accept_root_probe(gutter);
+        }
     }
 
     pub(super) fn accept<M>(
         &mut self,
         node: Node,
-        input: &GridTrackResolutionInput<'_, '_, Node, S>,
+        input: &GridTrackResolutionInput<'input, '_, Node, S>,
         output: ComputeOutputOf<S>,
     ) -> LayoutResultOf<Node, (), S, M> {
         let mut active = self.active.take().expect("track child retains its axis");
-        let source = self.source(node, input, &active.mode)?;
-        active.collection.accept(node, source, output)?;
+        let gutter = self.probe_gutter.take();
+        let result = self
+            .source(node, input, &active.mode)
+            .and_then(|source| active.collection.accept(node, source, output, gutter));
         self.active = Some(active);
-        Ok(())
+        result
+    }
+
+    /// Accepts the receipt of a contextual Grid computation the sizing waited
+    /// on. A probe's receipt carries the scrollbar gutter it observed.
+    pub(super) fn accept_context<M>(
+        &mut self,
+        node: Node,
+        input: &GridTrackResolutionInput<'input, '_, Node, S>,
+        result: GridComputeResult<Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        self.probe_gutter = result.effective_gutter();
+        self.accept(node, input, result.into_output())
     }
 
     fn collect_axis(
@@ -730,7 +932,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
         use_previous: bool,
         observation: Option<MinContentObservation<Node, S>>,
         retain: bool,
-    ) -> TrackAxisWork<Node, S> {
+    ) -> TrackAxisWork<'input, Node, S> {
         if has_inherited_items(intrinsic_grid(input), axis) {
             let mut collection = ContributionCollection::new(StageMinContent::Discard);
             collection.saved_observation = observation;
@@ -809,7 +1011,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
         }
     }
 
-    fn source<'input, 'a, M>(
+    fn source<'a, M>(
         &'a self,
         node: Node,
         input: &'a GridTrackResolutionInput<'input, '_, Node, S>,
@@ -856,7 +1058,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<Node, S> {
         )
     }
 
-    pub(super) fn finish<'input, 'source, M>(
+    pub(super) fn finish<'source, M>(
         self,
         node: Node,
         input: GridTrackResolutionInput<'input, 'source, Node, S>,
@@ -1200,15 +1402,15 @@ enum TrackContributionRequest<Node, S: LayoutScalar> {
     Lanes(LaneIntrinsicChild<Node, S>),
 }
 
-enum ContributionRole<Node, S: LayoutScalar> {
+enum ContributionRole<'input, Node, S: LayoutScalar> {
     /// An ordinary role collecting the contributions of its subgrid items.
-    GridBegin(Box<IntrinsicTrackBegin<Node, S>>),
+    GridBegin(Box<IntrinsicTrackBegin<'input, Node, S>>),
     Grid(IntrinsicTrackRole<Node, S>),
     Lanes(LaneIntrinsicRole<Node, S>),
 }
 
-struct ActiveContributionRole<Node, S: LayoutScalar> {
-    role: ContributionRole<Node, S>,
+struct ActiveContributionRole<'input, Node, S: LayoutScalar> {
+    role: ContributionRole<'input, Node, S>,
     available: Size<AxisSizingRequestOf<S>>,
 }
 
@@ -1229,14 +1431,14 @@ struct CombinedGridContributions<Node, S: LayoutScalar> {
     rows: Vec<GridIntrinsicContributionRow<S>>,
 }
 
-struct ContributionCollection<Node, S: LayoutScalar> {
+struct ContributionCollection<'input, Node, S: LayoutScalar> {
     index: usize,
     observe_only: bool,
     retain_min_content: bool,
     grid: [Option<IntrinsicAxisContributions<Node, S>>; 3],
     lanes: [Option<LanePurposeContributions<Node, S>>; 3],
     combined: Option<CombinedGridContributions<Node, S>>,
-    role: Option<ActiveContributionRole<Node, S>>,
+    role: Option<ActiveContributionRole<'input, Node, S>>,
     pending: Option<TrackContributionRequest<Node, S>>,
     saved_observation: Option<MinContentObservation<Node, S>>,
 }
@@ -1247,18 +1449,18 @@ enum CollectedContributions<Node, S: LayoutScalar> {
 }
 
 /// What a collection step waits on.
-enum DeferredContribution<Node, S: LayoutScalar> {
+enum DeferredContribution<'input, Node, S: LayoutScalar> {
     /// A child to compute.
-    Child(Node, ComputeInputOf<S>),
+    Child(TrackChildRequest<'input, Node, S>),
     /// The traversal of subgrid items, with the intrinsic-minimum facts of its
     /// axis's tracks.
     Traversal(Vec<bool>),
     Done(CollectedContributions<Node, S>),
 }
 
-type ContributionStep<Node, S, M> = LayoutResultOf<
+type ContributionStep<'input, Node, S, M> = LayoutResultOf<
     Node,
-    ControlFlow<CollectedContributions<Node, S>, (Node, ComputeInputOf<S>)>,
+    ControlFlow<CollectedContributions<Node, S>, TrackChildRequest<'input, Node, S>>,
     S,
     M,
 >;
@@ -1289,7 +1491,7 @@ impl<'input, 'a, Node: Copy, S: LayoutScalar> ContributionSource<'input, 'a, Nod
     }
 }
 
-impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
+impl<'input, Node: Copy + Eq, S: LayoutScalar> ContributionCollection<'input, Node, S> {
     fn new(min_content: StageMinContent<Node, S>) -> Self {
         let mut result = Self::empty(false);
         result.retain_min_content = matches!(min_content, StageMinContent::Retain);
@@ -1331,12 +1533,12 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
 
     /// The next step of the collection, which may wait on the traversal of
     /// subgrid items instead of running it.
-    fn advance_deferred<'input, Tree, M>(
+    fn advance_deferred<Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
         source: ContributionSource<'input, '_, Node, S>,
-    ) -> LayoutResultOf<Node, DeferredContribution<Node, S>, S, M>
+    ) -> LayoutResultOf<Node, DeferredContribution<'input, Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -1392,11 +1594,13 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
                     };
                     if self.pending.is_none() {
                         self.pending = role
-                            .next(tree, node, grid)?
+                            .next::<Tree, M>(grid)?
                             .map(TrackContributionRequest::Grid);
                     }
                     if let Some(TrackContributionRequest::Grid(child)) = &self.pending {
-                        return Ok(DeferredContribution::Child(child.node, child.input(grid)?));
+                        return Ok(DeferredContribution::Child(
+                            role.child_request(tree, grid, child)?,
+                        ));
                     }
                     let Some(ActiveContributionRole {
                         role: ContributionRole::Grid(role),
@@ -1440,7 +1644,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
                             .map(TrackContributionRequest::Lanes);
                     }
                     if let Some(TrackContributionRequest::Lanes(child)) = &self.pending {
-                        return Ok(DeferredContribution::Child(child.node, child.input()));
+                        return Ok(DeferredContribution::Child(child.request(input)));
                     }
                     let Some(ActiveContributionRole {
                         role: ContributionRole::Lanes(role),
@@ -1488,28 +1692,64 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
 
     /// The next step of the collection, running a traversal of subgrid items to
     /// its end on the native stack.
-    fn advance<'input, Tree, M>(
+    fn advance<Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
         source: ContributionSource<'input, '_, Node, S>,
-    ) -> ContributionStep<Node, S, M>
+    ) -> ContributionStep<'input, Node, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         loop {
             match self.advance_deferred(tree, node, source)? {
-                DeferredContribution::Child(child, request) => {
-                    return Ok(ControlFlow::Continue((child, request)));
+                DeferredContribution::Child(request) => {
+                    return Ok(ControlFlow::Continue(request));
                 }
                 DeferredContribution::Done(result) => return Ok(ControlFlow::Break(result)),
-                DeferredContribution::Traversal(facts) => {
+                DeferredContribution::Traversal(_) => {
                     let grid = source.grid_for(node, self.purpose())?;
-                    let beginning = self.beginning(node)?;
-                    let traversal = beginning.traverse_to_end(tree, grid, &facts)?;
-                    beginning.finish_traversal(tree, node, grid, traversal)?;
+                    if let TraversalProgress::Request(request) =
+                        self.advance_traversal(tree, node, grid)?
+                    {
+                        return Ok(ControlFlow::Continue(request));
+                    }
                 }
             }
+        }
+    }
+
+    /// The next step of the traversal the collection waits on, with the
+    /// collection of the contributions it leads to.
+    fn advance_traversal<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        grid: IntrinsicGrid<'input, '_, Node, S>,
+    ) -> LayoutResultOf<Node, TraversalProgress<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        self.beginning(node)?.advance_traversal(tree, node, grid)
+    }
+
+    /// Closes the effect captures a traversal the collection waits on holds.
+    fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        if let Some(beginning) = self.beginning_mut() {
+            beginning.close_captures::<Tree, M>(tree);
+        }
+    }
+
+    fn beginning_mut(&mut self) -> Option<&mut IntrinsicTrackBegin<'input, Node, S>> {
+        match self.role.as_mut() {
+            Some(ActiveContributionRole {
+                role: ContributionRole::GridBegin(beginning),
+                ..
+            }) => Some(beginning),
+            _ => None,
         }
     }
 
@@ -1521,7 +1761,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
     fn beginning<M>(
         &mut self,
         node: Node,
-    ) -> LayoutResultOf<Node, &mut IntrinsicTrackBegin<Node, S>, S, M> {
+    ) -> LayoutResultOf<Node, &mut IntrinsicTrackBegin<'input, Node, S>, S, M> {
         match self.role.as_mut() {
             Some(ActiveContributionRole {
                 role: ContributionRole::GridBegin(beginning),
@@ -1536,7 +1776,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
 
     /// Visits the root items of the traversal the collection waits on until
     /// one is a wrapper whose children remain to be traversed.
-    fn next_wrapper<'input, Tree, M>(
+    fn next_wrapper<Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
@@ -1550,30 +1790,21 @@ impl<Node: Copy + Eq, S: LayoutScalar> ContributionCollection<Node, S> {
         self.beginning(node)?.next_wrapper(tree, node, grid, fold)
     }
 
-    /// Takes the report of the traversal the collection waited on.
-    fn finish_traversal<'input, Tree, M>(
-        &mut self,
-        tree: &mut Tree,
-        node: Node,
-        source: ContributionSource<'input, '_, Node, S>,
-        traversal: Result<SubgridTraversalReport<'input, Node, S>, SubgridTraversalError>,
-    ) -> LayoutResultOf<Node, (), S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        let grid = source.grid_for(node, self.purpose())?;
-        self.beginning(node)?
-            .finish_traversal(tree, node, grid, traversal)
-    }
-
     fn accept<M>(
         &mut self,
         node: Node,
-        source: ContributionSource<'_, '_, Node, S>,
+        source: ContributionSource<'input, '_, Node, S>,
         output: ComputeOutputOf<S>,
+        gutter: Option<Edges<S>>,
     ) -> LayoutResultOf<Node, (), S, M> {
         let (_, slot) = self.step().expect("active contribution purpose");
         let purpose = CONTRIBUTION_PURPOSES[slot];
+        if let Some(beginning) = self.beginning_mut()
+            && beginning.is_waiting()
+        {
+            let grid = source.grid_for(node, purpose)?;
+            return beginning.accept_traversal(node, grid, output, gutter);
+        }
         let active = self.role.as_mut().expect("active contribution role");
         let grid = source.project_grid(purpose, active.available);
         let complete = match (&mut active.role, &mut self.pending) {
@@ -1814,143 +2045,25 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicSubgridSource<'input, No
         self.context.container_input()
     }
 
-    pub(super) fn measure<Tree, M>(
-        &self,
-        tree: &mut Tree,
-        input: ComputeInputOf<S>,
-    ) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
+    /// The probe of the item with `input`, as a request an owner may yield.
+    pub(super) fn request(&self, input: ComputeInputOf<S>) -> GridContextRequest<'input, Node, S> {
         let source = self.context.input();
-        match tree.observe_grid_overflow(
+        GridContextRequest::intrinsic(
+            ContextRun::Probe,
             source.item.node,
-            GridOverflowProbe {
-                layout: GridOverflowLayout::Intrinsic(GridIntrinsicProbe {
-                    input,
-                    stage: self.stage,
-                    kind: GridIntrinsicProbeKind::AllocatedPrefix,
-                    intrinsic_minimum: Size::NONE,
-                    source,
-                    parent_column_geometry: self.column_geometry.as_ref(),
-                    parent_row_geometry: self.row_geometry.as_ref(),
-                    parent_flow: self.parent_flow,
-                }),
-            },
-        )? {
-            GridOverflowObservation::Intrinsic(observation) => Ok(observation.output),
-            GridOverflowObservation::Children(_) => {
-                unreachable!("a standalone intrinsic source returns its prepared output")
-            }
-        }
+            input,
+            Size::NONE,
+            self.stage,
+            GridIntrinsicProbeKind::AllocatedPrefix,
+            source,
+            self.column_geometry.as_ref(),
+            self.row_geometry.as_ref(),
+            self.parent_flow,
+        )
     }
 }
 
 pub(crate) struct GridIntrinsicObservation<S: LayoutScalar> {
     pub(super) output: ComputeOutputOf<S>,
     pub(super) effective_gutter: Option<Edges<S>>,
-}
-
-pub(super) struct GridIntrinsicProbe<'input, 'a, Node, S: LayoutScalar> {
-    pub(super) input: ComputeInputOf<S>,
-    pub(super) stage: GridSizingStage,
-    pub(super) kind: GridIntrinsicProbeKind,
-    pub(super) intrinsic_minimum: Size<Option<StandaloneIntrinsicMinimum>>,
-    pub(super) source: SubgridChildParentContextInput<'input, 'a, Node, S>,
-    pub(super) parent_column_geometry: Option<&'a UsedGridAxisGeometryOf<S>>,
-    pub(super) parent_row_geometry: Option<&'a UsedGridAxisGeometryOf<S>>,
-    pub(super) parent_flow: crate::geometry::FlowAxes,
-}
-
-impl<'input, Node: Copy + Eq, S: LayoutScalar> GridIntrinsicProbe<'input, '_, Node, S> {
-    pub(super) fn observe<Tree, M>(
-        self,
-        tree: &mut Tree,
-        node: Node,
-    ) -> LayoutResultOf<Node, GridIntrinsicObservation<S>, S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        let source = self.source;
-        let child_flow = crate::geometry::FlowAxes::new(
-            source.child_style.writing_mode,
-            source.child_style.direction,
-        );
-        let stage = self.stage.mapped(self.parent_flow, child_flow);
-        let result = compute_grid_with_context_source(
-            tree,
-            node,
-            self.input,
-            self.intrinsic_minimum,
-            source.container(),
-            stage,
-            |constants| {
-                let mut columns = source.columns.to_vec();
-                let mut rows = source.rows.to_vec();
-                if let GridIntrinsicProbeKind::ContentContribution(queried_axis) = self.kind {
-                    let report = match queried_axis {
-                        GridAxisKind::Column => source.item.column,
-                        GridAxisKind::Row => source.item.row,
-                    };
-                    let gutter = self.parent_flow.logical_edges(constants.scrollbar_gutter);
-                    let (tracks, start, end, before, after) = match report.mapping.parent_axis {
-                        GridAxisKind::Column => (
-                            &mut columns,
-                            source.area.column,
-                            source.area.column_end,
-                            gutter.inline_start,
-                            gutter.inline_end,
-                        ),
-                        GridAxisKind::Row => (
-                            &mut rows,
-                            source.area.row,
-                            source.area.row_end,
-                            gutter.block_start,
-                            gutter.block_end,
-                        ),
-                    };
-                    if let Some(track) = tracks.get_mut(start) {
-                        *track = *track + before;
-                    }
-                    if let Some(last) = end.checked_sub(1).and_then(|end| tracks.get_mut(end)) {
-                        *last = *last + after;
-                    }
-                }
-                let column_geometry = self.parent_column_geometry.map(|geometry| {
-                    UsedGridAxisGeometryOf::from_sizing_gutters(
-                        columns.clone(),
-                        &geometry.sizing_gutters(),
-                    )
-                });
-                let row_geometry = self.parent_row_geometry.map(|geometry| {
-                    UsedGridAxisGeometryOf::from_sizing_gutters(
-                        rows.clone(),
-                        &geometry.sizing_gutters(),
-                    )
-                });
-                let mut frame = source;
-                frame.columns = &columns;
-                frame.rows = &rows;
-                let mut extra = Size::ZERO;
-                if let GridIntrinsicProbeKind::ContentContribution(queried_axis) = self.kind {
-                    let gutter_size = constants.scrollbar_gutter.sum_axes();
-                    match grid_axis_physical_axis(child_flow, queried_axis) {
-                        PhysicalAxis::Horizontal => extra.width = gutter_size.width,
-                        PhysicalAxis::Vertical => extra.height = gutter_size.height,
-                    }
-                }
-                frame.content_box_size = frame.content_box_size + extra;
-                subgrid_child_parent_context_with_geometry(
-                    frame.for_scrollbar_pass(constants),
-                    column_geometry.as_ref(),
-                    row_geometry.as_ref(),
-                )
-                .map_err(|error| subgrid_child_context_error(node, error))
-            },
-        )?;
-        Ok(GridIntrinsicObservation {
-            output: result.output,
-            effective_gutter: result.effective_gutter,
-        })
-    }
 }

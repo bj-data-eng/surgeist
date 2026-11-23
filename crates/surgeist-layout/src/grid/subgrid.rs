@@ -1839,6 +1839,7 @@ pub(super) struct GridSubgridIntrinsicTraversalInput<
     pub(super) column_sizes: &'a [S],
     pub(super) row_sizes: &'a [S],
     pub(super) container_size: Size<Option<S>>,
+    #[cfg(test)]
     pub(super) intrinsic_min_track_facts: IntrinsicMinTrackFacts<'a>,
     pub(super) query: IntrinsicGridQuery<'a, S>,
 }
@@ -1849,6 +1850,7 @@ pub(super) struct GridSubgridIntrinsicTraversalInput<
     clippy::type_complexity,
     reason = "nested traversal preserves both session errors and existing traversal outcomes"
 )]
+#[cfg(test)]
 pub(super) fn collect_grid_subgrid_intrinsic_traversal<'input, Tree, M>(
     tree: &mut Tree,
     input: GridSubgridIntrinsicTraversalInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
@@ -1866,10 +1868,16 @@ where
 {
     let mut fold = SubgridIntrinsicFold::new(input.intrinsic_min_track_facts);
     let mut root = RootTraversal::new(&input);
-    while let Some(entry) = root.next_wrapper::<Tree, M>(tree, &input, &mut fold)? {
-        visit_wrapper_levels(tree, *entry, &mut fold)?;
+    loop {
+        match root.next_wrapper::<Tree, M>(tree, &input, &mut fold)? {
+            WalkNext::Wrapper(entry) => visit_wrapper_levels(tree, *entry, &mut fold)?,
+            WalkNext::Probe(request) => {
+                let gutter = request.compute_sync(tree)?.effective_gutter();
+                root.accept_probe(gutter);
+            }
+            WalkNext::Done => return Ok(fold.finish()),
+        }
     }
-    Ok(fold.finish())
 }
 
 /// The root items of a subgrid traversal, with the position the traversal has
@@ -1881,6 +1889,8 @@ pub(super) struct RootTraversal<S: LayoutScalar> {
     cursor: usize,
     column_geometry: Option<UsedGridAxisGeometryOf<S>>,
     row_geometry: Option<UsedGridAxisGeometryOf<S>>,
+    /// The probe of the item the traversal waits on.
+    probe: EnterProbe<S>,
 }
 
 struct RootStep<S: LayoutScalar> {
@@ -1966,7 +1976,14 @@ impl<S: LayoutScalar> RootTraversal<S> {
             cursor: 0,
             column_geometry,
             row_geometry,
+            probe: EnterProbe::Fresh,
         }
+    }
+
+    /// Accepts the gutter the probe of the item the traversal waits on
+    /// observed.
+    pub(super) fn accept_probe(&mut self, gutter: Option<Edges<S>>) {
+        self.probe.accept(gutter);
     }
 
     /// Visits the root items from the current position, recording leaves in
@@ -2082,12 +2099,21 @@ impl<S: LayoutScalar> RootTraversal<S> {
                 traversal,
                 fold,
                 SubgridTraversalContext::ROOT,
+                self.probe.take(),
             )?;
-            if let ChildEntry::Wrapper(entry) = entry {
-                return Ok(Some(entry));
+            match entry {
+                ChildEntry::Wrapper(entry) => return Ok(WalkNext::Wrapper(entry)),
+                ChildEntry::Probe(probe) => {
+                    // The item is visited again once its probe has run.
+                    let ProbeEntry { request, constants } = *probe;
+                    self.cursor -= 1;
+                    self.probe = EnterProbe::Waiting(constants);
+                    return Ok(WalkNext::Probe(request));
+                }
+                ChildEntry::Done => {}
             }
         }
-        Ok(None)
+        Ok(WalkNext::Done)
     }
 }
 
@@ -2139,9 +2165,19 @@ fn subgrid_root_intrinsic_areas<S: LayoutScalar>(
     std::iter::once((area, GridMinimumWrapperTraversal::Shared { lane_track })).chain(candidates)
 }
 
-/// The entry of the next wrapper a traversal reaches, if it reaches one.
+/// What the root items of a traversal lead to next.
+pub(super) enum WalkNext<'input, Node, S: LayoutScalar> {
+    /// A wrapper whose children remain to be traversed.
+    Wrapper(Box<WrapperEntry<'input, Node, S>>),
+    /// A root item whose scrollbar gutter must be probed before it is entered.
+    Probe(Box<GridContextRequest<'input, Node, S>>),
+    /// The root items are exhausted.
+    Done,
+}
+
+/// The next wrapper a traversal reaches, or the probe it waits on.
 pub(super) type NextWrapper<'input, Node, S, M> =
-    LayoutResultOf<Node, Option<Box<WrapperEntry<'input, Node, S>>>, S, M>;
+    LayoutResultOf<Node, WalkNext<'input, Node, S>, S, M>;
 
 /// The wrapper resolution a preparation produced, or why it failed.
 type ResolutionOutcome<'input, Tree, M> = LayoutResultOf<
@@ -2161,6 +2197,39 @@ pub(super) enum ChildEntry<'input, Node, S: LayoutScalar> {
     Done,
     /// An inherited wrapper, whose children the traversal visits next.
     Wrapper(Box<WrapperEntry<'input, Node, S>>),
+    /// A child whose scrollbar gutter must be probed before it is entered.
+    Probe(Box<ProbeEntry<'input, Node, S>>),
+}
+
+/// The probe a traversal child waits on, with what its entry computed before
+/// it.
+pub(super) struct ProbeEntry<'input, Node, S: LayoutScalar> {
+    request: Box<GridContextRequest<'input, Node, S>>,
+    constants: Box<Constants<S>>,
+}
+
+/// How a traversal child's probe stands when the child is entered.
+pub(super) enum EnterProbe<S: LayoutScalar> {
+    /// The child has not been entered.
+    Fresh,
+    /// The child asked for its probe and waits for the result.
+    Waiting(Box<Constants<S>>),
+    /// The probe ran: the gutter it observed and the constants the entry
+    /// computed before it.
+    Ready(Box<(Option<Edges<S>>, Constants<S>)>),
+}
+
+impl<S: LayoutScalar> EnterProbe<S> {
+    pub(super) fn take(&mut self) -> Self {
+        std::mem::replace(self, Self::Fresh)
+    }
+
+    pub(super) fn accept(&mut self, gutter: Option<Edges<S>>) {
+        let Self::Waiting(constants) = self.take() else {
+            unreachable!("a probe result belongs to the child waiting on it");
+        };
+        *self = Self::Ready(Box::new((gutter, *constants)));
+    }
 }
 
 type ChildEntryResult<'input, Tree, M> = LayoutResultOf<
@@ -2253,6 +2322,8 @@ struct WrapperFrame<'input, Node, S: LayoutScalar> {
     tail: WrapperTail<S>,
     /// Which fold records the traversal this wrapper belongs to.
     fold_slot: usize,
+    /// The probe of the child the visit waits on.
+    probe: EnterProbe<S>,
 }
 
 /// A wrapper whose level is being prepared: its standalone track resolution is
@@ -2265,6 +2336,9 @@ struct PrepareFrame<'input, Node, S: LayoutScalar> {
     /// The fold of the traversal the resolution waits on, once it has started
     /// one.
     active_fold: Option<usize>,
+    /// The contributions of the subgrid items it traversed are being
+    /// collected.
+    finishing: bool,
 }
 
 /// A frame of the traversal's stack.
@@ -2301,6 +2375,7 @@ where
 /// of its preparation stays open while it waits, and every capture closes in
 /// the order the native recursion closed it, innermost first, also when an
 /// error leaves frames waiting.
+#[cfg(test)]
 pub(super) fn visit_wrapper_levels<'input, Tree, M>(
     tree: &mut Tree,
     root: WrapperEntry<'input, Tree::Node, Tree::Scalar>,
@@ -2309,37 +2384,162 @@ pub(super) fn visit_wrapper_levels<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let mut frames: Vec<LevelFrame<'input, Tree::Node, Tree::Scalar>> = Vec::new();
-    let mut folds: Vec<SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>> = Vec::new();
-    let result = drive_wrapper_levels::<Tree, M>(tree, root, fold, &mut frames, &mut folds);
+    let mut frames = WrapperFrames::new();
+    let result = frames.visit_to_end::<Tree, M>(tree, root, fold);
     if result.is_err() {
-        while let Some(frame) = frames.pop() {
+        frames.close_captures(tree);
+    }
+    result
+}
+
+/// What a wrapper traversal waits on after a step.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FrameWait {
+    /// An ordinary child or contextual Grid whose output the innermost
+    /// preparation accepts.
+    Output,
+    /// The probe of a traversal child, whose gutter the innermost frame
+    /// accepts.
+    Probe,
+    /// A leaf query of the innermost preparation's contributions.
+    Finish,
+}
+
+/// What one step of a wrapper traversal leaves to do.
+pub(super) enum FrameStep<'input, Node, S: LayoutScalar> {
+    /// No wrapper frame is left to step.
+    Idle,
+    /// The step finished; step again.
+    Continue,
+    /// The traversal waits on a computation.
+    Request(TrackChildRequest<'input, Node, S>),
+}
+
+/// The heap stack of a traversal's wrapper levels, with the folds of the
+/// nested traversals their preparations start. The stack suspends while a
+/// computation it asked for runs, and resumes with its output.
+pub(super) struct WrapperFrames<'input, Node, S: LayoutScalar> {
+    frames: Vec<LevelFrame<'input, Node, S>>,
+    folds: Vec<SubgridIntrinsicFold<'input, Node, S>>,
+    waiting: Option<FrameWait>,
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperFrames<'input, Node, S> {
+    pub(super) fn new() -> Self {
+        Self {
+            frames: Vec::new(),
+            folds: Vec::new(),
+            waiting: None,
+        }
+    }
+
+    /// Enters the wrapper `entry` of the traversal `outer` records.
+    pub(super) fn enter<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        outer: &mut SubgridIntrinsicFold<'input, Node, S>,
+        entry: WrapperEntry<'input, Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        begin_wrapper_level::<Tree, M>(tree, &mut self.frames, &mut self.folds, outer, entry, 0)
+    }
+
+    /// Steps the innermost frame.
+    pub(super) fn step<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        outer: &mut SubgridIntrinsicFold<'input, Node, S>,
+    ) -> LayoutResultOf<Node, FrameStep<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let request = match self.frames.last() {
+            None => return Ok(FrameStep::Idle),
+            Some(LevelFrame::Visit(_)) => {
+                step_visit::<Tree, M>(tree, &mut self.frames, &mut self.folds, outer)?
+                    .map(|request| (TrackChildRequest::context(request), FrameWait::Probe))
+            }
+            Some(LevelFrame::Prepare(_)) => {
+                step_prepare::<Tree, M>(tree, &mut self.frames, &mut self.folds, outer)?
+            }
+        };
+        Ok(match request {
+            Some((request, wait)) => {
+                self.waiting = Some(wait);
+                FrameStep::Request(request)
+            }
+            None => FrameStep::Continue,
+        })
+    }
+
+    /// Accepts the output of the computation the stack waits on. The gutter a
+    /// probe observed reaches the frame that asked for it.
+    pub(super) fn accept<M>(
+        &mut self,
+        output: ComputeOutputOf<S>,
+        gutter: Option<Edges<S>>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let wait = self.waiting.take();
+        match (self.frames.last_mut(), wait) {
+            (Some(LevelFrame::Prepare(prepare)), Some(FrameWait::Output)) => {
+                prepare.pending.accept(output)?;
+                Ok(())
+            }
+            (Some(LevelFrame::Prepare(prepare)), Some(FrameWait::Finish)) => {
+                prepare.pending.accept_finish::<M>(output)?;
+                Ok(())
+            }
+            (Some(LevelFrame::Prepare(prepare)), Some(FrameWait::Probe)) => {
+                prepare.pending.accept_root_probe(gutter);
+                Ok(())
+            }
+            (Some(LevelFrame::Visit(frame)), Some(FrameWait::Probe)) => {
+                frame.probe.accept(gutter);
+                Ok(())
+            }
+            _ => unreachable!("a wrapper traversal accepts what it waits on"),
+        }
+    }
+
+    /// Closes the effect captures the waiting preparations still hold,
+    /// innermost first.
+    pub(super) fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        while let Some(frame) = self.frames.pop() {
             if let LevelFrame::Prepare(prepare) = frame {
                 tree.end_effect_capture(prepare.pending.capture());
             }
         }
     }
-    result
-}
 
-fn drive_wrapper_levels<'input, Tree, M>(
-    tree: &mut Tree,
-    root: WrapperEntry<'input, Tree::Node, Tree::Scalar>,
-    outer: &mut SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>,
-    frames: &mut Vec<LevelFrame<'input, Tree::Node, Tree::Scalar>>,
-    folds: &mut Vec<SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>>,
-) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    begin_wrapper_level::<Tree, M>(tree, frames, folds, outer, root, 0)?;
-    while let Some(top) = frames.last() {
-        match top {
-            LevelFrame::Visit(_) => step_visit::<Tree, M>(tree, frames, folds, outer)?,
-            LevelFrame::Prepare(_) => step_prepare::<Tree, M>(tree, frames, folds, outer)?,
+    /// Visits the wrapper `root` and everything below it on the native stack.
+    #[cfg(test)]
+    fn visit_to_end<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        root: WrapperEntry<'input, Node, S>,
+        outer: &mut SubgridIntrinsicFold<'input, Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        self.enter::<Tree, M>(tree, outer, root)?;
+        loop {
+            match self.step::<Tree, M>(tree, outer)? {
+                FrameStep::Idle => return Ok(()),
+                FrameStep::Continue => {}
+                FrameStep::Request(request) => {
+                    let result = request.compute_sync(tree)?;
+                    let gutter = result.effective_gutter();
+                    self.accept::<M>(result.into_output(), gutter)?;
+                }
+            }
         }
     }
-    Ok(())
 }
 
 /// Begins the level of a wrapper the traversal entered, and pushes its frame.
@@ -2385,12 +2585,14 @@ where
             child_count: 0,
             tail,
             fold_slot,
+            probe: EnterProbe::Fresh,
         }))),
         LevelBegun::Resolving(pending) => frames.push(LevelFrame::Prepare(PrepareFrame {
             pending,
             tail,
             fold_slot,
             active_fold: None,
+            finishing: false,
         })),
     }
     Ok(())
@@ -2421,19 +2623,28 @@ where
     Ok(())
 }
 
+/// The probe a visit of a wrapper's child waits on, if it waits on one.
+type VisitStep<'input, Tree, M> = LayoutResultOf<
+    <Tree as Traverse>::Node,
+    Option<Box<GridContextRequest<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>>>,
+    <Tree as Traverse>::Scalar,
+    M,
+>;
+
 /// Visits the next child of the innermost wrapper, or leaves the wrapper once
-/// its children are visited.
+/// its children are visited. A child whose scrollbar gutter must be probed
+/// first leaves the probe to the caller, and is visited again with its result.
 fn step_visit<'input, Tree, M>(
     tree: &mut Tree,
     frames: &mut Vec<LevelFrame<'input, Tree::Node, Tree::Scalar>>,
     folds: &mut Vec<SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>>,
     outer: &mut SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>,
-) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+) -> VisitStep<'input, Tree, M>
 where
     Tree: Compute<'input, M>,
 {
     let Some(LevelFrame::Visit(frame)) = frames.last_mut() else {
-        return Ok(());
+        return Ok(None);
     };
     let fold_slot = frame.fold_slot;
     let mut entered = None;
@@ -2445,7 +2656,7 @@ where
         };
         let execution = child.execution;
         let fold = fold_of::<_, _, M>(fold_slot, outer, folds, child.node)?;
-        entered = Some(subgrid_traversal_child_enter(
+        let entry = subgrid_traversal_child_enter(
             tree,
             child.node,
             execution.child_style,
@@ -2470,16 +2681,26 @@ where
             child.traversal,
             fold,
             frame.tail.context,
-        )?);
+            frame.probe.take(),
+        )?;
+        if let ChildEntry::Probe(probe) = entry {
+            // The child is visited again once its probe has run.
+            let ProbeEntry { request, constants } = *probe;
+            frame.slot = slot;
+            frame.probe = EnterProbe::Waiting(constants);
+            return Ok(Some(request));
+        }
+        entered = Some(entry);
     }
     match entered {
         Some(ChildEntry::Done) => frame.child_count += 1,
         Some(ChildEntry::Wrapper(entry)) => {
             begin_wrapper_level::<Tree, M>(tree, frames, folds, outer, *entry, fold_slot)?;
         }
+        Some(ChildEntry::Probe(_)) => unreachable!("a probing child returns before it is entered"),
         None => {
             let Some(LevelFrame::Visit(frame)) = frames.pop() else {
-                return Ok(());
+                return Ok(None);
             };
             let node = frame.level.node();
             fold_of::<_, _, M>(frame.fold_slot, outer, folds, node)?.finish_wrapper(
@@ -2494,50 +2715,76 @@ where
             }
         }
     }
-    Ok(())
+    Ok(None)
 }
 
-/// Advances the innermost wrapper's suspended track resolution: computes a
-/// child it asks for, visits the next subgrid item of the traversal it waits
-/// on, or completes the resolution.
+/// The computation a preparation of a wrapper's level waits on, if it waits on
+/// one.
+type PrepareStep<'input, Tree, M> = LayoutResultOf<
+    <Tree as Traverse>::Node,
+    Option<(
+        TrackChildRequest<'input, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+        FrameWait,
+    )>,
+    <Tree as Traverse>::Scalar,
+    M,
+>;
+
+/// Advances the innermost wrapper's suspended track resolution: asks for a
+/// computation it needs, visits the next subgrid item of the traversal it
+/// waits on, collects the contributions of the items it traversed, or
+/// completes the resolution.
 fn step_prepare<'input, Tree, M>(
     tree: &mut Tree,
     frames: &mut Vec<LevelFrame<'input, Tree::Node, Tree::Scalar>>,
     folds: &mut Vec<SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>>,
     outer: &mut SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>,
-) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+) -> PrepareStep<'input, Tree, M>
 where
     Tree: Compute<'input, M>,
 {
     let Some(LevelFrame::Prepare(prepare)) = frames.last_mut() else {
-        return Ok(());
+        return Ok(None);
     };
     let node = prepare.pending.node();
+    if prepare.finishing {
+        return match prepare.pending.advance_finish::<Tree, M>(tree)? {
+            Some(request) => Ok(Some((request, FrameWait::Finish))),
+            None => {
+                prepare.finishing = false;
+                Ok(None)
+            }
+        };
+    }
     if let Some(active) = prepare.active_fold {
         let Some(fold) = active.checked_sub(1).and_then(|index| folds.get_mut(index)) else {
             return Err(minimum_source_error(node));
         };
         match prepare.pending.next_wrapper::<Tree, M>(tree, fold)? {
-            Some(entry) => {
+            WalkNext::Wrapper(entry) => {
                 begin_wrapper_level::<Tree, M>(tree, frames, folds, outer, *entry, active)?;
             }
-            None => {
+            WalkNext::Probe(request) => {
+                return Ok(Some((
+                    TrackChildRequest::context(request),
+                    FrameWait::Probe,
+                )));
+            }
+            WalkNext::Done => {
                 let Some(fold) = folds.pop() else {
                     return Err(minimum_source_error(node));
                 };
                 prepare.active_fold = None;
                 prepare
                     .pending
-                    .finish_traversal::<Tree, M>(tree, fold.finish())?;
+                    .begin_finish::<Tree, M>(tree, fold.finish())?;
+                prepare.finishing = true;
             }
         }
-        return Ok(());
+        return Ok(None);
     }
     match prepare.pending.advance::<Tree, M>(tree)? {
-        PendingStep::Child(child, request) => {
-            let output = tree.compute_child(child, request)?;
-            prepare.pending.accept(output)?;
-        }
+        PendingStep::Child(request) => return Ok(Some((request, FrameWait::Output))),
         PendingStep::Traversal(facts) => {
             folds.try_reserve(1).map_err(|_| allocation_error(node))?;
             folds.push(SubgridIntrinsicFold::new(IntrinsicMinTrackFacts::Known(
@@ -2547,7 +2794,7 @@ where
         }
         PendingStep::Done => {
             let Some(LevelFrame::Prepare(prepare)) = frames.pop() else {
-                return Ok(());
+                return Ok(None);
             };
             let PrepareFrame {
                 pending,
@@ -2564,6 +2811,7 @@ where
                         child_count: 0,
                         tail,
                         fold_slot,
+                        probe: EnterProbe::Fresh,
                     })));
                 }
                 None => {
@@ -2572,7 +2820,7 @@ where
             }
         }
     }
-    Ok(())
+    Ok(None)
 }
 
 #[expect(
@@ -2602,6 +2850,7 @@ fn subgrid_traversal_child_enter<'input, Tree, M>(
     traversal: GridMinimumWrapperTraversal,
     fold: &mut SubgridIntrinsicFold<'input, Tree::Node, Tree::Scalar>,
     mut context: SubgridTraversalContext,
+    probe: EnterProbe<Tree::Scalar>,
 ) -> ChildEntryResult<'input, Tree, M>
 where
     Tree: Compute<'input, M>,
@@ -2691,77 +2940,88 @@ where
     gutter_container.suppress_intrinsic_minimum(intrinsic_minimum.map(|minimum| minimum.is_some()));
     let gutter_style = gutter_container.projection();
     let gutter_input = prepared.with_run_mode(RunMode::ComputeSize);
-    let traversal_constants = if lane_track {
-        lane_subgrid_wrapper_constants::<Tree, M>(
+    // A child resumed after its probe keeps the constants it computed before
+    // asking for it.
+    let (resumed_gutter, resumed_constants) = match probe {
+        EnterProbe::Fresh => (None, None),
+        EnterProbe::Ready(ready) => {
+            let (gutter, constants) = *ready;
+            (Some(gutter), Some(constants))
+        }
+        EnterProbe::Waiting(_) => unreachable!("a child waiting on its probe is not entered"),
+    };
+    let traversal_constants = match resumed_constants {
+        Some(constants) => constants,
+        None if lane_track => lane_subgrid_wrapper_constants::<Tree, M>(
             tree,
             node,
             &gutter_style,
             gutter_input,
             inherited,
-        )?
-    } else {
-        Constants::with_intrinsic_minimum::<Tree, M>(
+        )?,
+        None => Constants::with_intrinsic_minimum::<Tree, M>(
             tree,
             node,
             &gutter_style,
             gutter_input,
             Size::NONE,
-        )?
+        )?,
     };
     let mut resolved_scrollbar_gutter = traversal_constants.scrollbar_gutter;
     if query.observe_auto
         && style.scrollbar_width.get() > Tree::Scalar::ZERO
         && (style.overflow.x() == Overflow::Auto || style.overflow.y() == Overflow::Auto)
     {
-        let parent_columns = parent_column_geometry.map_or(&[][..], |geometry| geometry.sizes());
-        let parent_rows = parent_row_geometry.map_or(&[][..], |geometry| geometry.sizes());
-        let probe_source = SubgridChildParentContextInput {
-            parent_baseline_references: minimum_source.baseline_references,
-            item: item_report,
-            child_style: style,
-            child_container: Some(gutter_container),
-            area,
-            content_box_size: (physical_area_size
-                - resolved_margin.sum_axes()
-                - resolved_border.sum_axes()
-                - resolved_padding.sum_axes())
-            .max(Size::ZERO),
-            columns: parent_columns,
-            rows: parent_rows,
-            minimum_functions: minimum_source.minimum_functions,
-            gap: LogicalSizeOf::new(parent_layout_gap.width, parent_layout_gap.height),
-            parent_named_columns,
-            parent_named_rows,
-            parent_area_facts,
-            margin: resolved_margin.map(Some),
-            border: resolved_border,
-            padding: resolved_padding,
-            scrollbar_gutter: Edges::ZERO,
-        };
-        let probe_input = prepared.with_run_mode(RunMode::PerformLayout);
-        let observation = tree.observe_grid_overflow(
-            node,
-            GridOverflowProbe {
-                layout: GridOverflowLayout::Intrinsic(GridIntrinsicProbe {
-                    input: probe_input,
-                    stage: query.stage,
-                    kind: GridIntrinsicProbeKind::ContentContribution(queried_axis),
-                    intrinsic_minimum: Size::NONE,
-                    source: probe_source,
+        match resumed_gutter {
+            Some(gutter) => {
+                resolved_scrollbar_gutter = gutter.unwrap_or(traversal_constants.scrollbar_gutter);
+            }
+            None => {
+                let parent_columns =
+                    parent_column_geometry.map_or(&[][..], |geometry| geometry.sizes());
+                let parent_rows = parent_row_geometry.map_or(&[][..], |geometry| geometry.sizes());
+                let probe_source = SubgridChildParentContextInput {
+                    parent_baseline_references: minimum_source.baseline_references,
+                    item: item_report,
+                    child_style: style,
+                    child_container: Some(gutter_container),
+                    area,
+                    content_box_size: (physical_area_size
+                        - resolved_margin.sum_axes()
+                        - resolved_border.sum_axes()
+                        - resolved_padding.sum_axes())
+                    .max(Size::ZERO),
+                    columns: parent_columns,
+                    rows: parent_rows,
+                    minimum_functions: minimum_source.minimum_functions,
+                    gap: LogicalSizeOf::new(parent_layout_gap.width, parent_layout_gap.height),
+                    parent_named_columns,
+                    parent_named_rows,
+                    parent_area_facts,
+                    margin: resolved_margin.map(Some),
+                    border: resolved_border,
+                    padding: resolved_padding,
+                    scrollbar_gutter: Edges::ZERO,
+                };
+                let probe_input = prepared.with_run_mode(RunMode::PerformLayout);
+                let request = GridContextRequest::intrinsic(
+                    ContextRun::Probe,
+                    node,
+                    probe_input,
+                    Size::NONE,
+                    query.stage,
+                    GridIntrinsicProbeKind::ContentContribution(queried_axis),
+                    probe_source,
                     parent_column_geometry,
                     parent_row_geometry,
-                    parent_flow: containing_flow_axes,
-                }),
-            },
-        )?;
-        resolved_scrollbar_gutter = match observation {
-            GridOverflowObservation::Intrinsic(observation) => observation
-                .effective_gutter
-                .unwrap_or(traversal_constants.scrollbar_gutter),
-            GridOverflowObservation::Children(_) => {
-                unreachable!("an intrinsic probe returns its canonical gutter")
+                    containing_flow_axes,
+                );
+                return Ok(ChildEntry::Probe(Box::new(ProbeEntry {
+                    request: Box::new(request),
+                    constants: Box::new(traversal_constants),
+                })));
             }
-        };
+        }
     }
     let [margins, border, padding, scrollbar_gutter] = [
         resolved_margin,
@@ -3338,7 +3598,7 @@ struct WrapperResolving<'input, Node, S: LayoutScalar> {
     constants: Constants<S>,
     initialized: InitializedGridTracks<'input, Node, S>,
     stage: GridSizingStage,
-    sizing: GridTrackSizing<Node, S>,
+    sizing: GridTrackSizing<'input, Node, S>,
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperResolving<'input, Node, S> {
@@ -3347,7 +3607,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperResolving<'input, Node, S>
         &mut self,
     ) -> (
         GridTrackResolutionInput<'input, '_, Node, S>,
-        &mut GridTrackSizing<Node, S>,
+        &mut GridTrackSizing<'input, Node, S>,
     ) {
         (
             GridTrackResolutionInput {
@@ -3399,9 +3659,9 @@ type ResolutionStarted<'input, Tree, M> = LayoutResultOf<
 >;
 
 /// What the suspended track sizing of a pending level waits on.
-enum PendingStep<Node, S: LayoutScalar> {
+enum PendingStep<'input, Node, S: LayoutScalar> {
     /// A child to compute.
-    Child(Node, ComputeInputOf<S>),
+    Child(intrinsic_stage::TrackChildRequest<'input, Node, S>),
     /// The traversal of subgrid items, with the intrinsic-minimum facts of its
     /// axis's tracks.
     Traversal(Vec<bool>),
@@ -3457,16 +3717,14 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> PendingLevel<'input, Node, S> {
     fn advance<Tree, M>(
         &mut self,
         tree: &mut Tree,
-    ) -> LayoutResultOf<Node, PendingStep<Node, S>, S, M>
+    ) -> LayoutResultOf<Node, PendingStep<'input, Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         let node = self.node;
         let (input, sizing) = self.resolving.parts();
         Ok(match sizing.advance_deferred(tree, node, &input)? {
-            intrinsic_stage::DeferredTrack::Child(child, request) => {
-                PendingStep::Child(child, request)
-            }
+            intrinsic_stage::DeferredTrack::Child(request) => PendingStep::Child(request),
             intrinsic_stage::DeferredTrack::Traversal(facts) => PendingStep::Traversal(facts),
             intrinsic_stage::DeferredTrack::Done => PendingStep::Done,
         })
@@ -3491,7 +3749,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> PendingLevel<'input, Node, S> {
         sizing.next_wrapper(tree, node, &input, fold)
     }
 
-    fn finish_traversal<Tree, M>(
+    /// Begins collecting the contributions of the subgrid items the traversal
+    /// reported.
+    fn begin_finish<Tree, M>(
         &mut self,
         tree: &mut Tree,
         traversal: Result<SubgridTraversalReport<'input, Node, S>, SubgridTraversalError>,
@@ -3501,7 +3761,34 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> PendingLevel<'input, Node, S> {
     {
         let node = self.node;
         let (input, sizing) = self.resolving.parts();
-        sizing.finish_traversal(tree, node, &input, traversal)
+        sizing.begin_finish(tree, node, &input, traversal)
+    }
+
+    /// The next leaf query of the contributions being collected, or `None`
+    /// once they are collected.
+    fn advance_finish<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+    ) -> LayoutResultOf<Node, Option<TrackChildRequest<'input, Node, S>>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let node = self.node;
+        let (input, sizing) = self.resolving.parts();
+        sizing.advance_finish(tree, node, &input)
+    }
+
+    fn accept_finish<M>(&mut self, output: ComputeOutputOf<S>) -> LayoutResultOf<Node, (), S, M> {
+        let node = self.node;
+        let (input, sizing) = self.resolving.parts();
+        sizing.accept_finish(node, &input, output)
+    }
+
+    /// Accepts the gutter a root item of the traversal the resolution waits on
+    /// observed.
+    fn accept_root_probe(&mut self, gutter: Option<Edges<S>>) {
+        let (_, sizing) = self.resolving.parts();
+        sizing.accept_root_probe(gutter);
     }
 
     /// The level, once its track sizing is done; the effect capture closes

@@ -210,9 +210,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridObservationRun<'input
         loop {
             match self.work.as_mut().expect("active ordinary observation") {
                 GridPassWork::Accepted(accepted) => {
-                    if let ControlFlow::Continue((node, input)) = accepted.advance(tree)? {
+                    if let ControlFlow::Continue(request) = accepted.advance(tree)? {
                         return Ok(Some(GridChild {
-                            phase: GridChildPhase::AcceptedTrack { node, input },
+                            phase: GridChildPhase::AcceptedTrack(request),
                         }));
                     }
                     let Some(GridPassWork::Accepted(accepted)) = self.work.take() else {
@@ -261,12 +261,22 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridObservationRun<'input
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         match self.work.as_mut().expect("active ordinary observation") {
+            GridPassWork::Accepted(accepted) => accepted.accept_context(result),
             GridPassWork::Placement(pass) => pass.accept_context(tree, child, result),
-            GridPassWork::Accepted(_)
-            | GridPassWork::Observation(_)
-            | GridPassWork::Observed(_) => {
-                unreachable!("only placement issues contextual requests")
+            GridPassWork::Observation(_) | GridPassWork::Observed(_) => {
+                unreachable!("only placement and track sizing issue contextual requests")
             }
+        }
+    }
+
+    /// Closes the effect captures the traversals of the observation's track
+    /// sizing hold.
+    pub(crate) fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        if let Some(GridPassWork::Accepted(accepted)) = self.work.as_mut() {
+            accepted.close_captures::<Tree, M>(tree);
         }
     }
 

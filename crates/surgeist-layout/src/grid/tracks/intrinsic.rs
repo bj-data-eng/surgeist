@@ -1,8 +1,8 @@
 use super::subgrid_intrinsic::{
-    IntrinsicGridChildInput, SubgridContributionStart, SubgridIntrinsicContributionInput,
-    SubgridIntrinsicContributionReport, compute_prepared_intrinsic_grid_child,
-    finish_subgrid_intrinsic_contributions, prepare_intrinsic_grid_child,
-    start_subgrid_intrinsic_contributions,
+    IntrinsicChildRequest, IntrinsicGridChildInput, SubgridContributionFinish,
+    SubgridContributionFinishStart, SubgridContributionStart, SubgridIntrinsicContributionInput,
+    SubgridIntrinsicContributionReport, prepare_intrinsic_grid_child,
+    prepare_intrinsic_grid_child_request, start_subgrid_intrinsic_contributions,
 };
 use super::*;
 use crate::node_input::GridBaselineReference;
@@ -736,6 +736,9 @@ pub(in crate::grid) struct IntrinsicTrackChild<Node, S: LayoutScalar> {
     pub(in crate::grid) node: Node,
     query: Option<GridMinimumQuery<S>>,
     item: Option<IntrinsicTrackItem<Node, S>>,
+    /// A subgrid item that needs its parent's tracks as context, so that its
+    /// queries are contextual Grid computations.
+    contextual: bool,
 }
 
 impl<Node: Copy, S: LayoutScalar> IntrinsicTrackChild<Node, S> {
@@ -776,7 +779,6 @@ fn traversal_input<'input, 'a, Node: Copy, S: LayoutScalar>(
     placed_areas: &'a [Option<GridArea<S>>],
     column_sizes: &'a [S],
     row_sizes: &'a [S],
-    facts: &'a [bool],
 ) -> GridSubgridIntrinsicTraversalInput<'input, 'a, Node, S> {
     GridSubgridIntrinsicTraversalInput {
         grid,
@@ -795,7 +797,8 @@ fn traversal_input<'input, 'a, Node: Copy, S: LayoutScalar>(
         column_sizes,
         row_sizes,
         container_size: grid.constants.node_inner_size,
-        intrinsic_min_track_facts: IntrinsicMinTrackFacts::Known(facts),
+        #[cfg(test)]
+        intrinsic_min_track_facts: IntrinsicMinTrackFacts::Unknown,
         query: grid.query,
     }
 }
@@ -808,9 +811,16 @@ enum BeginAxis {
 }
 
 /// The traversal of one axis's subgrid items, started and not yet finished.
-struct BeginTraversal<S: LayoutScalar> {
+struct BeginTraversal<'input, Node, S: LayoutScalar> {
     facts: Vec<bool>,
     root: RootTraversal<S>,
+    /// The wrappers the traversal has entered, while it waits on a
+    /// computation.
+    frames: Option<Box<WrapperFrames<'input, Node, S>>>,
+    /// The fold of the traversal, while it waits on a computation.
+    fold: Option<Box<SubgridIntrinsicFold<'input, Node, S>>>,
+    /// The gutter a probe of one of its root items waits on, once known.
+    waiting_root_probe: bool,
 }
 
 /// What a role's beginning waits for next.
@@ -823,7 +833,7 @@ pub(in crate::grid) enum IntrinsicTrackBeginStep<Node, S: LayoutScalar> {
 
 /// The beginning of an intrinsic track role: the contributions of each axis's
 /// subgrid items, whose traversals the owner may drive one step at a time.
-pub(in crate::grid) struct IntrinsicTrackBegin<Node, S: LayoutScalar> {
+pub(in crate::grid) struct IntrinsicTrackBegin<'input, Node, S: LayoutScalar> {
     columns: Vec<S>,
     rows: Vec<S>,
     column_base_floors: Vec<S>,
@@ -836,13 +846,15 @@ pub(in crate::grid) struct IntrinsicTrackBegin<Node, S: LayoutScalar> {
     row_area_sizes: Vec<S>,
     axis: BeginAxis,
     column_contributions: Option<SubgridIntrinsicContributionReport<Node, S>>,
-    traversal: Option<BeginTraversal<S>>,
+    traversal: Option<BeginTraversal<'input, Node, S>>,
     /// The contributions of the current axis, from its finished traversal.
     finished: Option<SubgridIntrinsicContributionReport<Node, S>>,
+    /// The leaf queries of the current axis, while they are collected.
+    finishing: Option<Box<SubgridContributionFinish<'input, Node, S>>>,
 }
 
-impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<Node, S> {
-    pub(in crate::grid) fn new<'input, Tree, M>(
+impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<'input, Node, S> {
+    pub(in crate::grid) fn new<Tree, M>(
         tree: &mut Tree,
         node: Node,
         grid: IntrinsicGrid<'input, '_, Node, S>,
@@ -954,6 +966,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<Node, S> {
             column_contributions: None,
             traversal: None,
             finished: None,
+            finishing: None,
         }
     }
 
@@ -965,7 +978,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<Node, S> {
     }
 
     /// The input of the current axis's contributions.
-    fn contribution_input<'input, 'a>(
+    fn contribution_input<'a>(
         &'a mut self,
         node: Node,
         grid: IntrinsicGrid<'input, 'a, Node, S>,
@@ -1010,8 +1023,12 @@ impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<Node, S> {
     pub(in crate::grid) fn advance<M>(
         &mut self,
         node: Node,
-        grid: IntrinsicGrid<'_, '_, Node, S>,
+        grid: IntrinsicGrid<'input, '_, Node, S>,
     ) -> LayoutResultOf<Node, IntrinsicTrackBeginStep<Node, S>, S, M> {
+        // A traversal that waits on a computation resumes where it stopped.
+        if self.traversal.is_some() || self.finishing.is_some() {
+            return Ok(IntrinsicTrackBeginStep::Traverse(Vec::new()));
+        }
         loop {
             let axis = self.grid_axis();
             let report = if let Some(report) = self.finished.take() {
@@ -1038,11 +1055,13 @@ impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<Node, S> {
                             &self.placed_areas,
                             &self.column_area_sizes,
                             &self.row_area_sizes,
-                            &facts,
                         ));
                         self.traversal = Some(BeginTraversal {
                             facts: facts.clone(),
                             root,
+                            frames: None,
+                            fold: None,
+                            waiting_root_probe: false,
                         });
                         return Ok(IntrinsicTrackBeginStep::Traverse(facts));
                     }
@@ -1059,7 +1078,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<Node, S> {
     fn axis_done<M>(
         &mut self,
         node: Node,
-        grid: IntrinsicGrid<'_, '_, Node, S>,
+        grid: IntrinsicGrid<'input, '_, Node, S>,
         report: SubgridIntrinsicContributionReport<Node, S>,
     ) -> LayoutResultOf<Node, Option<IntrinsicTrackRole<Node, S>>, S, M> {
         match self.axis {
@@ -1114,7 +1133,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<Node, S> {
 
     /// Visits the root items of the current axis's traversal until one is a
     /// wrapper whose children remain to be traversed.
-    pub(in crate::grid) fn next_wrapper<'input, Tree, M>(
+    pub(in crate::grid) fn next_wrapper<Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
@@ -1149,72 +1168,272 @@ impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<Node, S> {
             placed_areas,
             column_area_sizes,
             row_area_sizes,
-            &traversal.facts,
         );
         traversal.root.next_wrapper::<Tree, M>(tree, &input, fold)
     }
 
-    /// Runs the current axis's traversal to its end on the native stack.
-    pub(in crate::grid) fn traverse_to_end<'input, Tree, M>(
-        &mut self,
-        tree: &mut Tree,
-        grid: IntrinsicGrid<'input, '_, Node, S>,
-        facts: &[bool],
-    ) -> LayoutResultOf<
-        Node,
-        Result<SubgridTraversalReport<'input, Node, S>, SubgridTraversalError>,
-        S,
-        M,
-    >
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        let axis = self.grid_axis();
-        collect_grid_subgrid_intrinsic_traversal(
-            tree,
-            traversal_input(
-                grid,
-                axis,
-                &self.children,
-                &self.placed_areas,
-                &self.column_area_sizes,
-                &self.row_area_sizes,
-                facts,
-            ),
-        )
-    }
-
-    /// Takes the report of the current axis's traversal and the contributions
-    /// it leads to.
-    pub(in crate::grid) fn finish_traversal<'input, Tree, M>(
+    /// Steps the traversal of the current axis's subgrid items and the
+    /// collection of the contributions it leads to, until a computation they
+    /// wait on or the end of both.
+    pub(in crate::grid) fn advance_traversal<Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
         grid: IntrinsicGrid<'input, '_, Node, S>,
-        traversal: Result<SubgridTraversalReport<'input, Node, S>, SubgridTraversalError>,
-    ) -> LayoutResultOf<Node, (), S, M>
+    ) -> LayoutResultOf<Node, TraversalProgress<'input, Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        self.traversal = None;
-        let report = finish_subgrid_intrinsic_contributions(
-            tree,
-            self.contribution_input(node, grid),
-            traversal,
-        )?;
-        self.finished = Some(report);
+        loop {
+            if self.finishing.is_some() {
+                return self.advance_finish::<Tree, M>(tree, node, grid);
+            }
+            let Some(traversal) = self.traversal.as_mut() else {
+                return Err(invalid_track_sizing(node));
+            };
+            let mut frames = traversal
+                .frames
+                .take()
+                .unwrap_or_else(|| Box::new(WrapperFrames::new()));
+            let mut fold = traversal.fold.take().unwrap_or_else(|| {
+                Box::new(SubgridIntrinsicFold::new(IntrinsicMinTrackFacts::Known(
+                    &traversal.facts,
+                )))
+            });
+            match self.walk::<Tree, M>(tree, node, grid, &mut frames, &mut fold) {
+                Err(error) => {
+                    frames.close_captures(tree);
+                    return Err(error);
+                }
+                Ok(Walk::Request(request)) => {
+                    let traversal = self.traversal.as_mut().expect("the traversal is active");
+                    traversal.frames = Some(frames);
+                    traversal.fold = Some(fold);
+                    return Ok(TraversalProgress::Request(request));
+                }
+                Ok(Walk::Finished) => self.begin_finish(node, grid, fold.finish()),
+            }
+        }
+    }
+
+    /// Steps the walk over the wrappers of the traversal until it waits on a
+    /// computation or its root items and wrappers are exhausted.
+    fn walk<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        grid: IntrinsicGrid<'input, '_, Node, S>,
+        frames: &mut WrapperFrames<'input, Node, S>,
+        fold: &mut SubgridIntrinsicFold<'input, Node, S>,
+    ) -> LayoutResultOf<Node, Walk<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        loop {
+            match frames.step::<Tree, M>(tree, fold)? {
+                FrameStep::Continue => {}
+                FrameStep::Request(request) => return Ok(Walk::Request(request)),
+                FrameStep::Idle => match self.next_wrapper::<Tree, M>(tree, node, grid, fold)? {
+                    WalkNext::Wrapper(entry) => frames.enter::<Tree, M>(tree, fold, *entry)?,
+                    WalkNext::Probe(request) => {
+                        let traversal = self.traversal.as_mut().expect("the traversal is active");
+                        traversal.waiting_root_probe = true;
+                        return Ok(Walk::Request(TrackChildRequest::context(request)));
+                    }
+                    WalkNext::Done => return Ok(Walk::Finished),
+                },
+            }
+        }
+    }
+
+    /// Accepts the output of the computation the traversal or the collection
+    /// of its contributions waits on. The gutter a probe observed comes with
+    /// it.
+    pub(in crate::grid) fn accept_traversal<M>(
+        &mut self,
+        node: Node,
+        grid: IntrinsicGrid<'input, '_, Node, S>,
+        output: ComputeOutputOf<S>,
+        gutter: Option<Edges<S>>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        if self.finishing.is_some() {
+            return self.accept_finish::<M>(node, grid, output);
+        }
+        let Some(traversal) = self.traversal.as_mut() else {
+            return Err(invalid_track_sizing(node));
+        };
+        if std::mem::take(&mut traversal.waiting_root_probe) {
+            traversal.root.accept_probe(gutter);
+            return Ok(());
+        }
+        let Some(frames) = traversal.frames.as_mut() else {
+            return Err(invalid_track_sizing(node));
+        };
+        frames.accept::<M>(output, gutter)?;
         Ok(())
     }
+
+    /// Accepts the gutter a probe of a root item of the traversal observed.
+    pub(in crate::grid) fn accept_root_probe(&mut self, gutter: Option<Edges<S>>) {
+        if let Some(traversal) = self.traversal.as_mut() {
+            traversal.root.accept_probe(gutter);
+        }
+    }
+
+    /// Closes the effect captures the traversal's waiting preparations hold,
+    /// innermost first.
+    pub(in crate::grid) fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        if let Some(mut frames) = self
+            .traversal
+            .as_mut()
+            .and_then(|traversal| traversal.frames.take())
+        {
+            frames.close_captures(tree);
+        }
+    }
+
+    /// Whether the traversal, or the collection of its contributions, waits on
+    /// a computation.
+    pub(in crate::grid) fn is_waiting(&self) -> bool {
+        self.finishing
+            .as_ref()
+            .is_some_and(|finishing| finishing.is_waiting())
+            || self
+                .traversal
+                .as_ref()
+                .is_some_and(|traversal| traversal.frames.is_some() || traversal.waiting_root_probe)
+    }
+
+    /// Takes the report of the current axis's traversal and begins collecting
+    /// the contributions it leads to.
+    pub(in crate::grid) fn begin_finish(
+        &mut self,
+        node: Node,
+        grid: IntrinsicGrid<'input, '_, Node, S>,
+        traversal: Result<SubgridTraversalReport<'input, Node, S>, SubgridTraversalError>,
+    ) {
+        let _ = node;
+        self.traversal = None;
+        let start = {
+            let mut input = self.contribution_input(node, grid);
+            SubgridContributionFinish::begin(&mut input, traversal)
+        };
+        match start {
+            SubgridContributionFinishStart::Empty(report) => self.finished = Some(report),
+            SubgridContributionFinishStart::Collecting(finishing) => {
+                self.finishing = Some(finishing);
+            }
+        }
+    }
+
+    /// The next leaf query of the contributions being collected; `Done` once
+    /// they are collected.
+    pub(in crate::grid) fn advance_finish<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        node: Node,
+        grid: IntrinsicGrid<'input, '_, Node, S>,
+    ) -> LayoutResultOf<Node, TraversalProgress<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Some(mut finishing) = self.finishing.take() else {
+            return Err(invalid_track_sizing(node));
+        };
+        let step = {
+            let input = self.contribution_input(node, grid);
+            finishing.advance::<Tree, M>(tree, &input)?
+        };
+        match step {
+            ControlFlow::Continue(request) => {
+                self.finishing = Some(finishing);
+                Ok(TraversalProgress::Request(request))
+            }
+            ControlFlow::Break(()) => {
+                let report = finishing.finish(tree, self.contribution_input(node, grid))?;
+                self.finished = Some(report);
+                Ok(TraversalProgress::Done)
+            }
+        }
+    }
+
+    pub(in crate::grid) fn accept_finish<M>(
+        &mut self,
+        node: Node,
+        grid: IntrinsicGrid<'input, '_, Node, S>,
+        output: ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let Some(mut finishing) = self.finishing.take() else {
+            return Err(invalid_track_sizing(node));
+        };
+        let accepted = {
+            let input = self.contribution_input(node, grid);
+            finishing.accept::<M>(&input, output)
+        };
+        self.finishing = Some(finishing);
+        accepted
+    }
+}
+
+/// What the traversal of one axis's subgrid items leaves to do.
+pub(in crate::grid) enum TraversalProgress<'input, Node, S: LayoutScalar> {
+    /// It waits on a computation.
+    Request(TrackChildRequest<'input, Node, S>),
+    /// Its contributions are collected.
+    Done,
+}
+
+enum Walk<'input, Node, S: LayoutScalar> {
+    Request(TrackChildRequest<'input, Node, S>),
+    Finished,
+}
+
+fn invalid_track_sizing<Node: Copy, S: LayoutScalar, M>(node: Node) -> LayoutErrorOf<Node, S, M> {
+    LayoutErrorOf::new(
+        LayoutErrorSiteOf::Node(node),
+        LayoutOperation::ChildLayout,
+        LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::InvalidGridTrackSizing),
+    )
 }
 
 type IntrinsicTrackStep<Node, S, M> =
     LayoutResultOf<Node, Option<IntrinsicTrackChild<Node, S>>, S, M>;
 
 impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackRole<Node, S> {
+    /// The computation the current query of `child` waits on.
+    pub(in crate::grid) fn child_request<'input, Tree, M>(
+        &self,
+        tree: &Tree,
+        grid: IntrinsicGrid<'input, '_, Node, S>,
+        child: &IntrinsicTrackChild<Node, S>,
+    ) -> LayoutResultOf<Node, TrackChildRequest<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        if !child.contextual {
+            return Ok(TrackChildRequest::child(child.node, child.input(grid)?));
+        }
+        let item = child.item.as_ref().expect("active track item");
+        let query_input = child.query.as_ref().expect("active track query").input();
+        let args = self.child_input(grid, item);
+        Ok(
+            match prepare_intrinsic_grid_child_request::<Tree, M>(
+                tree,
+                child.node,
+                args,
+                query_input,
+            )? {
+                IntrinsicChildRequest::Child(input) => TrackChildRequest::child(child.node, input),
+                IntrinsicChildRequest::Context(request) => TrackChildRequest::context(request),
+            },
+        )
+    }
+
     pub(in crate::grid) fn next<'input, Tree, M>(
         &mut self,
-        tree: &mut Tree,
-        node: Node,
         grid: IntrinsicGrid<'input, '_, Node, S>,
     ) -> IntrinsicTrackStep<Node, S, M>
     where
@@ -1315,18 +1534,12 @@ impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackRole<Node, S> {
             };
             let args = self.child_input(grid, &item);
             let query = prepare_intrinsic_grid_child::<Tree, M>(child, &args)?;
-            if args.subgrid_item.is_some_and(|item| item.needs_context()) {
-                let output = query.compute(child, |input| {
-                    compute_prepared_intrinsic_grid_child(tree, child, args, input)
-                })?;
-                self.accept(node, grid, item, output)?;
-            } else {
-                return Ok(Some(IntrinsicTrackChild {
-                    node: child,
-                    query: Some(query),
-                    item: Some(item),
-                }));
-            }
+            return Ok(Some(IntrinsicTrackChild {
+                node: child,
+                query: Some(query),
+                item: Some(item),
+                contextual: args.subgrid_item.is_some_and(|item| item.needs_context()),
+            }));
         }
         Ok(None)
     }
