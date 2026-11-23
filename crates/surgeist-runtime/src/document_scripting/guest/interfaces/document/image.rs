@@ -1,6 +1,127 @@
-//! Readbacks over the exact live native Image request.
+//! Local reflections and live readbacks on the original native Image.
 
-use super::{reflection::html_element_is, *};
+use super::{
+    reflection::{self, Receiver, Reflection},
+    *,
+};
+
+const BEFORE_REQUEST: &[reflection::Member] = &[
+    (
+        &ascii(b"alt"),
+        &ascii(b"get alt"),
+        &ascii(b"set alt"),
+        &ascii(b"alt"),
+        Reflection::String,
+    ),
+    (
+        &ascii(b"srcset"),
+        &ascii(b"get srcset"),
+        &ascii(b"set srcset"),
+        &ascii(b"srcset"),
+        Reflection::UsvString,
+    ),
+    (
+        &ascii(b"sizes"),
+        &ascii(b"get sizes"),
+        &ascii(b"set sizes"),
+        &ascii(b"sizes"),
+        Reflection::String,
+    ),
+    (
+        &ascii(b"crossOrigin"),
+        &ascii(b"get crossOrigin"),
+        &ascii(b"set crossOrigin"),
+        &ascii(b"crossorigin"),
+        Reflection::CrossOrigin,
+    ),
+    (
+        &ascii(b"useMap"),
+        &ascii(b"get useMap"),
+        &ascii(b"set useMap"),
+        &ascii(b"usemap"),
+        Reflection::String,
+    ),
+    (
+        &ascii(b"isMap"),
+        &ascii(b"get isMap"),
+        &ascii(b"set isMap"),
+        &ascii(b"ismap"),
+        Reflection::Boolean,
+    ),
+    (
+        &ascii(b"controls"),
+        &ascii(b"get controls"),
+        &ascii(b"set controls"),
+        &ascii(b"controls"),
+        Reflection::Boolean,
+    ),
+];
+
+const AFTER_REQUEST: &[reflection::Member] = &[
+    (
+        &ascii(b"referrerPolicy"),
+        &ascii(b"get referrerPolicy"),
+        &ascii(b"set referrerPolicy"),
+        &ascii(b"referrerpolicy"),
+        Reflection::ReferrerPolicy,
+    ),
+    (
+        &ascii(b"decoding"),
+        &ascii(b"get decoding"),
+        &ascii(b"set decoding"),
+        &ascii(b"decoding"),
+        Reflection::Decoding,
+    ),
+    (
+        &ascii(b"loading"),
+        &ascii(b"get loading"),
+        &ascii(b"set loading"),
+        &ascii(b"loading"),
+        Reflection::Loading,
+    ),
+    (
+        &ascii(b"fetchPriority"),
+        &ascii(b"get fetchPriority"),
+        &ascii(b"set fetchPriority"),
+        &ascii(b"fetchpriority"),
+        Reflection::FetchPriority,
+    ),
+    (
+        &ascii(b"name"),
+        &ascii(b"get name"),
+        &ascii(b"set name"),
+        &ascii(b"name"),
+        Reflection::String,
+    ),
+    (
+        &ascii(b"align"),
+        &ascii(b"get align"),
+        &ascii(b"set align"),
+        &ascii(b"align"),
+        Reflection::String,
+    ),
+    (
+        &ascii(b"hspace"),
+        &ascii(b"get hspace"),
+        &ascii(b"set hspace"),
+        &ascii(b"hspace"),
+        Reflection::UnsignedLong,
+    ),
+    (
+        &ascii(b"vspace"),
+        &ascii(b"get vspace"),
+        &ascii(b"set vspace"),
+        &ascii(b"vspace"),
+        Reflection::UnsignedLong,
+    ),
+    (
+        &ascii(b"border"),
+        &ascii(b"get border"),
+        &ascii(b"set border"),
+        &ascii(b"border"),
+        Reflection::StringNullToEmpty,
+    ),
+];
 
 #[derive(Clone, Copy)]
 enum RequestRead {
@@ -17,6 +138,16 @@ enum Readback {
 }
 
 pub(super) fn install<'scope>(
+    scope: &mut Scope<'scope>,
+    prototype: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    reflection::install(scope, prototype, capture, Receiver::Image, BEFORE_REQUEST)?;
+    install_request(scope, prototype, capture)?;
+    reflection::install(scope, prototype, capture, Receiver::Image, AFTER_REQUEST)
+}
+
+fn install_request<'scope>(
     scope: &mut Scope<'scope>,
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
@@ -66,7 +197,8 @@ impl Capture {
         arguments: Arguments<'scope>,
         readback: RequestRead,
     ) -> Result<Completion<'scope>, Error> {
-        let required = &ascii(b"HTMLImageElement required");
+        let receiver = Receiver::Image;
+        let required = receiver.error_message();
         let Some(GuestNode::Element(id)) = tree::projected_node(scope, arguments.receiver())?
         else {
             return Ok(Completion::Throw(scope.type_error(required)?));
@@ -75,8 +207,7 @@ impl Capture {
         let result = (|| {
             let value = self.callbacks.with_read(&owner, &events, |read, _| {
                 let node = read.node(id)?;
-                read.step()?;
-                if !html_element_is(node, "HTMLImageElement") {
+                if !receiver.matches(node, || read.step())? {
                     return Ok(None);
                 }
                 let image = node.as_img().ok_or(DomError::WrongNodeKind)?;

@@ -1,18 +1,51 @@
 //! Exact numeric content values and submitter keyword overrides.
 //!
-//! These clauses do not implement WebIDL getter conversion, focus navigation,
+//! These clauses do not perform Web IDL type conversion, focus navigation,
 //! canvas allocation, textarea rendering, or effective form-owner selection.
 
 use super::*;
 use crate::{
     internal::microsyntax::numeric::HtmlInteger,
     internal::microsyntax::numeric::HtmlNonNegativeInteger,
+    internal::microsyntax::numeric::try_parse_nonnegative_integer_capped_steps,
     internal::values::interpretation::HtmlDefinedAuthorState,
     internal::values::interpretation::HtmlDefinedValueReport,
     internal::values::interpretation::HtmlValueFailure,
     internal::values::interpretation::HtmlValueRecoveryState,
     internal::values::interpretation::HtmlValueReport,
 };
+
+const MAX_REFLECTED_UNSIGNED_LONG: u32 = 2_147_483_647;
+
+/// Read a plain reflected unsigned long with a zero default.
+/// Admit each reached HTML non-negative integer recovery step. Missing,
+/// malformed and above-range values read as zero.
+pub fn unsigned_long_reflection_with<E>(
+    raw: Option<&[u16]>,
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<u32, E> {
+    let Some(raw) = raw else { return Ok(0) };
+    // Saturate one above the reflected range to distinguish overflow from
+    // the largest accepted value without accumulating an unbounded integer.
+    let parsed = try_parse_nonnegative_integer_capped_steps(
+        raw,
+        MAX_REFLECTED_UNSIGNED_LONG as usize + 1,
+        &mut step,
+    )?;
+    Ok(parsed
+        .ok()
+        .and_then(|value| u32::try_from(value).ok())
+        .map_or(0, unsigned_long_setter_value))
+}
+
+/// Select the reflected unsigned-long content value after Web IDL conversion.
+pub const fn unsigned_long_setter_value(value: u32) -> u32 {
+    if value <= MAX_REFLECTED_UNSIGNED_LONG {
+        value
+    } else {
+        0
+    }
+}
 
 /// Numeric-value author conformance, separate from prefix recovery/defaults.
 /// This does not establish additional element or tree-context conformance.
@@ -1466,5 +1499,49 @@ impl HtmlValueInterpreter {
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlListIntegerAttributeReport, HtmlValueAdmissionError> {
         self.list_integer_attribute(LI_VALUE, element, raw)
+    }
+}
+
+#[cfg(test)]
+mod unsigned_long_reflection_tests {
+    use super::*;
+    use std::convert::Infallible;
+
+    #[test]
+    fn unsigned_long_admits_recovery_and_uses_zero_outside_the_range() {
+        for (raw, expected) in [
+            (" \t+7tail", 7),
+            ("-1", 0),
+            ("-0", 0),
+            ("2147483647", 2_147_483_647),
+            ("2147483648", 0),
+            ("99999999999999999999", 0),
+        ] {
+            let raw = raw.encode_utf16().collect::<Vec<_>>();
+            let mut work = 0;
+            let accepted = unsigned_long_reflection_with(Some(&raw), || {
+                work += 1;
+                Ok::<_, Infallible>(())
+            });
+            assert_eq!(accepted.unwrap(), expected);
+            assert!(work > 0, "nonempty input must require admission");
+            let mut left = work - 1;
+            let refused = unsigned_long_reflection_with(Some(&raw), || {
+                if left == 0 {
+                    return Err("first refusal");
+                }
+                left -= 1;
+                Ok(())
+            });
+            assert_eq!(refused, Err("first refusal"));
+        }
+        assert_eq!(
+            unsigned_long_reflection_with(Some(&[]), || Err("unused")),
+            Ok(0)
+        );
+        assert_eq!(unsigned_long_reflection_with(None, || Err("unused")), Ok(0));
+        assert_eq!(unsigned_long_setter_value(2_147_483_647), 2_147_483_647);
+        assert_eq!(unsigned_long_setter_value(2_147_483_648), 0);
+        assert_eq!(unsigned_long_setter_value(u32::MAX), 0);
     }
 }

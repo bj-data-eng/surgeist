@@ -1487,8 +1487,8 @@ total_enum_rule!(CLOSEDBY, CLOSEDBY_DEFAULTS, HtmlClosedByState, Closedby, Conte
 total_enum_rule!(FORM_AUTOCOMPLETE, FORM_AUTOCOMPLETE_DEFAULTS, HtmlFormAutocomplete, Autocomplete, Context::Elements(&[KnownHtmlElement::Form]), [13], "attr-form-autocomplete",
     HtmlFormAutocomplete::On, HtmlFormAutocomplete::On, None,
     ["on" => ("on", HtmlFormAutocomplete::On), "off" => ("off", HtmlFormAutocomplete::Off)]);
-enum_rule!(DECODING, HtmlDecoding, Decoding, Context::Elements(&[KnownHtmlElement::Img]), [38], "attr-img-decoding",
-    Some(HtmlDecoding::Auto), Some(HtmlDecoding::Auto), None,
+total_enum_rule!(DECODING, DECODING_DEFAULTS, HtmlDecoding, Decoding, Context::Elements(&[KnownHtmlElement::Img]), [38], "attr-img-decoding",
+    HtmlDecoding::Auto, HtmlDecoding::Auto, None,
     ["sync" => ("sync", HtmlDecoding::Sync), "async" => ("async", HtmlDecoding::Async), "auto" => ("auto", HtmlDecoding::Auto)]);
 // The shared defining grammar is applied by attr-img-loading,
 // attr-iframe-loading and attr-media-loading (audio/video).
@@ -3202,6 +3202,16 @@ pub(crate) mod bounded_rules {
         admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
     ) -> Result<HtmlFetchPriority, E> {
         total_enum_value_with(&FETCHPRIORITY, &FETCHPRIORITY_DEFAULTS, raw, admit)
+    }
+
+    /// Decoding hint for an already qualified caller.
+    /// Admit reached comparisons over the exact value. Missing and invalid
+    /// attributes select the Auto state.
+    pub fn decoding_processing_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<HtmlDecoding, E> {
+        total_enum_value_with(&DECODING, &DECODING_DEFAULTS, raw, admit)
     }
 
     /// Loading content-state processing for an already qualified caller.
