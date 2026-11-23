@@ -36,6 +36,12 @@ pub(in crate::document_scripting) fn document_element_factories_use_native_names
                 let preservedThrow = false;
                 try { document.createElement('div', {get is() { throw original; }}); }
                 catch (error) { preservedThrow = error === original; }
+                let rejectedCoercions = 0;
+                const guarded = {toString() { ++rejectedCoercions; return 'guarded'; }};
+                const rejectsMissingBeforeCoercion =
+                    throws(() => document.createElementNS(guarded), 'TypeError');
+                const rejectsBrandBeforeCoercion =
+                    throws(() => Document.prototype.createElement.call({}, guarded), 'TypeError');
                 const inserted = first.appendChild(second);
                 const observed = {
                     arity: document.createElement.length === 1 && document.createElementNS.length === 2,
@@ -51,6 +57,8 @@ pub(in crate::document_scripting) fn document_element_factories_use_native_names
                     conversionOrder: conversionOrder === 'nri',
                     reentry: inner instanceof HTMLSpanElement && inner.ownerDocument === document,
                     preservedThrow,
+                    arityAndBrandBeforeCoercion: rejectsMissingBeforeCoercion &&
+                        rejectsBrandBeforeCoercion && rejectedCoercions === 0,
                     legacy: document.createElement('DIV', 'x-legacy') instanceof HTMLDivElement,
                     nullRegistry: document.createElement('DIV', {customElementRegistry: null}) instanceof HTMLDivElement,
                     incompatibleOptions: throws(() => document.createElement('div', {is: 'x-local', customElementRegistry: null}), 'NotSupportedError'),

@@ -165,7 +165,12 @@ pub(super) fn install<'scope>(
         (&ascii(b"contains")[..], Method::Contains, 1, 1),
         (&ascii(b"add")[..], Method::Add, 0, u32::MAX),
         (&ascii(b"remove")[..], Method::Remove, 0, u32::MAX),
-        (&ascii(b"toggle")[..], Method::Toggle, 1, 2),
+        (
+            &ascii(b"toggle")[..],
+            Method::Toggle,
+            1,
+            declarations::DOM_TOKEN_LIST_TOGGLE_MAX_ARGUMENTS,
+        ),
         (&ascii(b"replace")[..], Method::Replace, 2, 2),
         (&ascii(b"supports")[..], Method::Supports, 1, 1),
         (&ascii(b"toString")[..], Method::Raw, 0, 0),
@@ -709,9 +714,8 @@ impl Capture {
             Method::Add | Method::Remove => {
                 self.edit_variadic_tokens(scope, (owner, events), list, arguments, method)
             }
-            Method::Toggle | Method::Replace => {
-                self.edit_token_pair(scope, (owner, events), list, &arguments, method)
-            }
+            Method::Toggle => self.toggle_token(scope, (owner, events), list, &arguments),
+            Method::Replace => self.replace_token(scope, (owner, events), list, &arguments),
             _ => Err(Error::BackendUnavailable.into()),
         }
     }
@@ -761,66 +765,82 @@ impl Capture {
         self.apply_attribute(scope, owner, events, edit, None, AttributeResult::Value)
     }
 
-    fn edit_token_pair<'scope>(
+    fn toggle_token<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         (owner, events): (&NativeOwner, &GuestEvents),
         list: DomTokenList,
         arguments: &Arguments<'scope>,
-        method: Method,
     ) -> Result<Completion<'scope>, DocumentGuestEventError> {
-        let (token, replacement, force) = self
+        let converted = self
             .callbacks
             .conversion
             .run(scope, |conversion| {
-                if matches!(method, Method::Toggle) {
-                    let token = conversion.argument(
-                        &declarations::dom_token_list_toggle_0_token(),
-                        arguments.get(0),
-                    )?;
-                    let force = conversion.argument(
-                        &declarations::dom_token_list_toggle_0_force(),
-                        arguments.get(1),
-                    )?;
-                    let force = match force.get() {
-                        ArgumentValue::Missing => None,
-                        ArgumentValue::Present(force) => Some(*force),
-                    };
-                    Ok((token, None, force))
-                } else {
-                    let token = conversion.argument(
-                        &declarations::dom_token_list_replace_0_token(),
-                        arguments.get(0),
-                    )?;
-                    let replacement = conversion.argument(
-                        &declarations::dom_token_list_replace_0_new_token(),
-                        arguments.get(1),
-                    )?;
-                    Ok((token, Some(replacement), None))
-                }
+                declarations::convert_dom_token_list_toggle(conversion, arguments)
+            })
+            .map_err(Error::from)?;
+        scope.check_active()?;
+        let force = match converted.force.get() {
+            ArgumentValue::Missing => None,
+            ArgumentValue::Present(force) => Some(*force),
+        };
+        let (token, _token_backing) =
+            copy_native_data(owner, events, converted.token.get().as_code_units())?;
+        self.apply_token_result(
+            scope,
+            (owner, events),
+            list,
+            DomTokenListEdit::Toggle { token, force },
+        )
+    }
+
+    fn replace_token<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        list: DomTokenList,
+        arguments: &Arguments<'scope>,
+    ) -> Result<Completion<'scope>, DocumentGuestEventError> {
+        let (token, replacement) = self
+            .callbacks
+            .conversion
+            .run(scope, |conversion| {
+                let token = conversion.argument(
+                    &declarations::dom_token_list_replace_0_token(),
+                    arguments.get(0),
+                )?;
+                let replacement = conversion.argument(
+                    &declarations::dom_token_list_replace_0_new_token(),
+                    arguments.get(1),
+                )?;
+                Ok((token, replacement))
             })
             .map_err(Error::from)?;
         scope.check_active()?;
         let ArgumentValue::Present(token) = token.get() else {
             return Err(Error::BackendUnavailable.into());
         };
-        let (token, _text) = copy_native_data(owner, events, token.as_code_units())?;
-        let replacement = replacement
-            .as_ref()
-            .map(|value| {
-                let ArgumentValue::Present(value) = value.get() else {
-                    return Err(Error::BackendUnavailable.into());
-                };
-                copy_native_data(owner, events, value.as_code_units())
-            })
-            .transpose()?;
-        let (edit, _replacement) = match replacement {
-            Some((replacement, backing)) => (
-                DomTokenListEdit::Replace { token, replacement },
-                Some(backing),
-            ),
-            None => (DomTokenListEdit::Toggle { token, force }, None),
+        let (token, _token_backing) = copy_native_data(owner, events, token.as_code_units())?;
+        let ArgumentValue::Present(replacement) = replacement.get() else {
+            return Err(Error::BackendUnavailable.into());
         };
+        let (replacement, _replacement_backing) =
+            copy_native_data(owner, events, replacement.as_code_units())?;
+        self.apply_token_result(
+            scope,
+            (owner, events),
+            list,
+            DomTokenListEdit::Replace { token, replacement },
+        )
+    }
+
+    fn apply_token_result<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        (owner, events): (&NativeOwner, &GuestEvents),
+        list: DomTokenList,
+        edit: DomTokenListEdit,
+    ) -> Result<Completion<'scope>, DocumentGuestEventError> {
         let edit = DomSourceEdit::edit_token_list(list, edit);
         let result = AttributeResult::TokenListResult {
             when_true: scope.primitive(Primitive::Boolean(true))?,

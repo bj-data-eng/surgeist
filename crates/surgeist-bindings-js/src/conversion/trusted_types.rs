@@ -5,7 +5,24 @@ use crate::{
 };
 use std::rc::Rc;
 
+use super::selection::{Candidate, Category, SelectionKind};
 use super::{Conversion, Converted, Failure, Nullable, Type, Work, dom_string, usv_string};
+
+#[derive(Clone, Copy)]
+enum AttributeCase {
+    Trusted,
+    String,
+}
+
+const ATTRIBUTE_CASES: &[Candidate<AttributeCase>] = &[
+    Candidate::new(
+        AttributeCase::Trusted,
+        &[Category::Interface("TrustedType")],
+        false,
+        false,
+    ),
+    Candidate::new(AttributeCase::String, &[Category::String], false, false),
+];
 
 impl<'scope> Conversion<'_, 'scope> {
     /// Invoke a selected default-policy option with the original input, the
@@ -85,15 +102,26 @@ pub(super) fn attribute_value<'scope>(
     cx: &mut Conversion<'_, 'scope>,
     input: &Value<'scope>,
 ) -> Result<Converted<TrustedAttributeValue>, Failure> {
-    let branded = cx.scope.trusted_type(input);
-    if let Some(branded) = cx.core(branded)? {
-        return Ok(cx.plain(TrustedAttributeValue::Trusted(branded)));
+    let mut branded = None;
+    let (case, _) = cx.select(
+        SelectionKind::Union,
+        "TrustedType or DOMString",
+        input,
+        ATTRIBUTE_CASES,
+        |cx, _, input| {
+            let result = cx.scope.trusted_type(input);
+            branded = cx.core(result)?;
+            Ok(branded.is_some())
+        },
+    )?;
+    match case {
+        AttributeCase::Trusted => branded
+            .map(|value| cx.plain(TrustedAttributeValue::Trusted(value)))
+            .ok_or_else(|| cx.host(Error::BackendUnavailable)),
+        AttributeCase::String => {
+            dom_string(cx, input).map(|value| value.map(TrustedAttributeValue::String))
+        }
     }
-    let Converted { value, storage } = dom_string(cx, input)?;
-    Ok(Converted {
-        value: TrustedAttributeValue::String(value),
-        storage,
-    })
 }
 
 /// The selected nullable return conversion for a Trusted Type policy callback.

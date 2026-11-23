@@ -3,11 +3,18 @@ use std::mem;
 use crate::{Error, PropertyKey, Value, ValueKind, WellKnownSymbol};
 
 use super::composition::sealed;
+use super::selection::SelectedInput;
 use super::{Conversion, Converted, Descriptor, Failure, Nullable, Rule, Work};
 
 /// A synchronous IDL sequence of a closed typed descriptor. Each element keeps
 /// its own conversion custody; the outer result also owns the requested slots.
 pub struct Sequence<D>(pub(super) D);
+
+/// The original object and callable iterator method from one GetMethod lookup.
+pub struct IteratorSource<'input, 'scope> {
+    input: &'input Value<'scope>,
+    method: Value<'scope>,
+}
 
 impl<D: Descriptor> Sequence<D> {
     pub fn sequence(self) -> Sequence<Self> {
@@ -27,7 +34,25 @@ impl<D: Descriptor> sealed::Convert<Vec<Converted<D::Output>>> for Sequence<D> {
         input: &Value<'s>,
     ) -> Result<Converted<Vec<Converted<D::Output>>>, Failure> {
         cx.work(Work::Value, 1).map_err(Failure)?;
-        cx.sequence(&self.0, input)
+        cx.iterator_object(input)?;
+        let Some(source) = cx.probe_iterator(input)? else {
+            return Err(cx.validation(Rule::Sequence));
+        };
+        cx.sequence_from(&self.0, source)
+    }
+
+    fn convert_selected<'s>(
+        &self,
+        cx: &mut Conversion<'_, 's>,
+        input: SelectedInput<'_, 's>,
+    ) -> Result<Converted<Vec<Converted<D::Output>>>, Failure> {
+        match input {
+            SelectedInput::Value(value) => self.convert(cx, value),
+            SelectedInput::Iterable(source) => {
+                cx.work(Work::Value, 1).map_err(Failure)?;
+                cx.sequence_from(&self.0, source)
+            }
+        }
     }
 }
 
@@ -64,17 +89,34 @@ impl<'s> Conversion<'_, 's> {
         Ok(())
     }
 
-    fn sequence<D: Descriptor>(
+    /// Perform GetMethod for an input already checked to be an object.
+    pub(super) fn probe_iterator<'input>(
         &mut self,
-        ty: &D,
-        input: &Value<'s>,
-    ) -> Result<Converted<Vec<Converted<D::Output>>>, Failure> {
-        self.iterator_object(input)?;
+        input: &'input Value<'s>,
+    ) -> Result<Option<IteratorSource<'input, 's>>, Failure> {
         let result = self.scope.well_known_symbol(WellKnownSymbol::Iterator);
         let symbol = self.core(result)?;
-        // GetMethod and GetIteratorFromMethod cache these original values.
         let method = self.iterator_get(input, PropertyKey::Value(&symbol))?;
-        let iterator = self.iterator_call(&method, input)?;
+        let kind = self.scope.kind(&method);
+        if matches!(self.core(kind)?, ValueKind::Null | ValueKind::Undefined) {
+            return Ok(None);
+        }
+        let callable = self.scope.is_callable(&method);
+        if !self.core(callable)? {
+            return Err(self.validation(Rule::Sequence));
+        }
+        Ok(Some(IteratorSource { input, method }))
+    }
+
+    pub(super) fn sequence_from<D: Descriptor>(
+        &mut self,
+        ty: &D,
+        source: IteratorSource<'_, 's>,
+    ) -> Result<Converted<Vec<Converted<D::Output>>>, Failure> {
+        let IteratorSource { input, method } = source;
+        self.work(Work::IteratorOperation, 1).map_err(Failure)?;
+        let result = self.scope.call(&method, input, &[]);
+        let iterator = self.core(result)?;
         self.iterator_object(&iterator)?;
         let next = self.iterator_get(&iterator, PropertyKey::String(&[110, 101, 120, 116]))?;
         let mut output = self.plain(Vec::new());

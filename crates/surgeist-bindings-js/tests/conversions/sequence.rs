@@ -362,6 +362,7 @@ fn bounded_growth(cut: Cut) -> TestResult {
             IteratorOperation: if matches!(cut, Cut::Iterator) { 19 } else { 20 },
             SequenceItem: if matches!(cut, Cut::Item) { 4 } else { 5 },
             SequenceMove: if matches!(cut, Cut::Movement) { 3 } else { 4 },
+            Selection: 0,
         }),
         ResourceTable::new(ResourceFields {
             BufferBytes: if matches!(cut, Cut::Storage) {

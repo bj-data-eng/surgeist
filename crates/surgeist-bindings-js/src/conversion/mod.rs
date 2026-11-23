@@ -13,6 +13,7 @@ mod listener;
 mod local;
 pub(crate) mod registry;
 mod security_policy_violation;
+mod selection;
 mod sequence;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -313,6 +314,14 @@ impl<'scope> Conversion<'_, 'scope> {
         value: &Value<'scope>,
     ) -> Result<Converted<D::Output>, Failure> {
         composition::sealed::Convert::convert(ty, self, value)
+    }
+
+    fn selected_value<D: Descriptor>(
+        &mut self,
+        ty: &D,
+        value: selection::SelectedInput<'_, 'scope>,
+    ) -> Result<Converted<D::Output>, Failure> {
+        composition::sealed::Convert::convert_selected(ty, self, value)
     }
 
     fn typed<T>(&mut self, ty: &Type<T>, value: &Value<'scope>) -> Result<Converted<T>, Failure> {

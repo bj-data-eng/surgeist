@@ -269,6 +269,7 @@ fn admission_is_exact_and_terminal(storage_short: bool) -> TestResult {
             IteratorOperation: 0,
             SequenceItem: 0,
             SequenceMove: 0,
+            Selection: 0,
         }),
         ResourceTable::new(ResourceFields {
             BufferBytes: if storage_short { 5 } else { 6 },
@@ -320,6 +321,7 @@ fn exact_admission_and_cross_realm_account(process: &mut Process) -> TestResult 
             IteratorOperation: 0,
             SequenceItem: 0,
             SequenceMove: 0,
+            Selection: 0,
         }),
         ResourceTable::new(ResourceFields { BufferBytes: 6 }),
     );

@@ -385,6 +385,54 @@ interface Fixture {
                 with self.assertRaisesRegex(g.DescriptionError, "indistinguishable"):
                     g.generate(data, root)
 
+    def test_installed_operations_use_authored_arity_and_union_categories(self):
+        definitions, names = g.validate(self.data)
+        selection = g.lower_selection_shapes(definitions, names)
+        for interface, operation, expected in [
+            ("Document", "createElement", (1, 2)),
+            ("Document", "createElementNS", (2, 3)),
+            ("DOMTokenList", "toggle", (1, 2)),
+        ]:
+            with self.subTest(interface=interface, operation=operation):
+                group = selection.groups[interface, "operation", operation]
+                self.assertEqual(tuple(sorted(group.rows)), expected)
+                self.assertEqual(group.maximum_arity, max(expected))
+                for row in group.rows.values():
+                    self.assertEqual(row.candidate_ids, (f"{interface}.{operation}:0",))
+                    self.assertIsNone(row.distinguishing_index)
+                if interface == "Document":
+                    options = group.arguments[f"{interface}.{operation}:0"][-1]
+                    self.assertEqual(options["default"], {"kind": "empty_dictionary"})
+                    shape = selection.flatten_type(options["type"])
+                    self.assertEqual([(atom.kind, atom.name) for atom in shape.atoms], [
+                        ("string", "DOMString"), ("dictionary", "ElementCreationOptions"),
+                    ])
+                else:
+                    force = group.arguments["DOMTokenList.toggle:0"][-1]
+                    self.assertEqual(force["presence"], "optional")
+                    self.assertNotIn("default", force)
+
+    def test_overloads_lower_competing_categories_after_the_common_prefix(self):
+        word = {"name": "prefix", "presence": "required", "type": {"kind": "named", "name": "DOMString"}}
+        values = {"name": "value", "presence": "required", "type": {
+            "kind": "sequence", "inner": {"kind": "named", "name": "DOMString"},
+        }}
+        options = {"name": "value", "presence": "required",
+                   "type": {"kind": "named", "name": "Options"}}
+        calls = [{"id": f"Fixture.call:{index}", "kind": "operation", "name": "call",
+                  "arguments": [word, argument]} for index, argument in enumerate([options, values])]
+        definitions = {
+            "Fixture": {"name": "Fixture", "kind": "interface", "attributes": [], "members": calls},
+            "Options": {"name": "Options", "kind": "dictionary", "attributes": [], "members": []},
+        }
+        selection = g.lower_selection_shapes(definitions, {"Fixture": "interface", "Options": "dictionary"})
+        group = selection.groups["Fixture", "operation", "call"]
+        self.assertEqual(tuple(group.rows), (2,))
+        row = group.rows[2]
+        self.assertEqual(row.candidate_ids, ("Fixture.call:0", "Fixture.call:1"))
+        self.assertEqual(row.distinguishing_index, 1)
+        self.assertEqual([shape.atoms[0].kind for shape in row.categories], ["dictionary", "sequence"])
+
     def test_actual_retained_blocks_and_generated_bytes_correspond(self):
         # This is an explicit generated-artifact contract. Source token equality
         # is the oracle, not a copy of today's generated Rust as a semantic test.

@@ -21,6 +21,8 @@ surgeist_ledger::dimensions! {
         EnumerationLookup,
         /// One declared argument presence/default decision.
         Argument,
+        /// One declared selection decision or reached native brand probe.
+        Selection,
         /// One dictionary member visited, before reading guest properties.
         DictionaryMember,
         /// One iterator property read or invocation, before entering guest code.
@@ -420,5 +422,13 @@ pub struct Converted<T> {
 impl<T> Converted<T> {
     pub fn get(&self) -> &T {
         &self.value
+    }
+
+    pub(super) fn map<U>(self, convert: impl FnOnce(T) -> U) -> Converted<U> {
+        let Self { value, storage } = self;
+        Converted {
+            value: convert(value),
+            storage,
+        }
     }
 }

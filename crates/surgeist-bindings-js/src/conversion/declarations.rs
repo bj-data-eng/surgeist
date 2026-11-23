@@ -2,7 +2,10 @@
 // Source-adapted WHATWG and W3C declarations: see the crate NOTICE.md.
 //! Closed scoped conversion descriptors from the retained declarations.
 
+use super::ArgumentValue;
 use super::HiddenAttributeValue;
+use super::composition::{ElementCreationCase, HiddenCase, ImportNodeCase};
+use super::selection::{Candidate, Category};
 use super::{
     Argument, Conversion, Converted, Enumeration, Failure, IntegerType, Nullable, Type, types,
 };
@@ -24,6 +27,37 @@ use crate::declarations::ShadowRootInit;
 use crate::declarations::ShadowRootMode;
 use crate::declarations::SlotAssignmentMode;
 use crate::{DomString, IntegerKind, IntegerMode, IntegerValue, UsvString, Value};
+
+pub(super) static ELEMENT_CREATION_CASES: &[Candidate<ElementCreationCase>] = &[
+    Candidate::new(
+        ElementCreationCase::String,
+        &[Category::String],
+        false,
+        false,
+    ),
+    Candidate::new(
+        ElementCreationCase::Options,
+        &[Category::Dictionary],
+        false,
+        false,
+    ),
+];
+
+pub(super) static IMPORT_NODE_CASES: &[Candidate<ImportNodeCase>] = &[
+    Candidate::new(ImportNodeCase::Subtree, &[Category::Boolean], false, false),
+    Candidate::new(
+        ImportNodeCase::Options,
+        &[Category::Dictionary],
+        false,
+        false,
+    ),
+];
+
+pub(super) static HIDDEN_CASES: &[Candidate<HiddenCase>] = &[
+    Candidate::new(HiddenCase::Boolean, &[Category::Boolean], false, false),
+    Candidate::new(HiddenCase::Number, &[Category::Number], false, false),
+    Candidate::new(HiddenCase::String, &[Category::String], false, false),
+];
 
 /// Scoped conversion for `ShadowRootMode`.
 pub fn shadow_root_mode() -> Enumeration<ShadowRootMode> {
@@ -3002,4 +3036,95 @@ pub fn htmli_frame_element_obsolete_margin_height_setter() -> Type<DomString> {
 /// Selected setter conversion for `HTMLIFrameElement.obsolete.marginWidth`.
 pub fn htmli_frame_element_obsolete_margin_width_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Maximum argument capture for `Document.createElement`.
+pub const DOCUMENT_CREATE_ELEMENT_MAX_ARGUMENTS: u32 = 2;
+
+/// Converted arguments for `Document.createElement`.
+pub struct DocumentCreateElementArguments {
+    pub local_name: Converted<DomString>,
+    pub options: Converted<ElementCreationArgument>,
+}
+
+/// Selects arity and converts arguments for `Document.createElement`.
+pub fn convert_document_create_element<'s>(
+    cx: &mut Conversion<'_, 's>,
+    arguments: &crate::Arguments<'s>,
+) -> Result<DocumentCreateElementArguments, Failure> {
+    cx.effective_arity(
+        "Document.createElement",
+        arguments.len(),
+        DOCUMENT_CREATE_ELEMENT_MAX_ARGUMENTS as usize,
+        &[1, 2],
+    )?;
+    let descriptor = document_create_element_0_local_name();
+    let local_name = cx.generated_required_argument(&descriptor, arguments.get(0))?;
+    let descriptor = document_create_element_0_options();
+    let options = cx.generated_required_argument(&descriptor, arguments.get(1))?;
+    Ok(DocumentCreateElementArguments {
+        local_name,
+        options,
+    })
+}
+
+/// Maximum argument capture for `Document.createElementNS`.
+pub const DOCUMENT_CREATE_ELEMENT_NS_MAX_ARGUMENTS: u32 = 3;
+
+/// Converted arguments for `Document.createElementNS`.
+pub struct DocumentCreateElementNsArguments {
+    pub namespace: Converted<Option<DomString>>,
+    pub qualified_name: Converted<DomString>,
+    pub options: Converted<ElementCreationArgument>,
+}
+
+/// Selects arity and converts arguments for `Document.createElementNS`.
+pub fn convert_document_create_element_ns<'s>(
+    cx: &mut Conversion<'_, 's>,
+    arguments: &crate::Arguments<'s>,
+) -> Result<DocumentCreateElementNsArguments, Failure> {
+    cx.effective_arity(
+        "Document.createElementNS",
+        arguments.len(),
+        DOCUMENT_CREATE_ELEMENT_NS_MAX_ARGUMENTS as usize,
+        &[2, 3],
+    )?;
+    let descriptor = document_create_element_ns_0_namespace();
+    let namespace = cx.generated_required_argument(&descriptor, arguments.get(0))?;
+    let descriptor = document_create_element_ns_0_qualified_name();
+    let qualified_name = cx.generated_required_argument(&descriptor, arguments.get(1))?;
+    let descriptor = document_create_element_ns_0_options();
+    let options = cx.generated_required_argument(&descriptor, arguments.get(2))?;
+    Ok(DocumentCreateElementNsArguments {
+        namespace,
+        qualified_name,
+        options,
+    })
+}
+
+/// Maximum argument capture for `DOMTokenList.toggle`.
+pub const DOM_TOKEN_LIST_TOGGLE_MAX_ARGUMENTS: u32 = 2;
+
+/// Converted arguments for `DOMTokenList.toggle`.
+pub struct DomTokenListToggleArguments {
+    pub token: Converted<DomString>,
+    pub force: Converted<ArgumentValue<bool>>,
+}
+
+/// Selects arity and converts arguments for `DOMTokenList.toggle`.
+pub fn convert_dom_token_list_toggle<'s>(
+    cx: &mut Conversion<'_, 's>,
+    arguments: &crate::Arguments<'s>,
+) -> Result<DomTokenListToggleArguments, Failure> {
+    cx.effective_arity(
+        "DOMTokenList.toggle",
+        arguments.len(),
+        DOM_TOKEN_LIST_TOGGLE_MAX_ARGUMENTS as usize,
+        &[1, 2],
+    )?;
+    let descriptor = dom_token_list_toggle_0_token();
+    let token = cx.generated_required_argument(&descriptor, arguments.get(0))?;
+    let descriptor = dom_token_list_toggle_0_force();
+    let force = cx.argument(&descriptor, arguments.get(1))?;
+    Ok(DomTokenListToggleArguments { token, force })
 }
