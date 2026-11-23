@@ -29782,58 +29782,61 @@
       }
     },
     "HTMLLinkElement.crossOrigin/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose crossOrigin with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.crossorigin.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "crossorigin_processing_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.crossOrigin/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose crossOrigin with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.crossorigin.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLLinkElement.rel/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Read the exact current null-namespace rel content using the ordinary Link DOMString reflection.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.rel.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.rel/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose the canonical Link rel contract including reached processing over the native Source edit.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 3232
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.rel.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLLinkElement.as/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose as with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.as.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes/link_destination.rs", "symbol": "link_as_keyword_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.as/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose as with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.as.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLLinkElement.relList/get": {
       "kind": "native",
@@ -29860,76 +29863,76 @@
       "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
     },
     "HTMLLinkElement.media/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Read the exact current null-namespace media content using the ordinary Link DOMString reflection.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.media.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.media/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose the canonical Link media contract including reached processing over the native Source edit.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 3232
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.media.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLLinkElement.integrity/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose integrity with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.integrity.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.integrity/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose integrity with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.integrity.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLLinkElement.hreflang/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose hreflang with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.hreflang.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.hreflang/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose hreflang with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.hreflang.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLLinkElement.type/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Read the exact current null-namespace type content using the ordinary Link DOMString reflection.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.type.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.type/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose the canonical Link type contract including reached processing over the native Source edit.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 3232
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.type.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLLinkElement.sizes/get": {
       "kind": "native",
@@ -29956,58 +29959,59 @@
       "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
     },
     "HTMLLinkElement.imageSrcset/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose imageSrcset with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.imagesrcset.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.imageSrcset/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose imageSrcset with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.imagesrcset.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLLinkElement.imageSizes/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose imageSizes with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.imagesizes.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.imageSizes/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose imageSizes with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.imagesizes.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLLinkElement.referrerPolicy/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose referrerPolicy with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.referrerpolicy.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "referrerpolicy_processing_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.referrerPolicy/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose referrerPolicy with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.referrerpolicy.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLLinkElement.blocking/get": {
       "kind": "native",
@@ -30034,94 +30038,96 @@
       "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
     },
     "HTMLLinkElement.disabled/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Reflect presence of the Link null-namespace disabled content attribute.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.disabled.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.disabled/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose the canonical Link disabled contract including reached processing over the native Source edit.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 3232
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.disabled.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLLinkElement.fetchPriority/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose fetchPriority with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.fetchpriority.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "fetchpriority_processing_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.fetchPriority/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose fetchPriority with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.fetchpriority.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLLinkElement.obsolete.charset/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose charset with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLLinkElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.obsolete.charset.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.obsolete.charset/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose charset with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLLinkElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.obsolete.charset.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLLinkElement.obsolete.rev/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose rev with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLLinkElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.obsolete.rev.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.obsolete.rev/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose rev with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLLinkElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.obsolete.rev.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLLinkElement.obsolete.target/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose target with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLLinkElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.obsolete.target.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLLinkElement.obsolete.target/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose target with the pinned Link semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLLinkElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmllinkelement.obsolete.target.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": [{"owner": "surgeist-dom", "contract": "Qualify reached hosted Link processing before publication.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-link-element", "issue": 3232}]
     },
     "HTMLStyleElement.constructor:0/construct": {
       "kind": "native",
@@ -30154,22 +30160,22 @@
       }
     },
     "HTMLStyleElement.media/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose media with the pinned Style semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlstyleelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmlstyleelement.media.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLStyleElement.media/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose media with the pinned Style semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlstyleelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmlstyleelement.media.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLStyleElement.blocking/get": {
       "kind": "native",
@@ -30196,22 +30202,22 @@
       "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
     },
     "HTMLStyleElement.obsolete.type/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose type with the pinned Style semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLStyleElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmlstyleelement.obsolete.type.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLStyleElement.obsolete.type/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose type with the pinned Style semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLStyleElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmlstyleelement.obsolete.type.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.constructor:0/construct": {
       "kind": "native",

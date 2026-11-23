@@ -37,6 +37,7 @@ pub use crate::internal::attributes::image_values::{
     HtmlEmbeddedDimensionEvidenceNeeded, HtmlEmbeddedDimensionParent,
     embedded_dimension_applicability,
 };
+pub use crate::internal::attributes::link_destination::link_as_keyword_with;
 pub use crate::internal::attributes::meta_pragma::meta_pragma_state_with;
 pub use crate::internal::attributes::meta_processing::{
     HtmlMetaRefreshAction, HtmlMetaRefreshSyntaxTarget, meta_language_token_with,

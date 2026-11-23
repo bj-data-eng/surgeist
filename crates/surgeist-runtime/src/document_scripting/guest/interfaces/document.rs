@@ -54,6 +54,7 @@ mod label;
 mod legacy;
 mod legend;
 mod li;
+mod link_style_attributes;
 mod list_compact;
 mod lists;
 mod local_strings;

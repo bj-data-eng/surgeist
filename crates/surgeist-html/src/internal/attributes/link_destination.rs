@@ -242,6 +242,15 @@ impl HtmlLinkDestinationReport {
     }
 }
 
+/// Known-value readback for a qualified Link's exact UTF-16 as attribute.
+/// Admission covers the shared vocabulary and observes no resource state.
+pub fn link_as_keyword_with<E>(
+    raw: Option<&[u16]>,
+    admit: impl FnMut(bounded_rules::HtmlAttributeKeywordRead) -> Result<(), E>,
+) -> Result<&'static str, E> {
+    bounded_rules::reflected_keyword_with(&LINK_AS, raw, admit).map(|value| value.unwrap_or(""))
+}
+
 impl HtmlValueInterpreter {
     /// Interprets only the link as content enum. Actual rel requirements remain
     /// Unchecked, including required presence when the as attribute is absent.

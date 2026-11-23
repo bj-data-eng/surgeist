@@ -3159,7 +3159,7 @@ pub(crate) mod bounded_rules {
         })
     }
 
-    fn reflected_keyword_with<T: Copy + PartialEq, E>(
+    pub(super) fn reflected_keyword_with<T: Copy + PartialEq, E>(
         rule: &EnumRule<T>,
         raw: Option<&[u16]>,
         mut admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
