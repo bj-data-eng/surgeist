@@ -16782,7 +16782,7 @@
         "owner": "surgeist-bindings-js",
         "contract": "Provide the same live HTMLOptionsCollection object backed by the canonical Select option list and its legacy platform object behavior.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-options",
-        "issue": 2480
+        "issue": 3250
       },
       "result_view": "live"
     },
@@ -16792,7 +16792,7 @@
         "owner": "surgeist-bindings-js",
         "contract": "Expose the canonical HTMLOptionsCollection length through its Select forwarding binding.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-length",
-        "issue": 2480
+        "issue": 3250
       }
     },
     "HTMLSelectElement.length/set": {
@@ -16801,7 +16801,7 @@
         "owner": "surgeist-bindings-js",
         "contract": "Apply the HTMLOptionsCollection length setter through native Source option insertion and removal.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-length",
-        "issue": 2480
+        "issue": 3250
       }
     },
     "HTMLSelectElement.item:0/call": {
@@ -16810,7 +16810,7 @@
         "owner": "surgeist-bindings-js",
         "contract": "Return the canonical Option at the requested index, including the Select object's legacy indexed getter.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-item",
-        "issue": 2480
+        "issue": 3250
       }
     },
     "HTMLSelectElement.namedItem:0/call": {
@@ -16819,7 +16819,7 @@
         "owner": "surgeist-bindings-js",
         "contract": "Apply HTMLOptionsCollection named lookup over the current option list and project the actual Option.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-nameditem",
-        "issue": 2480
+        "issue": 3250
       }
     },
     "HTMLSelectElement.add:0/call": {
@@ -16828,7 +16828,7 @@
         "owner": "surgeist-bindings-js",
         "contract": "Resolve the declared element and before unions, then apply the HTMLOptionsCollection insertion algorithm through native Source.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-add",
-        "issue": 2480
+        "issue": 3250
       }
     },
     "HTMLSelectElement.remove:0/call": {
@@ -16836,7 +16836,8 @@
       "requirement": {
         "owner": "surgeist-runtime",
         "contract": "Install the Select overload dispatcher with the inherited ChildNode detach path for zero arguments.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-remove"
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-remove",
+        "issue": 3250
       }
     },
     "HTMLSelectElement.remove:1/call": {
@@ -16845,7 +16846,7 @@
         "owner": "surgeist-bindings-js",
         "contract": "Dispatch the converted indexed overload to the HTMLOptionsCollection native Source removal algorithm.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-remove",
-        "issue": 2480
+        "issue": 3250
       }
     },
     "HTMLSelectElement.operation:0/index-set": {
@@ -16854,7 +16855,7 @@
         "owner": "surgeist-bindings-js",
         "contract": "Provide the legacy Select indexed setter and forward the indexed assignment to the HTMLOptionsCollection native Source algorithm.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-setter",
-        "issue": 2480
+        "issue": 3250
       }
     },
     "HTMLSelectElement.selectedOptions/get": {
@@ -16863,7 +16864,7 @@
         "owner": "surgeist-bindings-js",
         "contract": "Provide the same live HTMLCollection over currently selected Options in canonical option-list order, with legacy collection behavior.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-selectedoptions",
-        "issue": 2480
+        "issue": 3250
       },
       "result_view": "live"
     },
@@ -16951,7 +16952,8 @@
       "requirement": {
         "owner": "surgeist-runtime",
         "contract": "Apply the native picker eligibility and activation steps before invoking the actual host picker.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-showpicker"
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-select-showpicker",
+        "issue": 3261
       }
     },
     "HTMLSelectElement.labels/get": {
@@ -16960,7 +16962,7 @@
         "owner": "surgeist-bindings-js",
         "contract": "Provide the live NodeList of the Select's associated labels and its legacy indexed behavior.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
-        "issue": 2480
+        "issue": 3248
       },
       "result_view": "live"
     },
@@ -18557,8 +18559,14 @@
         },
         {
           "owner": "surgeist-dom",
-          "contract": "Supply the reached native element-family initializers and hosted frame, iframe, and SVG Script state where the current native profile refuses them.",
+          "contract": "Supply the other reached native element-family initializers and hosted SVG Script state where the current native profile refuses them.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#concept-create-element"
+        },
+        {
+          "owner": "surgeist-dom",
+          "contract": "Admit canonical detached Frame and Iframe creation in supported already-hosted Documents while preserving the native initial null-child state.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#concept-create-element",
+          "issue": 3282
         }
       ]
     },
@@ -18577,8 +18585,14 @@
         },
         {
           "owner": "surgeist-dom",
-          "contract": "Supply the reached native element-family initializers and hosted frame, iframe, and SVG Script state where the current native profile refuses them.",
+          "contract": "Supply the other reached native element-family initializers and hosted SVG Script state where the current native profile refuses them.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#concept-create-element"
+        },
+        {
+          "owner": "surgeist-dom",
+          "contract": "Admit canonical detached Frame and Iframe creation in supported already-hosted Documents while preserving the native initial null-child state.",
+          "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#concept-create-element",
+          "issue": 3282
         }
       ]
     },
@@ -20304,7 +20318,8 @@
       "requirement": {
         "owner": "surgeist-runtime",
         "contract": "The actual response last-modified metadata or source clock fallback and its required local-date serialization, tied to this Document.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-lastmodified"
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-lastmodified",
+        "issue": 3217
       }
     },
     "Document.html.readyState/get": {
@@ -21686,7 +21701,7 @@
         "owner": "surgeist-runtime",
         "contract": "Supply the exact URL reflection against the current owned Document base and encoding, using qualified parsing and serialization.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-mod-cite",
-        "issue": 3240
+        "issue": 3257
       },
       "result_view": "value"
     },
@@ -21696,7 +21711,7 @@
         "owner": "surgeist-runtime",
         "contract": "Expose the paired USVString URL reflection through the canonical null-namespace cite Source setter.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-mod-cite",
-        "issue": 3240
+        "issue": 3257
       },
       "result_view": "value"
     },
@@ -23294,27 +23309,57 @@
     },
     "HTMLScriptElement.innerText/get": {
       "kind": "host",
-      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the actual Script rendered-text read and apply the TrustedScript compliance and script-text write on assignment.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-innertext", "issue": 2258}
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Read the Script rendered-text result with its actual presentation facts and the paired source sink.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-innertext",
+        "issue": 2259
+      }
     },
     "HTMLScriptElement.innerText/set": {
       "kind": "host",
-      "requirement": {"owner": "surgeist-runtime", "contract": "Expose the actual Script rendered-text read and apply the TrustedScript compliance and script-text write on assignment.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-innertext", "issue": 2258}
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Verify TrustedScript using the element relevant Global and persist the script trust state with the pinned rendered-text replacement.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-innertext",
+        "issue": 2259
+      }
     },
     "HTMLScriptElement.textContent/get": {
       "kind": "host",
-      "requirement": {"owner": "surgeist-runtime", "contract": "Install Script's own textContent override with native TrustedScript conversion, compliance and canonical Source replacement.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-textcontent", "issue": 2258}
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Read canonical descendant text and preserve the own Script setter contract.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-textcontent",
+        "issue": 2259
+      }
     },
     "HTMLScriptElement.textContent/set": {
       "kind": "host",
-      "requirement": {"owner": "surgeist-runtime", "contract": "Install Script's own textContent override with native TrustedScript conversion, compliance and canonical Source replacement.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-textcontent", "issue": 2258}
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Verify TrustedScript using the element relevant Global and replace canonical descendant text with the actual retained script trust state.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-textcontent",
+        "issue": 2259
+      }
     },
     "HTMLScriptElement.text/get": {
       "kind": "host",
-      "requirement": {"owner": "surgeist-runtime", "contract": "Read native descendant text and assign it through TrustedScript compliance and canonical Source replacement.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-text", "issue": 2258}
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Read canonical direct child text with the paired Script source sink.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-text",
+        "issue": 2259
+      }
     },
     "HTMLScriptElement.text/set": {
       "kind": "host",
-      "requirement": {"owner": "surgeist-runtime", "contract": "Read native descendant text and assign it through TrustedScript compliance and canonical Source replacement.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-text", "issue": 2258}
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Verify TrustedScript using the element relevant Global and apply canonical Script text replacement with its retained trust state.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-text",
+        "issue": 2259
+      }
     },
     "HTMLScriptElement.obsolete.charset/get": {
       "kind": "native",
@@ -24959,13 +25004,13 @@
           "owner": "surgeist-dom",
           "contract": "Expose the ordered associated labels from the current Source segment.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
-          "issue": 3038
+          "issue": 3248
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Project the stable live labels NodeList with exact native identity and legacy indexed behavior.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
-          "issue": 2480
+          "issue": 3248
         }
       ],
       "result_view": "live"
@@ -25236,13 +25281,13 @@
           "owner": "surgeist-dom",
           "contract": "Expose the ordered associated labels from the current Source segment.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
-          "issue": 3038
+          "issue": 3248
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Project the stable live labels NodeList with exact native identity and legacy indexed behavior.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
-          "issue": 2480
+          "issue": 3248
         }
       ],
       "result_view": "live"
@@ -25482,13 +25527,14 @@
         {
           "owner": "surgeist-dom",
           "contract": "Expose bounded live element-rooted HTMLCollection membership with direct HTML tbody children in tree order.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tbodies"
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tbodies",
+          "issue": 3247
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Expose the same live HTMLCollection with supported indices and names.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-tbodies",
-          "issue": 2480
+          "issue": 3247
         }
       ],
       "result_view": "live"
@@ -25522,13 +25568,14 @@
         {
           "owner": "surgeist-dom",
           "contract": "Create a new HTML tbody and insert it at the pinned position relative to the last direct tbody child.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createtbody"
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createtbody",
+          "issue": 3287
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Source operation and project the returned HTMLTableSectionElement wrapper.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-createtbody",
-          "issue": 2258
+          "issue": 3287
         }
       ]
     },
@@ -25551,13 +25598,14 @@
         {
           "owner": "surgeist-dom",
           "contract": "Expose bounded live element-rooted HTMLCollection membership with header-group rows first, direct and body-group rows next, and footer-group rows last.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-rows"
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-rows",
+          "issue": 3247
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Expose the same live HTMLCollection with supported indices and names.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-rows",
-          "issue": 2480
+          "issue": 3247
         }
       ],
       "result_view": "live"
@@ -25591,13 +25639,14 @@
         {
           "owner": "surgeist-dom",
           "contract": "Resolve current ordered Table rows and apply the pinned insertion branches, including tbody creation for the applicable empty Table case.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-insertrow"
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-insertrow",
+          "issue": 3287
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Convert optional long with default -1, drive the Source operation, map IndexSizeError and project the returned HTMLTableRowElement wrapper.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-insertrow",
-          "issue": 2258
+          "issue": 3287
         }
       ]
     },
@@ -25625,13 +25674,14 @@
         {
           "owner": "surgeist-dom",
           "contract": "Resolve the current ordered row membership and apply the pinned -1, empty and invalid-index branches before removal.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deleterow"
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deleterow",
+          "issue": 3287
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Convert required long, drive the canonical Source operation and CE reactions, and map IndexSizeError.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-table-deleterow",
-          "issue": 2258
+          "issue": 3287
         }
       ]
     },
@@ -26118,13 +26168,14 @@
         {
           "owner": "surgeist-dom",
           "contract": "Expose bounded live element-rooted HTMLCollection membership with direct HTML tr children in tree order.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-rows"
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-rows",
+          "issue": 3247
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Expose the same live HTMLCollection with supported indices and names.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-rows",
-          "issue": 2480
+          "issue": 3247
         }
       ],
       "result_view": "live"
@@ -26158,13 +26209,14 @@
         {
           "owner": "surgeist-dom",
           "contract": "Resolve current ordered TableSection rows and apply the pinned -1, append, insertion and invalid-index branches.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-insertrow"
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-insertrow",
+          "issue": 3287
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Convert optional long with default -1, drive the Source operation, map IndexSizeError and project the returned HTMLTableRowElement wrapper.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-insertrow",
-          "issue": 2258
+          "issue": 3287
         }
       ]
     },
@@ -26192,13 +26244,14 @@
         {
           "owner": "surgeist-dom",
           "contract": "Resolve the current ordered row membership and apply the pinned -1, empty and invalid-index branches before removal.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-deleterow"
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-deleterow",
+          "issue": 3287
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Convert required long, drive the canonical Source operation and CE reactions, and map IndexSizeError.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tbody-deleterow",
-          "issue": 2258
+          "issue": 3287
         }
       ]
     },
@@ -26453,13 +26506,14 @@
         {
           "owner": "surgeist-dom",
           "contract": "Expose bounded live element-rooted HTMLCollection membership with direct HTML td and th children in tree order.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-cells"
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-cells",
+          "issue": 3247
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Expose the same live HTMLCollection with supported indices and names.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-cells",
-          "issue": 2480
+          "issue": 3247
         }
       ],
       "result_view": "live"
@@ -26493,13 +26547,14 @@
         {
           "owner": "surgeist-dom",
           "contract": "Resolve current ordered TableRow cells and apply the pinned index branches when creating and inserting an HTML td.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-insertcell"
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-insertcell",
+          "issue": 3287
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Convert optional long with default -1, drive the Source operation, map IndexSizeError and project the returned HTMLTableCellElement wrapper.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-insertcell",
-          "issue": 2258
+          "issue": 3287
         }
       ]
     },
@@ -26527,13 +26582,14 @@
         {
           "owner": "surgeist-dom",
           "contract": "Resolve the current ordered cell membership and apply the pinned -1, empty and invalid-index branches before removal.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-deletecell"
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-deletecell",
+          "issue": 3287
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Convert required long, drive the canonical Source operation and CE reactions, and map IndexSizeError.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-tr-deletecell",
-          "issue": 2258
+          "issue": 3287
         }
       ]
     },
@@ -28246,7 +28302,7 @@
         "owner": "surgeist-runtime",
         "contract": "Resolve the Button's applicable formaction against the current Document URL, base and encoding, including its pinned missing and empty behavior.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fs-formaction",
-        "issue": 2258
+        "issue": 3257
       }
     },
     "HTMLButtonElement.formAction/set": {
@@ -28260,7 +28316,7 @@
           "owner": "surgeist-runtime",
           "contract": "Install the paired URL attribute with its USVString setter through the canonical formaction Source mutation.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fs-formaction",
-          "issue": 2258
+          "issue": 3257
         }
       ]
     },
@@ -28455,13 +28511,13 @@
           "owner": "surgeist-dom",
           "contract": "Expose the existing Label association calculation in tree order through a bounded observation of the current published Source segment.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
-          "issue": 1235
+          "issue": 3248
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Project the same live labels NodeList with exact supported indices and current node identities.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
-          "issue": 2480
+          "issue": 3248
         }
       ],
       "result_view": "live"
@@ -28533,13 +28589,13 @@
           "owner": "surgeist-dom",
           "contract": "Provide the live Fieldset-rooted HTMLCollection with the pinned listed-element filter and current tree order.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fieldset-elements",
-          "issue": 1235
+          "issue": 3249
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Project the same live HTMLCollection with native member identities, exact supported indices and indexed lookup.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fieldset-elements",
-          "issue": 2480
+          "issue": 3249
         }
       ],
       "result_view": "live"
@@ -28630,7 +28686,8 @@
       "requirement": {
         "owner": "surgeist-runtime",
         "contract": "Read the actual current Document URL, base and encoding, and apply the pinned action URL parse and serialization over the Form attribute.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fs-action"
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fs-action",
+        "issue": 3257
       }
     },
     "HTMLFormElement.action/set": {
@@ -28644,7 +28701,7 @@
           "owner": "surgeist-runtime",
           "contract": "Install the paired action accessor with its USVString setter and synchronous reactions when the qualified URL getter is available.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fs-action",
-          "issue": 2258
+          "issue": 3257
         }
       ]
     },
@@ -28814,13 +28871,13 @@
           "owner": "surgeist-dom",
           "contract": "Project the current listed controls owned by this Form with the source exclusion for image inputs and canonical tree order.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-elements",
-          "issue": 1235
+          "issue": 3249
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Return the same live HTMLFormControlsCollection and preserve its native element identities and indexing.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-elements",
-          "issue": 2480
+          "issue": 3249
         }
       ],
       "result_view": "live"
@@ -28831,7 +28888,7 @@
         "owner": "surgeist-runtime",
         "contract": "Return the count of the current canonical members of the Form controls collection.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-form-length",
-        "issue": 2480
+        "issue": 3249
       }
     },
     "HTMLFormElement.operation:0/call": {
@@ -28840,7 +28897,7 @@
         "owner": "surgeist-bindings-js",
         "contract": "Use the actual Form controls collection's native indexed lookup, supported indices and Web IDL property precedence.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-form-element",
-        "issue": 2480
+        "issue": 3249
       }
     },
     "HTMLFormElement.operation:1/call": {
@@ -28854,13 +28911,13 @@
           "owner": "surgeist-dom",
           "contract": "Implement live named Form candidates, legacy image fallback and canonical past-name lookup and writeback.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-form-element",
-          "issue": 1235
+          "issue": 3249
         },
         {
           "owner": "surgeist-bindings-js",
           "contract": "Expose the live named Element or RadioNodeList with LegacyOverrideBuiltIns lookup and nonenumerable named properties.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-form-element",
-          "issue": 2258
+          "issue": 3249
         }
       ]
     },
@@ -29117,13 +29174,13 @@
           "owner": "surgeist-dom",
           "contract": "Provide the Output's current associated Label elements in tree order through the native labeling algorithm.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
-          "issue": 1235
+          "issue": 3248
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Project the same live labels NodeList with exact supported indices and current node identities.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
-          "issue": 2480
+          "issue": 3248
         }
       ],
       "result_view": "live"
@@ -29312,13 +29369,13 @@
           "owner": "surgeist-dom",
           "contract": "Provide selected File custody and actual current selection beyond the admitted native empty fact.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-files",
-          "issue": 1235
+          "issue": 3260
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Project the stable nullable FileList for the actual current Input type and selected Files.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-files",
-          "issue": 2258
+          "issue": 3260
         }
       ],
       "result_view": "live"
@@ -29329,7 +29386,7 @@
         "owner": "surgeist-bindings-js",
         "contract": "Supply authentic nullable FileList conversion and the canonical selected Files operation, preserving null and inapplicable type behavior.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-files",
-        "issue": 2258
+        "issue": 3260
       }
     },
     "HTMLInputElement.formAction/get": {
@@ -29338,7 +29395,7 @@
         "owner": "surgeist-runtime",
         "contract": "Resolve the Input's applicable formaction against the current Document URL, base and encoding including the pinned missing and empty behavior.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fs-formaction",
-        "issue": 2258
+        "issue": 3257
       }
     },
     "HTMLInputElement.formAction/set": {
@@ -29352,7 +29409,7 @@
           "owner": "surgeist-runtime",
           "contract": "Install the paired Input URL reflection with its USVString setter through canonical Source.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-fs-formaction",
-          "issue": 2258
+          "issue": 3257
         }
       ]
     },
@@ -29435,7 +29492,7 @@
           "owner": "surgeist-runtime",
           "contract": "Resolve the reached Input image dimension with current rendering, resource and markup facts, and project the exact IDL unsigned long.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
-          "issue": 2258
+          "issue": 3288
         }
       ]
     },
@@ -29450,7 +29507,7 @@
           "owner": "surgeist-runtime",
           "contract": "Install the paired Input dimension setter with unsigned long conversion and canonical Source reflection.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
-          "issue": 2258
+          "issue": 3288
         }
       ]
     },
@@ -29676,7 +29733,7 @@
         "owner": "surgeist-runtime",
         "contract": "Resolve the Input src URL under current Document URL, base and encoding with pinned URL reflection.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
-        "issue": 2258
+        "issue": 3257
       }
     },
     "HTMLInputElement.src/set": {
@@ -29690,7 +29747,7 @@
           "owner": "surgeist-runtime",
           "contract": "Install the paired Input src URL reflection with exact USVString conversion and canonical Source effects.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
-          "issue": 2258
+          "issue": 3257
         }
       ]
     },
@@ -29769,7 +29826,7 @@
         "owner": "surgeist-runtime",
         "contract": "Project the current representation as an authentic nullable ECMAScript Date under the applicable Input type's conversion.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-valueasdate",
-        "issue": 2258
+        "issue": 3258
       }
     },
     "HTMLInputElement.valueAsDate/set": {
@@ -29778,7 +29835,7 @@
         "owner": "surgeist-runtime",
         "contract": "Convert the Date or null against actual Input type and apply its canonical range, applicability, and native value effects.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-valueasdate",
-        "issue": 2258
+        "issue": 3258
       }
     },
     "HTMLInputElement.valueAsNumber/get": {
@@ -29787,7 +29844,7 @@
         "owner": "surgeist-runtime",
         "contract": "Project the actual type's numeric conversion or NaN using current native value.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-valueasnumber",
-        "issue": 2258
+        "issue": 3258
       }
     },
     "HTMLInputElement.valueAsNumber/set": {
@@ -29796,7 +29853,7 @@
         "owner": "surgeist-runtime",
         "contract": "Apply the current Input type's numeric conversion, NaN clearing and pinned exception semantics to the canonical value.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-valueasnumber",
-        "issue": 2258
+        "issue": 3258
       }
     },
     "HTMLInputElement.width/get": {
@@ -29811,7 +29868,7 @@
           "owner": "surgeist-runtime",
           "contract": "Resolve the reached Input image dimension with current rendering, resource and markup facts, and project the exact IDL unsigned long.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
-          "issue": 2258
+          "issue": 3288
         }
       ]
     },
@@ -29826,7 +29883,7 @@
           "owner": "surgeist-runtime",
           "contract": "Install the paired Input dimension setter with unsigned long conversion and canonical Source reflection.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-input-element",
-          "issue": 2258
+          "issue": 3288
         }
       ]
     },
@@ -29836,7 +29893,7 @@
         "owner": "surgeist-dom",
         "contract": "Apply canonical Input step-up with actual type, allowed step, bounds, current value and original typed refusal.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-stepup",
-        "issue": 1235
+        "issue": 3259
       }
     },
     "HTMLInputElement.stepDown:0/call": {
@@ -29845,7 +29902,7 @@
         "owner": "surgeist-dom",
         "contract": "Apply canonical Input step-down with actual type, allowed step, bounds, current value and original typed refusal.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-stepdown",
-        "issue": 1235
+        "issue": 3259
       }
     },
     "HTMLInputElement.willValidate/get": {
@@ -29922,13 +29979,13 @@
           "owner": "surgeist-dom",
           "contract": "Expose the existing Label association and type applicability in tree order through a bounded current Source observation.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
-          "issue": 1235
+          "issue": 3248
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Project the same live labels NodeList with exact supported indices when applicable and the pinned null otherwise.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
-          "issue": 2480
+          "issue": 3248
         }
       ],
       "result_view": "live"
@@ -29944,13 +30001,13 @@
           "owner": "surgeist-dom",
           "contract": "Add the canonical Input select-all Source command over its actual applicable type and selection, with pinned change effects.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 1235
+          "issue": 3251
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Input selection Source operation and deliver its reached queued trusted select event.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -29965,7 +30022,7 @@
           "owner": "surgeist-runtime",
           "contract": "Observe the actual current Input selection start through bounded native read admission, including the pinned null for inapplicable types.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -29980,13 +30037,13 @@
           "owner": "surgeist-dom",
           "contract": "Add the native Input selection start setter with actual type qualification, clamping and change effects.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 1235
+          "issue": 3251
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Input selection Source operation and deliver its reached queued trusted select event.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30001,7 +30058,7 @@
           "owner": "surgeist-runtime",
           "contract": "Observe the actual current Input selection end through bounded native read admission, including the pinned null for inapplicable types.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30016,13 +30073,13 @@
           "owner": "surgeist-dom",
           "contract": "Add the native Input selection end setter with actual type qualification, clamping and change effects.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 1235
+          "issue": 3251
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Input selection Source operation and deliver its reached queued trusted select event.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30037,7 +30094,7 @@
           "owner": "surgeist-runtime",
           "contract": "Observe the actual current Input selection direction through bounded native read admission, including the pinned null for inapplicable types.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30052,13 +30109,13 @@
           "owner": "surgeist-dom",
           "contract": "Add the native Input selection direction setter with actual type qualification, clamping and change effects.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 1235
+          "issue": 3251
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Input selection Source operation and deliver its reached queued trusted select event.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30073,13 +30130,13 @@
           "owner": "surgeist-dom",
           "contract": "Add the canonical Input range replacement over the actual applicable type and current selection with pinned value and selection changes.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 1235
+          "issue": 3251
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Input selection Source operation and deliver its reached queued trusted select event.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30094,13 +30151,13 @@
           "owner": "surgeist-dom",
           "contract": "Add the canonical Input range replacement with explicit endpoints and SelectionMode, pinned refusal and actual value and selection changes.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 1235
+          "issue": 3251
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Input selection Source operation and deliver its reached queued trusted select event.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30115,13 +30172,13 @@
           "owner": "surgeist-dom",
           "contract": "Add the canonical Input set-selection-range Source command with current type, actual bounds, direction and change effects.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 1235
+          "issue": 3251
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Input selection Source operation and deliver its reached queued trusted select event.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30131,7 +30188,7 @@
         "owner": "surgeist-runtime",
         "contract": "Drive the actual Input picker with current type, mutability, user activation, relevant origin, and host services.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-showpicker",
-        "issue": 2258
+        "issue": 3261
       }
     },
     "HTMLInputElement.obsolete.align/get": {
@@ -30588,13 +30645,13 @@
           "owner": "surgeist-dom",
           "contract": "Expose the existing Label association calculation in tree order through a bounded observation of the current published Source segment.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
-          "issue": 1235
+          "issue": 3248
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Project the same live labels NodeList with exact supported indices and current node identities.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-lfe-labels",
-          "issue": 2480
+          "issue": 3248
         }
       ],
       "result_view": "live"
@@ -30610,13 +30667,13 @@
           "owner": "surgeist-dom",
           "contract": "Add the canonical Textarea select-all Source command over the actual normalized value and selection, with its pinned change effects.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 1235
+          "issue": 3251
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Textarea selection Source operation and deliver its reached queued trusted select event.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30631,7 +30688,7 @@
           "owner": "surgeist-runtime",
           "contract": "Observe the actual current Textarea selection start through bounded native read admission and project the declared IDL value.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30646,13 +30703,13 @@
           "owner": "surgeist-dom",
           "contract": "Add the native Textarea selection start setter over the actual current value and selection, with its pinned clamping and change effects.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 1235
+          "issue": 3251
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Textarea selection Source operation and deliver its reached queued trusted select event.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30667,7 +30724,7 @@
           "owner": "surgeist-runtime",
           "contract": "Observe the actual current Textarea selection end through bounded native read admission and project the declared IDL value.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30682,13 +30739,13 @@
           "owner": "surgeist-dom",
           "contract": "Add the native Textarea selection end setter over the actual current value and selection, with its pinned clamping and change effects.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 1235
+          "issue": 3251
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Textarea selection Source operation and deliver its reached queued trusted select event.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30703,7 +30760,7 @@
           "owner": "surgeist-runtime",
           "contract": "Observe the actual current Textarea selection direction through bounded native read admission and project the declared IDL value.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30718,13 +30775,13 @@
           "owner": "surgeist-dom",
           "contract": "Add the native Textarea selection direction setter over the actual current value and selection, with its pinned clamping and change effects.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 1235
+          "issue": 3251
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Textarea selection Source operation and deliver its reached queued trusted select event.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30739,13 +30796,13 @@
           "owner": "surgeist-dom",
           "contract": "Add the canonical Textarea range replacement at the current native selection, with actual raw value and selection changes.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 1235
+          "issue": 3251
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Textarea selection Source operation and deliver its reached queued trusted select event.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30760,13 +30817,13 @@
           "owner": "surgeist-dom",
           "contract": "Add the canonical Textarea range replacement with explicit endpoints and SelectionMode, including pinned range refusal and actual value and selection changes.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 1235
+          "issue": 3251
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Textarea selection Source operation and deliver its reached queued trusted select event.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -30781,13 +30838,13 @@
           "owner": "surgeist-dom",
           "contract": "Add the canonical Textarea set-selection-range command with actual normalized bounds, direction and change effects.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 1235
+          "issue": 3251
         },
         {
           "owner": "surgeist-runtime",
           "contract": "Drive the canonical Textarea selection Source operation and deliver its reached queued trusted select event.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#textFieldSelection",
-          "issue": 2258
+          "issue": 3251
         }
       ]
     },
@@ -32128,7 +32185,7 @@
         "owner": "surgeist-runtime",
         "contract": "Reflect the current Link href with the selected URL parser and the canonical node document base.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmllinkelement",
-        "issue": 2258
+        "issue": 3257
       }
     },
     "HTMLLinkElement.href/set": {
@@ -32596,7 +32653,7 @@
         "owner": "surgeist-runtime",
         "contract": "Reflect the current Iframe src with the selected URL parser and the canonical node document base.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
+        "issue": 3257
       }
     },
     "HTMLIFrameElement.src/set": {
@@ -32614,14 +32671,14 @@
         "owner": "surgeist-runtime",
         "contract": "Read the original Iframe srcdoc as its canonical DOMString reflection.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
+        "issue": 2259
       }
     },
     "HTMLIFrameElement.srcdoc/set": {
       "kind": "host",
       "requirement": {
         "owner": "surgeist-runtime",
-        "contract": "Apply the original Iframe srcdoc processing and verified source mutation on its actual native child relation.",
+        "contract": "Verify TrustedHTML with the element relevant Global, edit the canonical null-namespace srcdoc attribute, and preserve native Source effects and processing for the actual child navigable.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
         "issue": 2259
       }
@@ -32891,7 +32948,7 @@
           "owner": "surgeist-runtime",
           "contract": "Return a positive SVG Document only from an actual navigated XML page load with the computed SVG MIME type.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-getsvgdocument",
-          "issue": 3146
+          "issue": 3284
         }
       ]
     },
@@ -32953,18 +33010,18 @@
       "kind": "host",
       "requirement": {
         "owner": "surgeist-runtime",
-        "contract": "Expose longDesc with the pinned Iframe semantics over the canonical native element.",
+        "contract": "Read the pinned longDesc URL using the exact current Document base, encoding and canonical attribute.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
-        "issue": 2258
+        "issue": 3257
       }
     },
     "HTMLIFrameElement.obsolete.longDesc/set": {
       "kind": "host",
       "requirement": {
         "owner": "surgeist-runtime",
-        "contract": "Expose longDesc with the pinned Iframe semantics over the canonical native element.",
+        "contract": "Apply ordinary canonical USVString longDesc writes alongside the qualified reflected URL getter.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
-        "issue": 2258
+        "issue": 3257
       }
     },
     "HTMLIFrameElement.obsolete.marginHeight/get": {

@@ -873,7 +873,14 @@ interface Fixture {
         for property_name in ["enctype", "encoding"]:
             getter = mappings[f"HTMLFormElement.{property_name}/get"]
             self.assertIn("form_enctype_keyword_with", [row["symbol"] for row in getter["producers"]])
-        self.assertEqual(mappings["HTMLFormElement.operation:0/call"]["requirement"]["issue"], 2480)
+        self.assertEqual(mappings["HTMLFormElement.operation:0/call"]["requirement"]["issue"], 3249)
+        for key, owners in [
+            ("HTMLFormElement.elements/get", {"surgeist-dom", "surgeist-runtime"}),
+            ("HTMLFormElement.operation:1/call", {"surgeist-dom", "surgeist-bindings-js"}),
+        ]:
+            self.assertEqual({(provider["owner"], provider.get("issue"))
+                              for provider in mappings[key]["requirements"]},
+                             {(owner, 3249) for owner in owners})
         form["attributes"].pop(1)
         self.rejected("source declaration mismatch: HTMLFormElement.source")
 
@@ -894,13 +901,17 @@ interface Fixture {
         self.assertFalse(writer["requirements"])
         self.assertEqual({producer["symbol"] for producer in writer["producers"]},
                          {"control_set_custom_validity", "set_custom_validity"})
-        for name, issues in [("elements", {1235, 2480}), ("validity", {1235})]:
+        for name, providers in [
+            ("elements", {("surgeist-dom", 3249), ("surgeist-runtime", 3249)}),
+            ("validity", {("surgeist-runtime", 1235)}),
+        ]:
             with self.subTest(member=name):
                 member = self.member("HTMLFieldSetElement." + name)
                 self.assertEqual(member["attributes"], [{"name": "SameObject"}])
                 getter = mappings[member["id"] + "/get"]
                 self.assertEqual(getter["result_view"], "live")
-                self.assertEqual({requirement["issue"] for requirement in getter["requirements"]}, issues)
+                self.assertEqual({(requirement["owner"], requirement.get("issue"))
+                                  for requirement in getter["requirements"]}, providers)
         setter["arguments"][0]["presence"] = "optional"
         self.rejected("source declaration mismatch: HTMLFieldSetElement.source")
 
@@ -1115,8 +1126,8 @@ interface Fixture {
             self.assertNotIn(member["id"] + "/set", mappings)
         cells = mappings["HTMLTableRowElement.cells/get"]
         self.assertEqual(cells["result_view"], "live")
-        self.assertIn(2480, {provider["issue"] for provider in cells["requirements"]
-                             if "issue" in provider})
+        self.assertEqual({(provider["owner"], provider.get("issue")) for provider in cells["requirements"]},
+                         {("surgeist-dom", 3247), ("surgeist-runtime", 3247)})
 
     def test_table_parts_keep_pinned_writable_and_creation_contracts(self):
         table = self.definition("HTMLTableElement")
@@ -1153,11 +1164,13 @@ interface Fixture {
                                      {"surgeist-dom", "surgeist-runtime"})
                     self.assertIn(producer, {item["symbol"] for item in access["producers"]
                                              if item["owner"] == "surgeist-dom"})
-        for attribute in ["tBodies", "rows"]:
-            access = mappings[f"HTMLTableElement.{attribute}/get"]
+        for key in [
+            "HTMLTableElement.tBodies/get", "HTMLTableElement.rows/get", "HTMLTableSectionElement.rows/get",
+        ]:
+            access = mappings[key]
             self.assertEqual(access["result_view"], "live")
-            self.assertIn(2480, {provider["issue"] for provider in access["requirements"]
-                                 if "issue" in provider})
+            self.assertEqual({(provider["owner"], provider.get("issue")) for provider in access["requirements"]},
+                             {("surgeist-dom", 3247), ("surgeist-runtime", 3247)})
 
     def test_table_legacy_partials_preserve_pinned_aliases_and_string_types(self):
         members = {
