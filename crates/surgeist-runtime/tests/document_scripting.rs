@@ -117,6 +117,8 @@ mod fieldset_attributes;
 mod form_associated_custom_elements;
 #[path = "document_scripting/form_attributes.rs"]
 mod form_attributes;
+#[path = "document_scripting/frame_attributes.rs"]
+mod frame_attributes;
 #[path = "document_scripting/frameset_reflections.rs"]
 mod frameset_reflections;
 #[path = "document_scripting/get_element_by_id.rs"]
@@ -2662,6 +2664,8 @@ fn main() {
             "range-indicator-bindings" => range_indicator_bindings::attached_range_indicators_reflect_native_numbers(),
             "control-autocomplete" => control_autocomplete::attached_controls_project_live_autocomplete(),
             "control-custom-validity" => control_custom_validity::attached_controls_store_native_custom_validity(),
+            "frame-attributes" => frame_attributes::frame_attributes_follow_native_identity_and_source(),
+            "frame-attribute-source-refusal" => frame_attributes::frame_attribute_setter_preserves_source_refusal(),
             "frameset-reflections" => frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element(),
             "get-element-by-id" => get_element_by_id::attached_id_lookup_uses_the_current_ordinary_tree(),
             "label-live" => label_live::attached_labels_track_their_live_control_and_form(),
@@ -2857,6 +2861,8 @@ fn main() {
     range_indicator_bindings::attached_range_indicators_reflect_native_numbers();
     control_autocomplete::attached_controls_project_live_autocomplete();
     control_custom_validity::attached_controls_store_native_custom_validity();
+    frame_attributes::frame_attributes_follow_native_identity_and_source();
+    frame_attributes::frame_attribute_setter_preserves_source_refusal();
     frameset_reflections::attached_frameset_reflects_exact_strings_on_the_original_element();
     get_element_by_id::attached_id_lookup_uses_the_current_ordinary_tree();
     label_live::attached_labels_track_their_live_control_and_form();
