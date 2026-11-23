@@ -2,6 +2,10 @@
 
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    block_fragmentation::input::LayoutPublicationTargets, geometry::FlowAxes,
+    inline_wrapping::WrappingInput,
+};
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -178,7 +182,7 @@ fn fixture_in_direction(
         },
     };
     let binding = TextParagraphBinding {
-        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+        inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes: nodes.clone(),
@@ -220,9 +224,13 @@ fn fixture_in_direction(
             LayoutInputOf::inline_boundary(
                 InlineBoundaryInputOf::contribution(
                     kind,
-                    InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
-                        .unwrap(),
-                    crate::InlineBoundaryEdgeOf::ZERO,
+                    InlineMetricsOf::try_new(
+                        crate::node_input::InlineBaselineContext::Physical,
+                        8.0,
+                        10.0,
+                    )
+                    .unwrap(),
+                    crate::node_input::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap()
                 .with_direction(
@@ -251,7 +259,7 @@ fn rejects(
         tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -274,7 +282,7 @@ fn automatic_phrase_scope_inventory_requires_the_exact_issued_scope_and_own_pair
         &f.tree,
         0,
         vec![f.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -318,9 +326,13 @@ fn automatic_phrase_equal_anchor_boundaries_cannot_swap_or_cross_the_issued_scop
         LayoutInputOf::inline_boundary(
             InlineBoundaryInputOf::contribution(
                 InlineBoundaryKind::End,
-                InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
-                    .unwrap(),
-                crate::InlineBoundaryEdgeOf::ZERO,
+                InlineMetricsOf::try_new(
+                    crate::node_input::InlineBaselineContext::Physical,
+                    8.0,
+                    10.0,
+                )
+                .unwrap(),
+                crate::node_input::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap(),
         ),
@@ -358,7 +370,7 @@ fn automatic_phrase_multiple_occurrences_publish_one_scope_owner_at_each_placed_
         &f.tree,
         0,
         vec![f.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -371,8 +383,8 @@ fn automatic_phrase_multiple_occurrences_publish_one_scope_owner_at_each_placed_
         &capture,
         0,
         request(500.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -416,12 +428,12 @@ fn automatic_phrase_multiple_occurrences_publish_one_scope_owner_at_each_placed_
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Retained {
     caches: HashMap<u32, CacheOf<f64>>,
-    unrounded: HashMap<u32, crate::LayoutOutputEntryOf<u32, f64>>,
+    unrounded: HashMap<u32, crate::output::LayoutOutputEntryOf<u32, f64>>,
     fragments: Vec<InlineFragmentOutputEntryOf<u32, f64>>,
 }
 
 struct CachedTree {
-    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
+    pub(super) publication_targets: LayoutPublicationTargets<u32>,
     tree: PublicLayoutTreeOf<f64>,
     retained: Retained,
     reject_publication: bool,
@@ -466,15 +478,15 @@ impl LayoutTree for CachedTree {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, f64>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::output::LayoutOutputEntryOf<u32, f64>> {
         self.retained.unrounded.get(&node).copied()
     }
 }
 impl LayoutBatchSink<u32, f64> for CachedTree {
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
 
@@ -482,7 +494,7 @@ impl LayoutBatchSink<u32, f64> for CachedTree {
     type Prepared = Retained;
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, f64>,
+        preparation: crate::block_fragmentation::publication::LayoutBatchPreparation<'_, u32, f64>,
     ) -> Result<Retained, Self::Error> {
         let batch = preparation.batch();
         if self.reject_publication {
@@ -506,7 +518,12 @@ impl LayoutBatchSink<u32, f64> for CachedTree {
     }
     fn commit_layout_batch(
         &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, f64, Self::Prepared>,
+        commit: crate::block_fragmentation::publication::LayoutBatchCommit<
+            '_,
+            u32,
+            f64,
+            Self::Prepared,
+        >,
     ) {
         let prepared = commit.into_prepared();
         self.retained = prepared;
@@ -521,7 +538,7 @@ fn compute(
         tree,
         100,
         vec![binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -534,8 +551,8 @@ fn compute(
         &capture,
         100,
         request(500.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 100);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 100);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap()
@@ -565,7 +582,7 @@ fn with_cached_sibling(tree: PublicLayoutTreeOf<f64>) -> PublicLayoutTreeOf<f64>
 fn automatic_phrase_changed_scope_style_pair_and_preparation_replace_warm_output_atomically() {
     let original = fixture(20.0, true, [10, 11, 12, 13]);
     let mut tree = CachedTree {
-        publication_targets: crate::LayoutPublicationTargets::new(),
+        publication_targets: LayoutPublicationTargets::new(),
         tree: with_cached_sibling(original.tree),
         retained: Retained::default(),
         reject_publication: false,
@@ -579,7 +596,7 @@ fn automatic_phrase_changed_scope_style_pair_and_preparation_replace_warm_output
     tree.tree = with_cached_sibling(changed.tree.clone());
     let warm = compute(&tree, &changed.binding);
     let cold_tree = CachedTree {
-        publication_targets: crate::LayoutPublicationTargets::new(),
+        publication_targets: LayoutPublicationTargets::new(),
         tree: with_cached_sibling(changed.tree),
         retained: Retained::default(),
         reject_publication: false,
@@ -611,9 +628,11 @@ fn automatic_phrase_changed_scope_style_pair_and_preparation_replace_warm_output
     tree.reject_publication = true;
     assert_eq!(
         warm.apply_to(&mut tree),
-        Err(crate::LayoutBatchApplyError::Preparation(
-            "scope publication refused"
-        ))
+        Err(
+            crate::block_fragmentation::publication::LayoutBatchApplyError::Preparation(
+                "scope publication refused"
+            )
+        )
     );
     assert_eq!(tree.retained, before);
     tree.reject_publication = false;
@@ -645,7 +664,7 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
         &f.tree,
         0,
         vec![f.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -658,8 +677,8 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
         &capture,
         0,
         request(500.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -681,8 +700,8 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
         &capture,
         0,
         request(70.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -722,7 +741,7 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
 fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_output() {
     let (first_tree, first) = super::scope_continuation::empty_block_capture();
     let mut tree = CachedTree {
-        publication_targets: crate::LayoutPublicationTargets::new(),
+        publication_targets: LayoutPublicationTargets::new(),
         tree: with_cached_sibling(first_tree),
         retained: Retained::default(),
         reject_publication: false,
@@ -733,7 +752,7 @@ fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_o
             tree,
             100,
             paragraphs.to_vec(),
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -746,8 +765,8 @@ fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_o
             &capture,
             100,
             request(500.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 100);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 100);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
             &[102],
         )
@@ -776,7 +795,7 @@ fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_o
     tree.tree = with_cached_sibling(next_tree.clone());
     let warm = compute_all(&tree, &next);
     let cold_tree = CachedTree {
-        publication_targets: crate::LayoutPublicationTargets::new(),
+        publication_targets: LayoutPublicationTargets::new(),
         tree: with_cached_sibling(next_tree),
         retained: Retained::default(),
         reject_publication: false,
@@ -818,9 +837,11 @@ fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_o
     tree.reject_publication = true;
     assert_eq!(
         warm.apply_to(&mut tree),
-        Err(crate::LayoutBatchApplyError::Preparation(
-            "scope publication refused"
-        ))
+        Err(
+            crate::block_fragmentation::publication::LayoutBatchApplyError::Preparation(
+                "scope publication refused"
+            )
+        )
     );
     assert_eq!(tree.retained, before);
     tree.reject_publication = false;

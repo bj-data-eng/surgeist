@@ -21,7 +21,7 @@ fn fractional_parent_fixture<S: LayoutScalar>(
     let mut parent = custody_root();
     parent.overflow = ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap();
     parent.scrollbar_gutter = ScrollbarGutter::Auto;
-    parent.scrollbar_width = crate::ScrollbarWidthOf::<S>::ZERO;
+    parent.scrollbar_width = crate::node_input::ScrollbarWidthOf::<S>::ZERO;
     let tree = custody_fixture(p, false, offset.to_f64())
         .children(0, [5, 1, 2])
         .children(5, [])
@@ -41,7 +41,7 @@ fn fractional_parent_fixture<S: LayoutScalar>(
     assert_eq!(tree.node_input(0).size.height, PreferredSizeOf::AUTO);
     assert_eq!(
         tree.node_input(0).scrollbar_width,
-        crate::ScrollbarWidthOf::<S>::ZERO
+        crate::node_input::ScrollbarWidthOf::<S>::ZERO
     );
     assert_eq!(tree.child_count(0), 3);
     assert_eq!(tree.child(0, 0), 5);
@@ -159,7 +159,7 @@ fn fractional_parent_premises<S: LayoutScalar>(
     let source = batch
         .unrounded_inline_fragments()
         .iter()
-        .find(|row| *row.owner() == crate::InlineFragmentOwner::Node(1))
+        .find(|row| *row.owner() == crate::output::InlineFragmentOwner::Node(1))
         .unwrap()
         .fragment();
     let issued = source.finalized_fragment();

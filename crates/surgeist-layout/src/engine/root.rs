@@ -10,15 +10,25 @@ use crate::sizing::resolve::{
     resolve_preferred_sizing,
 };
 use crate::{
-    AvailableSpaceOf, AxisSizingRequestOf, BoxSizing, Compute, ComputeInputOf, ComputeOutputOf,
-    Edges, LayoutScalar, NodeInputOf, NodeOutputOf, Point, Size, SizingOperation, SizingRequestOf,
-    Traverse,
+    engine::contracts::Compute,
+    geometry::{Edges, Point, Size},
+    node_input::{BoxSizing, Display, NodeInputOf, Position, WritingMode},
+    output::{
+        ComputeInputOf, ComputeOutputOf, LayoutRootContextOf, LayoutRootRequestOf, NodeOutputOf,
+        ParentFormattingContext, RootContextMismatch,
+    },
+    scalar::LayoutScalar,
+    tree::Traverse,
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation,
+        SizingRequestOf, TrackComponentOf,
+    },
 };
 
 pub(crate) fn compute_root<'input, Tree, M>(
     tree: &mut Tree,
     root: <Tree as Traverse>::Node,
-    request: crate::LayoutRootRequestOf<Tree::Scalar>,
+    request: LayoutRootRequestOf<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -32,10 +42,10 @@ where
     finish_root(tree, root, style, input, output, align_to_parent)
 }
 
-pub(super) fn compute_root_scoped<'input, Tree: crate::LayoutTree>(
+pub(super) fn compute_root_scoped<'input, Tree: crate::tree::LayoutTree>(
     tree: &mut super::session::ComputeSession<'input, Tree>,
     root: Tree::Node,
-    request: crate::LayoutRootRequestOf<Tree::Scalar>,
+    request: LayoutRootRequestOf<Tree::Scalar>,
 ) -> super::block_scope::ComputeResult<Tree::Node, (), Tree::Scalar, Tree::MeasureError> {
     let style = tree.node_input(root);
     let RootComputeInput {
@@ -80,12 +90,12 @@ where
     } else {
         Point::ZERO
     };
-    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+    tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
         root,
         crate::output::NormalGeometryOf {
             location,
             size: output.size,
-            content: if style.display == crate::Display::None {
+            content: if style.display == Display::None {
                 crate::output::NormalContentOf::Hidden
             } else {
                 scroll_geometry.map_or(crate::output::NormalContentOf::Metadata, |geometry| {
@@ -94,7 +104,7 @@ where
             },
         },
         NodeOutputOf {
-            source_index: crate::SourceIndex::ZERO,
+            source_index: crate::output::SourceIndex::ZERO,
             location,
             size: output.size,
             named_baselines: output.named_baselines,
@@ -139,7 +149,7 @@ where
     };
     output.location = location;
     measured_normal.location = location;
-    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+    tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
         root,
         measured_normal,
         output,
@@ -156,7 +166,7 @@ pub(super) fn root_compute_input<'input, Tree, M>(
     tree: &mut Tree,
     root: Tree::Node,
     style: &'input NodeInputOf<Tree::Scalar>,
-    request: crate::LayoutRootRequestOf<Tree::Scalar>,
+    request: LayoutRootRequestOf<Tree::Scalar>,
 ) -> LayoutResultOf<Tree::Node, RootComputeInput<Tree::Scalar>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -164,61 +174,56 @@ where
     let sizing_request = request.sizing_request();
     let mut requires_fixed_grid_tracks = false;
     let (axes, role, parent, mut known, fill_inline, align_to_parent) = match request.context() {
-        crate::LayoutRootContextOf::Standalone {
+        LayoutRootContextOf::Standalone {
             containing_flow_axes,
             percentage_parent,
         } => (
             containing_flow_axes,
-            crate::ParentFormattingContext::NoParent,
-            percentage_parent.map(|value| value.map(crate::NonNegativeFiniteOf::get)),
+            ParentFormattingContext::NoParent,
+            percentage_parent.map(|value| value.map(NonNegativeFiniteOf::get)),
             Size::NONE,
             true,
             true,
         ),
-        crate::LayoutRootContextOf::FlexItem(context) => (
+        LayoutRootContextOf::FlexItem(context) => (
             context.parent_flow_axes(),
-            crate::ParentFormattingContext::Flex,
+            ParentFormattingContext::Flex,
             context
                 .percentage_parent()
-                .map(|value| value.map(crate::NonNegativeFiniteOf::get)),
+                .map(|value| value.map(NonNegativeFiniteOf::get)),
             context
                 .allocated_size()
-                .map(|value| value.map(crate::NonNegativeFiniteOf::get)),
+                .map(|value| value.map(NonNegativeFiniteOf::get)),
             false,
             false,
         ),
-        crate::LayoutRootContextOf::BlockFlow(context) => {
-            admit_root_box(
-                root,
-                style,
-                crate::Position::Relative,
-                RootEdgeProfile::Zero,
-            )?;
+        LayoutRootContextOf::BlockFlow(context) => {
+            admit_root_box(root, style, Position::Relative, RootEdgeProfile::Zero)?;
             (
                 context.parent_flow_axes(),
-                crate::ParentFormattingContext::BlockFlow,
+                ParentFormattingContext::BlockFlow,
                 Size::new(Some(context.parent_inline_extent().get()), None),
                 Size::NONE,
                 true,
                 true,
             )
         }
-        crate::LayoutRootContextOf::PositionedAutoInsets(context) => {
+        LayoutRootContextOf::PositionedAutoInsets(context) => {
             admit_positioned_root(tree, root, style, None)?;
             (
                 context.containing_flow_axes(),
-                crate::ParentFormattingContext::BlockFlow,
+                ParentFormattingContext::BlockFlow,
                 context.containing_size().map(|value| Some(value.get())),
                 Size::NONE,
                 false,
                 true,
             )
         }
-        crate::LayoutRootContextOf::RootLocalPositioned(context) => {
+        LayoutRootContextOf::RootLocalPositioned(context) => {
             requires_fixed_grid_tracks = admit_positioned_root(tree, root, style, Some(context))?;
             (
                 context.containing_flow_axes(),
-                crate::ParentFormattingContext::BlockFlow,
+                ParentFormattingContext::BlockFlow,
                 context.containing_size().map(|value| Some(value.get())),
                 Size::NONE,
                 false,
@@ -226,7 +231,7 @@ where
             )
         }
     };
-    let containing = crate::ContainingLayoutContext::new(axes, role);
+    let containing = crate::output::ContainingLayoutContext::new(axes, role);
     if fill_inline {
         known = known.or(root_known_inline::<Tree, M>(
             tree,
@@ -239,8 +244,7 @@ where
     }
     if matches!(
         request.context(),
-        crate::LayoutRootContextOf::PositionedAutoInsets(_)
-            | crate::LayoutRootContextOf::RootLocalPositioned(_)
+        LayoutRootContextOf::PositionedAutoInsets(_) | LayoutRootContextOf::RootLocalPositioned(_)
     ) {
         known = positioned_auto_inline_known_size(
             tree,
@@ -261,12 +265,12 @@ where
 
 fn root_context_error<Node, S: LayoutScalar, M>(
     node: Node,
-    reason: crate::RootContextMismatch,
+    reason: RootContextMismatch,
 ) -> LayoutErrorOf<Node, S, M> {
     LayoutErrorOf::new(
         LayoutErrorSiteOf::Node(node),
         LayoutOperation::RootLayout,
-        LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::RootContext(reason)),
+        LayoutErrorKindOf::InvalidInput(crate::error::LayoutInvalidInputOf::RootContext(reason)),
     )
 }
 
@@ -275,37 +279,37 @@ fn root_context_error<Node, S: LayoutScalar, M>(
 enum RootEdgeProfile<S: LayoutScalar> {
     Zero,
     DefiniteInline {
-        percentage_parent: crate::NonNegativeFiniteOf<S>,
+        percentage_parent: NonNegativeFiniteOf<S>,
     },
 }
 
 fn admit_root_box<Node, S: LayoutScalar, M>(
     node: Node,
     style: &NodeInputOf<S>,
-    position: crate::Position,
+    position: Position,
     edges: RootEdgeProfile<S>,
 ) -> LayoutResultOf<Node, (), S, M>
 where
     Node: Copy,
 {
     let mismatch = if style.position != position {
-        Some(crate::RootContextMismatch::Position)
-    } else if style.display == crate::Display::None || style.display.is_inline_level() {
-        Some(crate::RootContextMismatch::Display)
-    } else if style.float != crate::Float::None {
-        Some(crate::RootContextMismatch::Float)
-    } else if style.clear != crate::Clear::None {
-        Some(crate::RootContextMismatch::Clearance)
-    } else if style.margin != Edges::all(crate::LengthAutoOf::ZERO) {
-        Some(crate::RootContextMismatch::BoxEdges)
+        Some(RootContextMismatch::Position)
+    } else if style.display == Display::None || style.display.is_inline_level() {
+        Some(RootContextMismatch::Display)
+    } else if style.float != crate::node_input::Float::None {
+        Some(RootContextMismatch::Float)
+    } else if style.clear != crate::node_input::Clear::None {
+        Some(RootContextMismatch::Clearance)
+    } else if style.margin != Edges::all(crate::value::LengthAutoOf::ZERO) {
+        Some(RootContextMismatch::BoxEdges)
     } else {
         None
     };
     if let Some(reason) = mismatch {
         return Err(root_context_error(node, reason));
     }
-    if style.padding != Edges::all(crate::LengthOf::ZERO)
-        || style.border != Edges::all(crate::LengthOf::ZERO)
+    if style.padding != Edges::all(crate::value::LengthOf::ZERO)
+        || style.border != Edges::all(crate::value::LengthOf::ZERO)
     {
         let allowed = match edges {
             RootEdgeProfile::Zero => false,
@@ -322,36 +326,33 @@ where
             ),
         };
         if !allowed {
-            return Err(root_context_error(
-                node,
-                crate::RootContextMismatch::BoxEdges,
-            ));
+            return Err(root_context_error(node, RootContextMismatch::BoxEdges));
         }
     }
-    if style.inset != Edges::all(crate::LengthAutoOf::AUTO) {
-        return Err(root_context_error(node, crate::RootContextMismatch::Insets));
+    if style.inset != Edges::all(crate::value::LengthAutoOf::AUTO) {
+        return Err(root_context_error(node, RootContextMismatch::Insets));
     }
     Ok(())
 }
 
 fn fixed_grid_axis<S: LayoutScalar>(
-    components: &[crate::TrackComponentOf<S>],
+    components: &[TrackComponentOf<S>],
     allow_counted_repeat: bool,
 ) -> bool {
     let mut has_track = false;
     let fixed = components.iter().all(|component| match component {
-        crate::TrackComponentOf::Track(track) => {
+        TrackComponentOf::Track(track) => {
             has_track = true;
             track.is_fixed_without_basis()
         }
-        crate::TrackComponentOf::LineNames(_) => true,
-        crate::TrackComponentOf::Repeat(repetition) if allow_counted_repeat => {
+        TrackComponentOf::LineNames(_) => true,
+        TrackComponentOf::Repeat(repetition) if allow_counted_repeat => {
             has_track = true;
             // CSS track repeat notation cannot nest.
-            matches!(repetition.repeat(), crate::TrackRepeat::Count(_))
+            matches!(repetition.repeat(), crate::value::TrackRepeat::Count(_))
                 && fixed_grid_axis(repetition.components(), false)
         }
-        crate::TrackComponentOf::Repeat(_) | crate::TrackComponentOf::Subgrid(_) => false,
+        TrackComponentOf::Repeat(_) | TrackComponentOf::Subgrid(_) => false,
     });
     fixed && has_track
 }
@@ -360,24 +361,24 @@ fn admit_positioned_root<'input, Tree, M>(
     tree: &Tree,
     root: Tree::Node,
     style: &NodeInputOf<Tree::Scalar>,
-    local_context: Option<crate::RootLocalPositionedContextOf<Tree::Scalar>>,
+    local_context: Option<crate::output::RootLocalPositionedContextOf<Tree::Scalar>>,
 ) -> LayoutResultOf<Tree::Node, bool, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
-    let horizontal = style.writing_mode == crate::WritingMode::HorizontalTb;
+    let horizontal = style.writing_mode == WritingMode::HorizontalTb;
     let local_containing_size = local_context.map(|context| context.containing_size());
     let has_block_offset = local_context
         .and_then(|context| context.hypothetical_block_offset())
         .is_some();
-    let principal_block = style.display == crate::Display::Block
-        && style.block_generation == crate::BlockGeneration::Principal
+    let principal_block = style.display == Display::Block
+        && style.block_generation == crate::node_input::BlockGeneration::Principal
         && !style.item_is_table;
     let orthogonal_auto_inline = has_block_offset
         && principal_block
         && matches!(
             style.writing_mode,
-            crate::WritingMode::VerticalLr | crate::WritingMode::VerticalRl
+            WritingMode::VerticalLr | WritingMode::VerticalRl
         )
         && style.size.height.is_auto();
     let edges = match local_containing_size {
@@ -386,7 +387,7 @@ where
         },
         _ => RootEdgeProfile::Zero,
     };
-    admit_root_box(root, style, crate::Position::Absolute, edges)?;
+    admit_root_box(root, style, Position::Absolute, edges)?;
     let auto_size_with_block_offset =
         has_block_offset && style.size.width.is_auto() && style.size.height.is_auto();
     let horizontal_auto_block = auto_size_with_block_offset
@@ -394,7 +395,7 @@ where
         && principal_block
         && !tree.has_leaf_measurement(root);
     let auto_fixed_grid = auto_size_with_block_offset
-        && style.display == crate::Display::Grid
+        && style.display == Display::Grid
         && !tree.has_leaf_measurement(root)
         && fixed_grid_axis(&style.grid_template_columns, true)
         && fixed_grid_axis(&style.grid_template_rows, true)
@@ -402,8 +403,8 @@ where
             .grid_auto_columns
             .iter()
             .chain(&style.grid_auto_rows)
-            .all(|component| matches!(component, crate::TrackComponentOf::Track(_)));
-    let writing_mode_error = || root_context_error(root, crate::RootContextMismatch::WritingMode);
+            .all(|component| matches!(component, TrackComponentOf::Track(_)));
+    let writing_mode_error = || root_context_error(root, RootContextMismatch::WritingMode);
     if (!horizontal || has_block_offset) && !auto_fixed_grid && !horizontal_auto_block {
         let basis = local_containing_size.ok_or_else(writing_mode_error)?;
         // Resolve only for admission. The normal box algorithm retains the
@@ -429,22 +430,13 @@ where
         }
     }
     if style.item_is_replaced {
-        return Err(root_context_error(
-            root,
-            crate::RootContextMismatch::Replaced,
-        ));
+        return Err(root_context_error(root, RootContextMismatch::Replaced));
     }
     if style.aspect_ratio.is_some() {
-        return Err(root_context_error(
-            root,
-            crate::RootContextMismatch::AspectRatio,
-        ));
+        return Err(root_context_error(root, RootContextMismatch::AspectRatio));
     }
     if style.align_self.is_some() || style.justify_self.is_some() {
-        return Err(root_context_error(
-            root,
-            crate::RootContextMismatch::Alignment,
-        ));
+        return Err(root_context_error(root, RootContextMismatch::Alignment));
     }
     Ok(auto_fixed_grid)
 }
@@ -453,7 +445,7 @@ fn positioned_auto_inline_known_size<'input, Tree, M>(
     tree: &mut Tree,
     root: <Tree as Traverse>::Node,
     style: &NodeInputOf<Tree::Scalar>,
-    containing: crate::ContainingLayoutContext,
+    containing: crate::output::ContainingLayoutContext,
     sizing_request: SizingRequestOf<Tree::Scalar>,
     parent: Size<Option<Tree::Scalar>>,
     requires_fixed_grid_tracks: bool,
@@ -477,7 +469,9 @@ where
             LayoutErrorOf::new(
                 LayoutErrorSiteOf::Node(root),
                 LayoutOperation::RootLayout,
-                LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis),
+                LayoutErrorKindOf::MissingContext(
+                    crate::error::LayoutMissingContext::RequiredBasis,
+                ),
             )
         })?
         .get();
@@ -526,13 +520,13 @@ where
     };
     let opposite = opposite
         .map(|value| {
-            crate::NonNegativeFiniteOf::new(value)
-                .map(crate::NonNegativeFiniteOf::get)
+            NonNegativeFiniteOf::new(value)
+                .map(NonNegativeFiniteOf::get)
                 .map_err(|_| {
                     sizing_resolution_error(
                         root,
                         SizingResolutionError::Status(
-                            crate::LengthResolutionStatus::InvalidNumeric { value },
+                            crate::value::LengthResolutionStatus::InvalidNumeric { value },
                         ),
                     )
                 })
@@ -541,35 +535,35 @@ where
     let known_opposite =
         opposite.map_or(Size::NONE, |value| root_known_on_axis(opposite_axis, value));
     let mode = if opposite.is_none()
-        && style.display.inner_display() == crate::Display::Flex
+        && style.display.inner_display() == Display::Flex
         && style.flex_direction.is_column()
-        && style.flex_wrap != crate::FlexWrap::NoWrap
+        && style.flex_wrap != crate::node_input::FlexWrap::NoWrap
         && !root_physical_axis_value(
             Size::new(&style.max_size.width, &style.max_size.height),
             opposite_axis,
         )
         .is_none()
     {
-        crate::SizingMode::PositionedColumnFlexInline
+        crate::output::SizingMode::PositionedColumnFlexInline
     } else {
-        crate::SizingMode::ContentSize
+        crate::output::SizingMode::ContentSize
     };
     let query = |tree: &mut Tree, operation| {
         let mut axes = sizing_request.axes();
         let requested_axis = match inline_axis {
             PhysicalAxis::Horizontal => {
                 axes.width = axes.width.with_operation(operation);
-                crate::RequestedAxis::Horizontal
+                crate::output::RequestedAxis::Horizontal
             }
             PhysicalAxis::Vertical => {
                 axes.height = axes.height.with_operation(operation);
-                crate::RequestedAxis::Vertical
+                crate::output::RequestedAxis::Vertical
             }
         };
         tree.compute_child(
             root,
             ComputeInputOf::for_child(
-                crate::RunMode::ComputeSize,
+                crate::output::RunMode::ComputeSize,
                 mode,
                 requested_axis,
                 known_opposite,
@@ -588,9 +582,9 @@ where
         if !value.is_finite() || value < Tree::Scalar::ZERO {
             return Err(crate::error::sizing_resolution_error(
                 root,
-                SizingResolutionError::Status(crate::LengthResolutionStatus::InvalidNumeric {
-                    value,
-                }),
+                SizingResolutionError::Status(
+                    crate::value::LengthResolutionStatus::InvalidNumeric { value },
+                ),
             ));
         }
     }
@@ -634,12 +628,12 @@ fn root_scroll_geometry<Node, S, M>(
     style: &NodeInputOf<S>,
     output: ComputeOutputOf<S>,
     edges: &RootEdges<S>,
-) -> LayoutResultOf<Node, Option<crate::ScrollGeometryOf<S>>, S, M>
+) -> LayoutResultOf<Node, Option<crate::scroll::ScrollGeometryOf<S>>, S, M>
 where
     Node: Copy,
     S: LayoutScalar,
 {
-    if style.display == crate::Display::None {
+    if style.display == Display::None {
         return Ok(None);
     }
 
@@ -733,7 +727,7 @@ where
         )
         .is_auto()
         || !(min_inline.is_auto()
-            || style.display == crate::Display::Flex
+            || style.display == Display::Flex
                 && min_inline.is_calculation()
                 && !tree.has_leaf_measurement(node))
     {
@@ -747,7 +741,7 @@ where
     let Some(available_inline) = request
         .space()
         .definite_size()
-        .map(crate::NonNegativeFiniteOf::get)
+        .map(NonNegativeFiniteOf::get)
     else {
         return Ok(Size::NONE);
     };
@@ -872,7 +866,7 @@ fn root_start_coordinate<S: LayoutScalar>(
         PhysicalSide::Top | PhysicalSide::Left => S::ZERO,
         PhysicalSide::Right | PhysicalSide::Bottom => root_physical_axis_value(available, axis)
             .definite_size()
-            .map(crate::NonNegativeFiniteOf::get)
+            .map(NonNegativeFiniteOf::get)
             .map_or(S::ZERO, |extent| {
                 extent - root_physical_axis_value(root_size, axis)
             }),

@@ -1,6 +1,10 @@
 use super::scoped_flex::{boxes, scoped_layout};
 use super::*;
-use crate::{Float, Point, PreferredSizeOf, SizeContainment};
+use crate::{
+    geometry::Point,
+    node_input::{Float, SizeContainment},
+    sizing::PreferredSizeOf,
+};
 
 /// A size-contained 60x40px Block (node 1, an atomic box for fragmentation)
 /// holding a chain of same-axis Block containers. Node 0 is the 60px-wide root

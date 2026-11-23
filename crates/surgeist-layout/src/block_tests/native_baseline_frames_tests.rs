@@ -148,7 +148,7 @@ impl Paragraph {
             text::source::Range::new(0, self.original.text().len())
         );
         TextParagraphBinding {
-            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+            inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: self.prepared.clone(),
             container: 0,
             nodes: vec![1],
@@ -249,12 +249,12 @@ fn measured<S: LayoutScalar>(
             set: crate::output::NamedBaselineSet::First,
         });
     }
-    let output = crate::compute_block(&mut owner, 0, request).unwrap();
+    let output = crate::block::compute_block(&mut owner, 0, request).unwrap();
     // Measurement returns physical facts without staging either the box or
     // its real Text node for publication. Use the existing output read front.
     assert!(owner.unrounded(0).is_err());
     assert!(owner.unrounded(1).is_err());
-    let repeat = crate::compute_block(&mut owner, 0, request).unwrap();
+    let repeat = crate::block::compute_block(&mut owner, 0, request).unwrap();
     assert_eq!(repeat, output);
     assert!(owner.unrounded(0).is_err());
     assert!(owner.unrounded(1).is_err());

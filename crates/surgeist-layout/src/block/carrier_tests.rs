@@ -1,7 +1,33 @@
 use super::*;
 use crate::engine::block_scope::{Dispatch, ReceiptId, Requests, SourceViewId};
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
-use crate::*;
+use crate::{
+    block_fragmentation::{
+        BlockFragmentainerOf, LayoutBoundRequestOf,
+        input::{LayoutSourceBasis, LayoutTargetBasis},
+    },
+    engine::{compute_layout, compute_layout_with_flow},
+    error::{LayoutErrorKindOf, LayoutErrorSiteOf, LayoutMissingContext, LayoutOperation},
+    fragmentation::input::{
+        FragmentationBreak, FragmentationBreakKinds, FragmentationCutOf, FragmentationKind,
+        FragmentationPosition,
+    },
+    geometry::{FlowAxes, PhysicalAxis, Point, Size},
+    inline_wrapping::WrappingInput,
+    node_input::{
+        BlockGeneration, ComputedOverflow, Direction, Display, NodeInputOf, Overflow,
+        ScrollbarGutter, ScrollbarWidthOf, WritingMode,
+    },
+    output::{LayoutRootRequestOf, RunMode},
+    scalar::LayoutScalar,
+    sizing::{MaxSizeOf, PreferredSizeOf},
+    text_layout::LayoutFlowInput,
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, LengthAutoOf, LengthOf, NearestScrollportOf,
+        NonNegativeFiniteOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation,
+        SizingRequestOf,
+    },
+};
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 fn n<S: LayoutScalar>(value: f64) -> S {
@@ -90,7 +116,7 @@ fn bound<S: LayoutScalar>() -> LayoutBoundRequestOf<S> {
         LayoutSourceBasis::fresh(),
         request(100.0),
         FragmentationKind::Page {
-            progression: crate::PageProgression::LeftToRight,
+            progression: crate::fragmentation::page::PageProgression::LeftToRight,
         },
         axes(),
         vec![first, frame(60.0)],
@@ -161,7 +187,7 @@ fn perform<S: LayoutScalar>(
         crate::engine::BlockContentFrameRequest {
             root: 2,
             input,
-            original: crate::LayoutTree::node_input(tree, 2),
+            original: crate::tree::LayoutTree::node_input(tree, 2),
             reference: S::ZERO,
             opening: false,
             complete: true,

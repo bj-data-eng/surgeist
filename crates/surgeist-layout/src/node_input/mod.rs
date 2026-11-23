@@ -1,13 +1,21 @@
-use super::{
-    AspectRatioOf, DefaultScalar, Edges, FlexBasisOf, GridTemplateAreas, LayoutScalar,
-    LengthAutoOf, LengthOf, MaxSizeOf, MinSizeOf, NonNegativeFiniteScalarErrorOf, PreferredSizeOf,
-    Size, TrackComponentOf,
+use crate::{
+    fragmentation::input::{FragmentationBreak, FragmentationBreakInside},
+    geometry::{Edges, Size},
+    hyphenation::{HyphenateLimitLast, HyphenateLimitLines},
+    inline_wrapping::WrapEdges,
+    scalar::{DefaultScalar, LayoutScalar},
+    sizing::{FlexBasisOf, MaxSizeOf, MinSizeOf, PreferredSizeOf},
+    value::{
+        AspectRatioOf, GridTemplateAreas, LengthAutoOf, LengthOf, NonNegativeFiniteScalarErrorOf,
+        TrackComponentOf,
+    },
 };
 
 #[cfg(test)]
-use super::{
-    FiniteScalarErrorOf, FlowAxes, LengthPercentageOf, NumericResolutionOf, PercentageBasisOf,
-    PhysicalSide, ScrollRectOf,
+use crate::{
+    geometry::{FlowAxes, PhysicalSide},
+    scroll::ScrollRectOf,
+    value::{FiniteScalarErrorOf, LengthPercentageOf, NumericResolutionOf, PercentageBasisOf},
 };
 
 mod alignment;
@@ -111,7 +119,7 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub grid_baseline_references: GridBaselineReferences,
     /// This child's non-inherited source preference for named inline matching.
     pub baseline_source: BaselineSource,
-    pub wrap_edges: crate::WrapEdges,
+    pub wrap_edges: WrapEdges,
     pub display: Display,
     pub atomic_inline_participation: Option<AtomicInlineParticipation>,
     pub float_exclusion: FloatExclusion,
@@ -136,11 +144,11 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub size_containment: SizeContainment,
     pub text_indent: TextIndentOf<S>,
     /// Block-owned computed successive-line limit; defaults to no limit.
-    pub hyphenate_limit_lines: crate::HyphenateLimitLines,
+    pub hyphenate_limit_lines: HyphenateLimitLines,
     /// Unfragmented element-terminal restriction; defaults to no restriction.
-    pub hyphenate_limit_last: crate::HyphenateLimitLast,
+    pub hyphenate_limit_last: HyphenateLimitLast,
     /// Computed signed length/percentage, resolved against the natural fallback line box.
-    pub hyphenate_limit_zone: crate::LengthPercentageOf<S>,
+    pub hyphenate_limit_zone: crate::value::LengthPercentageOf<S>,
     /// Normalized inherited line-selection preference for this block container.
     pub text_wrap_style: TextWrapStyle,
     pub text_group_align: TextGroupAlign,
@@ -168,9 +176,9 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub scroll_snap_align: ScrollSnapAlign,
     /// Target pass-over metadata; live behavior remains root-owned.
     pub scroll_snap_stop: ScrollSnapStop,
-    pub break_before: crate::FragmentationBreak,
-    pub break_after: crate::FragmentationBreak,
-    pub break_inside: crate::FragmentationBreakInside,
+    pub break_before: FragmentationBreak,
+    pub break_after: FragmentationBreak,
+    pub break_inside: FragmentationBreakInside,
     pub position: Position,
     pub float: Float,
     pub clear: Clear,
@@ -251,7 +259,7 @@ impl NodeInputOf<DefaultScalar> {
             rows: GridBaselineReference::Physical,
         },
         baseline_source: BaselineSource::Auto,
-        wrap_edges: crate::WrapEdges::AUTO,
+        wrap_edges: WrapEdges::AUTO,
         display: Display::Flex,
         atomic_inline_participation: None,
         float_exclusion: FloatExclusion::MarginBox,
@@ -265,9 +273,9 @@ impl NodeInputOf<DefaultScalar> {
         block_generation: BlockGeneration::Principal,
         size_containment: SizeContainment::None,
         text_indent: TextIndentOf::ZERO,
-        hyphenate_limit_lines: crate::HyphenateLimitLines::NoLimit,
-        hyphenate_limit_last: crate::HyphenateLimitLast::None,
-        hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+        hyphenate_limit_lines: HyphenateLimitLines::NoLimit,
+        hyphenate_limit_last: HyphenateLimitLast::None,
+        hyphenate_limit_zone: crate::value::LengthPercentageOf::ZERO,
         text_wrap_style: TextWrapStyle::Auto,
         text_group_align: TextGroupAlign::None,
         block_flow_context: BlockFlowContext::Normal,
@@ -301,9 +309,9 @@ impl NodeInputOf<DefaultScalar> {
             inline: ScrollSnapAlignValue::None,
         },
         scroll_snap_stop: ScrollSnapStop::Normal,
-        break_before: crate::FragmentationBreak::Auto,
-        break_after: crate::FragmentationBreak::Auto,
-        break_inside: crate::FragmentationBreakInside::Auto,
+        break_before: FragmentationBreak::Auto,
+        break_after: FragmentationBreak::Auto,
+        break_inside: FragmentationBreakInside::Auto,
         position: Position::Relative,
         float: Float::None,
         clear: Clear::None,
@@ -333,7 +341,11 @@ impl NodeInputOf<DefaultScalar> {
         grid_auto_columns: Vec::new(),
         grid_auto_rows: Vec::new(),
         grid_auto_flow: GridAutoFlow::Row,
-        grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Column, false, false),
+        grid_lanes_flow: crate::node_input::GridLanesFlow::new(
+            crate::grid::GridAxisKind::Column,
+            false,
+            false,
+        ),
         grid_flow_tolerance: GridFlowToleranceOf::Normal { font_size: 16.0 },
         grid_column: GridPlacement::AUTO,
         grid_row: GridPlacement::AUTO,
@@ -351,7 +363,7 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
                 rows: GridBaselineReference::Physical,
             },
             baseline_source: BaselineSource::Auto,
-            wrap_edges: crate::WrapEdges::AUTO,
+            wrap_edges: WrapEdges::AUTO,
             display: Display::Flex,
             atomic_inline_participation: None,
             float_exclusion: FloatExclusion::MarginBox,
@@ -365,9 +377,9 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
             block_generation: BlockGeneration::Principal,
             size_containment: SizeContainment::None,
             text_indent: TextIndentOf::ZERO,
-            hyphenate_limit_lines: crate::HyphenateLimitLines::NoLimit,
-            hyphenate_limit_last: crate::HyphenateLimitLast::None,
-            hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+            hyphenate_limit_lines: HyphenateLimitLines::NoLimit,
+            hyphenate_limit_last: HyphenateLimitLast::None,
+            hyphenate_limit_zone: crate::value::LengthPercentageOf::ZERO,
             text_wrap_style: TextWrapStyle::Auto,
             text_group_align: TextGroupAlign::None,
             block_flow_context: BlockFlowContext::Normal,
@@ -385,9 +397,9 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
             scroll_snap_type: ScrollSnapType::None,
             scroll_snap_align: ScrollSnapAlign::default(),
             scroll_snap_stop: ScrollSnapStop::Normal,
-            break_before: crate::FragmentationBreak::Auto,
-            break_after: crate::FragmentationBreak::Auto,
-            break_inside: crate::FragmentationBreakInside::Auto,
+            break_before: FragmentationBreak::Auto,
+            break_after: FragmentationBreak::Auto,
+            break_inside: FragmentationBreakInside::Auto,
             position: Position::Relative,
             float: Float::None,
             clear: Clear::None,
@@ -417,7 +429,11 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
             grid_auto_columns: Vec::new(),
             grid_auto_rows: Vec::new(),
             grid_auto_flow: GridAutoFlow::Row,
-            grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Column, false, false),
+            grid_lanes_flow: crate::node_input::GridLanesFlow::new(
+                crate::grid::GridAxisKind::Column,
+                false,
+                false,
+            ),
             grid_flow_tolerance: GridFlowToleranceOf::default(),
             grid_column: GridPlacement::AUTO,
             grid_row: GridPlacement::AUTO,
@@ -443,8 +459,11 @@ impl<S: LayoutScalar> NodeInputOf<S> {
 mod property_field_migration_tests {
     use super::*;
     use crate::{
-        CalcSizeCalculation, FlexBasisOf, LengthPercentageOf, LengthResolutionStatus, MaxSizeOf,
-        MinSizeOf, PreferredSizeCalcBasis, PreferredSizeOf, SizingCalculation,
+        sizing::{
+            CalcSizeCalculation, FlexBasisOf, MaxSizeOf, MinSizeOf, PreferredSizeCalcBasis,
+            PreferredSizeOf, SizingCalculation,
+        },
+        value::{LengthPercentageOf, LengthResolutionStatus},
     };
 
     fn assert_field_types<S: LayoutScalar>(input: &NodeInputOf<S>) {
@@ -700,7 +719,7 @@ impl<S: LayoutScalar> LayoutInputOf<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Point, SourceIndex};
+    use crate::{geometry::Point, output::SourceIndex};
 
     fn assert_fri06_mr02_signed_zero_float_exclusion_boundaries<S: LayoutScalar>() {
         let margin_box = ScrollRectOf::try_new(

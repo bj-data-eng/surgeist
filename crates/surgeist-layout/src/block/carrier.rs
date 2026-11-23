@@ -2,6 +2,7 @@
 use super::content_insets::ContentInsetBinding;
 use super::*;
 use crate::engine::block_scope::ProductionId;
+use crate::{block_fragmentation::BlockFragmentainerOf, output::LayoutRootRequestOf};
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Origin<S: LayoutScalar> {
     pub(crate) normal: Point<S>,
@@ -11,21 +12,21 @@ pub(crate) struct Origin<S: LayoutScalar> {
 pub(crate) struct Fact<Node, S: LayoutScalar> {
     node: Node,
     parent: Option<Node>,
-    role: crate::BlockGeneration,
-    axes: crate::FlowAxes,
+    role: crate::node_input::BlockGeneration,
+    axes: crate::geometry::FlowAxes,
     input: ComputeInputOf<S>,
     normal: Point<S>,
     outer: S,
     inner: S,
     padding: Edges<S>,
     border: Edges<S>,
-    source_style: crate::NodeInputOf<S>,
+    source_style: crate::node_input::NodeInputOf<S>,
 }
 pub(crate) struct PreparedPath<Node, S: LayoutScalar> {
     binding: ContentInsetBinding<Node, S>,
     facts: Vec<Fact<Node, S>>,
-    request: crate::LayoutRootRequestOf<S>,
-    frame: crate::BlockFragmentainerOf<S>,
+    request: LayoutRootRequestOf<S>,
+    frame: BlockFragmentainerOf<S>,
     snapshot: std::sync::Arc<intrinsic::FragmentContext<Node, S>>,
 }
 /// Normal completion qualifies the candidate's producer inputs, but grants no
@@ -55,7 +56,9 @@ fn invalid<Node, S: LayoutScalar, M>(node: Node) -> LayoutErrorOf<Node, S, M> {
     LayoutErrorOf::new(
         LayoutErrorSiteOf::Node(node),
         LayoutOperation::ValueResolution,
-        LayoutErrorKindOf::BlockFragmentation(crate::BlockFragmentationFailure::InvalidSource),
+        LayoutErrorKindOf::BlockFragmentation(
+            crate::block_fragmentation::BlockFragmentationFailure::InvalidSource,
+        ),
     )
 }
 fn fact<'input, Tree, M>(
@@ -132,8 +135,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> PreparedPath<Node, S> {
     pub(crate) fn new<M>(
         binding: ContentInsetBinding<Node, S>,
         facts: Vec<Fact<Node, S>>,
-        request: crate::LayoutRootRequestOf<S>,
-        frame: crate::BlockFragmentainerOf<S>,
+        request: LayoutRootRequestOf<S>,
+        frame: BlockFragmentainerOf<S>,
         snapshot: std::sync::Arc<intrinsic::FragmentContext<Node, S>>,
     ) -> LayoutResultOf<Node, Self, S, M> {
         if facts.first().is_none_or(|fact| fact.parent.is_some())
@@ -200,13 +203,13 @@ impl<Node: Copy + Eq, S: LayoutScalar> PreparedPath<Node, S> {
     }
 }
 impl<Node: Copy + Eq, S: LayoutScalar> PerformedPath<Node, S> {
-    pub(crate) fn adopt<Tree: crate::LayoutTree<Node = Node, Scalar = S>>(
+    pub(crate) fn adopt<Tree: crate::tree::LayoutTree<Node = Node, Scalar = S>>(
         self,
         tree: &Tree,
         production: ProductionId,
         expected: &ContentInsetBinding<Node, S>,
-        request: crate::LayoutRootRequestOf<S>,
-        frame: crate::BlockFragmentainerOf<S>,
+        request: LayoutRootRequestOf<S>,
+        frame: BlockFragmentainerOf<S>,
         snapshot: &std::sync::Arc<intrinsic::FragmentContext<Node, S>>,
     ) -> LayoutResultOf<Node, AcceptedPath<Node, S>, S, Tree::MeasureError> {
         if self.0.binding != *expected
@@ -238,7 +241,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> AcceptedPath<Node, S> {
         production: ProductionId,
         expected: &ContentInsetBinding<Node, S>,
         node: Node,
-        principal_parent: Option<crate::LayoutOutputEntryOf<Node, S>>,
+        principal_parent: Option<crate::output::LayoutOutputEntryOf<Node, S>>,
     ) -> LayoutResultOf<Node, Origin<S>, S, M> {
         if self.production != production
             || self.path.binding != *expected

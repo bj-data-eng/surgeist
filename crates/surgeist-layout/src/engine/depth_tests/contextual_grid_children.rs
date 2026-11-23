@@ -1,11 +1,15 @@
 use super::*;
 use crate::accounting::{SubgridWork, TestHost};
+use crate::tree::{LayoutTree, Traverse};
 use crate::{
-    AlignContent, AlignItems, ComputedOverflow, GridAxisKind, GridLanesFlow, GridPlacement,
-    MinSizeOf, Overflow, PreferredSizeOf, ScrollbarWidthOf, SizeContainment, SubgridTrack,
-    TrackComponentOf,
+    grid::GridAxisKind,
+    node_input::{
+        AlignContent, AlignItems, ComputedOverflow, GridLanesFlow, GridPlacement, Overflow,
+        ScrollbarWidthOf, SizeContainment,
+    },
+    sizing::{MinSizeOf, PreferredSizeOf},
+    value::{SubgridTrack, TrackComponentOf},
 };
-use crate::{LayoutTree, Traverse};
 
 fn subgrid<S: LayoutScalar>() -> Vec<TrackComponentOf<S>> {
     vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))]
@@ -128,7 +132,7 @@ fn subgrid_grid_chain<S: LayoutScalar>(depth: u32, span: Span) -> PublicLayoutTr
 }
 
 fn assert_box<S: LayoutScalar>(
-    batch: &crate::CompletedLayoutBatchOf<u32, S>,
+    batch: &crate::output::CompletedLayoutBatchOf<u32, S>,
     node: u32,
     location: (f64, f64),
     size: (f64, f64),
@@ -467,7 +471,7 @@ fn size_contained_subgrid_item_keeps_its_tracks_when_its_minimum_is_probed() {
     );
 }
 
-fn nan_height<S: LayoutScalar>(_: crate::LeafMeasureInputOf<S>) -> Size<S> {
+fn nan_height<S: LayoutScalar>(_: crate::measurement::LeafMeasureInputOf<S>) -> Size<S> {
     Size::new(S::from_f64(10.0), S::NAN)
 }
 
@@ -479,13 +483,16 @@ fn assert_chain_failure_surfaces_unchanged<S: LayoutScalar>() {
     let leaf = depth + 1;
     let tree = subgrid_grid_chain::<S>(depth, Span::Whole).measure_with(leaf, nan_height::<S>);
     let error = compute_layout(&tree, 0, standalone()).expect_err("non-finite leaf height");
-    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(leaf));
-    assert_eq!(error.operation(), crate::LayoutOperation::LeafMeasurement);
+    assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(leaf));
+    assert_eq!(
+        error.operation(),
+        crate::error::LayoutOperation::LeafMeasurement
+    );
     assert!(matches!(
         error.kind(),
-        crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::MeasurementOutput(output))
-            if output.axis() == crate::PhysicalAxis::Vertical
-                && matches!(output.error(), crate::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.to_f64().is_nan())
+        crate::error::LayoutErrorKindOf::InvalidInput(crate::error::LayoutInvalidInputOf::MeasurementOutput(output))
+            if output.axis() == crate::geometry::PhysicalAxis::Vertical
+                && matches!(output.error(), crate::value::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.to_f64().is_nan())
     ));
 }
 
@@ -558,7 +565,7 @@ fn assert_subgrid_work_grows_linearly(name: &str, work: &[SubgridWork]) {
 /// The completed layout of `tree` and the work it reported to a fresh host.
 fn accounted_layout<S: LayoutScalar>(
     tree: &PublicLayoutTreeOf<S>,
-) -> (crate::CompletedLayoutBatchOf<u32, S>, SubgridWork) {
+) -> (crate::output::CompletedLayoutBatchOf<u32, S>, SubgridWork) {
     let host = TestHost::new();
     let batch = crate::engine::compute_layout_invalidated_accounted(
         tree,
@@ -743,7 +750,7 @@ fn fragmented_subgrid_chain_reuses_nothing_and_lays_out_the_same() {
             NodeInputOf {
                 display: Display::Block,
                 size: px_size(70.0, 70.0),
-                size_containment: crate::SizeContainment::BothAxes,
+                size_containment: crate::node_input::SizeContainment::BothAxes,
                 ..NodeInputOf::default()
             },
         )
@@ -917,7 +924,7 @@ impl LayoutTree for FailingLeaf {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: u32) -> crate::LayoutInputViewOf<'_, f32> {
+    fn layout_input(&self, node: u32) -> crate::node_input::LayoutInputViewOf<'_, f32> {
         self.tree.layout_input(node)
     }
 
@@ -928,7 +935,7 @@ impl LayoutTree for FailingLeaf {
     fn measure_leaf(
         &self,
         node: u32,
-        _input: crate::LeafMeasureInputOf<f32>,
+        _input: crate::measurement::LeafMeasureInputOf<f32>,
     ) -> Option<Result<Size<f32>, LeafFailure>> {
         (node == self.leaf).then_some(Err(LeafFailure))
     }
@@ -955,7 +962,7 @@ fn a_failure_in_the_innermost_subgrid_level_closes_the_captures_of_every_level()
     assert!(
         matches!(
             error.kind(),
-            crate::LayoutErrorKindOf::Measurement(LeafFailure)
+            crate::error::LayoutErrorKindOf::Measurement(LeafFailure)
         ),
         "{error:?}"
     );

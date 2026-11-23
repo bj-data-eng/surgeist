@@ -1,5 +1,13 @@
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    block_fragmentation::{
+        input::LayoutPublicationTargets,
+        publication::{LayoutBatchCommit, LayoutBatchPreparation},
+    },
+    node_input::{GridBaselineReference, GridLanesFlow, LayoutInputViewOf},
+    value::{NearestScrollportOf, NonNegativeFiniteOf, OrthogonalFallbackLimitOf},
+};
 
 macro_rules! grid_container_projection {
     ($input:expr) => {
@@ -107,7 +115,7 @@ pub(super) fn with_projected_subgrid_child_input<'input, Node: Copy, S: LayoutSc
         .nested_container()
         .expect("test subgrid child must retain its container input");
     consume(super::child::SubgridChildParentContextInput {
-        parent_baseline_references: crate::GridBaselineReferences::default(),
+        parent_baseline_references: crate::node_input::GridBaselineReferences::default(),
         item: input.item,
         child_style: child_input.item(),
         child_container: Some(*child_container_style),
@@ -155,29 +163,28 @@ pub(super) fn fri08_c01_placement_request<S: LayoutScalar>() -> LayoutRootReques
     {
         let axes = Size::new(
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(240.0)).unwrap(),
-                ),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(240.0)).unwrap()),
                 SizingOperation::Normal,
             ),
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(240.0)).unwrap(),
-                ),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(240.0)).unwrap()),
                 SizingOperation::Normal,
             ),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     }
@@ -205,7 +212,7 @@ pub(super) enum Fri08C06RInheritedAxes {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct GridTestRetainedState<S: LayoutScalar> {
-    pub(super) unrounded: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
+    pub(super) unrounded: HashMap<u32, crate::output::LayoutOutputEntryOf<u32, S>>,
     pub(super) final_outputs: HashMap<u32, NodeOutputOf<S>>,
     pub(super) caches: HashMap<u32, CacheOf<S>>,
 }
@@ -240,7 +247,7 @@ impl<S: LayoutScalar> GridTestRetainedState<S> {
 
 #[derive(Clone, Debug)]
 pub(super) struct Fri08C06RAtomicTree<S: LayoutScalar> {
-    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
+    pub(super) publication_targets: LayoutPublicationTargets<u32>,
     pub(super) tree: PublicLayoutTreeOf<S>,
     pub(super) cache_queries: std::cell::RefCell<Vec<(u32, bool)>>,
     pub(super) retained: GridTestRetainedState<S>,
@@ -249,7 +256,7 @@ pub(super) struct Fri08C06RAtomicTree<S: LayoutScalar> {
 impl<S: LayoutScalar> Fri08C06RAtomicTree<S> {
     pub(super) fn new(tree: PublicLayoutTreeOf<S>) -> Self {
         Self {
-            publication_targets: crate::LayoutPublicationTargets::new(),
+            publication_targets: LayoutPublicationTargets::new(),
             tree,
             cache_queries: std::cell::RefCell::new(Vec::new()),
             retained: GridTestRetainedState::default(),
@@ -259,24 +266,22 @@ impl<S: LayoutScalar> Fri08C06RAtomicTree<S> {
     pub(super) fn request() -> LayoutRootRequestOf<S> {
         {
             let axes = Size::splat(AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap(),
-                ),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap()),
                 SizingOperation::Normal,
             ));
             let definite = axes.map(|axis| axis.space().definite_size());
-            crate::LayoutRootRequestOf::standalone(
+            crate::output::LayoutRootRequestOf::standalone(
                 SizingRequestOf::new(
                     axes,
                     OrthogonalFallbackOf::new(
                         definite,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
                 definite,
             )
@@ -312,7 +317,7 @@ impl<S: LayoutScalar> LayoutTree for Fri08C06RAtomicTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -348,16 +353,16 @@ impl<S: LayoutScalar> LayoutTree for Fri08C06RAtomicTree<S> {
     fn unrounded_layout(
         &self,
         node: Self::Node,
-    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, S>> {
+    ) -> Option<crate::output::LayoutOutputEntryOf<Self::Node, S>> {
         self.retained.unrounded.get(&node).copied()
     }
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri08C06RAtomicTree<S> {
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
 
@@ -366,16 +371,13 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri08C06RAtomicTree<S> {
 
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
+        preparation: LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
         let batch = preparation.batch();
         Ok(self.retained.prepare_grid_test_batch(batch))
     }
 
-    fn commit_layout_batch(
-        &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
-    ) {
+    fn commit_layout_batch(&mut self, commit: LayoutBatchCommit<'_, u32, S, Self::Prepared>) {
         let prepared = commit.into_prepared();
         self.retained = prepared;
     }
@@ -455,10 +457,10 @@ pub(super) fn fri08_c03_containing_block_percentage_child<S: LayoutScalar>(
             1,
             NodeInputOf {
                 display: Display::GridLanes,
-                grid_lanes_flow: crate::GridLanesFlow::new(
+                grid_lanes_flow: GridLanesFlow::new(
                     match tracks {
-                        Fri08C03LanesTracks::Columns => crate::GridAxisKind::Column,
-                        Fri08C03LanesTracks::Rows => crate::GridAxisKind::Row,
+                        Fri08C03LanesTracks::Columns => crate::grid::GridAxisKind::Column,
+                        Fri08C03LanesTracks::Rows => crate::grid::GridAxisKind::Row,
                     },
                     false,
                     false,
@@ -492,16 +494,19 @@ pub(super) fn fri08_c03_containing_block_percentage_child<S: LayoutScalar>(
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     });
@@ -528,7 +533,7 @@ pub(super) fn fri08_c03_containing_block_rows_child<S: LayoutScalar>(
             1,
             NodeInputOf {
                 display: Display::GridLanes,
-                grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
+                grid_lanes_flow: GridLanesFlow::new(crate::grid::GridAxisKind::Row, false, false),
                 size: Size::new(
                     PreferredSizeOf::px(scalar(100.0)),
                     PreferredSizeOf::px(scalar(80.0)),
@@ -547,16 +552,19 @@ pub(super) fn fri08_c03_containing_block_rows_child<S: LayoutScalar>(
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })
@@ -761,21 +769,24 @@ pub(super) fn fri08_c03_auto_fit_batch<S: LayoutScalar>(
     compute_layout(tree, 1, {
         let axes = viewport.map(|value| {
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(value).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
                 SizingOperation::Normal,
             )
         });
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })
@@ -899,8 +910,8 @@ impl<S: LayoutScalar> LayoutTree for Fri08C04StandaloneIntrinsicMinimumTree<S> {
             .unwrap_or_else(|| panic!("standalone intrinsic node {node} must have style"))
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, Self::Scalar> {
-        crate::LayoutInputViewOf::Box(self.node_input(node))
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'_, Self::Scalar> {
+        LayoutInputViewOf::Box(self.node_input(node))
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
@@ -940,16 +951,19 @@ pub(super) fn fri08_c04_standalone_intrinsic_minimum_width<S: LayoutScalar>(
             SizingOperation::MinContent,
         ));
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })
@@ -1104,7 +1118,7 @@ pub(super) fn assert_fri08_c04_standalone_nested_flows<S: LayoutScalar>() {
                         ),
                         AxisSizingRequestOf::new(
                             AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(scalar(240.0)).unwrap(),
+                                NonNegativeFiniteOf::new(scalar(240.0)).unwrap(),
                             ),
                             SizingOperation::Normal,
                         ),
@@ -1112,18 +1126,18 @@ pub(super) fn assert_fri08_c04_standalone_nested_flows<S: LayoutScalar>() {
                         let batch = compute_layout(&tree, 1, {
                             let axes = Size::splat(available);
                             let definite = axes.map(|axis| axis.space().definite_size());
-                            crate::LayoutRootRequestOf::standalone(
+                            crate::output::LayoutRootRequestOf::standalone(
                                 SizingRequestOf::new(
                                     axes,
                                     OrthogonalFallbackOf::new(
                                         definite,
-                                        crate::NearestScrollportOf::Absent,
-                                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                                        NearestScrollportOf::Absent,
+                                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                                     ),
                                 ),
                                 crate::geometry::FlowAxes::new(
-                                    crate::WritingMode::HorizontalTb,
-                                    crate::Direction::Ltr,
+                                    crate::node_input::WritingMode::HorizontalTb,
+                                    crate::node_input::Direction::Ltr,
                                 ),
                                 definite,
                             )
@@ -1272,11 +1286,11 @@ pub(super) fn fri08_c03_nested_wrapper_style<S: LayoutScalar>(
         display: Display::GridLanes,
         writing_mode: mode,
         direction,
-        grid_lanes_flow: crate::GridLanesFlow::new(
+        grid_lanes_flow: GridLanesFlow::new(
             if auto_flow.is_column() {
-                crate::GridAxisKind::Row
+                crate::grid::GridAxisKind::Row
             } else {
-                crate::GridAxisKind::Column
+                crate::grid::GridAxisKind::Column
             },
             false,
             auto_flow.is_dense(),
@@ -1420,7 +1434,7 @@ pub(super) enum Fri08C03NestedMeasureError {
 
 #[derive(Clone, Debug)]
 pub(super) struct Fri08C03NestedAtomicTree<S: LayoutScalar> {
-    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
+    pub(super) publication_targets: LayoutPublicationTargets<u32>,
     pub(super) tree: PublicLayoutTreeOf<S>,
     pub(super) measure_mode: std::cell::Cell<Fri08C03NestedMeasureMode>,
     pub(super) measurement_requests: std::cell::RefCell<Vec<(u32, LeafMeasureInputOf<S>)>>,
@@ -1446,7 +1460,7 @@ impl<S: LayoutScalar> Fri08C03NestedAtomicTree<S> {
 
     pub(super) fn with_tree(tree: PublicLayoutTreeOf<S>) -> Self {
         Self {
-            publication_targets: crate::LayoutPublicationTargets::new(),
+            publication_targets: LayoutPublicationTargets::new(),
             tree,
             measure_mode: std::cell::Cell::new(Fri08C03NestedMeasureMode::Values),
             measurement_requests: std::cell::RefCell::new(Vec::new()),
@@ -1462,18 +1476,18 @@ impl<S: LayoutScalar> Fri08C03NestedAtomicTree<S> {
                 SizingOperation::MaxContent,
             ));
             let definite = axes.map(|axis| axis.space().definite_size());
-            crate::LayoutRootRequestOf::standalone(
+            crate::output::LayoutRootRequestOf::standalone(
                 SizingRequestOf::new(
                     axes,
                     OrthogonalFallbackOf::new(
                         definite,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
                 definite,
             )
@@ -1509,7 +1523,7 @@ impl<S: LayoutScalar> LayoutTree for Fri08C03NestedAtomicTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -1560,16 +1574,16 @@ impl<S: LayoutScalar> LayoutTree for Fri08C03NestedAtomicTree<S> {
     fn unrounded_layout(
         &self,
         node: Self::Node,
-    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, S>> {
+    ) -> Option<crate::output::LayoutOutputEntryOf<Self::Node, S>> {
         self.retained.unrounded.get(&node).copied()
     }
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri08C03NestedAtomicTree<S> {
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
 
@@ -1578,16 +1592,13 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri08C03NestedAtomicTree<S> {
 
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
+        preparation: LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
         let batch = preparation.batch();
         Ok(self.retained.prepare_grid_test_batch(batch))
     }
 
-    fn commit_layout_batch(
-        &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
-    ) {
+    fn commit_layout_batch(&mut self, commit: LayoutBatchCommit<'_, u32, S, Self::Prepared>) {
         let prepared = commit.into_prepared();
         self.retained = prepared;
     }
@@ -1607,7 +1618,7 @@ pub(super) enum Fri08C04BaselineMeasureError {
 
 #[derive(Clone, Debug)]
 pub(super) struct Fri08C04BaselineTree<S: LayoutScalar> {
-    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
+    pub(super) publication_targets: LayoutPublicationTargets<u32>,
     pub(super) tree: PublicLayoutTreeOf<S>,
     pub(super) measurements: HashMap<u32, Size<S>>,
     pub(super) failing_node: u32,
@@ -1645,7 +1656,7 @@ impl<S: LayoutScalar> LayoutTree for Fri08C04BaselineTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -1691,16 +1702,16 @@ impl<S: LayoutScalar> LayoutTree for Fri08C04BaselineTree<S> {
     fn unrounded_layout(
         &self,
         node: Self::Node,
-    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, S>> {
+    ) -> Option<crate::output::LayoutOutputEntryOf<Self::Node, S>> {
         self.retained.unrounded.get(&node).copied()
     }
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri08C04BaselineTree<S> {
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
 
@@ -1709,16 +1720,13 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri08C04BaselineTree<S> {
 
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
+        preparation: LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
         let batch = preparation.batch();
         Ok(self.retained.prepare_grid_test_batch(batch))
     }
 
-    fn commit_layout_batch(
-        &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
-    ) {
+    fn commit_layout_batch(&mut self, commit: LayoutBatchCommit<'_, u32, S, Self::Prepared>) {
         let prepared = commit.into_prepared();
         self.retained = prepared;
     }
@@ -2062,7 +2070,7 @@ pub(super) fn fri08_c04_baseline_area_topology_tree<S: LayoutScalar>(
         ),
     ]);
     Fri08C04BaselineTree {
-        publication_targets: crate::LayoutPublicationTargets::new(),
+        publication_targets: LayoutPublicationTargets::new(),
         tree,
         measurements,
         failing_node: 7,
@@ -2141,16 +2149,19 @@ pub(super) fn assert_fri08_c04_baseline_area_topology_controls<S: LayoutScalar>(
             SizingOperation::MaxContent,
         ));
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     };
@@ -2271,10 +2282,10 @@ pub(super) fn fri08_c02_track_mix_tree<S: LayoutScalar>(
                 size: physical_root_size,
                 grid_template_columns: columns,
                 grid_template_rows: rows,
-                grid_lanes_flow: crate::GridLanesFlow::new(
+                grid_lanes_flow: GridLanesFlow::new(
                     match axis {
-                        Fri08C02TrackAxis::Columns => crate::GridAxisKind::Column,
-                        Fri08C02TrackAxis::Rows => crate::GridAxisKind::Row,
+                        Fri08C02TrackAxis::Columns => crate::grid::GridAxisKind::Column,
+                        Fri08C02TrackAxis::Rows => crate::grid::GridAxisKind::Row,
                     },
                     false,
                     false,
@@ -2325,21 +2336,24 @@ pub(super) fn fri08_c02_track_sizes<S: LayoutScalar>(
     let batch = compute_layout(tree, 1, {
         let axes = viewport.map(|value| {
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(value).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
                 SizingOperation::Normal,
             )
         });
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })
@@ -2422,10 +2436,10 @@ pub(super) fn fri08_c02_stretch_tree<S: LayoutScalar>(
                 size: physical_root_size,
                 grid_template_columns: columns,
                 grid_template_rows: rows,
-                grid_lanes_flow: crate::GridLanesFlow::new(
+                grid_lanes_flow: GridLanesFlow::new(
                     match axis {
-                        Fri08C02TrackAxis::Columns => crate::GridAxisKind::Column,
-                        Fri08C02TrackAxis::Rows => crate::GridAxisKind::Row,
+                        Fri08C02TrackAxis::Columns => crate::grid::GridAxisKind::Column,
+                        Fri08C02TrackAxis::Rows => crate::grid::GridAxisKind::Row,
                     },
                     false,
                     false,
@@ -2539,21 +2553,24 @@ pub(super) fn fri08_c02_auto_fit_output<S: LayoutScalar>(
     let batch = compute_layout(tree, 1, {
         let axes = viewport.map(|value| {
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(value).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
                 SizingOperation::Normal,
             )
         });
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })
@@ -2589,13 +2606,13 @@ pub(super) fn fri06_mr02_geometry_error_input<S: LayoutScalar>(
         ),
         SizingRequestOf::new(
             Size::splat(AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(largest).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(largest).unwrap()),
                 SizingOperation::Normal,
             )),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     )
@@ -2657,9 +2674,7 @@ pub(super) fn fri05_c05_grid_sizing_input(size: Size<Option<DefaultScalar>>) -> 
                     ),
                     |value| {
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(value).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
                             SizingOperation::Normal,
                         )
                     },
@@ -2667,8 +2682,8 @@ pub(super) fn fri05_c05_grid_sizing_input(size: Size<Option<DefaultScalar>>) -> 
             }),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     )
@@ -2698,9 +2713,7 @@ pub(super) fn fri04_c04_grid_dispatch_input(parent: Size<Option<f32>>) -> Comput
                     ),
                     |value| {
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(value).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
                             SizingOperation::Normal,
                         )
                     },
@@ -2712,9 +2725,7 @@ pub(super) fn fri04_c04_grid_dispatch_input(parent: Size<Option<f32>>) -> Comput
                     ),
                     |value| {
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(value).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
                             SizingOperation::Normal,
                         )
                     },
@@ -2722,8 +2733,8 @@ pub(super) fn fri04_c04_grid_dispatch_input(parent: Size<Option<f32>>) -> Comput
             ),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     )
@@ -2893,7 +2904,7 @@ pub(super) fn baseline_measure(
     ComputeOutput::from_sizes_and_baselines(
         Size::new(width, height),
         Size::new(width, height),
-        crate::Baselines {
+        crate::output::Baselines {
             first: Point::new(None, first_baseline),
             last: Point::new(
                 None,
@@ -2912,7 +2923,7 @@ pub(super) fn vertical_baseline_measure(
     ComputeOutput::from_sizes_and_baselines(
         Size::new(width, height),
         Size::new(width, height),
-        crate::Baselines {
+        crate::output::Baselines {
             first: Point::new(first_baseline, None),
             last: Point::new(
                 last_baseline_from_right.map(|from_right| width - from_right),
@@ -2926,11 +2937,11 @@ pub(super) fn compute_oracle_grid(tree: &mut OracleTree) {
     {
         let axes = Size::new(
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(120.0).unwrap()),
                 SizingOperation::Normal,
             ),
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(120.0).unwrap()),
                 SizingOperation::Normal,
             ),
         );
@@ -2942,8 +2953,8 @@ pub(super) fn compute_oracle_grid(tree: &mut OracleTree) {
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
             flow,
@@ -2962,45 +2973,52 @@ fn oracle_grid_input() -> ComputeInput {
         RequestedAxis::Both,
         Size::NONE,
         Size::new(Some(120.0), Some(120.0)),
-        crate::ContainingLayoutContext::new(
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
-            crate::ParentFormattingContext::NoParent,
+        crate::output::ContainingLayoutContext::new(
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
+            crate::output::ParentFormattingContext::NoParent,
         ),
         SizingRequestOf::new(
             Size::new(
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(120.0).unwrap()),
                     SizingOperation::Normal,
                 ),
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(120.0).unwrap()),
                     SizingOperation::Normal,
                 ),
             ),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     )
 }
 
 pub(super) fn compute_oracle_grid_output(tree: &mut OracleTree) -> ComputeOutput {
-    crate::compute_grid(&mut tree.borrow_compute(), 1, oracle_grid_input()).unwrap()
+    crate::grid::compute_grid(&mut tree.borrow_compute(), 1, oracle_grid_input()).unwrap()
 }
 
 // The grid container's site and the grid-name error that rejects its layout.
 pub(super) fn oracle_grid_names_rejection(
     tree: &mut OracleTree,
-) -> (crate::LayoutErrorSiteOf<u32>, crate::NamedGridError) {
-    let Err(error) = crate::compute_grid(&mut tree.borrow_compute(), 1, oracle_grid_input()) else {
+) -> (
+    crate::error::LayoutErrorSiteOf<u32>,
+    crate::grid::NamedGridError,
+) {
+    let Err(error) = crate::grid::compute_grid(&mut tree.borrow_compute(), 1, oracle_grid_input())
+    else {
         panic!("invalid grid names must not lay out");
     };
     match error.kind() {
-        crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::GridNames(report)) => {
-            (error.site(), report.clone())
-        }
+        crate::error::LayoutErrorKindOf::InvalidInput(
+            crate::error::LayoutInvalidInputOf::GridNames(report),
+        ) => (error.site(), report.clone()),
         other => panic!("unexpected error kind {other:?}"),
     }
 }
@@ -3013,7 +3031,7 @@ pub(super) fn final_y(tree: &OracleTree, node: u32) -> DefaultScalar {
 }
 
 pub(super) fn empty_subgrid_track() -> TrackComponent {
-    TrackComponent::Subgrid(crate::SubgridTrack {
+    TrackComponent::Subgrid(crate::value::SubgridTrack {
         name_components: Vec::new(),
     })
 }
@@ -3038,7 +3056,7 @@ pub(super) fn inherited_placement_member(
         (GridAxisKind::Row, AncestorBaselineRole::Last) => Point::new(None, Some(100.0 - target)),
     };
     ancestor_baseline_member(AncestorBaselineMemberInput {
-        reference: crate::GridBaselineReference::Physical,
+        reference: GridBaselineReference::Physical,
         source,
         axis,
         alignment_context_reversed: false,
@@ -3088,7 +3106,7 @@ pub(super) fn inherited_placement_group(
             GridAxisKind::Column => PhysicalAxis::Horizontal,
             GridAxisKind::Row => PhysicalAxis::Vertical,
         },
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         4,
         [inherited_placement_member(
             91,
@@ -3268,7 +3286,7 @@ pub(super) fn derive_inherited_placement(
     InheritedCurrentGridBaselinePlacement::try_derive(
         group,
         InheritedCurrentGridBaselinePlacementInput {
-            reference: crate::GridBaselineReference::Physical,
+            reference: GridBaselineReference::Physical,
             axis,
             physical_axis: frames.physical_axis,
             mapping: inherited_placement_mapping(axis, frames),

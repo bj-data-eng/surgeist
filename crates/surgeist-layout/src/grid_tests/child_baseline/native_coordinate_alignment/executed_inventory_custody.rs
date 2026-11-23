@@ -40,14 +40,16 @@ fn performed_actor<S: LayoutScalar>(
         SizingRequestOf::new(
             space.map(|extent| {
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(extent).unwrap()),
+                    AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(extent).unwrap(),
+                    ),
                     SizingOperation::Normal,
                 )
             }),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     );

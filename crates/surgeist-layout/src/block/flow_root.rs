@@ -1,7 +1,10 @@
 //! The single decision whether a box is a flow root of its parent's block
 //! formatting context.
 use crate::node_projection::CommonBoxProjection;
-use crate::{BlockFlowContext, Display, Float, LayoutScalar, NodeInputOf, Position, WritingMode};
+use crate::{
+    node_input::{BlockFlowContext, Display, Float, NodeInputOf, Position, WritingMode},
+    scalar::LayoutScalar,
+};
 
 /// A box establishes an independent block formatting context when it is
 /// floated or absolutely positioned, has hidden, scroll or auto overflow

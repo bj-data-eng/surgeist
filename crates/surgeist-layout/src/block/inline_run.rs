@@ -1,7 +1,14 @@
 use super::absolute::{StaticPositionGeometry, absolute_static_position};
 use super::scroll::{BlockScrollContributions, child_scrollbar_size};
 use super::*;
-use crate::{AxisSizingRequestOf, FlowAxes};
+use crate::{
+    error::{LayoutInternalInvariant, LayoutMissingContext},
+    geometry::FlowAxes,
+    inline_wrapping::WrappingScopeError,
+    node_input::InlineBaselineContext,
+    output::BaselineFactOf,
+    value::{AxisSizingRequestOf, NumericResolutionOf},
+};
 use surgeist_text::font::FontBaseline;
 
 mod fit;
@@ -132,11 +139,11 @@ where
         let compatible = matches!(
             (flow.inline_start(), parent.inline_start()),
             (
-                crate::PhysicalSide::Left | crate::PhysicalSide::Right,
-                crate::PhysicalSide::Left | crate::PhysicalSide::Right
+                crate::geometry::PhysicalSide::Left | crate::geometry::PhysicalSide::Right,
+                crate::geometry::PhysicalSide::Left | crate::geometry::PhysicalSide::Right
             ) | (
-                crate::PhysicalSide::Top | crate::PhysicalSide::Bottom,
-                crate::PhysicalSide::Top | crate::PhysicalSide::Bottom
+                crate::geometry::PhysicalSide::Top | crate::geometry::PhysicalSide::Bottom,
+                crate::geometry::PhysicalSide::Top | crate::geometry::PhysicalSide::Bottom
             )
         );
         if !compatible {
@@ -391,7 +398,7 @@ struct InlineRunPlacement<Node, S: LayoutScalar> {
 
 pub(super) struct InlineRunContext<S: LayoutScalar> {
     pub(super) inline_request: AxisSizingRequestOf<S>,
-    pub(super) child_request: crate::SizingRequestOf<S>,
+    pub(super) child_request: crate::value::SizingRequestOf<S>,
     pub(super) box_frontier: Option<crate::text_layout::boxes::BoxFrontier>,
     pub(super) line_box_context: crate::line_box::LineBoxContext,
     pub(super) tail: crate::text_layout::fit::TailContext,
@@ -501,7 +508,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
 pub(super) fn inline_atomic_child_request<S: LayoutScalar>(
     constants: &Constants<S>,
     child_run_mode: RunMode,
-    pass_sizing_request: crate::SizingRequestOf<S>,
+    pass_sizing_request: crate::value::SizingRequestOf<S>,
     available_inline_extent: AxisSizingRequestOf<S>,
 ) -> ComputeInputOf<S> {
     ComputeInputOf::<S>::for_child(
@@ -820,16 +827,16 @@ where
 }
 
 struct AtomicInlineContext {
-    axes: crate::FlowAxes,
-    baseline: crate::InlineBaselineContext,
+    axes: FlowAxes,
+    baseline: InlineBaselineContext,
 }
 
 fn named_atomic_demand<S: LayoutScalar>(
     child: &BlockChildProjection<'_, S>,
-    context: crate::InlineBaselineContext,
+    context: InlineBaselineContext,
 ) -> crate::output::NamedBaselineDemand {
     match context {
-        crate::InlineBaselineContext::Named(name)
+        InlineBaselineContext::Named(name)
             if child.vertical_align.is_baseline_relative() && child.float.is_none() =>
         {
             crate::output::NamedBaselineDemand::for_source(
@@ -878,7 +885,7 @@ fn atomic_inline_box_participant<S: LayoutScalar, M>(
                     .or_else(|| containing_flow_axes.block_axis_coordinate(baselines.last))
                     .map(|physical| {
                         if containing_flow_axes
-                            .logical_axis_progression(crate::LogicalAxis::Block)
+                            .logical_axis_progression(crate::geometry::LogicalAxis::Block)
                             .is_decreasing()
                         {
                             logical_size.block - physical
@@ -888,7 +895,7 @@ fn atomic_inline_box_participant<S: LayoutScalar, M>(
                     })
             })
             .flatten();
-    if let crate::InlineBaselineContext::Named(name) = context
+    if let InlineBaselineContext::Named(name) = context
         && child_style.vertical_align.is_baseline_relative()
     {
         selected_inner_baseline = Some(named_atomic_baseline(
@@ -903,7 +910,7 @@ fn atomic_inline_box_participant<S: LayoutScalar, M>(
         baseline_reference: if child_style.vertical_align.is_baseline_relative() {
             context
         } else {
-            crate::InlineBaselineContext::Physical
+            InlineBaselineContext::Physical
         },
         source_index,
         size: output.size,
@@ -936,18 +943,18 @@ fn named_atomic_baseline<S: LayoutScalar, M>(
     )
     .selected_fact(output.named_baselines)
     .expect("a resolved named source requests exactly one fact");
-    let synthesized = matches!(fact, crate::BaselineFactOf::Absent);
+    let synthesized = matches!(fact, BaselineFactOf::Absent);
     let physical = match fact {
-        crate::BaselineFactOf::Unknown => {
+        BaselineFactOf::Unknown => {
             return Err(LayoutErrorKindOf::MissingContext(
-                crate::LayoutMissingContext::NamedInlineBaseline,
+                LayoutMissingContext::NamedInlineBaseline,
             ));
         }
-        crate::BaselineFactOf::Available(value) => {
+        BaselineFactOf::Available(value) => {
             if value.axis() != containing_flow_axes.block_axis() {
                 return Err(LayoutErrorKindOf::InvalidInput(
                     LayoutInvalidInputOf::InlineBaseline(
-                        crate::InlineBaselineError::AxisMismatch {
+                        crate::node_input::InlineBaselineError::AxisMismatch {
                             expected: containing_flow_axes.block_axis(),
                             actual: value.axis(),
                         },
@@ -956,12 +963,12 @@ fn named_atomic_baseline<S: LayoutScalar, M>(
             }
             value.offset()
         }
-        crate::BaselineFactOf::Absent => {
+        BaselineFactOf::Absent => {
             let edge = |side| match side {
-                crate::PhysicalSide::Top => -margin.top,
-                crate::PhysicalSide::Bottom => output.size.height + margin.bottom,
-                crate::PhysicalSide::Left => -margin.left,
-                crate::PhysicalSide::Right => output.size.width + margin.right,
+                crate::geometry::PhysicalSide::Top => -margin.top,
+                crate::geometry::PhysicalSide::Bottom => output.size.height + margin.bottom,
+                crate::geometry::PhysicalSide::Left => -margin.left,
+                crate::geometry::PhysicalSide::Right => output.size.width + margin.right,
             };
             let under = edge(containing_flow_axes.line_under());
             match name {
@@ -979,9 +986,9 @@ fn named_atomic_baseline<S: LayoutScalar, M>(
         ));
     }
     let physical = if synthesized && used_overflow.is_scroll_container() {
-        crate::BaselineCoordinateOf::try_new(containing_flow_axes.block_axis(), physical)
+        crate::output::BaselineCoordinateOf::try_new(containing_flow_axes.block_axis(), physical)
             .and_then(|coordinate| coordinate.clamped_to_border(output.size))
-            .map_err(|crate::FiniteScalarErrorOf::NonFinite { value }| {
+            .map_err(|crate::value::FiniteScalarErrorOf::NonFinite { value }| {
                 LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value })
             })?
             .offset()
@@ -989,7 +996,7 @@ fn named_atomic_baseline<S: LayoutScalar, M>(
         physical
     };
     let logical = if containing_flow_axes
-        .logical_axis_progression(crate::LogicalAxis::Block)
+        .logical_axis_progression(crate::geometry::LogicalAxis::Block)
         .is_decreasing()
     {
         logical_size.block - physical
@@ -1012,7 +1019,7 @@ pub(super) struct BoundaryAllocationContext<'a, Node> {
     pub(super) associations: &'a crate::text_layout::capture::ScopeAssociations<Node>,
     pub(super) resources: &'a dyn crate::text_layout::scope_alignment::ScopeAlignmentFacts,
     pub(super) orientation: surgeist_text::selection::LineOrientation,
-    pub(super) axes: crate::FlowAxes,
+    pub(super) axes: FlowAxes,
 }
 impl<Node: Copy + Eq> BoundaryAllocationContext<'_, Node> {
     pub(super) fn allocate<'input, Tree, S, M>(
@@ -1028,7 +1035,8 @@ impl<Node: Copy + Eq> BoundaryAllocationContext<'_, Node> {
         S: LayoutScalar,
     {
         let advance = endpoint.edge.border_padding_advance().to_f64();
-        let crate::LayoutInputViewOf::InlineBoundary(input) = tree.layout_input(node) else {
+        let crate::node_input::LayoutInputViewOf::InlineBoundary(input) = tree.layout_input(node)
+        else {
             unreachable!("an endpoint retains its normalized input");
         };
         let Some(parent_axes) = input.parent_edge_axes() else {
@@ -1055,7 +1063,7 @@ impl<Node: Copy + Eq> BoundaryAllocationContext<'_, Node> {
         let (wrapping, _) = tree.wrapping_context().ok_or_else(|| {
             crate::inline_wrapping::wrapping_error(
                 self.container,
-                crate::WrappingScopeError::MissingCapture,
+                WrappingScopeError::MissingCapture,
             )
         })?;
         let (owner, parent) = wrapping
@@ -1070,7 +1078,7 @@ impl<Node: Copy + Eq> BoundaryAllocationContext<'_, Node> {
             .ok_or_else(|| {
                 crate::inline_wrapping::wrapping_error(
                     self.container,
-                    crate::WrappingScopeError::MissingCapture,
+                    WrappingScopeError::MissingCapture,
                 )
             })?;
         if let Some(scope) = parent
@@ -1085,17 +1093,16 @@ impl<Node: Copy + Eq> BoundaryAllocationContext<'_, Node> {
                 )
                 .map_err(|error| text_run_error(self.container, error.into()))?;
             }
-            if let Some(crate::TextScopeAssociation::ParagraphContainer(parent_node)) =
+            if let Some(crate::text_layout::TextScopeAssociation::ParagraphContainer(parent_node)) =
                 self.associations.captured_binding(scope)
             {
                 let parent_input = tree.layout_input(parent_node).as_box().ok_or_else(|| {
                     crate::inline_wrapping::wrapping_error(
                         parent_node,
-                        crate::WrappingScopeError::CaptureAssociation,
+                        WrappingScopeError::CaptureAssociation,
                     )
                 })?;
-                let expected =
-                    crate::FlowAxes::new(parent_input.writing_mode, parent_input.direction);
+                let expected = FlowAxes::new(parent_input.writing_mode, parent_input.direction);
                 if parent_axes != expected {
                     return Err(LayoutErrorOf::new(
                         LayoutErrorSiteOf::Node(node),
@@ -1111,19 +1118,25 @@ impl<Node: Copy + Eq> BoundaryAllocationContext<'_, Node> {
             }
         }
         let side = match (self.orientation, parent_axes.inline_start()) {
-            (surgeist_text::selection::LineOrientation::Horizontal, crate::PhysicalSide::Left)
+            (
+                surgeist_text::selection::LineOrientation::Horizontal,
+                crate::geometry::PhysicalSide::Left,
+            )
             | (
                 surgeist_text::selection::LineOrientation::Vertical
                 | surgeist_text::selection::LineOrientation::SidewaysClockwise
                 | surgeist_text::selection::LineOrientation::SidewaysCounterclockwise,
-                crate::PhysicalSide::Top,
+                crate::geometry::PhysicalSide::Top,
             ) => surgeist_text::finalized::LineEdgeSide::Start,
-            (surgeist_text::selection::LineOrientation::Horizontal, crate::PhysicalSide::Right)
+            (
+                surgeist_text::selection::LineOrientation::Horizontal,
+                crate::geometry::PhysicalSide::Right,
+            )
             | (
                 surgeist_text::selection::LineOrientation::Vertical
                 | surgeist_text::selection::LineOrientation::SidewaysClockwise
                 | surgeist_text::selection::LineOrientation::SidewaysCounterclockwise,
-                crate::PhysicalSide::Bottom,
+                crate::geometry::PhysicalSide::Bottom,
             ) => surgeist_text::finalized::LineEdgeSide::End,
             _ => {
                 return Err(LayoutErrorOf::new(
@@ -1158,7 +1171,7 @@ pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(
                 LayoutErrorSiteOf::Node(node),
                 LayoutOperation::TextCapture,
                 LayoutErrorKindOf::UnsupportedCapability(
-                    crate::LayoutUnsupportedCapability::TextWritingMode(mode),
+                    crate::error::LayoutUnsupportedCapability::TextWritingMode(mode),
                 ),
             );
         }
@@ -1173,34 +1186,32 @@ pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(
         }
         crate::text_layout::fit::FitError::NonFinite(value) => LayoutErrorKindOf::TextNumeric {
             value,
-            reason: crate::LayoutTextNumericError::NonFinite,
+            reason: crate::error::LayoutTextNumericError::NonFinite,
         },
         crate::text_layout::fit::FitError::Numeric(value, reason) => {
             LayoutErrorKindOf::TextNumeric { value, reason }
         }
         crate::text_layout::fit::FitError::InvalidGeometry => LayoutErrorKindOf::InternalInvariant(
-            crate::LayoutInternalInvariant::InvalidRoundedInlineFragmentGeometry,
+            LayoutInternalInvariant::InvalidRoundedInlineFragmentGeometry,
         ),
         crate::text_layout::fit::FitError::InvalidTailBasis => {
             LayoutErrorKindOf::InternalInvariant(
-                crate::LayoutInternalInvariant::InvalidInlineTailSelection,
+                LayoutInternalInvariant::InvalidInlineTailSelection,
             )
         }
         crate::text_layout::fit::FitError::InvalidPrettyBasis => {
             LayoutErrorKindOf::InternalInvariant(
-                crate::LayoutInternalInvariant::InvalidInlinePrettySelection,
+                LayoutInternalInvariant::InvalidInlinePrettySelection,
             )
         }
         crate::text_layout::fit::FitError::MissingBlockTail => {
-            LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::TextBlockTail)
+            LayoutErrorKindOf::MissingContext(LayoutMissingContext::TextBlockTail)
         }
         crate::text_layout::fit::FitError::MissingComputedBoundaryIncidence => {
-            LayoutErrorKindOf::MissingContext(
-                crate::LayoutMissingContext::ComputedLineBoundaryIncidence,
-            )
+            LayoutErrorKindOf::MissingContext(LayoutMissingContext::ComputedLineBoundaryIncidence)
         }
         crate::text_layout::fit::FitError::MissingZoneBasis => {
-            LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis)
+            LayoutErrorKindOf::MissingContext(LayoutMissingContext::RequiredBasis)
         }
         crate::text_layout::fit::FitError::Dependency => {
             unreachable!("the actual dependency error is returned before Text adaptation")
@@ -1215,44 +1226,41 @@ pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(
 
 fn resolve_text_indent<Node: Copy, S: LayoutScalar, M>(
     node: Node,
-    policy: crate::TextIndentOf<S>,
+    policy: crate::node_input::TextIndentOf<S>,
     own_available: AxisSizingRequestOf<S>,
 ) -> LayoutResultOf<Node, crate::text_indent::ResolvedTextIndent<S>, S, M> {
-    let amount =
-        match crate::layout_math::normal_available_size(own_available) {
-            None => policy.amount.absolute_px(),
-            Some(width) => match policy.amount.resolve_against(
-                crate::PercentageBasisOf::definite(width).map_err(|_| {
-                    LayoutErrorOf::new(
-                        LayoutErrorSiteOf::Node(node),
-                        LayoutOperation::ValueResolution,
-                        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
-                            value: width,
-                        }),
-                    )
-                })?,
-            ) {
-                crate::NumericResolutionOf::Resolved(value) => value,
-                crate::NumericResolutionOf::MissingBasis { .. } => {
-                    return Err(LayoutErrorOf::new(
-                        LayoutErrorSiteOf::Node(node),
-                        LayoutOperation::ValueResolution,
-                        LayoutErrorKindOf::MissingContext(
-                            crate::LayoutMissingContext::RequiredBasis,
-                        ),
-                    ));
-                }
-                crate::NumericResolutionOf::InvalidNumeric { resolved, .. } => {
-                    return Err(LayoutErrorOf::new(
-                        LayoutErrorSiteOf::Node(node),
-                        LayoutOperation::ValueResolution,
-                        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
-                            value: resolved,
-                        }),
-                    ));
-                }
-            },
-        };
+    let amount = match crate::layout_math::normal_available_size(own_available) {
+        None => policy.amount.absolute_px(),
+        Some(width) => match policy.amount.resolve_against(
+            crate::value::PercentageBasisOf::definite(width).map_err(|_| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ValueResolution,
+                    LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
+                        value: width,
+                    }),
+                )
+            })?,
+        ) {
+            NumericResolutionOf::Resolved(value) => value,
+            NumericResolutionOf::MissingBasis { .. } => {
+                return Err(LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ValueResolution,
+                    LayoutErrorKindOf::MissingContext(LayoutMissingContext::RequiredBasis),
+                ));
+            }
+            NumericResolutionOf::InvalidNumeric { resolved, .. } => {
+                return Err(LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ValueResolution,
+                    LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
+                        value: resolved,
+                    }),
+                ));
+            }
+        },
+    };
     if let Some(width) = crate::layout_math::normal_available_size(own_available) {
         let capacity = width - amount;
         if !capacity.is_finite() {
@@ -1274,8 +1282,8 @@ fn resolve_text_indent<Node: Copy, S: LayoutScalar, M>(
 
 fn validate_metric_reference<Node: Copy, S: LayoutScalar, M>(
     node: Node,
-    expected: crate::InlineBaselineContext,
-    metrics: crate::InlineMetricsOf<S>,
+    expected: InlineBaselineContext,
+    metrics: crate::node_input::InlineMetricsOf<S>,
     alignment: VerticalAlignOf<S>,
 ) -> LayoutResultOf<Node, (), S, M> {
     if alignment.is_baseline_relative() && metrics.reference() != expected {
@@ -1283,7 +1291,7 @@ fn validate_metric_reference<Node: Copy, S: LayoutScalar, M>(
             LayoutErrorSiteOf::Node(node),
             LayoutOperation::ChildLayout,
             LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InlineBaseline(
-                crate::InlineBaselineError::ReferenceMismatch {
+                crate::node_input::InlineBaselineError::ReferenceMismatch {
                     expected,
                     actual: metrics.reference(),
                 },

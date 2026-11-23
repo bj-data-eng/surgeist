@@ -1,7 +1,12 @@
 use crate::error::LayoutResultOf;
 use crate::{
-    CacheKeyContext, ComputeInputOf, ComputeOutputOf, InlineFragmentOutputOf, LayoutInputViewOf,
-    LayoutOutputEntryOf, LayoutScalar, NodeInputOf, Traverse,
+    cache::CacheKeyContext,
+    error::{LayoutErrorSiteOf, LayoutOperation},
+    geometry::PhysicalAxis,
+    node_input::{LayoutInputViewOf, NodeInputOf},
+    output::{ComputeInputOf, ComputeOutputOf, InlineFragmentOutputOf, LayoutOutputEntryOf},
+    scalar::LayoutScalar,
+    tree::Traverse,
 };
 
 pub(crate) type WrappingContextLoan<'a, Node> = (
@@ -105,7 +110,10 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         if !self.has_leaf_measurement(node) {
             return Err(crate::block::float_context::missing(node));
         }
-        self.compute_child(node, input.with_run_mode(crate::RunMode::ComputeSize))
+        self.compute_child(
+            node,
+            input.with_run_mode(crate::output::RunMode::ComputeSize),
+        )
     }
     /// Real used-box sizing of an independent source float in a disposable
     /// entry traversal. The packet producer retains its detached body policy;
@@ -134,8 +142,8 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
             .push(node, input, frame.exclusions, frame.cut)
             .map_err(|error| {
                 crate::error::staging_text_error(
-                    crate::LayoutErrorSiteOf::Node(node),
-                    crate::LayoutOperation::ChildLayout,
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
                     error,
                 )
             })
@@ -182,7 +190,7 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         }
         Err(crate::inline_wrapping::wrapping_error(
             node,
-            crate::WrappingScopeError::UnsupportedIncidence,
+            crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence,
         ))
     }
     /// A demanded physical scalar; a Block inline component never requests
@@ -191,20 +199,20 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         &mut self,
         node: Self::Node,
         input: ComputeInputOf<Self::Scalar>,
-        axis: crate::PhysicalAxis,
+        axis: PhysicalAxis,
     ) -> LayoutResultOf<Self::Node, Self::Scalar, Self::Scalar, M>
     where
         Self: Sized,
     {
         if !self.has_leaf_measurement(node)
-            && self.node_input(node).display.inner_display() == crate::Display::Block
+            && self.node_input(node).display.inner_display() == crate::node_input::Display::Block
         {
             return crate::block::intrinsic::axis_demand(self, node, input, axis);
         }
         let output = self.compute_child(node, input)?;
         Ok(match axis {
-            crate::PhysicalAxis::Horizontal => output.size.width,
-            crate::PhysicalAxis::Vertical => output.size.height,
+            PhysicalAxis::Horizontal => output.size.width,
+            PhysicalAxis::Vertical => output.size.height,
         })
     }
 
@@ -229,7 +237,7 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         &self,
         _node: Self::Node,
         _input: ComputeInputOf<Self::Scalar>,
-        _operation: crate::SizingOperation,
+        _operation: crate::value::SizingOperation,
     ) -> LayoutResultOf<Self::Node, Option<Self::Scalar>, Self::Scalar, M> {
         Ok(None)
     }
@@ -261,28 +269,32 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         _input: ComputeInputOf<Self::Scalar>,
         _trial: super::session::FloatChildTrial,
     ) -> super::session::FloatProbeResult<Self, M> {
-        Err(crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(node),
-            crate::LayoutOperation::ChildLayout,
-            crate::LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::TextCapture),
+        Err(crate::error::LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::ChildLayout,
+            crate::error::LayoutErrorKindOf::MissingContext(
+                crate::error::LayoutMissingContext::TextCapture,
+            ),
         ))
     }
     fn accept_float_child(
         &mut self,
         packet: &super::session::FloatChildPacket<Self::Node, Self::Scalar>,
     ) -> LayoutResultOf<Self::Node, (), Self::Scalar, M> {
-        Err(crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(packet.node),
-            crate::LayoutOperation::ChildLayout,
-            crate::LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::TextCapture),
+        Err(crate::error::LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(packet.node),
+            LayoutOperation::ChildLayout,
+            crate::error::LayoutErrorKindOf::MissingContext(
+                crate::error::LayoutMissingContext::TextCapture,
+            ),
         ))
     }
 
     fn float_exclusion_interval(
         &self,
         _node: Self::Node,
-        _query: crate::FloatExclusionQueryOf<Self::Scalar>,
-    ) -> Option<Result<Option<crate::FloatExclusionIntervalOf<Self::Scalar>>, M>> {
+        _query: crate::node_input::FloatExclusionQueryOf<Self::Scalar>,
+    ) -> Option<Result<Option<crate::node_input::FloatExclusionIntervalOf<Self::Scalar>>, M>> {
         None
     }
 }

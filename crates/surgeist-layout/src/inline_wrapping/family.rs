@@ -2,7 +2,12 @@
 mod views;
 use super::edge_plan::AdmittedGeneratedBoxProof;
 use super::*;
-use crate::{LayoutInputViewOf, LayoutTree, engine::validation::ValidationGraph};
+use crate::{
+    engine::validation::ValidationGraph,
+    node_input::{Display, LayoutInputViewOf},
+    scalar::LayoutScalar,
+    tree::LayoutTree,
+};
 use std::ops::Range;
 pub(crate) use views::{NativeFormatterCompletion, NativePublication, pieces};
 pub use views::{
@@ -69,7 +74,7 @@ impl<Node: Copy + Eq> AdmittedGeneratedBoxProof<Node> {
             if tree
                 .layout_input(graph.nodes[ancestor])
                 .as_box()
-                .is_some_and(|b| b.display == crate::Display::None)
+                .is_some_and(|b| b.display == Display::None)
             {
                 return Err(WrappingScopeError::UnsupportedIncidence);
             }
@@ -78,9 +83,7 @@ impl<Node: Copy + Eq> AdmittedGeneratedBoxProof<Node> {
             };
             ancestor = parent;
         }
-        if input.display.inner_display() != crate::Display::Block
-            || input.display == crate::Display::None
-        {
+        if input.display.inner_display() != Display::Block || input.display == Display::None {
             return Err(WrappingScopeError::DifferentFlow);
         }
         let root = self
@@ -141,7 +144,7 @@ impl<Node: Copy + Eq> AdmittedGeneratedBoxProof<Node> {
                 return Err(WrappingScopeError::AmbiguousNode);
             }
             if let LayoutInputViewOf::Box(input) = tree.layout_input(graph.nodes[child])
-                && input.display != crate::Display::None
+                && input.display != Display::None
             {
                 let key = self
                     .boxes
@@ -320,29 +323,29 @@ impl<Node: Copy + Eq> AdmittedGeneratedBoxProof<Node> {
 /// Exact accepted occurrence receipt; candidate and measurement paths do not
 /// publish it. All coordinates come from that line's executed native slots.
 #[derive(Clone, Debug)]
-pub(crate) struct NativeLineReceipt<S: crate::LayoutScalar> {
+pub(crate) struct NativeLineReceipt<S: LayoutScalar> {
     pub(crate) profile: Arc<super::ordering::NativeOrderingData>,
     pub(crate) source: Range<usize>,
     pub(crate) body: usize,
     pub(crate) line: usize,
-    pub(crate) axes: crate::FlowAxes,
+    pub(crate) axes: crate::geometry::FlowAxes,
     pub(crate) receipt: Arc<super::ordering::NativeOrderingProjection>,
     pub(crate) ranks: Vec<usize>,
     pub(crate) rows: Vec<usize>,
     pub(crate) edges: Vec<NativeExecutedEdge<S>>,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct NativeExecutedEdge<S: crate::LayoutScalar> {
+pub(crate) struct NativeExecutedEdge<S: LayoutScalar> {
     pub(crate) rank: usize,
     pub(crate) owner: usize,
-    pub(crate) kind: crate::InlineBoundaryKind,
+    pub(crate) kind: crate::node_input::InlineBoundaryKind,
     pub(crate) alias: bool,
     pub(crate) component: usize,
     pub(crate) flow: (S, S),
     pub(crate) strip: (S, S),
 }
 
-impl<S: crate::LayoutScalar> PartialEq for NativeLineReceipt<S> {
+impl<S: LayoutScalar> PartialEq for NativeLineReceipt<S> {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.profile, &other.profile)
             && self.receipt == other.receipt

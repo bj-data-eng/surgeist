@@ -3,6 +3,7 @@
 //! the distinct content-edge static-position rule out of these expectations.
 
 use super::*;
+use crate::block_fragmentation::NodeLayoutRefOf;
 use crate::test_support::readback::{self, Phase};
 use crate::test_support::requests::NativeRootFrameOf;
 
@@ -740,11 +741,9 @@ fn absolute_no_track_demand<S: LayoutScalar>() {
                                 batch
                                     .node_layouts()
                                     .map(|(_, layout)| match layout {
-                                        crate::NodeLayoutRefOf::SingleBox(value) =>
-                                            value.final_entry(),
-                                        crate::NodeLayoutRefOf::NonBox(value) =>
-                                            value.final_entry(),
-                                        crate::NodeLayoutRefOf::Fragments(_) =>
+                                        NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                                        NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                                        NodeLayoutRefOf::Fragments(_) =>
                                             panic!("continuous fixture unexpectedly fragmented"),
                                     })
                                     .collect::<Vec<_>>()
@@ -759,11 +758,9 @@ fn absolute_no_track_demand<S: LayoutScalar>() {
                                 batch
                                     .node_layouts()
                                     .map(|(_, layout)| match layout {
-                                        crate::NodeLayoutRefOf::SingleBox(value) =>
-                                            value.final_entry(),
-                                        crate::NodeLayoutRefOf::NonBox(value) =>
-                                            value.final_entry(),
-                                        crate::NodeLayoutRefOf::Fragments(_) =>
+                                        NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                                        NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                                        NodeLayoutRefOf::Fragments(_) =>
                                             panic!("continuous fixture unexpectedly fragmented"),
                                     })
                                     .collect::<Vec<_>>()
@@ -1141,8 +1138,12 @@ fn grid_static_position_checks_safe_alignment_against_content_extent() {
     let mut child = fixed_absolute::<f32>(Direction::Ltr, Size::new(40.0, 30.0));
     child.grid_column = GridPlacement::try_lines(1, 2).unwrap();
     child.grid_row = GridPlacement::try_lines(1, 2).unwrap();
-    child.justify_self = Some(AlignItems::Safe(crate::ItemAlignmentPosition::End));
-    child.align_self = Some(AlignItems::Safe(crate::ItemAlignmentPosition::End));
+    child.justify_self = Some(AlignItems::Safe(
+        crate::node_input::ItemAlignmentPosition::End,
+    ));
+    child.align_self = Some(AlignItems::Safe(
+        crate::node_input::ItemAlignmentPosition::End,
+    ));
     let tree = PublicLayoutTreeOf::new()
         .children(1, [2])
         .style(1, parent)

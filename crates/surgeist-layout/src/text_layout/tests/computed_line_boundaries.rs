@@ -3,6 +3,12 @@
 
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    block_fragmentation::input::LayoutPublicationTargets,
+    geometry::FlowAxes,
+    inline_wrapping::WrappingInput,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation},
+};
 use std::{cell::Cell, collections::HashMap, sync::Arc};
 use surgeist_text as text;
 use text::capture::{
@@ -362,7 +368,7 @@ fn prepare_captured(
         processed,
         originals,
         binding: TextParagraphBinding {
-            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+            inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes,
@@ -404,7 +410,7 @@ fn tree<S: LayoutScalar>(fixture: &Fixture, rtl: bool) -> PublicLayoutTreeOf<S> 
                 InlineBoundaryInputOf::contribution(
                     kind,
                     InlineMetricsOf::try_new(
-                        crate::InlineBaselineContext::Physical,
+                        crate::node_input::InlineBaselineContext::Physical,
                         S::from_f64(8.0),
                         S::from_f64(10.0),
                     )
@@ -435,34 +441,31 @@ fn tree<S: LayoutScalar>(fixture: &Fixture, rtl: bool) -> PublicLayoutTreeOf<S> 
 }
 
 fn request_at<S: LayoutScalar>(
-    width: crate::AxisSizingRequestOf<S>,
-    containing_flow_axes: crate::FlowAxes,
+    width: AxisSizingRequestOf<S>,
+    containing_flow_axes: FlowAxes,
 ) -> LayoutRootRequestOf<S> {
     {
         let requested_axes = Size::new(
             width,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -472,14 +475,14 @@ fn request_at<S: LayoutScalar>(
 fn compute<S: LayoutScalar>(
     fixture: &Fixture,
     rtl: bool,
-    width: crate::AxisSizingRequestOf<S>,
+    width: AxisSizingRequestOf<S>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let tree = tree::<S>(fixture, rtl);
     let flow = LayoutFlowInput::try_new(
         &tree,
         0,
         vec![fixture.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -492,8 +495,8 @@ fn compute<S: LayoutScalar>(
         &flow,
         0,
         request_at(width, {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap()
@@ -670,11 +673,9 @@ fn scope_before<S: LayoutScalar>() {
         let old = compute::<S>(
             &neutral,
             rtl,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
         );
         assert_eq!(old.placed_text()[0].layout().lines().len(), 1);
@@ -694,11 +695,9 @@ fn scope_before<S: LayoutScalar>() {
         let batch = compute::<S>(
             &forced,
             rtl,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
         );
         assert_two_lines(&batch, &forced, [10.0, 10.0]);
@@ -723,10 +722,7 @@ fn scope_before<S: LayoutScalar>() {
         let max = compute::<S>(
             &forced,
             rtl,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         assert_eq!(
             readback::single_box_output(&max, 0, Phase::Final)
@@ -762,11 +758,11 @@ fn endpoints<S: LayoutScalar>() {
             let batch = compute::<S>(
                 &f,
                 rtl,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
             );
             assert_two_lines(&batch, &f, [10.0, 10.0]);
@@ -804,11 +800,11 @@ fn atomic_edges<S: LayoutScalar>() {
             let batch = compute::<S>(
                 &f,
                 rtl,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
             );
             assert_two_line_content(
@@ -907,11 +903,11 @@ fn empty_edges<S: LayoutScalar>() {
             let batch = compute::<S>(
                 &f,
                 rtl,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
             );
             let placed = batch.placed_text()[0].layout();
@@ -1015,11 +1011,9 @@ fn anchored_empty<S: LayoutScalar>() {
     let batch = compute::<S>(
         &f,
         false,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+            SizingOperation::Normal,
         ),
     );
     let placed = batch.placed_text()[0].layout();
@@ -1123,14 +1117,14 @@ fn control_only_prepared_flow_rejects_native_gap_group<S: LayoutScalar>() {
         f.binding.controls[1].occurrence.captured_control()
     );
     let mut tree = tree::<S>(&f, false);
-    let parent = crate::LayoutTree::node_input(&tree, 0);
-    let axes = crate::FlowAxes::new(parent.writing_mode, parent.direction);
+    let parent = crate::tree::LayoutTree::node_input(&tree, 0);
+    let axes = FlowAxes::new(parent.writing_mode, parent.direction);
     assert_eq!(
         axes,
-        crate::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr)
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr)
     );
     for node in [200, 201] {
-        let original = match crate::LayoutTree::layout_input(&tree, node) {
+        let original = match crate::tree::LayoutTree::layout_input(&tree, node) {
             LayoutInputViewOf::InlineBoundary(input) => input,
             _ => panic!("the maintained fixture owns exactly these two native endpoints"),
         };
@@ -1153,12 +1147,12 @@ fn control_only_prepared_flow_rejects_native_gap_group<S: LayoutScalar>() {
         assert_eq!(input.parent_edge_axes(), Some(axes));
         tree.insert_input(node, LayoutInputOf::inline_boundary(input));
     }
-    let wrapping = crate::WrappingInput {
+    let wrapping = WrappingInput {
         native_inline_boxes: Vec::new(),
-        scopes: vec![crate::WrappingScopeInput::Captured {
+        scopes: vec![crate::inline_wrapping::WrappingScopeInput::Captured {
             scope: scope.clone(),
-            wrap_inside: crate::WrapInside::Auto,
-            edges: crate::WrapEdges::AUTO,
+            wrap_inside: crate::inline_wrapping::WrapInside::Auto,
+            edges: crate::inline_wrapping::WrapEdges::AUTO,
             metric_contribution: None,
         }],
         child_order: Vec::new(),
@@ -1176,15 +1170,13 @@ fn control_only_prepared_flow_rejects_native_gap_group<S: LayoutScalar>() {
         &flow,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )
@@ -1230,13 +1222,15 @@ fn control_only_prepared_flow_rejects_native_gap_group<S: LayoutScalar>() {
     );
 
     let mut requested = wrapping;
-    requested.gaps.push(crate::InlineGapGroupInput {
-        anchor: crate::InlineGapAnchor::Formatter {
-            node: 0,
-            edge: crate::InlineFormatterEdge::Start,
-        },
-        boxes: vec![crate::InlineBoxRef::Scope(scope)],
-    });
+    requested
+        .gaps
+        .push(crate::inline_wrapping::InlineGapGroupInput {
+            anchor: crate::inline_wrapping::InlineGapAnchor::Formatter {
+                node: 0,
+                edge: crate::inline_wrapping::InlineFormatterEdge::Start,
+            },
+            boxes: vec![crate::inline_wrapping::InlineBoxRef::Scope(scope)],
+        });
     let Err(error) =
         LayoutFlowInput::try_new(&tree, 0, vec![f.binding.clone()], requested, Vec::new())
     else {
@@ -1246,7 +1240,7 @@ fn control_only_prepared_flow_rejects_native_gap_group<S: LayoutScalar>() {
         matches!(
             error.kind(),
             LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
-                crate::WrappingScopeError::UnsupportedIncidence
+                crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence
             ))
         ),
         "{error:?}"
@@ -1280,7 +1274,7 @@ fn node_free_computed_paragraph_admits_its_real_capture_without_child_nodes() {
         &tree,
         0,
         vec![f.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -1324,7 +1318,7 @@ fn missing_metrics<S: LayoutScalar>() {
         &tree,
         0,
         vec![f.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -1337,15 +1331,13 @@ fn missing_metrics<S: LayoutScalar>() {
         &flow,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )
@@ -1375,7 +1367,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         &next_tree,
         0,
         vec![foreign],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -1401,7 +1393,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         &foreign_tree,
         0,
         vec![next.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -1425,7 +1417,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         &endpoint_tree,
         0,
         vec![absent],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -1449,7 +1441,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         &atomic_tree,
         0,
         vec![absent],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -1493,7 +1485,7 @@ fn after_float<S: LayoutScalar>() {
         &neutral_tree,
         0,
         vec![neutral.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -1506,15 +1498,13 @@ fn after_float<S: LayoutScalar>() {
         &flow,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )
@@ -1553,7 +1543,7 @@ fn after_float<S: LayoutScalar>() {
             &tree,
             0,
             vec![f.binding.clone()],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: vec![],
@@ -1566,15 +1556,15 @@ fn after_float<S: LayoutScalar>() {
             &flow,
             0,
             request_at(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 {
-                    let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                    FlowAxes::new(root_input.writing_mode, root_input.direction)
                 },
             ),
         )
@@ -1641,12 +1631,12 @@ fn float_after_proved_endpoint_or_paired_scope_after_uses_the_computed_seam() {
 #[derive(Clone)]
 struct Retained<S: LayoutScalar> {
     caches: HashMap<u32, CacheOf<S>>,
-    outputs: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
+    outputs: HashMap<u32, crate::output::LayoutOutputEntryOf<u32, S>>,
     fragments: Vec<InlineFragmentOutputEntryOf<u32, S>>,
 }
 
 struct Cached<S: LayoutScalar> {
-    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
+    pub(super) publication_targets: LayoutPublicationTargets<u32>,
     tree: PublicLayoutTreeOf<S>,
     retained: Retained<S>,
     hits: Cell<usize>,
@@ -1655,7 +1645,7 @@ struct Cached<S: LayoutScalar> {
 impl<S: LayoutScalar> Cached<S> {
     fn new(tree: PublicLayoutTreeOf<S>) -> Self {
         Self {
-            publication_targets: crate::LayoutPublicationTargets::new(),
+            publication_targets: LayoutPublicationTargets::new(),
             tree,
             retained: Retained {
                 caches: HashMap::new(),
@@ -1709,16 +1699,16 @@ impl<S: LayoutScalar> LayoutTree for Cached<S> {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::output::LayoutOutputEntryOf<u32, S>> {
         self.retained.outputs.get(&node).copied()
     }
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Cached<S> {
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
 
@@ -1726,7 +1716,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Cached<S> {
     type Prepared = Retained<S>;
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
+        preparation: crate::block_fragmentation::publication::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Retained<S>, Self::Error> {
         let batch = preparation.batch();
         let mut next = self.retained.clone();
@@ -1747,7 +1737,12 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Cached<S> {
     }
     fn commit_layout_batch(
         &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+        commit: crate::block_fragmentation::publication::LayoutBatchCommit<
+            '_,
+            u32,
+            S,
+            Self::Prepared,
+        >,
     ) {
         let next = commit.into_prepared();
         self.retained = next;
@@ -1786,7 +1781,7 @@ fn cached_compute<S: LayoutScalar>(
         tree,
         1000,
         vec![f.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -1799,15 +1794,13 @@ fn cached_compute<S: LayoutScalar>(
         &flow,
         1000,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((flow).tree(), 1000);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 1000);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )
@@ -1854,7 +1847,7 @@ fn unproved_float<S: LayoutScalar>() {
         &host,
         0,
         vec![neutral.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -1867,15 +1860,13 @@ fn unproved_float<S: LayoutScalar>() {
         &flow,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )
@@ -1907,7 +1898,7 @@ fn unproved_float<S: LayoutScalar>() {
         &host,
         0,
         vec![requested.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -1919,15 +1910,15 @@ fn unproved_float<S: LayoutScalar>() {
             &flow,
             0,
             request_at(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 {
-                    let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                    FlowAxes::new(root_input.writing_mode, root_input.direction)
                 },
             ),
         )

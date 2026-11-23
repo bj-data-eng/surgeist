@@ -20,10 +20,17 @@ use crate::accounting::{LayoutHostScope, Meter, with_host};
 use crate::error::LayoutResultOf;
 use crate::sizing::resolve::{ResolvedPreferredSize, resolve_preferred_sizing};
 use crate::{
-    BlockGeneration, CompletedLayoutBatchOf, Display, LayoutErrorKindOf, LayoutErrorOf,
-    LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutMissingContext, LayoutOperation,
-    LayoutRootContextOf, LayoutRootRequestOf, LayoutScalar, LayoutTree,
-    LayoutUnsupportedCapability, Overflow, PhysicalAxis, Position, Size, SizingAlgorithm, Traverse,
+    error::{
+        LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInvalidInputOf,
+        LayoutMissingContext, LayoutOperation, LayoutUnsupportedCapability, SizingAlgorithm,
+    },
+    geometry::{PhysicalAxis, Size},
+    inline_wrapping::WrappingInput,
+    node_input::{BlockGeneration, Display, Overflow, Position},
+    output::{CompletedLayoutBatchOf, LayoutRootContextOf, LayoutRootRequestOf, RunMode},
+    scalar::LayoutScalar,
+    text_layout::LayoutFlowInput,
+    tree::{LayoutTree, Traverse},
 };
 #[cfg(test)]
 pub(crate) use hidden::compute_hidden;
@@ -254,7 +261,7 @@ where
     let wrapping = crate::inline_wrapping::WrappingContext::new(
         tree,
         &graph,
-        &crate::WrappingInput::default(),
+        &WrappingInput::default(),
         &[],
         |_| false,
     )
@@ -291,7 +298,7 @@ where
 /// Text paragraphs retain their actual finalized layouts; old geometry caches
 /// cannot stand in for Text finalization.
 pub fn compute_layout_with_flow<Tree>(
-    capture: &crate::LayoutFlowInput<'_, Tree>,
+    capture: &LayoutFlowInput<'_, Tree>,
     root: Tree::Node,
     request: LayoutRootRequestOf<Tree::Scalar>,
 ) -> ComputeLayoutResult<Tree>
@@ -303,7 +310,7 @@ where
 
 /// Checked inline-flow computation with the source-owned invalidation closure.
 pub fn compute_layout_with_flow_invalidated<Tree>(
-    capture: &crate::LayoutFlowInput<'_, Tree>,
+    capture: &LayoutFlowInput<'_, Tree>,
     root: Tree::Node,
     request: LayoutRootRequestOf<Tree::Scalar>,
     changed_nodes: &[Tree::Node],
@@ -317,7 +324,7 @@ where
 
 /// The same computation, reporting its work counts to `host` when one is supplied.
 pub(crate) fn compute_layout_with_flow_invalidated_accounted<Tree>(
-    capture: &crate::LayoutFlowInput<'_, Tree>,
+    capture: &LayoutFlowInput<'_, Tree>,
     root: Tree::Node,
     request: LayoutRootRequestOf<Tree::Scalar>,
     changed_nodes: &[Tree::Node],
@@ -332,7 +339,7 @@ where
 }
 
 fn compute_layout_with_flow_invalidated_counted<Tree>(
-    capture: &crate::LayoutFlowInput<'_, Tree>,
+    capture: &LayoutFlowInput<'_, Tree>,
     root: Tree::Node,
     request: LayoutRootRequestOf<Tree::Scalar>,
     changed_nodes: &[Tree::Node],
@@ -342,21 +349,21 @@ where
     Tree: LayoutTree,
 {
     if root != capture.root {
-        return Err(crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(root),
-            crate::LayoutOperation::TextCapture,
-            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::TextBinding(
-                crate::TextBindingError::RootMismatch,
+        return Err(LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(root),
+            LayoutOperation::TextCapture,
+            LayoutErrorKindOf::InvalidInput(crate::error::LayoutInvalidInputOf::TextBinding(
+                crate::text_layout::TextBindingError::RootMismatch,
             )),
         ));
     }
     if let Some(bound) = &capture.bound {
         if request != bound.root_request() {
             return Err(LayoutErrorOf::new(
-                crate::LayoutErrorSiteOf::Node(root),
-                crate::LayoutOperation::RootLayout,
+                LayoutErrorSiteOf::Node(root),
+                LayoutOperation::RootLayout,
                 LayoutErrorKindOf::InvalidInput(
-                    crate::LayoutInvalidInputOf::BlockFragmentationRequest,
+                    crate::error::LayoutInvalidInputOf::BlockFragmentationRequest,
                 ),
             ));
         }
@@ -385,15 +392,15 @@ pub(crate) fn prepare_block_fragment_intrinsics<Tree: LayoutTree>(
     tree: &Tree,
     root: Tree::Node,
     request: LayoutRootRequestOf<Tree::Scalar>,
-    target: crate::LayoutTargetBasis,
-    axes: crate::FlowAxes,
+    target: crate::block_fragmentation::input::LayoutTargetBasis,
+    axes: crate::geometry::FlowAxes,
     meter: &Meter,
 ) -> FragmentIntrinsicResult<Tree> {
     let mut session = session::ComputeSession::new(tree, Vec::new(), meter.clone());
     session.bind_fragment_frame(target.clone(), Vec::new());
     let input = root::root_compute_input(&mut session, root, tree.node_input(root), request)?
         .input
-        .with_run_mode(crate::RunMode::ComputeSize);
+        .with_run_mode(RunMode::ComputeSize);
     let mut entries = Vec::new();
     crate::block::intrinsic::prepare(&mut session, root, input, axes, &mut entries)?;
     Ok(crate::block::intrinsic::FragmentContext {
@@ -406,7 +413,7 @@ pub(crate) fn prepare_block_fragment_intrinsics<Tree: LayoutTree>(
 pub(crate) struct BlockContentFrame<Node, S: LayoutScalar> {
     pub(crate) context: crate::block::content::Context<S>,
     pub(crate) facts: crate::block::content::Facts<S>,
-    pub(crate) principal: Option<crate::ComputeOutputOf<S>>,
+    pub(crate) principal: Option<crate::output::ComputeOutputOf<S>>,
     pub(crate) packet: block_scope::Packet<Node, S>,
     pub(crate) carrier: Option<crate::block::carrier::PerformedPath<Node, S>>,
 }
@@ -431,7 +438,7 @@ pub(crate) fn prepare_block_carrier_path<Tree: LayoutTree>(
     tree: &Tree,
     path: &[Tree::Node],
     request: LayoutRootRequestOf<Tree::Scalar>,
-    frame: crate::BlockFragmentainerOf<Tree::Scalar>,
+    frame: crate::block_fragmentation::BlockFragmentainerOf<Tree::Scalar>,
     intrinsics: std::sync::Arc<crate::block::intrinsic::FragmentContext<Tree::Node, Tree::Scalar>>,
     binding: crate::block::content_insets::ContentInsetBinding<Tree::Node, Tree::Scalar>,
     meter: &Meter,
@@ -443,23 +450,23 @@ pub(crate) fn prepare_block_carrier_path<Tree: LayoutTree>(
         .entries
         .iter()
         .find(|entry| entry.node == root)
-        .map(|entry| entry.input.with_run_mode(crate::RunMode::PerformLayout))
+        .map(|entry| entry.input.with_run_mode(RunMode::PerformLayout))
         .ok_or_else(|| {
-            crate::LayoutErrorOf::new(
-                crate::LayoutErrorSiteOf::Node(root),
-                crate::LayoutOperation::RootLayout,
-                crate::LayoutErrorKindOf::BlockFragmentation(
-                    crate::BlockFragmentationFailure::InvalidSource,
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(root),
+                LayoutOperation::RootLayout,
+                LayoutErrorKindOf::BlockFragmentation(
+                    crate::block_fragmentation::BlockFragmentationFailure::InvalidSource,
                 ),
             )
         })?;
     let (first, mut context) = crate::block::carrier::root(&mut session, root, input, frame.size)?;
     let mut facts = Vec::new();
     facts.try_reserve(path.len()).map_err(|_| {
-        crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(root),
-            crate::LayoutOperation::RootLayout,
-            crate::LayoutErrorKindOf::Allocation,
+        LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(root),
+            LayoutOperation::RootLayout,
+            LayoutErrorKindOf::Allocation,
         )
     })?;
     facts.push(first);
@@ -468,13 +475,13 @@ pub(crate) fn prepare_block_carrier_path<Tree: LayoutTree>(
             .entries
             .iter()
             .find(|entry| entry.node == pair[1])
-            .map(|entry| entry.input.with_run_mode(crate::RunMode::PerformLayout))
+            .map(|entry| entry.input.with_run_mode(RunMode::PerformLayout))
             .ok_or_else(|| {
-                crate::LayoutErrorOf::new(
-                    crate::LayoutErrorSiteOf::Node(pair[1]),
-                    crate::LayoutOperation::RootLayout,
-                    crate::LayoutErrorKindOf::BlockFragmentation(
-                        crate::BlockFragmentationFailure::InvalidSource,
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(pair[1]),
+                    LayoutOperation::RootLayout,
+                    LayoutErrorKindOf::BlockFragmentation(
+                        crate::block_fragmentation::BlockFragmentationFailure::InvalidSource,
                     ),
                 )
             })?;
@@ -492,7 +499,7 @@ pub(crate) fn settle_block_carrier_origin<Tree: LayoutTree>(
     production: block_scope::ProductionId,
     binding: &crate::block::content_insets::ContentInsetBinding<Tree::Node, Tree::Scalar>,
     node: Tree::Node,
-    principal_parent: Option<crate::LayoutOutputEntryOf<Tree::Node, Tree::Scalar>>,
+    principal_parent: Option<crate::output::LayoutOutputEntryOf<Tree::Node, Tree::Scalar>>,
     meter: &Meter,
 ) -> LayoutResultOf<
     Tree::Node,
@@ -563,7 +570,7 @@ pub(crate) fn qualify_block_scope_entry<Tree: LayoutTree>(
 }
 
 pub(crate) struct BlockScopeBodyFrame<Node, S: LayoutScalar> {
-    pub(crate) output: crate::ComputeOutputOf<S>,
+    pub(crate) output: crate::output::ComputeOutputOf<S>,
     pub(crate) packet: block_scope::Packet<Node, S>,
 }
 /// Non-consuming whole-body qualification uses the ordinary producer without
@@ -576,7 +583,7 @@ pub(crate) fn qualify_block_scope_body<Tree: LayoutTree>(
     let mut session = session::ComputeSession::new(tree, Vec::new(), binding.meter);
     session.bind_fragment_frame_with_intrinsics(binding.intrinsics, Vec::new());
     session.retain_block_bodies();
-    let input = pending.input.with_run_mode(crate::RunMode::PerformLayout);
+    let input = pending.input.with_run_mode(RunMode::PerformLayout);
     let output = block_scope::ordinary(crate::block::compute_block_scoped(
         &mut session,
         pending.node,
@@ -591,8 +598,8 @@ pub(crate) fn qualify_block_scope_body<Tree: LayoutTree>(
 
 pub(crate) struct BlockContentFrameRequest<'a, Node, S: LayoutScalar> {
     pub(crate) root: Node,
-    pub(crate) input: crate::ComputeInputOf<S>,
-    pub(crate) original: &'a crate::NodeInputOf<S>,
+    pub(crate) input: crate::output::ComputeInputOf<S>,
+    pub(crate) original: &'a crate::node_input::NodeInputOf<S>,
     pub(crate) reference: S,
     pub(crate) opening: bool,
     pub(crate) complete: bool,
@@ -604,8 +611,8 @@ pub(crate) struct BlockContentFrameRequest<'a, Node, S: LayoutScalar> {
 pub(crate) struct BlockScopeRootFrameRequest<Node, S: LayoutScalar> {
     pub(crate) root: Node,
     pub(crate) request: LayoutRootRequestOf<S>,
-    pub(crate) frame: crate::BlockFragmentainerOf<S>,
-    pub(crate) axes: crate::FlowAxes,
+    pub(crate) frame: crate::block_fragmentation::BlockFragmentainerOf<S>,
+    pub(crate) axes: crate::geometry::FlowAxes,
     pub(crate) binding: BlockFrameBinding<Node, S>,
 }
 
@@ -632,7 +639,7 @@ pub(crate) fn compute_block_content_frame<Tree: LayoutTree>(
     let wrapping = crate::inline_wrapping::WrappingContext::new(
         tree,
         &graph,
-        &crate::WrappingInput::default(),
+        &WrappingInput::default(),
         &[],
         |_| false,
     )
@@ -676,11 +683,11 @@ pub(crate) fn compute_block_content_frame<Tree: LayoutTree>(
             &receipt,
             context,
             accepted.as_ref().ok_or_else(|| {
-                crate::LayoutErrorOf::new(
-                    crate::LayoutErrorSiteOf::Node(root),
-                    crate::LayoutOperation::ValueResolution,
-                    crate::LayoutErrorKindOf::MissingContext(
-                        crate::LayoutMissingContext::RequiredBasis,
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(root),
+                    LayoutOperation::ValueResolution,
+                    LayoutErrorKindOf::MissingContext(
+                        crate::error::LayoutMissingContext::RequiredBasis,
                     ),
                 )
             })?,
@@ -727,7 +734,7 @@ pub(crate) fn compute_block_scope_root_frame<Tree: LayoutTree>(
     let wrapping = crate::inline_wrapping::WrappingContext::new(
         tree,
         &graph,
-        &crate::WrappingInput::default(),
+        &WrappingInput::default(),
         &[],
         |_| false,
     )
@@ -755,7 +762,7 @@ fn run_session<Tree: LayoutTree>(
         compute_root(&mut session, root, request)?;
         session.release_request_memo();
         match request.rounding_mode() {
-            crate::LayoutRoundingMode::NearestCssPixel => {
+            crate::output::LayoutRoundingMode::NearestCssPixel => {
                 rounding::round_layout(&mut session, root)?
             }
         }
@@ -791,10 +798,10 @@ fn run_session<Tree: LayoutTree>(
             session.admit_text_pass_comparison(root, basis.1.as_ref(), previous.as_ref())?;
         }
         if rejected_bases.contains(&basis) {
-            return Err(crate::LayoutErrorOf::new(
-                crate::LayoutErrorSiteOf::Node(root),
-                crate::LayoutOperation::TextPlacement,
-                crate::LayoutErrorKindOf::TextFeedbackCycle,
+            return Err(LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(root),
+                LayoutOperation::TextPlacement,
+                LayoutErrorKindOf::TextFeedbackCycle,
             ));
         }
         rejected_bases.push(basis);

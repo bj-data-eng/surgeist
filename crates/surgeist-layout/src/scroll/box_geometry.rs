@@ -1,4 +1,5 @@
 use super::*;
+use crate::node_input::ScrollPaddingValueOf;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum UsedOverflowGutter {
@@ -294,13 +295,13 @@ impl<S: LayoutScalar> OptimalRegionInsetsOf<S> {
         }
     }
 
-    pub(crate) fn from_scroll_padding(scroll_padding: crate::ScrollPaddingOf<S>) -> Self {
-        fn inset<S: LayoutScalar>(
-            value: crate::ScrollPaddingValueOf<S>,
-        ) -> OptimalRegionInsetOf<S> {
+    pub(crate) fn from_scroll_padding(
+        scroll_padding: crate::node_input::ScrollPaddingOf<S>,
+    ) -> Self {
+        fn inset<S: LayoutScalar>(value: ScrollPaddingValueOf<S>) -> OptimalRegionInsetOf<S> {
             match value {
-                crate::ScrollPaddingValueOf::Auto => OptimalRegionInsetOf::Auto,
-                crate::ScrollPaddingValueOf::Value(value) => OptimalRegionInsetOf::Value(value),
+                ScrollPaddingValueOf::Auto => OptimalRegionInsetOf::Auto,
+                ScrollPaddingValueOf::Value(value) => OptimalRegionInsetOf::Value(value),
             }
         }
 
@@ -853,8 +854,9 @@ fn scrollbar_size_from_used_overflow<S: LayoutScalar>(
 mod fri05_c02_box_clip_gutter_tests {
     use super::*;
     use crate::{
-        Direction, LengthPercentageOf, OverflowClipBox, PhysicalSide, ScrollbarGutter,
-        ScrollbarWidthOf, WritingMode,
+        geometry::PhysicalSide,
+        node_input::{Direction, OverflowClipBox, ScrollbarGutter, ScrollbarWidthOf, WritingMode},
+        value::LengthPercentageOf,
     };
 
     fn scalar<S: LayoutScalar>(value: f64) -> S {

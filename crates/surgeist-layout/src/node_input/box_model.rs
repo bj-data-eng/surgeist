@@ -1,5 +1,7 @@
-use super::super::{
-    DefaultScalar, FlowAxes, LayoutScalar, PhysicalAxis, ScrollRectOf, scalar::canonical_zero,
+use crate::{
+    geometry::{FlowAxes, PhysicalAxis},
+    scalar::{DefaultScalar, LayoutScalar, canonical_zero},
+    scroll::ScrollRectOf,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

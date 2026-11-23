@@ -10,9 +10,12 @@ use crate::scroll::{
     ScrollContributionErrorOf, ScrollTargetProjection, canonical_scroll_box_from_source,
 };
 use crate::{
-    ComputeOutputOf, Edges, LayoutErrorOf, LayoutResultOf, LayoutScalar, LengthResolutionStatus,
-    Point, RunMode, ScrollCoordinateErrorOf, ScrollGeometryOf, ScrollRectErrorOf, ScrollRectOf,
-    Size,
+    error::{LayoutErrorOf, LayoutResultOf},
+    geometry::{Edges, Point, Size},
+    output::{ComputeOutputOf, RunMode},
+    scalar::LayoutScalar,
+    scroll::{ScrollCoordinateErrorOf, ScrollGeometryOf, ScrollRectErrorOf, ScrollRectOf},
+    value::LengthResolutionStatus,
 };
 
 pub(super) fn retain_flex_scroll_geometry<S: LayoutScalar>(
@@ -27,7 +30,7 @@ pub(super) fn retain_flex_scroll_geometry<S: LayoutScalar>(
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FlexChildContribution<S: LayoutScalar> {
-    pub(super) source_index: crate::SourceIndex,
+    pub(super) source_index: crate::output::SourceIndex,
     pub(super) location: Point<S>,
     pub(super) margin: Edges<S>,
     pub(super) geometry: ScrollGeometryOf<S>,

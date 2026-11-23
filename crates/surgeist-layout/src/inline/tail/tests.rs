@@ -3,7 +3,12 @@ use crate::inline::balance_tests::{groups, input};
 use crate::inline_wrapping::tail::TailAdmission;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::readback::{self, Phase};
-use crate::{LayoutInputOf, LayoutTree, NodeInputOf, PreferredSizeOf, Traverse, VerticalAlignOf};
+use crate::{
+    node_input::{Display, LayoutInputOf, NodeInputOf, TextWrapStyle, VerticalAlignOf},
+    sizing::PreferredSizeOf,
+    tree::{LayoutTree, Traverse},
+    value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation},
+};
 use std::cell::RefCell;
 
 #[derive(Clone)]
@@ -102,13 +107,13 @@ fn terminal_pair_repairs_without_changing_real_earlier_prefix_or_crossing_forced
                 &[30.0, 30.0, 10.0, 30.0, 30.0, 10.0],
                 &[2],
                 direction,
-                crate::TextWrapStyle::Auto,
+                TextWrapStyle::Auto,
             ));
             let repaired = ordinary(input::<S>(
                 &[30.0, 30.0, 10.0, 30.0, 30.0, 10.0],
                 &[2],
                 direction,
-                crate::TextWrapStyle::AvoidShortLastLine,
+                TextWrapStyle::AvoidShortLastLine,
             ));
             assert_eq!(groups(&auto), [vec![0, 1], vec![2], vec![3, 4], vec![5]]);
             assert_eq!(
@@ -124,17 +129,12 @@ fn terminal_pair_repairs_without_changing_real_earlier_prefix_or_crossing_forced
                 (&[30.0, 30.0, 10.0, 10.0][..], &[2][..]),
                 (&[30.0, 30.0, 10.0][..], &[2][..]),
             ] {
-                let auto = ordinary(input::<S>(
-                    widths,
-                    forced,
-                    direction,
-                    crate::TextWrapStyle::Auto,
-                ));
+                let auto = ordinary(input::<S>(widths, forced, direction, TextWrapStyle::Auto));
                 let repair = ordinary(input::<S>(
                     widths,
                     forced,
                     direction,
-                    crate::TextWrapStyle::AvoidShortLastLine,
+                    TextWrapStyle::AvoidShortLastLine,
                 ));
                 assert_eq!(repair, auto);
             }
@@ -145,17 +145,12 @@ fn terminal_pair_repairs_without_changing_real_earlier_prefix_or_crossing_forced
                 .into_iter()
                 .chain([30.0, 30.0, 10.0])
                 .collect::<Vec<_>>();
-            let auto = ordinary(input::<S>(
-                &widths,
-                &[],
-                direction,
-                crate::TextWrapStyle::Auto,
-            ));
+            let auto = ordinary(input::<S>(&widths, &[], direction, TextWrapStyle::Auto));
             let repair = ordinary(input::<S>(
                 &widths,
                 &[],
                 direction,
-                crate::TextWrapStyle::AvoidShortLastLine,
+                TextWrapStyle::AvoidShortLastLine,
             ));
             assert_eq!(&repair.atomics[..11], &auto.atomics[..11]);
             assert_eq!(&groups(&repair)[11..], &[vec![11], vec![12, 13]]);
@@ -174,21 +169,16 @@ fn optional_tail_domain_retains_valid_overflow_and_real_zero_atomics() {
                 &[70.0, 10.0],
                 &[],
                 direction,
-                crate::TextWrapStyle::Auto,
+                TextWrapStyle::Auto,
             ));
             let repair = ordinary(input::<S>(
                 &[70.0, 10.0],
                 &[],
                 direction,
-                crate::TextWrapStyle::AvoidShortLastLine,
+                TextWrapStyle::AvoidShortLastLine,
             ));
             assert_eq!(repair, auto);
-            let mut zero = input::<S>(
-                &[0.0],
-                &[],
-                direction,
-                crate::TextWrapStyle::AvoidShortLastLine,
-            );
+            let mut zero = input::<S>(&[0.0], &[], direction, TextWrapStyle::AvoidShortLastLine);
             let MixedInlineParticipantOf::Atomic { item, .. } = &mut zero.participants[0] else {
                 unreachable!()
             };
@@ -207,7 +197,7 @@ fn optional_tail_domain_retains_valid_overflow_and_real_zero_atomics() {
 
 #[test]
 fn unrelated_forced_prefix_work_is_not_repeated_for_terminal_targets() {
-    fn work(groups_count: usize, style: crate::TextWrapStyle) -> usize {
+    fn work(groups_count: usize, style: TextWrapStyle) -> usize {
         let widths = (0..=groups_count)
             .flat_map(|_| [30.0, 30.0, 10.0])
             .collect::<Vec<_>>();
@@ -219,10 +209,10 @@ fn unrelated_forced_prefix_work_is_not_repeated_for_terminal_targets() {
         assert_eq!(report.line_bands.len(), 2 * (groups_count + 1));
         usize::try_from(meter.work(crate::accounting::LayoutWork::InlineCandidateScan)).unwrap()
     }
-    let auto8 = work(8, crate::TextWrapStyle::Auto);
-    let auto16 = work(16, crate::TextWrapStyle::Auto);
-    let tail8 = work(8, crate::TextWrapStyle::AvoidShortLastLine);
-    let tail16 = work(16, crate::TextWrapStyle::AvoidShortLastLine);
+    let auto8 = work(8, TextWrapStyle::Auto);
+    let auto16 = work(16, TextWrapStyle::Auto);
+    let tail8 = work(8, TextWrapStyle::AvoidShortLastLine);
+    let tail16 = work(16, TextWrapStyle::AvoidShortLastLine);
     assert!(tail8 > auto8, "real terminal trial work must execute");
     assert_eq!(tail16 - tail8, auto16 - auto8);
 }
@@ -234,11 +224,11 @@ fn equal_improved_real_programs_keep_the_first_incumbent() {
         &[50.0, 20.0, 10.0, 40.0],
         &[],
         Direction::Ltr,
-        crate::TextWrapStyle::AvoidShortLastLine,
+        TextWrapStyle::AvoidShortLastLine,
     );
-    request.available_inline_extent = crate::AxisSizingRequestOf::new(
-        crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
-        crate::SizingOperation::Normal,
+    request.available_inline_extent = AxisSizingRequestOf::new(
+        AvailableSpaceOf::Definite(crate::value::NonNegativeFiniteOf::new(100.0).unwrap()),
+        SizingOperation::Normal,
     );
     let repaired = ordinary(request);
     let trials = TRIALS.with(|trials| trials.borrow().clone());
@@ -265,7 +255,7 @@ pub(in crate::inline) enum ContourFailure {
 pub(in crate::inline) struct TriangleTree<S: LayoutScalar> {
     pub(in crate::inline) inner: PublicLayoutTreeOf<S>,
     fail: bool,
-    queries: RefCell<Vec<crate::FloatExclusionQueryOf<S>>>,
+    queries: RefCell<Vec<crate::node_input::FloatExclusionQueryOf<S>>>,
 }
 
 impl<S: LayoutScalar> Traverse for TriangleTree<S> {
@@ -291,14 +281,15 @@ impl<S: LayoutScalar> LayoutTree for TriangleTree<S> {
     fn node_input(&self, node: u32) -> &NodeInputOf<S> {
         self.inner.node_input(node)
     }
-    fn layout_input(&self, node: u32) -> crate::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: u32) -> crate::node_input::LayoutInputViewOf<'_, S> {
         self.inner.layout_input(node)
     }
     fn float_exclusion_interval(
         &self,
         node: u32,
-        query: crate::FloatExclusionQueryOf<S>,
-    ) -> Option<Result<Option<crate::FloatExclusionIntervalOf<S>>, Self::MeasureError>> {
+        query: crate::node_input::FloatExclusionQueryOf<S>,
+    ) -> Option<Result<Option<crate::node_input::FloatExclusionIntervalOf<S>>, Self::MeasureError>>
+    {
         if node != 1 {
             return None;
         }
@@ -316,7 +307,7 @@ impl<S: LayoutScalar> LayoutTree for TriangleTree<S> {
         if lo >= S::from_f64(20.0) || hi <= S::ZERO {
             return Some(Ok(None));
         }
-        Some(Ok(crate::FloatExclusionIntervalOf::try_new(
+        Some(Ok(crate::node_input::FloatExclusionIntervalOf::try_new(
             query,
             S::ZERO,
             hi.min(S::from_f64(20.0)),
@@ -326,16 +317,16 @@ impl<S: LayoutScalar> LayoutTree for TriangleTree<S> {
 }
 
 impl<S: LayoutScalar> TriangleTree<S> {
-    pub(in crate::inline) fn new(style: crate::TextWrapStyle, fail: bool) -> Self {
+    pub(in crate::inline) fn new(style: TextWrapStyle, fail: bool) -> Self {
         let mut inner = PublicLayoutTreeOf::new()
             .children(0, [1, 2, 3, 4])
             .style(
                 0,
                 NodeInputOf {
-                    display: crate::Display::Block,
+                    display: Display::Block,
                     direction: Direction::Ltr,
                     text_align: TextAlign::Start,
-                    text_align_last: crate::TextAlignLast::Start,
+                    text_align_last: crate::node_input::TextAlignLast::Start,
                     text_wrap_style: style,
                     size: Size::new(
                         PreferredSizeOf::px(S::from_f64(80.0)),
@@ -347,9 +338,9 @@ impl<S: LayoutScalar> TriangleTree<S> {
             .style(
                 1,
                 NodeInputOf {
-                    display: crate::Display::Block,
-                    float: crate::Float::Left,
-                    float_exclusion: crate::FloatExclusion::Shape,
+                    display: Display::Block,
+                    float: crate::node_input::Float::Left,
+                    float_exclusion: crate::node_input::FloatExclusion::Shape,
                     size: Size::new(
                         PreferredSizeOf::px(S::from_f64(20.0)),
                         PreferredSizeOf::px(S::from_f64(20.0)),
@@ -361,7 +352,7 @@ impl<S: LayoutScalar> TriangleTree<S> {
             inner = inner.children(id, []).input(
                 id,
                 LayoutInputOf::box_input(NodeInputOf {
-                    display: crate::Display::InlineBlock,
+                    display: Display::InlineBlock,
                     direction: Direction::Ltr,
                     vertical_align: VerticalAlignOf::Baseline,
                     atomic_inline_participation: Some(AtomicInlineParticipation::new(
@@ -384,45 +375,44 @@ impl<S: LayoutScalar> TriangleTree<S> {
     }
     pub(in crate::inline) fn compute(
         &self,
-    ) -> Result<crate::CompletedLayoutBatchOf<u32, S>, crate::LayoutErrorOf<u32, S, ContourFailure>>
-    {
-        crate::compute_layout(self, 0, {
+    ) -> Result<
+        crate::output::CompletedLayoutBatchOf<u32, S>,
+        crate::error::LayoutErrorOf<u32, S, ContourFailure>,
+    > {
+        crate::engine::compute_layout(self, 0, {
             let containing_flow_axes = {
-                let root_input = crate::LayoutTree::node_input(self, 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input(self, 0);
+                crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
             };
             let requested_axes = Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MaxContent,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             );
             let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
             // These fixtures perform ordinary block-size layout independently of
             // the explicitly requested inline contribution operation.
             logical_requests.block = logical_requests
                 .block
-                .with_operation(crate::SizingOperation::Normal);
+                .with_operation(SizingOperation::Normal);
             logical_requests.inline = logical_requests
                 .inline
-                .with_operation(crate::SizingOperation::Normal);
+                .with_operation(SizingOperation::Normal);
             let axes = containing_flow_axes.physical_size(logical_requests);
             // The old Native NoParent fixture explicitly supplied these percentage
             // bases. It supplied no independent ICB dimensions or ancestor scrollport.
             let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-            let fallback = crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            let fallback = crate::value::OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                crate::value::NearestScrollportOf::Absent,
+                crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             );
-            crate::LayoutRootRequestOf::standalone(
-                crate::SizingRequestOf::new(axes, fallback),
+            crate::output::LayoutRootRequestOf::standalone(
+                crate::value::SizingRequestOf::new(axes, fallback),
                 containing_flow_axes,
                 percentage_parent,
             )
@@ -434,7 +424,7 @@ impl<S: LayoutScalar> TriangleTree<S> {
 fn source_triangle_trial_reaches_and_fails_only_the_natural_tail_guard() {
     fn lane<S: LayoutScalar>() {
         clear_trials();
-        let tree = TriangleTree::<S>::new(crate::TextWrapStyle::AvoidShortLastLine, false);
+        let tree = TriangleTree::<S>::new(TextWrapStyle::AvoidShortLastLine, false);
         let output = tree.compute().unwrap();
         let trials = TRIALS.with(|trials| trials.borrow().clone());
         let trial = trials
@@ -497,11 +487,11 @@ fn source_triangle_trial_reaches_and_fails_only_the_natural_tail_guard() {
 #[test]
 fn actual_provider_failure_during_a_losing_tail_trial_keeps_original_context() {
     fn lane<S: LayoutScalar>() {
-        let prior = TriangleTree::<S>::new(crate::TextWrapStyle::Auto, true)
+        let prior = TriangleTree::<S>::new(TextWrapStyle::Auto, true)
             .compute()
             .unwrap();
         let snapshot = readback::continuous_custody(&prior, Phase::Final);
-        let tree = TriangleTree::<S>::new(crate::TextWrapStyle::AvoidShortLastLine, true);
+        let tree = TriangleTree::<S>::new(TextWrapStyle::AvoidShortLastLine, true);
         let error = tree.compute().unwrap_err();
         assert!(
             tree.queries
@@ -512,18 +502,18 @@ fn actual_provider_failure_during_a_losing_tail_trial_keeps_original_context() {
         );
         assert_eq!(
             error.site(),
-            crate::LayoutErrorSiteOf::ContainerSubject {
+            crate::error::LayoutErrorSiteOf::ContainerSubject {
                 container: 0,
                 subject: 1
             }
         );
         assert_eq!(
             error.operation(),
-            crate::LayoutOperation::FloatExclusionQuery
+            crate::error::LayoutOperation::FloatExclusionQuery
         );
         assert!(matches!(
             error.kind(),
-            crate::LayoutErrorKindOf::Measurement(ContourFailure::CrossesBottomFromWithin)
+            crate::error::LayoutErrorKindOf::Measurement(ContourFailure::CrossesBottomFromWithin)
         ));
         assert_eq!(
             readback::continuous_custody(&prior, Phase::Final).as_slice(),
@@ -571,7 +561,7 @@ fn actual_tail_walk_receipts_reject_count_terminal_prefix_frontier_and_domain_ch
         &[60.0, 30.0, 30.0, 10.0],
         &[],
         Direction::Ltr,
-        crate::TextWrapStyle::AvoidShortLastLine,
+        TextWrapStyle::AvoidShortLastLine,
     );
     let (ordinary, _) = walk(
         &query,
@@ -598,7 +588,7 @@ fn actual_tail_walk_receipts_reject_count_terminal_prefix_frontier_and_domain_ch
         &[50.0, 30.0, 30.0, 10.0],
         &[],
         Direction::Ltr,
-        crate::TextWrapStyle::AvoidShortLastLine,
+        TextWrapStyle::AvoidShortLastLine,
     );
     let (prefix, outcome) = walk(&changed_prefix, control, |_| 60.0, |block, _| block);
     assert_eq!(prefix.selected_lines.len(), 3);
@@ -628,7 +618,7 @@ fn actual_tail_walk_receipts_reject_count_terminal_prefix_frontier_and_domain_ch
         &[30.0, 30.0, 10.0, 10.0],
         &[],
         Direction::Ltr,
-        crate::TextWrapStyle::AvoidShortLastLine,
+        TextWrapStyle::AvoidShortLastLine,
     );
     let (ordinary, _) = walk(
         &paragraph,
@@ -641,7 +631,7 @@ fn actual_tail_walk_receipts_reject_count_terminal_prefix_frontier_and_domain_ch
         &[30.0, 30.0, 10.0, 10.0],
         &[2],
         Direction::Ltr,
-        crate::TextWrapStyle::AvoidShortLastLine,
+        TextWrapStyle::AvoidShortLastLine,
     );
     let (terminal, outcome) = walk(
         &forced,

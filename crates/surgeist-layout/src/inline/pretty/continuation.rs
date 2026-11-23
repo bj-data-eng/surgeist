@@ -201,7 +201,7 @@ impl<S: LayoutScalar> NumericPretty<S> {
         C: FnMut(S, PostLineClearIntent) -> S,
     {
         let invalid = NumericWrappingError::InvalidPrettyBasis;
-        if request.input.text_wrap_style != crate::TextWrapStyle::Pretty {
+        if request.input.text_wrap_style != crate::node_input::TextWrapStyle::Pretty {
             return Err(invalid.into());
         }
         loop {

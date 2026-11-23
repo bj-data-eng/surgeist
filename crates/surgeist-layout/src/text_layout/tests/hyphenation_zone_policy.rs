@@ -1,6 +1,7 @@
 //! Computed zone policy over actual natural fallbacks and registered Ahem.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation};
 use surgeist_text::{
     hyphenation::{
         HyphenateCharacter, HyphenationCounts, HyphenationProvenance, HyphenationResource, Hyphens,
@@ -40,7 +41,7 @@ fn input<S: LayoutScalar>(zone: f64, percent: f64, indent: f64, rtl: bool) -> No
 }
 fn compute<S: LayoutScalar>(
     p: &PreparedParagraph,
-    width: crate::AxisSizingRequestOf<S>,
+    width: AxisSizingRequestOf<S>,
     policy: NodeInputOf<S>,
     float: bool,
 ) -> CompletedLayoutBatchOf<u32, S> {
@@ -81,7 +82,7 @@ fn compute<S: LayoutScalar>(
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -92,33 +93,30 @@ fn compute<S: LayoutScalar>(
     .unwrap();
     compute_layout_with_flow(&capture, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
             width,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -238,11 +236,11 @@ fn zone_strict_gap_uses_discarded_or_hanging_space_and_gates_automatic_empty_onl
             ] {
                 let b = compute::<S>(
                     &p,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     input(zone, 0.0, 0.0, false),
                     false,
@@ -279,11 +277,11 @@ fn zone_strict_gap_uses_discarded_or_hanging_space_and_gates_automatic_empty_onl
         ] {
             let b = compute::<S>(
                 &p,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 input(zone, 0.0, 0.0, false),
                 false,
@@ -309,11 +307,9 @@ fn zone_strict_gap_uses_discarded_or_hanging_space_and_gates_automatic_empty_onl
         let source = PreparedParagraph::plain(1, Source::new("X as\u{ad}sociate"), manual.clone());
         let b = compute::<S>(
             &source,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             input(1000.0, 0.0, 0.0, false),
             false,
@@ -341,11 +337,9 @@ fn zone_strict_gap_uses_discarded_or_hanging_space_and_gates_automatic_empty_onl
         );
         let b = compute::<S>(
             &control,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             input(1000.0, 0.0, 0.0, false),
             false,
@@ -380,11 +374,11 @@ fn zone_signed_indent_and_percentage_use_full_actual_float_band_in_both_directio
         ] {
             let b = compute::<S>(
                 &p,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 input(zone, 0.0, indent, false),
                 false,
@@ -409,11 +403,11 @@ fn zone_signed_indent_and_percentage_use_full_actual_float_band_in_both_directio
             for (fraction, cut, advance) in [(0.7, 6, 70.0), (0.75, 2, 10.0), (0.8, 2, 10.0)] {
                 let b = compute::<S>(
                     &p,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     input(0.0, fraction, 10.0, rtl),
                     true,
@@ -445,11 +439,9 @@ fn zone_is_inapplicable_without_ordinary_prefix_and_intrinsics_ignore_it() {
         );
         let b = compute::<S>(
             &p,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             input(1000.0, 0.0, 0.0, false),
             false,
@@ -466,11 +458,11 @@ fn zone_is_inapplicable_without_ordinary_prefix_and_intrinsics_ignore_it() {
                 let prior = values(
                     &compute::<S>(
                         &p,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
                         policy.clone(),
                         false,
@@ -482,14 +474,14 @@ fn zone_is_inapplicable_without_ordinary_prefix_and_intrinsics_ignore_it() {
                     let b = compute::<S>(
                         &p,
                         if minimum {
-                            crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Indefinite,
-                                crate::SizingOperation::MinContent,
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Indefinite,
+                                SizingOperation::MinContent,
                             )
                         } else {
-                            crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Indefinite,
-                                crate::SizingOperation::MaxContent,
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Indefinite,
+                                SizingOperation::MaxContent,
                             )
                         },
                         policy.clone(),
@@ -514,11 +506,11 @@ fn zone_is_inapplicable_without_ordinary_prefix_and_intrinsics_ignore_it() {
                     values(
                         &compute::<S>(
                             &p,
-                            crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Definite(
-                                    crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap()
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Definite(
+                                    NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap()
                                 ),
-                                crate::SizingOperation::Normal
+                                SizingOperation::Normal
                             ),
                             policy,
                             false
@@ -575,11 +567,9 @@ fn negative_zone_is_not_clamped_at_a_zero_gap() {
         for (zone, end, automatic) in [(0.0, 2, false), (-1.0, 4, true)] {
             let b = compute::<S>(
                 &p,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::ZERO).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::ZERO).unwrap()),
+                    SizingOperation::Normal,
                 ),
                 input(zone, 0.0, 0.0, false),
                 false,
@@ -607,11 +597,11 @@ fn zone_reference_is_natural_even_when_the_committed_fallback_is_justified() {
             policy.text_justification = TextJustification::Spaces;
             let b = compute::<S>(
                 &p,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 policy,
                 false,
@@ -658,7 +648,7 @@ fn zone_resolution_is_consumed_only_by_a_real_fallback_and_preserves_numeric_fai
             &tree,
             0,
             vec![p.binding(0)],
-            crate::WrappingInput {
+            crate::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -671,8 +661,8 @@ fn zone_resolution_is_consumed_only_by_a_real_fallback_and_preserves_numeric_fai
             &capture,
             0,
             request(60.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+                crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .map_err(Box::new)

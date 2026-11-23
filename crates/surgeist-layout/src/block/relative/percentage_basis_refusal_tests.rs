@@ -2,9 +2,12 @@
 use super::{InsetReference, resolve};
 use crate::test_support::layout_tree::OracleTreeOf;
 use crate::{
-    Direction, Display, Edges, FlowAxes, LayoutErrorKindOf, LayoutErrorSiteOf,
-    LayoutMissingContext, LayoutOperation, LayoutScalar, LengthAutoOf, LengthPercentageOf,
-    NodeInputOf, Point, Position, PreferredSizeOf, Size, WritingMode,
+    error::{LayoutErrorKindOf, LayoutErrorSiteOf, LayoutMissingContext, LayoutOperation},
+    geometry::{Edges, FlowAxes, Point, Size},
+    node_input::{Direction, Display, NodeInputOf, Position, WritingMode},
+    scalar::LayoutScalar,
+    sizing::PreferredSizeOf,
+    value::{LengthAutoOf, LengthPercentageOf},
 };
 
 fn accepted_missing_basis_refuses_percent_but_allows_length<S: LayoutScalar>() {

@@ -1,6 +1,9 @@
 use super::*;
 use crate::sizing::resolve::{ResolvedPreferredSize, resolve_preferred_sizing};
-use crate::{ComputeInputOf, LengthResolutionStatus, SizingMode};
+use crate::{
+    output::{ComputeInputOf, SizingMode},
+    value::LengthResolutionStatus,
+};
 
 /// Borrowed original sizing functions, before inherited geometry is lowered to
 /// fixed pixel tracks. Mapping changes only this view, never the source table.

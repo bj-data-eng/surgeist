@@ -2,7 +2,10 @@
 use super::floats::{FloatExclusions, InheritedFloatExclusions};
 use crate::text_layout::scope_alignment::{EntryBacking, EntryFunding};
 use crate::{
-    ComputeInputOf, ComputeOutputOf, FlowAxes, LayoutScalar, NodeInputOf, ParentFormattingContext,
+    geometry::FlowAxes,
+    node_input::{Display, NodeInputOf},
+    output::{ComputeInputOf, ComputeOutputOf, ParentFormattingContext},
+    scalar::LayoutScalar,
 };
 
 /// `Normal` does not override another actual formatting-context boundary.
@@ -44,8 +47,8 @@ pub(super) fn sizes_float_context<S: LayoutScalar>(
     inherited: bool,
     work: bool,
 ) -> bool {
-    input.run_mode() == crate::RunMode::ComputeSize
-        && input.sizing_mode() == crate::SizingMode::InherentSize
+    input.run_mode() == crate::output::RunMode::ComputeSize
+        && input.sizing_mode() == crate::output::SizingMode::InherentSize
         && finite_inline.is_some()
         && (inherited || role == Role::Owner && work)
 }
@@ -88,7 +91,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
             entry_funding: None,
         }
     }
-    pub(crate) fn configure<Tree: crate::LayoutTree<Node = Node, Scalar = S>>(
+    pub(crate) fn configure<Tree: crate::tree::LayoutTree<Node = Node, Scalar = S>>(
         &mut self,
         tree: &Tree,
         graph: &crate::engine::validation::ValidationGraph<Node>,
@@ -97,19 +100,18 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
         for &index in &graph.finish {
             let node = graph.nodes[index];
             let style = tree.node_input(node);
-            if tree.has_leaf_measurement(node)
-                || style.display.inner_display() != crate::Display::Block
-            {
+            if tree.has_leaf_measurement(node) || style.display.inner_display() != Display::Block {
                 continue;
             }
             let axes = FlowAxes::new(style.writing_mode, style.direction);
             work[index] = graph.children[index].iter().copied().any(|child| {
-                let crate::LayoutInputViewOf::Box(style) = tree.layout_input(graph.nodes[child])
+                let crate::node_input::LayoutInputViewOf::Box(style) =
+                    tree.layout_input(graph.nodes[child])
                 else {
                     return false;
                 };
-                style.display != crate::Display::None
-                    && style.position != crate::Position::Absolute
+                style.display != Display::None
+                    && style.position != crate::node_input::Position::Absolute
                     && (!style.float.is_none()
                         || shares_parent_context(style, axes, ParentFormattingContext::BlockFlow)
                             && work[child])
@@ -271,26 +273,30 @@ pub(crate) fn discover_work<
         return false;
     }
     let style = tree.node_input(node);
-    if style.display.inner_display() != crate::Display::Block {
+    if style.display.inner_display() != Display::Block {
         return false;
     }
     let axes = FlowAxes::new(style.writing_mode, style.direction);
     tree.children(node).any(|child| {
-        let crate::LayoutInputViewOf::Box(style) = tree.layout_input(child) else {
+        let crate::node_input::LayoutInputViewOf::Box(style) = tree.layout_input(child) else {
             return false;
         };
-        style.display != crate::Display::None
-            && style.position != crate::Position::Absolute
+        style.display != Display::None
+            && style.position != crate::node_input::Position::Absolute
             && (!style.float.is_none()
                 || shares_parent_context(style, axes, ParentFormattingContext::BlockFlow)
                     && discover_work(tree, child))
     })
 }
-pub(crate) fn missing<Node, S: LayoutScalar, M>(node: Node) -> crate::LayoutErrorOf<Node, S, M> {
-    crate::LayoutErrorOf::new(
-        crate::LayoutErrorSiteOf::Node(node),
-        crate::LayoutOperation::ChildLayout,
-        crate::LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis),
+pub(crate) fn missing<Node, S: LayoutScalar, M>(
+    node: Node,
+) -> crate::error::LayoutErrorOf<Node, S, M> {
+    crate::error::LayoutErrorOf::new(
+        crate::error::LayoutErrorSiteOf::Node(node),
+        crate::error::LayoutOperation::ChildLayout,
+        crate::error::LayoutErrorKindOf::MissingContext(
+            crate::error::LayoutMissingContext::RequiredBasis,
+        ),
     )
 }
 
@@ -304,11 +310,11 @@ mod tests {
     use crate::test_support::layout_tree::PublicLayoutTreeOf;
     fn block<S: LayoutScalar>(width: f64, height: Option<f64>) -> NodeInputOf<S> {
         NodeInputOf {
-            display: crate::Display::Block,
-            size: crate::Size::new(
-                crate::PreferredSizeOf::px(S::from_f64(width)),
-                height.map_or(crate::PreferredSizeOf::AUTO, |height| {
-                    crate::PreferredSizeOf::px(S::from_f64(height))
+            display: crate::node_input::Display::Block,
+            size: crate::geometry::Size::new(
+                crate::sizing::PreferredSizeOf::px(S::from_f64(width)),
+                height.map_or(crate::sizing::PreferredSizeOf::AUTO, |height| {
+                    crate::sizing::PreferredSizeOf::px(S::from_f64(height))
                 }),
             ),
             ..NodeInputOf::default()
@@ -316,7 +322,7 @@ mod tests {
     }
     fn floated<S: LayoutScalar>(width: f64, height: f64) -> NodeInputOf<S> {
         NodeInputOf {
-            float: crate::Float::Left,
+            float: crate::node_input::Float::Left,
             ..block(width, Some(height))
         }
     }
@@ -337,42 +343,47 @@ mod tests {
             .style(
                 5,
                 NodeInputOf {
-                    display: crate::Display::Block,
-                    position: crate::Position::Absolute,
+                    display: crate::node_input::Display::Block,
+                    position: crate::node_input::Position::Absolute,
                     ..NodeInputOf::default()
                 },
             )
             // Entry qualification skips this positioned leaf. Its first
             // measurement occurs in the innermost shared Block's placement.
-            .measure(5, crate::Size::new(f64::NAN, 1.0));
-        let axes = FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr);
+            .measure(5, crate::geometry::Size::new(f64::NAN, 1.0));
+        let axes = FlowAxes::new(
+            crate::node_input::WritingMode::HorizontalTb,
+            crate::node_input::Direction::Ltr,
+        );
         let input = ComputeInputOf::for_child(
-            crate::RunMode::PerformLayout,
-            crate::SizingMode::InherentSize,
-            crate::RequestedAxis::Both,
-            crate::Size::NONE,
-            crate::Size::NONE,
-            crate::ContainingLayoutContext::new(axes, ParentFormattingContext::NoParent),
-            crate::SizingRequestOf::new(
-                crate::Size::splat(crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
+            crate::output::RunMode::PerformLayout,
+            crate::output::SizingMode::InherentSize,
+            crate::output::RequestedAxis::Both,
+            crate::geometry::Size::NONE,
+            crate::geometry::Size::NONE,
+            crate::output::ContainingLayoutContext::new(axes, ParentFormattingContext::NoParent),
+            crate::value::SizingRequestOf::new(
+                crate::geometry::Size::splat(crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Indefinite,
+                    crate::value::SizingOperation::Normal,
                 )),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    crate::value::NearestScrollportOf::Absent,
+                    crate::geometry::Size::splat(
+                        crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
         );
         let mut session = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
         let error = session.compute_child(0, input).unwrap_err();
-        assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(5));
+        assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(5));
         assert!(matches!(
             error.kind(),
-            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::MeasurementOutput(
-                _
-            ))
+            crate::error::LayoutErrorKindOf::InvalidInput(
+                crate::error::LayoutInvalidInputOf::MeasurementOutput(_)
+            )
         ));
         let state = session.block_float_state().unwrap();
         assert!(
@@ -383,9 +394,9 @@ mod tests {
         assert!(state.completed.is_none());
     }
     fn output<S: LayoutScalar>(
-        batch: &crate::CompletedLayoutBatchOf<u32, S>,
+        batch: &crate::output::CompletedLayoutBatchOf<u32, S>,
         node: u32,
-    ) -> crate::NodeOutputOf<S> {
+    ) -> crate::output::NodeOutputOf<S> {
         crate::test_support::readback::single_box_output(
             batch,
             node,
@@ -394,11 +405,11 @@ mod tests {
     }
     fn fence_lane<S: LayoutScalar>() {
         let independent = NodeInputOf {
-            block_flow_context: crate::BlockFlowContext::Independent,
+            block_flow_context: crate::node_input::BlockFlowContext::Independent,
             ..block::<S>(40.0, Some(10.0))
         };
         let clear = NodeInputOf {
-            clear: crate::Clear::Both,
+            clear: crate::node_input::Clear::Both,
             ..block::<S>(100.0, Some(10.0))
         };
         let tree = PublicLayoutTreeOf::new()
@@ -414,37 +425,42 @@ mod tests {
             .style(3, independent)
             .style(4, floated(10.0, 200.0))
             .style(6, clear);
-        let request = crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(
-                crate::Size::new(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+        let request = crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(
+                crate::geometry::Size::new(
+                    crate::value::AxisSizingRequestOf::new(
+                        crate::value::AvailableSpaceOf::Definite(
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        crate::value::SizingOperation::Normal,
                     ),
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::Normal,
+                    crate::value::AxisSizingRequestOf::new(
+                        crate::value::AvailableSpaceOf::Indefinite,
+                        crate::value::SizingOperation::Normal,
                     ),
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    crate::value::NearestScrollportOf::Absent,
+                    crate::geometry::Size::splat(
+                        crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
-            FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
-            crate::Size::NONE,
+            FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
+            crate::geometry::Size::NONE,
         );
-        let batch = crate::compute_layout(&tree, 0, request).unwrap();
+        let batch = crate::engine::compute_layout(&tree, 0, request).unwrap();
         // The normal block's only in-flow child is the fixed-height flow root.
         // Its own float belongs to the outer context; the 200-unit interior
         // float remains inside the independent context despite visible overflow.
         assert_eq!(output(&batch, 1).size.height, S::from_f64(10.0));
         assert_eq!(
             output(&batch, 3).location,
-            crate::Point::new(S::from_f64(20.0), S::ZERO)
+            crate::geometry::Point::new(S::from_f64(20.0), S::ZERO)
         );
         assert_eq!(output(&batch, 6).location.y, S::from_f64(30.0));
         assert_eq!(output(&batch, 0).size.height, S::from_f64(40.0));
@@ -466,37 +482,45 @@ mod tests {
                 .style(2, floated(20.0, 30.0));
             let mut session = crate::engine::ComputeSession::unobserved(&tree, Vec::new());
             let input = ComputeInputOf::for_child(
-                crate::RunMode::ComputeSize,
-                crate::SizingMode::InherentSize,
-                crate::RequestedAxis::Both,
-                crate::Size::NONE,
-                crate::Size::new(Some(S::from_f64(100.0)), None),
-                crate::ContainingLayoutContext::new(
-                    FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+                crate::output::RunMode::ComputeSize,
+                crate::output::SizingMode::InherentSize,
+                crate::output::RequestedAxis::Both,
+                crate::geometry::Size::NONE,
+                crate::geometry::Size::new(Some(S::from_f64(100.0)), None),
+                crate::output::ContainingLayoutContext::new(
+                    FlowAxes::new(
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
+                    ),
                     ParentFormattingContext::BlockFlow,
                 ),
-                crate::SizingRequestOf::new(
-                    crate::Size::new(
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                crate::value::SizingRequestOf::new(
+                    crate::geometry::Size::new(
+                        crate::value::AxisSizingRequestOf::new(
+                            crate::value::AvailableSpaceOf::Definite(
+                                crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            crate::value::SizingOperation::Normal,
                         ),
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::Normal,
+                        crate::value::AxisSizingRequestOf::new(
+                            crate::value::AvailableSpaceOf::Indefinite,
+                            crate::value::SizingOperation::Normal,
                         ),
                     ),
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    crate::value::OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        crate::value::NearestScrollportOf::Absent,
+                        crate::geometry::Size::splat(
+                            crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                        ),
                     ),
                 ),
             );
             let output = session.compute_child(1, input).unwrap();
-            assert_eq!(output.size, crate::Size::new(S::from_f64(100.0), S::ZERO));
+            assert_eq!(
+                output.size,
+                crate::geometry::Size::new(S::from_f64(100.0), S::ZERO)
+            );
         }
         lane::<f32>();
         lane::<f64>();
@@ -509,22 +533,25 @@ mod tests {
             use crate::geometry::LogicalSizeOf;
 
             for writing_mode in [
-                crate::WritingMode::HorizontalTb,
-                crate::WritingMode::VerticalRl,
-                crate::WritingMode::VerticalLr,
-                crate::WritingMode::SidewaysRl,
-                crate::WritingMode::SidewaysLr,
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::WritingMode::VerticalRl,
+                crate::node_input::WritingMode::VerticalLr,
+                crate::node_input::WritingMode::SidewaysRl,
+                crate::node_input::WritingMode::SidewaysLr,
             ] {
-                for direction in [crate::Direction::Ltr, crate::Direction::Rtl] {
+                for direction in [
+                    crate::node_input::Direction::Ltr,
+                    crate::node_input::Direction::Rtl,
+                ] {
                     let axes = FlowAxes::new(writing_mode, direction);
                     let logical_box = |inline: f64, block: Option<f64>| NodeInputOf {
-                        display: crate::Display::Block,
+                        display: crate::node_input::Display::Block,
                         writing_mode,
                         direction,
                         size: axes.physical_size(LogicalSizeOf::new(
-                            crate::PreferredSizeOf::px(S::from_f64(inline)),
-                            block.map_or(crate::PreferredSizeOf::AUTO, |value| {
-                                crate::PreferredSizeOf::px(S::from_f64(value))
+                            crate::sizing::PreferredSizeOf::px(S::from_f64(inline)),
+                            block.map_or(crate::sizing::PreferredSizeOf::AUTO, |value| {
+                                crate::sizing::PreferredSizeOf::px(S::from_f64(value))
                             }),
                         )),
                         ..NodeInputOf::default()
@@ -533,16 +560,17 @@ mod tests {
                         for nested in [false, true] {
                             let mut owner = logical_box(100.0, None);
                             if independent {
-                                owner.block_flow_context = crate::BlockFlowContext::Independent;
+                                owner.block_flow_context =
+                                    crate::node_input::BlockFlowContext::Independent;
                             } else {
-                                owner.overflow = crate::ComputedOverflow::try_new(
-                                    crate::Overflow::Hidden,
-                                    crate::Overflow::Hidden,
+                                owner.overflow = crate::node_input::ComputedOverflow::try_new(
+                                    crate::node_input::Overflow::Hidden,
+                                    crate::node_input::Overflow::Hidden,
                                 )
                                 .unwrap();
                             }
                             let floating = NodeInputOf {
-                                float: crate::Float::Left,
+                                float: crate::node_input::Float::Left,
                                 ..logical_box(20.0, Some(30.0))
                             };
                             let tree = PublicLayoutTreeOf::new().children(1, [2]).style(1, owner);
@@ -557,37 +585,39 @@ mod tests {
                             let mut session =
                                 crate::engine::ComputeSession::unobserved(&tree, Vec::new());
                             let input = ComputeInputOf::for_child(
-                                crate::RunMode::ComputeSize,
-                                crate::SizingMode::InherentSize,
-                                crate::RequestedAxis::Both,
-                                crate::Size::NONE,
+                                crate::output::RunMode::ComputeSize,
+                                crate::output::SizingMode::InherentSize,
+                                crate::output::RequestedAxis::Both,
+                                crate::geometry::Size::NONE,
                                 axes.physical_size(LogicalSizeOf::new(
                                     Some(S::from_f64(100.0)),
                                     None,
                                 )),
-                                crate::ContainingLayoutContext::new(
+                                crate::output::ContainingLayoutContext::new(
                                     axes,
                                     ParentFormattingContext::BlockFlow,
                                 ),
-                                crate::SizingRequestOf::new(
+                                crate::value::SizingRequestOf::new(
                                     axes.physical_size(LogicalSizeOf::new(
-                                        crate::AxisSizingRequestOf::new(
-                                            crate::AvailableSpaceOf::Definite(
-                                                crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
-                                                    .unwrap(),
+                                        crate::value::AxisSizingRequestOf::new(
+                                            crate::value::AvailableSpaceOf::Definite(
+                                                crate::value::NonNegativeFiniteOf::new(
+                                                    S::from_f64(100.0),
+                                                )
+                                                .unwrap(),
                                             ),
-                                            crate::SizingOperation::Normal,
+                                            crate::value::SizingOperation::Normal,
                                         ),
-                                        crate::AxisSizingRequestOf::new(
-                                            crate::AvailableSpaceOf::Indefinite,
-                                            crate::SizingOperation::Normal,
+                                        crate::value::AxisSizingRequestOf::new(
+                                            crate::value::AvailableSpaceOf::Indefinite,
+                                            crate::value::SizingOperation::Normal,
                                         ),
                                     )),
-                                    crate::OrthogonalFallbackOf::new(
-                                        crate::Size::NONE,
-                                        crate::NearestScrollportOf::Absent,
-                                        crate::Size::splat(
-                                            crate::OrthogonalFallbackLimitOf::Unbounded,
+                                    crate::value::OrthogonalFallbackOf::new(
+                                        crate::geometry::Size::NONE,
+                                        crate::value::NearestScrollportOf::Absent,
+                                        crate::geometry::Size::splat(
+                                            crate::value::OrthogonalFallbackLimitOf::Unbounded,
                                         ),
                                     ),
                                 ),

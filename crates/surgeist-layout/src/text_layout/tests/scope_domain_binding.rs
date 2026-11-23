@@ -2,6 +2,13 @@
 
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    geometry::FlowAxes,
+    inline_wrapping::WrappingInput,
+    node_input::{InlineBaselineContext, InlineBoundaryEdgeOf},
+    text_layout::InlineBoxFragmentationDemand,
+    tree::LayoutTree,
+};
 use std::sync::Arc;
 use surgeist_text as text;
 
@@ -388,7 +395,7 @@ fn atomic_domain_shape(
         .collect();
     let mut bindings = vec![
         TextParagraphBinding {
-            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+            inline_box_fragments: InlineBoxFragmentationDemand::NotRequested,
             prepared: parent,
             container: 0,
             nodes: if foreign_parent {
@@ -406,7 +413,7 @@ fn atomic_domain_shape(
             line_strut: None,
         },
         TextParagraphBinding {
-            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+            inline_box_fragments: InlineBoxFragmentationDemand::NotRequested,
             prepared: child,
             container: if two_domains { A1 } else { A0 },
             nodes: INLINE_NODES.to_vec(),
@@ -480,9 +487,8 @@ fn atomic_domain_shape(
             LayoutInputOf::inline_boundary(
                 InlineBoundaryInputOf::contribution(
                     kind,
-                    InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
-                        .unwrap(),
-                    crate::InlineBoundaryEdgeOf::ZERO,
+                    InlineMetricsOf::try_new(InlineBaselineContext::Physical, 8.0, 10.0).unwrap(),
+                    InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
             ),
@@ -498,9 +504,9 @@ fn atomic_domain_shape(
                 LayoutInputOf::inline_boundary(
                     InlineBoundaryInputOf::contribution(
                         kind,
-                        InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                        InlineMetricsOf::try_new(InlineBaselineContext::Physical, 8.0, 10.0)
                             .unwrap(),
-                        crate::InlineBoundaryEdgeOf::ZERO,
+                        InlineBoundaryEdgeOf::ZERO,
                     )
                     .unwrap(),
                 ),
@@ -519,7 +525,7 @@ fn atomic_domain_shape(
         bindings.insert(
             1,
             TextParagraphBinding {
-                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+                inline_box_fragments: InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: A0,
                 nodes: vec![40, 41],
@@ -538,9 +544,9 @@ fn atomic_domain_shape(
                 LayoutInputOf::inline_boundary(
                     InlineBoundaryInputOf::contribution(
                         kind,
-                        InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                        InlineMetricsOf::try_new(InlineBaselineContext::Physical, 8.0, 10.0)
                             .unwrap(),
-                        crate::InlineBoundaryEdgeOf::ZERO,
+                        InlineBoundaryEdgeOf::ZERO,
                     )
                     .unwrap(),
                 ),
@@ -581,7 +587,7 @@ fn earlier_same_anchor_atomic_accepts_its_own_content_domain_and_computes_phrase
         &tree,
         0,
         bindings.clone(),
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -594,8 +600,8 @@ fn earlier_same_anchor_atomic_accepts_its_own_content_domain_and_computes_phrase
         &capture,
         0,
         request(500.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -633,7 +639,7 @@ fn later_same_anchor_atomic_rejects_the_earlier_atomics_content_domain() {
         &wrong_tree,
         0,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -661,7 +667,7 @@ fn out_of_flow_content_domain_keeps_its_exact_same_anchor_atomic_custody() {
         &tree,
         0,
         bindings.clone(),
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -677,7 +683,7 @@ fn out_of_flow_content_domain_keeps_its_exact_same_anchor_atomic_custody() {
         &wrong_tree,
         0,
         wrong,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -704,7 +710,7 @@ fn parent_atomic_order_is_not_replaced_by_content_domain_schedule() {
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -731,7 +737,7 @@ fn deferred_child_content_cannot_reverse_its_actual_boundary_controls() {
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -762,7 +768,7 @@ fn several_deferred_atomic_content_domains_keep_independent_actual_flows() {
             &tree,
             0,
             bindings.clone(),
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -775,8 +781,8 @@ fn several_deferred_atomic_content_domains_keep_independent_actual_flows() {
             &capture,
             0,
             request(500.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((capture).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();
@@ -808,7 +814,7 @@ fn deferred_entry_cannot_donate_a_later_inline_parent_to_an_earlier_atomic() {
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -846,7 +852,7 @@ fn deferred_content_can_follow_its_nominated_atomics_parent_paragraph_exit() {
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -859,8 +865,8 @@ fn deferred_content_can_follow_its_nominated_atomics_parent_paragraph_exit() {
         &capture,
         0,
         request(500.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -883,7 +889,7 @@ fn plain_block_subtree_root_keeps_its_own_flow_without_an_outside_parent_associa
         &tree,
         50,
         vec![child],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -896,8 +902,8 @@ fn plain_block_subtree_root_keeps_its_own_flow_without_an_outside_parent_associa
         &capture,
         50,
         request(500.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 50);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 50);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -918,7 +924,7 @@ fn atomic_content_root_cannot_guess_its_missing_nominated_atomic_binding() {
         &tree,
         A0,
         vec![child],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -946,7 +952,7 @@ fn plain_block_custody_allows_unmapped_layout_only_wrappers() {
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -959,8 +965,8 @@ fn plain_block_custody_allows_unmapped_layout_only_wrappers() {
         &capture,
         0,
         request(500.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -1001,7 +1007,7 @@ fn plain_block_definition_cannot_reuse_an_actual_prepared_atomic_container() {
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),

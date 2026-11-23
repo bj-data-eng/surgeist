@@ -1,5 +1,5 @@
 //! Temporary row storage used by the existing disposable child factory.
-use crate::LayoutScalar;
+use crate::scalar::LayoutScalar;
 use crate::text_layout::scope_alignment::{EntryBacking, EntryFunding};
 
 /// Data drops before its backing lease. Moving a completed copy into a session

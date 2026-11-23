@@ -1,8 +1,10 @@
 //! Actual numeric fit receipts with explicit native scopes, without Text.
 use super::*;
 use crate::inline_wrapping::{WrapInside, WrappingContext, WrappingScopeInput};
+use crate::node_input::{
+    Display, InlineBaselineContext, InlineBoundaryInputOf, LayoutInputOf, NodeInputOf,
+};
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
-use crate::{InlineBoundaryInputOf, LayoutInputOf, NodeInputOf};
 
 fn exercise<S: LayoutScalar>(
     first: InlineBreakOpportunity,
@@ -11,7 +13,7 @@ fn exercise<S: LayoutScalar>(
     ending: SelectedInlineLineEnd,
 ) {
     let metrics = InlineMetricsOf::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
+        InlineBaselineContext::Physical,
         S::from_f64(10.0),
         S::from_f64(10.0),
     )
@@ -19,11 +21,11 @@ fn exercise<S: LayoutScalar>(
     let flow = InlineFlowOf::new(
         WritingMode::HorizontalTb,
         Direction::Ltr,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
+        crate::value::AxisSizingRequestOf::new(
+            crate::value::AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
             ),
-            crate::SizingOperation::Normal,
+            crate::value::SizingOperation::Normal,
         ),
     );
     let tree = PublicLayoutTreeOf::<S>::new()
@@ -37,7 +39,7 @@ fn exercise<S: LayoutScalar>(
         .style(
             1,
             NodeInputOf {
-                display: crate::Display::InlineBlock,
+                display: Display::InlineBlock,
                 atomic_inline_participation: Some(AtomicInlineParticipation::new(
                     BidiLevel::try_new(0).unwrap(),
                     first,
@@ -48,7 +50,7 @@ fn exercise<S: LayoutScalar>(
         .style(
             3,
             NodeInputOf {
-                display: crate::Display::InlineBlock,
+                display: Display::InlineBlock,
                 atomic_inline_participation: Some(AtomicInlineParticipation::new(
                     BidiLevel::try_new(0).unwrap(),
                     second,
@@ -59,7 +61,7 @@ fn exercise<S: LayoutScalar>(
         .style(
             4,
             NodeInputOf {
-                display: crate::Display::InlineBlock,
+                display: Display::InlineBlock,
                 atomic_inline_participation: Some(AtomicInlineParticipation::new(
                     BidiLevel::try_new(0).unwrap(),
                     InlineBreakOpportunity::Allowed,
@@ -95,7 +97,7 @@ fn exercise<S: LayoutScalar>(
     let context = WrappingContext::new(
         &tree,
         &graph,
-        &crate::WrappingInput {
+        &crate::inline_wrapping::WrappingInput {
             scopes: vec![WrappingScopeInput::NativePair {
                 metric_contribution: None,
                 edges: Default::default(),
@@ -122,7 +124,7 @@ fn exercise<S: LayoutScalar>(
         .unwrap();
     let atomic = |source_index, following| MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {
-            baseline_reference: crate::InlineBaselineContext::Physical,
+            baseline_reference: InlineBaselineContext::Physical,
             source_index,
             size: Size::splat(S::from_f64(10.0)),
             content_size: Size::ZERO,
@@ -257,7 +259,7 @@ fn atomic_metric<S: LayoutScalar>(
 ) -> MixedInlineParticipantOf<S> {
     MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {
-            baseline_reference: crate::InlineBaselineContext::Physical,
+            baseline_reference: InlineBaselineContext::Physical,
             source_index: 0,
             size: Size::new(S::from_f64(10.0), S::from_f64(height)),
             content_size: Size::ZERO,
@@ -305,13 +307,13 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
             InlineFlowOf::new(
                 WritingMode::HorizontalTb,
                 Direction::Ltr,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MaxContent,
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Indefinite,
+                    crate::value::SizingOperation::MaxContent,
                 ),
             ),
             InlineMetricsOf::from_line_height_and_baseline(
-                crate::InlineBaselineContext::Physical,
+                InlineBaselineContext::Physical,
                 S::from_f64(30.0),
                 S::from_f64(30.0),
             )
@@ -467,7 +469,7 @@ fn actual_numeric_fallback_envelope_cycle_refuses_without_a_retry_threshold() {
         // explicit 10+10 strut gives natural extent25; float fallback uses20.
         let strut = Some(ReferencedInlineStrutOf {
             source: InlineStrutSource::Direct,
-            reference: crate::InlineBaselineContext::Physical,
+            reference: InlineBaselineContext::Physical,
             metrics: InlineMetricContributionOf {
                 baseline: S::from_f64(10.0),
                 after_baseline: S::from_f64(10.0),
@@ -506,11 +508,11 @@ fn actual_numeric_fallback_envelope_cycle_refuses_without_a_retry_threshold() {
             error,
             crate::inline_wrapping::NumericWrappingError::FeedbackCycle
         );
-        let mapped: crate::LayoutErrorOf<u32, S> =
+        let mapped: crate::error::LayoutErrorOf<u32, S> =
             crate::inline_wrapping::numeric_wrapping_error(7, error);
         assert!(matches!(
             mapped.kind(),
-            crate::LayoutErrorKindOf::InlineFeedbackCycle
+            crate::error::LayoutErrorKindOf::InlineFeedbackCycle
         ));
     }
     lane::<f32>();

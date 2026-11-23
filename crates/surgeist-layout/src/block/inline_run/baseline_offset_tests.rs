@@ -1,11 +1,17 @@
 //! Resolved shifts retain actual named child facts before numeric placement.
 use super::placement::checked_shift_projection;
 use super::*;
-use crate::{Display, InlineMetricsOf, WritingMode};
+use crate::{
+    baseline_offset::BaselineOffsetOf,
+    node_input::{
+        BaselineSource, Display, InlineBaselineContext, InlineMetricsOf, NodeInputOf, WritingMode,
+    },
+    output::{BaselineCoordinateOf, BaselineFactOf, BaselinePairOf, NamedBaselinesOf},
+};
 use surgeist_text::font::FontBaseline;
 
 fn participant<S: LayoutScalar>(
-    input: &crate::NodeInputOf<S>,
+    input: &NodeInputOf<S>,
     output: ComputeOutputOf<S>,
     name: FontBaseline,
     margin: Edges<S>,
@@ -19,26 +25,25 @@ fn participant<S: LayoutScalar>(
         Edges::ZERO,
         AtomicInlineContext {
             axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-            baseline: crate::InlineBaselineContext::Named(name),
+            baseline: InlineBaselineContext::Named(name),
         },
     )
 }
 
-fn facts<S: LayoutScalar>() -> crate::NamedBaselinesOf<S> {
+fn facts<S: LayoutScalar>() -> NamedBaselinesOf<S> {
     let fact = |value| {
-        crate::BaselineFactOf::Available(
-            crate::BaselineCoordinateOf::try_new(PhysicalAxis::Vertical, S::from_f64(value))
-                .unwrap(),
+        BaselineFactOf::Available(
+            BaselineCoordinateOf::try_new(PhysicalAxis::Vertical, S::from_f64(value)).unwrap(),
         )
     };
-    crate::NamedBaselinesOf::unknown()
+    NamedBaselinesOf::unknown()
         .with(
             FontBaseline::Alphabetic,
-            crate::BaselinePairOf::new(fact(2.0), fact(3.0)),
+            BaselinePairOf::new(fact(2.0), fact(3.0)),
         )
         .with(
             FontBaseline::Central,
-            crate::BaselinePairOf::new(fact(6.0), fact(7.0)),
+            BaselinePairOf::new(fact(6.0), fact(7.0)),
         )
 }
 
@@ -50,18 +55,18 @@ fn shifts_match_actual_named_preference_before_displacing_both_scalars() {
         let output = ComputeOutputOf::from_sizes(size, size).with_named_baselines(facts());
         for amount in [S::ZERO, n(3.0)] {
             for (display, source, alphabetic, central) in [
-                (Display::InlineBlock, crate::BaselineSource::First, 2.0, 6.0),
-                (Display::InlineBlock, crate::BaselineSource::Last, 3.0, 7.0),
-                (Display::InlineBlock, crate::BaselineSource::Auto, 3.0, 7.0),
-                (Display::InlineGrid, crate::BaselineSource::Auto, 2.0, 6.0),
+                (Display::InlineBlock, BaselineSource::First, 2.0, 6.0),
+                (Display::InlineBlock, BaselineSource::Last, 3.0, 7.0),
+                (Display::InlineBlock, BaselineSource::Auto, 3.0, 7.0),
+                (Display::InlineGrid, BaselineSource::Auto, 2.0, 6.0),
             ] {
-                let input = crate::NodeInputOf {
+                let input = NodeInputOf {
                     display,
                     baseline_source: source,
                     vertical_align: VerticalAlignOf::Shift(
-                        crate::BaselineOffsetOf::try_new(amount).unwrap(),
+                        BaselineOffsetOf::try_new(amount).unwrap(),
                     ),
-                    ..crate::NodeInputOf::default()
+                    ..NodeInputOf::default()
                 };
                 for (name, expected) in [
                     (FontBaseline::Alphabetic, alphabetic),
@@ -69,27 +74,21 @@ fn shifts_match_actual_named_preference_before_displacing_both_scalars() {
                 ] {
                     let demand = named_atomic_demand(
                         &BlockChildProjection::from_node(&input),
-                        crate::InlineBaselineContext::Named(name),
+                        InlineBaselineContext::Named(name),
                     );
                     assert_eq!(
                         demand.selected_fact(facts()),
                         Some((
                             name,
-                            crate::BaselineFactOf::Available(
-                                crate::BaselineCoordinateOf::try_new(
-                                    PhysicalAxis::Vertical,
-                                    n(expected)
-                                )
-                                .unwrap()
+                            BaselineFactOf::Available(
+                                BaselineCoordinateOf::try_new(PhysicalAxis::Vertical, n(expected))
+                                    .unwrap()
                             )
                         ))
                     );
                     let item = participant(&input, output, name, Edges::ZERO).unwrap();
                     assert_eq!(item.first_baseline, Some(n(expected)));
-                    assert_eq!(
-                        item.baseline_reference,
-                        crate::InlineBaselineContext::Named(name)
-                    );
+                    assert_eq!(item.baseline_reference, InlineBaselineContext::Named(name));
                     assert_eq!(item.alignment, input.vertical_align);
                     assert_eq!(item.size, size);
                     assert_eq!(item.content_size, size);
@@ -108,31 +107,29 @@ fn shifted_demand_keeps_unknown_axis_absence_margin_and_scroll_contracts_both_sc
         let size = Size::new(n(5.0), n(10.0));
         let plain = ComputeOutputOf::from_sizes(size, size);
         for amount in [S::ZERO, n(3.0)] {
-            let input = crate::NodeInputOf {
+            let input = NodeInputOf {
                 display: Display::InlineBlock,
-                vertical_align: VerticalAlignOf::Shift(
-                    crate::BaselineOffsetOf::try_new(amount).unwrap(),
-                ),
-                ..crate::NodeInputOf::default()
+                vertical_align: VerticalAlignOf::Shift(BaselineOffsetOf::try_new(amount).unwrap()),
+                ..NodeInputOf::default()
             };
             assert!(matches!(
                 participant(&input, plain, FontBaseline::Central, Edges::ZERO),
                 Err(LayoutErrorKindOf::MissingContext(
-                    crate::LayoutMissingContext::NamedInlineBaseline
+                    crate::error::LayoutMissingContext::NamedInlineBaseline
                 ))
             ));
-            let wrong = crate::BaselineFactOf::Available(
-                crate::BaselineCoordinateOf::try_new(PhysicalAxis::Horizontal, n(6.0)).unwrap(),
+            let wrong = BaselineFactOf::Available(
+                BaselineCoordinateOf::try_new(PhysicalAxis::Horizontal, n(6.0)).unwrap(),
             );
-            let wrong = plain.with_named_baselines(crate::NamedBaselinesOf::unknown().with(
-                FontBaseline::Central,
-                crate::BaselinePairOf::new(wrong, wrong),
-            ));
+            let wrong = plain.with_named_baselines(
+                NamedBaselinesOf::unknown()
+                    .with(FontBaseline::Central, BaselinePairOf::new(wrong, wrong)),
+            );
             assert!(matches!(
                 participant(&input, wrong, FontBaseline::Central, Edges::ZERO),
                 Err(LayoutErrorKindOf::InvalidInput(
                     LayoutInvalidInputOf::InlineBaseline(
-                        crate::InlineBaselineError::AxisMismatch {
+                        crate::node_input::InlineBaselineError::AxisMismatch {
                             expected: PhysicalAxis::Vertical,
                             actual: PhysicalAxis::Horizontal
                         }
@@ -140,7 +137,7 @@ fn shifted_demand_keeps_unknown_axis_absence_margin_and_scroll_contracts_both_sc
                 ))
             ));
 
-            let absent = plain.with_named_baselines(crate::NamedBaselinesOf::absent());
+            let absent = plain.with_named_baselines(NamedBaselinesOf::absent());
             let margin = Edges {
                 top: n(2.0),
                 bottom: n(3.0),
@@ -161,9 +158,12 @@ fn shifted_demand_keeps_unknown_axis_absence_margin_and_scroll_contracts_both_sc
                     .first_baseline,
                 Some(n(5.5))
             );
-            let scrolling = crate::NodeInputOf {
-                overflow: crate::ComputedOverflow::try_new(Overflow::Hidden, Overflow::Hidden)
-                    .unwrap(),
+            let scrolling = NodeInputOf {
+                overflow: crate::node_input::ComputedOverflow::try_new(
+                    Overflow::Hidden,
+                    Overflow::Hidden,
+                )
+                .unwrap(),
                 ..input.clone()
             };
             assert_eq!(
@@ -174,14 +174,14 @@ fn shifted_demand_keeps_unknown_axis_absence_margin_and_scroll_contracts_both_sc
             );
 
             let mismatched = InlineMetricsOf::try_new(
-                crate::InlineBaselineContext::Named(FontBaseline::Alphabetic),
+                InlineBaselineContext::Named(FontBaseline::Alphabetic),
                 n(8.0),
                 n(10.0),
             )
             .unwrap();
             let error = validate_metric_reference::<u32, S, ()>(
                 1,
-                crate::InlineBaselineContext::Named(FontBaseline::Central),
+                InlineBaselineContext::Named(FontBaseline::Central),
                 mismatched,
                 input.vertical_align,
             )
@@ -189,7 +189,7 @@ fn shifted_demand_keeps_unknown_axis_absence_margin_and_scroll_contracts_both_sc
             assert!(matches!(
                 error.kind(),
                 LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InlineBaseline(
-                    crate::InlineBaselineError::ReferenceMismatch { .. }
+                    crate::node_input::InlineBaselineError::ReferenceMismatch { .. }
                 ))
             ));
         }
@@ -202,7 +202,7 @@ fn shifted_demand_keeps_unknown_axis_absence_margin_and_scroll_contracts_both_sc
 fn projection_checks_one_retained_frame_and_local_coordinate_loss_both_scalars() {
     fn lane<S: LayoutScalar>(large: S) {
         let n = S::from_f64;
-        let alignment = VerticalAlignOf::Shift(crate::BaselineOffsetOf::try_new(n(20.0)).unwrap());
+        let alignment = VerticalAlignOf::Shift(BaselineOffsetOf::try_new(n(20.0)).unwrap());
         let horizontal = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
         // The accepted no-strut line has common baseline26 and child start0.
         // Its pre-displacement matched start is20 in this same frame. An
@@ -216,7 +216,7 @@ fn projection_checks_one_retained_frame_and_local_coordinate_loss_both_scalars()
             Point::ZERO
         );
 
-        let one = VerticalAlignOf::Shift(crate::BaselineOffsetOf::try_new(S::ONE).unwrap());
+        let one = VerticalAlignOf::Shift(BaselineOffsetOf::try_new(S::ONE).unwrap());
         // Local coordinates remain small when only an ancestor is translated;
         // no ancestor-origin value participates in this parent-local frame.
         assert_eq!(
@@ -230,7 +230,7 @@ fn projection_checks_one_retained_frame_and_local_coordinate_loss_both_scalars()
         .unwrap_err();
         assert_eq!(
             inset_loss.reason(),
-            crate::LayoutTextNumericError::NonZeroLost
+            crate::error::LayoutTextNumericError::NonZeroLost
         );
 
         let vertical = FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr);
@@ -245,7 +245,7 @@ fn projection_checks_one_retained_frame_and_local_coordinate_loss_both_scalars()
         .unwrap_err();
         assert_eq!(
             projection_loss.reason(),
-            crate::LayoutTextNumericError::NonZeroLost
+            crate::error::LayoutTextNumericError::NonZeroLost
         );
     }
     lane::<f32>(1_073_741_824.0);

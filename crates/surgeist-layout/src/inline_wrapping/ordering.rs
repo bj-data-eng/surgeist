@@ -5,7 +5,9 @@ use super::{
     InlineGapAnchor, InlineGapGroupInput, ScopeRow, WrappingScopeError,
 };
 use crate::{
-    Direction, LayoutInputViewOf, LayoutTree, Position, engine::validation::ValidationGraph,
+    engine::validation::ValidationGraph,
+    node_input::{Direction, LayoutInputViewOf, Position},
+    tree::LayoutTree,
 };
 use std::{ops::Range, sync::Arc};
 use surgeist_text::supplied_line::{BidiLevel, SuppliedInlineParticipant, SuppliedLine};
@@ -226,7 +228,7 @@ pub(super) fn prepare<Node: Copy + Eq, Tree: LayoutTree<Node = Node>>(
         for (rank, &child) in children.iter().enumerate() {
             let role = match tree.layout_input(graph.nodes[child]) {
                 LayoutInputViewOf::Box(input) => {
-                    if input.display == crate::Display::None
+                    if input.display == crate::node_input::Display::None
                         || input.position == Position::Absolute
                         || !input.float.is_none()
                     {
@@ -253,7 +255,7 @@ pub(super) fn prepare<Node: Copy + Eq, Tree: LayoutTree<Node = Node>>(
                         })
                     }) {
                         if input.edge().flow_advance()
-                            != <Tree::Scalar as crate::LayoutScalar>::ZERO
+                            != <Tree::Scalar as crate::scalar::LayoutScalar>::ZERO
                         {
                             return Err(WrappingScopeError::IncompatibleContribution);
                         }
@@ -1763,7 +1765,7 @@ impl NativeOrderingData {
     pub(crate) fn physical_empty_edge(
         &self,
         owner: usize,
-        endpoint: (usize, crate::InlineBoundaryKind),
+        endpoint: (usize, crate::node_input::InlineBoundaryKind),
         body: usize,
         selection: &NativeOrderingSelection<'_>,
         payload: &[usize],
@@ -1776,7 +1778,8 @@ impl NativeOrderingData {
         if !selection.ranks.contains(&rank) {
             return Err(WrappingScopeError::GapOutsideSelection);
         }
-        if self.endpoint(rank) != Some((owner, kind == crate::InlineBoundaryKind::Start))
+        if self.endpoint(rank)
+            != Some((owner, kind == crate::node_input::InlineBoundaryKind::Start))
             || self.body(rank)? != body
             || self.slots[rank].role != Role::Structural
         {

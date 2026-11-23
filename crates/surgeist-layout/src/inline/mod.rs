@@ -1,16 +1,21 @@
-use super::{
-    AtomicInlineParticipation, AxisSizingRequestOf, Clear, DefaultScalar, Direction, Edges,
-    InlineBoundaryEdgeOf, InlineBoundaryKind, InlineBreakOpportunity, InlineMetricsOf,
-    LayoutScalar, Size, TextAlign, WritingMode,
-};
-use crate::Point;
 use crate::accounting::LayoutWork;
 #[cfg(test)]
 use crate::geometry::LogicalSizeOf;
+use crate::geometry::Point;
 use crate::geometry::{FlowAxes, LogicalPointOf};
 use crate::inline_wrapping::NumericWrappingError;
 use crate::inline_wrapping::balance::{BalanceGoal, NaturalResidual};
 use crate::inline_wrapping::quality::{LineQualityGoal, LineQualityKey};
+use crate::{
+    geometry::{Edges, Size},
+    node_input::{
+        AtomicInlineParticipation, Clear, Direction, InlineBaselineContext, InlineBoundaryEdgeOf,
+        InlineBoundaryKind, InlineBreakOpportunity, InlineMetricsOf, TextAlign, TextWrapStyle,
+        WritingMode,
+    },
+    scalar::{DefaultScalar, LayoutScalar},
+    value::{AxisSizingRequestOf, SizingOperation},
+};
 #[cfg(test)]
 use std::cell::Cell;
 use std::ops::Range;
@@ -94,16 +99,16 @@ pub(super) enum MixedInlineParticipantOf<S: LayoutScalar = DefaultScalar> {
 pub(super) struct MixedInlineRunInputOf<S: LayoutScalar = DefaultScalar> {
     /// The counts of the layout call this run computes for.
     pub meter: crate::accounting::Meter,
-    pub inline_baseline_context: crate::InlineBaselineContext,
+    pub inline_baseline_context: InlineBaselineContext,
     pub groups: crate::group_alignment::Snapshot,
-    pub text_wrap_style: crate::TextWrapStyle,
+    pub text_wrap_style: TextWrapStyle,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub observe_tail: bool,
     pub wrapping: Option<crate::inline_wrapping::NumericWrapping>,
     pub available_inline_extent: AxisSizingRequestOf<S>,
     pub flow_axes: FlowAxes,
     pub text_align: TextAlign,
-    pub text_align_last: crate::TextAlignLast,
+    pub text_align_last: crate::node_input::TextAlignLast,
     pub indent: crate::text_indent::ResolvedTextIndent<S>,
     pub indent_state: crate::text_indent::IndentLineState,
     pub participants: Vec<MixedInlineParticipantOf<S>>,
@@ -193,7 +198,7 @@ pub(super) struct InlineEndpointOf<S: LayoutScalar> {
 }
 
 impl<S: LayoutScalar> InlineEndpointOf<S> {
-    pub(super) fn from_input(input: crate::InlineBoundaryInputOf<S>) -> Self {
+    pub(super) fn from_input(input: crate::node_input::InlineBoundaryInputOf<S>) -> Self {
         Self {
             kind: input.kind(),
             axes: input
@@ -244,7 +249,7 @@ impl<S: LayoutScalar> InlineEndpointOf<S> {
 /// Accepted numeric run-local baseline distances before parent-frame projection.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct NumericBaselineReportOf<S: LayoutScalar = DefaultScalar> {
-    pub context: crate::InlineBaselineContext,
+    pub context: InlineBaselineContext,
     pub first: Option<S>,
     pub last: Option<S>,
     pub first_named: bool,
@@ -254,7 +259,7 @@ pub(super) struct NumericBaselineReportOf<S: LayoutScalar = DefaultScalar> {
 /// Physical baseline coordinates retain the frame in which they were obtained.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct PhysicalBaselineReport {
-    pub context: crate::InlineBaselineContext,
+    pub context: InlineBaselineContext,
     pub first: Option<f64>,
     pub last: Option<f64>,
     pub first_named: bool,
@@ -457,7 +462,7 @@ impl SelectedInlineLineEnd {
 
 fn numeric_line_alignment(
     normal: TextAlign,
-    last: crate::TextAlignLast,
+    last: crate::node_input::TextAlignLast,
     ending: SelectedInlineLineEnd,
 ) -> TextAlign {
     let alignment = normal.for_line(last, ending != SelectedInlineLineEnd::Soft);
@@ -498,7 +503,7 @@ enum InlineSelectionStep<S: LayoutScalar> {
 #[derive(Clone, Copy)]
 pub(super) struct AtomicReceiverDemand {
     pub source_index: usize,
-    pub expected: crate::InlineBaselineContext,
+    pub expected: InlineBaselineContext,
 }
 
 enum ReceiverSeed<S: LayoutScalar> {
@@ -535,7 +540,7 @@ struct ActiveInlineStrutOf<S: LayoutScalar> {
 #[derive(Clone, Copy, PartialEq)]
 pub(super) struct ReferencedInlineStrutOf<S: LayoutScalar> {
     pub metrics: InlineMetricContributionOf<S>,
-    pub reference: crate::InlineBaselineContext,
+    pub reference: InlineBaselineContext,
     pub source: InlineStrutSource,
 }
 
@@ -547,7 +552,7 @@ pub(super) enum InlineStrutSource {
 
 type AtomicReceiverSource<'a, S> = dyn FnMut(
         usize,
-        crate::InlineBaselineContext,
+        InlineBaselineContext,
     ) -> Result<ReferencedInlineStrutOf<S>, crate::inline_wrapping::NumericWrappingError>
     + 'a;
 
@@ -1243,14 +1248,14 @@ fn resolved_inline_available<S: LayoutScalar>(
         input.available_inline_extent.operation(),
         input.available_inline_extent.space(),
     ) {
-        (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Definite(value)) => {
+        (SizingOperation::Normal, crate::value::AvailableSpaceOf::Definite(value)) => {
             Ok(value.get())
         }
-        (crate::SizingOperation::MinContent, _) => {
+        (SizingOperation::MinContent, _) => {
             inline_min_content(run, input.flow_axes, input.wrapping.as_ref())
         }
-        (crate::SizingOperation::MaxContent, _)
-        | (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Indefinite) => {
+        (SizingOperation::MaxContent, _)
+        | (SizingOperation::Normal, crate::value::AvailableSpaceOf::Indefinite) => {
             inline_max_content(run, input.flow_axes, input.wrapping.as_ref())
         }
     }
@@ -1528,7 +1533,7 @@ fn for_each_unowned_box_metric<S: LayoutScalar>(
     end: usize,
     mut include: impl FnMut(InlineControlAlignment<S>, InlineMetricContributionOf<S>),
 ) -> Result<(), crate::inline_wrapping::NumericWrappingError> {
-    use crate::{InlineBoxMetricContribution as Contribution, WrappingScopeError};
+    use crate::inline_wrapping::{InlineBoxMetricContribution as Contribution, WrappingScopeError};
     for allocation in wrapping.metrics(start, end) {
         let owned: Vec<_> = allocation
             .endpoints
@@ -1565,9 +1570,9 @@ fn for_each_unowned_box_metric<S: LayoutScalar>(
                     }
                     surgeist_text::allocation::LineBoxAlignment::Shift(offset) => {
                         InlineControlAlignment::Shift(
-                            crate::BaselineOffsetOf::try_new(crate::group_alignment::scalar::<S>(
-                                offset.get(),
-                            )?)
+                            crate::baseline_offset::BaselineOffsetOf::try_new(
+                                crate::group_alignment::scalar::<S>(offset.get())?,
+                            )
                             .map_err(|_| WrappingScopeError::InvalidBoxMetrics)?,
                         )
                     }
@@ -2357,7 +2362,7 @@ fn resolved_float_terminal_block_extent<S: LayoutScalar>(
         return Ok(line_block_end);
     }
     let touches_float_edge = if flow_axes
-        .logical_axis_progression(crate::LogicalAxis::Inline)
+        .logical_axis_progression(crate::geometry::LogicalAxis::Inline)
         .is_decreasing()
     {
         line_inline_start == line.band.inline_start
@@ -2550,7 +2555,7 @@ where
     ReceiverSource:
         FnMut(
             usize,
-            crate::InlineBaselineContext,
+            InlineBaselineContext,
         )
             -> Result<ReferencedInlineStrutOf<S>, crate::inline_wrapping::NumericWrappingError>,
 {
@@ -2585,12 +2590,12 @@ enum ReceiverSourceMode<'a, S: LayoutScalar> {
 #[cfg(test)]
 pub(super) fn unavailable_atomic_receiver<S: LayoutScalar>(
     _: usize,
-    expected: crate::InlineBaselineContext,
+    expected: crate::node_input::InlineBaselineContext,
 ) -> Result<ReferencedInlineStrutOf<S>, crate::inline_wrapping::NumericWrappingError> {
     Err(crate::inline_wrapping::NumericWrappingError::Baseline(
-        crate::InlineBaselineError::ReferenceMismatch {
+        crate::node_input::InlineBaselineError::ReferenceMismatch {
             expected,
-            actual: crate::InlineBaselineContext::Physical,
+            actual: crate::node_input::InlineBaselineContext::Physical,
         },
     ))
 }
@@ -2786,7 +2791,7 @@ where
         supplied,
         meter: &input.meter,
     };
-    let wraps = input.available_inline_extent.operation() == crate::SizingOperation::MinContent
+    let wraps = input.available_inline_extent.operation() == SizingOperation::MinContent
         || crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
     let NumericSequence {
         state,
@@ -3345,11 +3350,11 @@ impl<S: LayoutScalar> NumericRun<S> {
         observe: bool,
     ) -> Self {
         let boundaries = numeric_line_boundaries(&input);
-        let balanced = input.text_wrap_style == crate::TextWrapStyle::Balance
+        let balanced = input.text_wrap_style == TextWrapStyle::Balance
             && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
-        let repair_tail = input.text_wrap_style == crate::TextWrapStyle::AvoidShortLastLine
+        let repair_tail = input.text_wrap_style == TextWrapStyle::AvoidShortLastLine
             && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
-        let pretty = input.text_wrap_style == crate::TextWrapStyle::Pretty
+        let pretty = input.text_wrap_style == TextWrapStyle::Pretty
             && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
         let sequence = NumericSequence::new(&input, observe || balanced || repair_tail || pretty);
         let owner = if balanced {
@@ -3457,15 +3462,13 @@ where
     ReceiverSource:
         FnMut(
             usize,
-            crate::InlineBaselineContext,
+            InlineBaselineContext,
         )
             -> Result<ReferencedInlineStrutOf<S>, crate::inline_wrapping::NumericWrappingError>,
 {
     if matches!(
         input.text_wrap_style,
-        crate::TextWrapStyle::Balance
-            | crate::TextWrapStyle::AvoidShortLastLine
-            | crate::TextWrapStyle::Pretty
+        TextWrapStyle::Balance | TextWrapStyle::AvoidShortLastLine | TextWrapStyle::Pretty
     ) && crate::layout_math::normal_available_size(input.available_inline_extent).is_some()
     {
         let mut run = NumericRun::from_resolved(input, supplied, available, observe_formatted);
@@ -3591,7 +3594,7 @@ fn finish_numeric_run<S: LayoutScalar, BandError>(
         let line_baseline = block_start + line.baseline;
         let named_authority = matches!(
             input.inline_baseline_context,
-            crate::InlineBaselineContext::Named(_)
+            InlineBaselineContext::Named(_)
         ) && (line.units.iter().any(|unit| {
             !unit.discarded
                 && participant_has_named_baseline(unit.participant, input.inline_baseline_context)
@@ -3600,9 +3603,9 @@ fn finish_numeric_run<S: LayoutScalar, BandError>(
                 MixedInlineParticipantOf::ForcedLineBreak(control),
                 input.inline_baseline_context,
             )
-        }) || line.incoming_strut.is_some_and(|strut| {
-            matches!(strut.reference, crate::InlineBaselineContext::Named(_))
-        }));
+        }) || line
+            .incoming_strut
+            .is_some_and(|strut| matches!(strut.reference, InlineBaselineContext::Named(_))));
         if first_baseline.is_none() {
             first_named_baseline = named_authority;
         }
@@ -3801,7 +3804,7 @@ fn finish_numeric_run<S: LayoutScalar, BandError>(
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct AtomicInlineBoxParticipant<S: LayoutScalar = DefaultScalar> {
-    pub baseline_reference: crate::InlineBaselineContext,
+    pub baseline_reference: InlineBaselineContext,
     pub source_index: usize,
     pub size: Size<S>,
     pub content_size: Size<S>,
@@ -3952,7 +3955,7 @@ impl<S: LayoutScalar> InlineFlowOf<S> {
     }
 }
 
-pub(super) use crate::VerticalAlignOf as InlineControlAlignment;
+pub(super) use crate::node_input::VerticalAlignOf as InlineControlAlignment;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct ForcedLineBreakControlOf<S: LayoutScalar = DefaultScalar> {
@@ -4085,7 +4088,7 @@ impl<S: LayoutScalar> InlineParticipant<S> {
         first_baseline: Option<S>,
     ) -> Self {
         Self::Box(AtomicInlineBoxParticipant {
-            baseline_reference: crate::InlineBaselineContext::Physical,
+            baseline_reference: crate::node_input::InlineBaselineContext::Physical,
             source_index,
             size,
             content_size: size,
@@ -4169,7 +4172,8 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
             InlineParticipant::Box(item) => MixedInlineParticipantOf::Atomic {
                 item,
                 participation: AtomicInlineParticipation::new(
-                    super::BidiLevel::try_new(0).expect("base bidi level is valid"),
+                    surgeist_text::supplied_line::BidiLevel::try_new(0)
+                        .expect("base bidi level is valid"),
                     InlineBreakOpportunity::Allowed,
                 ),
             },
@@ -4181,11 +4185,11 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
         .collect();
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
         meter: crate::accounting::Meter::new(),
-        inline_baseline_context: crate::InlineBaselineContext::Physical,
+        inline_baseline_context: crate::node_input::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
-        text_wrap_style: crate::TextWrapStyle::Auto,
+        text_wrap_style: crate::node_input::TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
-            crate::LineBoxDirectionPolicy::Normal,
+            crate::node_input::LineBoxDirectionPolicy::Normal,
             flow_axes.direction(),
         ),
         observe_tail: false,
@@ -4193,7 +4197,7 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
         available_inline_extent: input.available_width,
         flow_axes,
         text_align: TextAlign::Start,
-        text_align_last: crate::TextAlignLast::Auto,
+        text_align_last: crate::node_input::TextAlignLast::Auto,
         indent: crate::text_indent::ResolvedTextIndent::ZERO,
         indent_state: crate::text_indent::IndentLineState::default(),
         participants,
@@ -4259,9 +4263,9 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
 #[must_use]
 pub(super) fn inline_run_min_content_width<S: LayoutScalar>(items: &[InlineParticipant<S>]) -> S {
     layout_inline_run(InlineRunInput {
-        available_width: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
+        available_width: crate::value::AxisSizingRequestOf::new(
+            crate::value::AvailableSpaceOf::Indefinite,
+            crate::value::SizingOperation::MinContent,
         ),
         writing_mode: WritingMode::HorizontalTb,
         direction: Direction::Ltr,
@@ -4275,9 +4279,9 @@ pub(super) fn inline_run_min_content_width<S: LayoutScalar>(items: &[InlineParti
 #[cfg(test)]
 pub(super) fn inline_run_max_content_width<S: LayoutScalar>(items: &[InlineParticipant<S>]) -> S {
     layout_inline_run(InlineRunInput {
-        available_width: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
+        available_width: crate::value::AxisSizingRequestOf::new(
+            crate::value::AvailableSpaceOf::Indefinite,
+            crate::value::SizingOperation::MaxContent,
         ),
         writing_mode: WritingMode::HorizontalTb,
         direction: Direction::Ltr,
@@ -4298,7 +4302,7 @@ mod tail;
 
 fn participant_has_named_baseline<S: LayoutScalar>(
     participant: MixedInlineParticipantOf<S>,
-    reference: crate::InlineBaselineContext,
+    reference: InlineBaselineContext,
 ) -> bool {
     match participant {
         MixedInlineParticipantOf::Atomic { item, .. } => {
@@ -4315,7 +4319,7 @@ fn participant_has_named_baseline<S: LayoutScalar>(
 
 fn prepare_receiving_seed<S: LayoutScalar>(
     strut: Option<ReferencedInlineStrutOf<S>>,
-    expected: crate::InlineBaselineContext,
+    expected: InlineBaselineContext,
     ending: SelectedInlineLineEnd,
     content: bool,
     source: ReceiverSourceMode<'_, S>,
@@ -4332,8 +4336,8 @@ fn prepare_receiving_seed<S: LayoutScalar>(
         return Ok(ReceiverSeed::Unchanged);
     }
     if let InlineStrutSource::Atomic { source_index } = strut.source
-        && strut.reference == crate::InlineBaselineContext::Physical
-        && matches!(expected, crate::InlineBaselineContext::Named(_))
+        && strut.reference == InlineBaselineContext::Physical
+        && matches!(expected, InlineBaselineContext::Named(_))
     {
         let ReceiverSourceMode::Immediate(source) = source else {
             return Ok(ReceiverSeed::Demand(AtomicReceiverDemand {
@@ -4374,7 +4378,7 @@ fn validate_receiver<S: LayoutScalar>(
 
 fn validate_carried_reference<S: LayoutScalar>(
     strut: Option<ReferencedInlineStrutOf<S>>,
-    expected: crate::InlineBaselineContext,
+    expected: InlineBaselineContext,
     ending: surgeist_text::selection::LineEnd,
     content: bool,
 ) -> Result<(), crate::inline_wrapping::NumericWrappingError> {
@@ -4385,7 +4389,7 @@ fn validate_carried_reference<S: LayoutScalar>(
         && strut.reference != expected
     {
         return Err(crate::inline_wrapping::NumericWrappingError::Baseline(
-            crate::InlineBaselineError::ReferenceMismatch {
+            crate::node_input::InlineBaselineError::ReferenceMismatch {
                 expected,
                 actual: strut.reference,
             },

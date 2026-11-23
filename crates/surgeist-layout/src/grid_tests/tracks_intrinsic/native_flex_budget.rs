@@ -87,20 +87,23 @@ fn assert_native_equal_flex_budget<S: LayoutScalar>(
     // demand. Explicit zero track minima and zero gutters leave all1 for fr.
     let batch = compute_layout(&tree, 0, {
         let axes = Size::splat(AxisSizingRequestOf::new(
-            AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(one).unwrap()),
+            AvailableSpaceOf::Definite(crate::value::NonNegativeFiniteOf::new(one).unwrap()),
             SizingOperation::Normal,
         ));
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    crate::value::NearestScrollportOf::Absent,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })

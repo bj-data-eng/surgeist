@@ -1,6 +1,7 @@
 //! Styled wbr bindings, including text units without any source origin.
 
 use super::*;
+use crate::inline_wrapping::WrappingInput;
 
 fn paragraph(shared_mark: bool, expanded: bool) -> PreparedParagraph {
     let mut base = ahem_style(10.0, 10.0);
@@ -89,7 +90,7 @@ fn rejects<S: LayoutScalar>(
         tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -114,7 +115,7 @@ fn generated_inventory<S: LayoutScalar>() {
             &tree,
             0,
             vec![binding.clone()],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -191,7 +192,7 @@ fn shared_order<S: LayoutScalar>() {
         &normal,
         0,
         vec![binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),

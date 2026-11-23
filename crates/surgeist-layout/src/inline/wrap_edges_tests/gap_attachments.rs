@@ -1,8 +1,11 @@
 //! Resolved physical attachment is distinct from an empty box's source cut.
 use super::*;
 use crate::{
-    InlineDelimiterSide, InlineFormatterEdge, InlineGapAffinity, InlineGapAnchor,
-    InlineGapGroupInput,
+    error::{LayoutErrorKindOf, LayoutInvalidInputOf},
+    inline_wrapping::{
+        InlineDelimiterSide, InlineFormatterEdge, InlineGapAffinity, InlineGapAnchor,
+        InlineGapGroupInput,
+    },
 };
 
 pub(super) fn replace_boundary<S: LayoutScalar>(
@@ -30,11 +33,11 @@ pub(super) fn replace_boundary<S: LayoutScalar>(
         InlineFlowOf::new(
             boundary.writing_mode(),
             boundary.direction(),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(f.width).unwrap(),
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(f.width).unwrap(),
                 ),
-                crate::SizingOperation::Normal,
+                crate::value::SizingOperation::Normal,
             ),
         ),
         boundary.metrics(),
@@ -286,8 +289,8 @@ fn unresolved_directional_gap<S: LayoutScalar>() {
             &flow,
             0,
             request(f.width, {
-                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .expect_err("an unresolved directional gap must refuse"),
@@ -296,7 +299,7 @@ fn unresolved_directional_gap<S: LayoutScalar>() {
     assert!(
         matches!(
             error.kind(),
-            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(
+            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
                 WrappingScopeError::MissingGap
             ))
         ),
@@ -469,7 +472,9 @@ fn empty_terminal_body<S: LayoutScalar>() -> Fixture<S> {
     );
     f.tree.insert_input(
         60,
-        LayoutInputOf::line_break(crate::LineBreakInputOf::new().with_metrics(metrics())),
+        LayoutInputOf::line_break(
+            crate::node_input::LineBreakInputOf::new().with_metrics(metrics()),
+        ),
     );
     f.nodes.push(60);
     f.participants
@@ -479,16 +484,16 @@ fn empty_terminal_body<S: LayoutScalar>() -> Fixture<S> {
                 InlineFlowOf::new(
                     WritingMode::HorizontalTb,
                     Direction::Ltr,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(f.width).unwrap(),
+                    crate::value::AxisSizingRequestOf::new(
+                        crate::value::AvailableSpaceOf::Definite(
+                            crate::value::NonNegativeFiniteOf::new(f.width).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        crate::value::SizingOperation::Normal,
                     ),
                 ),
                 metrics(),
                 InlineControlAlignment::Baseline,
-                crate::Clear::None,
+                crate::node_input::Clear::None,
             ),
         ));
     let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
@@ -587,7 +592,7 @@ fn actual_terminal_body_attachment<S: LayoutScalar>() {
         assert!(
             matches!(
                 error.kind(),
-                crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(
+                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
                     WrappingScopeError::InvalidGapAnchor
                 ))
             ),
@@ -664,9 +669,8 @@ fn invalid_attachments<S: LayoutScalar>() {
         let error = LayoutFlowInput::try_new(&f.tree, 0, vec![], f.wrapping.clone(), Vec::new())
             .err()
             .expect("a missing neighbor or operand-bearing parent is not empty-gap authority");
-        let crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(
-            actual,
-        )) = error.kind()
+        let LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(actual)) =
+            error.kind()
         else {
             panic!("{error:?}");
         };
@@ -690,7 +694,7 @@ fn invalid_attachments<S: LayoutScalar>() {
         assert!(
             matches!(
                 error.kind(),
-                crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(
+                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
                     WrappingScopeError::NodeNotReachable
                 ))
             ),
@@ -713,7 +717,7 @@ fn invalid_attachments<S: LayoutScalar>() {
     assert!(
         matches!(
             error.kind(),
-            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(
+            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
                 WrappingScopeError::ConflictingGap
             ))
         ),
@@ -751,15 +755,15 @@ fn gap_outside_forced_selection<S: LayoutScalar>() {
         &flow,
         0,
         request(f.width, {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .expect_err("body membership alone cannot authenticate the selected gap");
     assert!(
         matches!(
             error.kind(),
-            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(
+            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
                 WrappingScopeError::GapOutsideSelection
             ))
         ),

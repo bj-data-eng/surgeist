@@ -1,6 +1,6 @@
 //! Layout-owned line indentation and the actual block-generation context.
 
-use crate::{LayoutScalar, TextIndentOf};
+use crate::{node_input::TextIndentOf, scalar::LayoutScalar};
 
 /// Supplied only by the actual enclosing block algorithm, never a public
 /// producer assertion about which line will be formatted first.

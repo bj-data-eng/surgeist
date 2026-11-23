@@ -1,7 +1,7 @@
 //! Independent complete native thirteen-track intrinsic/normal geometry.
 use super::*;
 use crate::test_support::readback::{self, Phase};
-use crate::{LayoutTree, Traverse};
+use crate::tree::{LayoutTree, Traverse};
 use std::cell::RefCell;
 
 struct ThirteenContent<S: LayoutScalar> {
@@ -163,8 +163,8 @@ fn request<S: LayoutScalar>(operation: SizingOperation) -> LayoutRootRequestOf<S
             ),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),

@@ -1,8 +1,11 @@
 use super::*;
 use crate::output::{NamedBaselineDemand, NamedBaselineSet};
 use crate::{
-    BaselineFactOf, FlowAxes, GridBaselineError, GridBaselineReference, GridBaselineReferences,
-    ItemAlignmentPosition, PhysicalSide,
+    geometry::{FlowAxes, PhysicalSide},
+    node_input::{
+        GridBaselineError, GridBaselineReference, GridBaselineReferences, ItemAlignmentPosition,
+    },
+    output::BaselineFactOf,
 };
 use surgeist_text::font::FontBaseline;
 
@@ -177,15 +180,15 @@ pub(super) fn grid_baseline_error_at_site<Node, S: LayoutScalar, M>(
         site,
         LayoutOperation::ChildLayout,
         match error {
-            GridBaselineSelectionError::Unknown => {
-                LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::NamedGridBaseline)
-            }
-            GridBaselineSelectionError::Invalid(error) => {
-                LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::GridBaseline(error))
-            }
+            GridBaselineSelectionError::Unknown => LayoutErrorKindOf::MissingContext(
+                crate::error::LayoutMissingContext::NamedGridBaseline,
+            ),
+            GridBaselineSelectionError::Invalid(error) => LayoutErrorKindOf::InvalidInput(
+                crate::error::LayoutInvalidInputOf::GridBaseline(error),
+            ),
             GridBaselineSelectionError::UnsupportedLane(axis) => {
                 LayoutErrorKindOf::UnsupportedCapability(
-                    crate::LayoutUnsupportedCapability::NamedGridLanesBaseline { axis },
+                    crate::error::LayoutUnsupportedCapability::NamedGridLanesBaseline { axis },
                 )
             }
         },

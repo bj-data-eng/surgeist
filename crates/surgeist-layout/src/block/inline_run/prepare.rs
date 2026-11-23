@@ -3,7 +3,8 @@ use super::super::{BlockChildReceipt, float_text, in_flow};
 use super::*;
 use crate::layout_math::{resolve_auto_optional, resolve_length_or_zero};
 
-pub(super) type InlineRunControl<Node, S> = (Node, usize, Option<crate::VerticalAlignOf<S>>);
+pub(super) type InlineRunControl<Node, S> =
+    (Node, usize, Option<crate::node_input::VerticalAlignOf<S>>);
 
 pub(in crate::block) struct PreparedInlineRun<'input, Node, S: LayoutScalar> {
     pub(super) cursor_block: S,
@@ -37,7 +38,7 @@ pub(crate) struct PendingInlineAtomic<'input, Node, S: LayoutScalar> {
     run_offset: usize,
     projection: InlineParticipantProjection<'input, S>,
     request: ComputeInputOf<S>,
-    participation: Option<crate::AtomicInlineParticipation>,
+    participation: Option<crate::node_input::AtomicInlineParticipation>,
     padding: Edges<S>,
     border: Edges<S>,
 }
@@ -78,7 +79,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
         let mut cursor_block = uncollapsed_cursor_block + adjoining_margin;
         let logical_node_inner_size = constants.flow_axes.logical_size(node_inner_size);
         let provider_enabled =
-            available_inline_extent.operation() == crate::SizingOperation::Normal;
+            available_inline_extent.operation() == crate::value::SizingOperation::Normal;
         let containing_size = constants.containing_size(logical_node_inner_size);
         let text_run = semantic.or_else(|| {
             tree.text_computation()
@@ -111,13 +112,15 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
                 constants.flow_axes,
                 constants.inline_baseline_context,
             );
-            if constants.inline_baseline_context != crate::InlineBaselineContext::Physical && !named
+            if constants.inline_baseline_context
+                != crate::node_input::InlineBaselineContext::Physical
+                && !named
             {
                 return Err(LayoutErrorOf::new(
                     LayoutErrorSiteOf::Node(container),
                     LayoutOperation::TextCapture,
                     LayoutErrorKindOf::MissingContext(
-                        crate::LayoutMissingContext::NamedInlineBaseline,
+                        crate::error::LayoutMissingContext::NamedInlineBaseline,
                     ),
                 ));
             }
@@ -131,7 +134,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
             return Err(LayoutErrorOf::new(
                 LayoutErrorSiteOf::Node(container),
                 LayoutOperation::TextCapture,
-                LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::TextCapture),
+                LayoutErrorKindOf::MissingContext(crate::error::LayoutMissingContext::TextCapture),
             ));
         }
 
@@ -199,16 +202,18 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
                 InlineParticipantKindOf::LineBreak(line_break) => {
                     if line_break.display().is_none() {
                         if set_layout {
-                            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
-                                child,
-                                crate::output::NormalGeometryOf::metadata(
-                                    crate::Point::ZERO,
-                                    crate::Size::ZERO,
+                            tree.set_unrounded(
+                                crate::output::LayoutOutputEntryOf::ordinary_unrounded(
+                                    child,
+                                    crate::output::NormalGeometryOf::metadata(
+                                        crate::geometry::Point::ZERO,
+                                        crate::geometry::Size::ZERO,
+                                    ),
+                                    NodeOutputOf::<S>::with_source_index(
+                                        crate::output::SourceIndex::new(source_index),
+                                    ),
                                 ),
-                                NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
-                                    source_index,
-                                )),
-                            ));
+                            );
                         }
                         continue;
                     }
@@ -266,15 +271,17 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
                     continue;
                 }
             };
-            if child_style.display == crate::Display::None {
+            if child_style.display == crate::node_input::Display::None {
                 if set_layout {
-                    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+                    tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
                         child,
                         crate::output::NormalGeometryOf::metadata(
-                            crate::Point::ZERO,
-                            crate::Size::ZERO,
+                            crate::geometry::Point::ZERO,
+                            crate::geometry::Size::ZERO,
                         ),
-                        NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(source_index)),
+                        NodeOutputOf::<S>::with_source_index(crate::output::SourceIndex::new(
+                            source_index,
+                        )),
                     ));
                     return Ok(Some(InlinePreparationChild {
                         node: child,
@@ -329,7 +336,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
             let named_demand = named_atomic_demand(&child_style, constants.inline_baseline_context);
             let physical_demand = provider_enabled
                 && child_style.float.is_none()
-                && constants.inline_baseline_context == crate::InlineBaselineContext::Physical
+                && constants.inline_baseline_context
+                    == crate::node_input::InlineBaselineContext::Physical
                 && uses_inner_physical_atomic_baseline(&child_style, constants.flow_axes);
             let mut child_request = inline_atomic_child_request(
                 constants,
@@ -361,7 +369,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
                         .inline
                         .space()
                         .definite_size()
-                        .map(crate::NonNegativeFiniteOf::get))
+                        .map(crate::value::NonNegativeFiniteOf::get))
                     .map(|inline| {
                         crate::layout_math::remaining_available_extent(inline, margin.inline_sum())
                     })
@@ -374,7 +382,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
                     child_padding + child_border,
                     axes,
                     logical_parent,
-                    (available.inline.operation() == crate::SizingOperation::Normal)
+                    (available.inline.operation() == crate::value::SizingOperation::Normal)
                         .then_some(inline)
                         .flatten(),
                 )?;
@@ -585,7 +593,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InlineRunPreparation<'input, Node
                 .scroll_geometry
                 .map(|geometry| geometry.content_box())
                 .unwrap_or_else(|| {
-                    crate::ScrollRectOf::try_new(
+                    crate::scroll::ScrollRectOf::try_new(
                         Point::new(
                             child_border.left + child_padding.left,
                             child_border.top + child_padding.top,

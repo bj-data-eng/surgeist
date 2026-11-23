@@ -695,7 +695,7 @@ fn inherited_lane_sizing_fixture<S: LayoutScalar>(
     lane.display = Display::GridLanes;
     // The normalized input selects Rows as the grid axis; the Columns
     // stacking axis has no synthetic Grid span.
-    lane.grid_lanes_flow = crate::GridLanesFlow::new(GridAxisKind::Row, false, false);
+    lane.grid_lanes_flow = crate::node_input::GridLanesFlow::new(GridAxisKind::Row, false, false);
     lane.grid_template_columns.clear();
     tree.insert_input(1, LayoutInputOf::box_input(lane));
 

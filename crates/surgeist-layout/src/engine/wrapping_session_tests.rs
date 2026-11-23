@@ -1,6 +1,29 @@
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
-use crate::*;
+use crate::{
+    engine::contracts::Compute,
+    error::{LayoutErrorKindOf, LayoutInvalidInputOf, LayoutOperation},
+    geometry::{FlowAxes, Point, Size},
+    inline_wrapping::{
+        ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
+        InlineChildOrderInput, NativeInlineBoxFamilyInput, WrapInside, WrappingInput,
+        WrappingScopeError, WrappingScopeInput,
+    },
+    node_input::{
+        AtomicInlineParticipation, Direction, Display, Float, InlineBoundaryEdgeOf,
+        InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakOpportunity, InlineMetricsOf,
+        LayoutInputOf, NodeInputOf, WritingMode,
+    },
+    output::{
+        ComputeInputOf, ContainingLayoutContext, LayoutOutputEntryOf, NodeOutputOf,
+        ParentFormattingContext, RequestedAxis, RunMode, SizingMode,
+    },
+    scalar::LayoutScalar,
+    sizing::PreferredSizeOf,
+    text_layout::LayoutFlowInput,
+    tree::LayoutTree,
+};
+use surgeist_text::supplied_line::BidiLevel;
 
 fn tree<S: LayoutScalar>(float: bool) -> PublicLayoutTreeOf<S> {
     let mut tree = PublicLayoutTreeOf::new()
@@ -45,7 +68,7 @@ fn tree<S: LayoutScalar>(float: bool) -> PublicLayoutTreeOf<S> {
                 InlineBoundaryInputOf::contribution(
                     kind,
                     InlineMetricsOf::try_new(
-                        crate::InlineBaselineContext::Physical,
+                        crate::node_input::InlineBaselineContext::Physical,
                         S::from_f64(10.0),
                         S::from_f64(10.0),
                     )
@@ -94,23 +117,23 @@ fn input<S: LayoutScalar>(mode: RunMode) -> ComputeInputOf<S> {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::BlockFlow,
         ),
-        crate::SizingRequestOf::new(
+        crate::value::SizingRequestOf::new(
             Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    crate::value::SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Indefinite,
+                    crate::value::SizingOperation::Normal,
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            crate::value::OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                crate::value::NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
             ),
         ),
     )
@@ -125,7 +148,7 @@ fn native_avoid_results_do_not_enter_geometry_only_host_caches() {
                 &tree,
                 0,
                 Vec::new(),
-                crate::WrappingInput {
+                WrappingInput {
                     native_inline_boxes: Vec::new(),
                     gaps: Vec::new(),
                     scopes: scopes(policy),
@@ -165,7 +188,7 @@ fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
             &tree,
             0,
             Vec::new(),
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: scopes(WrapInside::Avoid),
@@ -178,7 +201,7 @@ fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
             &tree,
             0,
             Vec::new(),
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: scopes(WrapInside::Auto),
@@ -261,12 +284,12 @@ fn float_formatter_tree<S: LayoutScalar>() -> PublicLayoutTreeOf<S> {
         .style(6, atomic())
 }
 
-fn float_formatter_wrapping() -> crate::WrappingInput<u32> {
+fn float_formatter_wrapping() -> WrappingInput<u32> {
     let child = |node| GeneratedChildBoxInput {
         box_: GeneratedBoxRef::Node(node),
         participation: GeneratedBoxParticipation::InFlow,
     };
-    crate::WrappingInput {
+    WrappingInput {
         native_inline_boxes: vec![NativeInlineBoxFamilyInput { formatter: 4 }],
         gaps: Vec::new(),
         scopes: Vec::new(),
@@ -366,14 +389,9 @@ fn replaying_a_float_formatter_acceptance_removes_the_runs_the_acceptance_remove
 fn entry_sources_keep_a_session_from_reusing_subgrid_computations() {
     fn lane<S: LayoutScalar>() {
         let tree = tree::<S>(false);
-        let flow = LayoutFlowInput::try_new(
-            &tree,
-            0,
-            Vec::new(),
-            crate::WrappingInput::default(),
-            Vec::new(),
-        )
-        .unwrap();
+        let flow =
+            LayoutFlowInput::try_new(&tree, 0, Vec::new(), WrappingInput::default(), Vec::new())
+                .unwrap();
         let mut session = ComputeSession::with_flow_unobserved(&flow, flow.invalidated.clone());
         assert!(session.reuses_subgrid_computations());
         session.entry_sources = Some(std::sync::Arc::new(std::sync::Mutex::new(
@@ -392,16 +410,11 @@ fn entry_sources_keep_a_session_from_reusing_subgrid_computations() {
 fn a_hidden_write_in_a_capture_replays_to_the_same_stores_and_geometry() {
     fn lane<S: LayoutScalar>() {
         let tree = tree::<S>(false);
-        let flow = LayoutFlowInput::try_new(
-            &tree,
-            0,
-            Vec::new(),
-            crate::WrappingInput::default(),
-            Vec::new(),
-        )
-        .unwrap();
+        let flow =
+            LayoutFlowInput::try_new(&tree, 0, Vec::new(), WrappingInput::default(), Vec::new())
+                .unwrap();
         let session = || ComputeSession::with_flow_unobserved(&flow, flow.invalidated.clone());
-        let hidden = LayoutOutputEntryOf::hidden_unrounded(2, crate::SourceIndex::ZERO);
+        let hidden = LayoutOutputEntryOf::hidden_unrounded(2, crate::output::SourceIndex::ZERO);
         let visible = |width: f64| {
             LayoutOutputEntryOf::ordinary_unrounded(
                 2,
@@ -409,7 +422,7 @@ fn a_hidden_write_in_a_capture_replays_to_the_same_stores_and_geometry() {
                     Point::ZERO,
                     Size::splat(S::from_f64(width)),
                 ),
-                NodeOutputOf::with_source_index(crate::SourceIndex::ZERO),
+                NodeOutputOf::with_source_index(crate::output::SourceIndex::ZERO),
             )
         };
         for (label, hidden_after_store) in

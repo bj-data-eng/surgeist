@@ -1,7 +1,11 @@
 use crate::{
-    LayoutScalar, NodeInputOf, OverflowClipMarginOf, ScrollMarginOf, ScrollPaddingOf,
-    ScrollSnapAlign, ScrollSnapStop, ScrollSnapType, ScrollbarGutter, ScrollbarWidthOf,
+    geometry::FlowAxes,
+    node_input::{
+        NodeInputOf, OverflowClipMarginOf, ScrollMarginOf, ScrollPaddingOf, ScrollSnapAlign,
+        ScrollSnapStop, ScrollSnapType, ScrollbarGutter, ScrollbarWidthOf,
+    },
     node_projection::CommonBoxProjection,
+    scalar::LayoutScalar,
 };
 
 /// Borrowed scroll-container facts for canonical box and range construction.
@@ -55,7 +59,7 @@ impl<'a, S: LayoutScalar> ScrollBoxProjection<'a, S> {
 /// Borrowed scroll-target facts retained with canonical target geometry.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ScrollTargetProjection<'a, S: LayoutScalar> {
-    pub(super) flow_axes: crate::FlowAxes,
+    pub(super) flow_axes: FlowAxes,
     pub(super) scroll_margin: &'a ScrollMarginOf<S>,
     pub(super) snap_align: ScrollSnapAlign,
     pub(super) snap_stop: ScrollSnapStop,
@@ -64,7 +68,7 @@ pub(crate) struct ScrollTargetProjection<'a, S: LayoutScalar> {
 impl<'a, S: LayoutScalar> ScrollTargetProjection<'a, S> {
     #[must_use]
     pub(crate) fn from_settled(
-        flow_axes: crate::FlowAxes,
+        flow_axes: FlowAxes,
         scroll_margin: &'a ScrollMarginOf<S>,
         snap_align: ScrollSnapAlign,
         snap_stop: ScrollSnapStop,
@@ -80,7 +84,7 @@ impl<'a, S: LayoutScalar> ScrollTargetProjection<'a, S> {
     #[must_use]
     pub(crate) fn from_node(input: &'a NodeInputOf<S>) -> Self {
         Self::from_settled(
-            crate::FlowAxes::new(input.writing_mode, input.direction),
+            FlowAxes::new(input.writing_mode, input.direction),
             &input.scroll_margin,
             input.scroll_snap_align,
             input.scroll_snap_stop,
@@ -92,10 +96,14 @@ impl<'a, S: LayoutScalar> ScrollTargetProjection<'a, S> {
 mod tests {
     use super::*;
     use crate::{
-        AspectRatioOf, BoxSizing, ComputedOverflow, Direction, Edges, FlowAxes, LengthAutoOf,
-        LengthOf, LengthPercentageOf, MaxSizeOf, MinSizeOf, Overflow, OverflowClipBox,
-        PhysicalAxis, PhysicalSide, Position, PreferredSizeOf, ScrollPaddingValueOf,
-        ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStrictness, Size, WritingMode,
+        geometry::{Edges, FlowAxes, PhysicalAxis, PhysicalSide, Size},
+        node_input::{
+            BoxSizing, ComputedOverflow, Direction, Overflow, OverflowClipBox, Position,
+            ScrollPaddingValueOf, ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStrictness,
+            WritingMode,
+        },
+        sizing::{MaxSizeOf, MinSizeOf, PreferredSizeOf},
+        value::{AspectRatioOf, LengthAutoOf, LengthOf, LengthPercentageOf},
     };
 
     fn scalar<S: LayoutScalar>(value: f64) -> S {

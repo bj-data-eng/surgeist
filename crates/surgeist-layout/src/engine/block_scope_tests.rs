@@ -1,7 +1,29 @@
 use super::*;
 use crate::engine::ComputeSession;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
-use crate::*;
+use crate::{
+    block_fragmentation::{LayoutBoundRequestOf, input::LayoutSourceBasis},
+    engine::contracts::Compute,
+    geometry::{Edges, FlowAxes, PhysicalSide, Size},
+    inline_wrapping::WrappingInput,
+    node_input::{
+        Clear, Direction, Display, Float, InlineBaselineContext, InlineBoundaryEdgeOf,
+        InlineBoundaryInputOf, InlineBoundaryKind, InlineMetricsOf, LayoutInputOf,
+        LineBreakInputOf, NodeInputOf, WritingMode,
+    },
+    output::{
+        ComputeInputOf, ContainingLayoutContext, LayoutRootRequestOf, ParentFormattingContext,
+        RequestedAxis, RunMode, SizingMode,
+    },
+    scalar::LayoutScalar,
+    sizing::{MinSizeOf, PreferredSizeOf},
+    text_layout::LayoutFlowInput,
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, LengthAutoOf, NearestScrollportOf,
+        NonNegativeFiniteOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation,
+        SizingRequestOf,
+    },
+};
 
 #[path = "fragment_margin_boundary_tests.rs"]
 mod margin_boundary;
@@ -47,14 +69,14 @@ fn suspension<S: LayoutScalar>() {
         ),
     );
     let requests = std::rc::Rc::new(std::cell::RefCell::new(Requests::new()));
-    let target = crate::LayoutBoundRequestOf::continuous(
-        crate::LayoutSourceBasis::fresh(),
-        crate::LayoutRootRequestOf::standalone(
+    let target = crate::block_fragmentation::LayoutBoundRequestOf::continuous(
+        crate::block_fragmentation::input::LayoutSourceBasis::fresh(),
+        crate::output::LayoutRootRequestOf::standalone(
             input.sizing_request(),
             input.containing_flow_axes(),
             input
                 .parent()
-                .map(|value| value.map(|v| crate::NonNegativeFiniteOf::new(v).unwrap())),
+                .map(|value| value.map(|v| crate::value::NonNegativeFiniteOf::new(v).unwrap())),
         ),
     )
     .target_basis();

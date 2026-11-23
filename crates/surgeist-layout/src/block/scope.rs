@@ -13,7 +13,7 @@ pub(crate) struct Pending<Node, S: LayoutScalar> {
     pub(crate) parent: Option<Node>,
     pub(crate) node: Node,
     pub(crate) input: ComputeInputOf<S>,
-    pub(crate) axes: crate::FlowAxes,
+    pub(crate) axes: crate::geometry::FlowAxes,
     pub(crate) reference: Size<S>,
     pub(crate) inline_outer: S,
     pub(crate) inline_offset: S,
@@ -179,7 +179,7 @@ where
         .inline
         .space()
         .definite_size()
-        .map(crate::NonNegativeFiniteOf::get));
+        .map(crate::value::NonNegativeFiniteOf::get));
     let margin = in_flow::resolve_logical_inline_margin(
         constants
             .flow_axes

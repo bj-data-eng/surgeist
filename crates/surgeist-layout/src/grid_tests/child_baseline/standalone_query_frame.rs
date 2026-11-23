@@ -129,23 +129,26 @@ fn assert_same_used_border_preserves_last_baseline<S: LayoutScalar>(
     style.size.width = PreferredSizeOf::px(s(12.0));
     explicit
         .tree
-        .insert_input(5, crate::LayoutInputOf::box_input(style));
+        .insert_input(5, crate::node_input::LayoutInputOf::box_input(style));
     let request = {
         let axes = Size::splat(AxisSizingRequestOf::new(
             AvailableSpaceOf::Indefinite,
             SizingOperation::MaxContent,
         ));
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    crate::value::NearestScrollportOf::Absent,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     };

@@ -1,5 +1,6 @@
 //! A maximum cross size is a bound, not an allocated size or percentage basis.
 use super::*;
+use crate::block_fragmentation::NodeLayoutRefOf;
 use crate::test_support::readback::{self, Phase};
 
 fn n<S: LayoutScalar>(value: f64) -> S {
@@ -495,7 +496,11 @@ fn assert_flex_lanes_repeat_uses_initial_block_definiteness<S: LayoutScalar>() {
             1,
             NodeInputOf {
                 display: Display::GridLanes,
-                grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
+                grid_lanes_flow: crate::node_input::GridLanesFlow::new(
+                    crate::grid::GridAxisKind::Row,
+                    false,
+                    false,
+                ),
                 flex_basis: FlexBasisOf::CONTENT,
                 max_size: Size::new(MaxSizeOf::NONE, MaxSizeOf::px(px(120.0))),
                 align_content: Some(AlignContent::Start),
@@ -571,9 +576,9 @@ fn assert_relative_cross_percentage_uses_accepted_extent<S: LayoutScalar>() {
             batch
                 .node_layout(node)
                 .map(|layout| match layout {
-                    crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-                    crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                    crate::NodeLayoutRefOf::Fragments(_) => {
+                    NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                    NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                    NodeLayoutRefOf::Fragments(_) => {
                         panic!("continuous fixture unexpectedly fragmented")
                     }
                 })

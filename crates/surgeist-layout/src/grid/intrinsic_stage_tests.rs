@@ -1,7 +1,17 @@
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::readback::{self, Phase};
-use crate::{LayoutInputViewOf, LayoutTree, LeafMeasureInputOf, NodeInputOf};
+use crate::{
+    block_fragmentation::NodeLayoutRefOf,
+    engine::compute_layout,
+    geometry::FlowAxes,
+    measurement::LeafMeasureInputOf,
+    node_input::{ComputedOverflow, LayoutInputViewOf, NodeInputOf, ScrollbarWidthOf, WritingMode},
+    output::LayoutRootRequestOf,
+    sizing::MaxSizeOf,
+    tree::LayoutTree,
+    value::{NearestScrollportOf, NonNegativeFiniteOf, OrthogonalFallbackLimitOf, SubgridTrack},
+};
 
 #[derive(Clone, Copy, Debug)]
 enum Measurement {
@@ -23,7 +33,7 @@ struct StageTree<S: LayoutScalar> {
     measurement: Measurement,
     leaf_start: u32,
     refuse_formal_height_at_width: std::cell::Cell<Option<S>>,
-    caches: Vec<crate::LayoutCacheStoreEntryOf<u32, S>>,
+    caches: Vec<crate::output::LayoutCacheStoreEntryOf<u32, S>>,
     hits: std::cell::Cell<usize>,
     requests: std::cell::RefCell<Vec<(u32, ComputeInputOf<S>)>>,
 }
@@ -82,11 +92,11 @@ impl<S: LayoutScalar> StageTree<S> {
         let mut columns_subgrid = grid.clone();
         columns_subgrid.size = Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO);
         columns_subgrid.grid_template_columns =
-            vec![TrackComponentOf::Subgrid(crate::SubgridTrack::new(vec![]))];
+            vec![TrackComponentOf::Subgrid(SubgridTrack::new(vec![]))];
         let mut rows_subgrid = grid;
         rows_subgrid.size = Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO);
         rows_subgrid.grid_template_rows =
-            vec![TrackComponentOf::Subgrid(crate::SubgridTrack::new(vec![]))];
+            vec![TrackComponentOf::Subgrid(SubgridTrack::new(vec![]))];
         tree.source = tree
             .source
             .children(1, [2])
@@ -117,9 +127,9 @@ impl<S: LayoutScalar> StageTree<S> {
             RequestedAxis::Both,
             Size::NONE,
             Size::NONE,
-            crate::ContainingLayoutContext::new(
-                crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr),
-                crate::ParentFormattingContext::BlockFlow,
+            crate::output::ContainingLayoutContext::new(
+                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                crate::output::ParentFormattingContext::BlockFlow,
             ),
             SizingRequestOf::new(
                 Size::splat(AxisSizingRequestOf::new(
@@ -128,8 +138,8 @@ impl<S: LayoutScalar> StageTree<S> {
                 )),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         );
@@ -187,7 +197,7 @@ impl<S: LayoutScalar> LayoutTree for StageTree<S> {
         &self,
         node: u32,
         input: &ComputeInputOf<S>,
-        context: crate::CacheKeyContext,
+        context: crate::cache::CacheKeyContext,
     ) -> Option<ComputeOutputOf<S>> {
         if self.has_leaf_measurement(node) {
             self.requests.borrow_mut().push((node, *input));
@@ -198,7 +208,7 @@ impl<S: LayoutScalar> LayoutTree for StageTree<S> {
             .find(|entry| {
                 entry.node() == node && entry.input() == input && entry.context() == context
             })
-            .map(crate::LayoutCacheStoreEntryOf::output);
+            .map(crate::output::LayoutCacheStoreEntryOf::output);
         if output.is_some() {
             self.hits.set(self.hits.get() + 1);
         }
@@ -214,7 +224,7 @@ impl<S: LayoutScalar> LayoutTree for StageTree<S> {
             .width
             .space()
             .definite_size()
-            .map(crate::NonNegativeFiniteOf::get);
+            .map(NonNegativeFiniteOf::get);
         if width.is_some()
             && width == self.refuse_formal_height_at_width.get()
             && available.height.operation() == SizingOperation::MaxContent
@@ -259,7 +269,7 @@ impl<S: LayoutScalar> LayoutTree for StageTree<S> {
                             .height
                             .space()
                             .definite_size()
-                            .map_or(S::from_f64(80.0), crate::NonNegativeFiniteOf::get),
+                            .map_or(S::from_f64(80.0), NonNegativeFiniteOf::get),
                         S::from_f64(20.0),
                     )));
                 }
@@ -296,7 +306,7 @@ impl<S: LayoutScalar> LayoutTree for StageTree<S> {
                     .height
                     .space()
                     .definite_size()
-                    .map(crate::NonNegativeFiniteOf::get),
+                    .map(NonNegativeFiniteOf::get),
                 minimum,
             ) {
                 (Some(height), _) if height == S::from_f64(50.0) => {
@@ -588,10 +598,9 @@ fn lanes_cutoff_tree<S: LayoutScalar>(inherited: bool) -> StageTree<S> {
         let mut lanes = tree.source.node_input(0).clone();
         lanes.display = Display::GridLanes;
         lanes.size = Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO);
-        lanes.grid_template_columns =
-            vec![TrackComponentOf::Subgrid(crate::SubgridTrack::new(vec![]))];
-        lanes.overflow = crate::ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap();
-        lanes.scrollbar_width = crate::ScrollbarWidthOf::try_new(S::from_f64(5.0)).unwrap();
+        lanes.grid_template_columns = vec![TrackComponentOf::Subgrid(SubgridTrack::new(vec![]))];
+        lanes.overflow = ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap();
+        lanes.scrollbar_width = ScrollbarWidthOf::try_new(S::from_f64(5.0)).unwrap();
         tree.source = tree
             .source
             .children(1, [2])
@@ -643,27 +652,28 @@ fn lanes_cutoff_inherited_ordinary_grid_control() {
 
 fn assert_lanes_oriented_dependency<S: LayoutScalar>() {
     for mode in [
-        crate::WritingMode::HorizontalTb,
-        crate::WritingMode::VerticalRl,
-        crate::WritingMode::VerticalLr,
-        crate::WritingMode::SidewaysRl,
-        crate::WritingMode::SidewaysLr,
+        WritingMode::HorizontalTb,
+        WritingMode::VerticalRl,
+        WritingMode::VerticalLr,
+        WritingMode::SidewaysRl,
+        WritingMode::SidewaysLr,
     ] {
         for direction in [Direction::Ltr, Direction::Rtl] {
             let mut tree = lanes_cutoff_tree::<S>(false);
             let mut root = tree.source.node_input(0).clone();
             root.writing_mode = mode;
             root.direction = direction;
-            let flow = crate::FlowAxes::new(mode, direction);
+            let flow = FlowAxes::new(mode, direction);
             // Keep the actual grid axis physically horizontal. In orthogonal
             // writing modes it is the local row axis, so the mapped prefix is
             // row-first; no raw InitialFirst rule can identify this dependency.
             let (grid_axis, stacking_axis) = if flow.inline_axis() == PhysicalAxis::Horizontal {
                 root.grid_lanes_flow =
-                    crate::GridLanesFlow::new(GridAxisKind::Column, false, false);
+                    crate::node_input::GridLanesFlow::new(GridAxisKind::Column, false, false);
                 (GridAxisKind::Column, GridAxisKind::Row)
             } else {
-                root.grid_lanes_flow = crate::GridLanesFlow::new(GridAxisKind::Row, false, false);
+                root.grid_lanes_flow =
+                    crate::node_input::GridLanesFlow::new(GridAxisKind::Row, false, false);
                 (GridAxisKind::Row, GridAxisKind::Column)
             };
             tree.source = tree.source.style(0, root);
@@ -702,8 +712,8 @@ fn assert_lanes_required_work<S: LayoutScalar>() {
     let mut tree = lanes_cutoff_tree::<S>(false);
     let mut root = tree.source.node_input(0).clone();
     root.size.height = PreferredSizeOf::px(S::from_f64(20.0));
-    root.overflow = crate::ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap();
-    root.scrollbar_width = crate::ScrollbarWidthOf::try_new(S::from_f64(5.0)).unwrap();
+    root.overflow = ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap();
+    root.scrollbar_width = ScrollbarWidthOf::try_new(S::from_f64(5.0)).unwrap();
     tree.source = tree.source.style(0, root);
     let error = tree.observe(GridSizingPhase::InitialFirst).err().expect(
         "a qualified initial Auto frame needs real stacking work before its gutter observation",
@@ -728,7 +738,7 @@ fn assert_lanes_required_work<S: LayoutScalar>() {
             .any(|(_, input)| input.sizing_request().axes().width
                 == AxisSizingRequestOf::new(
                     AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()
+                        NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()
                     ),
                     SizingOperation::Normal
                 ))
@@ -741,20 +751,23 @@ fn assert_lanes_required_work<S: LayoutScalar>() {
             SizingOperation::MaxContent,
         ));
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     };
-    let error = crate::compute_layout(&refusing, 0, request).expect_err(
+    let error = compute_layout(&refusing, 0, request).expect_err(
         "public full layout must still propagate the actual stacking measurement refusal",
     );
     assert!(matches!(
@@ -788,10 +801,10 @@ fn assert_scrollbar_maximum_track_space<S: LayoutScalar>() {
                     } else {
                         Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO)
                     },
-                    max_size: Size::new(crate::MaxSizeOf::px(n(2.0)), crate::MaxSizeOf::px(n(4.0))),
-                    overflow: crate::ComputedOverflow::try_new(Overflow::Scroll, Overflow::Scroll)
+                    max_size: Size::new(MaxSizeOf::px(n(2.0)), MaxSizeOf::px(n(4.0))),
+                    overflow: ComputedOverflow::try_new(Overflow::Scroll, Overflow::Scroll)
                         .unwrap(),
-                    scrollbar_width: crate::ScrollbarWidthOf::try_new(n(15.0)).unwrap(),
+                    scrollbar_width: ScrollbarWidthOf::try_new(n(15.0)).unwrap(),
                     ..NodeInputOf::default()
                 },
             )
@@ -803,24 +816,24 @@ fn assert_scrollbar_maximum_track_space<S: LayoutScalar>() {
                 },
             );
         assert!(!tree.has_leaf_measurement(0) && !tree.has_leaf_measurement(1));
-        let batch = crate::compute_layout(&tree, 0, {
+        let batch = compute_layout(&tree, 0, {
             let axes = Size::splat(AxisSizingRequestOf::new(
                 AvailableSpaceOf::Indefinite,
                 SizingOperation::MaxContent,
             ));
             let definite = axes.map(|axis| axis.space().definite_size());
-            crate::LayoutRootRequestOf::standalone(
+            LayoutRootRequestOf::standalone(
                 SizingRequestOf::new(
                     axes,
                     OrthogonalFallbackOf::new(
                         definite,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
                 definite,
             )
@@ -903,8 +916,8 @@ fn scrollbar_maximum_track_space_f64() {
 fn mixed_root_request<S: LayoutScalar>(
     width: SizingOperation,
     height: SizingOperation,
-) -> crate::LayoutRootRequestOf<S> {
-    crate::LayoutRootRequestOf::standalone(
+) -> LayoutRootRequestOf<S> {
+    LayoutRootRequestOf::standalone(
         SizingRequestOf::new(
             Size::new(
                 AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, width),
@@ -912,17 +925,17 @@ fn mixed_root_request<S: LayoutScalar>(
             ),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
-        crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr),
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::NONE,
     )
 }
 fn mixed_root_output<S: LayoutScalar>(
-    batch: &crate::CompletedLayoutBatchOf<u32, S>,
-) -> crate::NodeOutputOf<S> {
+    batch: &crate::output::CompletedLayoutBatchOf<u32, S>,
+) -> crate::output::NodeOutputOf<S> {
     let mut entries = readback::continuous_custody(batch, Phase::Unrounded)
         .into_iter()
         .filter(|entry| entry.node() == 0);
@@ -935,12 +948,11 @@ fn assert_normal_columns_recollect_formal_rows<S: LayoutScalar>() {
     let n = S::from_f64;
     let mut tree = StageTree::<S>::new(Measurement::HiddenMinimumChange);
     let mut root = tree.source.node_input(0).clone();
-    root.max_size.width = crate::MaxSizeOf::px(n(20.0));
+    root.max_size.width = MaxSizeOf::px(n(20.0));
     tree.source = tree.source.style(0, root);
     for node in [1, 2] {
         let mut child = tree.source.node_input(node).clone();
-        child.overflow =
-            crate::ComputedOverflow::try_new(Overflow::Hidden, Overflow::Hidden).unwrap();
+        child.overflow = ComputedOverflow::try_new(Overflow::Hidden, Overflow::Hidden).unwrap();
         tree.source = tree.source.style(node, child);
     }
     assert_eq!(
@@ -950,13 +962,13 @@ fn assert_normal_columns_recollect_formal_rows<S: LayoutScalar>() {
     assert!(tree.source.node_input(0).size.width.is_max_content());
     assert_eq!(
         tree.source.node_input(0).max_size.width,
-        crate::MaxSizeOf::px(n(20.0))
+        MaxSizeOf::px(n(20.0))
     );
     // This maintained host declares MIN/MAX widths40/50 for node1 and
     //10/40 ->15/60 for node2 when actual row space becomes finite. Height30
     // is constant. Hidden makes actual used minima0, while formal Auto
     // minima retain the min-content floor40. The maximum clamps the box20.
-    let prior = crate::compute_layout(
+    let prior = compute_layout(
         &tree,
         0,
         mixed_root_request(SizingOperation::MaxContent, SizingOperation::MaxContent),
@@ -988,7 +1000,7 @@ fn assert_normal_columns_recollect_formal_rows<S: LayoutScalar>() {
             .any(|(_, input)| formal_row_at(input, n(20.0)))
     );
     tree.requests.borrow_mut().clear();
-    let mixed = crate::compute_layout(
+    let mixed = compute_layout(
         &tree,
         0,
         mixed_root_request(SizingOperation::Normal, SizingOperation::MaxContent),
@@ -1011,7 +1023,7 @@ fn assert_normal_columns_recollect_formal_rows<S: LayoutScalar>() {
         "no retained host receipt masks the real refusal"
     );
     tree.refuse_formal_height_at_width.set(Some(n(20.0)));
-    let error = crate::compute_layout(
+    let error = compute_layout(
         &tree,
         0,
         mixed_root_request(SizingOperation::Normal, SizingOperation::MaxContent),
@@ -1030,7 +1042,7 @@ fn assert_normal_columns_recollect_formal_rows<S: LayoutScalar>() {
         prior_entries.as_slice()
     );
     tree.refuse_formal_height_at_width.set(None);
-    let retry = crate::compute_layout(
+    let retry = compute_layout(
         &tree,
         0,
         mixed_root_request(SizingOperation::Normal, SizingOperation::MaxContent),
@@ -1058,21 +1070,21 @@ fn assert_formal_columns_use_normal_rows<S: LayoutScalar>() {
     let n = S::from_f64;
     let mut tree = StageTree::<S>::new(Measurement::OppositeExtent);
     let mut root = tree.source.node_input(0).clone();
-    root.max_size.height = crate::MaxSizeOf::px(n(10.0));
+    root.max_size.height = MaxSizeOf::px(n(10.0));
     root.grid_template_rows = vec![TrackComponentOf::minmax(
         MinTrackSizingOf::px(S::ZERO),
-        MaxTrackSizingOf::flex(crate::TrackFlexFactorOf::try_new(S::ONE).unwrap()),
+        MaxTrackSizingOf::flex(crate::value::TrackFlexFactorOf::try_new(S::ONE).unwrap()),
     )];
     tree.source = tree.source.style(0, root);
     assert!(tree.source.node_input(0).size.height.is_max_content());
     assert_eq!(
         tree.source.node_input(0).max_size.height,
-        crate::MaxSizeOf::px(n(10.0))
+        MaxSizeOf::px(n(10.0))
     );
     // The actual host's initial unbounded MAX width is80 and its ordinary
     // height20. The one-fr row is bounded to10. Initial MIN width10 is
     // unchanged, so the bounded intrinsic revisit deliberately keeps80.
-    let prior = crate::compute_layout(
+    let prior = compute_layout(
         &tree,
         0,
         mixed_root_request(SizingOperation::MaxContent, SizingOperation::MaxContent),
@@ -1118,7 +1130,7 @@ fn assert_formal_columns_use_normal_rows<S: LayoutScalar>() {
             .any(|(_, input)| actual_placement_at(input, n(80.0)))
     );
     tree.requests.borrow_mut().clear();
-    let mixed = crate::compute_layout(
+    let mixed = compute_layout(
         &tree,
         0,
         mixed_root_request(SizingOperation::MaxContent, SizingOperation::Normal),
@@ -1154,14 +1166,13 @@ fn assert_nested_mapped_mixed_receiver<S: LayoutScalar>() {
         let mut tree = StageTree::<S>::nested();
         tree.measurement = Measurement::SmallerAfterRows;
         let mut root = tree.source.node_input(0).clone();
-        root.max_size.width = crate::MaxSizeOf::px(n(5.0));
+        root.max_size.width = MaxSizeOf::px(n(5.0));
         tree.source = tree.source.style(0, root);
         for node in [1, 2, 3] {
             let mut child = tree.source.node_input(node).clone();
-            child.overflow =
-                crate::ComputedOverflow::try_new(Overflow::Hidden, Overflow::Hidden).unwrap();
+            child.overflow = ComputedOverflow::try_new(Overflow::Hidden, Overflow::Hidden).unwrap();
             if node == 1 {
-                child.writing_mode = crate::WritingMode::VerticalRl;
+                child.writing_mode = WritingMode::VerticalRl;
                 child.direction = direction;
             }
             tree.source = tree.source.style(node, child);
@@ -1195,11 +1206,9 @@ fn assert_nested_mapped_mixed_receiver<S: LayoutScalar>() {
         assert_eq!(inherited_inner.parent_axis, GridAxisKind::Column);
         assert_eq!(inherited_outer.reversed, direction == Direction::Rtl);
         assert_eq!(inherited_inner.reversed, direction == Direction::Rtl);
-        let parent_flow =
-            crate::FlowAxes::new(root_projection.writing_mode, root_projection.direction);
-        let outer_flow =
-            crate::FlowAxes::new(outer_projection.writing_mode, outer_projection.direction);
-        let inner_flow = crate::FlowAxes::new(inner_item.writing_mode, inner_item.direction);
+        let parent_flow = FlowAxes::new(root_projection.writing_mode, root_projection.direction);
+        let outer_flow = FlowAxes::new(outer_projection.writing_mode, outer_projection.direction);
+        let inner_flow = FlowAxes::new(inner_item.writing_mode, inner_item.direction);
         let mapped = GridSizingStage::COMPLETE.mapped(parent_flow, outer_flow);
         assert_eq!(mapped.first_axis, GridAxisKind::Row);
         assert_eq!(
@@ -1210,7 +1219,7 @@ fn assert_nested_mapped_mixed_receiver<S: LayoutScalar>() {
         // MIN10/MAX30 after real finite row space; height30 is constant.
         // Formal Auto floors therefore remain >=10 even under maximum5.
         // Hidden makes Normal's used minimum0, allowing actual allocation5.
-        let prior = crate::compute_layout(
+        let prior = compute_layout(
             &tree,
             0,
             mixed_root_request(SizingOperation::MaxContent, SizingOperation::MaxContent),
@@ -1236,7 +1245,7 @@ fn assert_nested_mapped_mixed_receiver<S: LayoutScalar>() {
                 .any(|(_, input)| formal_row_at_five(input))
         );
         tree.requests.borrow_mut().clear();
-        let mixed = crate::compute_layout(
+        let mixed = compute_layout(
             &tree,
             0,
             mixed_root_request(SizingOperation::Normal, SizingOperation::MaxContent),
@@ -1272,9 +1281,8 @@ fn assert_preferred_operation_is_mode_owned<S: LayoutScalar>() {
         ..NodeInputOf::default()
     };
     let style = GridContainerProjection::from_node(&node);
-    let flow = crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr);
-    let finite =
-        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap());
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let finite = AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap());
     let issued = Size::new(
         AxisSizingRequestOf::new(finite, SizingOperation::MinContent),
         AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
@@ -1319,9 +1327,8 @@ fn assert_formal_percent_track_floor_preserves_operation<S: LayoutScalar>() {
         root.size.width = preferred;
         root.grid_template_columns = vec![TrackComponentOf::percent(S::ONE)];
         tree.source = tree.source.style(0, root);
-        let physical =
-            AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(100.0)).unwrap());
-        let request = crate::LayoutRootRequestOf::standalone(
+        let physical = AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(100.0)).unwrap());
+        let request = LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 Size::new(
                     AxisSizingRequestOf::new(physical, operation),
@@ -1332,11 +1339,11 @@ fn assert_formal_percent_track_floor_preserves_operation<S: LayoutScalar>() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr),
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::NONE,
         );
         assert!(
@@ -1348,7 +1355,7 @@ fn assert_formal_percent_track_floor_preserves_operation<S: LayoutScalar>() {
         // intrinsic sizing; no definite percentage parent was supplied.
         // A performed formal operation must not donate physical100 as a
         // normal percentage floor after choosing its intrinsic extent.
-        let batch = crate::compute_layout(&tree, 0, request).unwrap();
+        let batch = compute_layout(&tree, 0, request).unwrap();
         assert_eq!(mixed_root_output(&batch).size, Size::new(expected, n(30.0)));
         assert!(tree.requests.borrow().iter().any(|(node, input)| {
             *node == 1
@@ -1415,7 +1422,7 @@ fn cyclic_grid_percentage_margin_uses_the_final_track_only_for_placement() {
                             ..NodeInputOf::default()
                         },
                     );
-                let batch = crate::compute_layout(
+                let batch = compute_layout(
                     &tree,
                     0,
                     mixed_root_request(SizingOperation::Normal, SizingOperation::Normal),
@@ -1485,7 +1492,7 @@ fn cyclic_grid_margin_does_not_shrink_a_fixed_maximum_track_cap() {
                     ..NodeInputOf::default()
                 },
             );
-        let batch = crate::compute_layout(
+        let batch = compute_layout(
             &tree,
             0,
             mixed_root_request(SizingOperation::Normal, SizingOperation::Normal),
@@ -1494,9 +1501,9 @@ fn cyclic_grid_margin_does_not_shrink_a_fixed_maximum_track_cap() {
         let track_probe = batch
             .node_layout(2)
             .map(|layout| match layout {
-                crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-                crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                crate::NodeLayoutRefOf::Fragments(_) => {
+                NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             })
@@ -1512,14 +1519,17 @@ fn assert_unissued_track_estimate_does_not_allocate_scrollbar<S: LayoutScalar>(
     align_content: Option<AlignContent>,
 ) {
     let px = S::from_f64;
-    let flow = crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr);
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let input = ComputeInputOf::for_child(
         RunMode::PerformLayout,
         SizingMode::InherentSize,
         RequestedAxis::Both,
         Size::NONE,
         Size::NONE,
-        crate::ContainingLayoutContext::new(flow, crate::ParentFormattingContext::BlockFlow),
+        crate::output::ContainingLayoutContext::new(
+            flow,
+            crate::output::ParentFormattingContext::BlockFlow,
+        ),
         SizingRequestOf::new(
             Size::splat(AxisSizingRequestOf::new(
                 AvailableSpaceOf::Indefinite,
@@ -1527,16 +1537,16 @@ fn assert_unissued_track_estimate_does_not_allocate_scrollbar<S: LayoutScalar>(
             )),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     );
     for (row, complete_gutter) in [
         (
             TrackComponentOf::minmax(
-                crate::MinTrackSizingOf::px(S::ZERO),
-                crate::MaxTrackSizingOf::px(px(100.0)),
+                crate::value::MinTrackSizingOf::px(S::ZERO),
+                crate::value::MaxTrackSizingOf::px(px(100.0)),
             ),
             S::ZERO,
         ),
@@ -1550,8 +1560,8 @@ fn assert_unissued_track_estimate_does_not_allocate_scrollbar<S: LayoutScalar>(
                     PreferredSizeOf::px(px(100.0)),
                     PreferredSizeOf::px(px(20.0)),
                 ),
-                overflow: crate::ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap(),
-                scrollbar_width: crate::ScrollbarWidthOf::try_new(px(10.0)).unwrap(),
+                overflow: ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap(),
+                scrollbar_width: ScrollbarWidthOf::try_new(px(10.0)).unwrap(),
                 grid_template_columns: vec![TrackComponentOf::px(px(80.0))],
                 grid_template_rows: vec![row],
                 align_content,

@@ -1,6 +1,10 @@
 //! An explicit FormatterStart attachment cannot borrow a selected End port.
 use super::*;
-use crate::{InlineFormatterEdge, InlineGapAnchor, InlineGapGroupInput};
+use crate::{
+    geometry::FlowAxes,
+    inline_wrapping::{InlineFormatterEdge, InlineGapAnchor, InlineGapGroupInput},
+    tree::LayoutTree,
+};
 
 fn explicit_start_remains_cut_local<S: LayoutScalar>() {
     let f = empty_float_fixture::<S>(false);
@@ -9,8 +13,8 @@ fn explicit_start_remains_cut_local<S: LayoutScalar>() {
         &ordinary_flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((ordinary_flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((ordinary_flow).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .expect("the actual ordinary no-group Start/float/End control must complete first");
@@ -39,8 +43,8 @@ fn explicit_start_remains_cut_local<S: LayoutScalar>() {
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     );
     // The float separates raw runs0..1 and2..3. P.End is actual selected physical
@@ -51,8 +55,8 @@ fn explicit_start_remains_cut_local<S: LayoutScalar>() {
         &ordinary_flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((ordinary_flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((ordinary_flow).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -63,9 +67,11 @@ fn explicit_start_remains_cut_local<S: LayoutScalar>() {
     assert!(
         matches!(
             error.kind(),
-            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(
-                WrappingScopeError::GapOutsideSelection
-            ))
+            crate::error::LayoutErrorKindOf::InvalidInput(
+                crate::error::LayoutInvalidInputOf::WrappingScope(
+                    WrappingScopeError::GapOutsideSelection
+                )
+            )
         ),
         "unexpected selected-cut refusal: {error:?}"
     );

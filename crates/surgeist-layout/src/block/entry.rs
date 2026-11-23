@@ -180,10 +180,10 @@ enum PrefixStep<Node, S: LayoutScalar> {
 fn case_error<Node: Copy, S: LayoutScalar, M>(
     node: Node,
     error: surgeist_text::Error,
-) -> crate::LayoutErrorOf<Node, S, M> {
+) -> crate::error::LayoutErrorOf<Node, S, M> {
     crate::error::staging_text_error(
-        crate::LayoutErrorSiteOf::Node(node),
-        crate::LayoutOperation::TextSelection,
+        crate::error::LayoutErrorSiteOf::Node(node),
+        crate::error::LayoutOperation::TextSelection,
         error,
     )
 }
@@ -362,7 +362,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> PrefixFrame<Node, S> {
                 let InlineParticipantKindOf::Box(style) = projection.kind() else {
                     return Ok(PrefixStep::Frontier(EntryFrontier::NativeRun));
                 };
-                if style.display == crate::Display::None
+                if style.display == crate::node_input::Display::None
                     || style.common.position == Position::Absolute
                 {
                     continue;
@@ -373,7 +373,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> PrefixFrame<Node, S> {
                 if style.display.is_inline_level() {
                     return Ok(PrefixStep::Frontier(EntryFrontier::NativeRun));
                 }
-                if purpose.needs_frame() && style.clear != crate::Clear::None {
+                if purpose.needs_frame() && style.clear != crate::node_input::Clear::None {
                     if self.suppress_clear {
                         self.suppress_clear = false;
                     } else {

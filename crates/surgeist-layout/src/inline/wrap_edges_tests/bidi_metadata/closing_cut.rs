@@ -1,5 +1,6 @@
 //! A real closing BoxEdge belongs with its preceding selected box content.
 use super::*;
+use crate::tree::LayoutTree;
 
 fn positions<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> [(f64, f64); 6] {
     assert!(batch.placed_text().is_empty());
@@ -12,12 +13,12 @@ fn positions<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> [(f64, 
 
 fn closing_cut<S: LayoutScalar>() {
     let mut f = split_box_fixture::<S>();
-    let mut root = crate::LayoutTree::node_input(&f.tree, 0).clone();
+    let mut root = LayoutTree::node_input(&f.tree, 0).clone();
     root.size.width = PreferredSizeOf::AUTO;
     f.tree.insert_input(0, LayoutInputOf::box_input(root));
     for index in 0..6u32 {
         let node = 10 + index;
-        let mut actual = crate::LayoutTree::node_input(&f.tree, node).clone();
+        let mut actual = LayoutTree::node_input(&f.tree, node).clone();
         let level = actual.atomic_inline_participation.unwrap().bidi_level();
         assert_eq!(level.get(), u8::from(index >= 3));
         let following = if matches!(index, 1 | 3) {
@@ -48,8 +49,8 @@ fn closing_cut<S: LayoutScalar>() {
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -76,8 +77,8 @@ fn closing_cut<S: LayoutScalar>() {
         &flow,
         0,
         request(n(30.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();

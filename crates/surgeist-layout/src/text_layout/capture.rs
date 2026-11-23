@@ -1,5 +1,10 @@
 //! Resolve authentic capture facts against one immutable Layout graph.
 
+use crate::{
+    error::{LayoutErrorOf, LayoutErrorSiteOf, LayoutOperation},
+    node_input::{Display, LayoutInputViewOf, Position},
+    tree::LayoutTree,
+};
 use std::collections::{HashMap, HashSet};
 
 use super::{
@@ -19,11 +24,11 @@ use surgeist_text::{
     prepared::{PreparedScope, PreparedText},
 };
 
-type ResultOf<Tree, T> = crate::LayoutResultOf<
-    <Tree as crate::Traverse>::Node,
+type ResultOf<Tree, T> = crate::error::LayoutResultOf<
+    <Tree as crate::tree::Traverse>::Node,
     T,
-    <Tree as crate::Traverse>::Scalar,
-    <Tree as crate::LayoutTree>::MeasureError,
+    <Tree as crate::tree::Traverse>::Scalar,
+    <Tree as LayoutTree>::MeasureError,
 >;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -277,7 +282,7 @@ impl<Node> ScopeAssociations<Node> {
         self.inline_boxes.same_owner(&other.inline_boxes)
     }
 
-    pub(crate) fn admit_inline_box_comparison<S: crate::LayoutScalar>(
+    pub(crate) fn admit_inline_box_comparison<S: crate::scalar::LayoutScalar>(
         &self,
         other: &Self,
         limits: surgeist_text::scope_alignment::ScopeAlignmentLimits,
@@ -571,7 +576,7 @@ struct GapScan<'a> {
     complete: bool,
 }
 
-struct Proof<'a, Tree: crate::LayoutTree> {
+struct Proof<'a, Tree: LayoutTree> {
     tree: &'a Tree,
     graph: &'a ValidationGraph<Tree::Node>,
     paragraphs: &'a [TextParagraphBinding<Tree::Node>],
@@ -617,18 +622,18 @@ struct ActivationStorage {
     inline: super::scope_alignment::ScopeCensus,
 }
 
-pub(super) fn activation_error<Tree: crate::LayoutTree>(
+pub(super) fn activation_error<Tree: LayoutTree>(
     node: Tree::Node,
     error: surgeist_text::Error,
-) -> crate::LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError> {
+) -> LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError> {
     crate::error::staging_text_error(
-        crate::LayoutErrorSiteOf::Node(node),
-        crate::LayoutOperation::TextCapture,
+        LayoutErrorSiteOf::Node(node),
+        LayoutOperation::TextCapture,
         error,
     )
 }
 
-fn activation_unique<Tree: crate::LayoutTree, T: PartialEq>(
+fn activation_unique<Tree: LayoutTree, T: PartialEq>(
     work: Option<&mut super::scope_alignment::AdmissionWork>,
     held: &mut super::scope_alignment::ScopeCensus,
     values: &mut Vec<T>,
@@ -651,11 +656,11 @@ fn activation_unique<Tree: crate::LayoutTree, T: PartialEq>(
         .map_err(|error| activation_error::<Tree>(node, error))
 }
 
-pub(super) fn resolve<Tree: crate::LayoutTree>(
+pub(super) fn resolve<Tree: LayoutTree>(
     tree: &Tree,
     graph: &ValidationGraph<Tree::Node>,
     paragraphs: &[TextParagraphBinding<Tree::Node>],
-    wrapping_input: &crate::WrappingInput<Tree::Node>,
+    wrapping_input: &crate::inline_wrapping::WrappingInput<Tree::Node>,
     inventory_scopes: &[CapturedScope],
     inline_box_bodies: bool,
     alignment: &mut super::scope_alignment::ScopeAlignmentAdmission<Tree::Scalar>,
@@ -705,7 +710,7 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
     proof.index()?;
     proof.activation = activation;
     let box_edges = paragraphs.iter().flat_map(|paragraph| &paragraph.controls).any(|binding| {
-        matches!(tree.layout_input(binding.node), crate::LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some())
+        matches!(tree.layout_input(binding.node), LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some())
     });
     if box_edges
         || !wrapping_scopes.is_empty()
@@ -835,7 +840,7 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
     })
 }
 
-impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
+impl<Tree: LayoutTree> Proof<'_, Tree> {
     // Only activation inventories and scope-owned copies enter this ledger.
     // Graph arrays, ExpectedFlow maps, native topology validation and the
     // preexisting ordinary wrapping inventory retain their native owners.
@@ -992,7 +997,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
     fn computed_error(
         &self,
         paragraph: usize,
-    ) -> crate::LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError> {
+    ) -> LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError> {
         binding_error(
             self.paragraphs[paragraph].container,
             E::ComputedBoundaryAssociation,
@@ -1297,8 +1302,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
     fn activate_box_edges(&mut self) -> ResultOf<Tree, ()> {
         for index in 0..self.controls.len() {
             let node = self.controls[index].node;
-            let crate::LayoutInputViewOf::InlineBoundary(input) = self.tree.layout_input(node)
-            else {
+            let LayoutInputViewOf::InlineBoundary(input) = self.tree.layout_input(node) else {
                 continue;
             };
             let Some(parent_axes) = input.parent_edge_axes() else {
@@ -1360,15 +1364,15 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
             };
             for peer in [pair.0, pair.1] {
                 let actual = match self.tree.layout_input(peer) {
-                    crate::LayoutInputViewOf::InlineBoundary(peer) => peer.parent_edge_axes(),
+                    LayoutInputViewOf::InlineBoundary(peer) => peer.parent_edge_axes(),
                     _ => None,
                 };
                 if actual != Some(parent_axes) {
-                    return Err(crate::LayoutErrorOf::new(
-                        crate::LayoutErrorSiteOf::Node(peer),
-                        crate::LayoutOperation::TextCapture,
-                        crate::LayoutErrorKindOf::InvalidInput(
-                            crate::LayoutInvalidInputOf::InlineBoundaryParentMismatch {
+                    return Err(LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(peer),
+                        LayoutOperation::TextCapture,
+                        crate::error::LayoutErrorKindOf::InvalidInput(
+                            crate::error::LayoutInvalidInputOf::InlineBoundaryParentMismatch {
                                 expected: Some(parent_axes),
                                 actual,
                             },
@@ -1496,7 +1500,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                             metric_contribution,
                             ..
                         } => {
-                            [*start, *end].iter().any(|node| matches!(self.tree.layout_input(*node), crate::LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some()))
+                            [*start, *end].iter().any(|node| matches!(self.tree.layout_input(*node), LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some()))
                                 || *wrap_inside == WrapInside::Avoid
                                 || metric_contribution.is_some()
                                 || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline)
@@ -2110,11 +2114,11 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         let exact = |c: &Control<Tree::Node>, kind| {
             c.captured.paragraph().domain() == scope.domain()
                 && self.paragraphs[c.paragraph].container == domain.container
-                && matches!(self.tree.layout_input(c.node), crate::LayoutInputViewOf::InlineBoundary(input) if input.kind() == kind)
+                && matches!(self.tree.layout_input(c.node), LayoutInputViewOf::InlineBoundary(input) if input.kind() == kind)
         };
         if start.node == end.node
-            || !exact(start, crate::InlineBoundaryKind::Start)
-            || !exact(end, crate::InlineBoundaryKind::End)
+            || !exact(start, crate::node_input::InlineBoundaryKind::Start)
+            || !exact(end, crate::node_input::InlineBoundaryKind::End)
         {
             return Err(binding_error(domain.container, E::ScopeAssociation));
         }
@@ -2744,8 +2748,8 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                 .layout_input(self.graph.nodes[child])
                 .as_box()
                 .is_some_and(|input| {
-                    input.display != crate::Display::None
-                        && input.position != crate::Position::Absolute
+                    input.display != Display::None
+                        && input.position != Position::Absolute
                         && input.float.is_none()
                         && !input.display.is_inline_level()
                 })
@@ -2860,8 +2864,8 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                         .layout_input(self.graph.nodes[child])
                         .as_box()
                         .is_some_and(|input| {
-                            input.display != crate::Display::None
-                                && input.position != crate::Position::Absolute
+                            input.display != Display::None
+                                && input.position != Position::Absolute
                                 && input.float.is_none()
                                 && !input.display.is_inline_level()
                         })
@@ -2898,10 +2902,10 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     lower..lower
                 };
                 self.result.runs.try_reserve(1).map_err(|_| {
-                    crate::LayoutErrorOf::new(
-                        crate::LayoutErrorSiteOf::Node(binding.container),
-                        crate::LayoutOperation::TextCapture,
-                        crate::LayoutErrorKindOf::Allocation,
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(binding.container),
+                        LayoutOperation::TextCapture,
+                        crate::error::LayoutErrorKindOf::Allocation,
                     )
                 })?;
                 self.result.runs.push(NativeRun {
@@ -2919,8 +2923,8 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                             .layout_input(self.graph.nodes[node])
                             .as_box()
                             .is_none_or(|input| {
-                                input.display != crate::Display::None
-                                    && input.position != crate::Position::Absolute
+                                input.display != Display::None
+                                    && input.position != Position::Absolute
                             })
                     })
                 })

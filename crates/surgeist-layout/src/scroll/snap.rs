@@ -7,7 +7,7 @@ use super::{
     ScrollRectErrorOf, ScrollRectOf, ScrollTargetGeometryOf, Size, canonical_zero,
     validate_physical_scroll_range,
 };
-use crate::{ScrollSnapAlignValue, ScrollSnapAxis};
+use crate::node_input::{ScrollSnapAlignValue, ScrollSnapAxis};
 
 impl<S: LayoutScalar> ScrollTargetGeometryOf<S> {
     /// Applies this target's signed scroll margins to its transformed border

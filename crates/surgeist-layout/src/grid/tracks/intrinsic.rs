@@ -5,6 +5,7 @@ use super::subgrid_intrinsic::{
     start_subgrid_intrinsic_contributions,
 };
 use super::*;
+use crate::node_input::GridBaselineReference;
 
 use crate::geometry::{FlowAxes, PhysicalProgression};
 
@@ -446,7 +447,7 @@ impl<Node, S: LayoutScalar> FlattenedScalarContribution<Node, S> {
 /// body port or another track in a spanning item's alignment context.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::grid) struct AncestorBaselineMember<Node, S: LayoutScalar = DefaultScalar> {
-    reference: crate::GridBaselineReference,
+    reference: GridBaselineReference,
     source: Node,
     axis: GridAxisKind,
     physical_axis: PhysicalAxis,
@@ -473,7 +474,7 @@ pub(in crate::grid) struct FinalBaselineProjectionInput<S: LayoutScalar> {
 }
 
 impl<Node: Copy, S: LayoutScalar> AncestorBaselineMember<Node, S> {
-    pub(in crate::grid) const fn reference(self) -> crate::GridBaselineReference {
+    pub(in crate::grid) const fn reference(self) -> GridBaselineReference {
         self.reference
     }
     pub(in crate::grid) fn role(self) -> AncestorBaselineRole {
@@ -548,19 +549,19 @@ pub(in crate::grid) struct AncestorBaselineGroup<Node, S: LayoutScalar = Default
     owner: Node,
     axis: GridAxisKind,
     physical_axis: PhysicalAxis,
-    reference: crate::GridBaselineReference,
+    reference: GridBaselineReference,
     targets: Vec<TrackAncestorBaselineTargets<S>>,
 }
 
 impl<Node: Copy, S: LayoutScalar> AncestorBaselineGroup<Node, S> {
-    pub(in crate::grid) const fn reference(&self) -> crate::GridBaselineReference {
+    pub(in crate::grid) const fn reference(&self) -> GridBaselineReference {
         self.reference
     }
     pub(in crate::grid) fn reduce(
         owner: Node,
         axis: GridAxisKind,
         physical_axis: PhysicalAxis,
-        reference: crate::GridBaselineReference,
+        reference: GridBaselineReference,
         track_count: usize,
         members: impl IntoIterator<Item = AncestorBaselineMember<Node, S>>,
     ) -> Self {
@@ -1372,9 +1373,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackRole<Node, S> {
                     constants.node_inner_size.width,
                     constants.node_inner_size.height,
                 ),
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     grid.constants.flow_axes,
-                    crate::ParentFormattingContext::Grid,
+                    crate::output::ParentFormattingContext::Grid,
                 ),
                 SizingRequestOf::new(grid.query.available, constants.child_orthogonal_fallback),
             ),
@@ -1589,7 +1590,7 @@ fn ancestor_baseline_group_for_intrinsic_contributions<Node: Copy, S: LayoutScal
     contributions: &[RowIntrinsicContribution<Node, S>],
     row_count: usize,
     expected_axis: crate::geometry::PhysicalAxis,
-    reference: crate::GridBaselineReference,
+    reference: GridBaselineReference,
 ) -> AncestorBaselineGroup<Node, S> {
     AncestorBaselineGroup::reduce(
         owner,
@@ -1615,7 +1616,7 @@ fn row_baseline_shim<Node: Copy, S: LayoutScalar>(
 
 pub(in crate::grid) struct AncestorBaselineMemberInput<Node, S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) source: Node,
-    pub(in crate::grid) reference: crate::GridBaselineReference,
+    pub(in crate::grid) reference: GridBaselineReference,
     pub(in crate::grid) axis: GridAxisKind,
     pub(in crate::grid) ancestor_span: GridTrackSpan,
     pub(in crate::grid) alignment_context_reversed: bool,
@@ -1687,11 +1688,11 @@ pub(in crate::grid) fn ancestor_baseline_member<Node: Copy, S: LayoutScalar>(
             input.end_adjustment + end_margin + physical_extent - border_logical_baseline
         }
     };
-    if input.reference != crate::GridBaselineReference::Physical
+    if input.reference != GridBaselineReference::Physical
         && (!containing_logical_distance.is_finite() || !border_logical_baseline.is_finite())
     {
         return Err(GridBaselineSelectionError::Invalid(
-            crate::GridBaselineError::UnrepresentableCoordinate,
+            crate::node_input::GridBaselineError::UnrepresentableCoordinate,
         ));
     }
     Ok(Some(AncestorBaselineMember {

@@ -2,7 +2,17 @@
 
 use super::*;
 use crate::test_support::inline_endpoint::Fixture;
-use crate::*;
+use crate::{
+    geometry::{FlowAxes, Size},
+    inline_wrapping::{WrapInside, WrappingScopeInput},
+    node_input::{
+        Direction, InlineBoundaryEdgeOf, LineBoxDirectionPolicy, TextAlign, TextAlignLast,
+        TextJustification, WritingMode,
+    },
+    text_layout::LayoutFlowInput,
+    tree::LayoutTree,
+    value::LengthPercentageOf,
+};
 use std::cell::Cell;
 use surgeist_text::allocation::{
     ControlAllocation, ControlStrut, InlineBoundaryAllocation, LineBoxAlignment,
@@ -28,7 +38,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
         &tree,
         0,
         vec![fixture.binding.clone()],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![WrappingScopeInput::NativePair {
@@ -97,9 +107,9 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
             ),
             orientation: text_orientation(WritingMode::HorizontalTb, &binding.prepared)
                 .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),
-            inline_baseline_context: crate::InlineBaselineContext::Physical,
+            inline_baseline_context: crate::node_input::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
-            wrap_style: crate::TextWrapStyle::Auto,
+            wrap_style: crate::node_input::TextWrapStyle::Auto,
             wrapping: WrappingProjection::new(
                 &input.wrapping,
                 &input.graph,
@@ -113,13 +123,15 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
             ),
             frame: Frame::Measurement,
             containing_size: Size::new(40.0, 100.0),
-            content_insets: crate::Edges::ZERO,
+            content_insets: crate::geometry::Edges::ZERO,
             cursor_block: 0.0,
             adjoining_displacement: 0.0,
             axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-            available: crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
-                crate::SizingOperation::Normal,
+            available: crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(40.0).unwrap(),
+                ),
+                crate::value::SizingOperation::Normal,
             ),
             alignment: TextAlign::Start,
             last_alignment: TextAlignLast::Auto,

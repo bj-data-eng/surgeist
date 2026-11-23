@@ -1,6 +1,11 @@
 //! Disposable source-window view over the captured scope partition.
 use super::scopes::{ScopeId, Scopes};
-use crate::*;
+use crate::{
+    geometry::{FlowAxes, PhysicalSide, Size},
+    measurement::LeafMeasureInputOf,
+    node_input::{LayoutInputViewOf, NodeInputOf},
+    tree::{LayoutTree, Traverse},
+};
 use std::ops::Range;
 
 pub(super) struct ScopeView<'a, Tree: LayoutTree> {

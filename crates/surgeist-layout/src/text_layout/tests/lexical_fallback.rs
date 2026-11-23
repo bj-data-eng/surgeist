@@ -8,6 +8,7 @@
 //! Khmer numeric cases use only separate KA/KHA letters, not stacked units.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation};
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -123,7 +124,7 @@ fn paragraph(
 
 fn compute<S: LayoutScalar>(
     paragraph: &PreparedParagraph,
-    width: crate::AxisSizingRequestOf<S>,
+    width: AxisSizingRequestOf<S>,
     rtl: bool,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let tree = PublicLayoutTreeOf::<S>::new()
@@ -142,7 +143,7 @@ fn compute<S: LayoutScalar>(
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -153,33 +154,30 @@ fn compute<S: LayoutScalar>(
     .unwrap();
     compute_layout_with_flow(&capture, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
             width,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -338,11 +336,11 @@ fn missing_lexical_capability_uses_ordinary_letter_pair_cuts_in_native_layout() 
                     let p = paragraph(source, locale, word, Wrap::Word, rtl);
                     let actual = compute::<S>(
                         &p,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
                         rtl,
                     );
@@ -378,13 +376,13 @@ fn missing_lexical_fallback_reduces_min_content_without_changing_max_content() {
                 for rtl in [false, true] {
                     let p = paragraph(source, locale, word, Wrap::Word, rtl);
                     for available in [
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MinContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
                         ),
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MaxContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
                         ),
                     ] {
                         let actual = compute::<S>(&p, available, rtl);
@@ -434,11 +432,11 @@ fn real_notdef_metrics_remain_usable_with_ancestor_nowrap_and_independent_forced
                     let p = paragraph(source, locale, word, Wrap::None, rtl);
                     let actual = compute::<S>(
                         &p,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
                         rtl,
                     );
@@ -453,13 +451,13 @@ fn real_notdef_metrics_remain_usable_with_ancestor_nowrap_and_independent_forced
                         )]
                     );
                     for available in [
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MinContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
                         ),
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MaxContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
                         ),
                     ] {
                         let intrinsic = compute::<S>(&p, available, rtl);
@@ -481,11 +479,11 @@ fn real_notdef_metrics_remain_usable_with_ancestor_nowrap_and_independent_forced
                     let p = paragraph(&source, locale, word, Wrap::None, rtl);
                     let actual = compute::<S>(
                         &p,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
                         rtl,
                     );
@@ -520,19 +518,19 @@ fn khmer_manual_keeps_the_real_twenty_pixel_word_in_finite_and_intrinsic_layout(
                 );
                 assert!(allowed(&p).is_empty());
                 for available in [
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::MinContent,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MinContent,
                     ),
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::MaxContent,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
                     ),
                 ] {
                     let actual = compute::<S>(&p, available, rtl);
@@ -545,7 +543,7 @@ fn khmer_manual_keeps_the_real_twenty_pixel_word_in_finite_and_intrinsic_layout(
                             text::prepared::PreparedBreakKind::ParagraphEnd
                         )]
                     );
-                    if available.operation() != crate::SizingOperation::Normal
+                    if available.operation() != SizingOperation::Normal
                         || available.space().definite_size().is_none()
                     {
                         let root = readback::single_box_output(&actual, 0, Phase::Unrounded);
@@ -700,11 +698,11 @@ fn sa_provider_run_end_before_word_joiner_cannot_split_the_native_fitting_line()
                     let p = paragraph(source, locale, word, Wrap::Word, rtl);
                     let actual = compute::<S>(
                         &p,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
                         rtl,
                     );
@@ -740,13 +738,13 @@ fn word_joiner_at_sa_provider_run_end_keeps_the_thirty_pixel_min_content_piece()
                 for rtl in [false, true] {
                     let p = paragraph(source, locale, word, Wrap::Word, rtl);
                     for available in [
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MinContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
                         ),
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MaxContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
                         ),
                     ] {
                         let actual = compute::<S>(&p, available, rtl);
@@ -801,11 +799,11 @@ fn ordinary_sa_context_does_not_accept_a_missing_model_run_end_before_latin() {
                 let p = paragraph(SA_LATIN_RUN, "th", word, Wrap::Word, rtl);
                 let actual = compute::<S>(
                     &p,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     rtl,
                 );
@@ -842,13 +840,13 @@ fn ordinary_sa_context_keeps_the_thirty_pixel_min_content_piece() {
             for rtl in [false, true] {
                 let p = paragraph(SA_LATIN_RUN, "th", word, Wrap::Word, rtl);
                 for available in [
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::MinContent,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MinContent,
                     ),
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::MaxContent,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
                     ),
                 ] {
                     let actual = compute::<S>(&p, available, rtl);

@@ -1,5 +1,5 @@
 use super::*;
-use crate::LayoutErrorOf;
+use crate::error::LayoutErrorOf;
 
 pub(super) struct LineResolution<Node, S: LayoutScalar> {
     items: Vec<ResolvedFlexItem<Node, S>>,
@@ -386,10 +386,10 @@ where
                 .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?,
         );
     }
-    let available_main = crate::AxisSizingRequestOf::new(
+    let available_main = crate::value::AxisSizingRequestOf::new(
         crate::layout_math::checked_available_space(used_main)
             .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?,
-        crate::SizingOperation::Normal,
+        crate::value::SizingOperation::Normal,
     );
     let uses_native_baseline = item.uses_native_cross_baseline(axes);
     if let Some(ratio) = ratio {
@@ -406,7 +406,7 @@ where
         if needs_ratio_minimum {
             let min_request = crate::layout_math::with_available_extent(
                 axes.cross_size(constants.sizing_request.axes())
-                    .with_operation(crate::SizingOperation::MinContent),
+                    .with_operation(crate::value::SizingOperation::MinContent),
                 constants
                     .cross_content_offer
                     .or(axes.cross_size(constants.percentage_parent_size)),

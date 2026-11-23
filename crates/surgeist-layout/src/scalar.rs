@@ -1,3 +1,4 @@
+use crate::error::LayoutTextNumericError;
 use core::fmt::Debug;
 use core::ops::{Add, Div, Mul, Neg, Sub};
 use surgeist_text::inline_box::InlineBoxEdgeComponents;
@@ -47,20 +48,20 @@ pub trait LayoutScalar:
 /// Failure of one required finite geometry contribution, before scalar narrowing.
 pub(crate) struct GeometryAddError {
     pub(crate) value: f64,
-    pub(crate) reason: crate::LayoutTextNumericError,
+    pub(crate) reason: LayoutTextNumericError,
 }
 pub(crate) fn checked_geometry_add(base: f64, delta: f64) -> Result<f64, GeometryAddError> {
     let result = base + delta;
     if !result.is_finite() {
         return Err(GeometryAddError {
             value: result,
-            reason: crate::LayoutTextNumericError::NonFinite,
+            reason: LayoutTextNumericError::NonFinite,
         });
     }
     if delta != 0.0 && result == base {
         return Err(GeometryAddError {
             value: delta,
-            reason: crate::LayoutTextNumericError::NonZeroLost,
+            reason: LayoutTextNumericError::NonZeroLost,
         });
     }
     Ok(result)

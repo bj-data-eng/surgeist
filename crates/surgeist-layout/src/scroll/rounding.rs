@@ -268,7 +268,7 @@ mod fri05_c02_factory_rounding_tests {
         FLOW_MAPPINGS, assert_canonical_coherence, factory_source, percent, px, rect, scalar,
     };
     use super::*;
-    use crate::{Direction, ScrollSnapType, WritingMode};
+    use crate::node_input::{Direction, ScrollSnapType, WritingMode};
 
     fn expected_round_value<S: LayoutScalar>(value: S) -> S {
         (value + scalar(0.5)).floor()
@@ -522,9 +522,9 @@ mod fri05_c02_factory_rounding_tests {
                 rebuild_rounded_canonical_scroll_geometry(unrounded, cumulative_origin).unwrap();
 
             for geometry in [unrounded, actual] {
-                let output = crate::NodeOutputOf::<S> {
+                let output = crate::output::NodeOutputOf::<S> {
                     size: geometry.border_box().size(),
-                    ..crate::NodeOutputOf::new()
+                    ..crate::output::NodeOutputOf::new()
                 }
                 .with_scroll_geometry(Some(geometry));
                 assert_eq!(output.content_box_size(), geometry.content_box().size());
@@ -578,9 +578,9 @@ mod fri05_c02_factory_rounding_tests {
 
         let actual =
             rebuild_rounded_canonical_scroll_geometry(unrounded, cumulative_origin).unwrap();
-        let output = crate::NodeOutputOf::<S> {
+        let output = crate::output::NodeOutputOf::<S> {
             size: actual.border_box().size(),
-            ..crate::NodeOutputOf::new()
+            ..crate::output::NodeOutputOf::new()
         }
         .with_scroll_geometry(Some(actual));
 
@@ -725,7 +725,8 @@ mod fri05_c02_factory_rounding_tests {
             );
             assert_canonical_coherence(rebuilt);
 
-            let output = crate::NodeOutputOf::<S>::new().with_scroll_geometry(Some(rebuilt));
+            let output =
+                crate::output::NodeOutputOf::<S>::new().with_scroll_geometry(Some(rebuilt));
             assert_eq!(
                 output.content_box_size(),
                 rebuilt.content_box().size(),

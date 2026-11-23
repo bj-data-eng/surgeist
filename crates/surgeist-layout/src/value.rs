@@ -1,4 +1,8 @@
-use super::{DefaultScalar, LayoutScalar, scalar::canonical_zero};
+use crate::{
+    geometry::{PhysicalAxis, Size},
+    scalar::{DefaultScalar, LayoutScalar, canonical_zero},
+    sizing::SizingCalculationOf,
+};
 use core::num::NonZeroUsize;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -197,7 +201,7 @@ impl<S: LayoutScalar> OrthogonalFallbackLimitOf<S> {
 pub enum NearestScrollportOf<S: LayoutScalar = DefaultScalar> {
     Unknown,
     Absent,
-    Present(super::Size<OrthogonalFallbackLimitOf<S>>),
+    Present(Size<OrthogonalFallbackLimitOf<S>>),
 }
 
 pub type NearestScrollport = NearestScrollportOf<DefaultScalar>;
@@ -207,18 +211,18 @@ pub type NearestScrollport = NearestScrollportOf<DefaultScalar>;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ScrollportFallbackChangeOf<S: LayoutScalar = DefaultScalar> {
     Preserve,
-    Enter(super::Size<OrthogonalFallbackLimitOf<S>>),
+    Enter(Size<OrthogonalFallbackLimitOf<S>>),
 }
 
 pub type ScrollportFallbackChange = ScrollportFallbackChangeOf<DefaultScalar>;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OrthogonalFallbackErrorOf<S: LayoutScalar = DefaultScalar> {
-    MissingInitialContainingBlock { axis: super::PhysicalAxis },
-    MissingContainingBounds { axis: super::PhysicalAxis },
-    MissingNearestScrollport { axis: super::PhysicalAxis },
-    MissingScrollportLimit { axis: super::PhysicalAxis },
-    InvalidContentSpace { axis: super::PhysicalAxis, value: S },
+    MissingInitialContainingBlock { axis: PhysicalAxis },
+    MissingContainingBounds { axis: PhysicalAxis },
+    MissingNearestScrollport { axis: PhysicalAxis },
+    MissingScrollportLimit { axis: PhysicalAxis },
+    InvalidContentSpace { axis: PhysicalAxis, value: S },
 }
 
 pub type OrthogonalFallbackError = OrthogonalFallbackErrorOf<DefaultScalar>;
@@ -251,9 +255,9 @@ impl<S: LayoutScalar> std::error::Error for OrthogonalFallbackErrorOf<S> {}
 /// No collapsed ancestor minimum is retained or propagated.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OrthogonalFallbackOf<S: LayoutScalar = DefaultScalar> {
-    initial_containing_block: super::Size<Option<NonNegativeFiniteOf<S>>>,
+    initial_containing_block: Size<Option<NonNegativeFiniteOf<S>>>,
     nearest_scrollport: NearestScrollportOf<S>,
-    containing_limits: super::Size<OrthogonalFallbackLimitOf<S>>,
+    containing_limits: Size<OrthogonalFallbackLimitOf<S>>,
 }
 
 pub type OrthogonalFallback = OrthogonalFallbackOf<DefaultScalar>;
@@ -261,9 +265,9 @@ pub type OrthogonalFallback = OrthogonalFallbackOf<DefaultScalar>;
 impl<S: LayoutScalar> OrthogonalFallbackOf<S> {
     #[must_use]
     pub const fn new(
-        initial_containing_block: super::Size<Option<NonNegativeFiniteOf<S>>>,
+        initial_containing_block: Size<Option<NonNegativeFiniteOf<S>>>,
         nearest_scrollport: NearestScrollportOf<S>,
-        containing_limits: super::Size<OrthogonalFallbackLimitOf<S>>,
+        containing_limits: Size<OrthogonalFallbackLimitOf<S>>,
     ) -> Self {
         Self {
             initial_containing_block,
@@ -273,7 +277,7 @@ impl<S: LayoutScalar> OrthogonalFallbackOf<S> {
     }
 
     #[must_use]
-    pub const fn initial_containing_block(self) -> super::Size<Option<NonNegativeFiniteOf<S>>> {
+    pub const fn initial_containing_block(self) -> Size<Option<NonNegativeFiniteOf<S>>> {
         self.initial_containing_block
     }
 
@@ -283,14 +287,14 @@ impl<S: LayoutScalar> OrthogonalFallbackOf<S> {
     }
 
     #[must_use]
-    pub const fn containing_limits(self) -> super::Size<OrthogonalFallbackLimitOf<S>> {
+    pub const fn containing_limits(self) -> Size<OrthogonalFallbackLimitOf<S>> {
         self.containing_limits
     }
 
     #[must_use]
     pub const fn for_child(
         self,
-        containing_limits: super::Size<OrthogonalFallbackLimitOf<S>>,
+        containing_limits: Size<OrthogonalFallbackLimitOf<S>>,
         scrollport: ScrollportFallbackChangeOf<S>,
     ) -> Self {
         let nearest_scrollport = match scrollport {
@@ -306,7 +310,7 @@ impl<S: LayoutScalar> OrthogonalFallbackOf<S> {
 
     pub fn resolve(
         self,
-        axis: super::PhysicalAxis,
+        axis: PhysicalAxis,
     ) -> Result<NonNegativeFiniteOf<S>, OrthogonalFallbackErrorOf<S>> {
         let mut smallest = orthogonal_axis(self.initial_containing_block, axis);
         let mut missing = smallest
@@ -352,28 +356,26 @@ impl<S: LayoutScalar> OrthogonalFallbackOf<S> {
     }
 }
 
-fn orthogonal_axis<T>(size: super::Size<T>, axis: super::PhysicalAxis) -> T {
+fn orthogonal_axis<T>(size: Size<T>, axis: PhysicalAxis) -> T {
     match axis {
-        super::PhysicalAxis::Horizontal => size.width,
-        super::PhysicalAxis::Vertical => size.height,
+        PhysicalAxis::Horizontal => size.width,
+        PhysicalAxis::Vertical => size.height,
     }
 }
 
 /// Final opaque content-space projection. It cannot be requalified for descendants.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ContentSizingRequestOf<S: LayoutScalar = DefaultScalar> {
-    axes: super::Size<AxisSizingRequestOf<S>>,
-    orthogonal_fallback: super::Size<Result<NonNegativeFiniteOf<S>, OrthogonalFallbackErrorOf<S>>>,
+    axes: Size<AxisSizingRequestOf<S>>,
+    orthogonal_fallback: Size<Result<NonNegativeFiniteOf<S>, OrthogonalFallbackErrorOf<S>>>,
 }
 
 pub type ContentSizingRequest = ContentSizingRequestOf<DefaultScalar>;
 
 impl<S: LayoutScalar> ContentSizingRequestOf<S> {
     pub(crate) const fn new(
-        axes: super::Size<AxisSizingRequestOf<S>>,
-        orthogonal_fallback: super::Size<
-            Result<NonNegativeFiniteOf<S>, OrthogonalFallbackErrorOf<S>>,
-        >,
+        axes: Size<AxisSizingRequestOf<S>>,
+        orthogonal_fallback: Size<Result<NonNegativeFiniteOf<S>, OrthogonalFallbackErrorOf<S>>>,
     ) -> Self {
         Self {
             axes,
@@ -382,14 +384,14 @@ impl<S: LayoutScalar> ContentSizingRequestOf<S> {
     }
 
     #[must_use]
-    pub const fn axes(self) -> super::Size<AxisSizingRequestOf<S>> {
+    pub const fn axes(self) -> Size<AxisSizingRequestOf<S>> {
         self.axes
     }
 
     #[must_use]
     pub const fn orthogonal_fallback(
         self,
-    ) -> super::Size<Result<NonNegativeFiniteOf<S>, OrthogonalFallbackErrorOf<S>>> {
+    ) -> Size<Result<NonNegativeFiniteOf<S>, OrthogonalFallbackErrorOf<S>>> {
         self.orthogonal_fallback
     }
 }
@@ -401,7 +403,7 @@ impl<S: LayoutScalar> ContentSizingRequestOf<S> {
 /// a definite fallback fact.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SizingRequestOf<S: LayoutScalar = DefaultScalar> {
-    axes: super::Size<AxisSizingRequestOf<S>>,
+    axes: Size<AxisSizingRequestOf<S>>,
     orthogonal_fallback: OrthogonalFallbackOf<S>,
 }
 
@@ -410,7 +412,7 @@ pub type SizingRequest = SizingRequestOf<DefaultScalar>;
 impl<S: LayoutScalar> SizingRequestOf<S> {
     #[must_use]
     pub const fn new(
-        axes: super::Size<AxisSizingRequestOf<S>>,
+        axes: Size<AxisSizingRequestOf<S>>,
         orthogonal_fallback: OrthogonalFallbackOf<S>,
     ) -> Self {
         Self {
@@ -420,7 +422,7 @@ impl<S: LayoutScalar> SizingRequestOf<S> {
     }
 
     #[must_use]
-    pub const fn axes(self) -> super::Size<AxisSizingRequestOf<S>> {
+    pub const fn axes(self) -> Size<AxisSizingRequestOf<S>> {
         self.axes
     }
 
@@ -430,7 +432,7 @@ impl<S: LayoutScalar> SizingRequestOf<S> {
     }
 
     #[must_use]
-    pub const fn with_axes(self, axes: super::Size<AxisSizingRequestOf<S>>) -> Self {
+    pub const fn with_axes(self, axes: Size<AxisSizingRequestOf<S>>) -> Self {
         Self { axes, ..self }
     }
 
@@ -1075,7 +1077,7 @@ impl<S: LayoutScalar> Default for TrackFlexFactorOf<S> {
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum MinTrackSizingOf<S: LayoutScalar = DefaultScalar> {
-    Calculation(crate::SizingCalculationOf<S>),
+    Calculation(SizingCalculationOf<S>),
     Auto,
     MinContent,
     MaxContent,
@@ -1090,7 +1092,7 @@ impl<S: LayoutScalar> MinTrackSizingOf<S> {
 
     #[must_use]
     pub(crate) fn px(value: S) -> Self {
-        Self::Calculation(crate::SizingCalculationOf::value(
+        Self::Calculation(SizingCalculationOf::value(
             LengthPercentageOf::px(value).expect("trusted crate track px literal"),
         ))
     }
@@ -1098,7 +1100,7 @@ impl<S: LayoutScalar> MinTrackSizingOf<S> {
     #[must_use]
     #[cfg(test)]
     pub(crate) fn percent(value: S) -> Self {
-        Self::Calculation(crate::SizingCalculationOf::value(
+        Self::Calculation(crate::sizing::SizingCalculationOf::value(
             LengthPercentageOf::from_percent_fraction(value)
                 .expect("trusted crate track percent literal"),
         ))
@@ -1128,7 +1130,7 @@ impl<S: LayoutScalar> MinTrackSizingOf<S> {
 
 impl<S: LayoutScalar> From<LengthPercentageOf<S>> for MinTrackSizingOf<S> {
     fn from(value: LengthPercentageOf<S>) -> Self {
-        Self::Calculation(crate::SizingCalculationOf::value(value))
+        Self::Calculation(SizingCalculationOf::value(value))
     }
 }
 
@@ -1140,12 +1142,12 @@ impl<S: LayoutScalar> From<LengthPercentageOf<S>> for MinTrackSizingOf<S> {
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum MaxTrackSizingOf<S: LayoutScalar = DefaultScalar> {
-    Calculation(crate::SizingCalculationOf<S>),
+    Calculation(SizingCalculationOf<S>),
     Flex(TrackFlexFactorOf<S>),
     Auto,
     MinContent,
     MaxContent,
-    FitContent(crate::SizingCalculationOf<S>),
+    FitContent(SizingCalculationOf<S>),
 }
 
 pub type MaxTrackSizing = MaxTrackSizingOf<DefaultScalar>;
@@ -1157,7 +1159,7 @@ impl<S: LayoutScalar> MaxTrackSizingOf<S> {
 
     #[must_use]
     pub(crate) fn px(value: S) -> Self {
-        Self::Calculation(crate::SizingCalculationOf::value(
+        Self::Calculation(SizingCalculationOf::value(
             LengthPercentageOf::px(value).expect("trusted crate track px literal"),
         ))
     }
@@ -1165,7 +1167,7 @@ impl<S: LayoutScalar> MaxTrackSizingOf<S> {
     #[must_use]
     #[cfg(test)]
     pub(crate) fn percent(value: S) -> Self {
-        Self::Calculation(crate::SizingCalculationOf::value(
+        Self::Calculation(crate::sizing::SizingCalculationOf::value(
             LengthPercentageOf::from_percent_fraction(value)
                 .expect("trusted crate track percent literal"),
         ))
@@ -1177,7 +1179,7 @@ impl<S: LayoutScalar> MaxTrackSizingOf<S> {
     }
 
     #[must_use]
-    pub const fn fit_content(limit: crate::SizingCalculationOf<S>) -> Self {
+    pub const fn fit_content(limit: SizingCalculationOf<S>) -> Self {
         Self::FitContent(limit)
     }
 
@@ -1219,7 +1221,7 @@ impl<S: LayoutScalar> MaxTrackSizingOf<S> {
 
 impl<S: LayoutScalar> From<LengthPercentageOf<S>> for MaxTrackSizingOf<S> {
     fn from(value: LengthPercentageOf<S>) -> Self {
-        Self::Calculation(crate::SizingCalculationOf::value(value))
+        Self::Calculation(SizingCalculationOf::value(value))
     }
 }
 
@@ -1276,7 +1278,7 @@ impl<S: LayoutScalar> TrackSizingOf<S> {
     }
 
     #[must_use]
-    pub fn calculation(calculation: crate::SizingCalculationOf<S>) -> Self {
+    pub fn calculation(calculation: SizingCalculationOf<S>) -> Self {
         Self::new(
             MinTrackSizingOf::Calculation(calculation.clone()),
             MaxTrackSizingOf::Calculation(calculation),
@@ -1289,7 +1291,7 @@ impl<S: LayoutScalar> TrackSizingOf<S> {
     }
 
     #[must_use]
-    pub const fn fit_content(limit: crate::SizingCalculationOf<S>) -> Self {
+    pub const fn fit_content(limit: SizingCalculationOf<S>) -> Self {
         Self::new(MinTrackSizingOf::AUTO, MaxTrackSizingOf::fit_content(limit))
     }
 
@@ -1313,7 +1315,9 @@ impl<S: LayoutScalar> TrackSizingOf<S> {
     #[must_use]
     #[cfg(test)]
     pub(crate) fn percent_fraction(&self) -> S {
-        fn affine_fraction<S: LayoutScalar>(calculation: &crate::SizingCalculationOf<S>) -> S {
+        fn affine_fraction<S: LayoutScalar>(
+            calculation: &crate::sizing::SizingCalculationOf<S>,
+        ) -> S {
             calculation
                 .affine_value()
                 .map_or(S::ZERO, |value| value.percent_fraction())
@@ -1338,7 +1342,7 @@ impl<S: LayoutScalar> TrackSizingOf<S> {
 }
 
 fn track_calculation_definite<S: LayoutScalar>(
-    calculation: &crate::SizingCalculationOf<S>,
+    calculation: &SizingCalculationOf<S>,
     basis: Option<S>,
 ) -> Option<S> {
     let basis = match basis {
@@ -1358,7 +1362,7 @@ impl<S: LayoutScalar> Default for TrackSizingOf<S> {
 
 impl<S: LayoutScalar> From<LengthPercentageOf<S>> for TrackSizingOf<S> {
     fn from(value: LengthPercentageOf<S>) -> Self {
-        Self::calculation(crate::SizingCalculationOf::value(value))
+        Self::calculation(SizingCalculationOf::value(value))
     }
 }
 
@@ -1593,7 +1597,7 @@ impl<S: LayoutScalar> TrackComponentOf<S> {
     }
 
     #[must_use]
-    pub const fn fit_content(limit: crate::SizingCalculationOf<S>) -> Self {
+    pub const fn fit_content(limit: SizingCalculationOf<S>) -> Self {
         Self::Track(TrackSizingOf::fit_content(limit))
     }
 
@@ -1678,7 +1682,7 @@ mod value_tests {
         MaxTrackSizingOf, MinTrackSizingOf, NumericResolutionOf, PercentageBasisOf,
         TrackFlexFactorOf, TrackSizingOf, canonical_zero,
     };
-    use crate::SizingCalculationOf;
+    use crate::sizing::SizingCalculationOf;
 
     fn assert_fri06_mr02_signed_zero_scalar_and_value_boundaries<S: LayoutScalar>() {
         for value in [S::ZERO, -S::ZERO] {
@@ -2051,7 +2055,7 @@ mod value_tests {
 #[cfg(test)]
 mod orthogonal_fallback_tests {
     use super::*;
-    use crate::{PhysicalAxis, Size};
+    use crate::geometry::{PhysicalAxis, Size};
 
     fn qualify<S: LayoutScalar>() {
         let nn = |v| NonNegativeFiniteOf::new(S::from_f64(v)).unwrap();

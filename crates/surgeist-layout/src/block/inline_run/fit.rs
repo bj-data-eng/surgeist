@@ -1,5 +1,6 @@
 use super::super::{float_text, floats};
 use super::*;
+use crate::node_input::{InlineBaselineContext, LayoutInputViewOf, TextWrapStyle};
 
 pub(in crate::block) struct NumericRunContext<'a, Node, S: LayoutScalar> {
     pub(in crate::block) container: Node,
@@ -179,7 +180,8 @@ where
                         &nodes,
                     )
                     .map(|projection| {
-                        if available_inline_extent.operation() == crate::SizingOperation::MinContent
+                        if available_inline_extent.operation()
+                            == crate::value::SizingOperation::MinContent
                         {
                             projection.without_avoidance()
                         } else {
@@ -198,9 +200,7 @@ where
         };
     let observe_formatted = matches!(
         constants.wrap_style,
-        crate::TextWrapStyle::Balance
-            | crate::TextWrapStyle::AvoidShortLastLine
-            | crate::TextWrapStyle::Pretty
+        TextWrapStyle::Balance | TextWrapStyle::AvoidShortLastLine | TextWrapStyle::Pretty
     ) && crate::layout_math::normal_available_size(available_inline_extent)
         .is_some()
         || tree
@@ -572,24 +572,24 @@ where
                     .position(|child| *child == node)
                     .expect("capture admitted the actual control node");
             let (kind, strut, endpoint) = match tree.layout_input(node) {
-                crate::LayoutInputViewOf::LineBreak(control) => (
+                LayoutInputViewOf::LineBreak(control) => (
                     crate::inline::InlineParticipantLayoutKind::ForcedLineBreak,
                     Some((control.metrics(), control.vertical_align())),
                     None,
                 ),
-                crate::LayoutInputViewOf::InlineBoundary(boundary) => (
+                LayoutInputViewOf::InlineBoundary(boundary) => (
                     match boundary.kind() {
-                        crate::InlineBoundaryKind::Start => {
+                        crate::node_input::InlineBoundaryKind::Start => {
                             crate::inline::InlineParticipantLayoutKind::InlineBoundaryStart
                         }
-                        crate::InlineBoundaryKind::End => {
+                        crate::node_input::InlineBoundaryKind::End => {
                             crate::inline::InlineParticipantLayoutKind::InlineBoundaryEnd
                         }
                     },
                     Some((boundary.metrics(), boundary.vertical_align())),
                     Some(crate::inline::InlineEndpointOf::from_input(boundary)),
                 ),
-                crate::LayoutInputViewOf::TextControl(_) => (
+                LayoutInputViewOf::TextControl(_) => (
                     crate::inline::InlineParticipantLayoutKind::SemanticControl,
                     None,
                     None,
@@ -618,14 +618,14 @@ where
                         baseline: metrics.baseline().to_f64(),
                         line_extent: metrics.line_extent().to_f64(),
                         alignment: match alignment {
-                            crate::VerticalAlignOf::Baseline => {
+                            crate::node_input::VerticalAlignOf::Baseline => {
                                 surgeist_text::allocation::LineBoxAlignment::Baseline
                             }
-                            crate::VerticalAlignOf::Top => surgeist_text::allocation::LineBoxAlignment::Top,
-                            crate::VerticalAlignOf::Bottom => {
+                            crate::node_input::VerticalAlignOf::Top => surgeist_text::allocation::LineBoxAlignment::Top,
+                            crate::node_input::VerticalAlignOf::Bottom => {
                                 surgeist_text::allocation::LineBoxAlignment::Bottom
                             }
-                            crate::VerticalAlignOf::Shift(offset) => {
+                            crate::node_input::VerticalAlignOf::Shift(offset) => {
                                 surgeist_text::allocation::LineBoxAlignment::Shift(
                                     surgeist_text::source::BaselineShift::try_new(offset.get().to_f64())
                                         .expect("a finite Layout scalar widens to finite Text coordinates"),
@@ -637,13 +637,11 @@ where
             })
         })
         .collect::<Result<Vec<_>, LayoutErrorOf<Tree::Node, S, M>>>()?;
-    let intrinsic_max =
-        !float_events.is_empty() && (available.operation() == crate::SizingOperation::MaxContent);
+    let intrinsic_max = !float_events.is_empty()
+        && (available.operation() == crate::value::SizingOperation::MaxContent);
     let quality_replay = matches!(
         constants.wrap_style,
-        crate::TextWrapStyle::Balance
-            | crate::TextWrapStyle::AvoidShortLastLine
-            | crate::TextWrapStyle::Pretty
+        TextWrapStyle::Balance | TextWrapStyle::AvoidShortLastLine | TextWrapStyle::Pretty
     ) && crate::layout_math::normal_available_size(available).is_some();
     let funding = entry_funding.as_ref().map(|funding| funding.as_ref());
     let bound_events = float_events
@@ -654,7 +652,7 @@ where
             |owner| {
                 let (context, graph) = tree
                     .wrapping_context()
-                    .ok_or(crate::WrappingScopeError::MissingCapture)?;
+                    .ok_or(crate::inline_wrapping::WrappingScopeError::MissingCapture)?;
                 float_text::source_interval(admitted, &associations, context, graph, owner, funding)
             },
             funding,
@@ -756,7 +754,7 @@ where
                             .as_line_break()
                             .map(|control| control.clear())
                     })
-                    .unwrap_or(crate::Clear::None);
+                    .unwrap_or(crate::node_input::Clear::None);
                 let block = crate::text_layout::run::number::<S>(block)?;
                 let query = cursor_block + block;
                 let cleared = encounters.borrow().band().clearance_block(query, clear);
@@ -830,7 +828,7 @@ pub(crate) struct AtomicReceiverChild<Node, S: LayoutScalar> {
     pub(in crate::block) node: Node,
     pub(in crate::block) input: ComputeInputOf<S>,
     index: usize,
-    expected: crate::InlineBaselineContext,
+    expected: InlineBaselineContext,
     demand: crate::output::NamedBaselineDemand,
 }
 
@@ -839,7 +837,7 @@ fn resolve_atomic_receiver<'input, Tree, S, M>(
     container: Tree::Node,
     children: &mut [RetainedAtomicChild<'input, Tree::Node, S>],
     source_index: usize,
-    expected: crate::InlineBaselineContext,
+    expected: InlineBaselineContext,
     axes: FlowAxes,
 ) -> LayoutResultOf<Tree::Node, crate::inline::ReferencedInlineStrutOf<S>, S, M>
 where
@@ -859,7 +857,7 @@ fn prepare_atomic_receiver<Node: Copy, S: LayoutScalar, M>(
     container: Node,
     children: &[RetainedAtomicChild<'_, Node, S>],
     source_index: usize,
-    expected: crate::InlineBaselineContext,
+    expected: InlineBaselineContext,
     axes: FlowAxes,
 ) -> AtomicReceiverPreparation<Node, S, M> {
     let invalid = |node| {
@@ -867,7 +865,7 @@ fn prepare_atomic_receiver<Node: Copy, S: LayoutScalar, M>(
             LayoutErrorSiteOf::Node(node),
             LayoutOperation::ChildLayout,
             LayoutErrorKindOf::InternalInvariant(
-                crate::LayoutInternalInvariant::InvalidAtomicReceiverBasis,
+                crate::error::LayoutInternalInvariant::InvalidAtomicReceiverBasis,
             ),
         )
     };
@@ -878,7 +876,7 @@ fn prepare_atomic_receiver<Node: Copy, S: LayoutScalar, M>(
     let InlineParticipantKindOf::Box(style) = row.projection.kind() else {
         return Err(invalid(row.node));
     };
-    let crate::InlineBaselineContext::Named(name) = expected else {
+    let InlineBaselineContext::Named(name) = expected else {
         return Err(invalid(row.node));
     };
     if row.request.containing_flow_axes() != axes
@@ -895,7 +893,7 @@ fn prepare_atomic_receiver<Node: Copy, S: LayoutScalar, M>(
     let (_, fact) = demand
         .selected_fact(row.output.named_baselines)
         .expect("an actual named receiver selects one fact");
-    if matches!(fact, crate::BaselineFactOf::Unknown)
+    if matches!(fact, crate::output::BaselineFactOf::Unknown)
         && row.request.run_mode() == RunMode::ComputeSize
         && row.request.named_baseline_demand() == crate::output::NamedBaselineDemand::None
     {
@@ -922,14 +920,14 @@ fn accept_atomic_receiver<Node: Copy, S: LayoutScalar, M>(
             LayoutErrorSiteOf::Node(row.node),
             LayoutOperation::ChildLayout,
             LayoutErrorKindOf::InternalInvariant(
-                crate::LayoutInternalInvariant::InvalidAtomicReceiverBasis,
+                crate::error::LayoutInternalInvariant::InvalidAtomicReceiverBasis,
             ),
         ));
     }
     let InlineParticipantKindOf::Box(style) = row.projection.kind() else {
         unreachable!("validated atomic receiver is a box")
     };
-    let crate::InlineBaselineContext::Named(name) = child.expected else {
+    let InlineBaselineContext::Named(name) = child.expected else {
         unreachable!("validated receiver has a named reference")
     };
     let (_, fact) = child
@@ -938,9 +936,9 @@ fn accept_atomic_receiver<Node: Copy, S: LayoutScalar, M>(
         .expect("the retained source still selects one named fact");
     let pair = row.output.named_baselines.get(name);
     let pair = if style.baseline_source.prefers_last(style.display) {
-        crate::BaselinePairOf::new(pair.first(), fact)
+        crate::output::BaselinePairOf::new(pair.first(), fact)
     } else {
-        crate::BaselinePairOf::new(fact, pair.last())
+        crate::output::BaselinePairOf::new(fact, pair.last())
     };
     row.output.named_baselines = row.output.named_baselines.with(name, pair);
     atomic_receiver_strut(row, child.expected, axes)
@@ -948,13 +946,13 @@ fn accept_atomic_receiver<Node: Copy, S: LayoutScalar, M>(
 
 fn atomic_receiver_strut<Node: Copy, S: LayoutScalar, M>(
     row: &RetainedAtomicChild<'_, Node, S>,
-    expected: crate::InlineBaselineContext,
+    expected: InlineBaselineContext,
     axes: FlowAxes,
 ) -> LayoutResultOf<Node, crate::inline::ReferencedInlineStrutOf<S>, S, M> {
     let InlineParticipantKindOf::Box(style) = row.projection.kind() else {
         unreachable!("validated atomic receiver is a box")
     };
-    let crate::InlineBaselineContext::Named(name) = expected else {
+    let InlineBaselineContext::Named(name) = expected else {
         unreachable!("validated receiver has a named reference")
     };
     let inner =

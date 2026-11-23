@@ -2,6 +2,7 @@
 //! Source setup follows the maintained Native constructor; only the actual
 //! authored box role differs. No post-capture mutation or fabricated handle.
 use super::*;
+use crate::block_fragmentation::NodeLayoutRefOf;
 use crate::test_support::readback::{self, Phase};
 use surgeist_text::font::FontBaseline;
 
@@ -110,9 +111,9 @@ fn normal<S: LayoutScalar>(
     let entry = batch
         .node_layout(node)
         .map(|layout| match layout {
-            crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
-            crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
-            crate::NodeLayoutRefOf::Fragments(_) => {
+            NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+            NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+            NodeLayoutRefOf::Fragments(_) => {
                 panic!("continuous fixture unexpectedly fragmented")
             }
         })
@@ -199,9 +200,9 @@ fn static_ports<S: LayoutScalar>() {
         let parent_entry = batch
             .node_layout(2)
             .map(|layout| match layout {
-                crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
-                crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
-                crate::NodeLayoutRefOf::Fragments(_) => {
+                NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             })
@@ -236,7 +237,7 @@ fn static_ports<S: LayoutScalar>() {
         let line = batch
             .unrounded_inline_fragments()
             .iter()
-            .find(|row| row.owner() == &crate::InlineFragmentOwner::Node(3))
+            .find(|row| row.owner() == &crate::output::InlineFragmentOwner::Node(3))
             .unwrap()
             .fragment()
             .finalized_fragment()

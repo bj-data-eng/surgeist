@@ -5,7 +5,7 @@
 //! starts from scalar extents and factors, and shrink weights multiply two
 //! inputs before the line sums them.
 
-use crate::LayoutScalar;
+use crate::scalar::LayoutScalar;
 use core::cmp::Ordering;
 use core::ops::{Add, Div, Mul, Neg, Sub};
 

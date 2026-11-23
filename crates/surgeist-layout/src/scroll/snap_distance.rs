@@ -1,6 +1,6 @@
 use core::cmp::Ordering;
 
-use crate::LayoutScalar;
+use crate::scalar::LayoutScalar;
 
 // The unit is half the smallest binary64 subnormal. Four finite scalar
 // terms need at most 2101 bits, including the carry above their top bit.

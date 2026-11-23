@@ -16,9 +16,12 @@ use super::{
     },
 };
 use crate::{
-    ComputedOverflow, DefaultScalar, Edges, FlowAxes, LayoutScalar, LogicalAxis, PhysicalAxis,
-    PhysicalSide, Point, ScrollMarginOf, ScrollSnapAlign, ScrollSnapStop, ScrollSnapType,
-    ScrollbarGutter, ScrollbarWidthOf, Size,
+    geometry::{Edges, FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide, Point, Size},
+    node_input::{
+        ComputedOverflow, ScrollMarginOf, ScrollSnapAlign, ScrollSnapStop, ScrollSnapType,
+        ScrollbarGutter, ScrollbarWidthOf,
+    },
+    scalar::{DefaultScalar, LayoutScalar},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -661,9 +664,12 @@ pub(super) mod fri05_c02_factory_tests {
         box_geometry::ScrollBoxClipGutterErrorOf, contribution::derive_origin_aware_scroll_range,
     };
     use crate::{
-        Direction, LengthPercentageOf, Overflow, OverflowClipBox, ScrollMarginOf, ScrollSnapAlign,
-        ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType,
-        WritingMode,
+        node_input::{
+            Direction, Overflow, OverflowClipBox, ScrollMarginOf, ScrollSnapAlign,
+            ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness,
+            ScrollSnapType, WritingMode,
+        },
+        value::LengthPercentageOf,
     };
 
     pub(in crate::scroll) const FLOW_MAPPINGS: [(WritingMode, Direction); 10] = [

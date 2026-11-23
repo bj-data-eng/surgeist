@@ -1,9 +1,15 @@
 use crate::node_projection::CommonBoxProjection;
 use crate::scroll::{ScrollBoxProjection, ScrollTargetProjection};
 use crate::{
-    AtomicInlineParticipation, Clear, Compute, Display, Float, FloatExclusion, LayoutScalar,
-    NodeInputOf, ScrollbarGutter, ScrollbarWidthOf, TextAlign, TextAlignLast, TextJustification,
-    Traverse, VerticalAlignOf,
+    engine::contracts::Compute,
+    geometry::PhysicalAxis,
+    node_input::{
+        AtomicInlineParticipation, Clear, Display, Float, FloatExclusion, NodeInputOf,
+        ScrollbarGutter, ScrollbarWidthOf, TextAlign, TextAlignLast, TextJustification,
+        VerticalAlignOf,
+    },
+    scalar::LayoutScalar,
+    tree::Traverse,
 };
 
 pub(super) fn normal_block_auto_inline<S: LayoutScalar>(
@@ -12,14 +18,14 @@ pub(super) fn normal_block_auto_inline<S: LayoutScalar>(
     float: Float,
 ) -> bool {
     let inline_preferred = match common.flow_axes.inline_axis() {
-        crate::PhysicalAxis::Horizontal => &common.size.width,
-        crate::PhysicalAxis::Vertical => &common.size.height,
+        PhysicalAxis::Horizontal => &common.size.width,
+        PhysicalAxis::Vertical => &common.size.height,
     };
     !display.is_inline_level()
         && !common.item_is_replaced
         && !common.item_is_table
         && float.is_none()
-        && common.position != crate::Position::Absolute
+        && common.position != crate::node_input::Position::Absolute
         && inline_preferred.is_auto()
 }
 
@@ -27,8 +33,8 @@ pub(super) fn automatic_block_depends_on_ratio<S: LayoutScalar>(
     common: &CommonBoxProjection<'_, S>,
 ) -> bool {
     let block_preferred = match common.flow_axes.block_axis() {
-        crate::PhysicalAxis::Horizontal => &common.size.width,
-        crate::PhysicalAxis::Vertical => &common.size.height,
+        PhysicalAxis::Horizontal => &common.size.width,
+        PhysicalAxis::Vertical => &common.size.height,
     };
     common.aspect_ratio.is_some() && block_preferred.is_auto()
 }
@@ -37,7 +43,7 @@ pub(super) fn normal_block_inline_ratio<S: LayoutScalar>(
     common: &CommonBoxProjection<'_, S>,
     display: Display,
     float: Float,
-) -> Option<crate::AspectRatioOf<S>> {
+) -> Option<crate::value::AspectRatioOf<S>> {
     common.aspect_ratio.filter(|_| {
         display == Display::Block
             && normal_block_auto_inline(common, display, float)
@@ -51,16 +57,16 @@ pub(crate) struct BlockContainerProjection<'a, S: LayoutScalar> {
     pub(super) common: CommonBoxProjection<'a, S>,
     pub(super) display: Display,
     pub(super) float: Float,
-    pub(super) block_flow_context: crate::BlockFlowContext,
-    pub(super) block_generation: crate::BlockGeneration,
-    pub(super) text_indent: crate::TextIndentOf<S>,
-    pub(super) line_box_direction_policy: crate::LineBoxDirectionPolicy,
-    pub(super) inline_baseline_context: crate::InlineBaselineContext,
-    pub(super) baseline_source: crate::BaselineSource,
-    pub(super) hyphenate_limit_lines: crate::HyphenateLimitLines,
-    pub(super) hyphenate_limit_last: crate::HyphenateLimitLast,
-    pub(super) hyphenate_limit_zone: crate::LengthPercentageOf<S>,
-    pub(super) wrap_style: crate::TextWrapStyle,
+    pub(super) block_flow_context: crate::node_input::BlockFlowContext,
+    pub(super) block_generation: crate::node_input::BlockGeneration,
+    pub(super) text_indent: crate::node_input::TextIndentOf<S>,
+    pub(super) line_box_direction_policy: crate::node_input::LineBoxDirectionPolicy,
+    pub(super) inline_baseline_context: crate::node_input::InlineBaselineContext,
+    pub(super) baseline_source: crate::node_input::BaselineSource,
+    pub(super) hyphenate_limit_lines: crate::hyphenation::HyphenateLimitLines,
+    pub(super) hyphenate_limit_last: crate::hyphenation::HyphenateLimitLast,
+    pub(super) hyphenate_limit_zone: crate::value::LengthPercentageOf<S>,
+    pub(super) wrap_style: crate::node_input::TextWrapStyle,
     pub(super) text_align: TextAlign,
     pub(super) text_align_last: TextAlignLast,
     pub(super) text_justification: TextJustification,
@@ -97,11 +103,11 @@ impl<'a, S: LayoutScalar> BlockContainerProjection<'a, S> {
 /// Block-child facts retained after child role lookup.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BlockChildProjection<'a, S: LayoutScalar> {
-    pub(super) baseline_source: crate::BaselineSource,
+    pub(super) baseline_source: crate::node_input::BaselineSource,
     pub(super) common: CommonBoxProjection<'a, S>,
     pub(super) display: Display,
     pub(super) flex_owns_preferred_inline: bool,
-    pub(super) block_flow_context: crate::BlockFlowContext,
+    pub(super) block_flow_context: crate::node_input::BlockFlowContext,
     pub(super) float: Float,
     pub(super) clear: Clear,
     pub(super) float_exclusion: FloatExclusion,
@@ -172,11 +178,17 @@ mod tests {
     use super::*;
     use crate::inline::{InlineParticipantKindOf, InlineParticipantProjection};
     use crate::{
-        AspectRatioOf, BidiLevel, BoxSizing, ComputeInputOf, ComputeOutputOf, ComputedOverflow,
-        Direction, Edges, FlowAxes, InlineBreakOpportunity, LayoutInputOf, LayoutResultOf,
-        LengthAutoOf, LengthOf, LengthPercentageOf, MaxSizeOf, MinSizeOf, Overflow, Position,
-        PreferredSizeOf, Size, WritingMode,
+        error::LayoutResultOf,
+        geometry::{Edges, FlowAxes, Size},
+        node_input::{
+            BoxSizing, ComputedOverflow, Direction, InlineBreakOpportunity, LayoutInputOf,
+            Overflow, Position, WritingMode,
+        },
+        output::{ComputeInputOf, ComputeOutputOf},
+        sizing::{MaxSizeOf, MinSizeOf, PreferredSizeOf},
+        value::{AspectRatioOf, LengthAutoOf, LengthOf, LengthPercentageOf},
     };
+    use surgeist_text::supplied_line::BidiLevel;
 
     struct ProjectionTree<'input, S: LayoutScalar> {
         layout_input: &'input LayoutInputOf<S>,
@@ -208,7 +220,7 @@ mod tests {
             &mut self,
             _node: Self::Node,
             _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
-        ) -> crate::LayoutResultOf<
+        ) -> crate::error::LayoutResultOf<
             Self::Node,
             crate::grid::GridOverflowObservation<Self::Scalar>,
             Self::Scalar,
@@ -223,29 +235,32 @@ mod tests {
             self.layout_input.as_box().expect("box projection source")
         }
 
-        fn layout_input(&self, _node: Self::Node) -> crate::LayoutInputViewOf<'input, S> {
+        fn layout_input(
+            &self,
+            _node: Self::Node,
+        ) -> crate::node_input::LayoutInputViewOf<'input, S> {
             self.layout_input.as_view()
         }
 
         fn staged_unrounded(
             &self,
             node: Self::Node,
-        ) -> crate::LayoutResultOf<
+        ) -> crate::error::LayoutResultOf<
             Self::Node,
-            crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+            crate::output::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
             Self::Scalar,
             Infallible,
         > {
-            Err(crate::LayoutErrorOf::new(
-                crate::LayoutErrorSiteOf::Node(node),
-                crate::LayoutOperation::ChildLayout,
-                crate::LayoutErrorKindOf::InternalInvariant(
-                    crate::LayoutInternalInvariant::MissingStagedUnroundedOutput,
+            Err(crate::error::LayoutErrorOf::new(
+                crate::error::LayoutErrorSiteOf::Node(node),
+                crate::error::LayoutOperation::ChildLayout,
+                crate::error::LayoutErrorKindOf::InternalInvariant(
+                    crate::error::LayoutInternalInvariant::MissingStagedUnroundedOutput,
                 ),
             ))
         }
 
-        fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, S>) {}
+        fn set_unrounded(&mut self, _entry: crate::output::LayoutOutputEntryOf<Self::Node, S>) {}
 
         fn compute_child(
             &mut self,
@@ -327,7 +342,7 @@ mod tests {
             inset: expected_inset,
             item_is_replaced: true,
             item_is_table: true,
-            text_wrap_style: crate::TextWrapStyle::Balance,
+            text_wrap_style: crate::node_input::TextWrapStyle::Balance,
             text_align: TextAlign::LegacyCenter,
             scrollbar_gutter: ScrollbarGutter::StableBothEdges,
             scrollbar_width: expected_scrollbar_width,
@@ -364,7 +379,10 @@ mod tests {
         assert_eq!(container.common, common);
         assert!(core::ptr::eq(container.common.size, common.size));
         assert_eq!(container.display, Display::InlineBlock);
-        assert_eq!(container.wrap_style, crate::TextWrapStyle::Balance);
+        assert_eq!(
+            container.wrap_style,
+            crate::node_input::TextWrapStyle::Balance
+        );
         assert_eq!(container.text_align, TextAlign::LegacyCenter);
         assert_eq!(container.scrollbar_gutter, ScrollbarGutter::StableBothEdges);
         assert_eq!(container.scrollbar_width, expected_scrollbar_width);

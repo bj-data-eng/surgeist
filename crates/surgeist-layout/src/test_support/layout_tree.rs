@@ -1,15 +1,28 @@
 use crate::test_support::readback::{self, Phase};
 use std::collections::HashMap;
 
-use crate::LayoutOutputEntryOf;
 use crate::output::NormalGeometryOf;
+use crate::{error::LayoutResultOf, node_input::LayoutInputViewOf, output::LayoutOutputEntryOf};
 
 use crate::{
-    AvailableSpaceOf, Compute, ComputeInputOf, ComputeOutputOf, DefaultScalar, Display,
-    InlineBoundaryInputOf, LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInputOf,
-    LayoutInternalInvariant, LayoutOperation, LayoutScalar, LayoutTree, LeafMeasureInputOf,
-    LineBreakInput, LineBreakInputOf, NodeInputOf, NodeOutputOf, RequestedAxis, Round, RunMode,
-    Size, SizingMode, SizingOperation, Traverse, compute_block, compute_flex, compute_grid,
+    block::compute_block,
+    engine::contracts::{Compute, Round},
+    error::{
+        LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant,
+        LayoutOperation,
+    },
+    flex::compute_flex,
+    geometry::Size,
+    grid::compute_grid,
+    measurement::LeafMeasureInputOf,
+    node_input::{
+        Display, InlineBoundaryInputOf, LayoutInputOf, LineBreakInput, LineBreakInputOf,
+        NodeInputOf,
+    },
+    output::{ComputeInputOf, ComputeOutputOf, NodeOutputOf, RequestedAxis, RunMode, SizingMode},
+    scalar::{DefaultScalar, LayoutScalar},
+    tree::{LayoutTree, Traverse},
+    value::{AvailableSpaceOf, SizingOperation},
 };
 
 /// The fake retained no current-trial custody for this actual request.
@@ -32,8 +45,8 @@ pub(crate) fn ordinary_unrounded_box<S: LayoutScalar>(
         .scroll_geometry
         .map(|geometry| geometry.content_box())
         .unwrap_or_else(|| {
-            crate::ScrollRectOf::try_new(
-                crate::Point::new(
+            crate::scroll::ScrollRectOf::try_new(
+                crate::geometry::Point::new(
                     layout.border.left + layout.padding.left,
                     layout.border.top + layout.padding.top,
                 ),
@@ -190,7 +203,7 @@ impl<S: LayoutScalar> LayoutTree for PublicLayoutTreeOf<S> {
         input.as_box().unwrap_or(&self.non_box_input)
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'_, S> {
         self.layout_inputs
             .get(&node)
             .map(|input| input.as_view())
@@ -467,7 +480,7 @@ impl<S: LayoutScalar> OracleTreeOf<S> {
         }
     }
 
-    pub fn layout_input(&self, node: u32) -> crate::LayoutInputViewOf<'_, S> {
+    pub fn layout_input(&self, node: u32) -> LayoutInputViewOf<'_, S> {
         self.layout_inputs
             .get(&node)
             .map(|input| input.as_view())
@@ -534,7 +547,7 @@ impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, '_, S>
         &mut self,
         node: Self::Node,
         input: ComputeInputOf<S>,
-    ) -> crate::LayoutResultOf<Self::Node, ComputeOutputOf<S>, S> {
+    ) -> LayoutResultOf<Self::Node, ComputeOutputOf<S>, S> {
         if input.run_mode() != RunMode::ComputeSize || self.node_input(node).float.is_none() {
             return Err(crate::block::float_context::missing(node));
         }
@@ -556,7 +569,7 @@ impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, '_, S>
         }
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, S> {
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'input, S> {
         self.layout_inputs
             .get(&node)
             .map(|input| input.as_view())
@@ -586,11 +599,8 @@ impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, '_, S>
         &mut self,
         node: Self::Node,
         probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
-    ) -> crate::LayoutResultOf<
-        Self::Node,
-        crate::grid::GridOverflowObservation<Self::Scalar>,
-        Self::Scalar,
-    > {
+    ) -> LayoutResultOf<Self::Node, crate::grid::GridOverflowObservation<Self::Scalar>, Self::Scalar>
+    {
         let mut layouts = HashMap::new();
         let mut final_layouts = HashMap::new();
         let floats = self.block_floats.fork();
@@ -602,7 +612,8 @@ impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, '_, S>
         &mut self,
         node: Self::Node,
         input: ComputeInputOf<S>,
-    ) -> crate::LayoutResultOf<Self::Node, crate::ComputeOutputOf<Self::Scalar>, Self::Scalar> {
+    ) -> LayoutResultOf<Self::Node, crate::output::ComputeOutputOf<Self::Scalar>, Self::Scalar>
+    {
         self.compute_inputs.entry(node).or_default().push(input);
 
         if let Some(measurements) = self.measurements.get(&node) {
@@ -623,8 +634,8 @@ impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, '_, S>
             Display::None => {
                 self.set_unrounded(LayoutOutputEntryOf::ordinary_unrounded(
                     node,
-                    NormalGeometryOf::metadata(crate::Point::ZERO, Size::ZERO),
-                    NodeOutputOf::with_source_index(crate::SourceIndex::ZERO),
+                    NormalGeometryOf::metadata(crate::geometry::Point::ZERO, Size::ZERO),
+                    NodeOutputOf::with_source_index(crate::output::SourceIndex::ZERO),
                 ));
                 Ok(ComputeOutputOf::HIDDEN)
             }
@@ -639,7 +650,7 @@ impl<'input, S: LayoutScalar> Round for OracleComputeOf<'input, '_, S> {
     fn unrounded(
         &self,
         node: Self::Node,
-    ) -> crate::LayoutResultOf<Self::Node, LayoutOutputEntryOf<Self::Node, S>, S> {
+    ) -> LayoutResultOf<Self::Node, LayoutOutputEntryOf<Self::Node, S>, S> {
         self.layouts.get(&node).copied().ok_or_else(|| {
             LayoutErrorOf::new(
                 LayoutErrorSiteOf::Node(node),
@@ -660,9 +671,18 @@ impl<'input, S: LayoutScalar> Round for OracleComputeOf<'input, '_, S> {
 mod tests {
     use super::*;
     use crate::{
-        ContainingLayoutContext, Direction, FlowAxes, LayoutErrorKind, LayoutErrorSite,
-        LayoutInternalInvariant, LayoutOperation, LayoutRootRequestOf, LineBreakDisplay,
-        ParentFormattingContext, PreferredSizeOf, SourceIndex, WritingMode, compute_layout,
+        engine::compute_layout,
+        error::{LayoutErrorKind, LayoutErrorSite, LayoutInternalInvariant, LayoutOperation},
+        geometry::FlowAxes,
+        node_input::{Direction, LayoutInputViewOf, LineBreakDisplay, WritingMode},
+        output::{
+            ContainingLayoutContext, LayoutRootRequestOf, ParentFormattingContext, SourceIndex,
+        },
+        sizing::PreferredSizeOf,
+        value::{
+            AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, OrthogonalFallbackLimitOf,
+            OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+        },
     };
 
     fn assert_fri06_c13_t01_public_tree_typed_contract<S: LayoutScalar>()
@@ -692,10 +712,10 @@ mod tests {
         assert_eq!(tree.child(1, 1), 3);
         assert_eq!(tree.child(1, 2), 5);
         assert_eq!(tree.node_input(1), &style);
-        assert_eq!(tree.layout_input(1), crate::LayoutInputViewOf::Box(&style));
+        assert_eq!(tree.layout_input(1), LayoutInputViewOf::Box(&style));
         assert_eq!(
             tree.layout_input(7),
-            crate::LayoutInputViewOf::LineBreak(line_break)
+            LayoutInputViewOf::LineBreak(line_break)
         );
         assert_eq!(tree.node_input(7), &NodeInputOf::non_box());
     }
@@ -707,7 +727,7 @@ mod tests {
     }
 
     fn final_output<S: LayoutScalar>(
-        batch: &crate::CompletedLayoutBatchOf<u32, S>,
+        batch: &crate::output::CompletedLayoutBatchOf<u32, S>,
         node: u32,
     ) -> NodeOutputOf<S> {
         readback::single_box_output(batch, node, Phase::Final)
@@ -726,19 +746,19 @@ mod tests {
 
         let request = || {
             let viewport = Size::splat(
-                crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                     .expect("the declared native viewport is finite and nonnegative"),
             );
             LayoutRootRequestOf::standalone(
-                crate::SizingRequestOf::new(
-                    Size::splat(crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(viewport.width),
-                        crate::SizingOperation::Normal,
+                SizingRequestOf::new(
+                    Size::splat(AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(viewport.width),
+                        SizingOperation::Normal,
                     )),
-                    crate::OrthogonalFallbackOf::new(
+                    OrthogonalFallbackOf::new(
                         viewport.map(Some),
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
@@ -757,15 +777,15 @@ mod tests {
 
         let measured_request = || {
             LayoutRootRequestOf::standalone(
-                crate::SizingRequestOf::new(
-                    Size::splat(crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::Normal,
+                SizingRequestOf::new(
+                    Size::splat(AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::Normal,
                     )),
-                    crate::OrthogonalFallbackOf::new(
+                    OrthogonalFallbackOf::new(
                         Size::new(None, None),
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
@@ -807,15 +827,15 @@ mod tests {
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            crate::SizingRequestOf::new(
-                Size::splat(crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::Normal,
                 )),
-                crate::OrthogonalFallbackOf::new(
+                OrthogonalFallbackOf::new(
                     Size::new(None, None),
-                    crate::NearestScrollportOf::Unknown,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
         )
@@ -837,7 +857,7 @@ mod tests {
             .measure(1, expected);
 
         assert_eq!(tree.node_input(1), &style);
-        assert_eq!(tree.layout_input(1), crate::LayoutInputViewOf::Box(&style));
+        assert_eq!(tree.layout_input(1), LayoutInputViewOf::Box(&style));
         assert_eq!(
             tree.borrow_compute().compute_child(1, input).unwrap(),
             expected
@@ -922,7 +942,7 @@ mod tests {
     fn rounding_missing_unrounded_output_returns_typed_error() {
         let mut tree = OracleTree::new();
 
-        let error = crate::round_layout(&mut tree.borrow_compute(), 41)
+        let error = crate::engine::round_layout(&mut tree.borrow_compute(), 41)
             .expect_err("rounding without staged output must fail instead of synthesizing output");
 
         assert_eq!(error.site(), LayoutErrorSite::Node(41));
@@ -941,10 +961,7 @@ mod tests {
         let input = LineBreakInput::new().hidden();
         let tree = OracleTree::new().line_break(1, input);
 
-        assert_eq!(
-            tree.layout_input(1),
-            crate::LayoutInputViewOf::LineBreak(input)
-        );
+        assert_eq!(tree.layout_input(1), LayoutInputViewOf::LineBreak(input));
         assert_eq!(
             tree.layout_input(1).as_line_break().unwrap().display(),
             LineBreakDisplay::None

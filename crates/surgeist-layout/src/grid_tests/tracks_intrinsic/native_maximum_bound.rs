@@ -2,6 +2,7 @@
 use super::*;
 use crate::engine::contracts::Compute;
 use crate::test_support::readback::{self, Phase};
+use crate::value::{NearestScrollportOf, OrthogonalFallbackLimitOf};
 
 fn assert_height_queries_with_opposite_width<S: LayoutScalar>(
     inputs: &[LeafMeasureInputOf<S>],
@@ -83,8 +84,8 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(
             ),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     );
@@ -115,8 +116,8 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(
             ),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     );
@@ -169,8 +170,8 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(
             ),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     );
@@ -209,23 +210,26 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(
         let axes = Size::new(
             AxisSizingRequestOf::new(
                 AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
                 ),
                 SizingOperation::Normal,
             ),
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     };
@@ -394,7 +398,9 @@ mod controls;
 // A finite physical containing space does not replace a formal operation.
 fn finite_space_intrinsic_maximum<S: LayoutScalar>(operation: SizingOperation) {
     intrinsic_maximum_preserves_opposite_width::<S>(AxisSizingRequestOf::new(
-        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()),
+        AvailableSpaceOf::Definite(
+            crate::value::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+        ),
         operation,
     ));
 }

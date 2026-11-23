@@ -1,9 +1,15 @@
+use crate::{error::LayoutUnsupportedCapability, node_input::Display};
 use crate::{
-    AtomicInlineParticipationRoleError, FloatExclusion, FloatExclusionRoleError, LayoutErrorKindOf,
-    LayoutErrorOf, LayoutErrorSiteOf, LayoutInputViewOf, LayoutInvalidInputOf, LayoutOperation,
-    LayoutResultOf, LayoutScalar, LayoutTree, NodeInputOf, NonBoxNodeRoleError, Position,
+    error::{
+        AtomicInlineParticipationRoleError, FloatExclusionRoleError, LayoutErrorKindOf,
+        LayoutErrorOf, LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation, LayoutResultOf,
+        NonBoxNodeRoleError,
+    },
+    node_input::{FloatExclusion, LayoutInputViewOf, NodeInputOf, Position},
+    scalar::LayoutScalar,
+    text_layout::TextParagraphBinding,
+    tree::LayoutTree,
 };
-use crate::{Display, LayoutUnsupportedCapability};
 
 /// One discovery of the immutable acyclic graph. Integer edges preserve child
 /// order and all incoming edges without requiring host node hashing or ordering.
@@ -71,7 +77,7 @@ pub(crate) fn validate_layout_request_with_text_graph<Tree>(
     tree: &Tree,
     root: Tree::Node,
     changed_nodes: &[Tree::Node],
-    paragraphs: &[crate::TextParagraphBinding<Tree::Node>],
+    paragraphs: &[TextParagraphBinding<Tree::Node>],
 ) -> LayoutResultOf<Tree::Node, ValidatedRequest<Tree::Node>, Tree::Scalar, Tree::MeasureError>
 where
     Tree: LayoutTree,
@@ -84,7 +90,7 @@ pub(crate) fn validate_layout_request_with_graph<Tree: LayoutTree>(
     tree: &Tree,
     root: Tree::Node,
     changed_nodes: &[Tree::Node],
-    paragraphs: &[crate::TextParagraphBinding<Tree::Node>],
+    paragraphs: &[TextParagraphBinding<Tree::Node>],
     graph: ValidationGraph<Tree::Node>,
 ) -> LayoutResultOf<Tree::Node, ValidatedRequest<Tree::Node>, Tree::Scalar, Tree::MeasureError> {
     let invalidated = graph.invalidation(changed_nodes)?;
@@ -100,7 +106,7 @@ pub(crate) fn validate_layout_request_with_graph<Tree: LayoutTree>(
     Ok((graph, invalidated))
 }
 
-pub(crate) fn discover_graph<Tree: crate::Traverse, M>(
+pub(crate) fn discover_graph<Tree: crate::tree::Traverse, M>(
     tree: &Tree,
     root: Tree::Node,
     operation: LayoutOperation,
@@ -152,7 +158,7 @@ pub(crate) fn discover_graph<Tree: crate::Traverse, M>(
 fn validate_layout_tree<Tree>(
     tree: &Tree,
     graph: &ValidationGraph<Tree::Node>,
-    paragraphs: &[crate::TextParagraphBinding<Tree::Node>],
+    paragraphs: &[TextParagraphBinding<Tree::Node>],
 ) -> LayoutResultOf<Tree::Node, bool, Tree::Scalar, Tree::MeasureError>
 where
     Tree: LayoutTree,
@@ -163,7 +169,7 @@ where
         is_root: bool,
         parent_accepts_inline_text: bool,
         text_outside_inline_flow: &mut bool,
-        paragraphs: &[crate::TextParagraphBinding<Tree::Node>],
+        paragraphs: &[TextParagraphBinding<Tree::Node>],
     ) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, Tree::MeasureError>
     where
         Tree: LayoutTree,
@@ -172,10 +178,10 @@ where
         match layout_input {
             LayoutInputViewOf::Box(_) => {
                 let input = tree.node_input(node);
-                if input.block_generation == crate::BlockGeneration::Anonymous {
+                if input.block_generation == crate::node_input::BlockGeneration::Anonymous {
                     if input.display != Display::Block
                         || input.position == Position::Absolute
-                        || input.float != crate::Float::None
+                        || input.float != crate::node_input::Float::None
                     {
                         return Err(root_input_error(
                             node,
@@ -187,7 +193,7 @@ where
                             LayoutErrorSiteOf::Node(node),
                             LayoutOperation::RootLayout,
                             LayoutErrorKindOf::MissingContext(
-                                crate::LayoutMissingContext::AnonymousGeneratingBlock,
+                                crate::error::LayoutMissingContext::AnonymousGeneratingBlock,
                             ),
                         ));
                     }
@@ -231,7 +237,7 @@ where
                         Some(FloatExclusionRoleError::Hidden)
                     } else if input.position == Position::Absolute {
                         Some(FloatExclusionRoleError::Absolute)
-                    } else if input.float == crate::Float::None {
+                    } else if input.float == crate::node_input::Float::None {
                         Some(FloatExclusionRoleError::NonFloating)
                     } else {
                         None
@@ -340,10 +346,10 @@ mod tests {
         // box DAG validation and invalidation operate on those nodes/edges.
         let mut tree = crate::test_support::layout_tree::PublicLayoutTreeOf::<f64>::new()
             .children(0, [1, 2])
-            .style(0, crate::NodeInputOf::default());
+            .style(0, crate::node_input::NodeInputOf::default());
         for level in 0..32u32 {
             for node in [2 * level + 1, 2 * level + 2] {
-                tree = tree.style(node, crate::NodeInputOf::default());
+                tree = tree.style(node, crate::node_input::NodeInputOf::default());
                 tree = if level == 31 {
                     tree.children(node, [])
                 } else {
@@ -378,31 +384,31 @@ mod tests {
             .children(3, [])
             .style(
                 0,
-                crate::NodeInputOf {
+                crate::node_input::NodeInputOf {
                     display: Display::Block,
-                    ..crate::NodeInputOf::default()
+                    ..crate::node_input::NodeInputOf::default()
                 },
             )
             .style(
                 1,
-                crate::NodeInputOf {
+                crate::node_input::NodeInputOf {
                     display: Display::Block,
-                    ..crate::NodeInputOf::default()
+                    ..crate::node_input::NodeInputOf::default()
                 },
             )
             .style(
                 2,
-                crate::NodeInputOf {
+                crate::node_input::NodeInputOf {
                     display: Display::Flex,
-                    ..crate::NodeInputOf::default()
+                    ..crate::node_input::NodeInputOf::default()
                 },
             )
             .input(3, paragraph.text_input(3));
-        let Err(error) = crate::LayoutFlowInput::try_new(
+        let Err(error) = crate::text_layout::LayoutFlowInput::try_new(
             &tree,
             0,
             vec![paragraph.binding(1)],
-            crate::WrappingInput {
+            crate::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -420,16 +426,16 @@ mod tests {
         ));
         let valid = tree.style(
             2,
-            crate::NodeInputOf {
+            crate::node_input::NodeInputOf {
                 display: Display::Block,
-                ..crate::NodeInputOf::default()
+                ..crate::node_input::NodeInputOf::default()
             },
         );
-        crate::LayoutFlowInput::try_new(
+        crate::text_layout::LayoutFlowInput::try_new(
             &valid,
             0,
             vec![paragraph.binding(1)],
-            crate::WrappingInput {
+            crate::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),

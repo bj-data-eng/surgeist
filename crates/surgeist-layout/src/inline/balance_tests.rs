@@ -1,5 +1,8 @@
 use super::*;
-use crate::TextWrapStyle;
+use crate::{
+    node_input::TextWrapStyle,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation},
+};
 
 pub(super) fn input<S: LayoutScalar>(
     widths: &[f64],
@@ -9,24 +12,24 @@ pub(super) fn input<S: LayoutScalar>(
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
         meter: crate::accounting::Meter::new(),
-        inline_baseline_context: crate::InlineBaselineContext::Physical,
+        inline_baseline_context: crate::node_input::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: style,
         line_box_context: crate::line_box::LineBoxContext::new(
-            crate::LineBoxDirectionPolicy::Normal,
+            crate::node_input::LineBoxDirectionPolicy::Normal,
             direction,
         ),
         observe_tail: true,
         wrapping: None,
-        available_inline_extent: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
+        available_inline_extent: AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, direction),
         text_align: TextAlign::Start,
-        text_align_last: crate::TextAlignLast::Auto,
+        text_align_last: crate::node_input::TextAlignLast::Auto,
         indent: crate::text_indent::ResolvedTextIndent::ZERO,
         indent_state: crate::text_indent::IndentLineState::default(),
         participants: widths
@@ -35,7 +38,7 @@ pub(super) fn input<S: LayoutScalar>(
             .enumerate()
             .map(|(source_index, width)| MixedInlineParticipantOf::Atomic {
                 item: AtomicInlineBoxParticipant {
-                    baseline_reference: crate::InlineBaselineContext::Physical,
+                    baseline_reference: crate::node_input::InlineBaselineContext::Physical,
                     source_index,
                     size: Size::new(S::from_f64(width), S::from_f64(10.0)),
                     content_size: Size::new(S::from_f64(width), S::from_f64(10.0)),
@@ -140,14 +143,8 @@ fn numeric_balance_keeps_forced_groups_intrinsics_and_real_zero_atomics() {
                 ]
             );
             for available in [
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MinContent,
-                ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MaxContent,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             ] {
                 let mut auto = input::<S>(&[30.0, 30.0, 10.0], &[], direction, TextWrapStyle::Auto);
                 auto.available_inline_extent = available;

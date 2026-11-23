@@ -1,6 +1,12 @@
 //! Authenticated ancestry expands physical empty-gap constraints.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    geometry::FlowAxes,
+    inline_wrapping::{GeneratedBoxRef, InlineBoxRef},
+    tree::LayoutTree,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation},
+};
 
 fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
     let mut input = empty_input(false, text::paragraph::ParagraphStrut::DefaultFont);
@@ -60,9 +66,9 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
     input
         .events
         .extend([E::ExitParagraph(0), E::ExitScope(root_scope)]);
-    let local = |scope| crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(scope));
+    let local = |scope| GeneratedBoxRef::Inline(InlineBoxRef::Scope(scope));
     let mut orders = vec![complete_order(
-        crate::GeneratedBoxRef::Node(0),
+        GeneratedBoxRef::Node(0),
         raw_pairs
             .iter()
             .map(|&(parent, _)| child(local(parent)))
@@ -86,16 +92,16 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
         scopes: raw_pairs
             .iter()
             .flat_map(|&(parent, child)| [parent, child])
-            .map(|scope| crate::SourceWrappingScopeInput {
-                box_: crate::InlineBoxRef::Scope(scope),
-                wrap_inside: crate::WrapInside::Auto,
-                edges: crate::WrapEdges::AUTO,
+            .map(|scope| crate::inline_wrapping::SourceWrappingScopeInput {
+                box_: InlineBoxRef::Scope(scope),
+                wrap_inside: crate::inline_wrapping::WrapInside::Auto,
+                edges: crate::inline_wrapping::WrapEdges::AUTO,
             })
             .collect(),
         associations: raw_pairs
             .iter()
             .flat_map(|&(parent, child)| [parent, child])
-            .map(|scope| crate::SourceScopeAssociation {
+            .map(|scope| crate::inline_wrapping::SourceScopeAssociation {
                 scope,
                 flow: 0,
                 pair: None,
@@ -103,11 +109,11 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
             .collect(),
         orders,
     };
-    let (processed, receipt) = crate::process_wrapping_source(
+    let (processed, receipt) = crate::inline_wrapping::process_wrapping_source(
         &source,
         0,
         input,
-        crate::SourceOccurrenceAssociations::default(),
+        crate::inline_wrapping::SourceOccurrenceAssociations::default(),
     )
     .expect("the real source authenticates Root -> [P -> C, Q -> D, R -> E]")
     .into_parts();
@@ -173,10 +179,10 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
     let (q, d) = &pairs[1];
     let (r, e) = &pairs[2];
     let actual = |scope: &text::capture::CapturedScope| {
-        crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(scope.clone()))
+        GeneratedBoxRef::Inline(InlineBoxRef::Scope(scope.clone()))
     };
     let mut orders = vec![complete_order(
-        crate::GeneratedBoxRef::Node(0),
+        GeneratedBoxRef::Node(0),
         parents.iter().map(|scope| child(actual(scope))).collect(),
     )];
     for (parent, child_scope) in &pairs {
@@ -186,15 +192,17 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
         ));
         orders.push(complete_order(actual(child_scope), Vec::new()));
     }
-    let wrapping = crate::WrappingInput {
+    let wrapping = crate::inline_wrapping::WrappingInput {
         scopes: scopes
             .iter()
-            .map(|scope| crate::WrappingScopeInput::Captured {
-                scope: scope.clone(),
-                wrap_inside: crate::WrapInside::Auto,
-                edges: crate::WrapEdges::AUTO,
-                metric_contribution: None,
-            })
+            .map(
+                |scope| crate::inline_wrapping::WrappingScopeInput::Captured {
+                    scope: scope.clone(),
+                    wrap_inside: crate::inline_wrapping::WrapInside::Auto,
+                    edges: crate::inline_wrapping::WrapEdges::AUTO,
+                    metric_contribution: None,
+                },
+            )
             .collect(),
         child_order: orders,
         gaps: Vec::new(),
@@ -219,7 +227,7 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
     assert!(baseline.associations.runs().is_empty());
     assert_eq!(baseline.graph.nodes.len(), 1);
     assert!(baseline.graph.children[baseline.graph.index(0).unwrap()].is_empty());
-    assert_eq!(crate::Traverse::child_count(&source, 0), 0);
+    assert_eq!(crate::tree::Traverse::child_count(&source, 0), 0);
     for scope in &scopes {
         assert!(baseline.wrapping.scope_pair(scope).is_none());
     }
@@ -227,15 +235,13 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
         &baseline,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((baseline).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((baseline).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )
@@ -260,14 +266,14 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
     assert!(prior.placed_text().is_empty());
     assert_eq!(prior.native_inline_box_families().count(), 0);
     let group = |left: &text::capture::CapturedScope, right: &text::capture::CapturedScope| {
-        crate::InlineGapGroupInput {
-            anchor: crate::InlineGapAnchor::Formatter {
+        crate::inline_wrapping::InlineGapGroupInput {
+            anchor: crate::inline_wrapping::InlineGapAnchor::Formatter {
                 node: 0,
-                edge: crate::InlineFormatterEdge::Start,
+                edge: crate::inline_wrapping::InlineFormatterEdge::Start,
             },
             boxes: vec![
-                crate::InlineBoxRef::Scope(left.clone()),
-                crate::InlineBoxRef::Scope(right.clone()),
+                InlineBoxRef::Scope(left.clone()),
+                InlineBoxRef::Scope(right.clone()),
             ],
         }
     };
@@ -280,7 +286,7 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
     let mut acyclic = wrapping;
     acyclic
         .native_inline_boxes
-        .push(crate::NativeInlineBoxFamilyInput { formatter: 0 });
+        .push(crate::inline_wrapping::NativeInlineBoxFamilyInput { formatter: 0 });
     acyclic.gaps = vec![group(p, q), group(d, r), group(c, e)];
     let valid = construct(acyclic.clone())
         .expect("[P,Q], [D,R], [C,E] gives consistent C<D<E constraints over ancestry");
@@ -290,15 +296,13 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
         &valid,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((valid).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((valid).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )
@@ -325,13 +329,10 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
         assert_eq!(children.len(), 1);
         assert_eq!(
             parents[0].parent().unwrap().owner(),
-            crate::GeneratedBoxRef::Node(0)
+            GeneratedBoxRef::Node(0)
         );
         assert_eq!(children[0].parent(), Some(parents[0].clone()));
-        assert_eq!(
-            children[0].body_root().owner(),
-            crate::GeneratedBoxRef::Node(0)
-        );
+        assert_eq!(children[0].body_root().owner(), GeneratedBoxRef::Node(0));
     }
     let mut cyclic = acyclic;
     cyclic.gaps[2] = group(e, c);
@@ -342,7 +343,7 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
         matches!(
             error.kind(),
             LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
-                crate::WrappingScopeError::CyclicGap
+                crate::inline_wrapping::WrappingScopeError::CyclicGap
             ))
         ),
         "{error:?}"
@@ -351,15 +352,13 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
         &baseline,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((baseline).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((baseline).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )

@@ -1,6 +1,9 @@
 use core::ops::{Add, Sub};
 
-use super::{DefaultScalar, Direction, LayoutScalar, WritingMode};
+use crate::{
+    node_input::{Direction, WritingMode},
+    scalar::{DefaultScalar, LayoutScalar},
+};
 
 /// A physical x/y coordinate axis.
 ///
@@ -978,7 +981,7 @@ impl<S: LayoutScalar> Edges<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Direction, WritingMode};
+    use crate::node_input::{Direction, WritingMode};
 
     fn assert_fri06_mr02_physical_edge_geometry_carrier<T>(edges: Edges<T>)
     where

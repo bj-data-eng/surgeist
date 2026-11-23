@@ -69,7 +69,7 @@ fn captured_percent_source<S: LayoutScalar>(
         let row = batch
             .unrounded_inline_fragments()
             .iter()
-            .find(|row| *row.owner() == crate::InlineFragmentOwner::Node(association.node))
+            .find(|row| *row.owner() == crate::output::InlineFragmentOwner::Node(association.node))
             .unwrap()
             .fragment();
         let issued = row.finalized_fragment();
@@ -271,9 +271,11 @@ fn captured_percent_changed_basis_preserves_publication<S: LayoutScalar>(left: b
     host.inner.reject_batch = true;
     assert_eq!(
         changed.apply_to(&mut host),
-        Err(crate::LayoutBatchApplyError::Preparation(
-            "reject complete replacement"
-        ))
+        Err(
+            crate::block_fragmentation::publication::LayoutBatchApplyError::Preparation(
+                "reject complete replacement"
+            )
+        )
     );
     assert_eq!(host.inner.caches, prior_caches);
     custody_same_scene(host.inner.published.as_ref().unwrap(), &prior);

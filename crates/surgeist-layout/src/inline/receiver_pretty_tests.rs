@@ -2,7 +2,7 @@ use super::*;
 
 fn query<S: LayoutScalar>(widths: &[f64]) -> MixedInlineRunInputOf<S> {
     let mut query = tail_input(widths);
-    query.text_wrap_style = crate::TextWrapStyle::Pretty;
+    query.text_wrap_style = crate::node_input::TextWrapStyle::Pretty;
     query
 }
 

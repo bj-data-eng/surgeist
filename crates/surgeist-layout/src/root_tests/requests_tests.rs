@@ -16,6 +16,16 @@ use super::fixtures::{
 use super::*;
 use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
+use crate::{
+    block_fragmentation::{NodeLayoutRefOf, NonBoxKind},
+    inline_wrapping::WrappingInput,
+    node_input::{InlineBaselineContext, InlineBoundaryEdgeOf, LayoutInputViewOf},
+    output::InlineFragmentOwner,
+    value::{
+        AvailableSpaceOf, AxisSizingRequest, AxisSizingRequestOf, NearestScrollportOf,
+        OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+    },
+};
 use surgeist_text::{
     paragraph::{ParagraphReplacement, ParagraphReplacementDefinition},
     source::{Id, Source, Text},
@@ -72,23 +82,23 @@ fn assert_fri08_c07_t02_scroll_source_root_paths<S: LayoutScalar>() {
             flow_axes,
             size.map(|value| {
                 Some(
-                    crate::NonNegativeFiniteOf::new(value)
+                    crate::value::NonNegativeFiniteOf::new(value)
                         .expect("declared fixture extent is finite and nonnegative"),
                 )
             }),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(size.map(|value| {
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(value)
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(value)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             )
         })),
     )
@@ -147,23 +157,23 @@ fn assert_fri08_c07_t02_scroll_source_root_paths<S: LayoutScalar>() {
             flow_axes,
             size.map(|value| {
                 Some(
-                    crate::NonNegativeFiniteOf::new(value)
+                    crate::value::NonNegativeFiniteOf::new(value)
                         .expect("declared fixture extent is finite and nonnegative"),
                 )
             }),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(size.map(|value| {
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(value)
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(value)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             )
         })),
     )
@@ -185,16 +195,16 @@ fn fri08_c07_t02_scroll_source_root_preserves_existing_reconstruction_and_metada
 
 fn fri06_c03_mixed_batch<S: LayoutScalar>(
     children: Vec<(u32, LayoutInputOf<S>, NodeInputOf<S>)>,
-    available_inline: crate::AxisSizingRequestOf<S>,
+    available_inline: AxisSizingRequestOf<S>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     fri06_c03_mixed_batch_with_root(
         crate::test_support::requests::NativeRootFrameOf::new(
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::NONE,
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         ),
         children,
@@ -223,7 +233,7 @@ fn fri06_c03_fragment<S: LayoutScalar>(
     batch
         .final_inline_fragments()
         .iter()
-        .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(node))
+        .find(|entry| entry.owner() == &InlineFragmentOwner::Node(node))
         .expect("the requested original occurrence publishes a fragment")
         .fragment()
 }
@@ -311,7 +321,7 @@ fn prepared_nested_atomic_baseline_batch<S: LayoutScalar>(
         &tree,
         0,
         vec![paragraph.binding(0), inner.binding(2)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -320,17 +330,14 @@ fn prepared_nested_atomic_baseline_batch<S: LayoutScalar>(
         Vec::new(),
     )?;
     let available = parent_flow.physical_size(LogicalSizeOf::new(
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::Normal,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
     ));
     compute_layout_with_flow(
         &capture,
@@ -339,15 +346,15 @@ fn prepared_nested_atomic_baseline_batch<S: LayoutScalar>(
             parent_flow,
             parent_flow.physical_size(LogicalSizeOf::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 None,
             )),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(available),
@@ -388,7 +395,7 @@ impl<S: LayoutScalar> LayoutTree for Fri06C03CachedAtomicTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -589,29 +596,26 @@ fn fri06_c03_atomic_baseline_visible_inner_and_non_visible_margin_edge_both_scal
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     None,
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             )
             .request(Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                             .expect("fixture physical extent is finite and nonnegative"),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
             )),
         )
         .unwrap();
@@ -672,15 +676,15 @@ fn fri06_c03_atomic_baseline_absent_inner_uses_positive_and_negative_margin_edge
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     None,
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             &paragraph,
@@ -689,12 +693,12 @@ fn fri06_c03_atomic_baseline_absent_inner_uses_positive_and_negative_margin_edge
                 (2, LayoutInputOf::box_input(positive.clone()), positive),
                 (3, LayoutInputOf::box_input(negative.clone()), negative),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             NodeInputOf::default(),
         );
@@ -790,19 +794,19 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
             ..prepared_atomic_style(10.0, 35.0, 0.0, 0.0)
         };
         let top_metrics = InlineMetricsOf::from_line_height_and_baseline(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(22.0),
             S::from_f64(6.0),
         )
         .unwrap();
         let bottom_metrics = InlineMetricsOf::from_line_height_and_baseline(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(32.0),
             S::from_f64(20.0),
         )
         .unwrap();
         let break_metrics = InlineMetricsOf::from_line_height_and_baseline(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(10.0),
             S::from_f64(8.0),
         )
@@ -812,15 +816,15 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     None,
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             &paragraph,
@@ -844,7 +848,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                         InlineBoundaryInputOf::contribution(
                             InlineBoundaryKind::Start,
                             top_metrics,
-                            crate::InlineBoundaryEdgeOf::ZERO,
+                            InlineBoundaryEdgeOf::ZERO,
                         )
                         .unwrap()
                         .with_vertical_align(VerticalAlignOf::Top),
@@ -857,7 +861,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                         InlineBoundaryInputOf::contribution(
                             InlineBoundaryKind::End,
                             bottom_metrics,
-                            crate::InlineBoundaryEdgeOf::ZERO,
+                            InlineBoundaryEdgeOf::ZERO,
                         )
                         .unwrap()
                         .with_vertical_align(VerticalAlignOf::Bottom),
@@ -871,12 +875,12 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                 ),
                 (9, paragraph.text_input(9), NodeInputOf::non_box()),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             NodeInputOf::default(),
         );
@@ -930,7 +934,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                 &batch,
                 6,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             )
             .location
             .y,
@@ -941,7 +945,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                 &batch,
                 7,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             )
             .location
             .y,
@@ -952,7 +956,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                 &batch,
                 8,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                readback::Kind::NonBox(NonBoxKind::LineBreak)
             )
             .location
             .y,
@@ -968,13 +972,13 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
 fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_source_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let boundary_metrics = InlineMetricsOf::from_line_height_and_baseline(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(20.0),
             S::from_f64(15.0),
         )
         .unwrap();
         let break_metrics = InlineMetricsOf::from_line_height_and_baseline(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(12.0),
             S::from_f64(9.0),
         )
@@ -1018,15 +1022,15 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(40.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     None,
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             &paragraph,
@@ -1043,7 +1047,7 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                         InlineBoundaryInputOf::contribution(
                             InlineBoundaryKind::Start,
                             boundary_metrics,
-                            crate::InlineBoundaryEdgeOf::ZERO,
+                            InlineBoundaryEdgeOf::ZERO,
                         )
                         .unwrap(),
                     ),
@@ -1062,12 +1066,12 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 ),
                 (7, paragraph.text_input(7), NodeInputOf::non_box()),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(40.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             NodeInputOf::default(),
         );
@@ -1081,7 +1085,7 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 &batch,
                 3,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             )
             .size,
             Size::ZERO
@@ -1091,7 +1095,7 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 &batch,
                 5,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                readback::Kind::NonBox(NonBoxKind::LineBreak)
             )
             .size,
             Size::ZERO
@@ -1101,7 +1105,7 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 &batch,
                 6,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                readback::Kind::NonBox(NonBoxKind::LineBreak)
             )
             .size,
             Size::ZERO
@@ -1111,7 +1115,7 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 &batch,
                 6,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                readback::Kind::NonBox(NonBoxKind::LineBreak)
             )
             .location,
             Point::ZERO
@@ -1121,7 +1125,7 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 &batch,
                 3,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             )
             .source_index
             .get(),
@@ -1132,7 +1136,7 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 &batch,
                 5,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                readback::Kind::NonBox(NonBoxKind::LineBreak)
             )
             .source_index
             .get(),
@@ -1143,7 +1147,7 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 &batch,
                 6,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                readback::Kind::NonBox(NonBoxKind::LineBreak)
             )
             .source_index
             .get(),
@@ -1168,7 +1172,7 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 &batch,
                 3,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             )
             .location
             .x,
@@ -1179,7 +1183,7 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 &batch,
                 5,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                readback::Kind::NonBox(NonBoxKind::LineBreak)
             )
             .location
             .x,
@@ -1211,7 +1215,7 @@ fn fri06_c03_control_forced_break_splits_min_content_indivisible_groups_both_sca
                 LayoutInputOf::line_break(
                     LineBreakInputOf::new().with_metrics(
                         InlineMetricsOf::from_line_height_and_baseline(
-                            crate::InlineBaselineContext::Physical,
+                            InlineBaselineContext::Physical,
                             S::from_f64(10.0),
                             S::from_f64(8.0),
                         )
@@ -1229,17 +1233,11 @@ fn fri06_c03_control_forced_break_splits_min_content_indivisible_groups_both_sca
     fn lane<S: LayoutScalar>() -> (S, S, S, S, S) {
         let min = fri06_c03_mixed_batch(
             children(),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
         );
         let max = fri06_c03_mixed_batch(
             children(),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
 
         (
@@ -1249,7 +1247,7 @@ fn fri06_c03_control_forced_break_splits_min_content_indivisible_groups_both_sca
                 &min,
                 3,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::LineBreak),
+                readback::Kind::NonBox(NonBoxKind::LineBreak),
             )
             .location
             .x,
@@ -1281,7 +1279,7 @@ fn fri06_c03_control_forced_break_splits_min_content_indivisible_groups_both_sca
 fn fri06_c03_strut_adjacent_final_breaks_keep_only_actual_forced_lines_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let metrics = InlineMetricsOf::from_line_height_and_baseline(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(20.0),
             S::from_f64(15.0),
         )
@@ -1299,10 +1297,7 @@ fn fri06_c03_strut_adjacent_final_breaks_keep_only_actual_forced_lines_both_scal
                     NodeInputOf::non_box(),
                 ),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
         );
 
         assert_eq!(
@@ -1314,7 +1309,7 @@ fn fri06_c03_strut_adjacent_final_breaks_keep_only_actual_forced_lines_both_scal
                 &batch,
                 1,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                readback::Kind::NonBox(NonBoxKind::LineBreak)
             )
             .location
             .y,
@@ -1325,7 +1320,7 @@ fn fri06_c03_strut_adjacent_final_breaks_keep_only_actual_forced_lines_both_scal
                 &batch,
                 2,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                readback::Kind::NonBox(NonBoxKind::LineBreak)
             )
             .location
             .y,
@@ -1341,7 +1336,7 @@ fn fri06_c03_strut_adjacent_final_breaks_keep_only_actual_forced_lines_both_scal
 fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let metrics = InlineMetricsOf::from_line_height_and_baseline(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(20.0),
             S::from_f64(15.0),
         )
@@ -1363,10 +1358,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                 ),
                 text(),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
         );
         assert_eq!(
             fri06_c02_final_node(&leading, 0).size.height,
@@ -1377,7 +1369,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                 &leading,
                 1,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                readback::Kind::NonBox(NonBoxKind::LineBreak)
             )
             .location
             .y,
@@ -1393,10 +1385,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                     NodeInputOf::non_box(),
                 ),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
         );
         assert_eq!(
             fri06_c02_final_node(&trailing, 0).size.height,
@@ -1407,7 +1396,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                 &trailing,
                 3,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                readback::Kind::NonBox(NonBoxKind::LineBreak)
             )
             .location,
             Point::new(S::from_f64(10.0), S::from_f64(15.0))
@@ -1419,10 +1408,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                 LayoutInputOf::line_break(LineBreakInputOf::new().with_metrics(metrics)),
                 NodeInputOf::non_box(),
             )],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
         );
         assert_eq!(
             fri06_c02_final_node(&only_break, 0).size.height,
@@ -1438,16 +1424,13 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                     InlineBoundaryInputOf::contribution(
                         InlineBoundaryKind::Start,
                         metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
+                        InlineBoundaryEdgeOf::ZERO,
                     )
                     .unwrap(),
                 ),
                 NodeInputOf::non_box(),
             )],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
         );
         assert_eq!(fri06_c02_final_node(&only_boundary, 0).size.height, S::ZERO);
         assert_eq!(
@@ -1455,7 +1438,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                 &only_boundary,
                 1,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             )
             .location,
             Point::ZERO
@@ -1469,7 +1452,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                         InlineBoundaryInputOf::contribution(
                             InlineBoundaryKind::Start,
                             metrics,
-                            crate::InlineBoundaryEdgeOf::ZERO,
+                            InlineBoundaryEdgeOf::ZERO,
                         )
                         .unwrap(),
                     ),
@@ -1481,17 +1464,14 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                         InlineBoundaryInputOf::contribution(
                             InlineBoundaryKind::End,
                             metrics,
-                            crate::InlineBoundaryEdgeOf::ZERO,
+                            InlineBoundaryEdgeOf::ZERO,
                         )
                         .unwrap(),
                     ),
                     NodeInputOf::non_box(),
                 ),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
         );
         assert_eq!(
             fri06_c02_final_node(&adjacent_boundaries, 0).size.height,
@@ -1502,7 +1482,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                 &adjacent_boundaries,
                 1,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             )
             .location,
             Point::ZERO
@@ -1512,7 +1492,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                 &adjacent_boundaries,
                 2,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             )
             .location,
             Point::ZERO
@@ -1526,7 +1506,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                         InlineBoundaryInputOf::contribution(
                             InlineBoundaryKind::Start,
                             metrics,
-                            crate::InlineBoundaryEdgeOf::ZERO,
+                            InlineBoundaryEdgeOf::ZERO,
                         )
                         .unwrap(),
                     ),
@@ -1539,17 +1519,14 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                         InlineBoundaryInputOf::contribution(
                             InlineBoundaryKind::End,
                             metrics,
-                            crate::InlineBoundaryEdgeOf::ZERO,
+                            InlineBoundaryEdgeOf::ZERO,
                         )
                         .unwrap(),
                     ),
                     NodeInputOf::non_box(),
                 ),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
         );
         assert_eq!(
             fri06_c02_final_node(&boundaries, 0).size.height,
@@ -1560,7 +1537,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                 &boundaries,
                 1,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             )
             .location,
             Point::new(S::ZERO, S::from_f64(15.0))
@@ -1570,7 +1547,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                 &boundaries,
                 3,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             )
             .location,
             Point::new(S::from_f64(10.0), S::from_f64(15.0))
@@ -1585,7 +1562,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
 fn fri06_c03_control_visible_break_uses_each_unequal_lines_alignment_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let metrics = InlineMetricsOf::from_line_height_and_baseline(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(12.0),
             S::from_f64(9.0),
         )
@@ -1607,15 +1584,15 @@ fn fri06_c03_control_visible_break_uses_each_unequal_lines_alignment_both_scalar
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(40.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     None,
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             &paragraph,
@@ -1628,12 +1605,12 @@ fn fri06_c03_control_visible_break_uses_each_unequal_lines_alignment_both_scalar
                 ),
                 (3, paragraph.text_input(3), NodeInputOf::non_box()),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(40.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             NodeInputOf {
                 text_align: TextAlign::LegacyCenter,
@@ -1646,7 +1623,7 @@ fn fri06_c03_control_visible_break_uses_each_unequal_lines_alignment_both_scalar
                 &batch,
                 1,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineText)
+                readback::Kind::NonBox(NonBoxKind::InlineText)
             )
             .location
             .x,
@@ -1657,7 +1634,7 @@ fn fri06_c03_control_visible_break_uses_each_unequal_lines_alignment_both_scalar
                 &batch,
                 2,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                readback::Kind::NonBox(NonBoxKind::LineBreak)
             )
             .location
             .x,
@@ -1668,7 +1645,7 @@ fn fri06_c03_control_visible_break_uses_each_unequal_lines_alignment_both_scalar
                 &batch,
                 3,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineText)
+                readback::Kind::NonBox(NonBoxKind::InlineText)
             )
             .location
             .x,
@@ -1707,7 +1684,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
             (node, LayoutInputOf::box_input(style.clone()), style)
         };
         let metrics = InlineMetricsOf::from_ascent_descent(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(8.0),
             S::from_f64(2.0),
         )
@@ -1737,7 +1714,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                         InlineBoundaryInputOf::contribution(
                             InlineBoundaryKind::End,
                             metrics,
-                            crate::InlineBoundaryEdgeOf::ZERO,
+                            InlineBoundaryEdgeOf::ZERO,
                         )
                         .unwrap(),
                     ),
@@ -1758,7 +1735,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                 &mixed,
                 4,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             )
             .location
             .x,
@@ -1769,7 +1746,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                 &mixed,
                 4,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             )
             .size,
             Size::ZERO
@@ -1804,7 +1781,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                         InlineBoundaryInputOf::contribution(
                             InlineBoundaryKind::End,
                             metrics,
-                            crate::InlineBoundaryEdgeOf::ZERO,
+                            InlineBoundaryEdgeOf::ZERO,
                         )
                         .unwrap(),
                     ),
@@ -1822,7 +1799,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                 &right,
                 4,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             )
             .location
             .x,
@@ -1854,7 +1831,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                         InlineBoundaryInputOf::contribution(
                             InlineBoundaryKind::End,
                             metrics,
-                            crate::InlineBoundaryEdgeOf::ZERO,
+                            InlineBoundaryEdgeOf::ZERO,
                         )
                         .unwrap(),
                     ),
@@ -1875,7 +1852,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                 &opposing,
                 5,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             )
             .location
             .x,
@@ -1915,7 +1892,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                     LayoutInputOf::line_break(
                         LineBreakInputOf::new().with_metrics(
                             InlineMetricsOf::from_line_height_and_baseline(
-                                crate::InlineBaselineContext::Physical,
+                                InlineBaselineContext::Physical,
                                 S::from_f64(20.0),
                                 S::from_f64(15.0),
                             )
@@ -2020,7 +1997,7 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
                 &tree,
                 0,
                 vec![paragraph.binding(2)],
-                crate::WrappingInput {
+                WrappingInput {
                     native_inline_boxes: Vec::new(),
                     gaps: Vec::new(),
                     scopes: Vec::new(),
@@ -2036,34 +2013,34 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     Size::new(
                         Some(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                                 .expect("declared fixture extent is finite and nonnegative"),
                         ),
                         Some(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(80.0))
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(80.0))
                                 .expect("declared fixture extent is finite and nonnegative"),
                         ),
                     ),
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Unknown,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                     ),
                 )
                 .request(Size::new(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                                 .expect("fixture physical extent is finite and nonnegative"),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(80.0))
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(80.0))
                                 .expect("fixture physical extent is finite and nonnegative"),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                 )),
             )
@@ -2078,7 +2055,7 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
                     &batch,
                     3,
                     Phase::Final,
-                    readback::Kind::NonBox(crate::NonBoxKind::InlineText)
+                    readback::Kind::NonBox(NonBoxKind::InlineText)
                 )
                 .source_index,
                 SourceIndex::ZERO
@@ -2087,7 +2064,7 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
             let fragments = batch
                 .final_inline_fragments()
                 .iter()
-                .filter(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(3))
+                .filter(|entry| entry.owner() == &InlineFragmentOwner::Node(3))
                 .map(|entry| entry.fragment())
                 .collect::<Vec<_>>();
             let ranges = fragments
@@ -2196,7 +2173,7 @@ fn fri06_c04_line_band_nested_local_float_keeps_combined_ledger_order_both_scala
             &tree,
             0,
             vec![paragraph.binding(3)],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -2212,34 +2189,34 @@ fn fri06_c04_line_band_nested_local_float_keeps_combined_ledger_order_both_scala
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(80.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(80.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             )
             .request(Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                             .expect("fixture physical extent is finite and nonnegative"),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(80.0))
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(80.0))
                             .expect("fixture physical extent is finite and nonnegative"),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
             )),
         )
@@ -2262,7 +2239,7 @@ fn fri06_c04_line_band_nested_local_float_keeps_combined_ledger_order_both_scala
                 &batch,
                 5,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineText)
+                readback::Kind::NonBox(NonBoxKind::InlineText)
             )
             .source_index,
             SourceIndex::new(1)
@@ -2493,7 +2470,7 @@ fn fri06_c04_bfc_role_exact_positive_and_negative_matrix_both_scalars() {
                     none,
                     S::ZERO,
                     S::ZERO,
-                    readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+                    readback::Kind::NonBox(NonBoxKind::Hidden),
                 ),
             ] {
                 let batch = fri06_c04_bfc_batch(
@@ -2772,31 +2749,28 @@ fn fri06_c04_float_size_auto_block_encloses_inset_float_mixed_and_nested_both_sc
                     FlowAxes::new(root_style.writing_mode, root_style.direction).physical_size(
                         LogicalSizeOf::new(
                             Some(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(80.0))
+                                crate::value::NonNegativeFiniteOf::new(S::from_f64(80.0))
                                     .expect("declared fixture extent is finite and nonnegative"),
                             ),
                             None,
                         ),
                     ),
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Unknown,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                     ),
                 ),
                 root_style.clone(),
                 LogicalSizeOf::new(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(80.0))
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(80.0))
                                 .expect("fixture physical extent is finite and nonnegative"),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::Normal,
-                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
                 ),
                 vec![1],
                 vec![(
@@ -2832,31 +2806,28 @@ fn fri06_c04_float_size_auto_block_encloses_inset_float_mixed_and_nested_both_sc
                     FlowAxes::new(root_style.writing_mode, root_style.direction).physical_size(
                         LogicalSizeOf::new(
                             Some(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(80.0))
+                                crate::value::NonNegativeFiniteOf::new(S::from_f64(80.0))
                                     .expect("declared fixture extent is finite and nonnegative"),
                             ),
                             None,
                         ),
                     ),
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Unknown,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                     ),
                 ),
                 root_style,
                 LogicalSizeOf::new(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(80.0))
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(80.0))
                                 .expect("fixture physical extent is finite and nonnegative"),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::Normal,
-                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
                 ),
                 vec![1, 2],
                 vec![
@@ -2921,31 +2892,28 @@ fn fri06_c04_float_size_auto_block_encloses_inset_float_mixed_and_nested_both_sc
                 FlowAxes::new(root_style.writing_mode, root_style.direction).physical_size(
                     LogicalSizeOf::new(
                         Some(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(80.0))
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(80.0))
                                 .expect("declared fixture extent is finite and nonnegative"),
                         ),
                         None,
                     ),
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             root_style,
             LogicalSizeOf::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(80.0))
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(80.0))
                             .expect("fixture physical extent is finite and nonnegative"),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
             ),
             vec![1, 3],
             vec![
@@ -2979,7 +2947,7 @@ fn fri06_c04_float_size_auto_block_encloses_inset_float_mixed_and_nested_both_sc
                 &nested,
                 3,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineText)
+                readback::Kind::NonBox(NonBoxKind::InlineText)
             )
             .location,
             Point::new(S::ZERO, S::from_f64(21.0))
@@ -3033,36 +3001,36 @@ fn fri06_c04_float_scroll_signed_fractional_geometry_and_source_order_both_scala
                 FlowAxes::new(root_style.writing_mode, root_style.direction).physical_size(
                     LogicalSizeOf::new(
                         Some(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(20.0))
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(20.0))
                                 .expect("declared fixture extent is finite and nonnegative"),
                         ),
                         Some(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(8.0))
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(8.0))
                                 .expect("declared fixture extent is finite and nonnegative"),
                         ),
                     ),
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             root_style,
             LogicalSizeOf::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(20.0))
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(20.0))
                             .expect("fixture physical extent is finite and nonnegative"),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(8.0))
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(8.0))
                             .expect("fixture physical extent is finite and nonnegative"),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
             ),
             vec![1, 2],
@@ -3228,29 +3196,26 @@ fn prepared_text_atomic_source_gaps_and_repeat_keep_exact_occurrences_both_scala
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 None,
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
         ));
         let run = || {
             prepared_tree_batch(
@@ -3299,18 +3264,18 @@ fn prepared_text_atomic_source_gaps_and_repeat_keep_exact_occurrences_both_scala
                 &one,
                 2,
                 Phase::Final,
-                readback::Kind::NonBox(crate::NonBoxKind::Hidden)
+                readback::Kind::NonBox(NonBoxKind::Hidden)
             )
             .size,
             Size::ZERO
         );
         assert_eq!(fri06_c02_final_node(&one, 3).location.x, S::from_f64(12.0));
         for (node, slot, kind) in [
-            (2, 1, readback::Kind::NonBox(crate::NonBoxKind::Hidden)),
+            (2, 1, readback::Kind::NonBox(NonBoxKind::Hidden)),
             (3, 2, readback::Kind::SingleBox),
-            (5, 4, readback::Kind::NonBox(crate::NonBoxKind::InlineText)),
+            (5, 4, readback::Kind::NonBox(NonBoxKind::InlineText)),
             (6, 5, readback::Kind::SingleBox),
-            (7, 6, readback::Kind::NonBox(crate::NonBoxKind::InlineText)),
+            (7, 6, readback::Kind::NonBox(NonBoxKind::InlineText)),
         ] {
             assert_eq!(
                 readback::observe(&one, node, Phase::Final, kind).source_index,
@@ -3355,15 +3320,15 @@ fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(30.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(30.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     None,
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             &allowed,
@@ -3381,12 +3346,12 @@ fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
                 ),
                 (4, allowed.text_input(4), NodeInputOf::non_box()),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(30.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(30.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             NodeInputOf::default(),
         );
@@ -3429,15 +3394,15 @@ fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     None,
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             &mandatory,
@@ -3455,12 +3420,12 @@ fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
                 ),
                 (3, mandatory.text_input(3), NodeInputOf::non_box()),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             NodeInputOf::default(),
         );
@@ -3487,15 +3452,15 @@ fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(20.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(20.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     None,
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             &overwide,
@@ -3512,12 +3477,12 @@ fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
                 ),
                 (2, overwide.text_input(2), NodeInputOf::non_box()),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(20.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             NodeInputOf::default(),
         );
@@ -3542,15 +3507,15 @@ fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
             style,
             surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
-        let run = |available: crate::AxisSizingRequestOf<S>| {
+        let run = |available: AxisSizingRequestOf<S>| {
             prepared_mixed_batch(
                 crate::test_support::requests::NativeRootFrameOf::new(
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     Size::NONE,
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Unknown,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                     ),
                 ),
                 &intrinsic,
@@ -3574,9 +3539,9 @@ fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
         };
         assert_eq!(
             fri06_c02_final_node(
-                &run(crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MinContent
+                &run(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MinContent
                 )),
                 0
             )
@@ -3586,9 +3551,9 @@ fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
         );
         assert_eq!(
             fri06_c02_final_node(
-                &run(crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MaxContent
+                &run(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MaxContent
                 )),
                 0
             )
@@ -3647,15 +3612,15 @@ fn prepared_mixed_bidi_uses_original_directional_source_and_resets_each_line_bot
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(25.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(25.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     None,
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             &paragraph,
@@ -3675,12 +3640,12 @@ fn prepared_mixed_bidi_uses_original_directional_source_and_resets_each_line_bot
                 ),
                 (6, paragraph.text_input(6), NodeInputOf::non_box()),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(25.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(25.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             NodeInputOf::default(),
         );
@@ -3726,7 +3691,7 @@ fn prepared_mixed_bidi_uses_original_directional_source_and_resets_each_line_bot
                 .final_inline_fragments()
                 .iter()
                 .find(|entry| {
-                    entry.owner() == &crate::InlineFragmentOwner::Node(node)
+                    entry.owner() == &InlineFragmentOwner::Node(node)
                         && entry.fragment().finalized_fragment().view().local_range() == Some(local)
                 })
                 .unwrap()
@@ -3873,12 +3838,12 @@ fn numeric_rtl_visual_placement_and_internal_supplied_edge_semantics_all_flows_b
                     (15.0, 1, InlineBreakOpportunity::Prohibited),
                     (20.0, 1, InlineBreakOpportunity::Prohibited),
                 ],
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                             .expect("fixture physical extent is finite and nonnegative"),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 writing_mode,
                 Direction::Rtl,
@@ -3986,25 +3951,25 @@ fn fri06_c08_float_line_control_capture<S: LayoutScalar>(
                 FlowAxes::new(root.writing_mode, root.direction),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(180.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(180.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     None,
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             paragraph,
             children,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(180.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(180.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             root,
         )
@@ -4014,24 +3979,24 @@ fn fri06_c08_float_line_control_capture<S: LayoutScalar>(
                 FlowAxes::new(root.writing_mode, root.direction),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(180.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(180.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     None,
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             children,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(180.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(180.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             root,
         )
@@ -4093,12 +4058,12 @@ fn fri06_c08_float_line_continuation_batch<S: LayoutScalar>(
     let strut = InlineBoundaryInputOf::contribution(
         InlineBoundaryKind::Start,
         InlineMetricsOf::from_line_height_and_baseline(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(line_height),
             S::from_f64(12.0),
         )
         .unwrap(),
-        crate::InlineBoundaryEdgeOf::ZERO,
+        InlineBoundaryEdgeOf::ZERO,
     )
     .unwrap();
     let mut children = vec![
@@ -4161,15 +4126,15 @@ fn fri06_c08_float_line_actual_bidi_continuation_uses_visual_placement() {
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Rtl),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(180.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(180.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     None,
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             &paragraph,
@@ -4179,12 +4144,12 @@ fn fri06_c08_float_line_actual_bidi_continuation_uses_visual_placement() {
                 (3, paragraph.text_input(3), NodeInputOf::non_box()),
                 (4, LayoutInputOf::box_input(atomic.clone()), atomic),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(180.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(180.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             NodeInputOf {
                 display: Display::Block,
@@ -4296,7 +4261,7 @@ fn fri06_c08_float_line_empty_inline_keeps_integral_float_height_at_62() {
             surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let metrics = InlineMetricsOf::from_ascent_descent(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(7.8),
             S::from_f64(2.3),
         )
@@ -4462,15 +4427,15 @@ fn fri06_c08_recovery_characterization_batch<S: LayoutScalar>(
         crate::test_support::requests::NativeRootFrameOf::new(
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::splat(None),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
-        .request(Size::splat(crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::Normal,
+        .request(Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::Normal,
         ))),
     )
     .unwrap()
@@ -4528,10 +4493,10 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                 crate::test_support::requests::NativeRootFrameOf::new(
                     FlowAxes::new(root.writing_mode, root.direction),
                     Size::new(None, None),
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Unknown,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                     ),
                 ),
                 &paragraph,
@@ -4540,10 +4505,7 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                     (2, LayoutInputOf::box_input(atomic.clone()), atomic),
                     (3, paragraph.text_input(3), NodeInputOf::non_box()),
                 ],
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
                 root,
             );
             assert_eq!(
@@ -4604,7 +4566,7 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                     &batch,
                     node,
                     Phase::Final,
-                    readback::Kind::NonBox(crate::NonBoxKind::InlineText),
+                    readback::Kind::NonBox(NonBoxKind::InlineText),
                 );
                 assert_eq!(output.location.x, S::from_f64(x));
                 assert_eq!(output.size.width, S::from_f64(width));
@@ -4675,7 +4637,7 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                     .with_direction(direction)
                     .with_metrics(
                         InlineMetricsOf::from_line_height_and_baseline(
-                            crate::InlineBaselineContext::Physical,
+                            InlineBaselineContext::Physical,
                             S::from_f64(24.0),
                             S::from_f64(16.8),
                         )
@@ -4739,7 +4701,7 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                     &batch,
                     3,
                     Phase::Unrounded,
-                    readback::Kind::NonBox(crate::NonBoxKind::LineBreak),
+                    readback::Kind::NonBox(NonBoxKind::LineBreak),
                 );
                 assert_eq!(control.size, Size::ZERO);
                 let control_block = axes
@@ -4757,9 +4719,9 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                 let clear_block = batch
                     .node_layout(5)
                     .map(|layout| match layout {
-                        crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-                        crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                        crate::NodeLayoutRefOf::Fragments(_) => {
+                        NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                        NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                        NodeLayoutRefOf::Fragments(_) => {
                             panic!("continuous fixture unexpectedly fragmented")
                         }
                     })
@@ -4877,18 +4839,15 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                     crate::test_support::requests::NativeRootFrameOf::new(
                         FlowAxes::new(WritingMode::HorizontalTb, direction),
                         Size::new(None, None),
-                        crate::OrthogonalFallbackOf::new(
-                            crate::Size::NONE,
-                            crate::NearestScrollportOf::Unknown,
-                            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                        OrthogonalFallbackOf::new(
+                            crate::geometry::Size::NONE,
+                            NearestScrollportOf::Unknown,
+                            crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                         ),
                     ),
                     &paragraph,
                     children,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::Normal,
-                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
                     NodeInputOf {
                         display: Display::Block,
                         direction,
@@ -5071,12 +5030,12 @@ fn supplied_line_bidi_and_actual_atomic_geometry_preserve_nested_levels_and_slot
             [0, 1, 2, 2, 1, 0]
                 .map(|level| (10.0, level, InlineBreakOpportunity::Prohibited))
                 .to_vec(),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             WritingMode::HorizontalTb,
             Direction::Ltr,
@@ -5112,12 +5071,12 @@ fn supplied_line_bidi_and_actual_atomic_geometry_preserve_nested_levels_and_slot
                     )
                 })
                 .collect(),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             WritingMode::HorizontalTb,
             Direction::Ltr,
@@ -5170,28 +5129,28 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr).physical_size(
                     LogicalSizeOf::new(
                         Some(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(20.0))
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(20.0))
                                 .expect("declared fixture extent is finite and nonnegative"),
                         ),
                         None,
                     ),
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             source.clone(),
             ahem_style(5.0, 10.0),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(20.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             TextAlign::Start,
             vec![replacement()],
         )
@@ -5224,28 +5183,28 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr).physical_size(
                     LogicalSizeOf::new(
                         Some(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(20.0))
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(20.0))
                                 .expect("declared fixture extent is finite and nonnegative"),
                         ),
                         None,
                     ),
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             source.clone(),
             ahem_style(5.0, 10.0),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(20.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             TextAlign::Start,
             vec![replacement()],
         )
@@ -5274,28 +5233,28 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr).physical_size(
                     LogicalSizeOf::new(
                         Some(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                                 .expect("declared fixture extent is finite and nonnegative"),
                         ),
                         None,
                     ),
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             source,
             ahem_style(5.0, 10.0),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             TextAlign::Start,
             vec![replacement()],
         )
@@ -5386,28 +5345,28 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr).physical_size(
                     LogicalSizeOf::new(
                         Some(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                                 .expect("declared fixture extent is finite and nonnegative"),
                         ),
                         None,
                     ),
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             Source::new("X\nX\n"),
             ahem_style(10.0, 10.0),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             TextAlign::Start,
             vec![],
         )
@@ -5480,28 +5439,28 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr).physical_size(
                     LogicalSizeOf::new(
                         Some(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(40.0))
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(40.0))
                                 .expect("declared fixture extent is finite and nonnegative"),
                         ),
                         None,
                     ),
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             Source::new("XXXXXX"),
             ahem_style(10.0, 10.0),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(40.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             TextAlign::Start,
             vec![],
         )
@@ -5607,21 +5566,21 @@ fn supplied_line_edge_decisions_retain_every_logical_slot_without_fabricated_geo
 fn prepared_text_intrinsic_uses_actual_selected_replacement_min_and_unselected_max_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let source = Source::new("XXX\u{ad}XXXX");
-        let batch = |available: crate::AxisSizingRequestOf<S>| {
+        let batch = |available: AxisSizingRequestOf<S>| {
             prepared_source_batch(
                 crate::test_support::requests::NativeRootFrameOf::new(
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     Size::NONE,
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Unknown,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                     ),
                 ),
                 source.clone(),
                 ahem_style(5.0, 10.0),
                 available,
-                crate::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 TextAlign::Start,
                 vec![
                     ParagraphReplacement::resolved_native_logical_before(
@@ -5637,13 +5596,13 @@ fn prepared_text_intrinsic_uses_actual_selected_replacement_min_and_unselected_m
             )
             .unwrap()
         };
-        let min = batch(crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
+        let min = batch(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MinContent,
         ));
-        let max = batch(crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
+        let max = batch(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
         ));
         assert_eq!(fri06_c02_final_node(&min, 0).size.width, S::from_f64(20.0));
         assert_eq!(fri06_c02_final_node(&max, 0).size.width, S::from_f64(35.0));
@@ -5667,15 +5626,15 @@ fn fri06_c02_block_text_adjacent_nodes_share_soft_mandatory_and_bidi_lines_both_
             surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight,
         );
         let batch =
-            |paragraph: &PreparedParagraph, direction, available: crate::AxisSizingRequestOf<S>| {
+            |paragraph: &PreparedParagraph, direction, available: AxisSizingRequestOf<S>| {
                 super::fixtures::prepared_mixed_batch(
                     crate::test_support::requests::NativeRootFrameOf::new(
                         FlowAxes::new(WritingMode::HorizontalTb, direction),
                         Size::NONE,
-                        crate::OrthogonalFallbackOf::new(
-                            crate::Size::NONE,
-                            crate::NearestScrollportOf::Unknown,
-                            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                        OrthogonalFallbackOf::new(
+                            crate::geometry::Size::NONE,
+                            NearestScrollportOf::Unknown,
+                            crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                         ),
                     ),
                     paragraph,
@@ -5694,12 +5653,12 @@ fn fri06_c02_block_text_adjacent_nodes_share_soft_mandatory_and_bidi_lines_both_
         let selected = batch(
             &soft,
             Direction::Ltr,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(15.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(15.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         );
         let rows = super::fixtures::origin_fragment_associations(selected.final_inline_fragments());
@@ -5727,12 +5686,12 @@ fn fri06_c02_block_text_adjacent_nodes_share_soft_mandatory_and_bidi_lines_both_
         let selected = batch(
             &bidi,
             Direction::Rtl,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(40.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         );
         let rows = super::fixtures::origin_fragment_associations(selected.final_inline_fragments());
@@ -5760,12 +5719,12 @@ fn fri06_c02_block_text_adjacent_nodes_share_soft_mandatory_and_bidi_lines_both_
         let selected = batch(
             &mandatory,
             Direction::Ltr,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(40.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         );
         let rows = super::fixtures::origin_fragment_associations(selected.final_inline_fragments());
@@ -5805,15 +5764,15 @@ fn fri06_c02_block_text_adjacent_nodes_share_soft_mandatory_and_bidi_lines_both_
                 .unwrap(),
             ],
         );
-        let intrinsic_batch = |available: crate::AxisSizingRequestOf<S>| {
+        let intrinsic_batch = |available: AxisSizingRequestOf<S>| {
             super::fixtures::prepared_mixed_batch(
                 crate::test_support::requests::NativeRootFrameOf::new(
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     Size::NONE,
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Unknown,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                     ),
                 ),
                 &intrinsic,
@@ -5829,13 +5788,13 @@ fn fri06_c02_block_text_adjacent_nodes_share_soft_mandatory_and_bidi_lines_both_
                 },
             )
         };
-        let min = intrinsic_batch(crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
+        let min = intrinsic_batch(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MinContent,
         ));
-        let max = intrinsic_batch(crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
+        let max = intrinsic_batch(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
         ));
         // Three cells plus the selected one-cell hyphen, versus seven cells
         // before the authored forced break. The second hard line is three cells.
@@ -5884,15 +5843,15 @@ fn fri06_c02_scroll_uses_actual_source_and_replacement_fragment_rects_both_scala
                 FlowAxes::new(root.writing_mode, root.direction),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(22.0))
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(22.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     None,
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             &paragraph,
@@ -5900,12 +5859,12 @@ fn fri06_c02_scroll_uses_actual_source_and_replacement_fragment_rects_both_scala
                 (1, paragraph.text_input(1), NodeInputOf::non_box()),
                 (2, paragraph.text_input(2), NodeInputOf::non_box()),
             ],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(22.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(22.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             root,
         );
@@ -5961,19 +5920,19 @@ fn fri06_c02_scroll_uses_actual_source_and_replacement_fragment_rects_both_scala
 
 fn assert_flex_root_percentage_parent_is_separate_from_host_fill<S: LayoutScalar>() {
     let host = Size::new(
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(scalar(70.0))
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(scalar(70.0))
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(scalar(110.0))
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(scalar(110.0))
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
     );
 
@@ -6005,30 +5964,30 @@ fn assert_flex_root_percentage_parent_is_separate_from_host_fill<S: LayoutScalar
                 &tree,
                 0,
                 LayoutRootRequestOf::flex_item(
-                    crate::SizingRequestOf::new(
+                    SizingRequestOf::new(
                         host,
-                        crate::OrthogonalFallbackOf::new(
-                            crate::Size::NONE,
-                            crate::NearestScrollportOf::Unknown,
-                            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                        OrthogonalFallbackOf::new(
+                            crate::geometry::Size::NONE,
+                            NearestScrollportOf::Unknown,
+                            crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                         ),
                     ),
                     FlexItemRootContextOf::new(
                         FlowAxes::new(writing_mode, Direction::Ltr),
                         Size::new(
                             Some(
-                                crate::NonNegativeFiniteOf::new(scalar(130.0))
+                                crate::value::NonNegativeFiniteOf::new(scalar(130.0))
                                     .expect("declared fixture extent is finite and nonnegative"),
                             ),
                             Some(
-                                crate::NonNegativeFiniteOf::new(scalar(viewport_height))
+                                crate::value::NonNegativeFiniteOf::new(scalar(viewport_height))
                                     .expect("declared fixture extent is finite and nonnegative"),
                             ),
                         ),
                         Size::new(
                             None,
                             Some(
-                                crate::NonNegativeFiniteOf::new(scalar(110.0))
+                                crate::value::NonNegativeFiniteOf::new(scalar(110.0))
                                     .expect("declared host allocation is finite and nonnegative"),
                             ),
                         ),
@@ -6099,20 +6058,20 @@ fn assert_leaf_content_overflow_is_invalid_numeric<S: LayoutScalar>() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        crate::SizingRequestOf::new(
+        SizingRequestOf::new(
             size.map(|value| {
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(value)
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(value)
                             .expect("fixture physical extent is finite and nonnegative"),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 )
             }),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         ),
     )
@@ -6155,35 +6114,35 @@ fn scroll_geometry_error_maps_root_block_overflow_through_the_public_front_door(
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(f32::MAX)
+                    crate::value::NonNegativeFiniteOf::new(f32::MAX)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 Some(
-                    crate::NonNegativeFiniteOf::new(1.0)
+                    crate::value::NonNegativeFiniteOf::new(1.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         ),
         &tree,
         Size::new(
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(f32::MAX)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(f32::MAX)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(1.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(1.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         ),
         LayoutErrorSite::Node(0),
@@ -6228,35 +6187,35 @@ fn scroll_geometry_error_maps_non_root_block_overflow_through_the_public_front_d
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(100.0)
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 Some(
-                    crate::NonNegativeFiniteOf::new(1.0)
+                    crate::value::NonNegativeFiniteOf::new(1.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         ),
         &tree,
         Size::new(
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(100.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(1.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(1.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         ),
         LayoutErrorSite::Node(1),
@@ -6267,19 +6226,19 @@ fn scroll_geometry_error_maps_non_root_block_overflow_through_the_public_front_d
 #[test]
 fn scroll_geometry_error_maps_block_inline_float_and_absolute_overflow_to_the_subject() {
     let available = Size::new(
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(100.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(100.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(1.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(1.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
     );
     let variants = [
@@ -6344,18 +6303,18 @@ fn scroll_geometry_error_maps_block_inline_float_and_absolute_overflow_to_the_su
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(100.0)
+                        crate::value::NonNegativeFiniteOf::new(100.0)
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     Some(
-                        crate::NonNegativeFiniteOf::new(1.0)
+                        crate::value::NonNegativeFiniteOf::new(1.0)
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
             &tree,
@@ -6407,34 +6366,34 @@ fn compute_layout_stops_after_first_recursive_child_error() {
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::new(
             Some(
-                crate::NonNegativeFiniteOf::new(100.0)
+                crate::value::NonNegativeFiniteOf::new(100.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
             Some(
-                crate::NonNegativeFiniteOf::new(80.0)
+                crate::value::NonNegativeFiniteOf::new(80.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
         ),
-        crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Unknown,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            NearestScrollportOf::Unknown,
+            crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
         ),
     )
     .request(Size::new(
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(100.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(100.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(80.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(80.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
     ));
 
@@ -6471,34 +6430,34 @@ fn compute_layout_reports_consumed_invalid_numeric_resolution() {
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::new(
             Some(
-                crate::NonNegativeFiniteOf::new(f32::MAX)
+                crate::value::NonNegativeFiniteOf::new(f32::MAX)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
             Some(
-                crate::NonNegativeFiniteOf::new(80.0)
+                crate::value::NonNegativeFiniteOf::new(80.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
         ),
-        crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Unknown,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            NearestScrollportOf::Unknown,
+            crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
         ),
     )
     .request(Size::new(
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(f32::MAX)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(f32::MAX)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(80.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(80.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
     ));
 
@@ -6532,34 +6491,34 @@ fn compute_layout_rejects_overflowing_affine_grid_auto_fit_track() {
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::new(
             Some(
-                crate::NonNegativeFiniteOf::new(f32::MAX)
+                crate::value::NonNegativeFiniteOf::new(f32::MAX)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
             Some(
-                crate::NonNegativeFiniteOf::new(20.0)
+                crate::value::NonNegativeFiniteOf::new(20.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
         ),
-        crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Unknown,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            NearestScrollportOf::Unknown,
+            crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
         ),
     )
     .request(Size::new(
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(f32::MAX)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(f32::MAX)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(20.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(20.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
     ));
 
@@ -6596,34 +6555,34 @@ fn track_sizing_nested_calculation_produces_track_geometry() {
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::new(
             Some(
-                crate::NonNegativeFiniteOf::new(100.0)
+                crate::value::NonNegativeFiniteOf::new(100.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
             Some(
-                crate::NonNegativeFiniteOf::new(20.0)
+                crate::value::NonNegativeFiniteOf::new(20.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
         ),
-        crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Unknown,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            NearestScrollportOf::Unknown,
+            crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
         ),
     )
     .request(Size::new(
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(100.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(100.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(20.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(20.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
     ));
 
@@ -6639,7 +6598,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
     #[derive(Default)]
     struct HiddenTree {
         children: HashMap<u32, Vec<u32>>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
+        layouts: HashMap<u32, crate::output::LayoutOutputEntryOf<u32, DefaultScalar>>,
         caches: HashMap<u32, Cache>,
         inputs: HashMap<u32, LayoutInput>,
         hidden_children: Vec<u32>,
@@ -6668,7 +6627,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
 
     struct HiddenTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
+        layouts: &'input mut HashMap<u32, crate::output::LayoutOutputEntryOf<u32, DefaultScalar>>,
         caches: &'input mut HashMap<u32, Cache>,
         inputs: &'input HashMap<u32, LayoutInput>,
         hidden_children: &'input mut Vec<u32>,
@@ -6712,7 +6671,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
             &mut self,
             _node: Self::Node,
             _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
-        ) -> crate::LayoutResultOf<
+        ) -> crate::error::LayoutResultOf<
             Self::Node,
             crate::grid::GridOverflowObservation<Self::Scalar>,
             Self::Scalar,
@@ -6729,7 +6688,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
                 .unwrap_or_else(|| panic!("line break node {node} has no box NodeInput"))
         }
 
-        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+        fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'input, Self::Scalar> {
             self.inputs[&node].as_view()
         }
 
@@ -6748,7 +6707,10 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
                 .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
         }
 
-        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        fn set_unrounded(
+            &mut self,
+            entry: crate::output::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+        ) {
             self.layouts.insert(entry.node(), entry);
         }
 
@@ -6756,17 +6718,20 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
             &mut self,
             node: Self::Node,
             input: ComputeInput,
-        ) -> crate::LayoutResultOf<Self::Node, crate::ComputeOutputOf<Self::Scalar>, Self::Scalar>
-        {
+        ) -> crate::error::LayoutResultOf<
+            Self::Node,
+            crate::output::ComputeOutputOf<Self::Scalar>,
+            Self::Scalar,
+        > {
             Ok({
                 assert_eq!(
                     input,
-                    ComputeInput::hidden(crate::ContainingLayoutContext::new(
+                    ComputeInput::hidden(crate::output::ContainingLayoutContext::new(
                         crate::geometry::FlowAxes::new(
-                            crate::WritingMode::HorizontalTb,
-                            crate::Direction::Ltr,
+                            crate::node_input::WritingMode::HorizontalTb,
+                            crate::node_input::Direction::Ltr,
                         ),
-                        crate::ParentFormattingContext::NoParent
+                        crate::output::ParentFormattingContext::NoParent
                     ))
                 );
                 let _ = self.node_input(node);
@@ -6780,15 +6745,15 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
         type Node = u32;
         type Scalar = DefaultScalar;
 
-        fn cache_context(&self) -> crate::CacheKeyContext {
-            crate::CacheKeyContext::new()
+        fn cache_context(&self) -> crate::cache::CacheKeyContext {
+            crate::cache::CacheKeyContext::new()
         }
 
         fn cache_get(
             &self,
             node: Self::Node,
             input: &ComputeInput,
-            context: crate::CacheKeyContext,
+            context: crate::cache::CacheKeyContext,
         ) -> crate::engine::contracts::CacheLookupResult<Self::Node, Self::Scalar> {
             Ok(self.caches[&node].get_with_context(input, context))
         }
@@ -6797,9 +6762,9 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
             &mut self,
             node: Self::Node,
             input: &ComputeInput,
-            context: crate::CacheKeyContext,
+            context: crate::cache::CacheKeyContext,
             output: ComputeOutput,
-        ) -> crate::LayoutResultOf<Self::Node, (), Self::Scalar> {
+        ) -> crate::error::LayoutResultOf<Self::Node, (), Self::Scalar> {
             self.caches
                 .get_mut(&node)
                 .unwrap()
@@ -6810,7 +6775,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
         fn cache_clear(
             &mut self,
             node: Self::Node,
-        ) -> crate::LayoutResultOf<Self::Node, (), Self::Scalar> {
+        ) -> crate::error::LayoutResultOf<Self::Node, (), Self::Scalar> {
             self.caches.get_mut(&node).unwrap().clear();
             Ok(())
         }
@@ -6835,12 +6800,12 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
             &mut tree.borrow_compute(),
             1,
             SourceIndex::ZERO,
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             crate::scroll::SettledAutoScrollbarState::INITIAL,
         )
@@ -6850,11 +6815,11 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
     assert_eq!(tree.hidden_children, vec![2]);
     assert_eq!(
         tree.layouts[&1].output(),
-        NodeOutput::with_source_index(crate::SourceIndex::new(0))
+        NodeOutput::with_source_index(crate::output::SourceIndex::new(0))
     );
     assert_eq!(
         tree.layouts[&3].output(),
-        NodeOutput::with_source_index(crate::SourceIndex::new(1))
+        NodeOutput::with_source_index(crate::output::SourceIndex::new(1))
     );
     assert!(tree.caches[&1].is_empty());
     assert!(tree.caches[&3].is_empty());
@@ -6865,7 +6830,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
     #[derive(Default)]
     struct HiddenTree {
         children: HashMap<u32, Vec<u32>>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
+        layouts: HashMap<u32, crate::output::LayoutOutputEntryOf<u32, DefaultScalar>>,
         caches: HashMap<u32, Cache>,
         inputs: HashMap<u32, LayoutInput>,
         hidden_children: Vec<u32>,
@@ -6894,7 +6859,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
 
     struct HiddenTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
+        layouts: &'input mut HashMap<u32, crate::output::LayoutOutputEntryOf<u32, DefaultScalar>>,
         caches: &'input mut HashMap<u32, Cache>,
         inputs: &'input HashMap<u32, LayoutInput>,
         hidden_children: &'input mut Vec<u32>,
@@ -6938,7 +6903,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
             &mut self,
             _node: Self::Node,
             _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
-        ) -> crate::LayoutResultOf<
+        ) -> crate::error::LayoutResultOf<
             Self::Node,
             crate::grid::GridOverflowObservation<Self::Scalar>,
             Self::Scalar,
@@ -6955,7 +6920,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
                 .unwrap_or_else(|| panic!("inline boundary node {node} has no box NodeInput"))
         }
 
-        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+        fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'input, Self::Scalar> {
             self.inputs[&node].as_view()
         }
 
@@ -6974,7 +6939,10 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
                 .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
         }
 
-        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        fn set_unrounded(
+            &mut self,
+            entry: crate::output::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+        ) {
             self.layouts.insert(entry.node(), entry);
         }
 
@@ -6982,17 +6950,20 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
             &mut self,
             node: Self::Node,
             input: ComputeInput,
-        ) -> crate::LayoutResultOf<Self::Node, crate::ComputeOutputOf<Self::Scalar>, Self::Scalar>
-        {
+        ) -> crate::error::LayoutResultOf<
+            Self::Node,
+            crate::output::ComputeOutputOf<Self::Scalar>,
+            Self::Scalar,
+        > {
             Ok({
                 assert_eq!(
                     input,
-                    ComputeInput::hidden(crate::ContainingLayoutContext::new(
+                    ComputeInput::hidden(crate::output::ContainingLayoutContext::new(
                         crate::geometry::FlowAxes::new(
-                            crate::WritingMode::HorizontalTb,
-                            crate::Direction::Ltr,
+                            crate::node_input::WritingMode::HorizontalTb,
+                            crate::node_input::Direction::Ltr,
                         ),
-                        crate::ParentFormattingContext::NoParent
+                        crate::output::ParentFormattingContext::NoParent
                     ))
                 );
                 let _ = self.node_input(node);
@@ -7006,15 +6977,15 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
         type Node = u32;
         type Scalar = DefaultScalar;
 
-        fn cache_context(&self) -> crate::CacheKeyContext {
-            crate::CacheKeyContext::new()
+        fn cache_context(&self) -> crate::cache::CacheKeyContext {
+            crate::cache::CacheKeyContext::new()
         }
 
         fn cache_get(
             &self,
             node: Self::Node,
             input: &ComputeInput,
-            context: crate::CacheKeyContext,
+            context: crate::cache::CacheKeyContext,
         ) -> crate::engine::contracts::CacheLookupResult<Self::Node, Self::Scalar> {
             Ok(self.caches[&node].get_with_context(input, context))
         }
@@ -7023,9 +6994,9 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
             &mut self,
             node: Self::Node,
             input: &ComputeInput,
-            context: crate::CacheKeyContext,
+            context: crate::cache::CacheKeyContext,
             output: ComputeOutput,
-        ) -> crate::LayoutResultOf<Self::Node, (), Self::Scalar> {
+        ) -> crate::error::LayoutResultOf<Self::Node, (), Self::Scalar> {
             self.caches
                 .get_mut(&node)
                 .unwrap()
@@ -7036,18 +7007,15 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
         fn cache_clear(
             &mut self,
             node: Self::Node,
-        ) -> crate::LayoutResultOf<Self::Node, (), Self::Scalar> {
+        ) -> crate::error::LayoutResultOf<Self::Node, (), Self::Scalar> {
             self.caches.get_mut(&node).unwrap().clear();
             Ok(())
         }
     }
 
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        16.0,
-        12.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 16.0, 12.0)
+            .unwrap();
     let mut tree = HiddenTree::default();
     tree.children.insert(1, vec![2, 3]);
     tree.children.insert(2, vec![]);
@@ -7062,7 +7030,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
             InlineBoundaryInput::contribution(
                 InlineBoundaryKind::Start,
                 metrics,
-                crate::InlineBoundaryEdgeOf::ZERO,
+                InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap(),
         ),
@@ -7076,12 +7044,12 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
             &mut tree.borrow_compute(),
             1,
             SourceIndex::ZERO,
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             crate::scroll::SettledAutoScrollbarState::INITIAL,
         )
@@ -7091,11 +7059,11 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
     assert_eq!(tree.hidden_children, vec![2]);
     assert_eq!(
         tree.layouts[&1].output(),
-        NodeOutput::with_source_index(crate::SourceIndex::new(0))
+        NodeOutput::with_source_index(crate::output::SourceIndex::new(0))
     );
     assert_eq!(
         tree.layouts[&3].output(),
-        NodeOutput::with_source_index(crate::SourceIndex::new(1))
+        NodeOutput::with_source_index(crate::output::SourceIndex::new(1))
     );
     assert!(tree.caches[&1].is_empty());
     assert!(tree.caches[&3].is_empty());
@@ -7119,34 +7087,34 @@ fn f64_tree_can_run_root_layout_smoke_test() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(100.0)
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 Some(
-                    crate::NonNegativeFiniteOf::new(50.0)
+                    crate::value::NonNegativeFiniteOf::new(50.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(100.0)
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(50.0)
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(50.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         )),
     )
@@ -7167,7 +7135,7 @@ fn root_layout_emits_scroll_geometry_for_scroll_overflow() {
             1,
             NodeInput {
                 overflow: computed_overflow(Overflow::Scroll, Overflow::Scroll),
-                scrollbar_width: crate::ScrollbarWidthOf::try_new(10.0).unwrap(),
+                scrollbar_width: crate::node_input::ScrollbarWidthOf::try_new(10.0).unwrap(),
                 size: Size::new(PreferredSize::px(100.0), PreferredSize::px(40.0)),
                 ..NodeInput::default()
             },
@@ -7184,34 +7152,34 @@ fn root_layout_emits_scroll_geometry_for_scroll_overflow() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(100.0)
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 Some(
-                    crate::NonNegativeFiniteOf::new(40.0)
+                    crate::value::NonNegativeFiniteOf::new(40.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(100.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(40.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(40.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         )),
     )
@@ -7255,34 +7223,34 @@ fn root_layout_emits_visible_scroll_geometry_without_range() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(100.0)
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 Some(
-                    crate::NonNegativeFiniteOf::new(40.0)
+                    crate::value::NonNegativeFiniteOf::new(40.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(100.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(40.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(40.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         )),
     )
@@ -7320,34 +7288,34 @@ fn root_layout_emits_clip_geometry_without_range() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(100.0)
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 Some(
-                    crate::NonNegativeFiniteOf::new(40.0)
+                    crate::value::NonNegativeFiniteOf::new(40.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(100.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(40.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(40.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         )),
     )
@@ -7365,7 +7333,7 @@ fn root_scroll_geometry_range_accounts_for_padding_border_and_gutter() {
             1,
             NodeInput {
                 overflow: computed_overflow(Overflow::Hidden, Overflow::Scroll),
-                scrollbar_width: crate::ScrollbarWidthOf::try_new(10.0).unwrap(),
+                scrollbar_width: crate::node_input::ScrollbarWidthOf::try_new(10.0).unwrap(),
                 size: Size::new(PreferredSize::px(100.0), PreferredSize::px(40.0)),
                 padding: Edges::all(Length::px(2.0)),
                 border: Edges::all(Length::px(3.0)),
@@ -7384,34 +7352,34 @@ fn root_scroll_geometry_range_accounts_for_padding_border_and_gutter() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(100.0)
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 Some(
-                    crate::NonNegativeFiniteOf::new(40.0)
+                    crate::value::NonNegativeFiniteOf::new(40.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(100.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(40.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(40.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         )),
     )
@@ -7469,34 +7437,34 @@ fn root_scroll_geometry_preserves_child_origin_bearing_scrollable_overflow() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(100.0)
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 Some(
-                    crate::NonNegativeFiniteOf::new(40.0)
+                    crate::value::NonNegativeFiniteOf::new(40.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(100.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(40.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(40.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         )),
     )
@@ -7515,7 +7483,7 @@ fn root_layout_stores_child_output_as_root_layout() {
             NodeInput {
                 direction: Direction::Rtl,
                 overflow: computed_overflow(Overflow::Scroll, Overflow::Scroll),
-                scrollbar_width: crate::ScrollbarWidthOf::try_new(13.0).unwrap(),
+                scrollbar_width: crate::node_input::ScrollbarWidthOf::try_new(13.0).unwrap(),
                 ..NodeInput::default()
             },
         )
@@ -7531,34 +7499,34 @@ fn root_layout_stores_child_output_as_root_layout() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Rtl),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(200.0)
+                    crate::value::NonNegativeFiniteOf::new(200.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 Some(
-                    crate::NonNegativeFiniteOf::new(100.0)
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(200.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(200.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(100.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         )),
     )
@@ -7572,40 +7540,40 @@ fn root_layout_stores_child_output_as_root_layout() {
             RequestedAxis::Both,
             Size::new(Some(200.0), None),
             Size::new(Some(200.0), Some(100.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Rtl
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Rtl
                 ),
-                crate::ParentFormattingContext::NoParent
+                crate::output::ParentFormattingContext::NoParent
             ),
-            crate::SizingRequestOf::new(
+            SizingRequestOf::new(
                 Size::new(
-                    crate::AxisSizingRequest::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(200.0)
+                    AxisSizingRequest::new(
+                        AvailableSpaceOf::Definite(
+                            crate::value::NonNegativeFiniteOf::new(200.0)
                                 .expect("fixture physical extent is finite and nonnegative")
                         ),
-                        crate::SizingOperation::Normal
+                        SizingOperation::Normal
                     ),
-                    crate::AxisSizingRequest::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(100.0)
+                    AxisSizingRequest::new(
+                        AvailableSpaceOf::Definite(
+                            crate::value::NonNegativeFiniteOf::new(100.0)
                                 .expect("fixture physical extent is finite and nonnegative")
                         ),
-                        crate::SizingOperation::Normal
+                        SizingOperation::Normal
                     )
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown)
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown)
                 )
             ),
         )]
     );
     let layout = tree.layout(1).expect("root layout should be stored");
-    assert_eq!(layout.location, crate::Point::new(120.0, 0.0));
+    assert_eq!(layout.location, crate::geometry::Point::new(120.0, 0.0));
     assert_eq!(layout.size, Size::new(80.0, 20.0));
     assert_eq!(layout.content_size, Size::new(80.0, 20.0));
     assert_eq!(layout.scrollbar_size(), Size::new(13.0, 13.0));
@@ -7633,34 +7601,34 @@ fn inline_level_root_keeps_intrinsic_width_under_definite_viewport() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(200.0)
+                    crate::value::NonNegativeFiniteOf::new(200.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 Some(
-                    crate::NonNegativeFiniteOf::new(100.0)
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(200.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(200.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(100.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         )),
     )
@@ -7707,29 +7675,26 @@ fn max_width_root_uses_clamped_available_width_under_definite_viewport() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(800.0)
+                    crate::value::NonNegativeFiniteOf::new(800.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 None,
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(800.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(800.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
-            ),
+            AxisSizingRequest::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
         )),
     )
     .unwrap();
@@ -7783,29 +7748,26 @@ fn block_root_with_max_width_uses_clamped_available_outer_width() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(800.0)
+                    crate::value::NonNegativeFiniteOf::new(800.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 None,
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(800.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(800.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
-            ),
+            AxisSizingRequest::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
         )),
     )
     .unwrap();
@@ -7835,18 +7797,18 @@ fn fri05_c03_root_geometry_fallback_roots_seed_their_own_padding_box() {
         padding: Edges::all(Length::px(10.0)),
         ..NodeInput::default()
     };
-    let available = Size::splat(crate::AxisSizingRequest::new(
-        crate::AvailableSpaceOf::Definite(
-            crate::NonNegativeFiniteOf::new(100.0)
+    let available = Size::splat(AxisSizingRequest::new(
+        AvailableSpaceOf::Definite(
+            crate::value::NonNegativeFiniteOf::new(100.0)
                 .expect("fixture physical extent is finite and nonnegative"),
         ),
-        crate::SizingOperation::Normal,
+        SizingOperation::Normal,
     ));
     let parent_flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let flex_context = FlexItemRootContext::new(
         parent_flow_axes,
         Size::splat(Some(
-            crate::NonNegativeFiniteOf::new(100.0)
+            crate::value::NonNegativeFiniteOf::new(100.0)
                 .expect("declared fixture extent is finite and nonnegative"),
         )),
         Size::NONE,
@@ -7857,13 +7819,13 @@ fn fri05_c03_root_geometry_fallback_roots_seed_their_own_padding_box() {
             crate::test_support::requests::NativeRootFrameOf::new(
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 Size::splat(Some(
-                    crate::NonNegativeFiniteOf::new(100.0)
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 )),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             )
             .request(available),
@@ -7871,12 +7833,12 @@ fn fri05_c03_root_geometry_fallback_roots_seed_their_own_padding_box() {
         (
             "flex-item",
             LayoutRootRequest::flex_item(
-                crate::SizingRequestOf::new(
+                SizingRequestOf::new(
                     available,
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Unknown,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
                     ),
                 ),
                 flex_context,
@@ -8004,34 +7966,34 @@ fn fri05_c03_root_geometry_viewport_flex_rebuilds_complete_source_and_target() {
             flow_axes,
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(100.0)
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 Some(
-                    crate::NonNegativeFiniteOf::new(80.0)
+                    crate::value::NonNegativeFiniteOf::new(80.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(100.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(100.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(80.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(80.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         )),
     )
@@ -8079,21 +8041,21 @@ fn fri05_c04_flex_auto_independent_inner_settlement_keys_grandchildren_by_inner_
     let request = crate::test_support::requests::NativeRootFrameOf::new(
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::splat(Some(
-            crate::NonNegativeFiniteOf::new(100.0)
+            crate::value::NonNegativeFiniteOf::new(100.0)
                 .expect("declared fixture extent is finite and nonnegative"),
         )),
-        crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Unknown,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            NearestScrollportOf::Unknown,
+            crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
         ),
     )
-    .request(Size::splat(crate::AxisSizingRequest::new(
-        crate::AvailableSpaceOf::Definite(
-            crate::NonNegativeFiniteOf::new(100.0)
+    .request(Size::splat(AxisSizingRequest::new(
+        AvailableSpaceOf::Definite(
+            crate::value::NonNegativeFiniteOf::new(100.0)
                 .expect("fixture physical extent is finite and nonnegative"),
         ),
-        crate::SizingOperation::Normal,
+        SizingOperation::Normal,
     )));
     let batch = compute_layout(&tree, 0, request).expect("independent inner auto layout succeeds");
     assert_eq!(
@@ -8150,34 +8112,34 @@ fn fri05_c03_block_reservation_root_preserves_hidden_stable_both_edges() {
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::new(
             Some(
-                crate::NonNegativeFiniteOf::new(100.0)
+                crate::value::NonNegativeFiniteOf::new(100.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
             Some(
-                crate::NonNegativeFiniteOf::new(80.0)
+                crate::value::NonNegativeFiniteOf::new(80.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
         ),
-        crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Unknown,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            NearestScrollportOf::Unknown,
+            crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
         ),
     )
     .request(Size::new(
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(100.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(100.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(80.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(80.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
     ));
     let batch = compute_layout(&tree, 0, request).expect("stable block root succeeds");
@@ -8219,21 +8181,21 @@ fn fri05_c03_block_auto_root_keys_each_pass_and_publishes_only_stable_nodes() {
     let request = crate::test_support::requests::NativeRootFrameOf::new(
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::splat(Some(
-            crate::NonNegativeFiniteOf::new(100.0)
+            crate::value::NonNegativeFiniteOf::new(100.0)
                 .expect("declared fixture extent is finite and nonnegative"),
         )),
-        crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Unknown,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            NearestScrollportOf::Unknown,
+            crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
         ),
     )
-    .request(Size::splat(crate::AxisSizingRequest::new(
-        crate::AvailableSpaceOf::Definite(
-            crate::NonNegativeFiniteOf::new(100.0)
+    .request(Size::splat(AxisSizingRequest::new(
+        AvailableSpaceOf::Definite(
+            crate::value::NonNegativeFiniteOf::new(100.0)
                 .expect("fixture physical extent is finite and nonnegative"),
         ),
-        crate::SizingOperation::Normal,
+        SizingOperation::Normal,
     )));
     let batch = compute_layout(&tree, 0, request).expect("auto block root succeeds");
 
@@ -8345,21 +8307,21 @@ fn fri05_c03_block_auto_root_stable_reservations_stage_only_geometry_changes() {
         let request = crate::test_support::requests::NativeRootFrameOf::new(
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::splat(Some(
-                crate::NonNegativeFiniteOf::new(100.0)
+                crate::value::NonNegativeFiniteOf::new(100.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             )),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
-        .request(Size::splat(crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(100.0)
+        .request(Size::splat(AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(100.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         )));
         let batch = compute_layout(&tree, 0, request).expect("stable auto block root succeeds");
 
@@ -8420,34 +8382,34 @@ fn fri05_c03_block_tiny_root_keeps_ordered_zero_scrollport_geometry() {
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::new(
             Some(
-                crate::NonNegativeFiniteOf::new(2.0)
+                crate::value::NonNegativeFiniteOf::new(2.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
             Some(
-                crate::NonNegativeFiniteOf::new(20.0)
+                crate::value::NonNegativeFiniteOf::new(20.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
         ),
-        crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Unknown,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            NearestScrollportOf::Unknown,
+            crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
         ),
     )
     .request(Size::new(
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(2.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(2.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(20.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(20.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
     ));
     let batch = compute_layout(&tree, 0, request).expect("tiny block root remains supported");
@@ -8493,34 +8455,34 @@ fn fri05_c03_block_tiny_root_available_below_raw_edges_avoids_false_auto_settlem
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::new(
             Some(
-                crate::NonNegativeFiniteOf::new(100.0)
+                crate::value::NonNegativeFiniteOf::new(100.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
             Some(
-                crate::NonNegativeFiniteOf::new(12.0)
+                crate::value::NonNegativeFiniteOf::new(12.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
         ),
-        crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Unknown,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            NearestScrollportOf::Unknown,
+            crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
         ),
     )
     .request(Size::new(
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(100.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(100.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(12.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(12.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
     ));
     let batch = compute_layout(&tree, 0, request)
@@ -8532,12 +8494,12 @@ fn fri05_c03_block_tiny_root_available_below_raw_edges_avoids_false_auto_settlem
     assert_eq!(fri05_c03_block_root_state(&cache_inputs[0]), (false, false));
     assert_eq!(
         cache_inputs[0].sizing_request().axes().width,
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(100.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(100.0)
                     .expect("fixture physical extent is finite and nonnegative")
             ),
-            crate::SizingOperation::Normal
+            SizingOperation::Normal
         )
     );
     assert_eq!(
@@ -8604,34 +8566,34 @@ fn fri05_c04_flex_contribution_root_content_size_unions_anchor_and_overflow_per_
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(10.0)
+                    crate::value::NonNegativeFiniteOf::new(10.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 Some(
-                    crate::NonNegativeFiniteOf::new(8.0)
+                    crate::value::NonNegativeFiniteOf::new(8.0)
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(10.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(10.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(8.0)
+            AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(8.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         )),
     )

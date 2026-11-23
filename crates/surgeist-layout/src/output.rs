@@ -1,10 +1,19 @@
-use super::{
-    AvailableSpaceOf, AxisSizingRequestOf, CacheKeyContext, DefaultScalar, Edges, LayoutScalar,
-    NonNegativeFiniteOf, NonNegativeFiniteScalarErrorOf, PhysicalAxis, Point, ScrollGeometryOf,
-    ScrollRectOf, Size, SizingOperation, SizingRequestOf,
-};
 use crate::geometry::{FlowAxes, PhysicalSide};
 use crate::scroll::SettledAutoScrollbarState;
+use crate::{
+    block_fragmentation::{
+        FragmentOutputOf, LayoutFragmentId, LayoutFragmentainerOutputOf, LayoutHandleError,
+    },
+    cache::CacheKeyContext,
+    geometry::{Edges, PhysicalAxis, Point, Size},
+    node_input::{Direction, WritingMode},
+    scalar::{DefaultScalar, LayoutScalar},
+    scroll::{ScrollGeometryOf, ScrollRectOf},
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, FiniteScalarErrorOf, NonNegativeFiniteOf,
+        NonNegativeFiniteScalarErrorOf, OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+    },
+};
 use surgeist_text::font::FontBaseline;
 
 /// The resolved formatting algorithm of the generated parent containing a box.
@@ -124,8 +133,8 @@ pub(crate) enum NamedBaselineDemand {
 impl NamedBaselineDemand {
     pub(crate) fn for_source(
         name: FontBaseline,
-        source: crate::BaselineSource,
-        display: crate::Display,
+        source: crate::node_input::BaselineSource,
+        display: crate::node_input::Display,
     ) -> Self {
         Self::Fact {
             name,
@@ -333,10 +342,10 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
                     AvailableSpaceOf::Indefinite,
                     SizingOperation::Normal,
                 )),
-                crate::OrthogonalFallbackOf::new(
+                OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    crate::value::NearestScrollportOf::Unknown,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
         )
@@ -432,7 +441,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
     pub(crate) fn with_fragment_allocation(
         mut self,
         known: Size<Option<S>>,
-        block_axis: crate::PhysicalAxis,
+        block_axis: crate::geometry::PhysicalAxis,
     ) -> Self {
         self.known.width = known.width.or(self.known.width);
         self.known.height = known.height.or(self.known.height);
@@ -618,8 +627,8 @@ impl<S: LayoutScalar> FlexItemRootContextOf<S> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BlockFlowRootContextOf<S: LayoutScalar = DefaultScalar> {
     parent_inline_extent: NonNegativeFiniteOf<S>,
-    parent_direction: crate::Direction,
-    orthogonal_fallback: crate::OrthogonalFallbackOf<S>,
+    parent_direction: Direction,
+    orthogonal_fallback: OrthogonalFallbackOf<S>,
 }
 
 pub type BlockFlowRootContext = BlockFlowRootContextOf<DefaultScalar>;
@@ -628,8 +637,8 @@ impl<S: LayoutScalar> BlockFlowRootContextOf<S> {
     #[must_use]
     pub const fn horizontal_auto_block(
         parent_inline_extent: NonNegativeFiniteOf<S>,
-        parent_direction: crate::Direction,
-        orthogonal_fallback: crate::OrthogonalFallbackOf<S>,
+        parent_direction: Direction,
+        orthogonal_fallback: OrthogonalFallbackOf<S>,
     ) -> Self {
         Self {
             parent_inline_extent,
@@ -639,14 +648,14 @@ impl<S: LayoutScalar> BlockFlowRootContextOf<S> {
     }
     #[must_use]
     pub const fn parent_flow_axes(self) -> FlowAxes {
-        FlowAxes::new(crate::WritingMode::HorizontalTb, self.parent_direction)
+        FlowAxes::new(WritingMode::HorizontalTb, self.parent_direction)
     }
     #[must_use]
     pub const fn parent_inline_extent(self) -> NonNegativeFiniteOf<S> {
         self.parent_inline_extent
     }
     #[must_use]
-    pub const fn orthogonal_fallback(self) -> crate::OrthogonalFallbackOf<S> {
+    pub const fn orthogonal_fallback(self) -> OrthogonalFallbackOf<S> {
         self.orthogonal_fallback
     }
 }
@@ -660,8 +669,8 @@ impl<S: LayoutScalar> BlockFlowRootContextOf<S> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PositionedRootContextOf<S: LayoutScalar = DefaultScalar> {
     containing_size: Size<NonNegativeFiniteOf<S>>,
-    containing_direction: crate::Direction,
-    orthogonal_fallback: crate::OrthogonalFallbackOf<S>,
+    containing_direction: Direction,
+    orthogonal_fallback: OrthogonalFallbackOf<S>,
 }
 
 pub type PositionedRootContext = PositionedRootContextOf<DefaultScalar>;
@@ -670,8 +679,8 @@ impl<S: LayoutScalar> PositionedRootContextOf<S> {
     #[must_use]
     pub const fn horizontal_auto_insets(
         containing_size: Size<NonNegativeFiniteOf<S>>,
-        containing_direction: crate::Direction,
-        orthogonal_fallback: crate::OrthogonalFallbackOf<S>,
+        containing_direction: Direction,
+        orthogonal_fallback: OrthogonalFallbackOf<S>,
     ) -> Self {
         Self {
             containing_size,
@@ -685,10 +694,10 @@ impl<S: LayoutScalar> PositionedRootContextOf<S> {
     }
     #[must_use]
     pub const fn containing_flow_axes(self) -> FlowAxes {
-        FlowAxes::new(crate::WritingMode::HorizontalTb, self.containing_direction)
+        FlowAxes::new(WritingMode::HorizontalTb, self.containing_direction)
     }
     #[must_use]
-    pub const fn orthogonal_fallback(self) -> crate::OrthogonalFallbackOf<S> {
+    pub const fn orthogonal_fallback(self) -> OrthogonalFallbackOf<S> {
         self.orthogonal_fallback
     }
 }
@@ -733,10 +742,10 @@ impl<S: LayoutScalar> PositionedRootContextOf<S> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RootLocalPositionedContextOf<S: LayoutScalar = DefaultScalar> {
     containing_size: Size<NonNegativeFiniteOf<S>>,
-    containing_direction: crate::Direction,
+    containing_direction: Direction,
     hypothetical_inline_offset: S,
     hypothetical_block_offset: Option<S>,
-    orthogonal_fallback: crate::OrthogonalFallbackOf<S>,
+    orthogonal_fallback: OrthogonalFallbackOf<S>,
 }
 
 pub type RootLocalPositionedContext = RootLocalPositionedContextOf<DefaultScalar>;
@@ -744,12 +753,12 @@ pub type RootLocalPositionedContext = RootLocalPositionedContextOf<DefaultScalar
 impl<S: LayoutScalar> RootLocalPositionedContextOf<S> {
     pub fn horizontal_auto_insets(
         containing_size: Size<NonNegativeFiniteOf<S>>,
-        containing_direction: crate::Direction,
+        containing_direction: Direction,
         hypothetical_inline_offset: S,
-        orthogonal_fallback: crate::OrthogonalFallbackOf<S>,
-    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+        orthogonal_fallback: OrthogonalFallbackOf<S>,
+    ) -> Result<Self, FiniteScalarErrorOf<S>> {
         if !hypothetical_inline_offset.is_finite() {
-            return Err(crate::FiniteScalarErrorOf::NonFinite {
+            return Err(FiniteScalarErrorOf::NonFinite {
                 value: hypothetical_inline_offset,
             });
         }
@@ -767,9 +776,9 @@ impl<S: LayoutScalar> RootLocalPositionedContextOf<S> {
     pub fn with_hypothetical_block_offset(
         mut self,
         offset: S,
-    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+    ) -> Result<Self, FiniteScalarErrorOf<S>> {
         if !offset.is_finite() {
-            return Err(crate::FiniteScalarErrorOf::NonFinite { value: offset });
+            return Err(FiniteScalarErrorOf::NonFinite { value: offset });
         }
         self.hypothetical_block_offset = Some(crate::scalar::canonical_zero(offset));
         Ok(self)
@@ -780,7 +789,7 @@ impl<S: LayoutScalar> RootLocalPositionedContextOf<S> {
     }
     #[must_use]
     pub const fn containing_flow_axes(self) -> FlowAxes {
-        FlowAxes::new(crate::WritingMode::HorizontalTb, self.containing_direction)
+        FlowAxes::new(WritingMode::HorizontalTb, self.containing_direction)
     }
     #[must_use]
     pub const fn hypothetical_inline_offset(self) -> S {
@@ -792,7 +801,7 @@ impl<S: LayoutScalar> RootLocalPositionedContextOf<S> {
         self.hypothetical_block_offset
     }
     #[must_use]
-    pub const fn orthogonal_fallback(self) -> crate::OrthogonalFallbackOf<S> {
+    pub const fn orthogonal_fallback(self) -> OrthogonalFallbackOf<S> {
         self.orthogonal_fallback
     }
 }
@@ -1128,9 +1137,9 @@ pub struct BaselineCoordinateOf<S: LayoutScalar = DefaultScalar> {
 }
 
 impl<S: LayoutScalar> BaselineCoordinateOf<S> {
-    pub fn try_new(axis: PhysicalAxis, offset: S) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+    pub fn try_new(axis: PhysicalAxis, offset: S) -> Result<Self, FiniteScalarErrorOf<S>> {
         if !offset.is_finite() {
-            return Err(crate::FiniteScalarErrorOf::NonFinite { value: offset });
+            return Err(FiniteScalarErrorOf::NonFinite { value: offset });
         }
         Ok(Self {
             axis,
@@ -1147,16 +1156,13 @@ impl<S: LayoutScalar> BaselineCoordinateOf<S> {
     }
     /// Named scroll exposure clamps only actual coordinates, in their own
     /// border frame. Ordinary absent facts remain absent until demanded.
-    pub(crate) fn clamped_to_border(
-        self,
-        size: Size<S>,
-    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+    pub(crate) fn clamped_to_border(self, size: Size<S>) -> Result<Self, FiniteScalarErrorOf<S>> {
         let extent = match self.axis {
             PhysicalAxis::Horizontal => size.width,
             PhysicalAxis::Vertical => size.height,
         };
         if !extent.is_finite() {
-            return Err(crate::FiniteScalarErrorOf::NonFinite { value: extent });
+            return Err(FiniteScalarErrorOf::NonFinite { value: extent });
         }
         Self::try_new(self.axis, self.offset.max(S::ZERO).min(extent))
     }
@@ -1228,10 +1234,7 @@ impl<S: LayoutScalar> NamedBaselinesOf<S> {
             FontBaseline::Central => self.central,
         }
     }
-    pub(crate) fn clamped_to_border(
-        self,
-        size: Size<S>,
-    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+    pub(crate) fn clamped_to_border(self, size: Size<S>) -> Result<Self, FiniteScalarErrorOf<S>> {
         let clamp = |fact: BaselineFactOf<S>| match fact {
             BaselineFactOf::Available(coordinate) => coordinate
                 .clamped_to_border(size)
@@ -1405,10 +1408,7 @@ impl<S: LayoutScalar> BaselinesOf<S> {
         }
     }
 
-    pub(crate) fn clamped_to_border(
-        self,
-        size: Size<S>,
-    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+    pub(crate) fn clamped_to_border(self, size: Size<S>) -> Result<Self, FiniteScalarErrorOf<S>> {
         let clamp = |point: Point<Option<S>>| {
             let on_axis = |axis, coordinate: Option<S>| {
                 coordinate
@@ -1490,7 +1490,7 @@ impl<S: LayoutScalar> BaselinesOf<S> {
 mod baseline_tests {
     use super::*;
     use crate::geometry::{PhysicalAxis, PhysicalSide};
-    use crate::{Direction, WritingMode};
+    use crate::node_input::{Direction, WritingMode};
 
     fn point_coordinate<S: LayoutScalar>(point: Point<Option<S>>, axis: PhysicalAxis) -> Option<S> {
         match axis {
@@ -1859,7 +1859,7 @@ impl<S: LayoutScalar> InlineFragmentOutputOf<S> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InlineFragmentOwner<Node> {
     Node(Node),
-    Scope(crate::TextScopeBinding<Node>),
+    Scope(crate::text_layout::TextScopeBinding<Node>),
 }
 
 /// Associates one retained finalized fragment with its actual semantic owner.
@@ -1966,7 +1966,7 @@ pub(crate) struct NormalGeometryOf<S: LayoutScalar> {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum NormalContentOf<S: LayoutScalar> {
-    Box(crate::ScrollRectOf<S>),
+    Box(ScrollRectOf<S>),
     Metadata,
     Hidden,
 }
@@ -1975,7 +1975,7 @@ impl<S: LayoutScalar> NormalGeometryOf<S> {
     pub(crate) const fn box_geometry(
         location: Point<S>,
         size: Size<S>,
-        content_box: crate::ScrollRectOf<S>,
+        content_box: ScrollRectOf<S>,
     ) -> Self {
         Self {
             location,
@@ -1992,7 +1992,7 @@ impl<S: LayoutScalar> NormalGeometryOf<S> {
         }
     }
 
-    pub(crate) const fn content_box(self) -> Option<crate::ScrollRectOf<S>> {
+    pub(crate) const fn content_box(self) -> Option<ScrollRectOf<S>> {
         match self.content {
             NormalContentOf::Box(content) => Some(content),
             NormalContentOf::Metadata | NormalContentOf::Hidden => None,
@@ -2077,7 +2077,7 @@ pub struct LayoutOutputEntryOf<Node, S: LayoutScalar = DefaultScalar> {
     node: Node,
     output: NodeOutputOf<S>,
     geometry: GeometryStateOf<S>,
-    pub(crate) non_box: Option<crate::NonBoxKind>,
+    pub(crate) non_box: Option<crate::block_fragmentation::NonBoxKind>,
 }
 
 pub type LayoutOutputEntry<Node> = LayoutOutputEntryOf<Node, DefaultScalar>;
@@ -2096,7 +2096,10 @@ impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
         }
     }
 
-    pub(crate) const fn hidden_unrounded(node: Node, source_index: crate::SourceIndex) -> Self {
+    pub(crate) const fn hidden_unrounded(
+        node: Node,
+        source_index: crate::output::SourceIndex,
+    ) -> Self {
         Self::ordinary_unrounded(
             node,
             NormalGeometryOf {
@@ -2302,8 +2305,8 @@ pub struct CompletedLayoutBatchOf<Node, S: LayoutScalar = DefaultScalar> {
     pub(crate) root: Node,
     pub(crate) result: std::sync::Arc<crate::block_fragmentation::ResultIdentity>,
     pub(crate) nodes: Vec<crate::block_fragmentation::NodePublication<Node, S>>,
-    pub(crate) target: Option<crate::LayoutTargetBasis>,
-    pub(crate) fragmentainers: Vec<crate::LayoutFragmentainerOutputOf<S>>,
+    pub(crate) target: Option<crate::block_fragmentation::input::LayoutTargetBasis>,
+    pub(crate) fragmentainers: Vec<LayoutFragmentainerOutputOf<S>>,
     unrounded_inline_fragments: Vec<InlineFragmentOutputEntryOf<Node, S>>,
     final_inline_fragments: Vec<InlineFragmentOutputEntryOf<Node, S>>,
     cache_store_entries: Vec<LayoutCacheStoreEntryOf<Node, S>>,
@@ -2349,25 +2352,27 @@ impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
                         final_entry,
                     }
                 } else {
-                    NodePublication::One(crate::FragmentOutputOf {
-                        id: crate::LayoutFragmentId {
+                    NodePublication::One(FragmentOutputOf {
+                        id: LayoutFragmentId {
                             result: result.clone(),
                             index,
                         },
                         node: unrounded.node(),
-                        role: crate::BlockGeneration::Principal,
+                        role: crate::node_input::BlockGeneration::Principal,
                         frame: None,
                         parent: (unrounded.node() == root)
-                            .then_some(crate::FragmentCoordinateSpace::Root),
+                            .then_some(crate::block_fragmentation::FragmentCoordinateSpace::Root),
                         order: 0,
                         previous: None,
                         next: None,
                         children: Vec::new(),
                         graphical: None,
-                        payload: crate::FragmentPayloadOf::ActualBox(crate::BoxGeometryPairOf {
-                            unrounded,
-                            final_entry,
-                        }),
+                        payload: crate::block_fragmentation::FragmentPayloadOf::ActualBox(
+                            crate::block_fragmentation::BoxGeometryPairOf {
+                                unrounded,
+                                final_entry,
+                            },
+                        ),
                     })
                 }
             })
@@ -2414,7 +2419,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
     /// painting order. Mere admission does not certify formatter execution.
     pub fn native_inline_box_families(
         &self,
-    ) -> impl Iterator<Item = crate::NativeInlineBoxFamily<Node>> + '_
+    ) -> impl Iterator<Item = crate::inline_wrapping::NativeInlineBoxFamily<Node>> + '_
     where
         Node: Copy + Eq,
     {
@@ -2432,7 +2437,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
     /// Text fragments or physical rectangles from native scalar observations.
     pub fn native_inline_box_pieces(
         &self,
-    ) -> impl Iterator<Item = crate::NativeInlineBoxPieceView<'_, Node, S>> + '_
+    ) -> impl Iterator<Item = crate::inline_wrapping::NativeInlineBoxPieceView<'_, Node, S>> + '_
     where
         Node: Copy + Eq,
     {
@@ -2455,7 +2460,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
     }
 
     #[must_use]
-    pub fn target_basis(&self) -> Option<&crate::LayoutTargetBasis> {
+    pub fn target_basis(&self) -> Option<&crate::block_fragmentation::input::LayoutTargetBasis> {
         self.target.as_ref()
     }
 
@@ -2465,7 +2470,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
     }
 
     #[must_use]
-    pub fn node_layout(&self, node: Node) -> Option<crate::NodeLayoutRefOf<'_, Node, S>> {
+    pub fn node_layout(
+        &self,
+        node: Node,
+    ) -> Option<crate::block_fragmentation::NodeLayoutRefOf<'_, Node, S>> {
         self.nodes
             .iter()
             .find(|entry| entry.node() == node)
@@ -2474,25 +2482,30 @@ impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
 
     pub fn node_layouts(
         &self,
-    ) -> impl ExactSizeIterator<Item = (Node, crate::NodeLayoutRefOf<'_, Node, S>)> {
+    ) -> impl ExactSizeIterator<
+        Item = (
+            Node,
+            crate::block_fragmentation::NodeLayoutRefOf<'_, Node, S>,
+        ),
+    > {
         self.nodes.iter().map(|entry| (entry.node(), entry.view()))
     }
 
     /// Resolves any fragment, including a non-fragmented principal box.
     pub fn fragment(
         &self,
-        id: &crate::LayoutFragmentId,
-    ) -> Result<&crate::FragmentOutputOf<Node, S>, crate::LayoutHandleError> {
+        id: &LayoutFragmentId,
+    ) -> Result<&FragmentOutputOf<Node, S>, LayoutHandleError> {
         if !std::sync::Arc::ptr_eq(&self.result, &id.result) {
-            return Err(crate::LayoutHandleError::WrongResult);
+            return Err(LayoutHandleError::WrongResult);
         }
         self.fragments()
             .find(|fragment| fragment.id == *id)
-            .ok_or(crate::LayoutHandleError::MissingFragment)
+            .ok_or(LayoutHandleError::MissingFragment)
     }
 
     /// All actual fragment occurrences; this order does not specify paint order.
-    pub fn fragments(&self) -> impl Iterator<Item = &crate::FragmentOutputOf<Node, S>> {
+    pub fn fragments(&self) -> impl Iterator<Item = &FragmentOutputOf<Node, S>> {
         use crate::block_fragmentation::NodePublication as N;
         self.nodes.iter().flat_map(|node| match node {
             N::One(value) => core::slice::from_ref(value),
@@ -2504,28 +2517,27 @@ impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
     /// Accepted child occurrences derived from canonical coordinate-parent links.
     pub fn child_fragments(
         &self,
-        parent: &crate::LayoutFragmentId,
-    ) -> Result<impl Iterator<Item = &crate::FragmentOutputOf<Node, S>>, crate::LayoutHandleError>
-    {
+        parent: &LayoutFragmentId,
+    ) -> Result<impl Iterator<Item = &FragmentOutputOf<Node, S>>, LayoutHandleError> {
         let parent = self.fragment(parent)?.id().clone();
         Ok(self.fragments().filter(move |fragment| {
-            matches!(fragment.coordinate_parent(), Some(crate::FragmentCoordinateSpace::Fragment(id)) if *id == parent)
+            matches!(fragment.coordinate_parent(), Some(crate::block_fragmentation::FragmentCoordinateSpace::Fragment(id)) if *id == parent)
         }))
     }
 
     pub fn fragmentainer(
         &self,
-        id: &crate::LayoutFragmentainerId,
-    ) -> Result<&crate::LayoutFragmentainerOutputOf<S>, crate::LayoutHandleError> {
+        id: &crate::block_fragmentation::LayoutFragmentainerId,
+    ) -> Result<&LayoutFragmentainerOutputOf<S>, LayoutHandleError> {
         if !std::sync::Arc::ptr_eq(&self.result, &id.result) {
-            return Err(crate::LayoutHandleError::WrongResult);
+            return Err(LayoutHandleError::WrongResult);
         }
         self.fragmentainers
             .get(id.index)
-            .ok_or(crate::LayoutHandleError::MissingFragmentainer)
+            .ok_or(LayoutHandleError::MissingFragmentainer)
     }
 
-    pub fn fragmentainers(&self) -> &[crate::LayoutFragmentainerOutputOf<S>] {
+    pub fn fragmentainers(&self) -> &[LayoutFragmentainerOutputOf<S>] {
         &self.fragmentainers
     }
 
@@ -2569,11 +2581,11 @@ impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
     pub fn apply_to<Sink>(
         &self,
         sink: &mut Sink,
-    ) -> Result<(), crate::LayoutBatchApplyError<Sink::Error>>
+    ) -> Result<(), crate::block_fragmentation::publication::LayoutBatchApplyError<Sink::Error>>
     where
         Sink: crate::tree::LayoutBatchSink<Node, S>,
     {
-        use crate::LayoutBatchApplyError as E;
+        use crate::block_fragmentation::publication::LayoutBatchApplyError as E;
         let target = sink.publication_targets().get(self.root).cloned();
         crate::block_fragmentation::check_target(self.target.as_ref(), target.as_ref())?;
         let mut members = Vec::new();
@@ -2594,11 +2606,13 @@ impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
             .map_err(|_| E::Allocation)?;
         previous.extend_from_slice(prior);
         let prepared = sink
-            .prepare_layout_batch(crate::LayoutBatchPreparation {
-                batch: self,
-                target: &target,
-                previous: &previous,
-            })
+            .prepare_layout_batch(
+                crate::block_fragmentation::publication::LayoutBatchPreparation {
+                    batch: self,
+                    target: &target,
+                    previous: &previous,
+                },
+            )
             .map_err(E::Preparation)?;
         crate::block_fragmentation::check_target(
             self.target.as_ref(),
@@ -2613,7 +2627,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
         sink.publication_targets_mut()
             .reserve_root(self.root)
             .map_err(|_| E::Allocation)?;
-        sink.commit_layout_batch(crate::LayoutBatchCommit {
+        sink.commit_layout_batch(crate::block_fragmentation::publication::LayoutBatchCommit {
             batch: self,
             target: &target,
             previous: &previous,

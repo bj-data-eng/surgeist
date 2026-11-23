@@ -1,10 +1,16 @@
 use super::*;
+use crate::{
+    geometry::Point,
+    measurement::LeafMeasureInputOf,
+    node_input::{ComputedOverflow, Overflow},
+    sizing::PreferredSizeOf,
+};
 
-fn valid_measurement<S: LayoutScalar>(_: crate::LeafMeasureInputOf<S>) -> Size<S> {
+fn valid_measurement<S: LayoutScalar>(_: LeafMeasureInputOf<S>) -> Size<S> {
     Size::new(S::from_f64(60.0), S::from_f64(40.0))
 }
 
-fn refuse_final_placement<S: LayoutScalar>(input: crate::LeafMeasureInputOf<S>) -> Size<S> {
+fn refuse_final_placement<S: LayoutScalar>(input: LeafMeasureInputOf<S>) -> Size<S> {
     let axes = input.content_sizing_request().axes();
     // Performed leaf requests expose no authoritative known dimensions to
     // the provider. Their actual settled content offers carry the final area.
@@ -25,7 +31,7 @@ fn overflow_grid_chain<S: LayoutScalar>(
     container: Display,
     depth: u32,
     hidden_subtree: bool,
-    measure: fn(crate::LeafMeasureInputOf<S>) -> Size<S>,
+    measure: fn(LeafMeasureInputOf<S>) -> Size<S>,
 ) -> PublicLayoutTreeOf<S> {
     let mut tree = PublicLayoutTreeOf::new();
     for node in 0..=depth {
@@ -37,27 +43,27 @@ fn overflow_grid_chain<S: LayoutScalar>(
                 // A Grid Lanes container has one 60px lane; the other display
                 // keeps its implicit automatic track.
                 grid_template_columns: if !terminal && container == Display::GridLanes {
-                    vec![crate::TrackComponentOf::from(
-                        crate::LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
+                    vec![crate::value::TrackComponentOf::from(
+                        crate::value::LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
                     )]
                 } else {
                     Vec::new()
                 },
                 size: Size::new(
-                    crate::PreferredSizeOf::px(S::from_f64(60.0)),
+                    PreferredSizeOf::px(S::from_f64(60.0)),
                     if terminal {
-                        crate::PreferredSizeOf::px(S::from_f64(40.0))
+                        PreferredSizeOf::px(S::from_f64(40.0))
                     } else {
-                        crate::PreferredSizeOf::MAX_CONTENT
+                        PreferredSizeOf::MAX_CONTENT
                     },
                 ),
                 overflow: if terminal {
-                    crate::ComputedOverflow::VISIBLE
+                    ComputedOverflow::VISIBLE
                 } else {
-                    crate::ComputedOverflow::try_new(crate::Overflow::Auto, crate::Overflow::Auto)
-                        .unwrap()
+                    ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap()
                 },
-                scrollbar_width: crate::ScrollbarWidthOf::try_new(S::from_f64(1.0)).unwrap(),
+                scrollbar_width: crate::node_input::ScrollbarWidthOf::try_new(S::from_f64(1.0))
+                    .unwrap(),
                 ..NodeInputOf::default()
             },
         );
@@ -107,7 +113,7 @@ fn assert_overflow_grid_tree_geometry<S: LayoutScalar>(
 }
 
 fn assert_overflow_grid_batch_geometry<S: LayoutScalar>(
-    batch: &crate::CompletedLayoutBatchOf<u32, S>,
+    batch: &crate::output::CompletedLayoutBatchOf<u32, S>,
     depth: u32,
     hidden_subtree: bool,
 ) {
@@ -123,12 +129,15 @@ fn assert_overflow_grid_batch_geometry<S: LayoutScalar>(
     for (node, layout) in batch.node_layouts() {
         if node > depth {
             let hidden = layout.non_box().expect("hidden sibling");
-            assert_eq!(hidden.kind(), crate::NonBoxKind::Hidden);
+            assert_eq!(
+                hidden.kind(),
+                crate::block_fragmentation::NonBoxKind::Hidden
+            );
             assert_eq!(
                 hidden.source_index(),
-                crate::SourceIndex::new(usize::from(node <= 2 * depth))
+                crate::output::SourceIndex::new(usize::from(node <= 2 * depth))
             );
-            assert_eq!(hidden.final_geometry().location, crate::Point::ZERO);
+            assert_eq!(hidden.final_geometry().location, Point::ZERO);
             assert_eq!(hidden.final_geometry().size, Size::ZERO);
         } else {
             let output = layout.single_box().expect("visible box").final_output();
@@ -137,8 +146,12 @@ fn assert_overflow_grid_batch_geometry<S: LayoutScalar>(
                 Size::new(S::from_f64(60.0), S::from_f64(40.0)),
                 "node {node}"
             );
-            assert_eq!(output.location, crate::Point::ZERO, "node {node}");
-            assert_eq!(output.source_index, crate::SourceIndex::ZERO, "node {node}");
+            assert_eq!(output.location, Point::ZERO, "node {node}");
+            assert_eq!(
+                output.source_index,
+                crate::output::SourceIndex::ZERO,
+                "node {node}"
+            );
             assert_eq!(output.scrollbar_size(), Size::ZERO, "node {node}");
         }
     }
@@ -164,13 +177,16 @@ fn assert_overflow_grid_refusal<S: LayoutScalar>(
         refuse_final_placement::<S>,
     );
     let error = compute_layout(&tree, 0, standalone()).expect_err("invalid final leaf output");
-    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(depth));
-    assert_eq!(error.operation(), crate::LayoutOperation::LeafMeasurement);
+    assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(depth));
+    assert_eq!(
+        error.operation(),
+        crate::error::LayoutOperation::LeafMeasurement
+    );
     assert!(matches!(
         error.kind(),
-        crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::MeasurementOutput(output))
-            if output.axis() == crate::PhysicalAxis::Vertical
-                && matches!(output.error(), crate::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.to_f64().is_nan())
+        crate::error::LayoutErrorKindOf::InvalidInput(crate::error::LayoutInvalidInputOf::MeasurementOutput(output))
+            if output.axis() == crate::geometry::PhysicalAxis::Vertical
+                && matches!(output.error(), crate::value::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.to_f64().is_nan())
     ));
 }
 
@@ -358,7 +374,7 @@ fn assert_overflow_grid_distinct_request_work<S: LayoutScalar>(container: Displa
             for node in 1..depth {
                 assert!(
                     admissions.iter().any(|row| row.node == node
-                        && row.input.run_mode() == crate::RunMode::ComputeSize),
+                        && row.input.run_mode() == crate::output::RunMode::ComputeSize),
                     "every nested container has a size-only admission: container={container:?}, depth={depth}, hidden_subtree={hidden_subtree}, node={node}"
                 );
             }
@@ -420,27 +436,27 @@ fn scrollbar_lanes_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
                     Display::GridLanes
                 },
                 size: Size::new(
-                    crate::PreferredSizeOf::px(width),
+                    PreferredSizeOf::px(width),
                     if terminal {
-                        crate::PreferredSizeOf::px(S::from_f64(40.0))
+                        PreferredSizeOf::px(S::from_f64(40.0))
                     } else {
-                        crate::PreferredSizeOf::MAX_CONTENT
+                        PreferredSizeOf::MAX_CONTENT
                     },
                 ),
                 grid_template_columns: if terminal {
                     Vec::new()
                 } else {
-                    vec![crate::TrackComponentOf::from(
-                        crate::LengthPercentageOf::px(width).unwrap(),
+                    vec![crate::value::TrackComponentOf::from(
+                        crate::value::LengthPercentageOf::px(width).unwrap(),
                     )]
                 },
                 overflow: if terminal {
-                    crate::ComputedOverflow::VISIBLE
+                    ComputedOverflow::VISIBLE
                 } else {
-                    crate::ComputedOverflow::try_new(crate::Overflow::Auto, crate::Overflow::Auto)
-                        .unwrap()
+                    ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap()
                 },
-                scrollbar_width: crate::ScrollbarWidthOf::try_new(S::from_f64(1.0)).unwrap(),
+                scrollbar_width: crate::node_input::ScrollbarWidthOf::try_new(S::from_f64(1.0))
+                    .unwrap(),
                 ..NodeInputOf::default()
             },
         );
@@ -474,7 +490,7 @@ fn assert_scrollbar_lanes_geometry<S: LayoutScalar>(depth: u32) {
             Size::new(S::from_f64(width), S::from_f64(height)),
             "node {node}"
         );
-        assert_eq!(output.location, crate::Point::ZERO, "node {node}");
+        assert_eq!(output.location, Point::ZERO, "node {node}");
         // A horizontal scrollbar reserves block-axis space only; no
         // vertical scrollbar is needed because the block size fits its
         // content. The terminal has overflow:visible and no scrollbar.

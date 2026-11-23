@@ -13,13 +13,13 @@ pub(crate) mod text_fragment;
 // Existing non-Text diagnostic tests compare the actual typed payload. The
 // production error owns arbitrary Text causes and has no diagnostic equality.
 pub(crate) fn assert_error_kind<S, M>(
-    actual: &crate::LayoutErrorKindOf<S, M>,
-    expected: &crate::LayoutErrorKindOf<S, M>,
+    actual: &crate::error::LayoutErrorKindOf<S, M>,
+    expected: &crate::error::LayoutErrorKindOf<S, M>,
 ) where
-    S: crate::LayoutScalar,
+    S: crate::scalar::LayoutScalar,
     M: core::fmt::Debug + PartialEq,
 {
-    use crate::LayoutErrorKindOf as Kind;
+    use crate::error::LayoutErrorKindOf as Kind;
     match (actual, expected) {
         (Kind::InvalidInput(actual), Kind::InvalidInput(expected)) => assert_eq!(actual, expected),
         (Kind::MissingContext(actual), Kind::MissingContext(expected)) => {

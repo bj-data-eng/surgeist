@@ -3,6 +3,15 @@ use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
+use crate::{
+    geometry::Size,
+    node_input::{NodeInputOf, TextWrapStyle},
+    sizing::PreferredSizeOf,
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, LengthPercentageOf, NonNegativeFiniteOf,
+        SizingOperation,
+    },
+};
 use std::cell::RefCell;
 use surgeist_text as text;
 
@@ -52,73 +61,70 @@ fn ordinary_facts(lines: &[FinalizedLine]) -> Vec<(usize, f64)> {
 
 fn tab_batch(
     paragraph: &PreparedParagraph,
-    wrap_style: crate::TextWrapStyle,
-) -> crate::CompletedLayoutBatchOf<u32, f64> {
+    wrap_style: TextWrapStyle,
+) -> crate::output::CompletedLayoutBatchOf<u32, f64> {
     let tree = PublicLayoutTreeOf::<f64>::new()
         .children(0, [1])
         .children(1, [])
         .style(
             0,
-            crate::NodeInputOf {
-                display: crate::Display::Block,
+            NodeInputOf {
+                display: crate::node_input::Display::Block,
                 text_wrap_style: wrap_style,
-                text_indent: crate::TextIndentOf {
+                text_indent: crate::node_input::TextIndentOf {
                     // Exercise the real block resolver: 25% of actual 60 = 15.
-                    amount: crate::LengthPercentageOf::from_percent_fraction(0.25).unwrap(),
+                    amount: LengthPercentageOf::from_percent_fraction(0.25).unwrap(),
                     each_line: false,
                     hanging: false,
                 },
-                size: crate::Size::new(
-                    crate::PreferredSizeOf::value(crate::LengthPercentageOf::px(60.0).unwrap()),
-                    crate::PreferredSizeOf::AUTO,
+                size: Size::new(
+                    PreferredSizeOf::value(LengthPercentageOf::px(60.0).unwrap()),
+                    PreferredSizeOf::AUTO,
                 ),
-                ..crate::NodeInputOf::default()
+                ..NodeInputOf::default()
             },
         )
         .input(1, paragraph.text_input(1));
-    let flow = crate::LayoutFlowInput::try_new(
+    let flow = crate::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput::default(),
+        crate::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
-    crate::compute_layout_with_flow(&flow, 0, {
+    crate::engine::compute_layout_with_flow(&flow, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
-        let requested_axes = crate::Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(60.0).unwrap()),
-                crate::SizingOperation::Normal,
+        let requested_axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(60.0).unwrap()),
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         logical_requests.inline = logical_requests
             .inline
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -126,7 +132,7 @@ fn tab_batch(
     .unwrap()
 }
 
-fn published_lines(batch: &crate::CompletedLayoutBatchOf<u32, f64>) -> Vec<FinalizedLine> {
+fn published_lines(batch: &crate::output::CompletedLayoutBatchOf<u32, f64>) -> Vec<FinalizedLine> {
     let mut lines = vec![None; batch.placed_text()[0].layout().lines().len()];
     for entry in batch.final_inline_fragments() {
         let fragment = entry.fragment();
@@ -176,8 +182,8 @@ fn alternate_tab_cut_keeps_actual_css_grid_and_percentage_containing_width() {
         TabPreparation::CssStops
     );
     assert!(paragraph.prepared.tab_reference().is_some());
-    let auto = tab_batch(&paragraph, crate::TextWrapStyle::Auto);
-    let balanced = tab_batch(&paragraph, crate::TextWrapStyle::Balance);
+    let auto = tab_batch(&paragraph, TextWrapStyle::Auto);
+    let balanced = tab_batch(&paragraph, TextWrapStyle::Balance);
     let auto_lines = published_lines(&auto);
     let balanced_lines = published_lines(&balanced);
     assert_eq!(ordinary_facts(&auto_lines), [(6, 45.0), (7, 10.0)]);
@@ -212,7 +218,7 @@ fn alternate_tab_cut_keeps_actual_css_grid_and_percentage_containing_width() {
             .collect::<Vec<_>>();
         assert_eq!(positions, [(35, 15.0), (36, 30.0)]);
         let root = readback::single_box_output(batch, 0, Phase::Final);
-        assert_eq!(root.size, crate::Size::new(60.0, 20.0));
+        assert_eq!(root.size, Size::new(60.0, 20.0));
     }
     assert_eq!(
         ordinary_facts(&published_lines(&auto)),
@@ -222,7 +228,7 @@ fn alternate_tab_cut_keeps_actual_css_grid_and_percentage_containing_width() {
 
 fn fitting_ordinary_trials(
     paragraph: &PreparedParagraph,
-    wrap_style: crate::TextWrapStyle,
+    wrap_style: TextWrapStyle,
 ) -> Vec<FinalizedLine> {
     let observed = RefCell::new(Vec::<LineSelectionRequest>::new());
     let scope_alignments = crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
@@ -245,15 +251,15 @@ fn fitting_ordinary_trials(
             wrapping: None,
             formatted: &FormattedTailSnapshot::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
-                crate::LineBoxDirectionPolicy::Normal,
-                crate::Direction::Ltr,
+                crate::node_input::LineBoxDirectionPolicy::Normal,
+                crate::node_input::Direction::Ltr,
             ),
             prepared: &paragraph.prepared,
             segment: paragraph.prepared.source_segments().next().unwrap(),
             scope_alignments: &scope_alignments,
-            available: crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(60.0).unwrap()),
-                crate::SizingOperation::Normal,
+            available: AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(60.0).unwrap()),
+                SizingOperation::Normal,
             ),
             base_direction: ParagraphBaseDirection::LeftToRight,
             block_direction: ParagraphBaseDirection::LeftToRight,
@@ -264,7 +270,7 @@ fn fitting_ordinary_trials(
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: crate::text_indent::IndentLineState::default(),
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
-            hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+            hyphenate_limit_zone: LengthPercentageOf::ZERO,
             tail: TailContext::Unrestricted,
             orientation: LineOrientation::Horizontal,
             atomics: &[],
@@ -424,11 +430,11 @@ fn balancing_real_phrase_suffix_never_restores_normal_or_emergency_while_ordinar
         PHRASE_FONT,
     );
     assert_eq!(paragraph.prepared.phrases().count(), 1);
-    let auto = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Auto);
-    let stable = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Stable);
-    let repaired = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::AvoidShortLastLine);
-    let balanced = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Balance);
-    let pretty = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Pretty);
+    let auto = fitting_ordinary_trials(&paragraph, TextWrapStyle::Auto);
+    let stable = fitting_ordinary_trials(&paragraph, TextWrapStyle::Stable);
+    let repaired = fitting_ordinary_trials(&paragraph, TextWrapStyle::AvoidShortLastLine);
+    let balanced = fitting_ordinary_trials(&paragraph, TextWrapStyle::Balance);
+    let pretty = fitting_ordinary_trials(&paragraph, TextWrapStyle::Pretty);
     // Tail improves the final pair to40/50. Body cannot reduce the
     // protected final50, and every observed trial retains ordinary authority.
     assert_eq!(ordinary_facts(&pretty), [(5, 40.0), (10, 50.0)]);
@@ -439,7 +445,7 @@ fn balancing_real_phrase_suffix_never_restores_normal_or_emergency_while_ordinar
     assert_eq!(ordinary_facts(&auto), [(7, 60.0), (10, 30.0)]);
 }
 
-fn assert_retained_selection_mode<S: crate::LayoutScalar>() {
+fn assert_retained_selection_mode<S: crate::scalar::LayoutScalar>() {
     use crate::engine::contracts::Compute;
 
     // Ahem10: ordinary AAA SPACE BB occupies60; the final C occupies10.
@@ -457,60 +463,60 @@ fn assert_retained_selection_mode<S: crate::LayoutScalar>() {
         },
     );
     for mode in [
-        crate::TextWrapStyle::Auto,
-        crate::TextWrapStyle::Stable,
-        crate::TextWrapStyle::Balance,
+        TextWrapStyle::Auto,
+        TextWrapStyle::Stable,
+        TextWrapStyle::Balance,
     ] {
         let tree = PublicLayoutTreeOf::<S>::new()
             .children(0, [1])
             .children(1, [])
             .style(
                 0,
-                crate::NodeInputOf {
-                    display: crate::Display::Block,
+                NodeInputOf {
+                    display: crate::node_input::Display::Block,
                     text_wrap_style: mode,
-                    size: crate::Size::new(
-                        crate::PreferredSizeOf::px(S::from_f64(60.0)),
-                        crate::PreferredSizeOf::AUTO,
+                    size: Size::new(
+                        PreferredSizeOf::px(S::from_f64(60.0)),
+                        PreferredSizeOf::AUTO,
                     ),
-                    ..crate::NodeInputOf::default()
+                    ..NodeInputOf::default()
                 },
             )
             .input(1, paragraph.text_input(1));
-        let flow = crate::LayoutFlowInput::try_new(
+        let flow = crate::text_layout::LayoutFlowInput::try_new(
             &tree,
             0,
             vec![paragraph.binding(0)],
-            crate::WrappingInput::default(),
+            crate::inline_wrapping::WrappingInput::default(),
             Vec::new(),
         )
         .unwrap();
         let mut session = crate::engine::ComputeSession::with_flow_unobserved(&flow, Vec::new());
         crate::engine::compute_root(&mut session, 0, {
-            let width = crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap();
-            let root_input = crate::LayoutTree::node_input(&tree, 0);
+            let width = NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap();
+            let root_input = crate::tree::LayoutTree::node_input(&tree, 0);
             // This is the actual fixture's Native NoParent frame. Its
             // declared percentage width supplies no independent ICB size.
-            crate::LayoutRootRequestOf::standalone(
-                crate::SizingRequestOf::new(
-                    crate::Size::new(
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(width),
-                            crate::SizingOperation::Normal,
+            crate::output::LayoutRootRequestOf::standalone(
+                crate::value::SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(width),
+                            SizingOperation::Normal,
                         ),
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::Normal,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
                         ),
                     ),
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    crate::value::OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::value::NearestScrollportOf::Absent,
+                        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction),
-                crate::Size::new(Some(width), None),
+                crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction),
+                Size::new(Some(width), None),
             )
         })
         .unwrap();
@@ -522,7 +528,7 @@ fn assert_retained_selection_mode<S: crate::LayoutScalar>() {
         assert_eq!(pending.nodes, [1]);
         assert_eq!(pending.prepared, paragraph.prepared);
         assert_eq!(pending.wrap_style, mode);
-        let has_portfolio = mode == crate::TextWrapStyle::Balance;
+        let has_portfolio = mode == TextWrapStyle::Balance;
         assert_eq!(pending.program.is_some(), has_portfolio);
         let finalized = pending
             .entries
@@ -608,9 +614,9 @@ fn balancing_fitting_words_keeps_ordinary_hyphen_trials_out_of_conditional_stage
                 ))),
         "the fixture has actual ordinary automatic-hyphen alternatives, not only a dormant resource"
     );
-    let auto = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Auto);
-    let balanced = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Balance);
-    let pretty = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Pretty);
+    let auto = fitting_ordinary_trials(&paragraph, TextWrapStyle::Auto);
+    let balanced = fitting_ordinary_trials(&paragraph, TextWrapStyle::Balance);
+    let pretty = fitting_ordinary_trials(&paragraph, TextWrapStyle::Pretty);
     // The whole-word cut improves60/45 to50/55; Body cannot undo the
     // protected final55 to explore conditional Normal/Anywhere opportunities.
     assert_eq!(ordinary_facts(&pretty), [(11, 50.0), (22, 55.0)]);
@@ -636,7 +642,7 @@ fn paragraph_tail_repairs_only_its_pair_and_rejects_transferring_the_shortness()
                 ..ahem_style(10.0, 10.0)
             },
         );
-        let lines = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::AvoidShortLastLine);
+        let lines = fitting_ordinary_trials(&paragraph, TextWrapStyle::AvoidShortLastLine);
         assert_eq!(ordinary_facts(&lines), expected, "{source}");
     }
 }

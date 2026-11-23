@@ -35,7 +35,7 @@ fn retained_content_follows_actual_visual_corners<S: LayoutScalar>() {
             &tree,
             0,
             vec![paragraph.binding(0)],
-            crate::WrappingInput {
+            crate::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -81,7 +81,7 @@ fn retained_content_follows_actual_visual_corners<S: LayoutScalar>() {
         let source = batch
             .unrounded_inline_fragments()
             .iter()
-            .find(|entry| *entry.owner() == crate::InlineFragmentOwner::Node(1))
+            .find(|entry| *entry.owner() == crate::output::InlineFragmentOwner::Node(1))
             .unwrap()
             .fragment();
         let line = source.finalized_fragment().finalized_line();

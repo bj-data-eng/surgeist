@@ -1,5 +1,8 @@
 use crate::text_layout::scope_alignment::{EntryBacking, EntryFunding};
-use crate::{FlowAxes, LayoutScalar, PhysicalSide};
+use crate::{
+    geometry::{FlowAxes, PhysicalSide},
+    scalar::LayoutScalar,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct MarginOwner<Node> {

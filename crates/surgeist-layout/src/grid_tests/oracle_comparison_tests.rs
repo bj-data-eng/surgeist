@@ -13,9 +13,14 @@ mod root_oracle {
         },
     };
     use crate::{
-        AvailableSpaceOf, AxisSizingRequestOf, ComputeInput, ComputeOutput, Display, Length,
-        NodeInput, OrthogonalFallbackOf, PreferredSize, RequestedAxis, RunMode, Size, SizingMode,
-        SizingOperation, SizingRequestOf, TrackComponent,
+        geometry::Size,
+        node_input::{Display, NodeInput},
+        output::{ComputeInput, ComputeOutput, RequestedAxis, RunMode, SizingMode},
+        sizing::PreferredSize,
+        value::{
+            AvailableSpaceOf, AxisSizingRequestOf, Length, OrthogonalFallbackOf, SizingOperation,
+            SizingRequestOf, TrackComponent,
+        },
     };
 
     fn oracle_lane_span(value: usize) -> grid::LaneTrackSpanLength {
@@ -2642,7 +2647,7 @@ mod root_oracle {
                 .known(Size::new(Some(80.0), Some(20.0))),
             );
 
-        let output = crate::compute_grid(
+        let output = crate::grid::compute_grid(
             &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
@@ -2651,12 +2656,12 @@ mod root_oracle {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::new(Some(300.0), Some(200.0)),
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::new(
@@ -2671,8 +2676,8 @@ mod root_oracle {
                     ),
                     OrthogonalFallbackOf::new(
                         Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        crate::value::NearestScrollportOf::Absent,
+                        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             ),
@@ -2822,7 +2827,7 @@ mod root_oracle {
                 ComputeOutput::from_sizes(Size::new(40.0, 10.0), Size::new(80.0, 10.0)),
             );
 
-        let output = crate::compute_grid(
+        let output = crate::grid::compute_grid(
             &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
@@ -2831,12 +2836,12 @@ mod root_oracle {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::new(Some(300.0), Some(200.0)),
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::new(
@@ -2851,8 +2856,8 @@ mod root_oracle {
                     ),
                     OrthogonalFallbackOf::new(
                         Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        crate::value::NearestScrollportOf::Absent,
+                        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             ),
@@ -4862,15 +4867,27 @@ mod root_layout_oracle {
         },
     };
     use crate::{
-        AlignContent, AlignItems, AvailableSpaceOf, AxisSizingRequestOf, ComputeInput,
-        ComputeOutput, Direction, Display, Edges, GridAutoFlow, GridFlowTolerance, GridPlacement,
-        GridTemplateAreaRow, GridTemplateAreas, Length, LengthAuto, MaxTrackSizing, MinTrackSizing,
-        NodeInput, OrthogonalFallbackOf, Point, Position, PreferredSize, RawGridLine,
-        RawGridPlacement, RequestedAxis, RunMode, Size, SizingCalculation, SizingMode,
-        SizingOperation, SizingRequestOf, TrackComponent, TrackFlexFactor, WritingMode,
-        compute_root, round_layout,
+        engine::{compute_root, round_layout},
+        geometry::{Edges, Point, Size},
+        grid::{GridAxisKind, compute_grid},
+        node_input::{
+            AlignContent, AlignItems, Direction, Display, GridAutoFlow, GridFlowTolerance,
+            GridLanesFlow, GridPlacement, NodeInput, Position, RawGridLine, RawGridPlacement,
+            WritingMode,
+        },
+        output::{
+            ComputeInput, ComputeOutput, ContainingLayoutContext, ParentFormattingContext,
+            RequestedAxis, RunMode, SizingMode,
+        },
+        sizing::{PreferredSize, SizingCalculation},
+        value::{
+            AvailableSpaceOf, AxisSizingRequestOf, GridTemplateAreaRow, GridTemplateAreas, Length,
+            LengthAuto, MaxTrackSizing, MinTrackSizing, NearestScrollportOf, NonNegativeFiniteOf,
+            OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+            SubgridTrack, TrackComponent, TrackFlexFactor,
+        },
     };
-    use crate::{FlowAxes, LayoutRootRequestOf};
+    use crate::{geometry::FlowAxes, output::LayoutRootRequestOf};
 
     fn track_component_flex(value: f32) -> TrackComponent {
         TrackComponent::flex(TrackFlexFactor::try_new(value).expect("valid test flex factor"))
@@ -4958,11 +4975,11 @@ mod root_layout_oracle {
         {
             let axes = Size::new(
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(200.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(200.0).unwrap()),
                     SizingOperation::Normal,
                 ),
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(20.0).unwrap()),
                     SizingOperation::Normal,
                 ),
             );
@@ -4974,8 +4991,8 @@ mod root_layout_oracle {
                     axes,
                     OrthogonalFallbackOf::new(
                         definite,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 flow,
@@ -5034,11 +5051,11 @@ mod root_layout_oracle {
             {
                 let axes = Size::new(
                     AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(200.0).unwrap()),
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(200.0).unwrap()),
                         SizingOperation::Normal,
                     ),
                     AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(20.0).unwrap()),
                         SizingOperation::Normal,
                     ),
                 );
@@ -5050,8 +5067,8 @@ mod root_layout_oracle {
                         axes,
                         OrthogonalFallbackOf::new(
                             definite,
-                            crate::NearestScrollportOf::Absent,
-                            Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                         ),
                     ),
                     flow,
@@ -5361,11 +5378,11 @@ mod root_layout_oracle {
         {
             let axes = Size::new(
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(120.0).unwrap()),
                     SizingOperation::Normal,
                 ),
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(20.0).unwrap()),
                     SizingOperation::Normal,
                 ),
             );
@@ -5377,8 +5394,8 @@ mod root_layout_oracle {
                     axes,
                     OrthogonalFallbackOf::new(
                         definite,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 flow,
@@ -5480,7 +5497,7 @@ mod root_layout_oracle {
                     display: Display::Grid,
                     grid_column: GridPlacement::try_lines(2, 4).expect("valid grid placement"),
                     grid_row: GridPlacement::try_lines(1, 3).expect("valid grid placement"),
-                    grid_template_columns: vec![TrackComponent::Subgrid(crate::SubgridTrack {
+                    grid_template_columns: vec![TrackComponent::Subgrid(SubgridTrack {
                         name_components: Vec::new(),
                     })],
                     grid_template_rows: vec![TrackComponent::px(20.0), TrackComponent::px(20.0)],
@@ -5518,11 +5535,11 @@ mod root_layout_oracle {
         {
             let axes = Size::new(
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(160.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(160.0).unwrap()),
                     SizingOperation::Normal,
                 ),
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(40.0).unwrap()),
                     SizingOperation::Normal,
                 ),
             );
@@ -5534,8 +5551,8 @@ mod root_layout_oracle {
                     axes,
                     OrthogonalFallbackOf::new(
                         definite,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 flow,
@@ -5610,7 +5627,7 @@ mod root_layout_oracle {
                     display: Display::Grid,
                     grid_column: GridPlacement::try_lines(1, 3).expect("valid grid placement"),
                     grid_row: GridPlacement::try_line(1).expect("valid grid placement"),
-                    grid_template_columns: vec![TrackComponent::Subgrid(crate::SubgridTrack {
+                    grid_template_columns: vec![TrackComponent::Subgrid(SubgridTrack {
                         name_components: Vec::new(),
                     })],
                     grid_template_rows: vec![TrackComponent::px(20.0)],
@@ -5642,11 +5659,11 @@ mod root_layout_oracle {
         {
             let axes = Size::new(
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(160.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(160.0).unwrap()),
                     SizingOperation::Normal,
                 ),
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(20.0).unwrap()),
                     SizingOperation::Normal,
                 ),
             );
@@ -5658,8 +5675,8 @@ mod root_layout_oracle {
                     axes,
                     OrthogonalFallbackOf::new(
                         definite,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 flow,
@@ -6880,7 +6897,7 @@ mod root_layout_oracle {
                     display: Display::Grid,
                     grid_column: GridPlacement::try_lines(1, 2).expect("valid grid placement"),
                     grid_row: GridPlacement::try_line(1).expect("valid grid placement"),
-                    grid_template_columns: vec![TrackComponent::Subgrid(crate::SubgridTrack {
+                    grid_template_columns: vec![TrackComponent::Subgrid(SubgridTrack {
                         name_components: Vec::new(),
                     })],
                     grid_template_rows: vec![TrackComponent::px(20.0)],
@@ -6902,11 +6919,11 @@ mod root_layout_oracle {
         {
             let axes = Size::new(
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(40.0).unwrap()),
                     SizingOperation::Normal,
                 ),
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(20.0).unwrap()),
                     SizingOperation::Normal,
                 ),
             );
@@ -6918,8 +6935,8 @@ mod root_layout_oracle {
                     axes,
                     OrthogonalFallbackOf::new(
                         definite,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 flow,
@@ -6991,7 +7008,7 @@ mod root_layout_oracle {
         assert_lane_layout_matches_oracle(
             LaneFixture {
                 tracks: 3,
-                grid_axis: crate::GridAxisKind::Column,
+                grid_axis: GridAxisKind::Column,
                 reversed: false,
                 lane_gap: 10.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
@@ -7021,7 +7038,7 @@ mod root_layout_oracle {
         assert_lane_layout_matches_oracle(
             LaneFixture {
                 tracks: 2,
-                grid_axis: crate::GridAxisKind::Row,
+                grid_axis: GridAxisKind::Row,
                 reversed: false,
                 lane_gap: 4.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
@@ -7051,7 +7068,7 @@ mod root_layout_oracle {
         assert_lane_layout_matches_oracle(
             LaneFixture {
                 tracks: 3,
-                grid_axis: crate::GridAxisKind::Column,
+                grid_axis: GridAxisKind::Column,
                 reversed: false,
                 lane_gap: 5.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
@@ -7079,7 +7096,7 @@ mod root_layout_oracle {
         assert_lane_layout_matches_oracle(
             LaneFixture {
                 tracks: 2,
-                grid_axis: crate::GridAxisKind::Column,
+                grid_axis: GridAxisKind::Column,
                 reversed: false,
                 lane_gap: 0.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
@@ -7101,7 +7118,7 @@ mod root_layout_oracle {
         assert_lane_layout_matches_oracle(
             LaneFixture {
                 tracks: 3,
-                grid_axis: crate::GridAxisKind::Column,
+                grid_axis: GridAxisKind::Column,
                 reversed: false,
                 lane_gap: 0.0,
                 tolerance: GridFlowTolerance::Length(Length::px(10.0)),
@@ -7131,7 +7148,7 @@ mod root_layout_oracle {
         assert_lane_layout_matches_oracle(
             LaneFixture {
                 tracks: 3,
-                grid_axis: crate::GridAxisKind::Column,
+                grid_axis: GridAxisKind::Column,
                 reversed: false,
                 lane_gap: 0.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
@@ -7159,7 +7176,7 @@ mod root_layout_oracle {
         assert_lane_layout_matches_oracle(
             LaneFixture {
                 tracks: 2,
-                grid_axis: crate::GridAxisKind::Row,
+                grid_axis: GridAxisKind::Row,
                 reversed: false,
                 lane_gap: 0.0,
                 tolerance: GridFlowTolerance::Infinite,
@@ -7194,7 +7211,7 @@ mod root_layout_oracle {
             .solve();
 
         GridLayoutComparison::new()
-            .root_display(crate::Display::GridLanes)
+            .root_display(Display::GridLanes)
             .container(Size::new(40.0, 0.0))
             .root_size(Size::new(PreferredSize::px(40.0), PreferredSize::AUTO))
             .columns(vec![TrackComponent::px(40.0)])
@@ -7247,9 +7264,7 @@ mod root_layout_oracle {
                 .operations(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7262,9 +7277,7 @@ mod root_layout_oracle {
                 .spaces(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7289,9 +7302,7 @@ mod root_layout_oracle {
                 .operations(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7304,9 +7315,7 @@ mod root_layout_oracle {
                 .spaces(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7337,10 +7346,10 @@ mod root_layout_oracle {
                 ))
                 .spaces(Size::new(
                     Some(AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                        NonNegativeFiniteOf::new(100.0).unwrap(),
                     )),
                     Some(AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(60.0).unwrap(),
+                        NonNegativeFiniteOf::new(60.0).unwrap(),
                     )),
                 )),
             );
@@ -7364,7 +7373,7 @@ mod root_layout_oracle {
                     ))
                     .spaces(Size::new(
                         Some(AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(width).unwrap(),
+                            NonNegativeFiniteOf::new(width).unwrap(),
                         )),
                         None,
                     )),
@@ -7372,7 +7381,7 @@ mod root_layout_oracle {
             }
         }
 
-        let output = crate::compute_grid(
+        let output = compute_grid(
             &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
@@ -7381,12 +7390,9 @@ mod root_layout_oracle {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::new(Some(100.0), Some(100.0)),
-                crate::ContainingLayoutContext::new(
-                    crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
-                    ),
-                    crate::ParentFormattingContext::NoParent,
+                ContainingLayoutContext::new(
+                    crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                    ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::new(
@@ -7401,8 +7407,8 @@ mod root_layout_oracle {
                     ),
                     OrthogonalFallbackOf::new(
                         Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             ),
@@ -7426,7 +7432,7 @@ mod root_layout_oracle {
                         == Size::new(
                             AxisSizingRequestOf::new(
                                 AvailableSpaceOf::Definite(
-                                    crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                                    NonNegativeFiniteOf::new(100.0).unwrap(),
                                 ),
                                 SizingOperation::Normal,
                             ),
@@ -7440,7 +7446,7 @@ mod root_layout_oracle {
         );
 
         GridLayoutComparison::new()
-            .root_display(crate::Display::GridLanes)
+            .root_display(Display::GridLanes)
             .container(Size::new(100.0, 100.0))
             .columns(vec![TrackComponent::px(100.0)])
             .rows(vec![TrackComponent::px(10.0)])
@@ -7512,9 +7518,7 @@ mod root_layout_oracle {
                 .operations(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(40.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(40.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7527,9 +7531,7 @@ mod root_layout_oracle {
                 .spaces(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(40.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(40.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7564,9 +7566,7 @@ mod root_layout_oracle {
                 .operations(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(40.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(40.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7579,9 +7579,7 @@ mod root_layout_oracle {
                 .spaces(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(40.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(40.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7603,9 +7601,7 @@ mod root_layout_oracle {
                 .operations(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7618,9 +7614,7 @@ mod root_layout_oracle {
                 .spaces(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7642,9 +7636,7 @@ mod root_layout_oracle {
                 .operations(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7657,9 +7649,7 @@ mod root_layout_oracle {
                 .spaces(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7690,10 +7680,10 @@ mod root_layout_oracle {
                 ))
                 .spaces(Size::new(
                     Some(AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(40.0).unwrap(),
+                        NonNegativeFiniteOf::new(40.0).unwrap(),
                     )),
                     Some(AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                        NonNegativeFiniteOf::new(100.0).unwrap(),
                     )),
                 )),
             )
@@ -7715,10 +7705,10 @@ mod root_layout_oracle {
                 ))
                 .spaces(Size::new(
                     Some(AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                        NonNegativeFiniteOf::new(100.0).unwrap(),
                     )),
                     Some(AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(10.0).unwrap(),
+                        NonNegativeFiniteOf::new(10.0).unwrap(),
                     )),
                 )),
             )
@@ -7741,10 +7731,10 @@ mod root_layout_oracle {
                 ))
                 .spaces(Size::new(
                     Some(AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                        NonNegativeFiniteOf::new(100.0).unwrap(),
                     )),
                     Some(AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(90.0).unwrap(),
+                        NonNegativeFiniteOf::new(90.0).unwrap(),
                     )),
                 )),
             );
@@ -7773,7 +7763,7 @@ mod root_layout_oracle {
                     ))
                     .spaces(Size::new(
                         Some(AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(width).unwrap(),
+                            NonNegativeFiniteOf::new(width).unwrap(),
                         )),
                         None,
                     )),
@@ -7781,7 +7771,7 @@ mod root_layout_oracle {
             }
         }
 
-        crate::compute_grid(
+        compute_grid(
             &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
@@ -7790,12 +7780,9 @@ mod root_layout_oracle {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::new(Some(140.0), Some(140.0)),
-                crate::ContainingLayoutContext::new(
-                    crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
-                    ),
-                    crate::ParentFormattingContext::NoParent,
+                ContainingLayoutContext::new(
+                    crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                    ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::new(
@@ -7810,8 +7797,8 @@ mod root_layout_oracle {
                     ),
                     OrthogonalFallbackOf::new(
                         Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             ),
@@ -7838,7 +7825,7 @@ mod root_layout_oracle {
                 .iter()
                 .any(|input| input.sizing_request().axes().width
                     == AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
                         SizingOperation::Normal
                     )),
             "third auto lane item should be measured against its final 100px column: {third_compute_size_inputs:#?}"
@@ -7863,7 +7850,8 @@ mod root_layout_oracle {
             .style(
                 2,
                 NodeInput {
-                    grid_column: crate::GridPlacement::try_span(2).expect("valid grid placement"),
+                    grid_column: crate::node_input::GridPlacement::try_span(2)
+                        .expect("valid grid placement"),
                     ..NodeInput::default()
                 },
             );
@@ -7878,9 +7866,7 @@ mod root_layout_oracle {
                 .operations(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(80.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(80.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7893,9 +7879,7 @@ mod root_layout_oracle {
                 .spaces(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(80.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(80.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7918,9 +7902,7 @@ mod root_layout_oracle {
                 .operations(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(120.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(120.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7933,9 +7915,7 @@ mod root_layout_oracle {
                 .spaces(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(120.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(120.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7967,10 +7947,10 @@ mod root_layout_oracle {
                 ))
                 .spaces(Size::new(
                     Some(AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(120.0).unwrap(),
+                        NonNegativeFiniteOf::new(120.0).unwrap(),
                     )),
                     Some(AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(40.0).unwrap(),
+                        NonNegativeFiniteOf::new(40.0).unwrap(),
                     )),
                 )),
             );
@@ -7994,7 +7974,7 @@ mod root_layout_oracle {
                     ))
                     .spaces(Size::new(
                         Some(AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(width).unwrap(),
+                            NonNegativeFiniteOf::new(width).unwrap(),
                         )),
                         None,
                     )),
@@ -8002,7 +7982,7 @@ mod root_layout_oracle {
             }
         }
 
-        crate::compute_grid(
+        compute_grid(
             &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
@@ -8011,12 +7991,9 @@ mod root_layout_oracle {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::new(Some(120.0), Some(120.0)),
-                crate::ContainingLayoutContext::new(
-                    crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
-                    ),
-                    crate::ParentFormattingContext::NoParent,
+                ContainingLayoutContext::new(
+                    crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                    ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::new(
@@ -8031,8 +8008,8 @@ mod root_layout_oracle {
                     ),
                     OrthogonalFallbackOf::new(
                         Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             ),
@@ -8052,7 +8029,7 @@ mod root_layout_oracle {
                 .iter()
                 .any(|input| input.sizing_request().axes().width
                     == AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(120.0).unwrap()),
                         SizingOperation::Normal
                     )),
             "spanning lane child should be measured against distributed 120px grid-axis span: {compute_size_inputs:#?}"
@@ -8069,7 +8046,7 @@ mod root_layout_oracle {
             .solve();
 
         GridLayoutComparison::new()
-            .root_display(crate::Display::GridLanes)
+            .root_display(Display::GridLanes)
             .container(Size::new(100.0, 40.0))
             .columns(vec![TrackComponent::px(100.0)])
             .rows(vec![TrackComponent::px(40.0)])
@@ -8086,7 +8063,7 @@ mod root_layout_oracle {
     #[test]
     fn fri08_c03_measured_grid_like_leaf_retains_host_measurement() {
         GridLayoutComparison::new()
-            .root_display(crate::Display::GridLanes)
+            .root_display(Display::GridLanes)
             .container(Size::new(90.0, 10.0))
             .root_size(Size::new(PreferredSize::AUTO, PreferredSize::px(10.0)))
             .columns(vec![TrackComponent::AUTO])
@@ -8102,8 +8079,8 @@ mod root_layout_oracle {
             )
             .node(
                 GridLayoutNode::auto_item(GridArea::new(1, 1, 1, 1))
-                    .display(crate::Display::GridLanes)
-                    .columns(vec![TrackComponent::Subgrid(crate::SubgridTrack {
+                    .display(Display::GridLanes)
+                    .columns(vec![TrackComponent::Subgrid(SubgridTrack {
                         name_components: Vec::new(),
                     })])
                     .rows(vec![TrackComponent::px(10.0)])
@@ -8130,7 +8107,7 @@ mod root_layout_oracle {
             .solve();
 
         GridLayoutComparison::new()
-            .root_display(crate::Display::GridLanes)
+            .root_display(Display::GridLanes)
             .container(Size::new(0.0, 10.0))
             .root_size(Size::new(PreferredSize::AUTO, PreferredSize::px(10.0)))
             .columns(vec![
@@ -8142,8 +8119,8 @@ mod root_layout_oracle {
             .expected_tracks(expected_columns, expected_rows)
             .node(
                 GridLayoutNode::auto_spanning_item(GridArea::new(1, 1, 2, 1), 2, 1)
-                    .display(crate::Display::GridLanes)
-                    .columns(vec![TrackComponent::Subgrid(crate::SubgridTrack {
+                    .display(Display::GridLanes)
+                    .columns(vec![TrackComponent::Subgrid(SubgridTrack {
                         name_components: Vec::new(),
                     })])
                     .rows(vec![TrackComponent::px(10.0)])
@@ -8169,7 +8146,7 @@ mod root_layout_oracle {
             .solve();
 
         GridLayoutComparison::new()
-            .root_display(crate::Display::GridLanes)
+            .root_display(Display::GridLanes)
             .container(Size::new(0.0, 10.0))
             .root_size(Size::new(PreferredSize::AUTO, PreferredSize::px(10.0)))
             .columns(vec![
@@ -8181,8 +8158,8 @@ mod root_layout_oracle {
             .expected_tracks(expected_columns, expected_rows)
             .node(
                 GridLayoutNode::item(GridArea::new(2, 1, 2, 1))
-                    .display(crate::Display::GridLanes)
-                    .columns(vec![TrackComponent::Subgrid(crate::SubgridTrack {
+                    .display(Display::GridLanes)
+                    .columns(vec![TrackComponent::Subgrid(SubgridTrack {
                         name_components: Vec::new(),
                     })])
                     .rows(vec![TrackComponent::px(10.0)])
@@ -8205,20 +8182,16 @@ mod root_layout_oracle {
             .solve();
 
         GridLayoutComparison::new()
-            .root_display(crate::Display::GridLanes)
+            .root_display(Display::GridLanes)
             .container(Size::new(120.0, 30.0))
             .columns(vec![TrackComponent::px(40.0), TrackComponent::px(80.0)])
             .rows(vec![TrackComponent::px(30.0)])
             .expected_tracks(expected_columns, expected_rows)
-            .lanes_flow(crate::GridLanesFlow::new(
-                crate::GridAxisKind::Column,
-                false,
-                false,
-            ))
+            .lanes_flow(GridLanesFlow::new(GridAxisKind::Column, false, false))
             .node(
                 GridLayoutNode::auto_spanning_item(GridArea::new(1, 1, 2, 1), 2, 1)
-                    .display(crate::Display::Grid)
-                    .columns(vec![TrackComponent::Subgrid(crate::SubgridTrack {
+                    .display(Display::Grid)
+                    .columns(vec![TrackComponent::Subgrid(SubgridTrack {
                         name_components: Vec::new(),
                     })])
                     .rows(vec![TrackComponent::px(30.0)])
@@ -8245,21 +8218,17 @@ mod root_layout_oracle {
             .solve();
 
         GridLayoutComparison::new()
-            .root_display(crate::Display::GridLanes)
+            .root_display(Display::GridLanes)
             .container(Size::new(30.0, 120.0))
             .columns(vec![TrackComponent::px(30.0)])
             .rows(vec![TrackComponent::px(40.0), TrackComponent::px(80.0)])
             .expected_tracks(expected_columns, expected_rows)
-            .lanes_flow(crate::GridLanesFlow::new(
-                crate::GridAxisKind::Row,
-                false,
-                false,
-            ))
+            .lanes_flow(GridLanesFlow::new(GridAxisKind::Row, false, false))
             .node(
                 GridLayoutNode::auto_spanning_item(GridArea::new(1, 1, 1, 2), 1, 2)
-                    .display(crate::Display::Grid)
+                    .display(Display::Grid)
                     .columns(vec![TrackComponent::px(30.0)])
-                    .rows(vec![TrackComponent::Subgrid(crate::SubgridTrack {
+                    .rows(vec![TrackComponent::Subgrid(SubgridTrack {
                         name_components: Vec::new(),
                     })])
                     // The child adopts Row lanes, whose stacking width is the
@@ -8285,19 +8254,15 @@ mod root_layout_oracle {
             .solve();
 
         GridLayoutComparison::new()
-            .root_display(crate::Display::GridLanes)
+            .root_display(Display::GridLanes)
             .container(Size::new(120.0, 30.0))
             .columns(vec![TrackComponent::px(40.0), TrackComponent::px(80.0)])
             .rows(vec![TrackComponent::px(30.0)])
             .expected_tracks(expected_columns, expected_rows)
-            .lanes_flow(crate::GridLanesFlow::new(
-                crate::GridAxisKind::Column,
-                false,
-                false,
-            ))
+            .lanes_flow(GridLanesFlow::new(GridAxisKind::Column, false, false))
             .node(
                 GridLayoutNode::item(GridArea::new(1, 1, 1, 1))
-                    .display(crate::Display::None)
+                    .display(Display::None)
                     .expect_layout(Point::new(0.0, 0.0), Size::ZERO),
             )
             .node(
@@ -8308,8 +8273,8 @@ mod root_layout_oracle {
             )
             .node(
                 GridLayoutNode::auto_spanning_item(GridArea::new(1, 1, 2, 1), 2, 1)
-                    .display(crate::Display::Grid)
-                    .columns(vec![TrackComponent::Subgrid(crate::SubgridTrack {
+                    .display(Display::Grid)
+                    .columns(vec![TrackComponent::Subgrid(SubgridTrack {
                         name_components: Vec::new(),
                     })])
                     .rows(vec![TrackComponent::px(30.0)])
@@ -8335,7 +8300,7 @@ mod root_layout_oracle {
             .solve();
 
         GridLayoutComparison::new()
-            .root_display(crate::Display::GridLanes)
+            .root_display(Display::GridLanes)
             .container(Size::new(120.0, 90.0))
             .columns(vec![
                 TrackComponent::px(40.0),
@@ -8345,11 +8310,7 @@ mod root_layout_oracle {
             .rows(vec![TrackComponent::px(10.0)])
             .gap(Size::new(0.0, 6.0))
             .expected_tracks(expected_columns, expected_rows)
-            .lanes_flow(crate::GridLanesFlow::new(
-                crate::GridAxisKind::Column,
-                false,
-                false,
-            ))
+            .lanes_flow(GridLanesFlow::new(GridAxisKind::Column, false, false))
             .node(
                 GridLayoutNode::auto_spanning_item(GridArea::new(1, 1, 2, 1), 2, 1)
                     .measurement(Size::new(20.0, 30.0))

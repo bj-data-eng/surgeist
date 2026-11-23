@@ -4,8 +4,14 @@ use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::readback::{self, Phase};
 use crate::{
-    InlineBoundaryInputOf, LayoutInputOf, LengthAutoOf, NodeInputOf, NodeOutputOf, Point,
-    PreferredSizeOf, compute_layout,
+    engine::compute_layout,
+    geometry::Point,
+    node_input::{InlineBaselineContext, InlineBoundaryInputOf, LayoutInputOf, NodeInputOf},
+    output::NodeOutputOf,
+    sizing::PreferredSizeOf,
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, LengthAutoOf, NonNegativeFiniteOf, SizingOperation,
+    },
 };
 
 fn signed_margin<S: LayoutScalar>(direction: Direction) -> Edges<S> {
@@ -18,7 +24,7 @@ fn signed_margin<S: LayoutScalar>(direction: Direction) -> Edges<S> {
 
 fn metrics<S: LayoutScalar>() -> InlineMetricsOf<S> {
     InlineMetricsOf::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
+        InlineBaselineContext::Physical,
         S::from_f64(10.0),
         S::from_f64(10.0),
     )
@@ -38,16 +44,14 @@ fn numeric_input<S: LayoutScalar>(
     let flow = InlineFlowOf::new(
         WritingMode::HorizontalTb,
         direction,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap()),
+            SizingOperation::Normal,
         ),
     );
     let atomic = |source_index, following| MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {
-            baseline_reference: crate::InlineBaselineContext::Physical,
+            baseline_reference: InlineBaselineContext::Physical,
             source_index,
             size: Size::splat(S::from_f64(10.0)),
             content_size: Size::ZERO,
@@ -73,24 +77,22 @@ fn numeric_input<S: LayoutScalar>(
     };
     MixedInlineRunInputOf {
         meter: crate::accounting::Meter::new(),
-        inline_baseline_context: crate::InlineBaselineContext::Physical,
+        inline_baseline_context: InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
-        text_wrap_style: crate::TextWrapStyle::Auto,
+        text_wrap_style: crate::node_input::TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
-            crate::LineBoxDirectionPolicy::Normal,
+            crate::node_input::LineBoxDirectionPolicy::Normal,
             direction,
         ),
         observe_tail: true,
         wrapping: None,
-        available_inline_extent: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        available_inline_extent: AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, direction),
         text_align: TextAlign::Start,
-        text_align_last: crate::TextAlignLast::Auto,
+        text_align_last: crate::node_input::TextAlignLast::Auto,
         indent: crate::text_indent::ResolvedTextIndent::ZERO,
         indent_state: crate::text_indent::IndentLineState::default(),
         participants: vec![
@@ -233,7 +235,7 @@ fn assert_layout_placement<S: LayoutScalar>(
         .style(
             0,
             NodeInputOf {
-                display: crate::Display::Block,
+                display: crate::node_input::Display::Block,
                 direction,
                 size: Size::new(
                     PreferredSizeOf::px(S::from_f64(25.0)),
@@ -247,7 +249,7 @@ fn assert_layout_placement<S: LayoutScalar>(
         tree = tree.style(
             node,
             NodeInputOf {
-                display: crate::Display::InlineBlock,
+                display: crate::node_input::Display::InlineBlock,
                 direction,
                 size: Size::new(
                     PreferredSizeOf::px(S::from_f64(10.0)),
@@ -273,41 +275,36 @@ fn assert_layout_placement<S: LayoutScalar>(
     }
     let request = {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input(&tree, 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input(&tree, 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap()),
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         logical_requests.inline = logical_requests
             .inline
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )

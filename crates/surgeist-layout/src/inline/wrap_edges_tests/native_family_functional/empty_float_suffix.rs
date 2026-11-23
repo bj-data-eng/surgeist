@@ -1,5 +1,6 @@
 //! An ordering-empty normal box retains identity through a real float cut.
 use super::*;
+use crate::tree::LayoutTree;
 
 #[path = "empty_float_suffix/explicit_start.rs"]
 mod explicit_start;
@@ -15,8 +16,8 @@ fn empty_float_fixture<S: LayoutScalar>(nested: bool) -> Fixture<S> {
     f.tree.insert_input(
         30,
         LayoutInputOf::box_input(NodeInputOf {
-            display: crate::Display::Block,
-            float: crate::Float::Left,
+            display: crate::node_input::Display::Block,
+            float: crate::node_input::Float::Left,
             size: Size::new(PreferredSizeOf::px(n(8.0)), PreferredSizeOf::px(n(4.0))),
             ..NodeInputOf::default()
         }),
@@ -75,8 +76,8 @@ fn empty_float_fixture<S: LayoutScalar>(nested: bool) -> Fixture<S> {
         ]);
     }
     for (node, kind, width) in endpoints {
-        let crate::LayoutInputViewOf::InlineBoundary(input) =
-            crate::LayoutTree::layout_input(&f.tree, node)
+        let crate::node_input::LayoutInputViewOf::InlineBoundary(input) =
+            LayoutTree::layout_input(&f.tree, node)
         else {
             panic!("the original endpoint must remain an actual inline-boundary operation");
         };
@@ -89,10 +90,10 @@ fn empty_float_fixture<S: LayoutScalar>(nested: bool) -> Fixture<S> {
             (WritingMode::HorizontalTb, Direction::Ltr)
         );
     }
-    let float = crate::LayoutTree::node_input(&f.tree, 30);
-    assert_eq!(float.display, crate::Display::Block);
-    assert_eq!(float.float, crate::Float::Left);
-    assert_eq!(float.position, crate::Position::Relative);
+    let float = LayoutTree::node_input(&f.tree, 30);
+    assert_eq!(float.display, crate::node_input::Display::Block);
+    assert_eq!(float.float, crate::node_input::Float::Left);
+    assert_eq!(float.position, crate::node_input::Position::Relative);
     assert_eq!(float.atomic_inline_participation, None);
     assert_eq!(
         float.size,
@@ -140,7 +141,7 @@ fn ordinary_empty_float_geometry<S: LayoutScalar>(
 }
 
 fn empty_suffix_member<S: LayoutScalar>(
-    piece: crate::NativeInlineBoxPieceView<'_, u32, S>,
+    piece: crate::inline_wrapping::NativeInlineBoxPieceView<'_, u32, S>,
     leaf: GeneratedBoxRef<u32>,
 ) {
     let members: Vec<_> = piece.selected_members().collect();
@@ -162,8 +163,8 @@ fn selected_closing_suffix<S: LayoutScalar>() {
         &ordinary_flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((ordinary_flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((ordinary_flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .expect("the ordinary Start/float/End sequence must complete first");
@@ -183,8 +184,8 @@ fn selected_closing_suffix<S: LayoutScalar>() {
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     );
     // A failed family computation must leave the prior ordinary publication and
@@ -194,8 +195,8 @@ fn selected_closing_suffix<S: LayoutScalar>() {
         &ordinary_flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((ordinary_flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((ordinary_flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -308,8 +309,8 @@ fn nested_selected_closing_suffix<S: LayoutScalar>() {
         &ordinary_flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((ordinary_flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((ordinary_flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .expect("ordinary nested empty boxes must complete both real runs around the float");
@@ -325,8 +326,8 @@ fn nested_selected_closing_suffix<S: LayoutScalar>() {
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     );
     ordinary_empty_float_geometry(&prior, true);
@@ -334,8 +335,8 @@ fn nested_selected_closing_suffix<S: LayoutScalar>() {
         &ordinary_flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((ordinary_flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((ordinary_flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();

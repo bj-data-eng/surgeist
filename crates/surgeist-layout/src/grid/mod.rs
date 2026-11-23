@@ -1,15 +1,5 @@
 use std::ops::ControlFlow;
 
-use super::{
-    AlignContent, AlignItems, AvailableSpaceOf, AxisSizingRequestOf, BaselinesOf, BoxSizing,
-    Compute, ComputeInputOf, ComputeOutputOf, DefaultScalar, Direction, Display, Edges,
-    GridAutoFlow, GridPlacement, LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf,
-    LayoutInternalInvariant, LayoutInvalidInputOf, LayoutOperation, LayoutResultOf, LayoutScalar,
-    LengthAutoOf, LengthOf, LengthResolutionStatus, MaxTrackSizingOf, MinSizeOf, MinTrackSizingOf,
-    NodeOutputOf, OrthogonalFallbackOf, Overflow, Point, Position, PreferredSizeOf, RequestedAxis,
-    RunMode, Size, SizingAlgorithm, SizingMode, SizingOperation, SizingRequestOf, TrackComponentOf,
-    TrackRepeat, TrackSizingOf, Traverse,
-};
 use crate::accounting::LayoutWork;
 use crate::engine::containment::{
     compute_empty_box, contained_outer_size, empty_sizing_input, size_containment,
@@ -31,6 +21,30 @@ use crate::sizing::resolve::{
     EdgesResultExt, FixedFallbackSource, ResolvedPreferredSize, SizeResultExt,
     SizingResolutionError, resolve_maximum_optional, resolve_minimum_optional,
     resolve_preferred_optional, resolve_preferred_sizing,
+};
+use crate::{
+    engine::contracts::Compute,
+    error::{
+        LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant,
+        LayoutInvalidInputOf, LayoutOperation, LayoutResultOf, SizingAlgorithm,
+    },
+    geometry::{Edges, Point, Size},
+    node_input::{
+        AlignContent, AlignItems, BoxSizing, Direction, Display, GridAutoFlow, GridPlacement,
+        Overflow, Position, RawGridLine, RawGridPlacement, SizeContainment,
+    },
+    output::{
+        BaselinesOf, ComputeInputOf, ComputeOutputOf, NodeOutputOf, RequestedAxis, RunMode,
+        SizingMode, SourceIndex,
+    },
+    scalar::{DefaultScalar, LayoutScalar},
+    sizing::{MinSizeOf, PreferredSizeOf},
+    tree::Traverse,
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, GridSpan, LengthAutoOf, LengthOf,
+        LengthResolutionStatus, MaxTrackSizingOf, MinTrackSizingOf, OrthogonalFallbackOf,
+        SizingOperation, SizingRequestOf, TrackComponentOf, TrackRepeat, TrackSizingOf,
+    },
 };
 
 mod alignment;
@@ -808,12 +822,12 @@ where
 {
     let style = invocation.container.source();
     let containment = size_containment(style);
-    if containment == crate::SizeContainment::None {
+    if containment == SizeContainment::None {
         return Ok(ControlFlow::Continue(Size::NONE));
     }
-    let flow_axes = crate::FlowAxes::new(style.writing_mode, style.direction);
+    let flow_axes = crate::geometry::FlowAxes::new(style.writing_mode, style.direction);
     let empty = compute_empty_grid(node, input, parent_context, invocation, stage)?;
-    if containment == crate::SizeContainment::BothAxes
+    if containment == SizeContainment::BothAxes
         && !input.run_mode().is_perform_layout()
         && !input.physical_baseline_demand()
     {
@@ -1129,7 +1143,7 @@ fn intrinsic_available_size_for_axis<S: LayoutScalar>(
     available
         .space()
         .definite_size()
-        .map(crate::NonNegativeFiniteOf::get)
+        .map(crate::value::NonNegativeFiniteOf::get)
         .or_else(|| {
             (available.operation() == SizingOperation::MaxContent)
                 .then_some(max_size)
@@ -2035,7 +2049,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPassPreparationSource<'input,
                 LayoutErrorSiteOf::Node(node),
                 LayoutOperation::RootLayout,
                 LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::RootContext(
-                    crate::RootContextMismatch::WritingMode,
+                    crate::output::RootContextMismatch::WritingMode,
                 )),
             ));
         }
@@ -2799,7 +2813,7 @@ impl<Node: Copy, S: LayoutScalar> GridPassOutput<'_, Node, S> {
             crate::scroll::UsedOverflow::from_computed(style.overflow, style.item_is_replaced);
         let baselines = if used_overflow.is_scroll_container() {
             baselines.clamped_to_border(output_size).map_err(
-                |crate::FiniteScalarErrorOf::NonFinite { value }| {
+                |crate::value::FiniteScalarErrorOf::NonFinite { value }| {
                     crate::error::value_resolution_error(
                         node,
                         LengthResolutionStatus::InvalidNumeric { value },
@@ -2943,7 +2957,7 @@ struct InheritedGridAxis<S: LayoutScalar = DefaultScalar, Node = ()> {
     template_area_expanded: bool,
     owner_baseline_targets: Option<InheritedGridOwnerBaselineTargets<Node, S>>,
     // Retained independently of whether any actual owner target exists yet.
-    baseline_reference: crate::GridBaselineReference,
+    baseline_reference: crate::node_input::GridBaselineReference,
     parent_start: usize,
     parent_end: usize,
     reversed: bool,
@@ -3062,7 +3076,7 @@ pub(super) struct GridPlacementContext<'input, Node, S: LayoutScalar = DefaultSc
     pub(super) children: Vec<Node>,
     pub(super) items: Vec<ResolvedGridItemPlacement>,
     child_inputs: Vec<GridChildInput<'input, S>>,
-    pub(super) order_modified_indexes: Vec<crate::SourceIndex>,
+    pub(super) order_modified_indexes: Vec<SourceIndex>,
     settled_areas: Option<Vec<Option<PlacedGridArea>>>,
 }
 
@@ -3085,7 +3099,7 @@ impl<'input, Node, S: LayoutScalar> GridPlacementContext<'input, Node, S> {
         let order_modified_indexes = items
             .iter()
             .enumerate()
-            .filter_map(|(index, item)| item.in_flow.then_some(crate::SourceIndex::new(index)))
+            .filter_map(|(index, item)| item.in_flow.then_some(SourceIndex::new(index)))
             .collect();
         Self {
             children,
@@ -3101,10 +3115,7 @@ impl<'input, Node, S: LayoutScalar> GridPlacementContext<'input, Node, S> {
         Self::new_with_child_inputs(Vec::new(), Vec::new(), Vec::new())
     }
 
-    fn with_order_modified_indexes(
-        mut self,
-        order_modified_indexes: Vec<crate::SourceIndex>,
-    ) -> Self {
+    fn with_order_modified_indexes(mut self, order_modified_indexes: Vec<SourceIndex>) -> Self {
         debug_assert_eq!(
             order_modified_indexes.len(),
             self.items.iter().filter(|item| item.in_flow).count()
@@ -3764,7 +3775,7 @@ where
             .map(|(index, _)| {
                 (
                     child_inputs[index].item().item_order,
-                    crate::SourceIndex::new(index),
+                    SourceIndex::new(index),
                 )
             })
             .collect::<Vec<_>>(),
@@ -3779,7 +3790,7 @@ where
 fn subgrid_automatic_spans<S: LayoutScalar>(
     parent_style: &GridContainerProjection<'_, S>,
     child_input: &GridChildInput<'_, S>,
-) -> LogicalSizeOf<Option<crate::GridSpan>> {
+) -> LogicalSizeOf<Option<GridSpan>> {
     let mut spans = LogicalSizeOf::new(None, None);
     let Some(child_container) = child_input.nested_container() else {
         return spans;
@@ -3807,11 +3818,11 @@ fn subgrid_automatic_spans<S: LayoutScalar>(
 
 fn resolve_grid_item_axis_placements_with_report(
     lines: &named::NamedGridLines,
-    raw: &super::RawGridPlacement,
+    raw: &RawGridPlacement,
     legacy: GridPlacement,
     subgrid_axis: bool,
     in_flow: bool,
-    automatic_span: Option<crate::GridSpan>,
+    automatic_span: Option<GridSpan>,
 ) -> Result<(GridPlacement, GridPlacement, NamedGridReport), GridPlacementDemandError> {
     if !in_flow {
         let (placement, report) =
@@ -3832,7 +3843,7 @@ fn resolve_grid_item_axis_placements_with_report(
 #[cfg(test)]
 fn resolve_grid_item_axis_placement(
     lines: &named::NamedGridLines,
-    raw: &super::RawGridPlacement,
+    raw: &crate::node_input::RawGridPlacement,
     legacy: GridPlacement,
 ) -> GridPlacement {
     resolve_grid_item_axis_placement_with_report(lines, raw, legacy, None)
@@ -3842,11 +3853,11 @@ fn resolve_grid_item_axis_placement(
 
 fn resolve_grid_item_axis_placement_with_report(
     lines: &named::NamedGridLines,
-    raw: &super::RawGridPlacement,
+    raw: &RawGridPlacement,
     legacy: GridPlacement,
-    automatic_span: Option<crate::GridSpan>,
+    automatic_span: Option<GridSpan>,
 ) -> Result<(GridPlacement, NamedGridReport), GridPlacementDemandError> {
-    if raw == &super::RawGridPlacement::AUTO && !legacy.is_auto() {
+    if raw == &RawGridPlacement::AUTO && !legacy.is_auto() {
         return Ok((legacy, NamedGridReport::default()));
     }
     let (resolved, report) =
@@ -3861,7 +3872,7 @@ fn resolve_grid_item_axis_placement_with_report(
 #[cfg(test)]
 fn resolve_absolute_grid_item_axis_placement(
     lines: &named::NamedGridLines,
-    raw: &super::RawGridPlacement,
+    raw: &crate::node_input::RawGridPlacement,
     legacy: GridPlacement,
 ) -> GridPlacement {
     resolve_absolute_grid_item_axis_placement_with_report(lines, raw, legacy, false).0
@@ -3869,7 +3880,7 @@ fn resolve_absolute_grid_item_axis_placement(
 
 fn resolve_absolute_grid_item_axis_placement_with_report(
     lines: &named::NamedGridLines,
-    raw: &super::RawGridPlacement,
+    raw: &RawGridPlacement,
     legacy: GridPlacement,
     subgrid_axis: bool,
 ) -> (GridPlacement, NamedGridReport) {
@@ -3891,23 +3902,21 @@ fn resolve_absolute_grid_item_axis_placement_with_report(
 
 fn resolve_subgrid_item_axis_placement_with_report(
     lines: &named::NamedGridLines,
-    raw: &super::RawGridPlacement,
+    raw: &RawGridPlacement,
     legacy: GridPlacement,
-    automatic_span: Option<crate::GridSpan>,
+    automatic_span: Option<GridSpan>,
 ) -> (GridPlacement, NamedGridReport) {
     let typed_anchor;
-    let raw = if raw == &super::RawGridPlacement::AUTO && !legacy.is_auto() {
-        let line = |line: Option<crate::GridLine>| {
-            line.map_or(super::RawGridLine::Auto, |line| {
-                super::RawGridLine::Line(line.get())
-            })
+    let raw = if raw == &RawGridPlacement::AUTO && !legacy.is_auto() {
+        let line = |line: Option<crate::value::GridLine>| {
+            line.map_or(RawGridLine::Auto, |line| RawGridLine::Line(line.get()))
         };
         let (start, end) = match (legacy.start(), legacy.end(), legacy.span()) {
-            (None, end, Some(span)) => (super::RawGridLine::Span(span.get()), line(end)),
-            (start, None, Some(span)) => (line(start), super::RawGridLine::Span(span.get())),
+            (None, end, Some(span)) => (RawGridLine::Span(span.get()), line(end)),
+            (start, None, Some(span)) => (line(start), RawGridLine::Span(span.get())),
             (start, end, _) => (line(start), line(end)),
         };
-        typed_anchor = super::RawGridPlacement::new(start, end);
+        typed_anchor = RawGridPlacement::new(start, end);
         &typed_anchor
     } else {
         raw
@@ -3918,14 +3927,14 @@ fn resolve_subgrid_item_axis_placement_with_report(
     }
 }
 
-fn raw_uses_only_numeric_grid_lines(raw: &super::RawGridPlacement) -> bool {
+fn raw_uses_only_numeric_grid_lines(raw: &RawGridPlacement) -> bool {
     raw_grid_line_is_numeric(&raw.start) && raw_grid_line_is_numeric(&raw.end)
 }
 
-fn raw_grid_line_is_numeric(line: &super::RawGridLine) -> bool {
+fn raw_grid_line_is_numeric(line: &RawGridLine) -> bool {
     matches!(
         line,
-        super::RawGridLine::Auto | super::RawGridLine::Line(_) | super::RawGridLine::Span(_)
+        RawGridLine::Auto | RawGridLine::Line(_) | RawGridLine::Span(_)
     )
 }
 
@@ -4134,7 +4143,7 @@ where
     let constants =
         constants.for_contained_placement(containment, output_size, layout_content_box_size);
 
-    let contained_track_size = (containment != crate::SizeContainment::None).then(|| {
+    let contained_track_size = (containment != SizeContainment::None).then(|| {
         constants.flow_axes.physical_size(LogicalSizeOf::new(
             track_sum_with_gutters(
                 &layout_columns,
@@ -4763,7 +4772,7 @@ impl<S: LayoutScalar> Constants<S> {
 
     fn for_contained_placement(
         mut self,
-        containment: crate::SizeContainment,
+        containment: SizeContainment,
         outer: Size<S>,
         inner: Size<S>,
     ) -> Self {
@@ -5061,7 +5070,7 @@ fn grid_container_scroll_geometry<Node, S, M>(
     scroll_box: CanonicalScrollBoxOf<S>,
     contributions: crate::scroll::ScrollContributionAccumulatorOf<S>,
     settled_auto_scrollbars: crate::scroll::SettledAutoScrollbarState,
-) -> LayoutResultOf<Node, crate::ScrollGeometryOf<S>, S, M>
+) -> LayoutResultOf<Node, crate::scroll::ScrollGeometryOf<S>, S, M>
 where
     Node: Copy,
     S: LayoutScalar,
@@ -5177,8 +5186,10 @@ impl<S: LayoutScalar> ScalarExt for S {
 mod fri06_c13_t06_characterization_tests {
     use super::*;
     use crate::{
-        LayoutErrorKindOf, LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation,
-        LengthPercentageOf, NodeInputOf, ParentFormattingContext, RequestedAxis, WritingMode,
+        error::{LayoutErrorKindOf, LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation},
+        node_input::{NodeInputOf, WritingMode},
+        output::{ParentFormattingContext, RequestedAxis},
+        value::LengthPercentageOf,
     };
 
     fn input<S: LayoutScalar>(
@@ -5191,7 +5202,7 @@ mod fri06_c13_t06_characterization_tests {
             RequestedAxis::Both,
             Size::NONE,
             parent,
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 containing_flow_axes,
                 ParentFormattingContext::NoParent,
             ),
@@ -5202,8 +5213,8 @@ mod fri06_c13_t06_characterization_tests {
                 )),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    crate::value::NearestScrollportOf::Absent,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         )
@@ -5246,7 +5257,7 @@ mod fri06_c13_t06_characterization_tests {
             S::from_f64(4.0),
         );
         let style = NodeInputOf {
-            display: crate::Display::Grid,
+            display: crate::node_input::Display::Grid,
             padding: percentage_edges(),
             border,
             ..NodeInputOf::default()
@@ -5297,7 +5308,7 @@ mod fri06_c13_t06_characterization_tests {
                 .expect("finite negative overflow coefficients"),
         );
         let failing_style = NodeInputOf {
-            display: crate::Display::Grid,
+            display: crate::node_input::Display::Grid,
             padding: Edges::new(
                 LengthOf::ZERO,
                 LengthOf::ZERO,

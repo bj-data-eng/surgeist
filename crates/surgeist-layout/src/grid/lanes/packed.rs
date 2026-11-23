@@ -1,4 +1,5 @@
 use super::*;
+use crate::node_input::WritingMode;
 
 #[derive(Debug)]
 pub(in crate::grid) struct PackedLaneItem<S: LayoutScalar> {
@@ -137,13 +138,9 @@ impl<S: LayoutScalar> PackedLanePlacement<S> {
                         flow
                     } else {
                         let writing_mode = match (axis, item.style.direction) {
-                            (PhysicalAxis::Vertical, _) => crate::WritingMode::HorizontalTb,
-                            (PhysicalAxis::Horizontal, Direction::Ltr) => {
-                                crate::WritingMode::VerticalLr
-                            }
-                            (PhysicalAxis::Horizontal, Direction::Rtl) => {
-                                crate::WritingMode::VerticalRl
-                            }
+                            (PhysicalAxis::Vertical, _) => WritingMode::HorizontalTb,
+                            (PhysicalAxis::Horizontal, Direction::Ltr) => WritingMode::VerticalLr,
+                            (PhysicalAxis::Horizontal, Direction::Rtl) => WritingMode::VerticalRl,
                         };
                         crate::geometry::FlowAxes::new(writing_mode, item.style.direction)
                     };

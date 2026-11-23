@@ -1,10 +1,14 @@
 //! Actual Text metric frames anchor intrinsic lines at the physical block edge.
 use super::*;
+use crate::{
+    geometry::Edges,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation},
+};
 
 fn observed<S: LayoutScalar>(
     source: &str,
     whitespace: surgeist_text::style::WhiteSpace,
-    available: crate::AxisSizingRequestOf<S>,
+    available: AxisSizingRequestOf<S>,
 ) -> (f64, f64, f64, f64, f64) {
     let mut style = ahem_style(10.0, 10.0);
     style.white_space = whitespace;
@@ -21,7 +25,7 @@ fn observed<S: LayoutScalar>(
             display: Display::Block,
             writing_mode: WritingMode::HorizontalTb,
             direction: Direction::Rtl,
-            line_box_direction_policy: crate::LineBoxDirectionPolicy::Normal,
+            line_box_direction_policy: crate::node_input::LineBoxDirectionPolicy::Normal,
             ..NodeInputOf::default()
         },
     );
@@ -29,7 +33,7 @@ fn observed<S: LayoutScalar>(
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput::default(),
+        crate::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
@@ -55,29 +59,29 @@ fn observed<S: LayoutScalar>(
                 &binding.prepared,
             )
             .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),
-            inline_baseline_context: crate::InlineBaselineContext::Physical,
+            inline_baseline_context: crate::node_input::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
-            wrap_style: crate::TextWrapStyle::Auto,
+            wrap_style: crate::node_input::TextWrapStyle::Auto,
             wrapping: None,
             formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
-                crate::LineBoxDirectionPolicy::Normal,
+                crate::node_input::LineBoxDirectionPolicy::Normal,
                 Direction::Rtl,
             ),
             frame: super::super::super::run::Frame::Canonical {
                 normal: crate::text_layout::run::CanonicalLineFrame {
                     origin: Point::ZERO,
                     size,
-                    content_insets: crate::Edges::ZERO,
+                    content_insets: Edges::ZERO,
                 },
                 visual: crate::text_layout::run::CanonicalLineFrame {
                     origin: Point::ZERO,
                     size,
-                    content_insets: crate::Edges::ZERO,
+                    content_insets: Edges::ZERO,
                 },
             },
             containing_size: size,
-            content_insets: crate::Edges::ZERO,
+            content_insets: Edges::ZERO,
             cursor_block: S::ZERO,
             adjoining_displacement: S::ZERO,
             axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Rtl),
@@ -88,7 +92,7 @@ fn observed<S: LayoutScalar>(
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: crate::text_indent::IndentLineState::default(),
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
-            hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+            hyphenate_limit_zone: crate::value::LengthPercentageOf::ZERO,
             tail: crate::text_layout::fit::TailContext::Unrestricted,
         },
         &[],
@@ -170,10 +174,7 @@ fn intrinsic_frame<S: LayoutScalar>() {
         observed::<S>(
             "X",
             surgeist_text::style::WhiteSpace::Collapse,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent
-            )
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent)
         ),
         (90.0, 90.0, 10.0, 90.0, 10.0)
     );
@@ -183,10 +184,7 @@ fn intrinsic_frame<S: LayoutScalar>() {
         observed::<S>(
             "X\u{2003}",
             surgeist_text::style::WhiteSpace::Collapse,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent
-            )
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent)
         ),
         (90.0, 90.0, 10.0, 90.0, 10.0)
     );
@@ -207,10 +205,7 @@ fn separate_allocation<S: LayoutScalar>() {
         observed::<S>(
             "X",
             surgeist_text::style::WhiteSpace::Preserve,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent
-            )
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent)
         ),
         (90.0, 90.0, 10.0, 90.0, 10.0)
     );
@@ -219,10 +214,7 @@ fn separate_allocation<S: LayoutScalar>() {
         observed::<S>(
             "X ",
             surgeist_text::style::WhiteSpace::Preserve,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent
-            )
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent)
         ),
         (90.0, 90.0, 10.0, 80.0, 20.0)
     );

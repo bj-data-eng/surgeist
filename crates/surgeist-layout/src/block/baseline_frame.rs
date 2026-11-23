@@ -6,8 +6,14 @@ use crate::geometry::{PhysicalAxis, PhysicalSide};
 use crate::group_alignment::{NumericError, add, scalar};
 use crate::output::{NamedBaselineDemand, NamedBaselineSet};
 use crate::{
-    BaselineCoordinateOf, BaselineFactOf, BaselinePairOf, BaselinesOf, ComputeOutputOf, FlowAxes,
-    InlineBaselineContext, LayoutScalar, LayoutTextNumericError, NamedBaselinesOf, Point, Size,
+    error::LayoutTextNumericError,
+    geometry::{FlowAxes, Point, Size},
+    node_input::InlineBaselineContext,
+    output::{
+        BaselineCoordinateOf, BaselineFactOf, BaselinePairOf, BaselinesOf, ComputeOutputOf,
+        NamedBaselinesOf,
+    },
+    scalar::LayoutScalar,
 };
 use surgeist_text::font::FontBaseline;
 

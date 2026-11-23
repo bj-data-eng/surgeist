@@ -1,10 +1,11 @@
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{geometry::Point, node_input::Display};
 
 fn rect<S: LayoutScalar>(left: f64, top: f64, width: f64, height: f64) -> ScrollRectOf<S> {
     ScrollRectOf::try_new(
-        crate::Point::new(S::from_f64(left), S::from_f64(top)),
-        crate::Size::new(S::from_f64(width), S::from_f64(height)),
+        Point::new(S::from_f64(left), S::from_f64(top)),
+        crate::geometry::Size::new(S::from_f64(width), S::from_f64(height)),
     )
     .unwrap()
 }
@@ -300,17 +301,25 @@ fn scroll_anchor_selection_reports_required_missing_authority() {
 fn scroll_anchor_selection_uses_canonical_layout_overflow_and_scroll_padding() {
     use crate::test_support::layout_tree::PublicLayoutTreeOf;
     use crate::{
-        AvailableSpaceOf, AxisSizingRequestOf, BoxSizing, ComputedOverflow, Direction, Edges,
-        FlowAxes, LayoutRootRequestOf, LengthOf, LengthPercentageOf, NearestScrollportOf,
-        NodeInputOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf, Overflow, PreferredSizeOf,
-        ScrollPaddingOf, ScrollPaddingValueOf, Size, SizingOperation, SizingRequestOf, WritingMode,
-        compute_layout,
+        engine::compute_layout,
+        geometry::{Edges, FlowAxes, Size},
+        node_input::{
+            BoxSizing, ComputedOverflow, Direction, NodeInputOf, Overflow, ScrollPaddingOf,
+            ScrollPaddingValueOf, WritingMode,
+        },
+        output::LayoutRootRequestOf,
+        sizing::PreferredSizeOf,
+        value::{
+            AvailableSpaceOf, AxisSizingRequestOf, LengthOf, LengthPercentageOf,
+            NearestScrollportOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation,
+            SizingRequestOf,
+        },
     };
 
     fn lane<S: LayoutScalar>() {
         let px = S::from_f64;
         let root = NodeInputOf {
-            display: crate::Display::Block,
+            display: Display::Block,
             size: Size::splat(px(100.0)).map(PreferredSizeOf::px),
             overflow: ComputedOverflow::try_new(Overflow::Hidden, Overflow::Hidden).unwrap(),
             scroll_padding: ScrollPaddingOf::new(
@@ -322,7 +331,7 @@ fn scroll_anchor_selection_uses_canonical_layout_overflow_and_scroll_padding() {
             ..NodeInputOf::default()
         };
         let parent = NodeInputOf {
-            display: crate::Display::Block,
+            display: Display::Block,
             size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(20.0))),
             box_sizing: BoxSizing::BorderBox,
             padding: Edges {
@@ -332,7 +341,7 @@ fn scroll_anchor_selection_uses_canonical_layout_overflow_and_scroll_padding() {
             ..NodeInputOf::default()
         };
         let leaf = NodeInputOf {
-            display: crate::Display::Block,
+            display: Display::Block,
             size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
             ..NodeInputOf::default()
         };
@@ -361,8 +370,7 @@ fn scroll_anchor_selection_uses_canonical_layout_overflow_and_scroll_padding() {
         let batch = compute_layout(&tree, 0, layout_request).unwrap();
         let output = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
         let region = output(0).scroll_geometry.unwrap().optimal_viewing_region();
-        let offset =
-            |a: crate::Point<S>, b: crate::Point<S>| crate::Point::new(a.x + b.x, a.y + b.y);
+        let offset = |a: Point<S>, b: Point<S>| Point::new(a.x + b.x, a.y + b.y);
         let overflow = |node, location| {
             let bounds = output(node).scroll_geometry.unwrap().scrollable_overflow();
             ScrollRectOf::try_new(offset(bounds.origin(), location), bounds.size()).unwrap()

@@ -2,7 +2,33 @@
 //! #2125. Geometry follows the independently retained CSS2/policy oracles in
 //! in_flow_margins_tests and owning comments6728652731/6728787611/6733332381.
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
-use crate::*;
+use crate::{
+    block_fragmentation::{
+        LayoutBoundRequestOf,
+        input::{LayoutPublicationTargets, LayoutSourceBasis},
+        publication::{LayoutBatchCommit, LayoutBatchPreparation},
+    },
+    cache::{CacheKeyContext, CacheOf},
+    engine::{compute_layout, compute_layout_with_flow_invalidated},
+    geometry::{Edges, FlowAxes, Size},
+    inline_wrapping::WrappingInput,
+    node_input::{
+        BlockFlowContext, Clear, Direction, Display, Float, LayoutInputOf, LayoutInputViewOf,
+        NodeInputOf, WritingMode,
+    },
+    output::{
+        CompletedLayoutBatchOf, ComputeInputOf, ComputeOutputOf, LayoutOutputEntryOf,
+        LayoutRootRequestOf, RunMode,
+    },
+    scalar::LayoutScalar,
+    sizing::{MinSizeOf, PreferredSizeOf},
+    text_layout::LayoutFlowInput,
+    tree::{LayoutBatchSink, LayoutTree, Traverse},
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, LengthAutoOf, NearestScrollportOf,
+        NonNegativeFiniteOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation,
+    },
+};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::Infallible;

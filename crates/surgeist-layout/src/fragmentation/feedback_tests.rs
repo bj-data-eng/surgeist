@@ -91,12 +91,12 @@ fn input<S: LayoutScalar>(deferred: bool) -> FragmentationInputOf<usize, S> {
     FragmentationInputOf {
         contexts: vec![FragmentationContext {
             kind: FragmentationKind::Page {
-                progression: crate::PageProgression::LeftToRight,
+                progression: crate::fragmentation::page::PageProgression::LeftToRight,
             },
             parent: None,
-            flow_axes: crate::FlowAxes::new(
-                crate::WritingMode::HorizontalTb,
-                crate::Direction::Ltr,
+            flow_axes: crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
             ),
         }],
         flows: vec![FragmentationFlowOf {

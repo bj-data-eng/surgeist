@@ -7,11 +7,22 @@
 
 use crate::test_support::readback::{self, Phase};
 use crate::{
-    AvailableSpaceOf, AxisSizingRequestOf, Direction, Display, FlowAxes, GridAxisKind,
-    GridLanesFlow, GridPlacement, LayoutInputOf, LayoutInputViewOf, LayoutRootRequestOf,
-    LayoutScalar, LayoutTree, LengthOf, MinSizeOf, NearestScrollportOf, NodeInputOf,
-    NonNegativeFiniteOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf, PreferredSizeOf, Size,
-    SizingOperation, SizingRequestOf, TrackSizingOf, Traverse, WritingMode, compute_layout,
+    engine::compute_layout,
+    geometry::{FlowAxes, Size},
+    grid::GridAxisKind,
+    node_input::{
+        Direction, Display, GridLanesFlow, GridPlacement, LayoutInputOf, LayoutInputViewOf,
+        NodeInputOf, WritingMode,
+    },
+    output::LayoutRootRequestOf,
+    scalar::LayoutScalar,
+    sizing::{MinSizeOf, PreferredSizeOf},
+    tree::{LayoutTree, Traverse},
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, LengthOf, NearestScrollportOf, NonNegativeFiniteOf,
+        OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+        TrackSizingOf,
+    },
 };
 
 /// An item with pre-resolved min-content and max-content widths.
@@ -117,7 +128,7 @@ impl<S: LayoutScalar> LayoutTree for SizesTree<S> {
     fn measure_leaf(
         &self,
         node: usize,
-        input: crate::LeafMeasureInputOf<S>,
+        input: crate::measurement::LeafMeasureInputOf<S>,
     ) -> Option<Result<Size<S>, Self::MeasureError>> {
         let (min, max) = self.measures[node]?;
         let request = input.content_sizing_request().axes().width;
@@ -153,7 +164,7 @@ pub(crate) fn try_column_track_sizes<S: LayoutScalar>(
     tracks: Vec<TrackSizingOf<S>>,
     gap: f64,
     items: &[TrackItem],
-) -> Result<Vec<S>, crate::LayoutErrorOf<usize, S>> {
+) -> Result<Vec<S>, crate::error::LayoutErrorOf<usize, S>> {
     let px = S::from_f64;
     let track_count = tracks.len();
     let root_width = match width {

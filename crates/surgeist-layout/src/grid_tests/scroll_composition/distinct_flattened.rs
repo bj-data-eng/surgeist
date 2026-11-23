@@ -164,12 +164,14 @@ fn flattened<S: LayoutScalar>(space: f64, cap: GrowthCap, overflow: Overflow, tr
         let axes = Size::new(
             AxisSizingRequestOf::new(
                 AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(n(space + 7.0)).unwrap(),
+                    crate::value::NonNegativeFiniteOf::new(n(space + 7.0)).unwrap(),
                 ),
                 SizingOperation::Normal,
             ),
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(10.0)).unwrap()),
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(n(10.0)).unwrap(),
+                ),
                 SizingOperation::Normal,
             ),
         );
@@ -179,8 +181,8 @@ fn flattened<S: LayoutScalar>(space: f64, cap: GrowthCap, overflow: Overflow, tr
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    crate::value::NearestScrollportOf::Absent,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),

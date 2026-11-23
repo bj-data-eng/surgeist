@@ -1,6 +1,12 @@
 //! CSS Text3 §8.1 / Text4 §9.1 over real prepared Ahem paragraphs.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    geometry::FlowAxes,
+    inline_wrapping::WrappingInput,
+    tree::LayoutTree,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation},
+};
 use surgeist_text::style::WhiteSpace;
 
 fn indent<S: LayoutScalar>(amount: f64, each_line: bool, hanging: bool) -> TextIndentOf<S> {
@@ -63,7 +69,7 @@ fn simple<S: LayoutScalar>(
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -76,8 +82,8 @@ fn simple<S: LayoutScalar>(
         &capture,
         0,
         request(width, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap()
@@ -190,7 +196,7 @@ fn forced<S: LayoutScalar>(each_line: bool, hanging: bool) -> CompletedLayoutBat
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -203,8 +209,8 @@ fn forced<S: LayoutScalar>(each_line: bool, hanging: bool) -> CompletedLayoutBat
         &capture,
         0,
         request(20.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap()
@@ -271,7 +277,7 @@ fn assert_percentage_float<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -284,8 +290,8 @@ fn assert_percentage_float<S: LayoutScalar>() {
         &capture,
         0,
         request(80.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -360,7 +366,7 @@ fn anonymous<S: LayoutScalar>(
         &tree,
         0,
         vec![paragraph.binding(container)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -373,8 +379,8 @@ fn anonymous<S: LayoutScalar>(
         &capture,
         0,
         request(40.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap()
@@ -406,14 +412,8 @@ fn native_indent_anonymous_first_in_flow_chain_includes_empty_blocks_excludes_ou
 
 fn assert_intrinsic<S: LayoutScalar>() {
     for available in [
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
-        ),
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
     ] {
         let paragraph = text(1, "XX", false);
         let policy = TextIndentOf {
@@ -438,7 +438,7 @@ fn assert_intrinsic<S: LayoutScalar>() {
             &tree,
             0,
             vec![paragraph.binding(0)],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -449,33 +449,30 @@ fn assert_intrinsic<S: LayoutScalar>() {
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, {
             let containing_flow_axes = {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((capture).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             };
             let requested_axes = Size::new(
                 available,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MaxContent,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             );
             let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
             // These fixtures perform ordinary block-size layout independently of
             // the explicitly requested inline contribution operation.
             logical_requests.block = logical_requests
                 .block
-                .with_operation(crate::SizingOperation::Normal);
+                .with_operation(SizingOperation::Normal);
             let axes = containing_flow_axes.physical_size(logical_requests);
             // The old Native NoParent fixture explicitly supplied these percentage
             // bases. It supplied no independent ICB dimensions or ancestor scrollport.
             let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-            let fallback = crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            let fallback = crate::value::OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                crate::value::NearestScrollportOf::Absent,
+                crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             );
-            crate::LayoutRootRequestOf::standalone(
-                crate::SizingRequestOf::new(axes, fallback),
+            crate::output::LayoutRootRequestOf::standalone(
+                crate::value::SizingRequestOf::new(axes, fallback),
                 containing_flow_axes,
                 percentage_parent,
             )
@@ -523,8 +520,8 @@ fn assert_atomic<S: LayoutScalar>() {
             &tree,
             0,
             request(width, {
-                let root_input = crate::LayoutTree::node_input(&tree, 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input(&tree, 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();
@@ -564,7 +561,7 @@ fn assert_retry<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -577,8 +574,8 @@ fn assert_retry<S: LayoutScalar>() {
         &capture,
         0,
         request(100.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -586,8 +583,8 @@ fn assert_retry<S: LayoutScalar>() {
         &capture,
         0,
         request(100.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -620,8 +617,8 @@ fn assert_invalid<S: LayoutScalar>() {
             &root,
             0,
             request(40.0, {
-                let root_input = crate::LayoutTree::node_input(&root, 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input(&root, 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             })
         )
         .unwrap_err()
@@ -650,8 +647,8 @@ fn assert_invalid<S: LayoutScalar>() {
                 &tree,
                 0,
                 request(40.0, {
-                    let root_input = crate::LayoutTree::node_input(&tree, 0);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = LayoutTree::node_input(&tree, 0);
+                    FlowAxes::new(root_input.writing_mode, root_input.direction)
                 })
             )
             .unwrap_err()
@@ -669,8 +666,8 @@ fn assert_invalid<S: LayoutScalar>() {
             &tree,
             0,
             request(40.0, {
-                let root_input = crate::LayoutTree::node_input(&tree, 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input(&tree, 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             })
         )
         .unwrap_err()
@@ -717,7 +714,7 @@ fn assert_administrative_groups<S: LayoutScalar>() {
             &tree,
             0,
             vec![first.binding(0), second.binding(0)],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -730,8 +727,8 @@ fn assert_administrative_groups<S: LayoutScalar>() {
             &capture,
             0,
             request(60.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((capture).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();
@@ -791,7 +788,7 @@ fn assert_empty_forced<S: LayoutScalar>() {
             &tree,
             0,
             vec![binding],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -804,8 +801,8 @@ fn assert_empty_forced<S: LayoutScalar>() {
             &capture,
             0,
             request(40.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((capture).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();
@@ -846,7 +843,7 @@ fn assert_justified<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -859,8 +856,8 @@ fn assert_justified<S: LayoutScalar>() {
         &capture,
         0,
         request(45.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -924,7 +921,7 @@ fn assert_preserved_break_and_fraction<S: LayoutScalar>() {
             &tree,
             0,
             vec![paragraph.binding(0)],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -937,8 +934,8 @@ fn assert_preserved_break_and_fraction<S: LayoutScalar>() {
             &capture,
             0,
             request(40.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((capture).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();
@@ -984,7 +981,7 @@ fn assert_own_anonymous_basis_and_principal_reset<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(1)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -997,8 +994,8 @@ fn assert_own_anonymous_basis_and_principal_reset<S: LayoutScalar>() {
         &capture,
         0,
         request(80.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -1016,7 +1013,7 @@ fn assert_own_anonymous_basis_and_principal_reset<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(1)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -1029,8 +1026,8 @@ fn assert_own_anonymous_basis_and_principal_reset<S: LayoutScalar>() {
         &capture,
         0,
         request(80.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -1060,7 +1057,7 @@ fn assert_scroll<S: LayoutScalar>() {
             &tree,
             0,
             vec![paragraph.binding(0)],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -1073,8 +1070,8 @@ fn assert_scroll<S: LayoutScalar>() {
             &capture,
             0,
             request(20.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((capture).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();

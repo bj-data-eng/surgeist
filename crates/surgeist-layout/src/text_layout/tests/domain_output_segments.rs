@@ -3,6 +3,8 @@
 //! Raw paragraph markers author storage, not native run seams. The original
 //! capture/tree below owns every source and block boundary. New domain/segment
 //! APIs are functionally qualified; no historical compiler RED is claimed.
+use crate::inline_wrapping::WrappingInput;
+
 #[path = "domain_output_segments/shared_float_sizing.rs"]
 mod shared_float_sizing;
 
@@ -315,7 +317,7 @@ fn bind<S: LayoutScalar>(
             .collect();
         let nodes = origins.iter().map(|origin| origin.node).collect();
         bindings.push(TextParagraphBinding {
-            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+            inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: if child { BLOCK } else { ROOT },
             nodes,
@@ -336,7 +338,7 @@ fn capture<'a, S: LayoutScalar>(
         tree,
         ROOT,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -403,8 +405,8 @@ fn assert_one_run<S: LayoutScalar>(shape: Shape) {
         &flow,
         ROOT,
         request(100.0, {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), ROOT);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((flow).tree(), ROOT);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -495,8 +497,8 @@ fn assert_child<S: LayoutScalar>(joined: bool) {
         &flow,
         ROOT,
         request(100.0, {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), ROOT);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((flow).tree(), ROOT);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -629,7 +631,7 @@ fn duplicate_whole_output_claim_refuses_overlapping_authentic_members() {
         &tree,
         ROOT,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -678,7 +680,7 @@ fn independent_outputs_cannot_split_one_uninterrupted_native_run_at_raw_markers(
         &tree,
         ROOT,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],

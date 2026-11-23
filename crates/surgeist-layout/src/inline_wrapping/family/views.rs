@@ -2,7 +2,12 @@
 use super::{NativeExecutedEdge, NativeFamilyData, NativeFamilyRow, NativeLineReceipt};
 use crate::engine::validation::ValidationGraph;
 use crate::inline_wrapping::{edge_plan::AdmittedGeneratedBoxProof, ordering::NativeOrderingData};
-use crate::{FlowAxes, GeneratedBoxRef, InlineBoundaryKind, LayoutScalar, WrappingScopeError};
+use crate::{
+    geometry::FlowAxes,
+    inline_wrapping::{GeneratedBoxRef, WrappingScopeError},
+    node_input::InlineBoundaryKind,
+    scalar::LayoutScalar,
+};
 use std::{fmt, ops::Range, sync::Arc};
 
 /// One requested formatter's immutable, complete native inline-box family.
@@ -545,6 +550,6 @@ fn clone_native_lines<S: LayoutScalar>(
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct NativeFormatterCompletion<S: LayoutScalar> {
     pub(crate) family: usize,
-    pub(crate) input: crate::ComputeInputOf<S>,
-    pub(crate) output: crate::ComputeOutputOf<S>,
+    pub(crate) input: crate::output::ComputeInputOf<S>,
+    pub(crate) output: crate::output::ComputeOutputOf<S>,
 }

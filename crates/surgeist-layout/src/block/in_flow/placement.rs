@@ -1,5 +1,6 @@
 use super::super::{fragment_margins, inline_run};
 use super::*;
+use crate::value::SizingOperation;
 
 /// Amount and border have distinct floating-point associations. The common
 /// BFC bound owns the border; signed clearance owns adjoining progression.
@@ -414,7 +415,7 @@ where
                 .include_in_flow_geometry(location, child_margin, scroll_geometry)
                 .map_err(|error| layout_child_geometry_error(node, child, error))?;
         }
-        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+        tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
             child,
             crate::output::NormalGeometryOf::box_geometry(
                 flow_location,
@@ -422,7 +423,7 @@ where
                 scroll_geometry.content_box(),
             ),
             NodeOutputOf::<S> {
-                source_index: crate::SourceIndex::new(source_index),
+                source_index: crate::output::SourceIndex::new(source_index),
                 location,
                 size: output.size,
                 named_baselines: output.named_baselines,
@@ -457,7 +458,7 @@ pub(super) struct InFlowFloatItem<'input, 'a, Node, S: LayoutScalar> {
 pub(super) struct InFlowFloatPass<'a, S: LayoutScalar> {
     pub(super) constants: &'a Constants<S>,
     pub(super) adjoining: &'a entry::AdjoiningFlow<S>,
-    pub(super) inline_operation: crate::SizingOperation,
+    pub(super) inline_operation: SizingOperation,
     pub(super) physical_float_context: bool,
     pub(super) set_layout: bool,
 }
@@ -508,7 +509,7 @@ where
     let margin_box_inline = logical_child_size.inline + logical_child_margin.inline_sum();
     float_intrinsics.add(margin_box_inline, child_style.float, child_style.clear);
     *intrinsic_inline_demand = intrinsic_inline_demand.max(float_intrinsics.result());
-    if !physical_float_context && inline_operation != crate::SizingOperation::MaxContent {
+    if !physical_float_context && inline_operation != SizingOperation::MaxContent {
         return Ok(());
     }
     // Project the otherwise-empty anonymous parent's border without
@@ -538,7 +539,7 @@ where
     };
     // Intrinsic Max needs the actual rectangular cohort, without
     // querying Shape or pretending an indefinite line has zero width.
-    let placement = if inline_operation == crate::SizingOperation::MaxContent {
+    let placement = if inline_operation == SizingOperation::MaxContent {
         float_exclusions.place_float_intrinsic(node, &pending_float)?
     } else {
         float_exclusions.place_float_for_line(node, &pending_float, None)?

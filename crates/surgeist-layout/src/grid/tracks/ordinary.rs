@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::LengthResolutionOf;
+use crate::value::LengthResolutionOf;
 
 fn resolution_or_zero<S: LayoutScalar>(resolution: LengthResolutionOf<S>) -> S {
     resolution_or_fallback(resolution, S::ZERO)
@@ -1112,7 +1112,7 @@ fn distribute_phase_space<S: LayoutScalar>(
 #[cfg(test)]
 mod spanning_phases_tests {
     use super::*;
-    use crate::{LengthPercentageOf, SizingCalculationOf};
+    use crate::{sizing::SizingCalculationOf, value::LengthPercentageOf};
 
     fn resolve_spanning_contributions<Node: Copy + Eq, S: LayoutScalar>(
         context: SpanningTrackContext<'_, S>,

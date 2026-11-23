@@ -145,7 +145,7 @@ pub(in crate::block) struct InFlowTraversal<'input, Node, S: LayoutScalar> {
     float_avoidance: Option<(PendingBox<'input, Node, S>, FloatAvoidance<S>)>,
     node: Node,
     input: ComputeInputOf<S>,
-    inline_operation: crate::SizingOperation,
+    inline_operation: crate::value::SizingOperation,
     set_layout: bool,
     logical_node_inner_size: LogicalSizeOf<Option<S>>,
     node_inner_size: Size<Option<S>>,
@@ -161,7 +161,7 @@ pub(in crate::block) struct InFlowTraversal<'input, Node, S: LayoutScalar> {
     static_positions: Vec<(Node, StaticPositionOf<S>)>,
     fragment_margins: Option<super::fragment_margins::Flow>,
     pending_floats: Vec<PendingFloat<Node, S>>,
-    pass_request: crate::SizingRequestOf<S>,
+    pass_request: crate::value::SizingRequestOf<S>,
     flow_request: AxisSizingRequestOf<S>,
     normal_operation: bool,
     child_run_mode: RunMode,
@@ -241,7 +241,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
             inner_inline,
         )
         .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?;
-        let normal_operation = inline_operation == crate::SizingOperation::Normal;
+        let normal_operation = inline_operation == crate::value::SizingOperation::Normal;
         let child_run_mode = if normal_operation {
             input.run_mode().for_child()
         } else {
@@ -254,7 +254,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
             .inline
             .space()
             .definite_size()
-            .map(crate::NonNegativeFiniteOf::get));
+            .map(crate::value::NonNegativeFiniteOf::get));
         // A Shared ComputeSize preview has no incoming BFC frame. Its ordinary
         // float rows belong to the subsequent framed computation, not this trial.
         let physical_float_context = normal_operation
@@ -306,7 +306,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
                     .width
                     .space()
                     .definite_size()
-                    .map(crate::NonNegativeFiniteOf::get))
+                    .map(crate::value::NonNegativeFiniteOf::get))
                 .unwrap_or(S::ZERO),
             constants.node_inner_size.height.unwrap_or(S::ZERO),
         );
@@ -314,8 +314,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
             constants.content_box_inset.left,
             constants.content_box_inset.top,
         );
-        let contribution_seed = crate::ScrollRectOf::try_new(content_box_origin, content_box_size)
-            .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?;
+        let contribution_seed =
+            crate::scroll::ScrollRectOf::try_new(content_box_origin, content_box_size)
+                .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?;
         let contributions = BlockScrollContributions::new(constants.flow_axes, contribution_seed);
 
         let index = 0;
@@ -338,7 +339,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
         );
         let hyphenation_state =
             crate::hyphenation::LineHyphenationState::new(constants.hyphenate_limit_lines);
-        let tail_active = constants.hyphenate_limit_last == crate::HyphenateLimitLast::Always
+        let tail_active = constants.hyphenate_limit_last
+            == crate::hyphenation::HyphenateLimitLast::Always
             && crate::layout_math::normal_available_size(flow_request).is_some();
         let tail_ledger = crate::hyphenation::BlockTailLedger::default();
         let (slots, _slot_lease) = match tree.text_computation() {
@@ -451,13 +453,15 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
         let (child, child_style) = match child_start {
             InFlowChildStart::Hidden { child, compute_box } => {
                 if self.set_layout {
-                    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+                    tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
                         child,
                         crate::output::NormalGeometryOf::metadata(
-                            crate::Point::ZERO,
-                            crate::Size::ZERO,
+                            crate::geometry::Point::ZERO,
+                            crate::geometry::Size::ZERO,
                         ),
-                        NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(source_index)),
+                        NodeOutputOf::<S>::with_source_index(crate::output::SourceIndex::new(
+                            source_index,
+                        )),
                     ));
                     if compute_box {
                         return Ok(InFlowStep::Child(InFlowChild {
@@ -507,7 +511,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
                             match InlineParticipantProjection::lookup::<Tree, M>(tree, node).kind()
                             {
                                 InlineParticipantKindOf::Box(style) => {
-                                    style.display == crate::Display::None
+                                    style.display == crate::node_input::Display::None
                                         || style.common.position == Position::Absolute
                                         || !style.float.is_none()
                                 }
@@ -943,11 +947,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
         if let Some(groups) = tree.group_computation() {
             groups.child(child);
         }
-        if child_style.display.inner_display() == crate::Display::Block
+        if child_style.display.inner_display() == crate::node_input::Display::Block
             && let Some(flow) = &mut self.formatted
         {
-            let anonymous =
-                tree.node_input(child).block_generation == crate::BlockGeneration::Anonymous;
+            let anonymous = tree.node_input(child).block_generation
+                == crate::node_input::BlockGeneration::Anonymous;
             if let Some(item) = tree
                 .text_computation()
                 .map(|text| text.formatted_child(child, child_input, anonymous))
@@ -1059,10 +1063,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> InFlowTraversal<'input, Node, S> 
                 },
             )
             .map_err(|error| {
-                crate::LayoutErrorOf::new(
-                    crate::LayoutErrorSiteOf::Node(child),
-                    crate::LayoutOperation::ChildLayout,
-                    crate::LayoutErrorKindOf::TextNumeric {
+                crate::error::LayoutErrorOf::new(
+                    crate::error::LayoutErrorSiteOf::Node(child),
+                    crate::error::LayoutOperation::ChildLayout,
+                    crate::error::LayoutErrorKindOf::TextNumeric {
                         value: error.value(),
                         reason: error.reason(),
                     },

@@ -6,7 +6,53 @@ mod last_tail_composition;
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
-use crate::*;
+use crate::{
+    baseline_offset::BaselineOffsetOf,
+    cache::{CacheKeyContext, CacheOf},
+    engine::{compute_layout, compute_layout_with_flow, compute_layout_with_flow_invalidated},
+    error::{
+        AtomicInlineParticipationRoleError, LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf,
+        LayoutInvalidInputOf, LayoutMissingContext, LayoutOperation, LayoutResultOf,
+        LayoutTextNumericError, LayoutUnsupportedCapability,
+    },
+    geometry::{Edges, FlowAxes, PhysicalAxis, Point, Size},
+    hyphenation::{HyphenateLimitLast, HyphenateLimitLines},
+    inline_wrapping::{
+        ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
+        InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, WrapEdge, WrapEdges,
+        WrapInside, WrappingInput, WrappingScopeError, WrappingScopeInput,
+    },
+    measurement::LeafMeasureInputOf,
+    node_input::{
+        AtomicInlineParticipation, BaselineSource, BlockGeneration, BoxSizing, Clear,
+        ComputedOverflow, Direction, Display, Float, FloatExclusion, FloatExclusionIntervalOf,
+        FloatExclusionQueryOf, InlineBaselineContext, InlineBoundaryEdgeOf, InlineBoundaryInputOf,
+        InlineBoundaryKind, InlineBreakOpportunity, InlineMetricsOf, LayoutInputOf,
+        LayoutInputViewOf, LineBoxDirectionPolicy, LineBreakInputOf, NodeInputOf, Overflow,
+        Position, ScrollbarGutter, TextAlign, TextAlignLast, TextGroupAlign, TextIndentOf,
+        TextJustification, TextWrapStyle, VerticalAlignOf, WritingMode,
+    },
+    output::{
+        BaselineCoordinateOf, BaselineFactOf, CompletedLayoutBatchOf, ComputeInputOf,
+        ComputeOutputOf, InlineFragmentOutputEntryOf, InlineFragmentOwner, LayoutOutputEntryOf,
+        LayoutRootRequestOf, NodeOutputOf,
+    },
+    scalar::LayoutScalar,
+    scroll::ScrollRectOf,
+    sizing::{MinSizeOf, PreferredSizeOf},
+    text_layout::{
+        LayoutFlowInput, TextAtomicBinding, TextBindingError, TextControlBinding,
+        TextControlParticipation, TextOriginBinding, TextParagraphBinding, TextParticipation,
+        TextScopeAlignmentInputOf, TextScopeAssociation, TextScopeBinding,
+    },
+    tree::{LayoutBatchSink, LayoutTree, Traverse},
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, LengthAutoOf, LengthOf, LengthPercentageOf,
+        NearestScrollportOf, NonNegativeFiniteOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf,
+        PercentageBasisOf, SizingOperation,
+    },
+};
+use surgeist_text::supplied_line::BidiLevel;
 use surgeist_text::{
     paragraph::{ParagraphBaseDirection, ParagraphControlKind},
     source::Source,
@@ -159,7 +205,7 @@ fn assert_native_invalidation_source_order<S: LayoutScalar>() {
         &tree,
         70,
         vec![binding],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -172,8 +218,8 @@ fn assert_native_invalidation_source_order<S: LayoutScalar>() {
         &capture,
         70,
         request(40.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 70);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 70);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -184,8 +230,8 @@ fn assert_native_invalidation_source_order<S: LayoutScalar>() {
         &capture,
         70,
         request(40.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 70);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 70);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
         &[3, 3],
     )
@@ -227,7 +273,7 @@ fn assert_terminal_phantom_completion_scroll<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -240,8 +286,8 @@ fn assert_terminal_phantom_completion_scroll<S: LayoutScalar>() {
         &capture,
         0,
         request(20.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -345,7 +391,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         &tree,
         0,
         vec![binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -356,39 +402,33 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         logical_requests.inline = logical_requests
             .inline
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -432,35 +472,35 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
             ),
             orientation: super::run::text_orientation(WritingMode::HorizontalTb, &binding.prepared)
                 .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),
-            inline_baseline_context: crate::InlineBaselineContext::Physical,
+            inline_baseline_context: crate::node_input::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
-            wrap_style: crate::TextWrapStyle::Auto,
+            wrap_style: crate::node_input::TextWrapStyle::Auto,
             wrapping: None,
             formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
-                crate::LineBoxDirectionPolicy::Normal,
+                crate::node_input::LineBoxDirectionPolicy::Normal,
                 Direction::Ltr,
             ),
             frame: super::run::Frame::Canonical {
                 normal: crate::text_layout::run::CanonicalLineFrame {
                     origin: Point::ZERO,
                     size,
-                    content_insets: crate::Edges::ZERO,
+                    content_insets: Edges::ZERO,
                 },
                 visual: crate::text_layout::run::CanonicalLineFrame {
                     origin: Point::ZERO,
                     size,
-                    content_insets: crate::Edges::ZERO,
+                    content_insets: Edges::ZERO,
                 },
             },
             containing_size: size,
-            content_insets: crate::Edges::ZERO,
+            content_insets: Edges::ZERO,
             cursor_block: S::ZERO,
             adjoining_displacement: S::ZERO,
             axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-            available: crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
+            available: AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::MaxContent,
             ),
             alignment: TextAlign::Start,
             last_alignment: TextAlignLast::Auto,
@@ -468,7 +508,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: crate::text_indent::IndentLineState::default(),
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
-            hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+            hyphenate_limit_zone: crate::value::LengthPercentageOf::ZERO,
             tail: crate::text_layout::fit::TailContext::Unrestricted,
         },
         &[],
@@ -646,7 +686,7 @@ fn assert_fractional_float_clearance<S: LayoutScalar>(explicit_clear: bool) {
             &tree,
             0,
             vec![binding],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -659,8 +699,8 @@ fn assert_fractional_float_clearance<S: LayoutScalar>(explicit_clear: bool) {
             &capture,
             0,
             request(20.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((capture).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();
@@ -678,7 +718,7 @@ fn assert_fractional_float_clearance<S: LayoutScalar>(explicit_clear: bool) {
         let finalized = batch
             .final_inline_fragments()
             .iter()
-            .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(node))
+            .find(|entry| entry.owner() == &InlineFragmentOwner::Node(node))
             .unwrap()
             .fragment()
             .finalized_fragment()
@@ -736,7 +776,7 @@ fn assert_no_clear_preserves_fractional_line_position<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -749,8 +789,8 @@ fn assert_no_clear_preserves_fractional_line_position<S: LayoutScalar>() {
         &capture,
         0,
         request(40.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -832,7 +872,7 @@ fn assert_actual_no_clear_round_trip<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -845,8 +885,8 @@ fn assert_actual_no_clear_round_trip<S: LayoutScalar>() {
         &capture,
         0,
         request(40.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -908,7 +948,7 @@ fn assert_two_logical_allocations_survive_line_anchor_translation<S: LayoutScala
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -921,8 +961,8 @@ fn assert_two_logical_allocations_survive_line_anchor_translation<S: LayoutScala
         &capture,
         0,
         request(35.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -1017,7 +1057,7 @@ fn assert_three_logical_allocations_survive_line_anchor_translation<S: LayoutSca
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -1030,8 +1070,8 @@ fn assert_three_logical_allocations_survive_line_anchor_translation<S: LayoutSca
         &capture,
         0,
         request(20.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -1057,7 +1097,7 @@ fn assert_three_logical_allocations_survive_line_anchor_translation<S: LayoutSca
         let entry = batch
             .final_inline_fragments()
             .iter()
-            .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(node))
+            .find(|entry| entry.owner() == &InlineFragmentOwner::Node(node))
             .unwrap();
         let fragment = entry.fragment().finalized_fragment();
         assert_eq!(
@@ -1124,43 +1164,37 @@ fn semantic_control_tree<S: LayoutScalar>(paragraph: &PreparedParagraph) -> Publ
     tree
 }
 
-fn request<S: LayoutScalar>(
-    width: f64,
-    containing_flow_axes: crate::FlowAxes,
-) -> LayoutRootRequestOf<S> {
+fn request<S: LayoutScalar>(width: f64, containing_flow_axes: FlowAxes) -> LayoutRootRequestOf<S> {
     {
         let requested_axes = Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         logical_requests.inline = logical_requests
             .inline
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -1186,7 +1220,7 @@ fn assert_optional_control<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -1199,8 +1233,8 @@ fn assert_optional_control<S: LayoutScalar>() {
         &capture,
         0,
         request(20.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -1254,7 +1288,7 @@ fn assert_directional_controls<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -1267,8 +1301,8 @@ fn assert_directional_controls<S: LayoutScalar>() {
         &capture,
         0,
         request(40.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -1347,7 +1381,7 @@ fn assert_discretionary_alternatives<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -1360,8 +1394,8 @@ fn assert_discretionary_alternatives<S: LayoutScalar>() {
         &capture,
         0,
         request(30.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -1378,7 +1412,7 @@ fn assert_discretionary_alternatives<S: LayoutScalar>() {
             )
         })
         .unwrap();
-    assert_eq!(replacement.owner(), &crate::InlineFragmentOwner::Node(2));
+    assert_eq!(replacement.owner(), &InlineFragmentOwner::Node(2));
     let fragment = replacement.fragment().finalized_fragment();
     assert_eq!(
         fragment.view().owner(),
@@ -1450,7 +1484,7 @@ fn assert_atomic_alignment<S: LayoutScalar>() {
             &tree,
             0,
             vec![paragraph.binding(0)],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -1463,8 +1497,8 @@ fn assert_atomic_alignment<S: LayoutScalar>() {
             &capture,
             0,
             request(100.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((capture).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();
@@ -1530,7 +1564,7 @@ fn assert_rtl_asymmetric_insets<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -1543,8 +1577,8 @@ fn assert_rtl_asymmetric_insets<S: LayoutScalar>() {
         &capture,
         0,
         request(100.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -1556,7 +1590,7 @@ fn assert_rtl_asymmetric_insets<S: LayoutScalar>() {
         &batch,
         1,
         Phase::Final,
-        readback::Kind::NonBox(crate::NonBoxKind::InlineText),
+        readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::InlineText),
     );
     assert_eq!(node.location.x, S::from_f64(73.0));
     assert_eq!(node.size.width, S::from_f64(20.0));
@@ -1630,7 +1664,7 @@ fn assert_rtl_atomic_control_slots<S: LayoutScalar>() {
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -1643,8 +1677,8 @@ fn assert_rtl_atomic_control_slots<S: LayoutScalar>() {
         &capture,
         0,
         request(100.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -1655,7 +1689,7 @@ fn assert_rtl_atomic_control_slots<S: LayoutScalar>() {
     let finalized = batch
         .final_inline_fragments()
         .iter()
-        .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(1))
+        .find(|entry| entry.owner() == &InlineFragmentOwner::Node(1))
         .unwrap()
         .fragment()
         .finalized_fragment()
@@ -1681,7 +1715,7 @@ fn assert_rtl_atomic_control_slots<S: LayoutScalar>() {
         &batch,
         3,
         Phase::Final,
-        readback::Kind::NonBox(crate::NonBoxKind::TextControl),
+        readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::TextControl),
     );
     assert_eq!(
         node.location,
@@ -1744,7 +1778,7 @@ fn assert_reused_preparation_runs<S: LayoutScalar>() {
         &tree,
         0,
         vec![first, second],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -1757,8 +1791,8 @@ fn assert_reused_preparation_runs<S: LayoutScalar>() {
         &capture,
         0,
         request(40.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -1775,7 +1809,7 @@ fn assert_reused_preparation_runs<S: LayoutScalar>() {
         batch
             .final_inline_fragments()
             .iter()
-            .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(node))
+            .find(|entry| entry.owner() == &InlineFragmentOwner::Node(node))
             .unwrap()
             .fragment()
             .finalized_fragment()
@@ -1842,7 +1876,7 @@ fn assert_out_of_flow<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -1855,8 +1889,8 @@ fn assert_out_of_flow<S: LayoutScalar>() {
         &capture,
         0,
         request(40.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -1938,7 +1972,7 @@ fn distinct_out_of_flow_occurrences_cannot_claim_one_absolute_node() {
             &tree,
             0,
             vec![paragraph.binding(0)],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -1954,7 +1988,7 @@ fn distinct_out_of_flow_occurrences_cannot_claim_one_absolute_node() {
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -2007,7 +2041,7 @@ fn assert_conflicting_atomic_authority<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -2067,7 +2101,7 @@ fn semantic_control_requires_exact_preparation_and_structural_role() {
         &tree,
         0,
         vec![binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -2088,7 +2122,7 @@ fn semantic_control_requires_exact_preparation_and_structural_role() {
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -2124,7 +2158,7 @@ fn assert_terminal_break<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -2137,8 +2171,8 @@ fn assert_terminal_break<S: LayoutScalar>() {
         &capture,
         0,
         request(40.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -2224,7 +2258,7 @@ fn assert_fractional_line_allocation_scroll<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -2237,8 +2271,8 @@ fn assert_fractional_line_allocation_scroll<S: LayoutScalar>() {
         &capture,
         0,
         request(35.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -2406,7 +2440,7 @@ fn assert_logical_allocation_float_sliver<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -2419,8 +2453,8 @@ fn assert_logical_allocation_float_sliver<S: LayoutScalar>() {
         &capture,
         0,
         request(35.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();

@@ -12,8 +12,11 @@ use crate::sizing::resolve::{
     resolve_preferred_optional,
 };
 use crate::{
-    BaselinesOf, LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant,
-    LayoutOperation,
+    error::{
+        LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant,
+        LayoutOperation,
+    },
+    output::BaselinesOf,
 };
 
 pub(super) mod absolute;
@@ -64,7 +67,7 @@ pub(super) struct GridChildPlacement<'input, Node, S: LayoutScalar> {
 
 pub(super) enum TrackAlignmentSubject<S: LayoutScalar> {
     Ordinary(GridTrackScrollBounds<S>),
-    Lanes(Result<crate::ScrollRectOf<S>, crate::ScrollRectErrorOf<S>>),
+    Lanes(Result<crate::scroll::ScrollRectOf<S>, crate::scroll::ScrollRectErrorOf<S>>),
 }
 
 impl<'input, Node: Copy, S: LayoutScalar> GridChildPlacement<'input, Node, S> {
@@ -272,10 +275,10 @@ fn stage_grid_child_source<'input, Tree, M>(tree: &mut Tree, child: Tree::Node, 
 where
     Tree: Compute<'input, M>,
 {
-    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+    tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
         child,
         crate::output::NormalGeometryOf::metadata(Point::ZERO, Size::ZERO),
-        NodeOutputOf::with_source_index(crate::SourceIndex::new(source_index)),
+        NodeOutputOf::with_source_index(crate::output::SourceIndex::new(source_index)),
     ));
 }
 
@@ -383,8 +386,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridItemCollection<'input, Node, 
             ..
         } = input;
         let flow = constants.flow_axes;
-        let hidden_context =
-            crate::ContainingLayoutContext::new(flow, crate::ParentFormattingContext::Grid);
+        let hidden_context = crate::output::ContainingLayoutContext::new(
+            flow,
+            crate::output::ParentFormattingContext::Grid,
+        );
         let hidden = match geometry {
             FinalGridChildGeometry::Ordinary { .. } => ComputeInputOf::hidden_in_containing_pass(
                 hidden_context,
@@ -687,7 +692,7 @@ impl<'input, Node: Copy, S: LayoutScalar> PreparedGridItem<'input, Node, S> {
                 if *grid_axis == GridAxisKind::Row {
                     style.baseline_references.rows
                 } else {
-                    crate::GridBaselineReference::Physical
+                    crate::node_input::GridBaselineReference::Physical
                 },
                 child_axes.line_over_edge(item.unresolved_margin).is_none()
                     || child_axes.line_under_edge(item.unresolved_margin).is_none(),
@@ -1394,7 +1399,7 @@ pub(super) fn grid_axis_offsets<S: LayoutScalar>(input: GridAxisOffsetsInput<'_,
 }
 
 fn grid_physical_axis_progression(
-    writing_mode: crate::WritingMode,
+    writing_mode: crate::node_input::WritingMode,
     direction: Direction,
     axis: PhysicalAxis,
 ) -> PhysicalProgression {
@@ -1552,7 +1557,10 @@ where
         RequestedAxis::Both,
         sizing.known,
         area_parent,
-        crate::ContainingLayoutContext::new(flow_axes, crate::ParentFormattingContext::Grid),
+        crate::output::ContainingLayoutContext::new(
+            flow_axes,
+            crate::output::ParentFormattingContext::Grid,
+        ),
         SizingRequestOf::new(available, request_context.orthogonal_fallback),
     )
     .with_containing_auto_scrollbar_pass(request_context.containing_auto_scrollbar_pass);
@@ -1979,7 +1987,7 @@ struct GridItemPhysicalAlignment {
 }
 
 fn grid_item_physical_alignment(
-    writing_mode: crate::WritingMode,
+    writing_mode: crate::node_input::WritingMode,
     justify_self: AlignItems,
     align_self: AlignItems,
 ) -> GridItemPhysicalAlignment {

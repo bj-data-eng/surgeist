@@ -3,8 +3,8 @@ use super::*;
 use core::cmp::Ordering;
 
 use crate::{
-    LengthResolutionOf, LengthResolutionStatus, PercentageBasisOf, SizingCalculationOf,
-    TrackRepetitionOf,
+    sizing::SizingCalculationOf,
+    value::{LengthResolutionOf, LengthResolutionStatus, PercentageBasisOf, TrackRepetitionOf},
 };
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::grid) struct AutoRepeatTrackOrigin {

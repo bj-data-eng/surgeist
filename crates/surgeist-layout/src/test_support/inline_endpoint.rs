@@ -2,7 +2,22 @@
 
 use super::layout_tree::PublicLayoutTreeOf;
 use super::text::ahem_style;
-use crate::*;
+use crate::{
+    engine::compute_layout_with_flow,
+    geometry::{FlowAxes, Size},
+    node_input::{
+        Direction, Display, Float, InlineBoundaryEdgeOf, InlineBoundaryInputOf, InlineBoundaryKind,
+        InlineMetricsOf, LayoutInputOf, NodeInputOf, WritingMode,
+    },
+    output::{CompletedLayoutBatchOf, LayoutRootRequestOf},
+    scalar::LayoutScalar,
+    sizing::PreferredSizeOf,
+    text_layout::{
+        LayoutFlowInput, TextControlBinding, TextControlParticipation, TextOriginBinding,
+        TextParagraphBinding, TextParticipation,
+    },
+    value::SizingRequestOf,
+};
 use std::sync::Arc;
 use surgeist_text as text;
 use text::{
@@ -376,7 +391,8 @@ impl Fixture {
             .collect();
         Self {
             binding: TextParagraphBinding {
-                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+                inline_box_fragments:
+                    crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: 0,
                 nodes,
@@ -441,7 +457,7 @@ impl Fixture {
                     InlineBoundaryInputOf::contribution(
                         kind,
                         InlineMetricsOf::try_new(
-                            crate::InlineBaselineContext::Physical,
+                            crate::node_input::InlineBaselineContext::Physical,
                             S::from_f64(8.0),
                             S::from_f64(10.0),
                         )
@@ -488,7 +504,7 @@ impl Fixture {
             &tree,
             0,
             vec![self.binding.clone()],
-            crate::WrappingInput {
+            crate::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),

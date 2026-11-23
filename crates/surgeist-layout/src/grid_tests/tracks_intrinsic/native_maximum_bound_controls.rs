@@ -1,7 +1,7 @@
 //! Supplemental functional controls; child of native_maximum_bound.rs.
 use super::*;
+use crate::node_input::{ScrollbarGutter, ScrollbarWidthOf};
 use crate::test_support::readback::{self, Phase};
-use crate::{ScrollbarGutter, ScrollbarWidthOf};
 
 fn maximum_source<S: LayoutScalar>(maximum: f64, cap: GrowthCap) -> DistinctLeaf<S> {
     let mut tree = source::<S>(20.0, cap, Overflow::Hidden);
@@ -36,8 +36,8 @@ fn formal_input<S: LayoutScalar>(known_width: Option<S>) -> ComputeInputOf<S> {
             )),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     )
@@ -102,22 +102,27 @@ fn exhausted_scrollbar_budget<S: LayoutScalar>() {
     let normal = compute_layout(&tree, 0, {
         let axes = Size::new(
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(20.0)).unwrap()),
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(n(20.0)).unwrap(),
+                ),
                 SizingOperation::Normal,
             ),
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    crate::value::NearestScrollportOf::Absent,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })

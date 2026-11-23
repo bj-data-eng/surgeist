@@ -5,7 +5,12 @@ use crate::inline::{
     layout_mixed_inline_run_with_formatted_observation,
 };
 use crate::test_support::text::{PreparedParagraph, ahem_style};
-use crate::{ComputeInputOf, Direction, FlowAxes, Size, WritingMode};
+use crate::{
+    geometry::{FlowAxes, Point, Size},
+    node_input::{Direction, WritingMode},
+    output::ComputeInputOf,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation},
+};
 use surgeist_text::prepared::PreparedText;
 
 fn prepared() -> PreparedText {
@@ -21,27 +26,22 @@ fn input() -> ComputeInputOf<f64> {
     ComputeInputOf::leaf_layout(
         Size::NONE,
         Size::NONE,
-        crate::ContainingLayoutContext::new(
+        crate::output::ContainingLayoutContext::new(
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-            crate::ParentFormattingContext::BlockFlow,
+            crate::output::ParentFormattingContext::BlockFlow,
         ),
-        crate::SizingRequestOf::new(
+        crate::value::SizingRequestOf::new(
             Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(40.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(40.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            crate::value::OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::value::NearestScrollportOf::Unknown,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
             ),
         ),
     )
@@ -70,9 +70,9 @@ fn state(prepared: &PreparedText) -> (FormattedState<u32, f64>, RunBinding<u32, 
             &[1],
             &prepared.source_segments().next().unwrap(),
             input(),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(40.0).unwrap()),
+                SizingOperation::Normal,
             ),
         )
         .unwrap();
@@ -149,8 +149,8 @@ fn flow(items: Vec<FormattedFlowItem<u32, f64>>) -> FormattedFlow<u32, f64> {
 
 fn numeric_forced_lines() -> Vec<NumericFormattedLine> {
     let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-    let metrics = crate::InlineMetricsOf::from_ascent_descent(
-        crate::InlineBaselineContext::Physical,
+    let metrics = crate::node_input::InlineMetricsOf::from_ascent_descent(
+        crate::node_input::InlineBaselineContext::Physical,
         8.0,
         2.0,
     )
@@ -158,22 +158,22 @@ fn numeric_forced_lines() -> Vec<NumericFormattedLine> {
     let report = layout_mixed_inline_run_with_formatted_observation(
         MixedInlineRunInputOf {
             meter: crate::accounting::Meter::new(),
-            inline_baseline_context: crate::InlineBaselineContext::Physical,
+            inline_baseline_context: crate::node_input::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
-            text_wrap_style: crate::TextWrapStyle::Auto,
+            text_wrap_style: crate::node_input::TextWrapStyle::Auto,
             wrapping: None,
             line_box_context: crate::line_box::LineBoxContext::new(
-                crate::LineBoxDirectionPolicy::Normal,
+                crate::node_input::LineBoxDirectionPolicy::Normal,
                 Direction::Ltr,
             ),
             observe_tail: false,
-            available_inline_extent: crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
-                crate::SizingOperation::Normal,
+            available_inline_extent: AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(40.0).unwrap()),
+                SizingOperation::Normal,
             ),
             flow_axes: flow,
-            text_align: crate::TextAlign::Start,
-            text_align_last: crate::TextAlignLast::Auto,
+            text_align: crate::node_input::TextAlign::Start,
+            text_align_last: crate::node_input::TextAlignLast::Auto,
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: crate::text_indent::IndentLineState::default(),
             participants: vec![MixedInlineParticipantOf::ForcedLineBreak(
@@ -182,14 +182,14 @@ fn numeric_forced_lines() -> Vec<NumericFormattedLine> {
                     InlineFlowOf::new(
                         WritingMode::HorizontalTb,
                         Direction::Ltr,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MaxContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
                         ),
                     ),
                     metrics,
                     InlineControlAlignment::Baseline,
-                    crate::Clear::None,
+                    crate::node_input::Clear::None,
                 ),
             )],
         },
@@ -301,9 +301,9 @@ fn no_demand_keeps_summary_collection_and_cache_requirements_absent() {
             &[1],
             &p.source_segments().next().unwrap(),
             input(),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(40.0).unwrap()),
+                SizingOperation::Normal,
             ),
         )
         .unwrap();
@@ -315,11 +315,9 @@ fn no_demand_keeps_summary_collection_and_cache_requirements_absent() {
                 &[1],
                 &p.source_segments().next().unwrap(),
                 input(),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(40.0).unwrap()
-                    ),
-                    crate::SizingOperation::Normal
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(40.0).unwrap()),
+                    SizingOperation::Normal
                 ),
                 FormattedTailUses::default()
             )
@@ -347,10 +345,11 @@ fn a_summary_receipt_cannot_authenticate_different_geometry_or_canonical_frames(
         )]))
         .unwrap();
     state.finish_block(scope(), true).unwrap();
-    let context = crate::CacheKeyContext::new();
-    let output = crate::ComputeOutputOf::from_sizes(Size::new(10.0, 10.0), Size::new(10.0, 10.0));
+    let context = crate::cache::CacheKeyContext::new();
+    let output =
+        crate::output::ComputeOutputOf::from_sizes(Size::new(10.0, 10.0), Size::new(10.0, 10.0));
     let different =
-        crate::ComputeOutputOf::from_sizes(Size::new(20.0, 10.0), Size::new(20.0, 10.0));
+        crate::output::ComputeOutputOf::from_sizes(Size::new(20.0, 10.0), Size::new(20.0, 10.0));
     assert!(!state.cache_matches(0, &input(), context, output).unwrap());
     state.bind_output(0, &input(), context, output).unwrap();
     assert!(state.cache_matches(0, &input(), context, output).unwrap());
@@ -361,11 +360,11 @@ fn a_summary_receipt_cannot_authenticate_different_geometry_or_canonical_frames(
     );
     state.frames = Arc::from([super::super::state::CanonicalFrame {
         node: 0,
-        origin: crate::Point::new(1.0, 0.0),
-        normal_origin: crate::Point::new(1.0, 0.0),
-        normal: crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
+        origin: Point::new(1.0, 0.0),
+        normal_origin: Point::new(1.0, 0.0),
+        normal: crate::output::NormalGeometryOf::metadata(Point::ZERO, Size::ZERO),
         measured_inset_basis: None,
-        output: crate::NodeOutputOf::new(),
+        output: crate::output::NodeOutputOf::new(),
     }]);
     assert!(!state.cache_matches(0, &input(), context, output).unwrap());
 }

@@ -1,4 +1,7 @@
-use crate::{Direction, FlowAxes, WritingMode};
+use crate::{
+    geometry::FlowAxes,
+    node_input::{Direction, WritingMode},
+};
 
 /// The resolved direction in which a document's page spreads progress.
 /// This is independent of a fragmented subtree's geometric flow axes.

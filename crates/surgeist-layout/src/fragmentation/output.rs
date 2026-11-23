@@ -1,5 +1,5 @@
 use super::input::*;
-use crate::{DefaultScalar, LayoutScalar};
+use crate::scalar::{DefaultScalar, LayoutScalar};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct FragmentationCoverage<K> {

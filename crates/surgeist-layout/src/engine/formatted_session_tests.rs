@@ -3,7 +3,29 @@ use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
-use crate::*;
+use crate::{
+    cache::{CacheKeyContext, CacheOf},
+    engine::{compute_layout_with_flow, contracts::Compute},
+    geometry::{FlowAxes, Size},
+    inline_wrapping::WrappingInput,
+    node_input::{
+        AlignItems, Direction, Display, FlexItemCollapse, Float, InlineBaselineContext,
+        InlineMetricsOf, LayoutInputOf, LayoutInputViewOf, LineBreakInputOf, NodeInputOf,
+        WritingMode,
+    },
+    output::{
+        CompletedLayoutBatchOf, ComputeInputOf, ComputeOutputOf, ContainingLayoutContext,
+        LayoutRootRequestOf, ParentFormattingContext, RunMode,
+    },
+    scalar::LayoutScalar,
+    sizing::PreferredSizeOf,
+    text_layout::{LayoutFlowInput, TextParagraphBinding},
+    tree::{LayoutTree, Traverse},
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, NonNegativeFiniteOf,
+        OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+    },
+};
 use surgeist_text as text;
 
 fn paragraph(
@@ -51,7 +73,7 @@ fn compute<S: LayoutScalar>(
         tree,
         0,
         paragraphs,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -62,41 +84,36 @@ fn compute<S: LayoutScalar>(
     .unwrap();
     compute_layout_with_flow(&capture, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(width)).unwrap()),
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         logical_requests.inline = logical_requests
             .inline
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -170,7 +187,7 @@ fn intrinsic_and_finite_traversals_keep_separate_actual_owner_frames() {
             &tree,
             0,
             vec![p.binding(0)],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -181,25 +198,19 @@ fn intrinsic_and_finite_traversals_keep_separate_actual_owner_frames() {
         .unwrap();
         let cases = [
             (
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MinContent,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
                 20.0,
             ),
             (
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MaxContent,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
                 40.0,
             ),
             (
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 40.0,
             ),
@@ -209,14 +220,14 @@ fn intrinsic_and_finite_traversals_keep_separate_actual_owner_frames() {
                 let (available, expected) = cases[index];
                 let batch = compute_layout_with_flow(&capture, 0, {
                     let containing_flow_axes = {
-                        let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                        let root_input = LayoutTree::node_input((capture).tree(), 0);
+                        FlowAxes::new(root_input.writing_mode, root_input.direction)
                     };
                     let requested_axes = Size::new(
                         available,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MaxContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
                         ),
                     );
                     let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
@@ -224,18 +235,18 @@ fn intrinsic_and_finite_traversals_keep_separate_actual_owner_frames() {
                     // the explicitly requested inline contribution operation.
                     logical_requests.block = logical_requests
                         .block
-                        .with_operation(crate::SizingOperation::Normal);
+                        .with_operation(SizingOperation::Normal);
                     let axes = containing_flow_axes.physical_size(logical_requests);
                     // The old Native NoParent fixture explicitly supplied these percentage
                     // bases. It supplied no independent ICB dimensions or ancestor scrollport.
                     let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-                    let fallback = crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    let fallback = OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     );
-                    crate::LayoutRootRequestOf::standalone(
-                        crate::SizingRequestOf::new(axes, fallback),
+                    LayoutRootRequestOf::standalone(
+                        SizingRequestOf::new(axes, fallback),
                         containing_flow_axes,
                         percentage_parent,
                     )
@@ -288,7 +299,7 @@ fn a_later_real_empty_forced_child_disproves_last_for_earlier_text() {
                 LayoutInputOf::line_break(
                     LineBreakInputOf::new().with_metrics(
                         InlineMetricsOf::from_ascent_descent(
-                            crate::InlineBaselineContext::Physical,
+                            InlineBaselineContext::Physical,
                             S::from_f64(8.0),
                             S::from_f64(2.0),
                         )
@@ -345,7 +356,7 @@ fn float_band_child_keeps_its_parent_formatted_flow() {
                 2,
                 NodeInputOf {
                     size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO),
-                    block_flow_context: crate::BlockFlowContext::Independent,
+                    block_flow_context: crate::node_input::BlockFlowContext::Independent,
                     ..root(30.0)
                 },
             )
@@ -354,7 +365,7 @@ fn float_band_child_keeps_its_parent_formatted_flow() {
                 LayoutInputOf::line_break(
                     LineBreakInputOf::new().with_metrics(
                         InlineMetricsOf::from_ascent_descent(
-                            crate::InlineBaselineContext::Physical,
+                            InlineBaselineContext::Physical,
                             S::from_f64(8.0),
                             S::from_f64(2.0),
                         )
@@ -482,7 +493,7 @@ fn float_probe_tail_truth_is_merged_only_when_its_packet_is_accepted() {
         &tree,
         0,
         vec![p.binding(2)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -499,23 +510,18 @@ fn float_probe_tail_truth_is_merged_only_when_its_packet_is_accepted() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::BlockFlow,
         ),
-        crate::SizingRequestOf::new(
+        SizingRequestOf::new(
             Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(30.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(30.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Unknown,
+                Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         ),
     )
@@ -612,7 +618,7 @@ fn warm_geometry_only_numeric_child_cache_cannot_supply_formatted_tail_truth() {
                 LayoutInputOf::line_break(
                     LineBreakInputOf::new().with_metrics(
                         InlineMetricsOf::from_ascent_descent(
-                            crate::InlineBaselineContext::Physical,
+                            InlineBaselineContext::Physical,
                             8.0,
                             2.0,
                         )
@@ -627,7 +633,7 @@ fn warm_geometry_only_numeric_child_cache_cannot_supply_formatted_tail_truth() {
         &tree,
         0,
         vec![p.binding(2)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -638,39 +644,36 @@ fn warm_geometry_only_numeric_child_cache_cannot_supply_formatted_tail_truth() {
     .unwrap();
     let request = {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(60.0).unwrap()),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(60.0).unwrap()),
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         logical_requests.inline = logical_requests
             .inline
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -770,7 +773,7 @@ fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>(neste
                 7,
                 NodeInputOf {
                     display: Display::Block,
-                    block_generation: crate::BlockGeneration::Anonymous,
+                    block_generation: crate::node_input::BlockGeneration::Anonymous,
                     ..NodeInputOf::default()
                 },
             )
@@ -809,17 +812,17 @@ fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>(neste
             &collapsed,
             node,
             Phase::Unrounded,
-            readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+            readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::Hidden),
         );
         assert_eq!(hidden.size, Size::ZERO);
-        let source_index = crate::SourceIndex::new(usize::from(node == 4));
+        let source_index = crate::output::SourceIndex::new(usize::from(node == 4));
         readback::observe(
             &collapsed,
             node,
             Phase::Final,
-            readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+            readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::Hidden),
         )
-        .assert_numeric(crate::NodeOutputOf::with_source_index(source_index));
+        .assert_numeric(crate::output::NodeOutputOf::with_source_index(source_index));
         assert!(
             !collapsed
                 .cache_store_entries()

@@ -789,7 +789,7 @@ const _: ScrollOriginAxes = ScrollOriginAxes::new(
 mod fri05_c02_contribution_range_tests {
     use super::super::rounding::round_canonical_contributions;
     use super::*;
-    use crate::{Direction, WritingMode};
+    use crate::node_input::{Direction, WritingMode};
 
     fn scalar<S: LayoutScalar>(value: f64) -> S {
         S::from_f64(value)

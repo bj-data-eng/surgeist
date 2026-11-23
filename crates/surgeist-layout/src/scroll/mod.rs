@@ -1,10 +1,10 @@
-use super::{
-    ComputedOverflow, DefaultScalar, Edges, FlowAxes, LayoutScalar, LengthPercentageOf,
-    LogicalAxis, NumericResolutionOf, Overflow, OverflowClipBox, PercentageBasisOf, PhysicalAxis,
-    PhysicalSide, Point, ScrollbarGutter, ScrollbarWidthOf, Size,
-    scalar::{canonical_zero, round_layout_coordinate},
-};
 use crate::geometry::LogicalEdgesOf;
+use crate::{
+    geometry::{Edges, FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide, Point, Size},
+    node_input::{ComputedOverflow, Overflow, OverflowClipBox, ScrollbarGutter, ScrollbarWidthOf},
+    scalar::{DefaultScalar, LayoutScalar, canonical_zero, round_layout_coordinate},
+    value::{LengthPercentageOf, NumericResolutionOf, PercentageBasisOf},
+};
 pub(crate) use construction::include_scope_overflow;
 
 pub(crate) mod anchor_selection;

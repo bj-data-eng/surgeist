@@ -2,9 +2,18 @@ use std::process::Command;
 
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::{
-    AvailableSpaceOf, AxisSizingRequestOf, Direction, Display, FlowAxes, LayoutRootRequestOf,
-    LayoutScalar, NearestScrollportOf, NodeInputOf, NonNegativeFiniteOf, OrthogonalFallbackLimitOf,
-    OrthogonalFallbackOf, Size, SizingOperation, SizingRequestOf, WritingMode, compute_layout,
+    block_fragmentation::NonBoxKind,
+    engine::compute_layout,
+    geometry::{FlowAxes, Point, Size},
+    node_input::{AlignItems, Direction, Display, Float, NodeInputOf, Position, WritingMode},
+    output::{LayoutRootRequestOf, SourceIndex},
+    scalar::LayoutScalar,
+    sizing::{MinSizeOf, PreferredSizeOf},
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, LengthAutoOf, LengthPercentageOf,
+        NearestScrollportOf, NonNegativeFiniteOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf,
+        SizingOperation, SizingRequestOf, TrackComponentOf,
+    },
 };
 
 fn chain<S: LayoutScalar>(display: Display, nodes: u32) -> PublicLayoutTreeOf<S> {
@@ -99,11 +108,7 @@ fn assert_hidden_layout<S: LayoutScalar>(
     assert!(batch.fragments().next().is_none());
     for (node, view) in batch.node_layouts() {
         let hidden = view.non_box().expect("hidden publication");
-        assert_eq!(
-            hidden.kind(),
-            crate::NonBoxKind::Hidden,
-            "hidden node {node}"
-        );
+        assert_eq!(hidden.kind(), NonBoxKind::Hidden, "hidden node {node}");
         assert_eq!(
             hidden.final_entry().output().size,
             Size::ZERO,
@@ -111,7 +116,7 @@ fn assert_hidden_layout<S: LayoutScalar>(
         );
         assert_eq!(
             hidden.source_index(),
-            crate::SourceIndex::new(source_index(node)),
+            SourceIndex::new(source_index(node)),
             "hidden node {node}"
         );
     }
@@ -141,8 +146,8 @@ fn assert_block_chain<S: LayoutScalar>(depth: u32) {
     let block = |height| NodeInputOf {
         display: Display::Block,
         size: Size::new(
-            crate::PreferredSizeOf::AUTO,
-            crate::PreferredSizeOf::px(S::from_f64(height)),
+            PreferredSizeOf::AUTO,
+            PreferredSizeOf::px(S::from_f64(height)),
         ),
         ..NodeInputOf::default()
     };
@@ -170,12 +175,12 @@ fn assert_block_chain<S: LayoutScalar>(depth: u32) {
         );
         assert_eq!(
             output.location,
-            crate::Point::new(S::ZERO, S::from_f64(top)),
+            Point::new(S::ZERO, S::from_f64(top)),
             "node {node}"
         );
         assert_eq!(
             output.source_index,
-            crate::SourceIndex::new(source_index),
+            SourceIndex::new(source_index),
             "node {node}"
         );
     }
@@ -200,13 +205,16 @@ fn assert_scalar_block_chain<S: LayoutScalar>(nodes: u32) {
         chain::<S>(Display::Block, nodes).measure(nodes - 1, Size::new(width, S::from_f64(7.0)));
     let mut session = super::session::ComputeSession::unobserved(&tree, Vec::new());
     let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-    let input = crate::ComputeInputOf::for_child(
-        crate::RunMode::ComputeSize,
-        crate::SizingMode::ContentSize,
-        crate::RequestedAxis::Horizontal,
+    let input = crate::output::ComputeInputOf::for_child(
+        crate::output::RunMode::ComputeSize,
+        crate::output::SizingMode::ContentSize,
+        crate::output::RequestedAxis::Horizontal,
         Size::NONE,
         Size::NONE,
-        crate::ContainingLayoutContext::new(axes, crate::ParentFormattingContext::NoParent),
+        crate::output::ContainingLayoutContext::new(
+            axes,
+            crate::output::ParentFormattingContext::NoParent,
+        ),
         SizingRequestOf::new(
             Size::splat(AxisSizingRequestOf::new(
                 AvailableSpaceOf::Indefinite,
@@ -219,11 +227,11 @@ fn assert_scalar_block_chain<S: LayoutScalar>(nodes: u32) {
             ),
         ),
     );
-    let measured = crate::Compute::compute_axis_demand(
+    let measured = crate::engine::contracts::Compute::compute_axis_demand(
         &mut session,
         0,
         input,
-        crate::PhysicalAxis::Horizontal,
+        crate::geometry::PhysicalAxis::Horizontal,
     )
     .expect("scalar Block demand must return");
     assert_eq!(measured, width);
@@ -265,8 +273,8 @@ fn assert_intrinsic_block_chain<S: LayoutScalar>(nodes: u32) {
     for (node, view) in batch.node_layouts() {
         let output = view.single_box().unwrap().final_output();
         assert_eq!(output.size, expected, "node {node}");
-        assert_eq!(output.location, crate::Point::new(S::ZERO, S::ZERO));
-        assert_eq!(output.source_index, crate::SourceIndex::ZERO);
+        assert_eq!(output.location, Point::new(S::ZERO, S::ZERO));
+        assert_eq!(output.source_index, SourceIndex::ZERO);
     }
 }
 
@@ -294,16 +302,16 @@ fn deep_intrinsic_block_layout_returns_on_bounded_stack() {
 
 fn assert_positioned_block_chain<S: LayoutScalar>(depth: u32) {
     let (width, height) = (S::from_f64(13.0), S::from_f64(7.0));
-    let length = |value| crate::LengthPercentageOf::px(value).unwrap();
-    let preferred = |value| crate::PreferredSizeOf::value(length(value));
+    let length = |value| LengthPercentageOf::px(value).unwrap();
+    let preferred = |value| PreferredSizeOf::value(length(value));
     let positioned = |left, top| NodeInputOf {
         display: Display::Block,
-        position: crate::Position::Absolute,
+        position: Position::Absolute,
         size: Size::new(preferred(width), preferred(height)),
-        inset: crate::Edges {
-            left: crate::LengthAutoOf::value(length(S::from_f64(left))),
-            top: crate::LengthAutoOf::value(length(S::from_f64(top))),
-            ..crate::Edges::all(crate::LengthAutoOf::AUTO)
+        inset: crate::geometry::Edges {
+            left: LengthAutoOf::value(length(S::from_f64(left))),
+            top: LengthAutoOf::value(length(S::from_f64(top))),
+            ..crate::geometry::Edges::all(LengthAutoOf::AUTO)
         },
         ..NodeInputOf::default()
     };
@@ -342,12 +350,12 @@ fn assert_positioned_block_chain<S: LayoutScalar>(depth: u32) {
         assert_eq!(output.size, size, "node {node}");
         assert_eq!(
             output.location,
-            crate::Point::new(S::from_f64(x), S::from_f64(y)),
+            Point::new(S::from_f64(x), S::from_f64(y)),
             "node {node}"
         );
         assert_eq!(
             output.source_index,
-            crate::SourceIndex::new(source_index),
+            SourceIndex::new(source_index),
             "node {node}"
         );
     }
@@ -377,11 +385,10 @@ fn deep_positioned_block_layout_returns_on_bounded_stack() {
 
 fn assert_shared_float_block_chain<S: LayoutScalar>(depth: u32) {
     let px = S::from_f64;
-    let preferred =
-        |value| crate::PreferredSizeOf::value(crate::LengthPercentageOf::px(px(value)).unwrap());
+    let preferred = |value| PreferredSizeOf::value(LengthPercentageOf::px(px(value)).unwrap());
     let floated = |width, height| NodeInputOf {
         display: Display::Block,
-        float: crate::Float::Left,
+        float: Float::Left,
         size: Size::new(preferred(width), preferred(height)),
         ..NodeInputOf::default()
     };
@@ -408,13 +415,10 @@ fn assert_shared_float_block_chain<S: LayoutScalar>(depth: u32) {
             .unwrap()
             .final_output()
     };
-    assert_eq!(output(depth).location, crate::Point::new(S::ZERO, S::ZERO));
-    assert_eq!(output(1).source_index, crate::SourceIndex::new(1));
+    assert_eq!(output(depth).location, Point::new(S::ZERO, S::ZERO));
+    assert_eq!(output(1).source_index, SourceIndex::new(1));
     assert_eq!(output(depth - 1).size, Size::new(px(30.0), px(10.0)));
-    assert_eq!(
-        output(depth - 1).location,
-        crate::Point::new(S::ZERO, px(20.0))
-    );
+    assert_eq!(output(depth - 1).location, Point::new(S::ZERO, px(20.0)));
 }
 
 #[test]
@@ -441,16 +445,15 @@ fn deep_shared_float_block_layout_returns_on_bounded_stack() {
 
 fn atomic_inline_block_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
     let px = S::from_f64;
-    let preferred =
-        |value| crate::PreferredSizeOf::value(crate::LengthPercentageOf::px(px(value)).unwrap());
+    let preferred = |value| PreferredSizeOf::value(LengthPercentageOf::px(px(value)).unwrap());
     let atomic = || NodeInputOf {
         display: Display::InlineBlock,
-        atomic_inline_participation: Some(crate::AtomicInlineParticipation::new(
+        atomic_inline_participation: Some(crate::node_input::AtomicInlineParticipation::new(
             surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
-            crate::InlineBreakOpportunity::Allowed,
+            crate::node_input::InlineBreakOpportunity::Allowed,
         )),
-        inline_baseline_context: crate::InlineBaselineContext::Physical,
-        vertical_align: crate::VerticalAlignOf::Top,
+        inline_baseline_context: crate::node_input::InlineBaselineContext::Physical,
+        vertical_align: crate::node_input::VerticalAlignOf::Top,
         size: Size::new(preferred(13.0), preferred(7.0)),
         ..NodeInputOf::default()
     };
@@ -461,7 +464,7 @@ fn atomic_inline_block_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<
             0,
             NodeInputOf {
                 display: Display::Block,
-                inline_baseline_context: crate::InlineBaselineContext::Physical,
+                inline_baseline_context: crate::node_input::InlineBaselineContext::Physical,
                 size: Size::new(preferred(100.0), preferred(80.0)),
                 ..NodeInputOf::default()
             },
@@ -486,14 +489,10 @@ fn assert_atomic_inline_block_chain<S: LayoutScalar>(depth: u32) {
             _ => (13.0, 7.0, 0.0, 0),
         };
         assert_eq!(output.size, Size::new(px(width), px(height)), "node {node}");
-        assert_eq!(
-            output.location,
-            crate::Point::new(px(x), S::ZERO),
-            "node {node}"
-        );
+        assert_eq!(output.location, Point::new(px(x), S::ZERO), "node {node}");
         assert_eq!(
             output.source_index,
-            crate::SourceIndex::new(source_index),
+            SourceIndex::new(source_index),
             "node {node}"
         );
     }
@@ -528,13 +527,16 @@ fn assert_atomic_inline_leaf_refusal<S: LayoutScalar>(depth: u32) {
         .style(leaf, NodeInputOf::default())
         .measure(leaf, Size::new(S::NAN, S::from_f64(7.0)));
     let error = compute_layout(&tree, 0, standalone()).unwrap_err();
-    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(leaf));
-    assert_eq!(error.operation(), crate::LayoutOperation::LeafMeasurement);
+    assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(leaf));
+    assert_eq!(
+        error.operation(),
+        crate::error::LayoutOperation::LeafMeasurement
+    );
     assert!(matches!(
         error.kind(),
-        crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::MeasurementOutput(output))
-            if output.axis() == crate::PhysicalAxis::Horizontal
-                && matches!(output.error(), crate::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.to_f64().is_nan())
+        crate::error::LayoutErrorKindOf::InvalidInput(crate::error::LayoutInvalidInputOf::MeasurementOutput(output))
+            if output.axis() == crate::geometry::PhysicalAxis::Horizontal
+                && matches!(output.error(), crate::value::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.to_f64().is_nan())
     ));
 
     let repaired = tree.measure(leaf, Size::new(S::from_f64(5.0), S::from_f64(7.0)));
@@ -558,7 +560,7 @@ std::thread_local! {
     static LEAF_MEASUREMENTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-fn measure_nested_leaf<S: LayoutScalar>(_: crate::LeafMeasureInputOf<S>) -> Size<S> {
+fn measure_nested_leaf<S: LayoutScalar>(_: crate::measurement::LeafMeasureInputOf<S>) -> Size<S> {
     LEAF_MEASUREMENTS.set(LEAF_MEASUREMENTS.get() + 1);
     Size::new(S::from_f64(11.0), S::from_f64(7.0))
 }
@@ -580,20 +582,22 @@ fn nested_leaf_measurement_count<S: LayoutScalar>(
         .measure_with(depth, measure_nested_leaf);
     let request = standalone();
     let batch = if bound {
-        let bound =
-            crate::LayoutBoundRequestOf::continuous(crate::LayoutSourceBasis::fresh(), request);
+        let bound = crate::block_fragmentation::LayoutBoundRequestOf::continuous(
+            crate::block_fragmentation::input::LayoutSourceBasis::fresh(),
+            request,
+        );
         let target = bound.target_basis();
-        let flow = crate::LayoutFlowInput::try_new_bound(
+        let flow = crate::text_layout::LayoutFlowInput::try_new_bound(
             &tree,
             0,
             bound,
             Vec::new(),
-            crate::WrappingInput::default(),
+            crate::inline_wrapping::WrappingInput::default(),
             Vec::new(),
         )
         .unwrap();
-        let batch =
-            crate::compute_layout_with_flow(&flow, 0, request).expect("bound continuous layout");
+        let batch = crate::engine::compute_layout_with_flow(&flow, 0, request)
+            .expect("bound continuous layout");
         assert_eq!(batch.target_basis(), Some(&target));
         assert!(batch.cache_store_entries().is_empty());
         batch
@@ -645,7 +649,7 @@ fn continuous_bound_grid_leaf_measurement_work_is_bounded_per_call() {
 
 fn assert_block_float_trial_chain<S: LayoutScalar>(depth: u32) {
     let px = S::from_f64;
-    let preferred = |value| crate::PreferredSizeOf::px(px(value));
+    let preferred = |value| PreferredSizeOf::px(px(value));
     let first_float = depth + 1;
     let mut tree = chain::<S>(Display::Block, depth + 1);
     for level in 0..depth {
@@ -654,7 +658,7 @@ fn assert_block_float_trial_chain<S: LayoutScalar>(depth: u32) {
             float,
             NodeInputOf {
                 display: Display::Block,
-                float: crate::Float::Left,
+                float: Float::Left,
                 size: Size::new(preferred(1.0), preferred(4.0)),
                 ..NodeInputOf::default()
             },
@@ -664,7 +668,7 @@ fn assert_block_float_trial_chain<S: LayoutScalar>(depth: u32) {
                 level,
                 NodeInputOf {
                     display: Display::Block,
-                    block_flow_context: crate::BlockFlowContext::Independent,
+                    block_flow_context: crate::node_input::BlockFlowContext::Independent,
                     ..NodeInputOf::default()
                 },
             );
@@ -674,8 +678,8 @@ fn assert_block_float_trial_chain<S: LayoutScalar>(depth: u32) {
         depth,
         NodeInputOf {
             display: Display::Block,
-            block_flow_context: crate::BlockFlowContext::Independent,
-            size: Size::new(crate::PreferredSizeOf::AUTO, preferred(5.0)),
+            block_flow_context: crate::node_input::BlockFlowContext::Independent,
+            size: Size::new(PreferredSizeOf::AUTO, preferred(5.0)),
             ..NodeInputOf::default()
         },
     );
@@ -695,12 +699,12 @@ fn assert_block_float_trial_chain<S: LayoutScalar>(depth: u32) {
         );
         assert_eq!(
             output.location,
-            crate::Point::new(px(f64::from(node != 0)), S::ZERO),
+            Point::new(px(f64::from(node != 0)), S::ZERO),
             "node {node}"
         );
         assert_eq!(
             output.source_index,
-            crate::SourceIndex::new(usize::from(node != 0)),
+            SourceIndex::new(usize::from(node != 0)),
             "node {node}"
         );
     }
@@ -714,15 +718,11 @@ fn assert_block_float_trial_chain<S: LayoutScalar>(depth: u32) {
             .final_output();
         assert_eq!(
             output.location,
-            crate::Point::new(S::ZERO, S::ZERO),
+            Point::new(S::ZERO, S::ZERO),
             "float {float}"
         );
         assert_eq!(output.size, Size::new(px(1.0), px(4.0)), "float {float}");
-        assert_eq!(
-            output.source_index,
-            crate::SourceIndex::new(0),
-            "float {float}"
-        );
+        assert_eq!(output.source_index, SourceIndex::new(0), "float {float}");
     }
 }
 
@@ -774,31 +774,24 @@ fn assert_captured_detached_float_chain<S: LayoutScalar>(depth: u32) {
                 node,
                 NodeInputOf {
                     display: Display::Block,
-                    float: if node == 0 {
-                        crate::Float::None
-                    } else {
-                        crate::Float::Left
-                    },
-                    size: Size::new(
-                        crate::PreferredSizeOf::px(px(100.0)),
-                        crate::PreferredSizeOf::AUTO,
-                    ),
+                    float: if node == 0 { Float::None } else { Float::Left },
+                    size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
                     ..NodeInputOf::default()
                 },
             )
             .input(text, paragraph.text_input(text));
         paragraphs.push(binding);
     }
-    let flow = crate::LayoutFlowInput::try_new(
+    let flow = crate::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         paragraphs,
-        crate::WrappingInput::default(),
+        crate::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .expect("captured Float chain");
-    let batch =
-        crate::compute_layout_with_flow(&flow, 0, standalone()).expect("captured Float layout");
+    let batch = crate::engine::compute_layout_with_flow(&flow, 0, standalone())
+        .expect("captured Float layout");
     assert_eq!(batch.placed_text().len(), (depth + 1) as usize);
     assert_eq!(batch.node_layouts().len(), (2 * (depth + 1)) as usize);
     for node in 0..=depth {
@@ -815,12 +808,12 @@ fn assert_captured_detached_float_chain<S: LayoutScalar>(depth: u32) {
         );
         assert_eq!(
             output.location,
-            crate::Point::new(S::ZERO, px(if node == 0 { 0.0 } else { 5.0 })),
+            Point::new(S::ZERO, px(if node == 0 { 0.0 } else { 5.0 })),
             "node {node}"
         );
         assert_eq!(
             output.source_index,
-            crate::SourceIndex::new(usize::from(node != 0)),
+            SourceIndex::new(usize::from(node != 0)),
             "node {node}"
         );
         let placed = batch
@@ -855,13 +848,13 @@ fn deep_captured_detached_float_chain_returns_on_bounded_stack() {
     );
 }
 
-fn assert_layout_chain<S: LayoutScalar>(display: Display, position: crate::Position, depth: u32) {
+fn assert_layout_chain<S: LayoutScalar>(display: Display, position: Position, depth: u32) {
     assert_layout_chain_with_style::<S>(display, position, depth, |_, _, _| {});
 }
 
 fn assert_layout_chain_with_style<S: LayoutScalar>(
     display: Display,
-    position: crate::Position,
+    position: Position,
     depth: u32,
     set_style: impl Fn(u32, u32, &mut NodeInputOf<S>),
 ) {
@@ -880,16 +873,14 @@ fn assert_layout_chain_with_style<S: LayoutScalar>(
 
 fn assert_layout_chain_with_request<S: LayoutScalar>(
     display: Display,
-    position: crate::Position,
+    position: Position,
     depth: u32,
     set_style: impl Fn(u32, u32, &mut NodeInputOf<S>),
     request: LayoutRootRequestOf<S>,
     sibling_style: NodeInputOf<S>,
-) -> crate::CompletedLayoutBatchOf<u32, S> {
-    let px = |value| crate::PreferredSizeOf::px(S::from_f64(value));
-    let inset = |value| {
-        crate::LengthAutoOf::value(crate::LengthPercentageOf::px(S::from_f64(value)).unwrap())
-    };
+) -> crate::output::CompletedLayoutBatchOf<u32, S> {
+    let px = |value| PreferredSizeOf::px(S::from_f64(value));
+    let inset = |value| LengthAutoOf::value(LengthPercentageOf::px(S::from_f64(value)).unwrap());
     let mut tree = PublicLayoutTreeOf::<S>::new();
     for node in 0..=depth {
         let mut style = NodeInputOf {
@@ -898,7 +889,7 @@ fn assert_layout_chain_with_request<S: LayoutScalar>(
             ..NodeInputOf::default()
         };
         set_style(node, depth, &mut style);
-        if node != 0 && position == crate::Position::Absolute {
+        if node != 0 && position == Position::Absolute {
             style.position = position;
             style.inset.left = inset(2.0);
             style.inset.top = inset(3.0);
@@ -913,7 +904,7 @@ fn assert_layout_chain_with_request<S: LayoutScalar>(
     }
     let batch = compute_layout(&tree, 0, request).expect("layout chain returns");
     assert_eq!(batch.node_layouts().len(), (2 * depth + 1) as usize);
-    if position != crate::Position::Absolute {
+    if position != Position::Absolute {
         assert!(
             batch
                 .cache_clear_entries()
@@ -932,8 +923,8 @@ fn assert_layout_chain_with_request<S: LayoutScalar>(
     for (node, view) in batch.node_layouts() {
         if node > depth {
             let hidden = view.non_box().expect("hidden sibling");
-            assert_eq!(hidden.kind(), crate::NonBoxKind::Hidden);
-            assert_eq!(hidden.source_index(), crate::SourceIndex::new(1));
+            assert_eq!(hidden.kind(), NonBoxKind::Hidden);
+            assert_eq!(hidden.source_index(), SourceIndex::new(1));
             continue;
         }
         let output = view
@@ -942,13 +933,13 @@ fn assert_layout_chain_with_request<S: LayoutScalar>(
             .final_entry()
             .output();
         assert_eq!(output.size, Size::new(S::from_f64(60.0), S::from_f64(40.0)));
-        let location = if node == 0 || position != crate::Position::Absolute {
-            crate::Point::ZERO
+        let location = if node == 0 || position != Position::Absolute {
+            Point::ZERO
         } else {
-            crate::Point::new(S::from_f64(2.0), S::from_f64(3.0))
+            Point::new(S::from_f64(2.0), S::from_f64(3.0))
         };
         assert_eq!(output.location, location);
-        assert_eq!(output.source_index, crate::SourceIndex::new(0));
+        assert_eq!(output.source_index, SourceIndex::new(0));
     }
     batch
 }
@@ -958,8 +949,8 @@ fn shallow_positioned_flex_chain_publishes_boxes_and_hidden_siblings() {
     on_bounded_stack(
         "engine::depth_tests::shallow_positioned_flex_chain_publishes_boxes_and_hidden_siblings",
         || {
-            assert_layout_chain::<f32>(Display::Flex, crate::Position::Absolute, 2);
-            assert_layout_chain::<f64>(Display::Flex, crate::Position::Absolute, 2);
+            assert_layout_chain::<f32>(Display::Flex, Position::Absolute, 2);
+            assert_layout_chain::<f64>(Display::Flex, Position::Absolute, 2);
         },
     );
 }
@@ -969,8 +960,8 @@ fn deep_positioned_flex_chain_returns_on_bounded_stack() {
     on_bounded_stack(
         "engine::depth_tests::deep_positioned_flex_chain_returns_on_bounded_stack",
         || {
-            assert_layout_chain::<f32>(Display::Flex, crate::Position::Absolute, 24);
-            assert_layout_chain::<f64>(Display::Flex, crate::Position::Absolute, 24);
+            assert_layout_chain::<f32>(Display::Flex, Position::Absolute, 24);
+            assert_layout_chain::<f64>(Display::Flex, Position::Absolute, 24);
         },
     );
 }
@@ -981,8 +972,8 @@ fn shallow_positioned_grid_chain_publishes_boxes_and_hidden_siblings() {
         "engine::depth_tests::shallow_positioned_grid_chain_publishes_boxes_and_hidden_siblings",
         || {
             for display in [Display::Grid, Display::GridLanes] {
-                assert_layout_chain::<f32>(display, crate::Position::Absolute, 2);
-                assert_layout_chain::<f64>(display, crate::Position::Absolute, 2);
+                assert_layout_chain::<f32>(display, Position::Absolute, 2);
+                assert_layout_chain::<f64>(display, Position::Absolute, 2);
             }
         },
     );
@@ -994,8 +985,8 @@ fn deep_positioned_grid_chain_returns_on_bounded_stack() {
         "engine::depth_tests::deep_positioned_grid_chain_returns_on_bounded_stack",
         || {
             for display in [Display::Grid, Display::GridLanes] {
-                assert_layout_chain::<f32>(display, crate::Position::Absolute, 24);
-                assert_layout_chain::<f64>(display, crate::Position::Absolute, 24);
+                assert_layout_chain::<f32>(display, Position::Absolute, 24);
+                assert_layout_chain::<f64>(display, Position::Absolute, 24);
             }
         },
     );
@@ -1006,8 +997,8 @@ fn shallow_in_flow_flex_chain_publishes_boxes_and_hidden_siblings() {
     on_bounded_stack(
         "engine::depth_tests::shallow_in_flow_flex_chain_publishes_boxes_and_hidden_siblings",
         || {
-            assert_layout_chain::<f32>(Display::Flex, crate::Position::Relative, 2);
-            assert_layout_chain::<f64>(Display::Flex, crate::Position::Relative, 2);
+            assert_layout_chain::<f32>(Display::Flex, Position::Relative, 2);
+            assert_layout_chain::<f64>(Display::Flex, Position::Relative, 2);
         },
     );
 }
@@ -1017,8 +1008,8 @@ fn deep_in_flow_flex_chain_returns_on_bounded_stack() {
     on_bounded_stack(
         "engine::depth_tests::deep_in_flow_flex_chain_returns_on_bounded_stack",
         || {
-            assert_layout_chain::<f32>(Display::Flex, crate::Position::Relative, 24);
-            assert_layout_chain::<f64>(Display::Flex, crate::Position::Relative, 24);
+            assert_layout_chain::<f32>(Display::Flex, Position::Relative, 24);
+            assert_layout_chain::<f64>(Display::Flex, Position::Relative, 24);
         },
     );
 }
@@ -1030,16 +1021,13 @@ fn flex_containment_resolves_an_empty_intrinsic_ratio_pass() {
             0,
             NodeInputOf {
                 display: Display::Flex,
-                size: Size::new(
-                    crate::PreferredSizeOf::MAX_CONTENT,
-                    crate::PreferredSizeOf::AUTO,
-                ),
+                size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::AUTO),
                 min_size: Size::new(
-                    crate::MinSizeOf::AUTO,
-                    crate::MinSizeOf::value(crate::LengthPercentageOf::px(S::ZERO).unwrap()),
+                    MinSizeOf::AUTO,
+                    MinSizeOf::value(LengthPercentageOf::px(S::ZERO).unwrap()),
                 ),
-                size_containment: crate::SizeContainment::BothAxes,
-                aspect_ratio: Some(crate::AspectRatioOf::new(S::from_f64(2.0)).unwrap()),
+                size_containment: crate::node_input::SizeContainment::BothAxes,
+                aspect_ratio: Some(crate::value::AspectRatioOf::new(S::from_f64(2.0)).unwrap()),
                 ..NodeInputOf::default()
             },
         );
@@ -1057,8 +1045,8 @@ fn shallow_in_flow_grid_lanes_chain_publishes_boxes_and_hidden_siblings() {
     on_bounded_stack(
         "engine::depth_tests::shallow_in_flow_grid_lanes_chain_publishes_boxes_and_hidden_siblings",
         || {
-            assert_layout_chain::<f32>(Display::GridLanes, crate::Position::Relative, 2);
-            assert_layout_chain::<f64>(Display::GridLanes, crate::Position::Relative, 2);
+            assert_layout_chain::<f32>(Display::GridLanes, Position::Relative, 2);
+            assert_layout_chain::<f64>(Display::GridLanes, Position::Relative, 2);
         },
     );
 }
@@ -1068,8 +1056,8 @@ fn deep_in_flow_grid_lanes_chain_returns_on_bounded_stack() {
     on_bounded_stack(
         "engine::depth_tests::deep_in_flow_grid_lanes_chain_returns_on_bounded_stack",
         || {
-            assert_layout_chain::<f32>(Display::GridLanes, crate::Position::Relative, 24);
-            assert_layout_chain::<f64>(Display::GridLanes, crate::Position::Relative, 24);
+            assert_layout_chain::<f32>(Display::GridLanes, Position::Relative, 24);
+            assert_layout_chain::<f64>(Display::GridLanes, Position::Relative, 24);
         },
     );
 }
@@ -1079,8 +1067,8 @@ fn shallow_in_flow_grid_chain_publishes_boxes_and_hidden_siblings() {
     on_bounded_stack(
         "engine::depth_tests::shallow_in_flow_grid_chain_publishes_boxes_and_hidden_siblings",
         || {
-            assert_layout_chain::<f32>(Display::Grid, crate::Position::Relative, 2);
-            assert_layout_chain::<f64>(Display::Grid, crate::Position::Relative, 2);
+            assert_layout_chain::<f32>(Display::Grid, Position::Relative, 2);
+            assert_layout_chain::<f64>(Display::Grid, Position::Relative, 2);
         },
     );
 }
@@ -1090,23 +1078,18 @@ fn deep_in_flow_grid_chain_returns_on_bounded_stack() {
     on_bounded_stack(
         "engine::depth_tests::deep_in_flow_grid_chain_returns_on_bounded_stack",
         || {
-            assert_layout_chain::<f32>(Display::Grid, crate::Position::Relative, 24);
-            assert_layout_chain::<f64>(Display::Grid, crate::Position::Relative, 24);
+            assert_layout_chain::<f32>(Display::Grid, Position::Relative, 24);
+            assert_layout_chain::<f64>(Display::Grid, Position::Relative, 24);
         },
     );
 }
 
 fn assert_intrinsic_grid_chain<S: LayoutScalar>(display: Display, depth: u32) {
-    assert_layout_chain_with_style::<S>(
-        display,
-        crate::Position::Relative,
-        depth,
-        |node, leaf, style| {
-            if node != leaf {
-                style.size.height = crate::PreferredSizeOf::MAX_CONTENT;
-            }
-        },
-    );
+    assert_layout_chain_with_style::<S>(display, Position::Relative, depth, |node, leaf, style| {
+        if node != leaf {
+            style.size.height = PreferredSizeOf::MAX_CONTENT;
+        }
+    });
 }
 
 #[test]
@@ -1156,14 +1139,14 @@ fn deep_intrinsic_grid_lanes_chain_uses_leaf_height() {
 fn assert_intrinsic_grid_lanes_auto_repeat_chain<S: LayoutScalar>(depth: u32) {
     assert_layout_chain_with_style::<S>(
         Display::GridLanes,
-        crate::Position::Relative,
+        Position::Relative,
         depth,
         |node, leaf, style| {
             if node != leaf {
-                style.size.height = crate::PreferredSizeOf::MAX_CONTENT;
-                style.grid_template_columns = vec![crate::TrackComponentOf::Repeat(
-                    crate::TrackRepetitionOf::auto_fill_components(vec![
-                        crate::TrackComponentOf::MAX_CONTENT,
+                style.size.height = PreferredSizeOf::MAX_CONTENT;
+                style.grid_template_columns = vec![TrackComponentOf::Repeat(
+                    crate::value::TrackRepetitionOf::auto_fill_components(vec![
+                        TrackComponentOf::MAX_CONTENT,
                     ])
                     .unwrap(),
                 )];
@@ -1197,13 +1180,13 @@ fn deep_intrinsic_grid_lanes_auto_repeat_uses_leaf_height() {
 fn assert_auto_height_grid_lanes_chain<S: LayoutScalar>(depth: u32) {
     assert_layout_chain_with_style::<S>(
         Display::GridLanes,
-        crate::Position::Relative,
+        Position::Relative,
         depth,
         |node, leaf, style| {
             if node != leaf {
-                style.size.height = crate::PreferredSizeOf::AUTO;
-                style.grid_template_columns = vec![crate::TrackComponentOf::from(
-                    crate::LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
+                style.size.height = PreferredSizeOf::AUTO;
+                style.grid_template_columns = vec![TrackComponentOf::from(
+                    LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
                 )];
             }
         },
@@ -1234,29 +1217,27 @@ fn deep_auto_height_grid_lanes_uses_leaf_height() {
 
 fn assert_accepted_grid_sizing_chain<S: LayoutScalar>(depth: u32) {
     let mut tree = PublicLayoutTreeOf::<S>::new();
-    let track =
-        crate::TrackComponentOf::from(crate::LengthPercentageOf::px(S::from_f64(30.0)).unwrap());
+    let track = TrackComponentOf::from(LengthPercentageOf::px(S::from_f64(30.0)).unwrap());
     for node in 0..=depth {
         let mut style = NodeInputOf {
             display: Display::Grid,
             size: Size::new(
-                crate::PreferredSizeOf::AUTO,
-                crate::PreferredSizeOf::px(S::from_f64(40.0)),
+                PreferredSizeOf::AUTO,
+                PreferredSizeOf::px(S::from_f64(40.0)),
             ),
             grid_template_columns: vec![track.clone(), track.clone()],
-            grid_template_rows: vec![crate::TrackComponentOf::from(
-                crate::LengthPercentageOf::px(S::from_f64(40.0)).unwrap(),
+            grid_template_rows: vec![TrackComponentOf::from(
+                LengthPercentageOf::px(S::from_f64(40.0)).unwrap(),
             )],
-            justify_items: Some(crate::AlignItems::Start),
-            align_items: Some(crate::AlignItems::Baseline),
-            grid_column: crate::GridPlacement::try_span(2).unwrap(),
+            justify_items: Some(AlignItems::Start),
+            align_items: Some(AlignItems::Baseline),
+            grid_column: crate::node_input::GridPlacement::try_span(2).unwrap(),
             ..NodeInputOf::default()
         };
-        style.min_size.width = crate::MinSizeOf::value(
-            crate::LengthPercentageOf::from_percent_fraction(S::ONE).unwrap(),
-        );
-        style.gap.width = crate::LengthOf::value(
-            crate::LengthPercentageOf::from_percent_fraction(S::from_f64(0.75)).unwrap(),
+        style.min_size.width =
+            MinSizeOf::value(LengthPercentageOf::from_percent_fraction(S::ONE).unwrap());
+        style.gap.width = crate::value::LengthOf::value(
+            LengthPercentageOf::from_percent_fraction(S::from_f64(0.75)).unwrap(),
         );
         tree = tree.style(node, style);
         if node < depth {
@@ -1296,8 +1277,8 @@ fn assert_accepted_grid_sizing_chain<S: LayoutScalar>(depth: u32) {
     for (node, view) in batch.node_layouts() {
         if node > depth {
             let hidden = view.non_box().expect("hidden sibling");
-            assert_eq!(hidden.kind(), crate::NonBoxKind::Hidden);
-            assert_eq!(hidden.source_index(), crate::SourceIndex::new(1));
+            assert_eq!(hidden.kind(), NonBoxKind::Hidden);
+            assert_eq!(hidden.source_index(), SourceIndex::new(1));
             continue;
         }
         let output = view
@@ -1309,8 +1290,8 @@ fn assert_accepted_grid_sizing_chain<S: LayoutScalar>(depth: u32) {
             output.size,
             Size::new(widths[node as usize].round(), S::from_f64(40.0))
         );
-        assert_eq!(output.location, crate::Point::ZERO);
-        assert_eq!(output.source_index, crate::SourceIndex::new(0));
+        assert_eq!(output.location, Point::ZERO);
+        assert_eq!(output.source_index, SourceIndex::new(0));
     }
 }
 
@@ -1352,16 +1333,15 @@ fn assert_shrinking_flex_chain_with_sibling<S: LayoutScalar>(
 ) {
     assert_layout_chain_with_request::<S>(
         Display::Flex,
-        crate::Position::Relative,
+        Position::Relative,
         depth,
         |node, leaf, style| {
             style.size.width =
-                crate::PreferredSizeOf::px(S::from_f64(if node == 0 { 60.0 } else { 120.0 }));
-            style.min_size.width =
-                crate::MinSizeOf::value(crate::LengthPercentageOf::px(S::ZERO).unwrap());
-            style.align_items = Some(crate::AlignItems::Start);
+                PreferredSizeOf::px(S::from_f64(if node == 0 { 60.0 } else { 120.0 }));
+            style.min_size.width = MinSizeOf::value(LengthPercentageOf::px(S::ZERO).unwrap());
+            style.align_items = Some(AlignItems::Start);
             if node != leaf {
-                style.size.height = crate::PreferredSizeOf::AUTO;
+                style.size.height = PreferredSizeOf::AUTO;
             }
         },
         standalone(),
@@ -1410,16 +1390,15 @@ fn assert_recollected_flex_chain<S: LayoutScalar>(depth: u32) {
     );
     assert_layout_chain_with_request::<S>(
         Display::Flex,
-        crate::Position::Relative,
+        Position::Relative,
         depth,
         |node, leaf, style| {
-            style.flex_direction = crate::FlexDirection::Column;
-            style.flex_wrap = crate::FlexWrap::Wrap;
-            style.align_items = Some(crate::AlignItems::Start);
-            style.min_size.height =
-                crate::MinSizeOf::value(crate::LengthPercentageOf::px(S::ZERO).unwrap());
+            style.flex_direction = crate::node_input::FlexDirection::Column;
+            style.flex_wrap = crate::node_input::FlexWrap::Wrap;
+            style.align_items = Some(AlignItems::Start);
+            style.min_size.height = MinSizeOf::value(LengthPercentageOf::px(S::ZERO).unwrap());
             if node != leaf {
-                style.size.width = crate::PreferredSizeOf::AUTO;
+                style.size.width = PreferredSizeOf::AUTO;
             }
         },
         request,
@@ -1457,10 +1436,10 @@ fn assert_collapsed_flex_chain<S: LayoutScalar>(depth: u32) {
         depth,
         NodeInputOf {
             display: Display::Block,
-            flex_item_collapse: crate::FlexItemCollapse::Collapsed,
+            flex_item_collapse: crate::node_input::FlexItemCollapse::Collapsed,
             size: Size::new(
-                crate::PreferredSizeOf::px(S::ZERO),
-                crate::PreferredSizeOf::px(S::from_f64(20.0)),
+                PreferredSizeOf::px(S::ZERO),
+                PreferredSizeOf::px(S::from_f64(20.0)),
             ),
             ..NodeInputOf::default()
         },
@@ -1492,17 +1471,16 @@ fn deep_collapsed_flex_chain_preserves_leaf_height() {
 fn assert_baseline_flex_chain<S: LayoutScalar>(depth: u32) {
     let batch = assert_layout_chain_with_request::<S>(
         Display::Flex,
-        crate::Position::Relative,
+        Position::Relative,
         depth,
         |node, leaf, style| {
             style.size.width =
-                crate::PreferredSizeOf::px(S::from_f64(if node == 0 { 60.0 } else { 120.0 }));
-            style.min_size.width =
-                crate::MinSizeOf::value(crate::LengthPercentageOf::px(S::ZERO).unwrap());
+                PreferredSizeOf::px(S::from_f64(if node == 0 { 60.0 } else { 120.0 }));
+            style.min_size.width = MinSizeOf::value(LengthPercentageOf::px(S::ZERO).unwrap());
             style.align_items = Some(if node == 0 {
-                crate::AlignItems::Baseline
+                AlignItems::Baseline
             } else {
-                crate::AlignItems::FlexStart
+                AlignItems::FlexStart
             });
             if node == leaf {
                 style.display = Display::Block;
@@ -1517,14 +1495,14 @@ fn assert_baseline_flex_chain<S: LayoutScalar>(depth: u32) {
     let mut size_queries = 0;
     for entry in batch.cache_store_entries() {
         if entry.node() == 1
-            && entry.input().run_mode() == crate::RunMode::ComputeSize
+            && entry.input().run_mode() == crate::output::RunMode::ComputeSize
             && entry.input().physical_baseline_demand()
             && entry.output().size == Size::new(S::from_f64(60.0), S::from_f64(40.0))
         {
             size_queries += 1;
             // The empty Block's line-under edge is 40px. Each sole item
             // propagates it at a zero normal offset through both ports.
-            let expected = crate::Point::new(None, Some(S::from_f64(40.0)));
+            let expected = Point::new(None, Some(S::from_f64(40.0)));
             assert_eq!(entry.output().first_baselines, expected);
             assert_eq!(entry.output().last_baselines, expected);
         }
@@ -1555,7 +1533,7 @@ fn deep_flex_baseline_chain_exports_settled_ports() {
 }
 
 fn assert_ratio_flex_chain<S: LayoutScalar>(depth: u32) {
-    let px = |value| crate::PreferredSizeOf::px(S::from_f64(value));
+    let px = |value| PreferredSizeOf::px(S::from_f64(value));
     let mut tree = PublicLayoutTreeOf::<S>::new();
     for node in 0..=depth {
         let leaf = node == depth;
@@ -1567,24 +1545,24 @@ fn assert_ratio_flex_chain<S: LayoutScalar>(depth: u32) {
                     if leaf {
                         px(60.0)
                     } else {
-                        crate::PreferredSizeOf::MAX_CONTENT
+                        PreferredSizeOf::MAX_CONTENT
                     },
                     if leaf {
                         px(40.0)
                     } else {
-                        crate::PreferredSizeOf::AUTO
+                        PreferredSizeOf::AUTO
                     },
                 ),
                 aspect_ratio: if leaf {
                     None
                 } else {
-                    crate::AspectRatioOf::new(S::from_f64(2.0))
+                    crate::value::AspectRatioOf::new(S::from_f64(2.0))
                 },
-                flex_basis: crate::FlexBasisOf::value(
-                    crate::LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
+                flex_basis: crate::sizing::FlexBasisOf::value(
+                    LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
                 ),
-                min_size: Size::new(crate::MinSizeOf::ZERO, crate::MinSizeOf::AUTO),
-                align_items: Some(crate::AlignItems::Start),
+                min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
+                align_items: Some(AlignItems::Start),
                 ..NodeInputOf::default()
             },
         );
@@ -1609,17 +1587,17 @@ fn assert_ratio_flex_chain<S: LayoutScalar>(depth: u32) {
     for (node, view) in batch.node_layouts() {
         if node > depth {
             let hidden = view.non_box().expect("hidden subtree");
-            assert_eq!(hidden.kind(), crate::NonBoxKind::Hidden);
+            assert_eq!(hidden.kind(), NonBoxKind::Hidden);
             assert_eq!(hidden.final_geometry().size, Size::ZERO);
             let source_index = usize::from((node - depth - 1).is_multiple_of(2));
-            assert_eq!(hidden.source_index(), crate::SourceIndex::new(source_index));
+            assert_eq!(hidden.source_index(), SourceIndex::new(source_index));
         } else {
             let output = view.single_box().expect("visible box").final_output();
             // The sole 60px basis sets the inline extent. The 40px content
             // floor exceeds the 30px height transferred by the ratio.
             assert_eq!(output.size, Size::new(S::from_f64(60.0), S::from_f64(40.0)));
-            assert_eq!(output.location, crate::Point::ZERO);
-            assert_eq!(output.source_index, crate::SourceIndex::new(0));
+            assert_eq!(output.location, Point::ZERO);
+            assert_eq!(output.source_index, SourceIndex::new(0));
         }
     }
 }
@@ -1648,9 +1626,19 @@ fn deep_ratio_flex_chain_preserves_content_height() {
 
 fn assert_scoped_container_chain<S: LayoutScalar>(display: Display, depth: u32) -> usize {
     use crate::{
-        AlignItems, BlockFragmentainerOf, FragmentationBreakKinds, FragmentationKind,
-        LayoutBoundRequestOf, LayoutFlowInput, LayoutSourceBasis, MinSizeOf, PageProgression,
-        Point, PreferredSizeOf, WrappingInput, compute_layout_with_flow,
+        block_fragmentation::{
+            BlockFragmentainerOf, LayoutBoundRequestOf, input::LayoutSourceBasis,
+        },
+        engine::compute_layout_with_flow,
+        fragmentation::{
+            input::{FragmentationBreakKinds, FragmentationKind},
+            page::PageProgression,
+        },
+        geometry::Point,
+        inline_wrapping::WrappingInput,
+        node_input::AlignItems,
+        sizing::{MinSizeOf, PreferredSizeOf},
+        text_layout::LayoutFlowInput,
     };
 
     let px = |value| PreferredSizeOf::px(S::from_f64(value));

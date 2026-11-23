@@ -4,6 +4,7 @@ use super::fixtures::{
 };
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{error::LayoutResultOf, node_input::LayoutInputViewOf, output::LayoutOutputEntryOf};
 
 type ScrollBlockTree = OracleTree;
 
@@ -72,7 +73,7 @@ fn assert_fri06_mr02_geometry_error_block_own<S: LayoutScalar>() {
         let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
             .children(7, [])
             .style(7, style.clone());
-        let error = crate::compute_block(
+        let error = crate::block::compute_block(
             &mut tree.borrow_compute(),
             7,
             fri06_mr02_geometry_error_input(run_mode),
@@ -104,7 +105,7 @@ fn assert_fri06_mr02_geometry_error_block_child<S: LayoutScalar>() {
                 Size::splat(S::INFINITY),
             ),
         );
-    let error = crate::compute_block(
+    let error = crate::block::compute_block(
         &mut tree.borrow_compute(),
         7,
         ComputeInputOf::for_child(
@@ -179,7 +180,7 @@ fn assert_fri06_mr02_geometry_error_block_inline_child<S: LayoutScalar>() {
             11,
             ComputeOutputOf::from_outer_size(Size::new(largest, S::ONE)),
         );
-    let error = crate::compute_block(
+    let error = crate::block::compute_block(
         &mut tree.borrow_compute(),
         7,
         fri06_mr02_geometry_error_input(RunMode::PerformLayout),
@@ -278,7 +279,7 @@ fn assert_fri08_c07_t02_scroll_source_block_paths<S: LayoutScalar>() {
             ComputeOutputOf::from_sizes(Size::new(scalar(40.0), scalar(30.0)), Size::ZERO),
         );
 
-    let output = crate::compute_block(
+    let output = crate::block::compute_block(
         &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
@@ -422,7 +423,7 @@ fn assert_fri06_mr02_scroll_padding_block<S: LayoutScalar>() {
         let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
             .children(0, [])
             .style(0, style);
-        let output = crate::compute_block(
+        let output = crate::block::compute_block(
             &mut tree.borrow_compute(),
             0,
             ComputeInputOf::for_child(
@@ -493,8 +494,10 @@ where
     crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let flow_axes = FlowAxes::new(WritingMode::VerticalRl, Direction::Rtl);
-    let expected =
-        crate::ContainingLayoutContext::new(flow_axes, crate::ParentFormattingContext::BlockFlow);
+    let expected = crate::output::ContainingLayoutContext::new(
+        flow_axes,
+        crate::output::ParentFormattingContext::BlockFlow,
+    );
 
     for run_mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
         let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
@@ -532,7 +535,7 @@ where
                 ComputeOutputOf::from_outer_size(Size::new(S::from_f64(30.0), S::from_f64(12.0))),
             );
 
-        crate::compute_block(
+        crate::block::compute_block(
             &mut tree.borrow_compute(),
             0,
             ComputeInputOf::for_child(
@@ -541,9 +544,9 @@ where
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::new(Some(S::from_f64(300.0)), Some(S::from_f64(240.0))),
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::splat(AxisSizingRequestOf::new(
@@ -864,7 +867,7 @@ fn fri04_c03_block_positioned_compute_size_preserves_missing_basis_as_indefinite
         )
         .measure(1, ComputeOutput::from_outer_size(Size::new(30.0, 20.0)));
 
-    let output = crate::compute_block(
+    let output = crate::block::compute_block(
         &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
@@ -1392,7 +1395,7 @@ fn fri04_c04_leaf_block_positioned_absolute_grid_and_block_inner_displays_are_po
 }
 
 fn perform_scroll_block(tree: &mut ScrollBlockTree) -> ComputeOutput {
-    crate::compute_block(
+    crate::block::compute_block(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -1401,12 +1404,12 @@ fn perform_scroll_block(tree: &mut ScrollBlockTree) -> ComputeOutput {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(100.0), Some(40.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -1676,7 +1679,7 @@ fn block_scroll_geometry_uses_node_local_padding_border_and_gutter_coordinates()
             display: Display::Block,
             direction: Direction::Rtl,
             overflow: computed_overflow(Overflow::Auto, Overflow::Scroll),
-            scrollbar_width: crate::ScrollbarWidthOf::try_new(10.0).unwrap(),
+            scrollbar_width: crate::node_input::ScrollbarWidthOf::try_new(10.0).unwrap(),
             size: Size::new(PreferredSize::px(100.0), PreferredSize::px(40.0)),
             padding: Edges::all(Length::px(2.0)),
             border: Edges::all(Length::px(3.0)),
@@ -1765,7 +1768,7 @@ fn block_scroll_geometry_includes_final_content_box_after_size_resolution() {
         ComputeOutput::from_sizes(Size::new(20.0, 10.0), Size::new(20.0, 10.0)),
     );
 
-    let output = crate::compute_block(
+    let output = crate::block::compute_block(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -1774,12 +1777,12 @@ fn block_scroll_geometry_includes_final_content_box_after_size_resolution() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(60.0), Some(40.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -1893,7 +1896,7 @@ fn block_scroll_geometry_clips_hidden_inline_child_overflow_from_parent_range() 
 #[test]
 fn block_scroll_geometry_includes_segmented_inline_overflow_rects() {
     let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
+        crate::node_input::InlineBaselineContext::Physical,
         10.0,
         10.0,
     )
@@ -1963,7 +1966,7 @@ fn block_scroll_geometry_includes_segmented_inline_overflow_rects() {
             .with_metrics(metrics),
     );
 
-    let output = crate::compute_block(
+    let output = crate::block::compute_block(
         &mut segmented.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -1972,12 +1975,12 @@ fn block_scroll_geometry_includes_segmented_inline_overflow_rects() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(100.0), Some(80.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2117,7 +2120,7 @@ fn block_scroll_geometry_includes_absolute_margin_box_with_area_offset() {
         NodeInput {
             display: Display::Block,
             overflow: computed_overflow(Overflow::Hidden, Overflow::Scroll),
-            scrollbar_width: crate::ScrollbarWidthOf::try_new(10.0).unwrap(),
+            scrollbar_width: crate::node_input::ScrollbarWidthOf::try_new(10.0).unwrap(),
             size: Size::new(PreferredSize::px(120.0), PreferredSize::px(80.0)),
             padding: Edges::all(Length::px(7.0)),
             border: Edges::all(Length::px(5.0)),
@@ -2412,9 +2415,9 @@ fn block_fixed_parent_height_keeps_orthogonal_child_inline_known() {
             RequestedAxis::Both,
             Size::NONE,
             Size::NONE,
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::splat(AxisSizingRequestOf::new(
@@ -2446,7 +2449,7 @@ fn block_fixed_parent_height_keeps_orthogonal_child_inline_known() {
 struct CalcLeafTree {
     children: HashMap<u32, Vec<u32>>,
     styles: HashMap<u32, NodeInput>,
-    layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
+    layouts: HashMap<u32, LayoutOutputEntryOf<u32, DefaultScalar>>,
     invalid_leaf_measurement: bool,
 }
 
@@ -2478,7 +2481,7 @@ impl Traverse for CalcLeafTree {
 struct CalcLeafTreeCompute<'input> {
     children: &'input HashMap<u32, Vec<u32>>,
     styles: &'input HashMap<u32, NodeInput>,
-    layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
+    layouts: &'input mut HashMap<u32, LayoutOutputEntryOf<u32, DefaultScalar>>,
     invalid_leaf_measurement: bool,
 }
 
@@ -2523,7 +2526,7 @@ impl<'input> Compute<'input> for CalcLeafTreeCompute<'input> {
         &mut self,
         _node: Self::Node,
         _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
-    ) -> crate::LayoutResultOf<
+    ) -> LayoutResultOf<
         Self::Node,
         crate::grid::GridOverflowObservation<Self::Scalar>,
         Self::Scalar,
@@ -2538,8 +2541,8 @@ impl<'input> Compute<'input> for CalcLeafTreeCompute<'input> {
         &self.styles[&node]
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
-        crate::LayoutInputViewOf::Box(self.node_input(node))
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'input, Self::Scalar> {
+        LayoutInputViewOf::Box(self.node_input(node))
     }
 
     fn staged_unrounded(
@@ -2557,7 +2560,7 @@ impl<'input> Compute<'input> for CalcLeafTreeCompute<'input> {
             .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
     }
 
-    fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+    fn set_unrounded(&mut self, entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
         self.layouts.insert(entry.node(), entry);
     }
 
@@ -2565,7 +2568,8 @@ impl<'input> Compute<'input> for CalcLeafTreeCompute<'input> {
         &mut self,
         node: Self::Node,
         input: ComputeInput,
-    ) -> crate::LayoutResultOf<Self::Node, crate::ComputeOutputOf<Self::Scalar>, Self::Scalar> {
+    ) -> LayoutResultOf<Self::Node, crate::output::ComputeOutputOf<Self::Scalar>, Self::Scalar>
+    {
         if self.child_count(node) > 0 {
             return compute_block(self, node, input);
         }
@@ -2628,12 +2632,12 @@ fn calc_leaf_tree_propagates_leaf_measurement_error_instead_of_panicking() {
             RequestedAxis::Both,
             Size::new(Some(100.0), None),
             Size::new(Some(100.0), None),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2694,12 +2698,12 @@ fn block_inline_affine_leaf_uses_public_leaf_path() {
             RequestedAxis::Both,
             Size::new(Some(100.0), None),
             Size::new(Some(100.0), None),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2738,13 +2742,15 @@ fn unresolved_symbolic_vertical_margin_is_not_treated_as_auto_margin() {
         },
     );
 
-    let resolved =
-        crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr)
-            .zip_physical_edges_with_inline_extent(
-                tree.styles[&1].margin,
-                Size::new(None, None),
-                |length, basis| length.resolve_auto_with_status(basis),
-            );
+    let resolved = crate::geometry::FlowAxes::new(
+        crate::node_input::WritingMode::HorizontalTb,
+        crate::node_input::Direction::Ltr,
+    )
+    .zip_physical_edges_with_inline_extent(
+        tree.styles[&1].margin,
+        Size::new(None, None),
+        |length, basis| length.resolve_auto_with_status(basis),
+    );
     let resolved = resolve_logical_in_flow_margin(
         crate::geometry::LogicalEdgesOf::new(
             resolved.left,
@@ -2786,7 +2792,7 @@ struct Fri05C03BlockPassTree {
     styles: HashMap<u32, NodeInput>,
     child_output: Option<ComputeOutput>,
     child_inputs: Vec<ComputeInput>,
-    layouts: Vec<(u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>)>,
+    layouts: Vec<(u32, LayoutOutputEntryOf<u32, DefaultScalar>)>,
 }
 
 impl Traverse for Fri05C03BlockPassTree {
@@ -2820,7 +2826,7 @@ struct Fri05C03BlockPassTreeCompute<'input> {
     styles: &'input HashMap<u32, NodeInput>,
     child_output: Option<ComputeOutput>,
     child_inputs: &'input mut Vec<ComputeInput>,
-    layouts: &'input mut Vec<(u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>)>,
+    layouts: &'input mut Vec<(u32, LayoutOutputEntryOf<u32, DefaultScalar>)>,
 }
 
 impl Fri05C03BlockPassTree {
@@ -2866,7 +2872,7 @@ impl<'input> Compute<'input> for Fri05C03BlockPassTreeCompute<'input> {
         &mut self,
         _node: Self::Node,
         _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
-    ) -> crate::LayoutResultOf<
+    ) -> LayoutResultOf<
         Self::Node,
         crate::grid::GridOverflowObservation<Self::Scalar>,
         Self::Scalar,
@@ -2881,8 +2887,8 @@ impl<'input> Compute<'input> for Fri05C03BlockPassTreeCompute<'input> {
         &self.styles[&node]
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputView<'input> {
-        crate::LayoutInputViewOf::Box(&self.styles[&node])
+    fn layout_input(&self, node: Self::Node) -> crate::node_input::LayoutInputView<'input> {
+        LayoutInputViewOf::Box(&self.styles[&node])
     }
 
     fn staged_unrounded(
@@ -2902,7 +2908,7 @@ impl<'input> Compute<'input> for Fri05C03BlockPassTreeCompute<'input> {
             .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
     }
 
-    fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+    fn set_unrounded(&mut self, entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
         self.layouts.push((entry.node(), entry));
     }
 
@@ -2910,7 +2916,7 @@ impl<'input> Compute<'input> for Fri05C03BlockPassTreeCompute<'input> {
         &mut self,
         _node: Self::Node,
         input: ComputeInput,
-    ) -> crate::LayoutResultOf<Self::Node, ComputeOutput, Self::Scalar> {
+    ) -> LayoutResultOf<Self::Node, ComputeOutput, Self::Scalar> {
         self.child_inputs.push(input);
         Ok(self
             .child_output
@@ -2986,7 +2992,7 @@ fn fri05_c03_empty_block_geometry(style: NodeInput) -> ScrollGeometry {
     let mut tree = Fri05C03BlockPassTree::default();
     tree.children.insert(0, vec![]);
     tree.styles.insert(0, style);
-    crate::compute_block(
+    crate::block::compute_block(
         &mut tree.borrow_compute(),
         0,
         fri05_c03_block_input(size, flow_axes),
@@ -3096,7 +3102,7 @@ fn fri05_c03_block_auto_case(
     );
     tree.child_output = Some(ComputeOutput::from_sizes(child_size, child_size));
 
-    let output = crate::compute_block(
+    let output = crate::block::compute_block(
         &mut tree.borrow_compute(),
         0,
         fri05_c03_block_input(size, flow_axes),
@@ -3219,7 +3225,7 @@ fn fri05_c03_block_tiny_saturates_opposing_reservations_before_child_layout() {
     );
     tree.child_output = Some(ComputeOutput::from_outer_size(Size::ZERO));
 
-    let output = crate::compute_block(
+    let output = crate::block::compute_block(
         &mut tree.borrow_compute(),
         0,
         fri05_c03_block_input(size, flow_axes),
@@ -3276,7 +3282,7 @@ fn fri05_c03_block_tiny_max_size_below_raw_edges_keeps_layout_geometry_coherent(
     );
     tree.child_output = Some(ComputeOutput::from_outer_size(Size::ZERO));
 
-    let output = crate::compute_block(
+    let output = crate::block::compute_block(
         &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
@@ -3379,7 +3385,7 @@ fn fri05_c03_block_tiny_max_inline_size_below_raw_edges_keeps_child_space_zero()
     );
     tree.child_output = Some(ComputeOutput::from_outer_size(Size::ZERO));
 
-    let output = crate::compute_block(
+    let output = crate::block::compute_block(
         &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
@@ -3879,7 +3885,7 @@ fn fri05_c06_block_reserved_gutter_retained_child_fallback_excludes_horizontal_r
         Baselines::NONE,
     ));
 
-    crate::compute_block(
+    crate::block::compute_block(
         &mut tree.borrow_compute(),
         0,
         fri05_c03_block_input(
@@ -4298,7 +4304,7 @@ fn fri05_c03_integration_padding_seed_direct_block_retains_gutter_area_in_both_s
                 let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
                     .children(0, [])
                     .style(0, style);
-                let output = crate::compute_block(
+                let output = crate::block::compute_block(
                     &mut tree.borrow_compute(),
                     0,
                     ComputeInputOf::for_child(
@@ -4443,7 +4449,7 @@ fn fri05_c03_integration_absolute_top_gutter_offsets_reduced_area_margin_contrib
                 .style(0, container_style)
                 .style(1, child_style)
                 .measure(1, ComputeOutputOf::from_outer_size(child_size));
-            let output = crate::compute_block(
+            let output = crate::block::compute_block(
                 &mut tree.borrow_compute(),
                 0,
                 ComputeInputOf::for_child(
@@ -4566,7 +4572,7 @@ fn fri05_c03_integration_absolute_top_gutter_offsets_reduced_area_margin_contrib
                 .style(0, tiny_container)
                 .style(1, tiny_child)
                 .measure(1, ComputeOutputOf::from_outer_size(tiny_child_size));
-            let tiny_output = crate::compute_block(
+            let tiny_output = crate::block::compute_block(
                 &mut tiny_tree.borrow_compute(),
                 0,
                 ComputeInputOf::for_child(
@@ -4640,7 +4646,7 @@ where
     let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
         .children(0, [])
         .style(0, style);
-    let output = crate::compute_block(
+    let output = crate::block::compute_block(
         &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
@@ -4683,7 +4689,7 @@ where
                 ..NodeInputOf::default()
             },
         );
-    let error = crate::compute_block(
+    let error = crate::block::compute_block(
         &mut failing_tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
@@ -4895,7 +4901,7 @@ fn block_ratio_minimum_probe_does_not_repeat_descendant_layout() {
             ..NodeInput::default()
         },
     );
-    crate::compute_block(
+    crate::block::compute_block(
         &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(

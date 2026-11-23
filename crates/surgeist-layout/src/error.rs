@@ -1,10 +1,10 @@
-use crate::DefaultScalar;
 use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide};
 use crate::node_input::FloatExclusionIntervalErrorOf;
 use crate::output::RunMode;
 use crate::scalar::LayoutScalar;
 use crate::sizing::resolve::SizingResolutionError;
 use crate::value::{LengthResolutionStatus, NonNegativeFiniteScalarErrorOf};
+use crate::{grid::GridAxisKind, node_input::WritingMode, scalar::DefaultScalar};
 use core::fmt;
 
 pub type LayoutResultOf<Node, T, S, M = core::convert::Infallible> =
@@ -95,7 +95,7 @@ pub enum LayoutOperation {
 #[non_exhaustive]
 pub enum LayoutErrorKindOf<S: LayoutScalar = DefaultScalar, M = core::convert::Infallible> {
     InvalidInput(LayoutInvalidInputOf<S>),
-    BlockFragmentation(crate::BlockFragmentationFailure),
+    BlockFragmentation(crate::block_fragmentation::BlockFragmentationFailure),
     MissingContext(LayoutMissingContext),
     UnsupportedCapability(LayoutUnsupportedCapability),
     Measurement(M),
@@ -156,9 +156,9 @@ impl std::error::Error for LayoutTextNumericError {}
 #[non_exhaustive]
 pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
     BlockFragmentationRequest,
-    InlineBaseline(crate::InlineBaselineError),
-    GridBaseline(crate::GridBaselineError),
-    RootContext(crate::RootContextMismatch),
+    InlineBaseline(crate::node_input::InlineBaselineError),
+    GridBaseline(crate::node_input::GridBaselineError),
+    RootContext(crate::output::RootContextMismatch),
     MeasurementOutput(InvalidMeasurementOutputOf<S>),
     InvalidNumeric {
         value: S,
@@ -200,7 +200,7 @@ pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
     TreeTopologyCycle,
     /// The grid container's named lines or template areas violate the Grid
     /// specification. The error site is the grid container.
-    GridNames(crate::NamedGridError),
+    GridNames(crate::grid::NamedGridError),
     TextBinding(crate::text_layout::TextBindingError),
     WrappingScope(crate::inline_wrapping::WrappingScopeError),
 }
@@ -537,11 +537,11 @@ pub enum LayoutUnsupportedCapability {
     InlineAtomicSizePreparation,
     /// Named Grid baseline placement is not supplied by the Lane owner.
     NamedGridLanesBaseline {
-        axis: crate::GridAxisKind,
+        axis: GridAxisKind,
     },
     SizingBehavior(UnsupportedSizingBehavior),
     /// The actual Text-backed run needs an unsupported physical writing-mode adapter.
-    TextWritingMode(crate::WritingMode),
+    TextWritingMode(WritingMode),
 }
 
 impl fmt::Display for LayoutUnsupportedCapability {
@@ -893,8 +893,8 @@ pub(crate) enum ScrollGeometryCauseOf<S: LayoutScalar> {
     Canonical(crate::scroll::CanonicalScrollGeometryErrorOf<S>),
     Contribution(crate::scroll::ScrollContributionErrorOf<S>),
     BoxClipGutter(crate::scroll::ScrollBoxClipGutterErrorOf<S>),
-    Rect(crate::ScrollRectErrorOf<S>),
-    Coordinate(crate::ScrollCoordinateErrorOf<S>),
+    Rect(crate::scroll::ScrollRectErrorOf<S>),
+    Coordinate(crate::scroll::ScrollCoordinateErrorOf<S>),
 }
 
 macro_rules! scroll_geometry_cause_from {
@@ -911,8 +911,8 @@ scroll_geometry_cause_from! {
     Canonical(crate::scroll::CanonicalScrollGeometryErrorOf<S>),
     Contribution(crate::scroll::ScrollContributionErrorOf<S>),
     BoxClipGutter(crate::scroll::ScrollBoxClipGutterErrorOf<S>),
-    Rect(crate::ScrollRectErrorOf<S>),
-    Coordinate(crate::ScrollCoordinateErrorOf<S>),
+    Rect(crate::scroll::ScrollRectErrorOf<S>),
+    Coordinate(crate::scroll::ScrollCoordinateErrorOf<S>),
 }
 
 impl<S: LayoutScalar> fmt::Display for LayoutScrollGeometryErrorOf<S> {
@@ -1086,21 +1086,21 @@ pub(crate) const fn logical_axis_label(axis: LogicalAxis) -> &'static str {
 }
 
 /// Words that name a grid axis in messages.
-pub(crate) const fn grid_axis_label(axis: crate::GridAxisKind) -> &'static str {
+pub(crate) const fn grid_axis_label(axis: GridAxisKind) -> &'static str {
     match axis {
-        crate::GridAxisKind::Column => "column",
-        crate::GridAxisKind::Row => "row",
+        GridAxisKind::Column => "column",
+        GridAxisKind::Row => "row",
     }
 }
 
 /// Words that name a writing mode in messages.
-pub(crate) const fn writing_mode_label(mode: crate::WritingMode) -> &'static str {
+pub(crate) const fn writing_mode_label(mode: WritingMode) -> &'static str {
     match mode {
-        crate::WritingMode::HorizontalTb => "horizontal-tb",
-        crate::WritingMode::VerticalRl => "vertical-rl",
-        crate::WritingMode::VerticalLr => "vertical-lr",
-        crate::WritingMode::SidewaysRl => "sideways-rl",
-        crate::WritingMode::SidewaysLr => "sideways-lr",
+        WritingMode::HorizontalTb => "horizontal-tb",
+        WritingMode::VerticalRl => "vertical-rl",
+        WritingMode::VerticalLr => "vertical-lr",
+        WritingMode::SidewaysRl => "sideways-rl",
+        WritingMode::SidewaysLr => "sideways-lr",
     }
 }
 

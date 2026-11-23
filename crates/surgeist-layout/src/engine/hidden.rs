@@ -3,8 +3,13 @@ use core::ops::Range;
 use super::contracts::{CacheAccess, Compute};
 use crate::scroll::SettledAutoScrollbarState;
 use crate::{
-    ComputeInputOf, ContainingLayoutContext, LayoutInputViewOf, LayoutOutputEntryOf,
-    LayoutResultOf, LayoutScalar, ParentFormattingContext, SourceIndex,
+    error::LayoutResultOf,
+    node_input::LayoutInputViewOf,
+    output::{
+        ComputeInputOf, ContainingLayoutContext, LayoutOutputEntryOf, ParentFormattingContext,
+        SourceIndex,
+    },
+    scalar::LayoutScalar,
 };
 
 pub(super) struct HiddenRequest<Node> {
@@ -102,7 +107,7 @@ pub(crate) fn compute_hidden<'input, Tree, Node, S, M>(
     source_index: SourceIndex,
     containing_context: ContainingLayoutContext,
     containing_pass: SettledAutoScrollbarState,
-) -> LayoutResultOf<Node, crate::ComputeOutputOf<S>, S, M>
+) -> LayoutResultOf<Node, crate::output::ComputeOutputOf<S>, S, M>
 where
     Tree: Compute<'input, M, Node = Node, Scalar = S> + CacheAccess<M, Node = Node, Scalar = S>,
     Node: Copy + Eq,
@@ -120,5 +125,5 @@ where
     while let Some((child, input)) = children.next_box(tree)? {
         tree.compute_child(child, input)?;
     }
-    Ok(crate::ComputeOutputOf::HIDDEN)
+    Ok(crate::output::ComputeOutputOf::HIDDEN)
 }

@@ -1,6 +1,8 @@
 use super::*;
 use crate::{
-    AspectRatioOf, ComputedOverflow, Direction, NodeInputOf, SizingCalculationOf, WritingMode,
+    node_input::{ComputedOverflow, Direction, NodeInputOf, WritingMode},
+    sizing::{MinSizeOf, SizingCalculationOf},
+    value::{AspectRatioOf, LengthPercentageOf},
 };
 
 // These qualify the private pure planner on authored normalized box properties.
@@ -9,12 +11,12 @@ fn prepared<S: LayoutScalar>(known: Size<Option<S>>, parent: Size<Option<S>>) ->
     ComputeInputOf::for_child(
         RunMode::ComputeSize,
         SizingMode::InherentSize,
-        crate::RequestedAxis::Both,
+        crate::output::RequestedAxis::Both,
         known,
         parent,
-        crate::ContainingLayoutContext::new(
+        crate::output::ContainingLayoutContext::new(
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-            crate::ParentFormattingContext::Grid,
+            crate::output::ParentFormattingContext::Grid,
         ),
         SizingRequestOf::new(
             Size::splat(AxisSizingRequestOf::new(
@@ -23,8 +25,8 @@ fn prepared<S: LayoutScalar>(known: Size<Option<S>>, parent: Size<Option<S>>) ->
             )),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     )
@@ -63,7 +65,7 @@ fn assert_minimum_properties<S: LayoutScalar>() {
     let mut input = NodeInputOf::<S> {
         box_sizing: BoxSizing::ContentBox,
         overflow: ComputedOverflow::try_new(Overflow::Hidden, Overflow::Hidden).unwrap(),
-        min_size: Size::new(crate::MinSizeOf::px(scalar(15.0)), crate::MinSizeOf::AUTO),
+        min_size: Size::new(MinSizeOf::px(scalar(15.0)), MinSizeOf::AUTO),
         padding: Edges {
             top: LengthOf::ZERO,
             bottom: LengthOf::ZERO,
@@ -83,10 +85,10 @@ fn assert_minimum_properties<S: LayoutScalar>() {
     assert_eq!(known(plan(&input, request, &tracks).unwrap()), scalar(25.0));
     input.box_sizing = BoxSizing::BorderBox;
     assert_eq!(known(plan(&input, request, &tracks).unwrap()), scalar(15.0));
-    input.min_size.width = crate::MinSizeOf::px(scalar(5.0));
+    input.min_size.width = MinSizeOf::px(scalar(5.0));
     assert_eq!(known(plan(&input, request, &tracks).unwrap()), scalar(10.0));
-    input.min_size.width = crate::MinSizeOf::calculation(SizingCalculationOf::value(
-        crate::LengthPercentageOf::from_coefficients(scalar(15.0), scalar(0.2)).unwrap(),
+    input.min_size.width = MinSizeOf::calculation(SizingCalculationOf::value(
+        LengthPercentageOf::from_coefficients(scalar(15.0), scalar(0.2)).unwrap(),
     ));
     assert_eq!(known(plan(&input, request, &tracks).unwrap()), scalar(15.0));
 
@@ -137,7 +139,7 @@ fn assert_clip_and_fixed_cap<S: LayoutScalar>() {
     };
     let request = prepared(Size::NONE, Size::NONE);
     let tracks = [TrackSizingOf::fit_content(SizingCalculationOf::value(
-        crate::LengthPercentageOf::px(scalar(10.0)).unwrap(),
+        LengthPercentageOf::px(scalar(10.0)).unwrap(),
     ))];
     let GridMinimumPlan::ContentSuggestion(suggestion) = plan(&input, request, &tracks).unwrap()
     else {
@@ -147,7 +149,7 @@ fn assert_clip_and_fixed_cap<S: LayoutScalar>() {
     let tracks = [TrackSizingOf::minmax(
         MinTrackSizingOf::Auto,
         MaxTrackSizingOf::Calculation(SizingCalculationOf::value(
-            crate::LengthPercentageOf::px(scalar(10.0)).unwrap(),
+            LengthPercentageOf::px(scalar(10.0)).unwrap(),
         )),
     )];
     let GridMinimumPlan::ContentSuggestion(suggestion) = plan(&input, request, &tracks).unwrap()
@@ -187,7 +189,7 @@ fn assert_original_function_retention<S: LayoutScalar>() {
         TrackSizingOf::minmax(
             MinTrackSizingOf::Auto,
             MaxTrackSizingOf::Calculation(SizingCalculationOf::value(
-                crate::LengthPercentageOf::px(S::from_f64(value)).unwrap(),
+                LengthPercentageOf::px(S::from_f64(value)).unwrap(),
             )),
         )
     };
@@ -229,7 +231,7 @@ fn assert_original_function_retention<S: LayoutScalar>() {
     let tracks = [TrackSizingOf::minmax(
         MinTrackSizingOf::Auto,
         MaxTrackSizingOf::Calculation(SizingCalculationOf::value(
-            crate::LengthPercentageOf::from_coefficients(S::ZERO, S::from_f64(0.5)).unwrap(),
+            LengthPercentageOf::from_coefficients(S::ZERO, S::from_f64(0.5)).unwrap(),
         )),
     )];
     assert_eq!(
@@ -263,7 +265,7 @@ fn assert_owned_functions_resolve_only_the_spans_read<S: LayoutScalar>() {
         TrackSizingOf::minmax(
             MinTrackSizingOf::Auto,
             MaxTrackSizingOf::Calculation(SizingCalculationOf::value(
-                crate::LengthPercentageOf::px(S::from_f64(value)).unwrap(),
+                LengthPercentageOf::px(S::from_f64(value)).unwrap(),
             )),
         )
     };
@@ -276,7 +278,7 @@ fn assert_owned_functions_resolve_only_the_spans_read<S: LayoutScalar>() {
     };
     let overflowing = TrackSizingOf::minmax(
         MinTrackSizingOf::Calculation(SizingCalculationOf::value(
-            crate::LengthPercentageOf::from_coefficients(S::from_f64(largest), S::ONE).unwrap(),
+            LengthPercentageOf::from_coefficients(S::from_f64(largest), S::ONE).unwrap(),
         )),
         MaxTrackSizingOf::Auto,
     );
@@ -350,7 +352,7 @@ fn owned_functions_resolve_only_the_spans_read_f64() {
 fn assert_cyclic_percentage_function_requalification<S: LayoutScalar>() {
     let scalar = S::from_f64;
     let calculation = SizingCalculationOf::value(
-        crate::LengthPercentageOf::from_coefficients(S::ZERO, scalar(0.5)).unwrap(),
+        LengthPercentageOf::from_coefficients(S::ZERO, scalar(0.5)).unwrap(),
     );
     let tracks = [TrackSizingOf::minmax(
         MinTrackSizingOf::Calculation(calculation.clone()),

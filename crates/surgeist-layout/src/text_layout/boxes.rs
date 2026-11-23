@@ -2,6 +2,7 @@
 
 use super::fit::FitError;
 use crate::inline_wrapping::AvoidClass;
+use crate::inline_wrapping::WrappingScopeError;
 use surgeist_text::{
     allocation::{ControlAllocation, LineBoxStrut},
     observation::{CapturedScopeIncidence, PreparedBoundaryIncidence},
@@ -115,7 +116,7 @@ impl BoxFrontier {
                 incidence.source_segment() != segment || incidence.boundary() != boundary
             })
         {
-            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+            return Err(WrappingScopeError::UnsupportedIncidence.into());
         }
         Ok(Self {
             boundary,
@@ -193,7 +194,7 @@ impl BoxFrontier {
             selection::{LineEnd, PreparedTermination},
         };
         if incoming.segment != choice.source_segment() {
-            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+            return Err(WrappingScopeError::UnsupportedIncidence.into());
         }
         if choice.ending != LineEnd::Paragraph
             || choice.start != choice.end
@@ -202,7 +203,7 @@ impl BoxFrontier {
             return Ok(None);
         }
         let BoxPlacement::Boundary(pin) = &incoming.placement else {
-            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+            return Err(WrappingScopeError::UnsupportedIncidence.into());
         };
         let (termination, predecessor) = match &choice.authority {
             BoxAuthority::Selected { request, preceding } => {
@@ -302,7 +303,7 @@ impl BoxFrontier {
             return Ok(None);
         }
         if choice.start.prepared_text() != choice.end.prepared_text() {
-            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+            return Err(WrappingScopeError::UnsupportedIncidence.into());
         }
         Ok(Some(Self {
             boundary: choice.end.clone(),
@@ -338,9 +339,9 @@ pub(super) fn horizon_relation(
         Some(Ordering::Greater) => match scope.enter_position().partial_cmp(&horizon) {
             Some(Ordering::Less) => R::Inside,
             Some(Ordering::Equal | Ordering::Greater) => R::Before,
-            None => return Err(crate::WrappingScopeError::UnsupportedIncidence.into()),
+            None => return Err(WrappingScopeError::UnsupportedIncidence.into()),
         },
-        None => return Err(crate::WrappingScopeError::UnsupportedIncidence.into()),
+        None => return Err(WrappingScopeError::UnsupportedIncidence.into()),
     };
     Ok(Some(relation))
 }
@@ -443,11 +444,11 @@ pub(crate) struct BoxTrialUse {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct BoxRunUse<Node, S: crate::LayoutScalar> {
+pub(crate) struct BoxRunUse<Node, S: crate::scalar::LayoutScalar> {
     pub container: Node,
     pub prepared: surgeist_text::prepared::PreparedText,
     pub nodes: Vec<Node>,
-    pub input: crate::ComputeInputOf<S>,
-    pub available: crate::AxisSizingRequestOf<f64>,
+    pub input: crate::output::ComputeInputOf<S>,
+    pub available: crate::value::AxisSizingRequestOf<f64>,
     pub trials: Vec<BoxTrialUse>,
 }

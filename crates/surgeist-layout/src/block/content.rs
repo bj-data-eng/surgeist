@@ -35,7 +35,7 @@ impl<S: LayoutScalar> Context<S> {
     pub(super) fn input(&self) -> ComputeInputOf<S> {
         self.input
     }
-    pub(crate) fn axes(&self) -> crate::FlowAxes {
+    pub(crate) fn axes(&self) -> crate::geometry::FlowAxes {
         self.constants.flow_axes
     }
     pub(crate) fn opening(&self) -> S {
@@ -107,7 +107,7 @@ pub(crate) fn principal_timeline<Node: Copy, S: LayoutScalar, M>(
                 LayoutErrorSiteOf::Node(node),
                 LayoutOperation::RootLayout,
                 LayoutErrorKindOf::BlockFragmentation(
-                    crate::BlockFragmentationFailure::InvalidGeometry,
+                    crate::block_fragmentation::BlockFragmentationFailure::InvalidGeometry,
                 ),
             ));
         }
@@ -127,16 +127,16 @@ pub(crate) fn principal_timeline<Node: Copy, S: LayoutScalar, M>(
 
 pub(crate) struct Receipt<Node, S: LayoutScalar> {
     pub(super) node: Node,
-    pub(super) role: crate::BlockGeneration,
+    pub(super) role: crate::node_input::BlockGeneration,
     pub(super) binding: Option<super::content_insets::ContentInsetBinding<Node, S>>,
     pub(super) normal_complete: bool,
     pub(super) accepted_inline_inner: S,
-    pub(super) axes: crate::FlowAxes,
+    pub(super) axes: crate::geometry::FlowAxes,
     pub(super) flow: in_flow::InFlowResult<Node, S>,
     pub(crate) block_extent: S,
     pub(crate) occupied: S,
     pub(crate) participated: bool,
-    pub(crate) bounds: Option<crate::ScrollRectOf<S>>,
+    pub(crate) bounds: Option<crate::scroll::ScrollRectOf<S>>,
 }
 
 #[derive(Clone, Copy)]
@@ -159,7 +159,7 @@ pub(crate) fn prepare<'input, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
     input: ComputeInputOf<Tree::Scalar>,
-    original: &crate::NodeInputOf<Tree::Scalar>,
+    original: &crate::node_input::NodeInputOf<Tree::Scalar>,
 ) -> LayoutResultOf<Tree::Node, Context<Tree::Scalar>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -255,7 +255,7 @@ where
         constants,
         context.input,
         InFlowPassContext {
-            inline_operation: crate::SizingOperation::Normal,
+            inline_operation: crate::value::SizingOperation::Normal,
             inner_inline: constants.logical_node_inner_size().inline,
             set_layout: context.input.run_mode().is_perform_layout(),
             inherited: None,

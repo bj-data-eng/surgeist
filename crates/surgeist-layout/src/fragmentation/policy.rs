@@ -1,5 +1,5 @@
 use super::*;
-use crate::LayoutScalar;
+use crate::scalar::LayoutScalar;
 use std::sync::Arc;
 
 #[derive(Clone, Copy)]
@@ -25,7 +25,7 @@ impl Force {
         }
     }
     fn add(&mut self, control: FragmentationBreakControl, available: FragmentationBreakKinds) {
-        use FragmentationBreak as B;
+        use crate::fragmentation::input::FragmentationBreak as B;
         let (kind, side) = match control.value {
             B::Page => (FragmentationBreakKinds::PAGE, None),
             B::Column => (FragmentationBreakKinds::COLUMN, None),
@@ -85,7 +85,7 @@ pub(super) fn force_controls(
 }
 
 fn effective(value: FragmentationBreak, available: FragmentationBreakKinds) -> FragmentationBreak {
-    use FragmentationBreak as B;
+    use crate::fragmentation::input::FragmentationBreak as B;
     let kind = match value {
         B::AvoidPage | B::Page | B::Left | B::Right | B::Recto | B::Verso => {
             FragmentationBreakKinds::PAGE

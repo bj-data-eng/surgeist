@@ -24,7 +24,7 @@ pub(super) fn split_box_fixture<S: LayoutScalar>() -> Fixture<S> {
         );
         // Resolved atomic participation is an actual normalized Native input,
         // independent of the formatter's LTR direction (bidi_order_tests).
-        let mut actual = crate::LayoutTree::node_input(&f.tree, node).clone();
+        let mut actual = crate::tree::LayoutTree::node_input(&f.tree, node).clone();
         actual.atomic_inline_participation = Some(participation);
         assert_eq!(actual.direction, Direction::Ltr);
         assert_eq!(actual.writing_mode, WritingMode::HorizontalTb);
@@ -84,11 +84,11 @@ pub(super) fn split_box_fixture<S: LayoutScalar>() -> Fixture<S> {
             InlineFlowOf::new(
                 boundary.writing_mode(),
                 boundary.direction(),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(f.width).unwrap(),
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(f.width).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    crate::value::SizingOperation::Normal,
                 ),
             ),
             boundary.metrics(),
@@ -130,7 +130,7 @@ pub(super) fn split_box_fixture<S: LayoutScalar>() -> Fixture<S> {
     f.finish();
     assert_eq!(f.nodes, [10, 11, 20, 12, 13, 21, 14, 15]);
     for (index, node) in (10..16u32).enumerate() {
-        let actual = crate::LayoutTree::node_input(&f.tree, node);
+        let actual = crate::tree::LayoutTree::node_input(&f.tree, node);
         assert_eq!(
             actual
                 .atomic_inline_participation

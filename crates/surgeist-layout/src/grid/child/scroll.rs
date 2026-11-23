@@ -3,20 +3,24 @@ use crate::scroll::{
     CanonicalScrollGeometryErrorOf, OptionalPhysicalContributionIntervalsOf,
     ScrollContributionAccumulatorOf,
 };
+use crate::{
+    geometry::PhysicalSide,
+    scroll::{ScrollGeometryOf, ScrollRectOf},
+};
 
 #[derive(Clone, Copy, Debug)]
 pub(in crate::grid) struct GridChildContribution<S: LayoutScalar = DefaultScalar> {
-    pub(in crate::grid) source_index: crate::SourceIndex,
+    pub(in crate::grid) source_index: crate::output::SourceIndex,
     pub(in crate::grid) location: Point<S>,
     pub(in crate::grid) margin: Edges<S>,
-    pub(in crate::grid) geometry: crate::ScrollGeometryOf<S>,
+    pub(in crate::grid) geometry: ScrollGeometryOf<S>,
     pub(in crate::grid) descendants: OptionalPhysicalContributionIntervalsOf<S>,
     pub(in crate::grid) in_flow: bool,
 }
 
 #[derive(Clone, Copy)]
 pub(in crate::grid) struct GridTrackScrollBounds<S: LayoutScalar> {
-    pub(in crate::grid) rect: crate::ScrollRectOf<S>,
+    pub(in crate::grid) rect: ScrollRectOf<S>,
     pub(in crate::grid) present: LogicalSizeOf<bool>,
 }
 
@@ -31,7 +35,7 @@ pub(in crate::grid) struct GridTrackAlignmentGeometry<'a, S: LayoutScalar> {
 
 pub(in crate::grid) fn grid_track_alignment_subject<S: LayoutScalar>(
     geometry: GridTrackAlignmentGeometry<'_, S>,
-) -> Result<crate::ScrollRectOf<S>, crate::ScrollRectErrorOf<S>> {
+) -> Result<ScrollRectOf<S>, crate::scroll::ScrollRectErrorOf<S>> {
     let GridTrackAlignmentGeometry {
         sizes,
         offsets,
@@ -71,7 +75,7 @@ pub(in crate::grid) fn grid_track_alignment_subject<S: LayoutScalar>(
             }
         }
     }
-    crate::ScrollRectOf::try_new(
+    ScrollRectOf::try_new(
         flow_axes.physical_point(origin, size, containing_size),
         flow_axes.physical_size(size),
     )
@@ -89,7 +93,7 @@ pub(in crate::grid) struct GridLayoutReporting<Node, S: LayoutScalar> {
 pub(in crate::grid) fn report_grid_children<Node, S, M>(
     node: Node,
     mut contributions: ScrollContributionAccumulatorOf<S>,
-    track_subject: crate::ScrollRectOf<S>,
+    track_subject: ScrollRectOf<S>,
     reporting: GridLayoutReporting<Node, S>,
 ) -> GridChildrenLayoutResult<Node, S, M>
 where
@@ -128,7 +132,7 @@ where
 pub(in crate::grid) fn empty_grid_contributions<S: LayoutScalar>()
 -> ScrollContributionAccumulatorOf<S> {
     ScrollContributionAccumulatorOf::new(
-        crate::ScrollRectOf::try_new(Point::ZERO, Size::ZERO)
+        ScrollRectOf::try_new(Point::ZERO, Size::ZERO)
             .expect("zero grid contribution seed is valid"),
     )
 }
@@ -139,8 +143,8 @@ pub(in crate::grid) fn retained_grid_child_scroll_geometry<'input, S: LayoutScal
     content_size: Size<S>,
     padding: Edges<S>,
     border: Edges<S>,
-    child_compute_geometry: Option<crate::ScrollGeometryOf<S>>,
-) -> Result<crate::ScrollGeometryOf<S>, CanonicalScrollGeometryErrorOf<S>> {
+    child_compute_geometry: Option<ScrollGeometryOf<S>>,
+) -> Result<ScrollGeometryOf<S>, CanonicalScrollGeometryErrorOf<S>> {
     item.with_scroll_projections(|box_projection, target_projection| {
         crate::scroll::retained_child_scroll_geometry(
             crate::scroll::RetainedChildScrollSourceOf {
@@ -181,8 +185,8 @@ pub(in crate::grid) fn grid_scroll_contributions<S: LayoutScalar>(
                 let interval =
                     contributions.include_established_grid_tracks(tracks.rect, side.axis());
                 *end = Some(match side {
-                    crate::PhysicalSide::Top | crate::PhysicalSide::Left => interval.minimum(),
-                    crate::PhysicalSide::Right | crate::PhysicalSide::Bottom => interval.maximum(),
+                    PhysicalSide::Top | PhysicalSide::Left => interval.minimum(),
+                    PhysicalSide::Right | PhysicalSide::Bottom => interval.maximum(),
                 });
             }
         }
@@ -229,38 +233,35 @@ pub(in crate::grid) fn grid_scroll_contributions<S: LayoutScalar>(
 pub(in crate::grid) fn grid_absolute_auto_area<S: LayoutScalar>(
     mut in_flow: ScrollContributionAccumulatorOf<S>,
     scroll_box: CanonicalScrollBoxOf<S>,
-) -> Result<crate::ScrollRectOf<S>, crate::ScrollRectErrorOf<S>> {
+) -> Result<ScrollRectOf<S>, crate::scroll::ScrollRectErrorOf<S>> {
     in_flow.replace_container_seed(scroll_box.scrollport());
     in_flow.complete_overflow_rect()
 }
 
-fn grid_child_flow_end<S: LayoutScalar>(
-    child: GridChildContribution<S>,
-    side: crate::PhysicalSide,
-) -> S {
+fn grid_child_flow_end<S: LayoutScalar>(child: GridChildContribution<S>, side: PhysicalSide) -> S {
     let border_box = child.geometry.border_box();
     let origin = border_box.origin();
     let size = border_box.size();
     match side {
-        crate::PhysicalSide::Top => child.location.y + origin.y - child.margin.top.max(S::ZERO),
-        crate::PhysicalSide::Right => {
+        PhysicalSide::Top => child.location.y + origin.y - child.margin.top.max(S::ZERO),
+        PhysicalSide::Right => {
             child.location.x + origin.x + size.width + child.margin.right.max(S::ZERO)
         }
-        crate::PhysicalSide::Bottom => {
+        PhysicalSide::Bottom => {
             child.location.y + origin.y + size.height + child.margin.bottom.max(S::ZERO)
         }
-        crate::PhysicalSide::Left => child.location.x + origin.x - child.margin.left.max(S::ZERO),
+        PhysicalSide::Left => child.location.x + origin.x - child.margin.left.max(S::ZERO),
     }
 }
 
 fn include_farthest_grid_flow_end<S: LayoutScalar>(
     end: &mut Option<S>,
-    side: crate::PhysicalSide,
+    side: PhysicalSide,
     candidate: S,
 ) {
     *end = Some(end.map_or(candidate, |current| match side {
-        crate::PhysicalSide::Top | crate::PhysicalSide::Left => current.min(candidate),
-        crate::PhysicalSide::Right | crate::PhysicalSide::Bottom => current.max(candidate),
+        PhysicalSide::Top | PhysicalSide::Left => current.min(candidate),
+        PhysicalSide::Right | PhysicalSide::Bottom => current.max(candidate),
     }));
 }
 

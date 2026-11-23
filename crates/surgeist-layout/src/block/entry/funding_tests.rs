@@ -6,7 +6,10 @@ use surgeist_text as text;
 const CASE_LIMITS: text::scope_alignment::ScopeAlignmentLimits =
     text::scope_alignment::ScopeAlignmentLimits::new(100_000, 100, 100_000, 4 << 20);
 
-fn captured_case() -> (PublicLayoutTreeOf<f64>, crate::TextParagraphBinding<u32>) {
+fn captured_case() -> (
+    PublicLayoutTreeOf<f64>,
+    crate::text_layout::TextParagraphBinding<u32>,
+) {
     use text::capture::SourceProcessingEvent as E;
     let style = crate::test_support::text::ahem_style(10.0, 10.0);
     let source = text::source::Source::new("X");
@@ -73,17 +76,17 @@ fn captured_case() -> (PublicLayoutTreeOf<f64>, crate::TextParagraphBinding<u32>
         .prepare(&analyzed, text::prepared::PreparationOptions::default())
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
-    let binding = crate::TextParagraphBinding {
+    let binding = crate::text_layout::TextParagraphBinding {
         prepared,
         container: 0,
         nodes: vec![10],
-        origins: vec![crate::TextOriginBinding {
+        origins: vec![crate::text_layout::TextOriginBinding {
             origin: origin.clone(),
             node: 10,
         }],
         controls: vec![],
         atomics: vec![],
-        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+        inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
         line_strut: None,
     };
     let mut tree = PublicLayoutTreeOf::new()
@@ -91,13 +94,15 @@ fn captured_case() -> (PublicLayoutTreeOf<f64>, crate::TextParagraphBinding<u32>
         .style(0, block(0.0, 0.0, None))
         .input(
             10,
-            crate::LayoutInputOf::inline_text(crate::TextParticipation::new(origin)),
+            crate::node_input::LayoutInputOf::inline_text(
+                crate::text_layout::TextParticipation::new(origin),
+            ),
         );
     for node in 1000..1032 {
         tree = tree.style(
             node,
-            crate::NodeInputOf {
-                display: crate::Display::None,
+            crate::node_input::NodeInputOf {
+                display: crate::node_input::Display::None,
                 ..Default::default()
             },
         );
@@ -148,11 +153,11 @@ fn remaining_records(resources: &ScopeAlignmentResources<f64>) -> usize {
 #[test]
 fn framed_case_refuses_spent_work_while_start_only_retains_its_old_footprint() {
     let (tree, binding) = captured_case();
-    let capture = crate::LayoutFlowInput::try_new(
+    let capture = crate::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput::default(),
+        crate::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
@@ -172,7 +177,7 @@ fn framed_case_refuses_spent_work_while_start_only_retains_its_old_footprint() {
         .err()
         .expect("new framed case work must refuse before traversing an exhausted owner");
     assert!(
-        matches!(error.kind(), crate::LayoutErrorKindOf::ResourceLimit(error)
+        matches!(error.kind(), crate::error::LayoutErrorKindOf::ResourceLimit(error)
         if matches!(error.detail(), Some(text::ErrorDetail::ScopeAlignment {
             reason: text::scope_alignment::ScopeAlignmentError::Limit {
                 kind: text::scope_alignment::ScopeAlignmentLimitKind::StructuralWork, required, limit,
@@ -184,11 +189,11 @@ fn framed_case_refuses_spent_work_while_start_only_retains_its_old_footprint() {
 #[test]
 fn discarded_framed_case_releases_live_buffers_without_refunding_materialization() {
     let (tree, binding) = captured_case();
-    let capture = crate::LayoutFlowInput::try_new(
+    let capture = crate::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput::default(),
+        crate::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();

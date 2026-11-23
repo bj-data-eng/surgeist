@@ -4,7 +4,25 @@ use super::*;
 use crate::engine::contracts::Compute;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
-use crate::*;
+use crate::{
+    geometry::{Edges, FlowAxes, Size},
+    inline_wrapping::WrappingInput,
+    node_input::{
+        Clear, Direction, Display, Float, FloatExclusion, InlineMetricsOf, LayoutInputOf,
+        LineBreakInputOf, NodeInputOf, WritingMode,
+    },
+    output::{
+        ComputeInputOf, ContainingLayoutContext, ParentFormattingContext, RequestedAxis, RunMode,
+        SizingMode,
+    },
+    scalar::LayoutScalar,
+    sizing::PreferredSizeOf,
+    text_layout::LayoutFlowInput,
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, NonNegativeFiniteOf,
+        OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+    },
+};
 use surgeist_text as text;
 
 fn selected_line(
@@ -135,7 +153,7 @@ fn lane<S: LayoutScalar>() {
             LayoutInputOf::line_break(
                 LineBreakInputOf::new().with_metrics(
                     InlineMetricsOf::try_new(
-                        crate::InlineBaselineContext::Physical,
+                        crate::node_input::InlineBaselineContext::Physical,
                         S::from_f64(8.0),
                         S::from_f64(10.0),
                     )

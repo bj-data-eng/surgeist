@@ -1,7 +1,7 @@
 //! Native gap authority retains actual formatter and fitting-run source cuts.
 use super::gap_attachments::{append_empty_box, replace_boundary};
 use super::*;
-use crate::{InlineFormatterEdge, InlineGapAnchor, InlineGapGroupInput};
+use crate::inline_wrapping::{InlineFormatterEdge, InlineGapAnchor, InlineGapGroupInput};
 
 fn float_edge_fixture<S: LayoutScalar>(leading: bool) -> Fixture<S> {
     let mut f = Fixture::<S>::new(Direction::Ltr, 100.0);
@@ -25,8 +25,8 @@ fn float_edge_fixture<S: LayoutScalar>(leading: bool) -> Fixture<S> {
     f.tree.insert_input(
         30,
         LayoutInputOf::box_input(NodeInputOf {
-            display: crate::Display::Block,
-            float: crate::Float::Left,
+            display: crate::node_input::Display::Block,
+            float: crate::node_input::Float::Left,
             size: Size::new(PreferredSizeOf::px(n(10.0)), PreferredSizeOf::px(n(10.0))),
             ..NodeInputOf::default()
         }),
@@ -75,8 +75,8 @@ fn formatter_edge_outside_actual_run<S: LayoutScalar>(leading: bool) {
         &flow,
         0,
         request(f.width, {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .expect_err(
@@ -85,9 +85,11 @@ fn formatter_edge_outside_actual_run<S: LayoutScalar>(leading: bool) {
     assert!(
         matches!(
             error.kind(),
-            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(
-                WrappingScopeError::GapOutsideSelection
-            ))
+            crate::error::LayoutErrorKindOf::InvalidInput(
+                crate::error::LayoutInvalidInputOf::WrappingScope(
+                    WrappingScopeError::GapOutsideSelection
+                )
+            )
         ),
         "{error:?}"
     );
@@ -177,9 +179,11 @@ fn mixed_formatter_group<S: LayoutScalar>() {
     assert!(
         matches!(
             error.kind(),
-            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(
-                WrappingScopeError::InvalidGapAnchor
-            ))
+            crate::error::LayoutErrorKindOf::InvalidInput(
+                crate::error::LayoutInvalidInputOf::WrappingScope(
+                    WrappingScopeError::InvalidGapAnchor
+                )
+            )
         ),
         "{error:?}"
     );
@@ -206,8 +210,8 @@ fn filtered_metadata_inside_actual_run<S: LayoutScalar>(trailing: bool) {
     f.tree.insert_input(
         30,
         LayoutInputOf::box_input(NodeInputOf {
-            display: crate::Display::Block,
-            position: crate::Position::Absolute,
+            display: crate::node_input::Display::Block,
+            position: crate::node_input::Position::Absolute,
             size: Size::new(PreferredSizeOf::px(n(1.0)), PreferredSizeOf::px(n(1.0))),
             ..NodeInputOf::default()
         }),

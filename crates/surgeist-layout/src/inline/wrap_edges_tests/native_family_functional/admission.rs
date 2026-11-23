@@ -1,5 +1,6 @@
 //! Explicit native-family demand requires complete actual proof without changing ordinary refusals.
 use super::*;
+use crate::{geometry::FlowAxes, tree::LayoutTree};
 
 fn demanded(wrapping: &WrappingInput<u32>) -> WrappingInput<u32> {
     let mut input = wrapping.clone();
@@ -18,10 +19,13 @@ fn refused<S: LayoutScalar>(
     let error = LayoutFlowInput::try_new(tree, 0, vec![], input, Vec::new())
         .err()
         .expect("an invalid actual family/proof cannot be downgraded to no demand");
-    assert_eq!(error.operation(), crate::LayoutOperation::InlineWrapping);
+    assert_eq!(
+        error.operation(),
+        crate::error::LayoutOperation::InlineWrapping
+    );
     assert!(
         matches!(error.kind(),
-        crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(reason))
+        crate::error::LayoutErrorKindOf::InvalidInput(crate::error::LayoutInvalidInputOf::WrappingScope(reason))
             if *reason==expected),
         "expected {expected:?}, got {error:?}"
     );
@@ -40,8 +44,8 @@ fn refusal_preserves<S: LayoutScalar>(
         &ordinary,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((ordinary).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((ordinary).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -59,8 +63,8 @@ fn refusal_preserves<S: LayoutScalar>(
         &valid,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((valid).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((valid).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -90,8 +94,8 @@ fn refusal_preserves<S: LayoutScalar>(
             &allowed,
             0,
             request(n(100.0), {
-                let root_input = crate::LayoutTree::node_input((allowed).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((allowed).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();
@@ -108,8 +112,8 @@ fn refusal_preserves<S: LayoutScalar>(
         &valid,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((valid).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((valid).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -182,7 +186,7 @@ fn complete_family_proof<S: LayoutScalar>() {
         WrappingScopeError::IncompleteFamily,
         None,
         |tree, input| {
-            assert!(crate::Traverse::children(tree, 0).any(|node| node == 10));
+            assert!(crate::tree::Traverse::children(tree, 0).any(|node| node == 10));
             let row = input
                 .child_order
                 .iter_mut()

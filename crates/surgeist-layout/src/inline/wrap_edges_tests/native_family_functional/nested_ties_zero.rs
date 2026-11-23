@@ -1,6 +1,11 @@
 //! Nested empty incidence, physical tie order and zero-size operands.
 use super::*;
-use crate::{InlineGapAffinity, InlineGapAnchor, InlineGapGroupInput};
+use crate::{
+    inline_wrapping::{
+        InlineGapAffinity, InlineGapAnchor, InlineGapGroupInput, NativeInlineBoxPieceView,
+    },
+    tree::LayoutTree,
+};
 
 fn real_source_order<S: LayoutScalar>(f: &mut Fixture<S>, nodes: &[u32]) {
     f.nodes = nodes.to_vec();
@@ -21,7 +26,7 @@ fn real_source_order<S: LayoutScalar>(f: &mut Fixture<S>, nodes: &[u32]) {
 fn selected_empty<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     owner: GeneratedBoxRef<u32>,
-) -> crate::NativeInlineBoxPieceView<'_, u32, S> {
+) -> NativeInlineBoxPieceView<'_, u32, S> {
     let found = batch
         .native_inline_box_pieces()
         .filter(|piece| piece.fragment().owner() == owner)
@@ -31,7 +36,7 @@ fn selected_empty<S: LayoutScalar>(
 }
 
 fn empty_identity<S: LayoutScalar>(
-    piece: crate::NativeInlineBoxPieceView<'_, u32, S>,
+    piece: NativeInlineBoxPieceView<'_, u32, S>,
     leaf: GeneratedBoxRef<u32>,
 ) {
     let members = piece.selected_members().collect::<Vec<_>>();
@@ -47,7 +52,7 @@ fn empty_identity<S: LayoutScalar>(
 }
 
 fn actual_edges<S: LayoutScalar>(
-    piece: crate::NativeInlineBoxPieceView<'_, u32, S>,
+    piece: NativeInlineBoxPieceView<'_, u32, S>,
     owner: GeneratedBoxRef<u32>,
 ) -> Vec<(u32, InlineBoundaryKind, f64, f64)> {
     let mut rows = piece
@@ -108,8 +113,8 @@ fn nested_leaf<S: LayoutScalar>() {
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -188,15 +193,15 @@ fn refused<S: LayoutScalar>(
             &flow,
             0,
             request(n(100.0), {
-                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((flow).tree(), 0);
+                crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .expect_err("invalid real attachment authority must not publish"),
     };
     assert!(
-        matches!(error.kind(), crate::LayoutErrorKindOf::InvalidInput(
-        crate::LayoutInvalidInputOf::WrappingScope(actual)) if *actual == expected),
+        matches!(error.kind(), crate::error::LayoutErrorKindOf::InvalidInput(
+        crate::error::LayoutInvalidInputOf::WrappingScope(actual)) if *actual == expected),
         "{error:?}"
     );
 }
@@ -239,8 +244,8 @@ fn unrelated_ties<S: LayoutScalar>() {
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -306,8 +311,8 @@ fn zero_atomics<S: LayoutScalar>() {
     // The two FOREIGN odd operands remain zero-size InlineBlocks with
     // their actual supplied levels and source identities. No hidden/OOF role.
     for node in [14, 15] {
-        let mut input = crate::LayoutTree::node_input(&f.tree, node).clone();
-        assert_eq!(input.display, crate::Display::InlineBlock);
+        let mut input = LayoutTree::node_input(&f.tree, node).clone();
+        assert_eq!(input.display, crate::node_input::Display::InlineBlock);
         assert_eq!(
             input
                 .atomic_inline_participation
@@ -342,8 +347,8 @@ fn zero_atomics<S: LayoutScalar>() {
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();

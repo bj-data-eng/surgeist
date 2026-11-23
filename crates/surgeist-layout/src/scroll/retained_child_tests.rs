@@ -3,8 +3,10 @@ use super::{
     ScrollBoxProjection, ScrollTargetProjection, retained_child_scroll_geometry,
 };
 use crate::{
-    ComputedOverflow, Edges, LayoutScalar, NodeInputOf, Overflow, Point, ScrollGeometryOf,
-    ScrollbarWidthOf, Size,
+    geometry::{Edges, Point, Size},
+    node_input::{ComputedOverflow, NodeInputOf, Overflow, ScrollbarWidthOf},
+    scalar::LayoutScalar,
+    scroll::ScrollGeometryOf,
 };
 
 const INCLUDE: RetainedChildReconstruction =

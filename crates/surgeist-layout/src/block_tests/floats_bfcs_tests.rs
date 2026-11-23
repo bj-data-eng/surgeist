@@ -4,6 +4,11 @@ use super::fixtures::{
 };
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    block::compute_block,
+    block_fragmentation::NodeLayoutRefOf,
+    node_input::{BlockFlowContext, InlineBaselineContext, InlineBoundaryEdgeOf},
+};
 
 fn assert_replaced_fixed_block_clears_full_width_float<S: LayoutScalar>() {
     let scalar = scalar_value::<S>;
@@ -307,7 +312,7 @@ fn fri06_c04_block_layout_without_shape_provider<S: LayoutScalar>(
         tree = tree.children(node, []).style(node, style);
     }
 
-    crate::compute_block(
+    compute_block(
         &mut tree.borrow_compute(),
         0,
         ComputeInputOf::root_layout(
@@ -1177,7 +1182,7 @@ fn bfc_border_avoids_shape_float_margin_boxes_without_querying_contours() {
                                     display: Display::Block,
                                     writing_mode,
                                     direction,
-                                    block_flow_context: crate::BlockFlowContext::Independent,
+                                    block_flow_context: BlockFlowContext::Independent,
                                     size: axes.physical_size(size).map(PreferredSizeOf::px),
                                     margin: axes
                                         .physical_edges(LogicalEdgesOf::new(
@@ -1291,12 +1296,12 @@ fn fri06_c12_t08_float_dominated_terminal_extent_stops_at_the_float_edge() {
                     InlineBoundaryInputOf::contribution(
                         InlineBoundaryKind::Start,
                         InlineMetricsOf::from_line_height_and_baseline(
-                            crate::InlineBaselineContext::Physical,
+                            InlineBaselineContext::Physical,
                             S::from_f64(20.0),
                             S::from_f64(14.8),
                         )
                         .unwrap(),
-                        crate::InlineBoundaryEdgeOf::ZERO,
+                        InlineBoundaryEdgeOf::ZERO,
                     )
                     .unwrap(),
                 ),
@@ -1409,12 +1414,12 @@ fn fri06_c12_t08_float_shape_slots_follow_visual_order_before_physical_projectio
                     InlineBoundaryInputOf::contribution(
                         InlineBoundaryKind::Start,
                         InlineMetricsOf::from_line_height_and_baseline(
-                            crate::InlineBaselineContext::Physical,
+                            InlineBaselineContext::Physical,
                             S::from_f64(20.0),
                             S::from_f64(14.0),
                         )
                         .unwrap(),
-                        crate::InlineBoundaryEdgeOf::ZERO,
+                        InlineBoundaryEdgeOf::ZERO,
                     )
                     .unwrap(),
                 ),
@@ -1425,12 +1430,12 @@ fn fri06_c12_t08_float_shape_slots_follow_visual_order_before_physical_projectio
                     InlineBoundaryInputOf::contribution(
                         InlineBoundaryKind::Start,
                         InlineMetricsOf::from_line_height_and_baseline(
-                            crate::InlineBaselineContext::Physical,
+                            InlineBaselineContext::Physical,
                             S::from_f64(20.0),
                             S::from_f64(14.0),
                         )
                         .unwrap(),
-                        crate::InlineBoundaryEdgeOf::ZERO,
+                        InlineBoundaryEdgeOf::ZERO,
                     )
                     .unwrap(),
                 ),
@@ -1751,7 +1756,7 @@ fn fri06_c04_line_band_direct_compute_inherits_float_into_internal_line_both_sca
                 },
             );
 
-        crate::compute_block(
+        compute_block(
             &mut tree.borrow_compute(),
             0,
             ComputeInputOf::root_layout(
@@ -2099,7 +2104,7 @@ fn block_float_contributes_to_intrinsic_width_and_places_from_right_edge() {
         );
     }
 
-    let output = crate::compute_block(
+    let output = compute_block(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -2108,12 +2113,12 @@ fn block_float_contributes_to_intrinsic_width_and_places_from_right_edge() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2584,7 +2589,7 @@ fn block_bfc_clear_only_visible_child_keeps_normal_x_while_clearing_y() {
             3,
             NodeInput {
                 display: Display::Block,
-                clear: crate::Clear::Left,
+                clear: crate::node_input::Clear::Left,
                 overflow: computed_overflow(Overflow::Visible, Overflow::Visible),
                 size: Size::new(PreferredSize::px(50.0), PreferredSize::px(20.0)),
                 ..NodeInput::DEFAULT
@@ -2678,7 +2683,7 @@ fn block_bfc_zero_width_child_with_clear_left_sits_below_left_float_row() {
             4,
             NodeInput {
                 display: Display::Block,
-                clear: crate::Clear::Left,
+                clear: crate::node_input::Clear::Left,
                 overflow: computed_overflow(Overflow::Hidden, Overflow::Hidden),
                 size: Size::new(PreferredSize::px(0.0), PreferredSize::AUTO),
                 ..NodeInput::DEFAULT
@@ -2760,7 +2765,7 @@ fn block_bfc_zero_width_child_with_clear_right_sits_below_all_right_floats() {
             4,
             NodeInput {
                 display: Display::Block,
-                clear: crate::Clear::Right,
+                clear: crate::node_input::Clear::Right,
                 overflow: computed_overflow(Overflow::Hidden, Overflow::Hidden),
                 size: Size::new(PreferredSize::px(0.0), PreferredSize::AUTO),
                 ..NodeInput::DEFAULT
@@ -2897,7 +2902,7 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>(fixture: Bfc
                 0,
                 NodeInputOf {
                     display: Display::Block,
-                    block_flow_context: crate::BlockFlowContext::Independent,
+                    block_flow_context: BlockFlowContext::Independent,
                     size: Size::new(PreferredSizeOf::px(px(200.0)), PreferredSizeOf::AUTO),
                     ..NodeInputOf::default()
                 },
@@ -2908,16 +2913,16 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>(fixture: Bfc
                 4,
                 NodeInputOf {
                     display: Display::Block,
-                    block_flow_context: crate::BlockFlowContext::Independent,
+                    block_flow_context: BlockFlowContext::Independent,
                     position: Position::Relative,
                     size_containment: if matches!(
                         fixture,
                         BfcFloatFixture::InlineContainment
                             | BfcFloatFixture::InlineContainmentShape
                     ) {
-                        crate::SizeContainment::InlineAxis
+                        crate::node_input::SizeContainment::InlineAxis
                     } else {
-                        crate::SizeContainment::None
+                        crate::node_input::SizeContainment::None
                     },
                     margin: Edges {
                         bottom: block_end_margin,
@@ -2936,7 +2941,7 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>(fixture: Bfc
                 5,
                 NodeInputOf {
                     display: Display::Block,
-                    aspect_ratio: crate::AspectRatioOf::new(S::ONE),
+                    aspect_ratio: crate::value::AspectRatioOf::new(S::ONE),
                     ..NodeInputOf::default()
                 },
             );
@@ -3123,7 +3128,7 @@ fn rectangular_float_band_accounts_for_an_inherited_touching_edge() {
                     3,
                     NodeInputOf {
                         display: Display::Block,
-                        block_flow_context: crate::BlockFlowContext::Independent,
+                        block_flow_context: BlockFlowContext::Independent,
                         size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
                         margin: Edges {
                             left: LengthAutoOf::px(px(-10.0)),
@@ -3255,7 +3260,7 @@ fn rectangular_float_band_resolves_inline_margins_in_their_own_space() {
                     2,
                     NodeInputOf {
                         display: Display::Block,
-                        block_flow_context: crate::BlockFlowContext::Independent,
+                        block_flow_context: BlockFlowContext::Independent,
                         size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
                         max_size: Size::new(maximum.clone(), MaxSizeOf::NONE),
                         margin: Edges {
@@ -3414,9 +3419,9 @@ fn assert_native_float_relative_offset_preserves_clearance<S: LayoutScalar>() {
         let float_entry = batch
             .node_layout(1)
             .map(|layout| match layout {
-                crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-                crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                crate::NodeLayoutRefOf::Fragments(_) => {
+                NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             })
@@ -3560,9 +3565,9 @@ fn assert_native_relative_float_ignores_end_inset<S: LayoutScalar>(quarter: S) {
         let entry = batch
             .node_layout(1)
             .map(|layout| match layout {
-                crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-                crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                crate::NodeLayoutRefOf::Fragments(_) => {
+                NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             })
@@ -4154,7 +4159,7 @@ fn native_float_source_floor_uses_translated_shared_inherited_ledger() {
                     4,
                     NodeInputOf {
                         display: Display::Block,
-                        block_flow_context: crate::BlockFlowContext::Normal,
+                        block_flow_context: BlockFlowContext::Normal,
                         ..NodeInputOf::default()
                     },
                 ),
@@ -4228,28 +4233,16 @@ fn assert_table_border_avoids_full_width_float<S: LayoutScalar>() {
         )
     }));
     for (role, table, replaced, context, top) in [
-        (
-            "ordinary",
-            false,
-            false,
-            crate::BlockFlowContext::Normal,
-            0.0,
-        ),
-        (
-            "replaced",
-            false,
-            true,
-            crate::BlockFlowContext::Normal,
-            20.0,
-        ),
+        ("ordinary", false, false, BlockFlowContext::Normal, 0.0),
+        ("replaced", false, true, BlockFlowContext::Normal, 20.0),
         (
             "independent",
             false,
             false,
-            crate::BlockFlowContext::Independent,
+            BlockFlowContext::Independent,
             20.0,
         ),
-        ("table", true, false, crate::BlockFlowContext::Normal, 20.0),
+        ("table", true, false, BlockFlowContext::Normal, 20.0),
     ] {
         let tree = PublicBlockTree::default()
             .with_children(0, [1, 2])
@@ -4360,7 +4353,7 @@ fn table_float_collision_uses_fixed_margin_boxes_in_all_flows() {
                                     writing_mode,
                                     direction,
                                     item_is_table: true,
-                                    block_flow_context: crate::BlockFlowContext::Normal,
+                                    block_flow_context: BlockFlowContext::Normal,
                                     size: axes.physical_size(size).map(PreferredSizeOf::px),
                                     margin: axes
                                         .physical_edges(LogicalEdgesOf::new(
@@ -4390,7 +4383,7 @@ fn table_float_collision_uses_fixed_margin_boxes_in_all_flows() {
                     );
                     assert_eq!(
                         tree.node_input(2).block_flow_context,
-                        crate::BlockFlowContext::Normal
+                        BlockFlowContext::Normal
                     );
                     assert!(tree.shape_queries().is_empty());
                 }
@@ -4454,7 +4447,7 @@ fn table_normal_context_keeps_legacy_alignment_without_float_entries() {
                 assert_eq!(table.size, Size::new(px(50.0), px(10.0)));
                 assert_eq!(
                     tree.node_input(2).block_flow_context,
-                    crate::BlockFlowContext::Normal
+                    BlockFlowContext::Normal
                 );
             }
         }
@@ -4483,10 +4476,7 @@ fn assert_table_wrapper_context<S: LayoutScalar>(case: TableWrapperContextCase) 
         ),
         ..NodeInputOf::default()
     };
-    for context in [
-        crate::BlockFlowContext::Independent,
-        crate::BlockFlowContext::Normal,
-    ] {
+    for context in [BlockFlowContext::Independent, BlockFlowContext::Normal] {
         let mut table = fixed(50.0, 10.0);
         table.item_is_table = true;
         table.block_flow_context = context;
@@ -4723,7 +4713,7 @@ fn table_wrapper_context_excludes_parent_floats_in_all_flows() {
                                 2,
                                 NodeInputOf {
                                     item_is_table: true,
-                                    block_flow_context: crate::BlockFlowContext::Normal,
+                                    block_flow_context: BlockFlowContext::Normal,
                                     ..fixed(50.0, 10.0)
                                 },
                             )
@@ -4749,7 +4739,7 @@ fn table_wrapper_context_excludes_parent_floats_in_all_flows() {
                         assert!(tree.shape_queries().is_empty());
                         assert_eq!(
                             tree.node_input(2).block_flow_context,
-                            crate::BlockFlowContext::Normal
+                            BlockFlowContext::Normal
                         );
                     }
                 }

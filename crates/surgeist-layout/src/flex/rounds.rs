@@ -230,7 +230,7 @@ fn column_cross_offer<Node, S: LayoutScalar>(
             .axes
             .cross_size(constants.sizing_request.axes())
             .operation()
-            == crate::SizingOperation::MaxContent
+            == crate::value::SizingOperation::MaxContent
     {
         collected_items
             .iter()

@@ -1,5 +1,6 @@
 //! Completed-tail branches stay inside the actual unpublished float/cache pass.
 use super::*;
+use crate::block_fragmentation::NodeLayoutRefOf;
 use crate::test_support::readback::{self, Phase};
 fn root_tail<S: LayoutScalar>(policy: HyphenateLimitLast) -> NodeInputOf<S> {
     NodeInputOf {
@@ -134,9 +135,9 @@ fn check<S: LayoutScalar>() {
             .unwrap()
             .node_layouts()
             .map(|(_, layout)| match layout {
-                crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
-                crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
-                crate::NodeLayoutRefOf::Fragments(_) =>
+                NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                NodeLayoutRefOf::Fragments(_) =>
                     panic!("continuous fixture unexpectedly fragmented"),
             })
             .collect::<Vec<_>>()
@@ -150,9 +151,11 @@ fn check<S: LayoutScalar>() {
     host.reject_batch = true;
     assert_eq!(
         retry.apply_to(&mut host),
-        Err(crate::LayoutBatchApplyError::Preparation(
-            "reject complete replacement"
-        ))
+        Err(
+            crate::block_fragmentation::publication::LayoutBatchApplyError::Preparation(
+                "reject complete replacement"
+            )
+        )
     );
     assert_eq!(host.caches, caches);
     host.reject_batch = false;

@@ -2,8 +2,11 @@
 
 use super::TextParagraphBinding;
 use crate::{
-    BaselineOffsetOf, BaselineOffsetResolutionError, DefaultScalar, LayoutScalar,
-    LengthPercentageOf, NonNegativeFiniteOf, PercentageBasisOf, VerticalAlignOf,
+    baseline_offset::{BaselineOffsetOf, BaselineOffsetResolutionError},
+    error::LayoutTextNumericError,
+    node_input::VerticalAlignOf,
+    scalar::{DefaultScalar, LayoutScalar},
+    value::{LengthPercentageOf, NonNegativeFiniteOf, PercentageBasisOf},
 };
 use std::{mem::size_of, sync::Arc};
 use surgeist_text::{
@@ -1660,13 +1663,13 @@ fn finish(
         numeric(
             error.value(),
             match error.reason() {
-                crate::LayoutTextNumericError::NonFinite => {
+                LayoutTextNumericError::NonFinite => {
                     surgeist_text::geometry::TextNumericError::NonFinite
                 }
-                crate::LayoutTextNumericError::OutOfRange => {
+                LayoutTextNumericError::OutOfRange => {
                     surgeist_text::geometry::TextNumericError::OutOfRange
                 }
-                crate::LayoutTextNumericError::NonZeroLost => {
+                LayoutTextNumericError::NonZeroLost => {
                     surgeist_text::geometry::TextNumericError::NonZeroLost
                 }
             },

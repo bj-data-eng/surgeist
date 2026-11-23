@@ -122,7 +122,7 @@ where
             item.child_flow_axes,
         );
         let contribution = GridChildContribution {
-            source_index: crate::SourceIndex::new(item.source_index),
+            source_index: crate::output::SourceIndex::new(item.source_index),
             location,
             margin: item.margin,
             geometry: scroll_geometry,
@@ -141,7 +141,7 @@ where
         item.block_offset = block_axis_offset;
         item.location = normal_location;
         child_contributions.push(contribution);
-        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+        tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
             item.node,
             crate::output::NormalGeometryOf::box_geometry(
                 normal_location,
@@ -149,7 +149,7 @@ where
                 contribution.geometry.content_box(),
             ),
             NodeOutputOf {
-                source_index: crate::SourceIndex::new(item.source_index),
+                source_index: crate::output::SourceIndex::new(item.source_index),
                 location,
                 size: item.output.size,
                 named_baselines: item.output.named_baselines,

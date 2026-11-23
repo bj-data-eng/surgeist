@@ -1,6 +1,7 @@
 //! Endpoint-only changes keep native preparation and transactional cache custody.
 use super::fixtures::Fri06C02StatefulTextTree;
 use super::*;
+use crate::node_input::InlineBaselineContext;
 use crate::test_support::inline_endpoint::Fixture;
 use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::ahem_style;
@@ -46,7 +47,7 @@ fn tree<S: LayoutScalar>(
                         InlineBoundaryKind::End
                     },
                     InlineMetricsOf::try_new(
-                        crate::InlineBaselineContext::Physical,
+                        InlineBaselineContext::Physical,
                         S::from_f64(8.0),
                         S::from_f64(10.0),
                     )
@@ -88,28 +89,28 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(10.0))
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(10.0))
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 None,
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            crate::value::OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                crate::value::NearestScrollportOf::Unknown,
+                crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(10.0))
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(10.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                crate::value::SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Indefinite,
+                crate::value::SizingOperation::Normal,
             ),
         ));
         let mut actual = tree::<S>(&fixture, InlineBoundaryEdgeOf::ZERO);
@@ -134,7 +135,7 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
                 InlineBoundaryInputOf::contribution(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::try_new(
-                        crate::InlineBaselineContext::Physical,
+                        InlineBaselineContext::Physical,
                         S::from_f64(8.0),
                         S::from_f64(10.0),
                     )
@@ -178,9 +179,11 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
         actual.reject_preparation = true;
         assert_eq!(
             changed.apply_to(&mut actual),
-            Err(crate::LayoutBatchApplyError::Preparation(
-                "C02 retained-state preparation rejected"
-            ))
+            Err(
+                crate::block_fragmentation::publication::LayoutBatchApplyError::Preparation(
+                    "C02 retained-state preparation rejected"
+                )
+            )
         );
         assert_eq!(actual.retained, before);
         actual.reject_preparation = false;
@@ -203,7 +206,7 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
                 InlineBoundaryInputOf::contribution(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::try_new(
-                        crate::InlineBaselineContext::Physical,
+                        InlineBaselineContext::Physical,
                         S::from_f64(8.0),
                         S::from_f64(10.0),
                     )
@@ -219,7 +222,7 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
                 InlineBoundaryInputOf::contribution(
                     InlineBoundaryKind::End,
                     InlineMetricsOf::try_new(
-                        crate::InlineBaselineContext::Physical,
+                        InlineBaselineContext::Physical,
                         S::from_f64(8.0),
                         S::from_f64(10.0),
                     )
@@ -251,7 +254,7 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
                 InlineBoundaryInputOf::contribution(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::try_new(
-                        crate::InlineBaselineContext::Physical,
+                        InlineBaselineContext::Physical,
                         S::from_f64(8.0),
                         S::from_f64(10.0),
                     )
@@ -267,7 +270,7 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
                 InlineBoundaryInputOf::contribution(
                     InlineBoundaryKind::End,
                     InlineMetricsOf::try_new(
-                        crate::InlineBaselineContext::Physical,
+                        InlineBaselineContext::Physical,
                         S::from_f64(8.0),
                         S::from_f64(10.0),
                     )
@@ -289,7 +292,7 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
                 InlineBoundaryInputOf::contribution(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::try_new(
-                        crate::InlineBaselineContext::Physical,
+                        InlineBaselineContext::Physical,
                         S::from_f64(8.0),
                         S::from_f64(10.0),
                     )

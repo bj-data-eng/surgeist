@@ -1014,7 +1014,7 @@ fn phase_constraint<S: LayoutScalar>(
             available
                 .space()
                 .definite_size()
-                .map(crate::NonNegativeFiniteOf::get)
+                .map(crate::value::NonNegativeFiniteOf::get)
         } else {
             None
         },
@@ -1144,7 +1144,7 @@ fn prepare_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
             GridAxisTrackSpace::Intrinsic => effective_available(input, axis, available)
                 .map_err(|error| grid_track_sizing_error(node, error))?,
             GridAxisTrackSpace::FinalUsed(value) => AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(value).map_err(
+                AvailableSpaceOf::Definite(crate::value::NonNegativeFiniteOf::new(value).map_err(
                     |_| {
                         grid_track_sizing_error(
                             node,

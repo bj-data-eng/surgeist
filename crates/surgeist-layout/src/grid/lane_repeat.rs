@@ -1,5 +1,5 @@
 use super::*;
-use crate::GridSpan;
+use crate::value::GridSpan;
 
 use super::intrinsic_stage::IntrinsicRepeatSizing;
 

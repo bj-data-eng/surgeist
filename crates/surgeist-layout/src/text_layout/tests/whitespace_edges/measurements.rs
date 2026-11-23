@@ -4,9 +4,9 @@ use super::*;
 fn actual_geometry<S: LayoutScalar>() {
     let output = intrinsic::<S>(
         "X \nY",
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
+        crate::value::AxisSizingRequestOf::new(
+            crate::value::AvailableSpaceOf::Indefinite,
+            crate::value::SizingOperation::MinContent,
         ),
     );
     assert_eq!(output.report.inline_extent, S::from_f64(10.0));
@@ -113,7 +113,7 @@ fn block_end_claim_cannot_hide_known_later_in_flow_content() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),

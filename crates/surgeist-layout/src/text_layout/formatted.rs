@@ -1,6 +1,12 @@
 //! Invocation-local formatted-line authority. This records emitted flow, not
 //! text content, geometry guesses or a second line formatter.
 
+use crate::{
+    cache::CacheKeyContext,
+    output::{ComputeInputOf, ComputeOutputOf},
+    scalar::LayoutScalar,
+    value::AxisSizingRequestOf,
+};
 use std::sync::Arc;
 
 use super::scope_alignment::{EntryBacking, EntryFunding, EntryFundingRef, ScopeLease};
@@ -248,17 +254,17 @@ pub(crate) struct NumericFormattedLine {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ComputeScope<Node, S: crate::LayoutScalar> {
+pub(crate) struct ComputeScope<Node, S: LayoutScalar> {
     pub(crate) node: Node,
-    pub(crate) input: crate::ComputeInputOf<S>,
+    pub(crate) input: ComputeInputOf<S>,
     pub(crate) anonymous: bool,
     pub(crate) frame: Option<FlowFrame<S>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct FlowFrame<S: crate::LayoutScalar> {
-    pub(crate) input: crate::ComputeInputOf<S>,
-    pub(crate) available: crate::AxisSizingRequestOf<S>,
+pub(crate) struct FlowFrame<S: LayoutScalar> {
+    pub(crate) input: ComputeInputOf<S>,
+    pub(crate) available: AxisSizingRequestOf<S>,
     pub(crate) publication: bool,
 }
 
@@ -311,7 +317,7 @@ impl<T> SharedPayload<T> {
     ) -> surgeist_text::Result<Self> {
         Self::with_copies_ref(value, EntryCopies::default(), funding)
     }
-    fn with_copies<S: crate::LayoutScalar>(
+    fn with_copies<S: LayoutScalar>(
         value: T,
         copies: EntryCopies,
         funding: Option<&EntryFunding<S>>,
@@ -401,7 +407,7 @@ pub(crate) struct EntryCopies {
     original_uses: Option<FormattedUsesStorage>,
 }
 impl EntryCopies {
-    fn rows<T, S: crate::LayoutScalar>(
+    fn rows<T, S: LayoutScalar>(
         &mut self,
         funding: Option<&EntryFunding<S>>,
         count: usize,
@@ -438,7 +444,7 @@ impl EntryCopies {
         Ok(())
     }
 }
-fn visit<S: crate::LayoutScalar>(
+fn visit<S: LayoutScalar>(
     funding: Option<&EntryFunding<S>>,
     count: usize,
 ) -> surgeist_text::Result<()> {
@@ -465,7 +471,7 @@ fn rows_equal<T: PartialEq>(
     }
     Ok(true)
 }
-fn copied_rows<T: Clone, S: crate::LayoutScalar>(
+fn copied_rows<T: Clone, S: LayoutScalar>(
     source: &[T],
     funding: Option<&EntryFunding<S>>,
     copies: &mut EntryCopies,
@@ -477,7 +483,7 @@ fn copied_rows<T: Clone, S: crate::LayoutScalar>(
     }
     Ok(rows)
 }
-fn state_rows<T: Clone, S: crate::LayoutScalar>(
+fn state_rows<T: Clone, S: LayoutScalar>(
     source: &[T],
     funding: Option<&EntryFunding<S>>,
 ) -> surgeist_text::Result<(Vec<T>, EntryBacking)> {
@@ -498,24 +504,24 @@ fn state_rows<T: Clone, S: crate::LayoutScalar>(
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct RunBinding<Node, S: crate::LayoutScalar>(SharedPayload<RunIdentity<Node, S>>);
+pub(crate) struct RunBinding<Node, S: LayoutScalar>(SharedPayload<RunIdentity<Node, S>>);
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct RunIdentity<Node, S: crate::LayoutScalar> {
+pub(crate) struct RunIdentity<Node, S: LayoutScalar> {
     pub(crate) container: Node,
     pub(crate) nodes: Vec<Node>,
     pub(crate) segment: PreparedSourceSegment,
-    pub(crate) input: crate::ComputeInputOf<S>,
-    pub(crate) mode: crate::AxisSizingRequestOf<f64>,
+    pub(crate) input: ComputeInputOf<S>,
+    pub(crate) mode: AxisSizingRequestOf<f64>,
     pub(crate) lineage: Vec<ComputeScope<Node, S>>,
     pub(crate) owner: Node,
 }
-impl<Node, S: crate::LayoutScalar> Deref for RunBinding<Node, S> {
+impl<Node, S: LayoutScalar> Deref for RunBinding<Node, S> {
     type Target = RunIdentity<Node, S>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
-impl<Node: Copy, S: crate::LayoutScalar> RunBinding<Node, S> {
+impl<Node: Copy, S: LayoutScalar> RunBinding<Node, S> {
     fn same(
         &self,
         other: &Self,
@@ -556,27 +562,25 @@ impl<Node: Copy, S: crate::LayoutScalar> RunBinding<Node, S> {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum FormattedFlowItem<Node, S: crate::LayoutScalar> {
+pub(crate) enum FormattedFlowItem<Node, S: LayoutScalar> {
     Text(RunBinding<Node, S>, Vec<FormattedTailEndpoint>),
     Numeric(Vec<Node>, Vec<NumericFormattedLine>),
     Child(Vec<ComputeScope<Node, S>>),
     Retained(RetainedItem<Node, S>),
 }
 #[derive(Clone)]
-pub(crate) struct RetainedItem<Node, S: crate::LayoutScalar>(
-    Arc<EntryValue<FormattedFlowItem<Node, S>>>,
-);
-impl<Node: std::fmt::Debug, S: crate::LayoutScalar> std::fmt::Debug for RetainedItem<Node, S> {
+pub(crate) struct RetainedItem<Node, S: LayoutScalar>(Arc<EntryValue<FormattedFlowItem<Node, S>>>);
+impl<Node: std::fmt::Debug, S: LayoutScalar> std::fmt::Debug for RetainedItem<Node, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.value.fmt(f)
     }
 }
-impl<Node: PartialEq, S: crate::LayoutScalar> PartialEq for RetainedItem<Node, S> {
+impl<Node: PartialEq, S: LayoutScalar> PartialEq for RetainedItem<Node, S> {
     fn eq(&self, other: &Self) -> bool {
         self.0.value == other.0.value
     }
 }
-impl<Node, S: crate::LayoutScalar> FormattedFlowItem<Node, S> {
+impl<Node, S: LayoutScalar> FormattedFlowItem<Node, S> {
     fn view(&self) -> &Self {
         match self {
             Self::Retained(value) => &value.0.value,
@@ -584,7 +588,7 @@ impl<Node, S: crate::LayoutScalar> FormattedFlowItem<Node, S> {
         }
     }
 }
-impl<Node: PartialEq, S: crate::LayoutScalar> PartialEq for FormattedFlowItem<Node, S> {
+impl<Node: PartialEq, S: LayoutScalar> PartialEq for FormattedFlowItem<Node, S> {
     fn eq(&self, other: &Self) -> bool {
         match (self.view(), other.view()) {
             (Self::Text(a, b), Self::Text(c, d)) => a == c && b == d,
@@ -594,7 +598,7 @@ impl<Node: PartialEq, S: crate::LayoutScalar> PartialEq for FormattedFlowItem<No
         }
     }
 }
-impl<Node: Copy, S: crate::LayoutScalar> FormattedFlowItem<Node, S> {
+impl<Node: Copy, S: LayoutScalar> FormattedFlowItem<Node, S> {
     fn retained(
         self,
         copies: EntryCopies,
@@ -630,13 +634,13 @@ impl<Node: Copy, S: crate::LayoutScalar> FormattedFlowItem<Node, S> {
 }
 
 /// Produced by one actual block traversal. Entry backing follows mutable rows.
-pub(crate) struct FormattedFlow<Node, S: crate::LayoutScalar> {
+pub(crate) struct FormattedFlow<Node, S: LayoutScalar> {
     pub(crate) frame: Option<FlowFrame<S>>,
     pub(crate) items: Vec<FormattedFlowItem<Node, S>>,
     backing: EntryBacking,
     funding: Option<EntryFunding<S>>,
 }
-impl<Node: Copy, S: crate::LayoutScalar> FormattedFlow<Node, S> {
+impl<Node: Copy, S: LayoutScalar> FormattedFlow<Node, S> {
     pub(crate) fn new(frame: Option<FlowFrame<S>>, funding: Option<&EntryFunding<S>>) -> Self {
         Self {
             frame,
@@ -679,7 +683,7 @@ impl<Node: Copy, S: crate::LayoutScalar> FormattedFlow<Node, S> {
     }
 }
 #[derive(Clone, Debug, PartialEq)]
-struct FlowContents<Node, S: crate::LayoutScalar> {
+struct FlowContents<Node, S: LayoutScalar> {
     frame: Option<FlowFrame<S>>,
     items: Vec<FormattedFlowItem<Node, S>>,
 }
@@ -690,69 +694,67 @@ struct UsesContents {
     accepted: Vec<FormattedTailEndpoint>,
 }
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct BoundUses<Node, S: crate::LayoutScalar> {
+pub(crate) struct BoundUses<Node, S: LayoutScalar> {
     pub(crate) binding: RunBinding<Node, S>,
     uses: SharedPayload<UsesContents>,
 }
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ScopedFlow<Node, S: crate::LayoutScalar>(SharedPayload<ScopedContents<Node, S>>);
+pub(crate) struct ScopedFlow<Node, S: LayoutScalar>(SharedPayload<ScopedContents<Node, S>>);
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ScopedContents<Node, S: crate::LayoutScalar> {
+pub(crate) struct ScopedContents<Node, S: LayoutScalar> {
     scope: Vec<ComputeScope<Node, S>>,
     flow: SharedPayload<FlowContents<Node, S>>,
 }
-impl<Node, S: crate::LayoutScalar> Deref for ScopedFlow<Node, S> {
+impl<Node, S: LayoutScalar> Deref for ScopedFlow<Node, S> {
     type Target = ScopedContents<Node, S>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SelectedFlow<Node, S: crate::LayoutScalar>(SharedPayload<Selection<Node, S>>);
+pub(crate) struct SelectedFlow<Node, S: LayoutScalar>(SharedPayload<Selection<Node, S>>);
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Selection<Node, S: crate::LayoutScalar> {
+pub(crate) struct Selection<Node, S: LayoutScalar> {
     call: Vec<ComputeScope<Node, S>>,
     actual: Vec<ComputeScope<Node, S>>,
 }
-impl<Node, S: crate::LayoutScalar> Deref for SelectedFlow<Node, S> {
+impl<Node, S: LayoutScalar> Deref for SelectedFlow<Node, S> {
     type Target = Selection<Node, S>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SummaryReceipt<Node, S: crate::LayoutScalar> {
+pub(crate) struct SummaryReceipt<Node, S: LayoutScalar> {
     contents: SharedPayload<SummaryContents<Node, S>>,
-    output: Option<(crate::CacheKeyContext, crate::ComputeOutputOf<S>)>,
+    output: Option<(CacheKeyContext, ComputeOutputOf<S>)>,
 }
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SummaryContents<Node, S: crate::LayoutScalar> {
+pub(crate) struct SummaryContents<Node, S: LayoutScalar> {
     wrapping: Option<Arc<crate::inline_wrapping::WrappingContext<Node>>>,
     frames: Arc<[super::state::CanonicalFrame<Node, S>]>,
     node: Node,
-    input: crate::ComputeInputOf<S>,
+    input: ComputeInputOf<S>,
     parent: Vec<ComputeScope<Node, S>>,
     flows: Vec<ScopedFlow<Node, S>>,
     uses: Vec<BoundUses<Node, S>>,
     selected: Vec<SelectedFlow<Node, S>>,
 }
-impl<Node, S: crate::LayoutScalar> Deref for SummaryReceipt<Node, S> {
+impl<Node, S: LayoutScalar> Deref for SummaryReceipt<Node, S> {
     type Target = SummaryContents<Node, S>;
     fn deref(&self) -> &Self::Target {
         &self.contents
     }
 }
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct BoundAssignment<Node, S: crate::LayoutScalar> {
+pub(crate) struct BoundAssignment<Node, S: LayoutScalar> {
     pub(crate) binding: RunBinding<Node, S>,
     pub(crate) assignment: FormattedTailAssignment,
 }
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct FormattedPassBasis<Node, S: crate::LayoutScalar>(
-    SharedPayload<PassContents<Node, S>>,
-);
+pub(crate) struct FormattedPassBasis<Node, S: LayoutScalar>(SharedPayload<PassContents<Node, S>>);
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PassContents<Node, S: crate::LayoutScalar> {
+pub(crate) struct PassContents<Node, S: LayoutScalar> {
     wrapping: Option<Arc<crate::inline_wrapping::WrappingContext<Node>>>,
     frame_basis: Arc<[super::state::CanonicalFrame<Node, S>]>,
     supplied: Vec<BoundAssignment<Node, S>>,
@@ -761,14 +763,14 @@ pub(crate) struct PassContents<Node, S: crate::LayoutScalar> {
     observed: Vec<BoundAssignment<Node, S>>,
     selected: Vec<SelectedFlow<Node, S>>,
 }
-impl<Node, S: crate::LayoutScalar> Deref for FormattedPassBasis<Node, S> {
+impl<Node, S: LayoutScalar> Deref for FormattedPassBasis<Node, S> {
     type Target = PassContents<Node, S>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-pub(crate) struct FormattedState<Node, S: crate::LayoutScalar> {
+pub(crate) struct FormattedState<Node, S: LayoutScalar> {
     pub(crate) wrapping: Option<Arc<crate::inline_wrapping::WrappingContext<Node>>>,
     pub(crate) frames: Arc<[super::state::CanonicalFrame<Node, S>]>,
     pub(crate) stack: Vec<ComputeScope<Node, S>>,
@@ -787,13 +789,13 @@ pub(crate) struct FormattedState<Node, S: crate::LayoutScalar> {
     demanded_backing: EntryBacking,
     funding: Option<EntryFunding<S>>,
 }
-pub(crate) struct EntryFormattedBasis<Node, S: crate::LayoutScalar> {
+pub(crate) struct EntryFormattedBasis<Node, S: LayoutScalar> {
     pub(crate) assignments: Vec<BoundAssignment<Node, S>>,
     pub(crate) parent: Option<Vec<ComputeScope<Node, S>>>,
     _copies: EntryCopies,
 }
 
-impl<Node: Copy + Eq, S: crate::LayoutScalar> EntryFormattedBasis<Node, S> {
+impl<Node: Copy + Eq, S: LayoutScalar> EntryFormattedBasis<Node, S> {
     pub(crate) fn matches(
         &self,
         assignments: &[BoundAssignment<Node, S>],
@@ -821,7 +823,7 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> EntryFormattedBasis<Node, S> {
     }
 }
 
-impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
+impl<Node: Copy + Eq, S: LayoutScalar> FormattedState<Node, S> {
     pub(crate) fn new_entry(
         funding: Option<&EntryFunding<S>>,
         frames: Arc<[super::state::CanonicalFrame<Node, S>]>,
@@ -876,8 +878,8 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
         container: Node,
         nodes: &[Node],
         segment: &PreparedSourceSegment,
-        input: crate::ComputeInputOf<S>,
-        mode: crate::AxisSizingRequestOf<f64>,
+        input: ComputeInputOf<S>,
+        mode: AxisSizingRequestOf<f64>,
     ) -> surgeist_text::Result<RunBinding<Node, S>> {
         let mut owner = container;
         for scope in self.stack.iter().rev() {
@@ -909,8 +911,8 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
         container: Node,
         nodes: &[Node],
         segment: &PreparedSourceSegment,
-        input: crate::ComputeInputOf<S>,
-        mode: crate::AxisSizingRequestOf<f64>,
+        input: ComputeInputOf<S>,
+        mode: AxisSizingRequestOf<f64>,
     ) -> surgeist_text::Result<FormattedTailSnapshot> {
         let binding = self.binding(container, nodes, segment, input, mode)?;
         self.snapshot(&binding)
@@ -962,8 +964,8 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
         container: Node,
         nodes: &[Node],
         segment: &PreparedSourceSegment,
-        input: crate::ComputeInputOf<S>,
-        mode: crate::AxisSizingRequestOf<f64>,
+        input: ComputeInputOf<S>,
+        mode: AxisSizingRequestOf<f64>,
         uses: FormattedTailUses,
     ) -> surgeist_text::Result<FormattedFlowItem<Node, S>> {
         let binding = self.binding(container, nodes, segment, input, mode)?;
@@ -1508,7 +1510,7 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
     pub(crate) fn receipt(
         &self,
         node: Node,
-        input: &crate::ComputeInputOf<S>,
+        input: &ComputeInputOf<S>,
     ) -> surgeist_text::Result<Option<&SummaryReceipt<Node, S>>> {
         for receipt in &self.receipts {
             self.visit(1)?;
@@ -1549,7 +1551,7 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
     pub(crate) fn restore(
         &mut self,
         node: Node,
-        input: &crate::ComputeInputOf<S>,
+        input: &ComputeInputOf<S>,
     ) -> surgeist_text::Result<bool> {
         let Some(receipt) = self.receipt(node, input)?.cloned() else {
             return Ok(false);
@@ -1571,9 +1573,9 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
     pub(crate) fn bind_output(
         &mut self,
         node: Node,
-        input: &crate::ComputeInputOf<S>,
-        context: crate::CacheKeyContext,
-        output: crate::ComputeOutputOf<S>,
+        input: &ComputeInputOf<S>,
+        context: CacheKeyContext,
+        output: ComputeOutputOf<S>,
     ) -> surgeist_text::Result<()> {
         for index in 0..self.receipts.len() {
             self.visit(1)?;
@@ -1596,7 +1598,7 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
     pub(crate) fn cache_available(
         &self,
         node: Node,
-        input: &crate::ComputeInputOf<S>,
+        input: &ComputeInputOf<S>,
     ) -> surgeist_text::Result<bool> {
         Ok(self
             .receipt(node, input)?
@@ -1605,9 +1607,9 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
     pub(crate) fn cache_matches(
         &self,
         node: Node,
-        input: &crate::ComputeInputOf<S>,
-        context: crate::CacheKeyContext,
-        output: crate::ComputeOutputOf<S>,
+        input: &ComputeInputOf<S>,
+        context: CacheKeyContext,
+        output: ComputeOutputOf<S>,
     ) -> surgeist_text::Result<bool> {
         Ok(self
             .receipt(node, input)?
@@ -1732,16 +1734,16 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
         Ok(())
     }
 }
-struct Events<'a, Node, S: crate::LayoutScalar> {
+struct Events<'a, Node, S: LayoutScalar> {
     rows: Vec<FlowEvent<'a, Node, S>>,
     backing: EntryBacking,
 }
-enum FlowEvent<'a, Node, S: crate::LayoutScalar> {
+enum FlowEvent<'a, Node, S: LayoutScalar> {
     Text(&'a RunBinding<Node, S>, &'a FormattedTailEndpoint),
     Numeric,
     RunEnd(&'a RunBinding<Node, S>),
 }
-impl<Node, S: crate::LayoutScalar> FlowEvent<'_, Node, S> {
+impl<Node, S: LayoutScalar> FlowEvent<'_, Node, S> {
     fn is_line(&self) -> bool {
         !matches!(self, Self::RunEnd(_))
     }

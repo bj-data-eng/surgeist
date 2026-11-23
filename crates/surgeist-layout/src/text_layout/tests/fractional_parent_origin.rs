@@ -114,7 +114,7 @@ fn fractional_origin_premises<S: LayoutScalar>(
     let source = batch
         .unrounded_inline_fragments()
         .iter()
-        .find(|row| *row.owner() == crate::InlineFragmentOwner::Node(1))
+        .find(|row| *row.owner() == crate::output::InlineFragmentOwner::Node(1))
         .unwrap()
         .fragment();
     let issued = source.finalized_fragment();

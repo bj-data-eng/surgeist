@@ -19,8 +19,12 @@ use surgeist_text::{
 };
 
 use crate::{
-    LayoutInputOf, LayoutScalar, TextAtomicBinding, TextControlBinding, TextOriginBinding,
-    TextParagraphBinding, TextParticipation,
+    node_input::LayoutInputOf,
+    scalar::LayoutScalar,
+    text_layout::{
+        TextAtomicBinding, TextControlBinding, TextOriginBinding, TextParagraphBinding,
+        TextParticipation,
+    },
 };
 
 const AHEM: &[u8] = include_bytes!("../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -433,7 +437,7 @@ impl PreparedParagraph {
     pub(crate) fn flat_text_tree<S: LayoutScalar>(
         &self,
         container: u32,
-        container_input: crate::NodeInputOf<S>,
+        container_input: crate::node_input::NodeInputOf<S>,
     ) -> super::layout_tree::PublicLayoutTreeOf<S> {
         assert!(
             self.atomics.is_empty() && self.controls.is_empty(),
@@ -470,7 +474,7 @@ impl PreparedParagraph {
 
     pub(crate) fn binding(&self, container: u32) -> TextParagraphBinding<u32> {
         TextParagraphBinding {
-            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+            inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: self.prepared.clone(),
             container,
             nodes: self.nodes.clone(),

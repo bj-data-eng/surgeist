@@ -1,6 +1,10 @@
 //! Resource observations come from real Text transactions and exact root unions.
 use super::*;
 use crate::text_layout::{InlineBoxFragmentationDemand, TextParagraphBinding};
+use crate::{
+    geometry::Size,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation},
+};
 use surgeist_text as text;
 
 const LIMITS: ScopeAlignmentLimits = ScopeAlignmentLimits::new(1_000_000, 100, 1_000_000, 16 << 20);
@@ -551,31 +555,31 @@ fn entry_backing_adopts_funded_rows_and_rejects_unrepresented_storage() {
     }
 }
 
-fn formatted_input() -> crate::ComputeInputOf<f64> {
-    crate::ComputeInputOf::leaf_layout(
-        crate::Size::NONE,
-        crate::Size::NONE,
-        crate::ContainingLayoutContext::new(
-            crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
-            crate::ParentFormattingContext::BlockFlow,
-        ),
-        crate::SizingRequestOf::new(
-            crate::Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(40.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
-                ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
-                ),
+fn formatted_input() -> crate::output::ComputeInputOf<f64> {
+    crate::output::ComputeInputOf::leaf_layout(
+        Size::NONE,
+        Size::NONE,
+        crate::output::ContainingLayoutContext::new(
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            crate::output::ParentFormattingContext::BlockFlow,
+        ),
+        crate::value::SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(40.0).unwrap(),
+                    ),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            ),
+            crate::value::OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::value::NearestScrollportOf::Unknown,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
             ),
         ),
     )
@@ -605,9 +609,9 @@ fn funded_formatted_fork_growth_replacement_and_shared_basis_keep_custody() {
         frame: None,
     };
     let segment = prepared.source_segments().next().unwrap();
-    let mode = crate::AxisSizingRequestOf::new(
-        crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
-        crate::SizingOperation::Normal,
+    let mode = AxisSizingRequestOf::new(
+        AvailableSpaceOf::Definite(crate::value::NonNegativeFiniteOf::new(40.0).unwrap()),
+        SizingOperation::Normal,
     );
     let mut original = FormattedState::new_entry(None, Arc::from([]), None).unwrap();
     original.push_scope(scope.clone()).unwrap();
@@ -754,7 +758,7 @@ fn funded_margin_fork_grows_and_replaces_without_refunding_history() {
     assert_eq!(resources.census(), live);
     assert!(resources.active_owner().unwrap().state.lock().materialized > records);
     assert!(
-        fork.reported(1, crate::PhysicalSide::Top)
+        fork.reported(1, crate::geometry::PhysicalSide::Top)
             .unwrap()
             .is_empty()
     );

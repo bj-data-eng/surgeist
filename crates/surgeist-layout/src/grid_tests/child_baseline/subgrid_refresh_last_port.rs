@@ -160,8 +160,8 @@ fn query<S: LayoutScalar>() -> ComputeInputOf<S> {
             )),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     )
@@ -173,7 +173,7 @@ fn assert_case<S: LayoutScalar>(first: f64, final_leaf: FinalLeaf) {
     // response for P. This qualifies production Grid's cross-axis port export.
     // It is not claimed to observe the later inherited-context invocation.
     let mut control = tree::<S>(false, first, final_leaf);
-    let p = crate::compute_grid(&mut control.borrow_compute(), 1, query()).unwrap();
+    let p = crate::grid::compute_grid(&mut control.borrow_compute(), 1, query()).unwrap();
     assert_eq!(p.size, Size::new(value::<S>(20.0), value::<S>(20.0)));
     assert_eq!(
         p.baselines().first,

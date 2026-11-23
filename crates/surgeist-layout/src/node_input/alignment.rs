@@ -1,4 +1,4 @@
-use super::super::LayoutScalar;
+use crate::scalar::LayoutScalar;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ItemAlignmentPosition {
@@ -151,8 +151,8 @@ impl ItemOrder {
 }
 
 pub(crate) fn item_order_permutation(
-    items: &[(ItemOrder, crate::SourceIndex)],
-) -> Vec<crate::SourceIndex> {
+    items: &[(ItemOrder, crate::output::SourceIndex)],
+) -> Vec<crate::output::SourceIndex> {
     let mut ordered = items.to_vec();
     ordered.sort_by_key(|&(item_order, source_index)| (item_order, source_index));
     ordered

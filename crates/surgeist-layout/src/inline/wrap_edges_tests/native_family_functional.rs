@@ -1,6 +1,9 @@
 //! Native normal-box identity is independent of physical line wrapping.
 use super::*;
-use crate::NativeInlineBoxFamilyInput;
+use crate::{
+    inline_wrapping::{NativeInlineBoxFamilyInput, NativeInlineBoxPieceView},
+    tree::LayoutTree,
+};
 
 #[path = "native_family_functional/cache_completion.rs"]
 mod cache_completion;
@@ -68,7 +71,7 @@ fn prepared_fixture<S: LayoutScalar>(levels: [u8; 6], soft_breaks: bool) -> Fixt
     let mut f = bidi_metadata::split_box_fixture::<S>();
     // The formatter must respond to each request's available width. Its actual
     // generated child inventory and the NativePair proof remain unchanged.
-    let mut root = crate::LayoutTree::node_input(&f.tree, 0).clone();
+    let mut root = LayoutTree::node_input(&f.tree, 0).clone();
     root.size.width = PreferredSizeOf::AUTO;
     f.tree.insert_input(0, LayoutInputOf::box_input(root));
     for (index, level) in levels.into_iter().enumerate() {
@@ -79,7 +82,7 @@ fn prepared_fixture<S: LayoutScalar>(levels: [u8; 6], soft_breaks: bool) -> Fixt
             InlineBreakOpportunity::Prohibited
         };
         let actual = AtomicInlineParticipation::new(BidiLevel::try_new(level).unwrap(), following);
-        let mut input = crate::LayoutTree::node_input(&f.tree, node).clone();
+        let mut input = LayoutTree::node_input(&f.tree, node).clone();
         input.atomic_inline_participation = Some(actual);
         f.tree.insert_input(node, LayoutInputOf::box_input(input));
         let stored = f
@@ -136,11 +139,11 @@ fn contribution_edges<S: LayoutScalar>(f: &mut Fixture<S>, start: f64, end: f64)
             InlineFlowOf::new(
                 boundary.writing_mode(),
                 boundary.direction(),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(f.width).unwrap(),
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(f.width).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    crate::value::SizingOperation::Normal,
                 ),
             ),
             boundary.metrics(),
@@ -178,7 +181,7 @@ fn boundary_position<S: LayoutScalar>(
 fn box_piece<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     node: u32,
-) -> crate::NativeInlineBoxPieceView<'_, u32, S> {
+) -> NativeInlineBoxPieceView<'_, u32, S> {
     let pieces: Vec<_> = batch
         .native_inline_box_pieces()
         .filter(|piece| {
@@ -193,7 +196,7 @@ fn box_piece<S: LayoutScalar>(
 }
 
 fn member_ids<S: LayoutScalar>(
-    piece: crate::NativeInlineBoxPieceView<'_, u32, S>,
+    piece: NativeInlineBoxPieceView<'_, u32, S>,
 ) -> Vec<(u32, usize, usize)> {
     let mut members: Vec<_> = piece
         .selected_members()
@@ -211,7 +214,7 @@ fn member_ids<S: LayoutScalar>(
 }
 
 fn edges<S: LayoutScalar>(
-    piece: crate::NativeInlineBoxPieceView<'_, u32, S>,
+    piece: NativeInlineBoxPieceView<'_, u32, S>,
 ) -> Vec<(u32, usize, InlineBoundaryKind, f64, f64)> {
     piece
         .executed_edges()
@@ -248,8 +251,8 @@ fn demanded_wraps<S: LayoutScalar>() {
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -317,8 +320,8 @@ fn demanded_wraps<S: LayoutScalar>() {
         &flow,
         0,
         request(n(30.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -412,8 +415,8 @@ fn mixed_level_contiguous<S: LayoutScalar>() {
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -467,8 +470,8 @@ fn zero_contribution_aliases<S: LayoutScalar>() {
         &ordinary,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((ordinary).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((ordinary).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -497,8 +500,8 @@ fn zero_contribution_aliases<S: LayoutScalar>() {
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -585,8 +588,8 @@ fn nonzero_contribution_refusal<S: LayoutScalar>() {
         &ordinary,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((ordinary).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((ordinary).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -613,14 +616,19 @@ fn nonzero_contribution_refusal<S: LayoutScalar>() {
         Ok(_) => panic!("a nonzero Contribution cannot be promoted into a normal-box family"),
         Err(error) => error,
     };
-    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(0));
-    assert_eq!(error.operation(), crate::LayoutOperation::InlineWrapping);
+    assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(0));
+    assert_eq!(
+        error.operation(),
+        crate::error::LayoutOperation::InlineWrapping
+    );
     assert!(
         matches!(
             error.kind(),
-            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(
-                WrappingScopeError::IncompatibleContribution
-            ))
+            crate::error::LayoutErrorKindOf::InvalidInput(
+                crate::error::LayoutInvalidInputOf::WrappingScope(
+                    WrappingScopeError::IncompatibleContribution
+                )
+            )
         ),
         "unexpected refusal: {error:?}"
     );
@@ -631,8 +639,8 @@ fn nonzero_contribution_refusal<S: LayoutScalar>() {
         &ordinary,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((ordinary).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((ordinary).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();

@@ -106,28 +106,28 @@ fn final_percentage_uses_actual_shape_height<S: LayoutScalar>() {
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::new(
             Some(
-                crate::NonNegativeFiniteOf::new(S::from_f64(40.0))
+                crate::value::NonNegativeFiniteOf::new(S::from_f64(40.0))
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
             None,
         ),
-        crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Unknown,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Unknown,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
         ),
     )
     .request(Size::new(
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(40.0))
+        crate::value::AxisSizingRequestOf::new(
+            crate::value::AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(S::from_f64(40.0))
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            crate::value::SizingOperation::Normal,
         ),
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::Normal,
+        crate::value::AxisSizingRequestOf::new(
+            crate::value::AvailableSpaceOf::Indefinite,
+            crate::value::SizingOperation::Normal,
         ),
     ));
     for shape in [true, false] {

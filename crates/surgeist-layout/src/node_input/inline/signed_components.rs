@@ -1,4 +1,5 @@
 use super::*;
+use crate::value::{FiniteScalarErrorOf, NonNegativeFiniteScalarErrorOf};
 
 fn components<S: LayoutScalar>() {
     for (margin, border, padding, bp, flow) in [
@@ -91,43 +92,43 @@ fn same_scalar<S: LayoutScalar>(actual: S, expected: S) {
 }
 
 fn constructor_errors<S: LayoutScalar>(max: S, precision_boundary: S) {
-    use InlineBoundaryEdgeErrorOf as E;
+    use crate::node_input::InlineBoundaryEdgeErrorOf as E;
     assert!(max.is_finite());
     for value in [S::NAN, S::INFINITY, -S::INFINITY] {
         match InlineBoundaryEdgeOf::<S>::try_new(value, S::ZERO, S::ZERO).unwrap_err() {
-            E::InvalidMargin(crate::FiniteScalarErrorOf::NonFinite { value: actual }) => {
+            E::InvalidMargin(FiniteScalarErrorOf::NonFinite { value: actual }) => {
                 same_scalar(actual, value)
             }
             other => panic!("{other:?}"),
         }
         match InlineBoundaryEdgeOf::<S>::try_new(S::ZERO, value, S::ZERO).unwrap_err() {
-            E::InvalidBorder(crate::NonNegativeFiniteScalarErrorOf::NonFinite {
-                value: actual,
-            }) => same_scalar(actual, value),
+            E::InvalidBorder(NonNegativeFiniteScalarErrorOf::NonFinite { value: actual }) => {
+                same_scalar(actual, value)
+            }
             other => panic!("{other:?}"),
         }
         match InlineBoundaryEdgeOf::<S>::try_new(S::ZERO, S::ZERO, value).unwrap_err() {
-            E::InvalidPadding(crate::NonNegativeFiniteScalarErrorOf::NonFinite {
-                value: actual,
-            }) => same_scalar(actual, value),
+            E::InvalidPadding(NonNegativeFiniteScalarErrorOf::NonFinite { value: actual }) => {
+                same_scalar(actual, value)
+            }
             other => panic!("{other:?}"),
         }
     }
     assert_eq!(
         InlineBoundaryEdgeOf::<S>::try_new(S::ZERO, -S::ONE, S::ZERO).unwrap_err(),
-        E::InvalidBorder(crate::NonNegativeFiniteScalarErrorOf::Negative { value: -S::ONE })
+        E::InvalidBorder(NonNegativeFiniteScalarErrorOf::Negative { value: -S::ONE })
     );
     assert_eq!(
         InlineBoundaryEdgeOf::<S>::try_new(S::ZERO, S::ZERO, -S::ONE).unwrap_err(),
-        E::InvalidPadding(crate::NonNegativeFiniteScalarErrorOf::Negative { value: -S::ONE })
+        E::InvalidPadding(NonNegativeFiniteScalarErrorOf::Negative { value: -S::ONE })
     );
     assert!(
         matches!(InlineBoundaryEdgeOf::<S>::try_new(S::ZERO, max, max),
-        Err(E::InvalidBorderPaddingAdvance(crate::FiniteScalarErrorOf::NonFinite { value })) if !value.is_finite())
+        Err(E::InvalidBorderPaddingAdvance(FiniteScalarErrorOf::NonFinite { value })) if !value.is_finite())
     );
     assert!(
         matches!(InlineBoundaryEdgeOf::<S>::try_new(max, max, S::ZERO),
-        Err(E::InvalidFlowAdvance(crate::FiniteScalarErrorOf::NonFinite { value })) if !value.is_finite())
+        Err(E::InvalidFlowAdvance(FiniteScalarErrorOf::NonFinite { value })) if !value.is_finite())
     );
     // Losing a NEW margin/strip term in signed flow is distinct from ordinary
     // rounding of the pre-existing BP sum, which remains accepted above.
@@ -153,7 +154,7 @@ fn component_errors_and_new_signed_flow_losses_keep_their_typed_scalar_owner() {
 
 fn contribution_role<S: LayoutScalar>() {
     let metrics = InlineMetricsOf::try_new(
-        crate::InlineBaselineContext::Physical,
+        crate::node_input::InlineBaselineContext::Physical,
         S::from_f64(8.0),
         S::from_f64(10.0),
     )

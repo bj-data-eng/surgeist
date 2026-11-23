@@ -1,4 +1,5 @@
 use super::*;
+use crate::block_fragmentation::NodeLayoutRefOf;
 use crate::test_support::readback::{self, Phase};
 
 fn positioned_static_root<S: LayoutScalar>(
@@ -377,9 +378,9 @@ fn assert_lanes_without_track_templates_keep_absolute_children<S: LayoutScalar>(
             let actual = batch
                 .node_layout(2)
                 .map(|layout| match layout {
-                    crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-                    crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                    crate::NodeLayoutRefOf::Fragments(_) => {
+                    NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                    NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                    NodeLayoutRefOf::Fragments(_) => {
                         panic!("continuous fixture unexpectedly fragmented")
                     }
                 })

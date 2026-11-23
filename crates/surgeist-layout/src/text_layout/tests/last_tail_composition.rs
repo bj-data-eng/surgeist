@@ -151,7 +151,7 @@ fn check<S: LayoutScalar>(
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -164,8 +164,8 @@ fn check<S: LayoutScalar>(
         &capture,
         0,
         request(100.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap_or_else(|error| {
@@ -206,7 +206,7 @@ fn check<S: LayoutScalar>(
             .final_inline_fragments()
             .iter()
             .find(|row| {
-                row.owner() == &crate::InlineFragmentOwner::Node(1)
+                row.owner() == &crate::output::InlineFragmentOwner::Node(1)
                     && row.fragment().line_index() == index
             })
             .unwrap()
@@ -473,7 +473,7 @@ fn check_choice_order<S: LayoutScalar>() {
             &tree,
             0,
             vec![paragraph.binding(0)],
-            crate::WrappingInput {
+            crate::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -486,8 +486,8 @@ fn check_choice_order<S: LayoutScalar>() {
             &capture,
             0,
             request(60.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+                crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();
@@ -521,7 +521,7 @@ fn check_choice_order<S: LayoutScalar>() {
                 .final_inline_fragments()
                 .iter()
                 .find(|row| {
-                    row.owner() == &crate::InlineFragmentOwner::Node(1)
+                    row.owner() == &crate::output::InlineFragmentOwner::Node(1)
                         && row.fragment().line_index() == index
                 })
                 .unwrap()

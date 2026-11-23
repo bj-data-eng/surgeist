@@ -7,14 +7,14 @@ pub(crate) struct ContentTrialId(pub(crate) usize);
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ContentInsetBinding<Node, S: LayoutScalar> {
     pub(crate) owner: Node,
-    pub(crate) role: crate::BlockGeneration,
-    pub(crate) target: crate::LayoutTargetBasis,
+    pub(crate) role: crate::node_input::BlockGeneration,
+    pub(crate) target: crate::block_fragmentation::input::LayoutTargetBasis,
     pub(crate) placement: crate::engine::block_scope::ReceiptId,
     pub(crate) trial: ContentTrialId,
     pub(crate) frame: usize,
-    pub(crate) axes: crate::FlowAxes,
-    pub(crate) start: crate::FragmentationCutOf<S>,
-    pub(crate) end: crate::FragmentationCutOf<S>,
+    pub(crate) axes: crate::geometry::FlowAxes,
+    pub(crate) start: crate::fragmentation::input::FragmentationCutOf<S>,
+    pub(crate) end: crate::fragmentation::input::FragmentationCutOf<S>,
 }
 
 /// Issued from successful Normal content production. Its inline extent grants
@@ -28,7 +28,9 @@ fn invalid_binding<Node, S: LayoutScalar, M>(owner: Node) -> LayoutErrorOf<Node,
     LayoutErrorOf::new(
         LayoutErrorSiteOf::Node(owner),
         LayoutOperation::ValueResolution,
-        LayoutErrorKindOf::BlockFragmentation(crate::BlockFragmentationFailure::InvalidSource),
+        LayoutErrorKindOf::BlockFragmentation(
+            crate::block_fragmentation::BlockFragmentationFailure::InvalidSource,
+        ),
     )
 }
 
@@ -94,7 +96,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> AcceptedContentInsetReceipt<Node, S> {
                         axis,
                     },
                     LayoutOperation::ValueResolution,
-                    LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis),
+                    LayoutErrorKindOf::MissingContext(
+                        crate::error::LayoutMissingContext::RequiredBasis,
+                    ),
                 ));
             }
         }
@@ -108,7 +112,7 @@ mod tests {
     use crate::engine::ComputeSession;
     use crate::test_support::layout_tree::PublicLayoutTreeOf;
 
-    fn input<S: LayoutScalar>(axes: crate::FlowAxes, inline: f64) -> ComputeInputOf<S> {
+    fn input<S: LayoutScalar>(axes: crate::geometry::FlowAxes, inline: f64) -> ComputeInputOf<S> {
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
             SizingMode::InherentSize,
@@ -116,55 +120,63 @@ mod tests {
             axes.physical_size(LogicalSizeOf::new(Some(S::from_f64(inline)), None)),
             axes.physical_size(LogicalSizeOf::new(Some(S::from_f64(inline)), None)),
             ContainingLayoutContext::new(axes, ParentFormattingContext::BlockFlow),
-            crate::SizingRequestOf::new(
-                Size::splat(crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
+            crate::value::SizingRequestOf::new(
+                Size::splat(crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Indefinite,
+                    crate::value::SizingOperation::Normal,
                 )),
-                crate::OrthogonalFallbackOf::new(
+                crate::value::OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    crate::value::NearestScrollportOf::Absent,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         )
     }
 
-    fn binding<S: LayoutScalar>(axes: crate::FlowAxes) -> ContentInsetBinding<u32, S> {
+    fn binding<S: LayoutScalar>(axes: crate::geometry::FlowAxes) -> ContentInsetBinding<u32, S> {
         let request = input::<S>(axes, 80.0);
-        let target = crate::LayoutBoundRequestOf::continuous(
-            crate::LayoutSourceBasis::fresh(),
-            crate::LayoutRootRequestOf::standalone(request.sizing_request(), axes, Size::NONE),
+        let target = crate::block_fragmentation::LayoutBoundRequestOf::continuous(
+            crate::block_fragmentation::input::LayoutSourceBasis::fresh(),
+            crate::output::LayoutRootRequestOf::standalone(
+                request.sizing_request(),
+                axes,
+                Size::NONE,
+            ),
         )
         .target_basis();
         ContentInsetBinding {
             owner: 0,
-            role: crate::BlockGeneration::Principal,
+            role: crate::node_input::BlockGeneration::Principal,
             target,
             placement: crate::engine::block_scope::ReceiptId(3),
             trial: ContentTrialId(7),
             frame: 2,
             axes,
-            start: crate::FragmentationCutOf::Source(crate::FragmentationPosition {
-                occurrence: 0,
-                offset: 0,
-            }),
-            end: crate::FragmentationCutOf::Source(crate::FragmentationPosition {
-                occurrence: 1,
-                offset: 0,
-            }),
+            start: crate::fragmentation::input::FragmentationCutOf::Source(
+                crate::fragmentation::input::FragmentationPosition {
+                    occurrence: 0,
+                    offset: 0,
+                },
+            ),
+            end: crate::fragmentation::input::FragmentationCutOf::Source(
+                crate::fragmentation::input::FragmentationPosition {
+                    occurrence: 1,
+                    offset: 0,
+                },
+            ),
         }
     }
 
     fn tree<S: LayoutScalar>(
-        axes: crate::FlowAxes,
+        axes: crate::geometry::FlowAxes,
         inset: Edges<LengthAutoOf<S>>,
     ) -> PublicLayoutTreeOf<S> {
         PublicLayoutTreeOf::new()
             .style(
                 0,
-                crate::NodeInputOf {
-                    display: crate::Display::Block,
+                crate::node_input::NodeInputOf {
+                    display: crate::node_input::Display::Block,
                     writing_mode: axes.writing_mode(),
                     direction: axes.direction(),
                     ..Default::default()
@@ -172,14 +184,14 @@ mod tests {
             )
             .style(
                 1,
-                crate::NodeInputOf {
-                    display: crate::Display::Block,
+                crate::node_input::NodeInputOf {
+                    display: crate::node_input::Display::Block,
                     writing_mode: axes.writing_mode(),
                     direction: axes.direction(),
                     inset,
                     size: Size::new(
-                        crate::PreferredSizeOf::px(S::from_f64(10.0)),
-                        crate::PreferredSizeOf::px(S::from_f64(10.0)),
+                        crate::sizing::PreferredSizeOf::px(S::from_f64(10.0)),
+                        crate::sizing::PreferredSizeOf::px(S::from_f64(10.0)),
                     ),
                     ..Default::default()
                 },
@@ -203,7 +215,7 @@ mod tests {
             &mut session,
             0,
             input(key.axes, inline),
-            crate::LayoutTree::node_input(tree, 0),
+            crate::tree::LayoutTree::node_input(tree, 0),
         )
         .unwrap();
         let normal = content::produce(
@@ -225,7 +237,10 @@ mod tests {
     }
 
     fn horizontal<S: LayoutScalar>() {
-        let axes = crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr);
+        let axes = crate::geometry::FlowAxes::new(
+            crate::node_input::WritingMode::HorizontalTb,
+            Direction::Ltr,
+        );
         let key = binding::<S>(axes);
         let inset = Edges {
             left: LengthAutoOf::percent(S::from_f64(0.1)),
@@ -270,8 +285,11 @@ mod tests {
         for value in [
             LengthAutoOf::percent(S::from_f64(0.1)),
             LengthAutoOf::value(
-                crate::LengthPercentageOf::from_coefficients(S::from_f64(2.0), S::from_f64(0.1))
-                    .unwrap(),
+                crate::value::LengthPercentageOf::from_coefficients(
+                    S::from_f64(2.0),
+                    S::from_f64(0.1),
+                )
+                .unwrap(),
             ),
         ] {
             let inset = Edges {
@@ -293,7 +311,9 @@ mod tests {
             assert_eq!(error.operation(), LayoutOperation::ValueResolution);
             assert!(matches!(
                 error.kind(),
-                LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis)
+                LayoutErrorKindOf::MissingContext(
+                    crate::error::LayoutMissingContext::RequiredBasis
+                )
             ));
         }
         for (inset, expected) in [
@@ -316,8 +336,11 @@ mod tests {
             (
                 Edges {
                     top: LengthAutoOf::value(
-                        crate::LengthPercentageOf::from_coefficients(S::from_f64(4.0), S::ZERO)
-                            .unwrap(),
+                        crate::value::LengthPercentageOf::from_coefficients(
+                            S::from_f64(4.0),
+                            S::ZERO,
+                        )
+                        .unwrap(),
                     ),
                     ..Edges::all(LengthAutoOf::AUTO)
                 },
@@ -347,18 +370,23 @@ mod tests {
                 ..key.clone()
             },
             ContentInsetBinding {
-                role: crate::BlockGeneration::Anonymous,
+                role: crate::node_input::BlockGeneration::Anonymous,
                 ..key.clone()
             },
             ContentInsetBinding {
-                axes: crate::FlowAxes::new(crate::WritingMode::VerticalRl, Direction::Ltr),
+                axes: crate::geometry::FlowAxes::new(
+                    crate::node_input::WritingMode::VerticalRl,
+                    Direction::Ltr,
+                ),
                 ..key.clone()
             },
             ContentInsetBinding {
-                end: crate::FragmentationCutOf::Source(crate::FragmentationPosition {
-                    occurrence: 2,
-                    offset: 0,
-                }),
+                end: crate::fragmentation::input::FragmentationCutOf::Source(
+                    crate::fragmentation::input::FragmentationPosition {
+                        occurrence: 2,
+                        offset: 0,
+                    },
+                ),
                 ..key.clone()
             },
         ] {
@@ -367,7 +395,7 @@ mod tests {
             assert!(matches!(
                 error.kind(),
                 LayoutErrorKindOf::BlockFragmentation(
-                    crate::BlockFragmentationFailure::InvalidSource
+                    crate::block_fragmentation::BlockFragmentationFailure::InvalidSource
                 )
             ));
             assert!(
@@ -398,10 +426,10 @@ mod tests {
 
     fn vertical<S: LayoutScalar>() {
         for mode in [
-            crate::WritingMode::VerticalRl,
-            crate::WritingMode::VerticalLr,
+            crate::node_input::WritingMode::VerticalRl,
+            crate::node_input::WritingMode::VerticalLr,
         ] {
-            let axes = crate::FlowAxes::new(mode, Direction::Ltr);
+            let axes = crate::geometry::FlowAxes::new(mode, Direction::Ltr);
             let key = binding::<S>(axes);
             let inset = Edges {
                 top: LengthAutoOf::percent(S::from_f64(0.1)),
@@ -435,12 +463,15 @@ mod tests {
     }
 
     fn ordinary_nested<S: LayoutScalar>() {
-        let axes = crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr);
-        let box_style = |height, percentage| crate::NodeInputOf {
-            display: crate::Display::Block,
+        let axes = crate::geometry::FlowAxes::new(
+            crate::node_input::WritingMode::HorizontalTb,
+            Direction::Ltr,
+        );
+        let box_style = |height, percentage| crate::node_input::NodeInputOf {
+            display: crate::node_input::Display::Block,
             size: Size::new(
-                crate::PreferredSizeOf::px(S::from_f64(20.0)),
-                crate::PreferredSizeOf::px(S::from_f64(height)),
+                crate::sizing::PreferredSizeOf::px(S::from_f64(20.0)),
+                crate::sizing::PreferredSizeOf::px(S::from_f64(height)),
             ),
             inset: Edges {
                 top: if percentage {
@@ -473,7 +504,10 @@ mod tests {
     }
 
     fn production_owned_basis<S: LayoutScalar>() {
-        let axes = crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr);
+        let axes = crate::geometry::FlowAxes::new(
+            crate::node_input::WritingMode::HorizontalTb,
+            Direction::Ltr,
+        );
         let key = binding::<S>(axes);
         let inset = Edges {
             left: LengthAutoOf::percent(S::from_f64(0.1)),

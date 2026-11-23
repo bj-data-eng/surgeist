@@ -1,14 +1,17 @@
 //! Accepted natural line groups and their immutable alignment-frame replay.
-use crate::{AxisSizingRequestOf, ComputeInputOf, LayoutScalar, TextGroupAlign};
+use crate::{
+    error::LayoutTextNumericError, node_input::TextGroupAlign, output::ComputeInputOf,
+    scalar::LayoutScalar, value::AxisSizingRequestOf,
+};
 use surgeist_text::{allocation::LineAlignmentInsets, selection::LineBoxDirection};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct NumericError {
     bits: u64,
-    reason: crate::LayoutTextNumericError,
+    reason: LayoutTextNumericError,
 }
 impl NumericError {
-    pub(crate) fn new(value: f64, reason: crate::LayoutTextNumericError) -> Self {
+    pub(crate) fn new(value: f64, reason: LayoutTextNumericError) -> Self {
         Self {
             bits: value.to_bits(),
             reason,
@@ -17,17 +20,17 @@ impl NumericError {
     pub(crate) fn value(self) -> f64 {
         f64::from_bits(self.bits)
     }
-    pub(crate) fn reason(self) -> crate::LayoutTextNumericError {
+    pub(crate) fn reason(self) -> LayoutTextNumericError {
         self.reason
     }
     pub(crate) fn layout<Node, S: LayoutScalar, M>(
         self,
         node: Node,
-    ) -> crate::LayoutErrorOf<Node, S, M> {
-        crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(node),
-            crate::LayoutOperation::TextPlacement,
-            crate::LayoutErrorKindOf::TextNumeric {
+    ) -> crate::error::LayoutErrorOf<Node, S, M> {
+        crate::error::LayoutErrorOf::new(
+            crate::error::LayoutErrorSiteOf::Node(node),
+            crate::error::LayoutOperation::TextPlacement,
+            crate::error::LayoutErrorKindOf::TextNumeric {
                 value: self.value(),
                 reason: self.reason,
             },
@@ -38,24 +41,18 @@ fn finite(value: f64) -> Result<f64, NumericError> {
     if value.is_finite() {
         Ok(value)
     } else {
-        Err(NumericError::new(
-            value,
-            crate::LayoutTextNumericError::NonFinite,
-        ))
+        Err(NumericError::new(value, LayoutTextNumericError::NonFinite))
     }
 }
 pub(crate) fn scalar<S: LayoutScalar>(value: f64) -> Result<S, NumericError> {
     finite(value)?;
     let result = S::from_f64(value);
     if !result.is_finite() {
-        Err(NumericError::new(
-            value,
-            crate::LayoutTextNumericError::OutOfRange,
-        ))
+        Err(NumericError::new(value, LayoutTextNumericError::OutOfRange))
     } else if value != 0.0 && result == S::ZERO {
         Err(NumericError::new(
             value,
-            crate::LayoutTextNumericError::NonZeroLost,
+            LayoutTextNumericError::NonZeroLost,
         ))
     } else {
         Ok(result)
@@ -114,7 +111,7 @@ impl Snapshot {
                     if padding != 0.0 && half == 0.0 {
                         return Err(NumericError::new(
                             padding,
-                            crate::LayoutTextNumericError::NonZeroLost,
+                            LayoutTextNumericError::NonZeroLost,
                         ));
                     }
                     scalar::<S>(half)?;
@@ -128,7 +125,7 @@ impl Snapshot {
         }
         // Each consumed side is already finite and nonnegative.
         LineAlignmentInsets::try_new(left, right)
-            .map_err(|_| NumericError::new(left + right, crate::LayoutTextNumericError::NonFinite))
+            .map_err(|_| NumericError::new(left + right, LayoutTextNumericError::NonFinite))
     }
 }
 
@@ -137,7 +134,7 @@ use crate::block::float_context::shares_parent_context;
 /// Host caches own sizing, not accepted group-member receipts. Only actual
 /// same-BFC line-owning blocks need suppression; atomic/independent interiors
 /// retain their ordinary sizing cache. Their own declarations are separate seeds.
-pub(crate) fn dependencies<Tree: crate::LayoutTree>(
+pub(crate) fn dependencies<Tree: crate::tree::LayoutTree>(
     tree: &Tree,
     graph: &crate::engine::validation::ValidationGraph<Tree::Node>,
 ) -> Option<Vec<Tree::Node>> {
@@ -148,7 +145,7 @@ pub(crate) fn dependencies<Tree: crate::LayoutTree>(
         .filter_map(|(index, &node)| {
             let style = tree.node_input(node);
             (style.text_group_align != TextGroupAlign::None
-                && style.display.inner_display() == crate::Display::Block)
+                && style.display.inner_display() == crate::node_input::Display::Block)
                 .then_some(index)
         })
         .collect::<Vec<_>>();
@@ -163,10 +160,10 @@ pub(crate) fn dependencies<Tree: crate::LayoutTree>(
         }
         included[index] = true;
         let style = tree.node_input(node);
-        let axes = crate::FlowAxes::new(style.writing_mode, style.direction);
+        let axes = crate::geometry::FlowAxes::new(style.writing_mode, style.direction);
         pending.extend(graph.children[index].iter().copied().filter(|&child| {
-            matches!(tree.layout_input(graph.nodes[child]),crate::LayoutInputViewOf::Box(style)
-                if shares_parent_context(style,axes,crate::ParentFormattingContext::BlockFlow))
+            matches!(tree.layout_input(graph.nodes[child]),crate::node_input::LayoutInputViewOf::Box(style)
+                if shares_parent_context(style,axes,crate::output::ParentFormattingContext::BlockFlow))
         }));
     }
     Some(
@@ -335,7 +332,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
         &mut self,
         node: Node,
         input: ComputeInputOf<S>,
-        style: &crate::NodeInputOf<S>,
+        style: &crate::node_input::NodeInputOf<S>,
     ) {
         let independent = self.active.is_empty()
             || !shares_parent_context(
@@ -564,7 +561,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
                 let left = add::<S>(insets[index].line_left(), addition.line_left())?;
                 let right = add::<S>(insets[index].line_right(), addition.line_right())?;
                 insets[index] = LineAlignmentInsets::try_new(left, right).map_err(|_| {
-                    NumericError::new(left + right, crate::LayoutTextNumericError::NonFinite)
+                    NumericError::new(left + right, LayoutTextNumericError::NonFinite)
                 })?;
             }
             plan[slot.namespace][slot.local] = Some(Assignment {
@@ -625,7 +622,10 @@ mod tests {
                     .insets::<f32>(LineBoxDirection::LeftToRight)
                     .unwrap_err()
             };
-            assert_eq!(error.reason(), crate::LayoutTextNumericError::NonZeroLost);
+            assert_eq!(
+                error.reason(),
+                crate::error::LayoutTextNumericError::NonZeroLost
+            );
         }
     }
     #[test]
@@ -633,7 +633,10 @@ mod tests {
         let maximum = f32::MAX as f64;
         let error =
             canonical_capacity::<f32>(maximum, LineAlignmentInsets::ZERO, -maximum).unwrap_err();
-        assert_eq!(error.reason(), crate::LayoutTextNumericError::OutOfRange);
+        assert_eq!(
+            error.reason(),
+            crate::error::LayoutTextNumericError::OutOfRange
+        );
         let insets = LineAlignmentInsets::try_new(40.0, 10.0).unwrap();
         assert_eq!(
             canonical_capacity::<f64>(20.0, insets, -50.0).unwrap(),
@@ -644,7 +647,10 @@ mod tests {
     fn active_frames_refuse_an_absorbed_side_or_nested_contribution() {
         let insets = LineAlignmentInsets::try_new(1.0, 0.0).unwrap();
         let error = canonical_capacity::<f64>(1e20, insets, 0.0).unwrap_err();
-        assert_eq!(error.reason(), crate::LayoutTextNumericError::NonZeroLost);
+        assert_eq!(
+            error.reason(),
+            crate::error::LayoutTextNumericError::NonZeroLost
+        );
         let snapshot = Snapshot {
             owners: vec![(TextGroupAlign::Right, 1e20), (TextGroupAlign::Right, 1.0)],
         };
@@ -653,12 +659,12 @@ mod tests {
                 .insets::<f64>(LineBoxDirection::LeftToRight)
                 .unwrap_err()
                 .reason(),
-            crate::LayoutTextNumericError::NonZeroLost
+            crate::error::LayoutTextNumericError::NonZeroLost
         );
         assert_eq!(add::<f64>(16.0, -16.0).unwrap(), 0.0);
         assert_eq!(
             scalar::<f32>(f64::MAX).unwrap_err().reason(),
-            crate::LayoutTextNumericError::OutOfRange
+            crate::error::LayoutTextNumericError::OutOfRange
         );
     }
 }

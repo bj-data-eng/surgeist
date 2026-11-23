@@ -8,7 +8,14 @@ use crate::output::{
 };
 use crate::scalar::round_layout_coordinate;
 use crate::scroll::rounding::rebuild_rounded_canonical_scroll_geometry;
-use crate::{LayoutScalar, Point, Traverse};
+use crate::{
+    block_fragmentation::OverflowFragmentGeometryOf,
+    error::LayoutInvalidInputOf,
+    geometry::Point,
+    output::{BaselineFactOf, NamedBaselinesOf},
+    scalar::LayoutScalar,
+    tree::Traverse,
+};
 use surgeist_text::font::FontBaseline;
 
 pub(crate) fn round_layout<Tree, M>(
@@ -56,9 +63,9 @@ impl<S: LayoutScalar> FragmentAnchor<S> {
     }
     pub(crate) fn overflow(
         self,
-        geometry: crate::OverflowFragmentGeometryOf<S>,
+        geometry: OverflowFragmentGeometryOf<S>,
         normal: Point<S>,
-    ) -> Result<(crate::OverflowFragmentGeometryOf<S>, Self), crate::ScrollRectErrorOf<S>> {
+    ) -> Result<(OverflowFragmentGeometryOf<S>, Self), crate::scroll::ScrollRectErrorOf<S>> {
         let raw = geometry.origin;
         let cumulative = Point::new(self.0.visual.x + raw.x, self.0.visual.y + raw.y);
         let origin = Point::new(
@@ -76,7 +83,7 @@ impl<S: LayoutScalar> FragmentAnchor<S> {
             fragment_coordinates: true,
         });
         Ok((
-            crate::OverflowFragmentGeometryOf {
+            OverflowFragmentGeometryOf {
                 origin,
                 content_bounds,
             },
@@ -354,14 +361,14 @@ where
 fn round_normal_geometry<S: LayoutScalar>(
     measured: NormalGeometryOf<S>,
     origin: Point<S>,
-) -> Result<NormalGeometryOf<S>, crate::ScrollRectErrorOf<S>> {
+) -> Result<NormalGeometryOf<S>, crate::scroll::ScrollRectErrorOf<S>> {
     let extent = |base, size| round_layout_coordinate(base + size) - round_layout_coordinate(base);
     Ok(NormalGeometryOf {
         location: Point::new(
             round_layout_coordinate(measured.location.x),
             round_layout_coordinate(measured.location.y),
         ),
-        size: crate::Size::new(
+        size: crate::geometry::Size::new(
             extent(origin.x, measured.size.width),
             extent(origin.y, measured.size.height),
         ),
@@ -371,12 +378,12 @@ fn round_normal_geometry<S: LayoutScalar>(
                 let size = content.size();
                 let x = origin.x + local.x;
                 let y = origin.y + local.y;
-                NormalContentOf::Box(crate::ScrollRectOf::try_new(
+                NormalContentOf::Box(crate::scroll::ScrollRectOf::try_new(
                     Point::new(
                         round_layout_coordinate(x) - round_layout_coordinate(origin.x),
                         round_layout_coordinate(y) - round_layout_coordinate(origin.y),
                     ),
-                    crate::Size::new(extent(x, size.width), extent(y, size.height)),
+                    crate::geometry::Size::new(extent(x, size.width), extent(y, size.height)),
                 )?)
             }
             NormalContentOf::Metadata => NormalContentOf::Metadata,
@@ -433,20 +440,20 @@ impl NamedRoundingContext {
 }
 
 fn finalize_named_baselines<S: LayoutScalar, M>(
-    facts: crate::NamedBaselinesOf<S>,
+    facts: NamedBaselinesOf<S>,
     context: NamedRoundingContext,
-) -> Result<crate::NamedBaselinesOf<S>, LayoutErrorKindOf<S, M>> {
-    let finalize = |fact: crate::BaselineFactOf<S>| {
-        let crate::BaselineFactOf::Available(coordinate) = fact else {
+) -> Result<NamedBaselinesOf<S>, LayoutErrorKindOf<S, M>> {
+    let finalize = |fact: BaselineFactOf<S>| {
+        let BaselineFactOf::Available(coordinate) = fact else {
             return Ok(fact);
         };
         let (phase, published_phase, shift) = match coordinate.axis() {
-            crate::PhysicalAxis::Horizontal => (
+            crate::geometry::PhysicalAxis::Horizontal => (
                 context.raw_phase.x,
                 context.published_phase.x,
                 context.integer_shift.x,
             ),
-            crate::PhysicalAxis::Vertical => (
+            crate::geometry::PhysicalAxis::Vertical => (
                 context.raw_phase.y,
                 context.published_phase.y,
                 context.integer_shift.y,
@@ -458,7 +465,7 @@ fn finalize_named_baselines<S: LayoutScalar, M>(
         let value = whole + correction;
         if !value.is_finite() {
             return Err(LayoutErrorKindOf::InvalidInput(
-                crate::LayoutInvalidInputOf::InvalidNumeric {
+                LayoutInvalidInputOf::InvalidNumeric {
                     value: S::from_f64(value),
                 },
             ));
@@ -469,25 +476,23 @@ fn finalize_named_baselines<S: LayoutScalar, M>(
             || correction != 0.0 && (value == whole || converted.to_f64() == whole)
         {
             return Err(LayoutErrorKindOf::InvalidInput(
-                crate::LayoutInvalidInputOf::InlineBaseline(
-                    crate::InlineBaselineError::UnrepresentableCoordinate,
+                LayoutInvalidInputOf::InlineBaseline(
+                    crate::node_input::InlineBaselineError::UnrepresentableCoordinate,
                 ),
             ));
         }
-        crate::BaselineCoordinateOf::try_new(coordinate.axis(), converted)
-            .map(crate::BaselineFactOf::Available)
-            .map_err(|crate::FiniteScalarErrorOf::NonFinite { value }| {
-                LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::InvalidNumeric {
-                    value,
-                })
+        crate::output::BaselineCoordinateOf::try_new(coordinate.axis(), converted)
+            .map(BaselineFactOf::Available)
+            .map_err(|crate::value::FiniteScalarErrorOf::NonFinite { value }| {
+                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value })
             })
     };
-    let mut result = crate::NamedBaselinesOf::unknown();
+    let mut result = NamedBaselinesOf::unknown();
     for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         let pair = facts.get(name);
         result = result.with(
             name,
-            crate::BaselinePairOf::new(finalize(pair.first())?, finalize(pair.last())?),
+            crate::output::BaselinePairOf::new(finalize(pair.first())?, finalize(pair.last())?),
         );
     }
     Ok(result)
@@ -499,7 +504,7 @@ mod tests {
 
     fn assert_deep_rounding<S: LayoutScalar>(fragment: bool) {
         use crate::test_support::layout_tree::OracleTreeOf;
-        use crate::{NodeOutputOf, Size};
+        use crate::{geometry::Size, output::NodeOutputOf};
 
         const NODES: u32 = 1025;
         let mut tree = OracleTreeOf::<S>::new();
@@ -623,14 +628,14 @@ mod tests {
             number::<f32>(f64::MAX),
             Err(FitError::Numeric(
                 _,
-                crate::LayoutTextNumericError::OutOfRange
+                crate::error::LayoutTextNumericError::OutOfRange
             ))
         ));
         assert!(matches!(
             number::<f32>(f64::from_bits(1)),
             Err(FitError::Numeric(
                 _,
-                crate::LayoutTextNumericError::NonZeroLost
+                crate::error::LayoutTextNumericError::NonZeroLost
             ))
         ));
         assert_eq!(

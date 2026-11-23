@@ -1,4 +1,5 @@
 use super::*;
+use crate::fragmentation::page::PageProgression;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 
 fn principal_and_content<S: LayoutScalar>() {
@@ -55,7 +56,7 @@ fn principal_and_content<S: LayoutScalar>() {
         LayoutSourceBasis::fresh(),
         request,
         FragmentationKind::Page {
-            progression: crate::PageProgression::LeftToRight,
+            progression: PageProgression::LeftToRight,
         },
         axes,
         frames.to_vec(),
@@ -78,7 +79,7 @@ fn principal_and_content<S: LayoutScalar>() {
         frames: &frames,
         axes,
         kind: FragmentationKind::Page {
-            progression: crate::PageProgression::LeftToRight,
+            progression: PageProgression::LeftToRight,
         },
         target: bound.target_basis(),
         template: request,
@@ -212,7 +213,7 @@ fn cross_progression<S: LayoutScalar>(forced: bool) {
             LayoutSourceBasis::fresh(),
             request,
             FragmentationKind::Page {
-                progression: crate::PageProgression::LeftToRight,
+                progression: PageProgression::LeftToRight,
             },
             axes,
             frames.to_vec(),
@@ -235,7 +236,7 @@ fn cross_progression<S: LayoutScalar>(forced: bool) {
             frames: &frames,
             axes,
             kind: FragmentationKind::Page {
-                progression: crate::PageProgression::LeftToRight,
+                progression: PageProgression::LeftToRight,
             },
             target: bound.target_basis(),
             template: request,

@@ -3,6 +3,10 @@
 //! The numeric-only child6/4 example is deliberately not claimed for this font.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    block_fragmentation::{NodeLayoutRefOf, input::LayoutPublicationTargets},
+    value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation},
+};
 use std::cell::RefCell;
 use surgeist_text as text;
 use surgeist_text::font::FontBaseline;
@@ -82,7 +86,7 @@ impl Native {
             })
             .collect();
         TextParagraphBinding {
-            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+            inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: self.prepared.clone(),
             container,
             nodes,
@@ -258,40 +262,34 @@ fn solve<Tree: LayoutTree<Node = u32>>(
         tree,
         0,
         bindings,
-        crate::WrappingInput::default(),
+        crate::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )?;
     let available = if vertical(mode) {
         Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(n(100.0)).unwrap(),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(n(100.0)).unwrap(),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         )
     } else {
         Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(n(100.0)).unwrap(),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(n(100.0)).unwrap(),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         )
     };
     compute_layout_with_flow(&flow, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = available;
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
@@ -299,21 +297,21 @@ fn solve<Tree: LayoutTree<Node = u32>>(
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         logical_requests.inline = logical_requests
             .inline
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -785,15 +783,15 @@ impl<S: LayoutScalar> LayoutTree for ShapeTree<S> {
     }
 }
 struct Publication<S: LayoutScalar> {
-    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
+    pub(super) publication_targets: LayoutPublicationTargets<u32>,
     batch: Option<CompletedLayoutBatchOf<u32, S>>,
     reject: bool,
 }
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Publication<S> {
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
 
@@ -801,7 +799,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Publication<S> {
     type Prepared = CompletedLayoutBatchOf<u32, S>;
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
+        preparation: crate::block_fragmentation::publication::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
         let batch = preparation.batch();
         if self.reject {
@@ -812,7 +810,12 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Publication<S> {
     }
     fn commit_layout_batch(
         &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+        commit: crate::block_fragmentation::publication::LayoutBatchCommit<
+            '_,
+            u32,
+            S,
+            Self::Prepared,
+        >,
     ) {
         let prepared = commit.into_prepared();
         self.batch = Some(prepared);
@@ -907,7 +910,7 @@ fn float_and_publication<S: LayoutScalar>() {
     raw(placed(&shifted, 2), 10.0, 10.0);
     custody(placed(&shifted, 2), &inner.original);
     let mut sink = Publication {
-        publication_targets: crate::LayoutPublicationTargets::new(),
+        publication_targets: LayoutPublicationTargets::new(),
         batch: None,
         reject: false,
     };
@@ -916,9 +919,11 @@ fn float_and_publication<S: LayoutScalar>() {
     sink.reject = true;
     assert_eq!(
         shifted.apply_to(&mut sink),
-        Err(crate::LayoutBatchApplyError::Preparation(
-            "reject baseline-offset packet"
-        ))
+        Err(
+            crate::block_fragmentation::publication::LayoutBatchApplyError::Preparation(
+                "reject baseline-offset packet"
+            )
+        )
     );
     assert_eq!(
         sink.batch
@@ -926,9 +931,9 @@ fn float_and_publication<S: LayoutScalar>() {
             .unwrap()
             .node_layouts()
             .map(|(_, layout)| match layout {
-                crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
-                crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
-                crate::NodeLayoutRefOf::Fragments(_) =>
+                NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                NodeLayoutRefOf::Fragments(_) =>
                     panic!("continuous fixture unexpectedly fragmented"),
             })
             .collect::<Vec<_>>()
@@ -951,9 +956,9 @@ fn float_and_publication<S: LayoutScalar>() {
             .unwrap()
             .node_layouts()
             .map(|(_, layout)| match layout {
-                crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
-                crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
-                crate::NodeLayoutRefOf::Fragments(_) =>
+                NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                NodeLayoutRefOf::Fragments(_) =>
                     panic!("continuous fixture unexpectedly fragmented"),
             })
             .collect::<Vec<_>>()
@@ -1041,7 +1046,7 @@ fn counterclockwise<S: LayoutScalar>() {
     )
     .unwrap();
     let mut sink = Publication {
-        publication_targets: crate::LayoutPublicationTargets::new(),
+        publication_targets: LayoutPublicationTargets::new(),
         batch: None,
         reject: false,
     };
@@ -1230,7 +1235,7 @@ fn precision_success<S: LayoutScalar>(control: bool, spacer: f64, translated_par
                 2,
                 Phase::Final,
                 if control {
-                    readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                    readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::LineBreak)
                 } else {
                     readback::Kind::SingleBox
                 }
@@ -1294,7 +1299,7 @@ fn precision_refusal_preserves_publication(control: bool) {
     let zero = solve(&zero_tree, WritingMode::HorizontalTb, vec![binding.clone()]).unwrap();
     same_geometry(&zero, &accepted);
     let mut sink = Publication {
-        publication_targets: crate::LayoutPublicationTargets::new(),
+        publication_targets: LayoutPublicationTargets::new(),
         batch: None,
         reject: false,
     };
@@ -1368,7 +1373,7 @@ fn precision_fractional<S: LayoutScalar>(control: bool) {
             2,
             Phase::Final,
             if control {
-                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::LineBreak)
             } else {
                 readback::Kind::SingleBox
             }

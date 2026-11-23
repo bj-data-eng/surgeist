@@ -12,7 +12,7 @@ pub(super) struct InFlowBoxComputation<'a, 'input, Node, S: LayoutScalar> {
     pub(super) baselines: &'a baseline_frame::PendingBaselines,
     pub(super) float_exclusions: &'a FloatExclusions<S, Node>,
     pub(super) input: ComputeInputOf<S>,
-    pub(super) pass_request: crate::SizingRequestOf<S>,
+    pub(super) pass_request: crate::value::SizingRequestOf<S>,
     pub(super) child_run_mode: RunMode,
     pub(super) normal_operation: bool,
     pub(super) physical_float_context: bool,
@@ -225,7 +225,7 @@ where
         .inline
         .space()
         .definite_size()
-        .map(crate::NonNegativeFiniteOf::get));
+        .map(crate::value::NonNegativeFiniteOf::get));
     Ok((
         child_request,
         InFlowBoxPreparation {
@@ -310,9 +310,9 @@ fn finish_in_flow_box<Node, S: LayoutScalar>(
 
 fn block_child_avoids_float_exclusions<S: LayoutScalar>(
     style: &BlockChildProjection<'_, S>,
-    parent_writing_mode: crate::WritingMode,
+    parent_writing_mode: crate::node_input::WritingMode,
 ) -> bool {
-    style.display != crate::Display::None
+    style.display != crate::node_input::Display::None
         && !style.display.is_inline_level()
         && style.common.position != Position::Absolute
         && style.float.is_none()
@@ -340,7 +340,7 @@ fn set_parent_inline_space<S: LayoutScalar>(
     requests: &mut Size<AxisSizingRequestOf<S>>,
     parent_flow_axes: crate::geometry::FlowAxes,
     value: S,
-) -> Result<(), crate::LengthResolutionStatus<S>> {
+) -> Result<(), crate::value::LengthResolutionStatus<S>> {
     let space = crate::layout_math::checked_available_space(value)?;
     let request = match parent_flow_axes.inline_axis() {
         PhysicalAxis::Horizontal => &mut requests.width,
@@ -472,7 +472,7 @@ impl<S: LayoutScalar> FloatAvoidance<S> {
             child_padding + child_border,
             child_flow_axes,
             child_logical_node_inner_size,
-            (child_logical_available.inline.operation() == crate::SizingOperation::Normal)
+            (child_logical_available.inline.operation() == crate::value::SizingOperation::Normal)
                 .then_some(band_available_child_inline)
                 .flatten(),
         )?;

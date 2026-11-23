@@ -1,7 +1,7 @@
 //! Pretty's fixed-reference body score over natural formatted lines.
 
 use super::quality::NaturalLine;
-use crate::LayoutScalar;
+use crate::scalar::LayoutScalar;
 use std::cmp::Ordering;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

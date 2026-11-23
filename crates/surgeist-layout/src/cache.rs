@@ -1,9 +1,11 @@
-use super::{
-    ComputeInputOf, ComputeOutputOf, DefaultScalar, LayoutScalar, RequestedAxis, RunMode, Size,
-    SizingMode, SizingOperation, SizingRequestOf,
-};
-use crate::ContainingLayoutContext;
+use crate::output::ContainingLayoutContext;
 use crate::scroll::SettledAutoScrollbarState;
+use crate::{
+    geometry::Size,
+    output::{ComputeInputOf, ComputeOutputOf, RequestedAxis, RunMode, SizingMode},
+    scalar::{DefaultScalar, LayoutScalar},
+    value::{SizingOperation, SizingRequestOf},
+};
 
 const CACHE_SIZE: usize = 9;
 
@@ -23,8 +25,8 @@ struct CacheKeyOf<S: LayoutScalar = DefaultScalar> {
     sizing_mode: SizingMode,
     axis: RequestedAxis,
     known: Size<Option<S>>,
-    indefinite_percentage_axis: Option<crate::PhysicalAxis>,
-    border_box_offer_axis: Option<crate::PhysicalAxis>,
+    indefinite_percentage_axis: Option<crate::geometry::PhysicalAxis>,
+    border_box_offer_axis: Option<crate::geometry::PhysicalAxis>,
     parent: Size<Option<S>>,
     containing_layout_context: ContainingLayoutContext,
     sizing_request: SizingRequestOf<S>,
@@ -224,7 +226,7 @@ fn matches_output<S: LayoutScalar, T>(
 
 fn effective_operation<S: LayoutScalar>(
     known: Option<S>,
-    request: crate::AxisSizingRequestOf<S>,
+    request: crate::value::AxisSizingRequestOf<S>,
 ) -> SizingOperation {
     if known.is_some() {
         SizingOperation::Normal
@@ -237,13 +239,16 @@ fn effective_operation<S: LayoutScalar>(
 mod sizing_request_cache_tests {
     use super::*;
     use crate::layout_math::OptionalSizeExt;
-    use crate::{AvailableSpaceOf, AxisSizingRequestOf, FlowAxes, NonNegativeFiniteOf};
+    use crate::{
+        geometry::FlowAxes,
+        value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf},
+    };
 
     fn input<S: LayoutScalar>(
         known: Option<S>,
         available: S,
         operation: SizingOperation,
-        fallback: crate::OrthogonalFallbackOf<S>,
+        fallback: crate::value::OrthogonalFallbackOf<S>,
     ) -> ComputeInputOf<S> {
         let axes = Size::new(
             AxisSizingRequestOf::new(
@@ -255,9 +260,12 @@ mod sizing_request_cache_tests {
         ComputeInputOf::leaf_layout(
             Size::new(known, None),
             Size::NONE,
-            crate::ContainingLayoutContext::new(
-                FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
-                crate::ParentFormattingContext::NoParent,
+            crate::output::ContainingLayoutContext::new(
+                FlowAxes::new(
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
+                ),
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(axes, fallback),
         )
@@ -266,18 +274,25 @@ mod sizing_request_cache_tests {
 
     fn measure<S: LayoutScalar>(
         input: ComputeInputOf<S>,
-    ) -> (ComputeOutputOf<S>, crate::LeafMeasureInputOf<S>) {
+    ) -> (
+        ComputeOutputOf<S>,
+        crate::measurement::LeafMeasureInputOf<S>,
+    ) {
         let mut packet = None;
-        let output = crate::compute_leaf(input, &crate::NodeInputOf::<S>::default(), |observed| {
-            packet = Some(observed);
-            // An opaque native leaf with fixed 20x10 content; imposed
-            // content dimensions are honored by the measurement provider.
-            Ok::<_, ()>(
-                observed
-                    .known_content_size()
-                    .unwrap_or(Size::new(S::from_f64(20.0), S::from_f64(10.0))),
-            )
-        })
+        let output = crate::measurement::compute_leaf(
+            input,
+            &crate::node_input::NodeInputOf::<S>::default(),
+            |observed| {
+                packet = Some(observed);
+                // An opaque native leaf with fixed 20x10 content; imposed
+                // content dimensions are honored by the measurement provider.
+                Ok::<_, ()>(
+                    observed
+                        .known_content_size()
+                        .unwrap_or(Size::new(S::from_f64(20.0), S::from_f64(10.0))),
+                )
+            },
+        )
         .unwrap();
         (output, packet.unwrap())
     }
@@ -289,14 +304,14 @@ mod sizing_request_cache_tests {
             Some(40.0_f32),
             40.0,
             SizingOperation::Normal,
-            crate::OrthogonalFallbackOf::new(
+            crate::value::OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                crate::value::NearestScrollportOf::Unknown,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
             ),
         );
-        let indefinite =
-            definite.with_indefinite_percentage_axis(Some(crate::PhysicalAxis::Horizontal));
+        let indefinite = definite
+            .with_indefinite_percentage_axis(Some(crate::geometry::PhysicalAxis::Horizontal));
         let output = ComputeOutputOf::from_outer_size(Size::new(40.0, 20.0));
 
         assert_eq!(definite.known(), indefinite.known());
@@ -317,10 +332,10 @@ mod sizing_request_cache_tests {
             None,
             40.0_f32,
             SizingOperation::Normal,
-            crate::OrthogonalFallbackOf::new(
+            crate::value::OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                crate::value::NearestScrollportOf::Unknown,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
             ),
         );
         let output = ComputeOutputOf::from_outer_size(Size::new(40.0, 20.0));
@@ -346,14 +361,14 @@ mod sizing_request_cache_tests {
             None,
             40.0_f32,
             SizingOperation::Normal,
-            crate::OrthogonalFallbackOf::new(
+            crate::value::OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                crate::value::NearestScrollportOf::Unknown,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
             ),
         );
         let border_box =
-            margin_box.with_border_box_offer_axis(Some(crate::PhysicalAxis::Horizontal));
+            margin_box.with_border_box_offer_axis(Some(crate::geometry::PhysicalAxis::Horizontal));
         let output = ComputeOutputOf::from_outer_size(Size::new(40.0, 20.0));
         let mut cache = CacheOf::new();
         cache.store_with_context(&margin_box, context, output);
@@ -364,18 +379,18 @@ mod sizing_request_cache_tests {
     fn qualify<S: LayoutScalar>() {
         let px = S::from_f64;
         let nn = |value| NonNegativeFiniteOf::new(px(value)).unwrap();
-        let unbounded = Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded);
-        let source_a = crate::OrthogonalFallbackOf::new(
+        let unbounded = Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded);
+        let source_a = crate::value::OrthogonalFallbackOf::new(
             Size::splat(Some(nn(800.0))),
-            crate::NearestScrollportOf::Present(Size::splat(
-                crate::OrthogonalFallbackLimitOf::Finite(nn(100.0)),
+            crate::value::NearestScrollportOf::Present(Size::splat(
+                crate::value::OrthogonalFallbackLimitOf::Finite(nn(100.0)),
             )),
             unbounded,
         );
-        let source_b = crate::OrthogonalFallbackOf::new(
+        let source_b = crate::value::OrthogonalFallbackOf::new(
             Size::splat(Some(nn(100.0))),
-            crate::NearestScrollportOf::Present(Size::splat(
-                crate::OrthogonalFallbackLimitOf::Finite(nn(800.0)),
+            crate::value::NearestScrollportOf::Present(Size::splat(
+                crate::value::OrthogonalFallbackLimitOf::Finite(nn(800.0)),
             )),
             unbounded,
         );
@@ -441,8 +456,8 @@ mod sizing_request_cache_tests {
         );
 
         assert_eq!(
-            source_a.resolve(crate::PhysicalAxis::Horizontal),
-            source_b.resolve(crate::PhysicalAxis::Horizontal)
+            source_a.resolve(crate::geometry::PhysicalAxis::Horizontal),
+            source_b.resolve(crate::geometry::PhysicalAxis::Horizontal)
         );
         let (other_output, other_packet) = measure(input(
             Some(px(20.0)),
@@ -454,18 +469,18 @@ mod sizing_request_cache_tests {
         assert_eq!(known_packet, other_packet);
         let descendant_a = source_a.for_child(
             unbounded,
-            crate::ScrollportFallbackChangeOf::Enter(unbounded),
+            crate::value::ScrollportFallbackChangeOf::Enter(unbounded),
         );
         let descendant_b = source_b.for_child(
             unbounded,
-            crate::ScrollportFallbackChangeOf::Enter(unbounded),
+            crate::value::ScrollportFallbackChangeOf::Enter(unbounded),
         );
         assert_eq!(
-            descendant_a.resolve(crate::PhysicalAxis::Horizontal),
+            descendant_a.resolve(crate::geometry::PhysicalAxis::Horizontal),
             Ok(nn(800.0))
         );
         assert_eq!(
-            descendant_b.resolve(crate::PhysicalAxis::Horizontal),
+            descendant_b.resolve(crate::geometry::PhysicalAxis::Horizontal),
             Ok(nn(100.0))
         );
         // Equal collapsed current fallbacks do not certify descendant equivalence.
@@ -489,10 +504,10 @@ mod sizing_request_cache_tests {
     fn qualify_content_size_purpose<S: LayoutScalar>() {
         let px = S::from_f64;
         let nn = |value| NonNegativeFiniteOf::new(px(value)).unwrap();
-        let fallback = crate::OrthogonalFallbackOf::new(
+        let fallback = crate::value::OrthogonalFallbackOf::new(
             Size::splat(Some(nn(800.0))),
-            crate::NearestScrollportOf::Absent,
-            Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            crate::value::NearestScrollportOf::Absent,
+            Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
         let context = CacheKeyContext::new();
         for run_mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
@@ -504,9 +519,12 @@ mod sizing_request_cache_tests {
                         RequestedAxis::Both,
                         Size::new(Some(px(20.0)), known_height),
                         Size::NONE,
-                        crate::ContainingLayoutContext::new(
-                            FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
-                            crate::ParentFormattingContext::NoParent,
+                        crate::output::ContainingLayoutContext::new(
+                            FlowAxes::new(
+                                crate::node_input::WritingMode::HorizontalTb,
+                                crate::node_input::Direction::Ltr,
+                            ),
+                            crate::output::ParentFormattingContext::NoParent,
                         ),
                         SizingRequestOf::new(
                             Size::new(
@@ -524,13 +542,17 @@ mod sizing_request_cache_tests {
                     )
                 };
                 let measure = |input| {
-                    crate::compute_leaf(input, &crate::NodeInputOf::<S>::default(), |observed| {
-                        Ok::<_, ()>(
-                            observed
-                                .known_content_size()
-                                .unwrap_or(Size::new(px(20.0), px(10.0))),
-                        )
-                    })
+                    crate::measurement::compute_leaf(
+                        input,
+                        &crate::node_input::NodeInputOf::<S>::default(),
+                        |observed| {
+                            Ok::<_, ()>(
+                                observed
+                                    .known_content_size()
+                                    .unwrap_or(Size::new(px(20.0), px(10.0))),
+                            )
+                        },
+                    )
                     .unwrap()
                 };
                 let intrinsic = input(SizingOperation::MinContent, 50.0);

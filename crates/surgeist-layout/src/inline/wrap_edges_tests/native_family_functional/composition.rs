@@ -1,5 +1,6 @@
 //! Native family bodies and ancestry follow real source roles, not fitting runs.
 use super::*;
+use crate::{node_input::Display, tree::LayoutTree};
 
 #[derive(Clone, Copy)]
 enum Interruption {
@@ -14,18 +15,18 @@ fn interrupted_fixture<S: LayoutScalar>(kind: Interruption) -> Fixture<S> {
     // A visible break has no generated box; the two actual box roles do.
     let input = match kind {
         Interruption::VisibleBreak => LayoutInputOf::line_break(
-            crate::LineBreakInputOf::new()
+            crate::node_input::LineBreakInputOf::new()
                 .with_metrics(metrics())
                 .with_direction(Direction::Ltr),
         ),
         Interruption::Float => LayoutInputOf::box_input(NodeInputOf {
-            display: crate::Display::Block,
-            float: crate::Float::Left,
+            display: Display::Block,
+            float: crate::node_input::Float::Left,
             size: Size::new(PreferredSizeOf::px(n(8.0)), PreferredSizeOf::px(n(4.0))),
             ..NodeInputOf::default()
         }),
         Interruption::Block => LayoutInputOf::box_input(NodeInputOf {
-            display: crate::Display::Block,
+            display: Display::Block,
             size: Size::new(PreferredSizeOf::px(n(10.0)), PreferredSizeOf::px(n(7.0))),
             ..NodeInputOf::default()
         }),
@@ -65,7 +66,7 @@ fn interrupted_fixture<S: LayoutScalar>(kind: Interruption) -> Fixture<S> {
 
 fn one_family<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
-) -> crate::NativeInlineBoxFamily<u32> {
+) -> crate::inline_wrapping::NativeInlineBoxFamily<u32> {
     let families: Vec<_> = batch.native_inline_box_families().collect();
     assert_eq!(families.len(), 1);
     assert_eq!(families[0].formatter(), 0);
@@ -89,17 +90,17 @@ fn root_members<S: LayoutScalar>(
 
 fn float_split_runs<S: LayoutScalar>() {
     let f = interrupted_fixture::<S>(Interruption::Float);
-    let actual = crate::LayoutTree::node_input(&f.tree, 30);
-    assert_eq!(actual.float, crate::Float::Left);
-    assert_eq!(actual.display, crate::Display::Block);
+    let actual = LayoutTree::node_input(&f.tree, 30);
+    assert_eq!(actual.float, crate::node_input::Float::Left);
+    assert_eq!(actual.display, Display::Block);
     assert_eq!(actual.atomic_inline_participation, None);
     let flow = f.flow();
     let batch = compute_layout_with_flow(
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -214,8 +215,8 @@ fn distinct_bodies<S: LayoutScalar>(kind: Interruption) {
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -245,7 +246,9 @@ fn distinct_bodies<S: LayoutScalar>(kind: Interruption) {
         30,
         Phase::Final,
         match kind {
-            Interruption::VisibleBreak => readback::Kind::NonBox(crate::NonBoxKind::LineBreak),
+            Interruption::VisibleBreak => {
+                readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::LineBreak)
+            }
             Interruption::Block => readback::Kind::SingleBox,
             Interruption::Float => unreachable!("a float is not a body delimiter"),
         },
@@ -401,8 +404,8 @@ fn nested_auto_ancestors<S: LayoutScalar>() {
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -488,8 +491,8 @@ fn nested_auto_ancestors<S: LayoutScalar>() {
         &flow,
         0,
         request(n(30.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();

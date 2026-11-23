@@ -98,11 +98,11 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                         display: Display::GridLanes,
                         writing_mode: mode,
                         direction,
-                        grid_lanes_flow: crate::GridLanesFlow::new(
+                        grid_lanes_flow: crate::node_input::GridLanesFlow::new(
                             if auto_flow.is_column() {
-                                crate::GridAxisKind::Row
+                                crate::grid::GridAxisKind::Row
                             } else {
-                                crate::GridAxisKind::Column
+                                crate::grid::GridAxisKind::Column
                             },
                             false,
                             auto_flow.is_dense(),
@@ -185,8 +185,8 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                 let constants = Constants {
                     child_orthogonal_fallback: OrthogonalFallbackOf::new(
                         Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                        crate::value::NearestScrollportOf::Absent,
+                        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
                     ),
                     flow_axes: FlowAxes::new(mode, direction),
                     explicit_definite_content_size: Size::NONE,

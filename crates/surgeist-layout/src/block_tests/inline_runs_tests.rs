@@ -2,6 +2,10 @@ use super::fixtures::{
     PublicBlockTree, computed_overflow, fri06_atomic_participation, public_final_output,
 };
 use super::*;
+use crate::{
+    block::compute_block, block_fragmentation::NonBoxKind, node_input::InlineBaselineContext,
+    output::Baselines,
+};
 
 fn lp64(absolute_px: f64, percent_fraction: f64) -> LengthPercentageOf<f64> {
     LengthPercentageOf::from_coefficients(absolute_px, percent_fraction)
@@ -98,7 +102,7 @@ impl<'input, S: LayoutScalar> Compute<'input, ()> for Fri06C03FixedSizeTreeCompu
         &mut self,
         _node: Self::Node,
         _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
-    ) -> crate::LayoutResultOf<
+    ) -> crate::error::LayoutResultOf<
         Self::Node,
         crate::grid::GridOverflowObservation<Self::Scalar>,
         Self::Scalar,
@@ -117,9 +121,9 @@ impl<'input, S: LayoutScalar> Compute<'input, ()> for Fri06C03FixedSizeTreeCompu
         }
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, S> {
+    fn layout_input(&self, node: Self::Node) -> crate::node_input::LayoutInputViewOf<'input, S> {
         if node == 0 {
-            crate::LayoutInputViewOf::Box(self.root)
+            crate::node_input::LayoutInputViewOf::Box(self.root)
         } else {
             self.child_layout_input_calls
                 .set(self.child_layout_input_calls.get() + 1);
@@ -136,7 +140,11 @@ impl<'input, S: LayoutScalar> Compute<'input, ()> for Fri06C03FixedSizeTreeCompu
         ))
     }
 
-    fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
+    fn set_unrounded(
+        &mut self,
+        _entry: crate::output::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+    ) {
+    }
 
     fn compute_child(
         &mut self,
@@ -165,7 +173,7 @@ fn fri06_c03_fixed_size_output<S: LayoutScalar>(
         child_layout_input_calls: Cell::new(0),
         child_compute_calls: 0,
     };
-    let output = crate::compute_block(
+    let output = compute_block(
         &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
@@ -246,7 +254,7 @@ fn prepared_fixed_metric_text_retains_actual_font_baseline_both_scalars() {
             &tree,
             0,
             vec![text.binding(0)],
-            crate::WrappingInput {
+            crate::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -297,7 +305,7 @@ fn fri06_c03_fixed_metric_break_retains_requested_baseline_both_scalars() {
             LayoutInputOf::line_break(
                 LineBreakInputOf::new().with_metrics(
                     InlineMetricsOf::from_ascent_descent(
-                        crate::InlineBaselineContext::Physical,
+                        InlineBaselineContext::Physical,
                         S::from_f64(7.0),
                         S::from_f64(3.0),
                     )
@@ -320,12 +328,12 @@ fn fri06_c03_fixed_metric_zero_edge_boundary_has_no_formatted_baseline_both_scal
                 InlineBoundaryInputOf::contribution(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::from_ascent_descent(
-                        crate::InlineBaselineContext::Physical,
+                        InlineBaselineContext::Physical,
                         S::from_f64(6.0),
                         S::from_f64(4.0),
                     )
                     .unwrap(),
-                    crate::InlineBoundaryEdgeOf::ZERO,
+                    crate::node_input::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
             ),
@@ -347,13 +355,17 @@ fn fri06_c03_fixed_metric_positive_border_boundary_retains_requested_baseline_bo
                 InlineBoundaryInputOf::contribution(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::from_ascent_descent(
-                        crate::InlineBaselineContext::Physical,
+                        InlineBaselineContext::Physical,
                         S::from_f64(6.0),
                         S::from_f64(4.0),
                     )
                     .unwrap(),
-                    crate::InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(1.0), S::ZERO)
-                        .unwrap(),
+                    crate::node_input::InlineBoundaryEdgeOf::try_new(
+                        S::ZERO,
+                        S::from_f64(1.0),
+                        S::ZERO,
+                    )
+                    .unwrap(),
                 )
                 .unwrap(),
             ),
@@ -373,12 +385,12 @@ fn fri06_c03_fixed_size_only_control_keeps_early_return_call_accounting_both_sca
                 InlineBoundaryInputOf::contribution(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::from_ascent_descent(
-                        crate::InlineBaselineContext::Physical,
+                        InlineBaselineContext::Physical,
                         S::ZERO,
                         S::ZERO,
                     )
                     .unwrap(),
-                    crate::InlineBoundaryEdgeOf::ZERO,
+                    crate::node_input::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
             ));
@@ -541,12 +553,12 @@ fn fri08_c07_t01_inline_transition_tree<S: LayoutScalar>(
                     InlineBoundaryInputOf::contribution(
                         InlineBoundaryKind::Start,
                         InlineMetricsOf::from_ascent_descent(
-                            crate::InlineBaselineContext::Physical,
+                            InlineBaselineContext::Physical,
                             S::ZERO,
                             S::ZERO,
                         )
                         .unwrap(),
-                        crate::InlineBoundaryEdgeOf::ZERO,
+                        crate::node_input::InlineBoundaryEdgeOf::ZERO,
                     )
                     .unwrap(),
                 ),
@@ -558,7 +570,7 @@ fn fri08_c07_t01_inline_transition_tree<S: LayoutScalar>(
                 LayoutInputOf::line_break(
                     LineBreakInputOf::new().with_metrics(
                         InlineMetricsOf::from_ascent_descent(
-                            crate::InlineBaselineContext::Physical,
+                            InlineBaselineContext::Physical,
                             S::ZERO,
                             S::ZERO,
                         )
@@ -594,7 +606,7 @@ fn assert_fri08_c07_t01_inline_transition_roles<S: LayoutScalar>() {
             &tree,
             0,
             vec![binding],
-            crate::WrappingInput {
+            crate::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -627,13 +639,13 @@ fn assert_fri08_c07_t01_inline_transition_roles<S: LayoutScalar>() {
         let float = public_final_output(&batch, 2);
         let role_kind = match start {
             Fri08C07T01InlineRunStart::Text => {
-                crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::InlineText)
+                crate::test_support::readback::Kind::NonBox(NonBoxKind::InlineText)
             }
             Fri08C07T01InlineRunStart::InlineBoundary => {
-                crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                crate::test_support::readback::Kind::NonBox(NonBoxKind::InlineBoundary)
             }
             Fri08C07T01InlineRunStart::ExplicitLineBreak => {
-                crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                crate::test_support::readback::Kind::NonBox(NonBoxKind::LineBreak)
             }
             Fri08C07T01InlineRunStart::InlineBox => crate::test_support::readback::Kind::SingleBox,
         };
@@ -647,20 +659,20 @@ fn assert_fri08_c07_t01_inline_transition_roles<S: LayoutScalar>() {
             &batch,
             4,
             crate::test_support::readback::Phase::Final,
-            crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::InlineText),
+            crate::test_support::readback::Kind::NonBox(NonBoxKind::InlineText),
         );
         let absolute = public_final_output(&batch, 5);
         let hidden_break = crate::test_support::readback::observe(
             &batch,
             6,
             crate::test_support::readback::Phase::Final,
-            crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::LineBreak),
+            crate::test_support::readback::Kind::NonBox(NonBoxKind::LineBreak),
         );
         let trailing = public_final_output(&batch, 7);
         let text_fragment = batch
             .final_inline_fragments()
             .iter()
-            .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(4))
+            .find(|entry| entry.owner() == &crate::output::InlineFragmentOwner::Node(4))
             .unwrap()
             .fragment();
 
@@ -1470,7 +1482,7 @@ fn ordinary_block_child_receives_parent_non_horizontal_containing_flow() {
         )
         .style(1, NodeInput::default());
 
-    crate::compute_block(
+    compute_block(
         &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
@@ -1479,9 +1491,9 @@ fn ordinary_block_child_receives_parent_non_horizontal_containing_flow() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(100.0), Some(80.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -1521,7 +1533,7 @@ fn block_line_break_metadata_positions_rtl_lines_and_preserves_two_line_extent()
     let first_atomic_size = Size::new(20.0, 10.0);
     let second_atomic_size = Size::new(15.0, 12.0);
     let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
+        InlineBaselineContext::Physical,
         line_block_extent,
         baseline_from_line_start,
     )
@@ -1639,12 +1651,9 @@ fn block_line_break_metadata_positions_rtl_lines_and_preserves_two_line_extent()
 
 #[test]
 fn block_line_break_metrics_create_two_forced_lines_without_phantom_receiver_height() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        20.0,
-        15.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 20.0, 15.0)
+            .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .style(
             0,
@@ -1657,7 +1666,7 @@ fn block_line_break_metrics_create_two_forced_lines_without_phantom_receiver_hei
         .line_break(1, LineBreakInput::new().with_metrics(metrics))
         .line_break(2, LineBreakInput::new().with_metrics(metrics));
 
-    let output = crate::compute_block(
+    let output = compute_block(
         &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
@@ -1666,12 +1675,12 @@ fn block_line_break_metrics_create_two_forced_lines_without_phantom_receiver_hei
             RequestedAxis::Both,
             Size::NONE,
             Size::NONE,
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::splat(AxisSizingRequestOf::new(
@@ -1698,12 +1707,9 @@ fn block_line_break_metrics_create_two_forced_lines_without_phantom_receiver_hei
 
 #[test]
 fn block_inline_boundaries_are_reported_as_zero_size_inline_controls() {
-    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        18.0,
-        13.0,
-    )
-    .unwrap();
+    let boundary_metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 18.0, 13.0)
+            .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3, 4])
         .style(
@@ -1719,7 +1725,7 @@ fn block_inline_boundaries_are_reported_as_zero_size_inline_controls() {
             InlineBoundaryInput::contribution(
                 InlineBoundaryKind::Start,
                 boundary_metrics,
-                crate::InlineBoundaryEdgeOf::ZERO,
+                crate::node_input::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap(),
         )
@@ -1737,7 +1743,7 @@ fn block_inline_boundaries_are_reported_as_zero_size_inline_controls() {
             InlineBoundaryInput::contribution(
                 InlineBoundaryKind::End,
                 boundary_metrics,
-                crate::InlineBoundaryEdgeOf::ZERO,
+                crate::node_input::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap(),
         )
@@ -1802,12 +1808,9 @@ fn block_inline_boundaries_are_reported_as_zero_size_inline_controls() {
 
 #[test]
 fn block_inline_boundaries_before_overwide_first_inline_block_do_not_create_leading_line() {
-    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        50.0,
-        35.0,
-    )
-    .unwrap();
+    let boundary_metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 50.0, 35.0)
+            .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2])
         .style(
@@ -1823,7 +1826,7 @@ fn block_inline_boundaries_before_overwide_first_inline_block_do_not_create_lead
             InlineBoundaryInput::contribution(
                 InlineBoundaryKind::Start,
                 boundary_metrics,
-                crate::InlineBoundaryEdgeOf::ZERO,
+                crate::node_input::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap(),
         )
@@ -1880,12 +1883,9 @@ fn block_inline_boundaries_before_overwide_first_inline_block_do_not_create_lead
 
 #[test]
 fn vertical_block_inline_boundaries_use_parent_flow() {
-    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        20.0,
-        14.0,
-    )
-    .unwrap();
+    let boundary_metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 20.0, 14.0)
+            .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3])
         .style(
@@ -1902,7 +1902,7 @@ fn vertical_block_inline_boundaries_use_parent_flow() {
             InlineBoundaryInput::contribution(
                 InlineBoundaryKind::Start,
                 boundary_metrics,
-                crate::InlineBoundaryEdgeOf::ZERO,
+                crate::node_input::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap()
             .with_writing_mode(WritingMode::VerticalRl),
@@ -1922,7 +1922,7 @@ fn vertical_block_inline_boundaries_use_parent_flow() {
             InlineBoundaryInput::contribution(
                 InlineBoundaryKind::End,
                 boundary_metrics,
-                crate::InlineBoundaryEdgeOf::ZERO,
+                crate::node_input::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap()
             .with_writing_mode(WritingMode::VerticalRl),
@@ -1975,12 +1975,9 @@ fn vertical_block_inline_boundaries_use_parent_flow() {
 
 #[test]
 fn vertical_lr_block_inline_boundaries_use_parent_flow() {
-    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        20.0,
-        14.0,
-    )
-    .unwrap();
+    let boundary_metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 20.0, 14.0)
+            .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3])
         .style(
@@ -1997,7 +1994,7 @@ fn vertical_lr_block_inline_boundaries_use_parent_flow() {
             InlineBoundaryInput::contribution(
                 InlineBoundaryKind::Start,
                 boundary_metrics,
-                crate::InlineBoundaryEdgeOf::ZERO,
+                crate::node_input::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap()
             .with_writing_mode(WritingMode::VerticalLr),
@@ -2017,7 +2014,7 @@ fn vertical_lr_block_inline_boundaries_use_parent_flow() {
             InlineBoundaryInput::contribution(
                 InlineBoundaryKind::End,
                 boundary_metrics,
-                crate::InlineBoundaryEdgeOf::ZERO,
+                crate::node_input::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap()
             .with_writing_mode(WritingMode::VerticalLr),
@@ -2199,12 +2196,9 @@ fn block_atomic_inline_run_never_computes_line_break_as_box() {
 
 #[test]
 fn vertical_rl_line_break_is_laid_out_as_zero_size_inline_control() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        20.0,
-        14.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 20.0, 14.0)
+            .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3])
         .style(
@@ -2282,12 +2276,9 @@ fn vertical_rl_line_break_is_laid_out_as_zero_size_inline_control() {
 
 #[test]
 fn vertical_lr_line_break_is_laid_out_as_zero_size_inline_control() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        20.0,
-        14.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 20.0, 14.0)
+            .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3])
         .style(
@@ -2518,18 +2509,18 @@ fn inline_control_flow_tree<S: LayoutScalar>(
         .with_layout_input(2, input)
 }
 
-fn visible_controls<S: LayoutScalar>(flow: FlowAxes) -> [(LayoutInputOf<S>, crate::NonBoxKind); 3] {
+fn visible_controls<S: LayoutScalar>(flow: FlowAxes) -> [(LayoutInputOf<S>, NonBoxKind); 3] {
     let boundary = |kind| {
         LayoutInputOf::inline_boundary(
             InlineBoundaryInputOf::contribution(
                 kind,
                 InlineMetricsOf::from_ascent_descent(
-                    crate::InlineBaselineContext::Physical,
+                    InlineBaselineContext::Physical,
                     S::ZERO,
                     S::ZERO,
                 )
                 .unwrap(),
-                crate::InlineBoundaryEdgeOf::ZERO,
+                crate::node_input::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap()
             .with_writing_mode(flow.writing_mode())
@@ -2543,15 +2534,15 @@ fn visible_controls<S: LayoutScalar>(flow: FlowAxes) -> [(LayoutInputOf<S>, crat
                     .with_writing_mode(flow.writing_mode())
                     .with_direction(flow.direction()),
             ),
-            crate::NonBoxKind::LineBreak,
+            NonBoxKind::LineBreak,
         ),
         (
             boundary(InlineBoundaryKind::Start),
-            crate::NonBoxKind::InlineBoundary,
+            NonBoxKind::InlineBoundary,
         ),
         (
             boundary(InlineBoundaryKind::End),
-            crate::NonBoxKind::InlineBoundary,
+            NonBoxKind::InlineBoundary,
         ),
     ]
 }
@@ -2587,7 +2578,7 @@ fn assert_public_inline_control_flow_contract<S: LayoutScalar>() {
 
             for (input, kind) in visible_controls(expected).into_iter().chain([(
                 LayoutInputOf::line_break(LineBreakInputOf::new().hidden()),
-                crate::NonBoxKind::LineBreak,
+                NonBoxKind::LineBreak,
             )]) {
                 let tree = inline_control_flow_tree(expected, input, later_in_run);
                 let batch = compute_layout(&tree, 0, request)
@@ -2670,12 +2661,9 @@ fn vertical_parent_rejects_default_line_break_flow_until_input_is_layout_ready()
 
 #[test]
 fn vertical_parent_rejects_default_inline_boundary_flow_until_input_is_layout_ready() {
-    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        20.0,
-        14.0,
-    )
-    .unwrap();
+    let boundary_metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 20.0, 14.0)
+            .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1])
         .style(
@@ -2692,7 +2680,7 @@ fn vertical_parent_rejects_default_inline_boundary_flow_until_input_is_layout_re
             InlineBoundaryInput::contribution(
                 InlineBoundaryKind::Start,
                 boundary_metrics,
-                crate::InlineBoundaryEdgeOf::ZERO,
+                crate::node_input::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap(),
         );
@@ -2812,12 +2800,9 @@ fn inline_break_clear_tree(
     clear: Clear,
     float_side: Float,
 ) -> crate::test_support::layout_tree::OracleTree {
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        10.0,
-        10.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 10.0, 10.0)
+            .unwrap();
     crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3, 4])
         .style(
@@ -2959,12 +2944,9 @@ fn line_break_clear_right_moves_following_inline_segment_below_right_float() {
 
 #[test]
 fn line_break_clear_both_uses_greater_left_or_right_float_bottom() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        10.0,
-        10.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 10.0, 10.0)
+            .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3, 4, 5])
         .style(
@@ -3064,12 +3046,9 @@ fn line_break_clear_both_uses_greater_left_or_right_float_bottom() {
 
 #[test]
 fn line_break_clear_at_run_end_moves_following_block_below_float() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        10.0,
-        10.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 10.0, 10.0)
+            .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3, 4])
         .style(
@@ -3273,12 +3252,9 @@ fn line_break_clear_right_ignores_left_float_and_preserves_alignment() {
 
 #[test]
 fn line_break_clear_that_is_noop_after_line_height_preserves_alignment() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        10.0,
-        10.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 10.0, 10.0)
+            .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3, 4])
         .style(
@@ -3676,7 +3652,7 @@ fn inline_block_uses_inner_first_baseline_for_atomic_alignment() {
     let measured_inline_block = ComputeOutput::from_sizes_and_baselines(
         Size::new(10.0, 30.0),
         Size::new(10.0, 30.0),
-        crate::Baselines {
+        Baselines {
             first: Point::new(None, Some(5.0)),
             last: Point::new(None, Some(25.0)),
         },
@@ -3807,7 +3783,7 @@ fn inline_block_keeps_child_margins_inside_atomic_wrapper() {
 #[test]
 fn inline_grid_can_host_subgrid_descendant() {
     let subgrid_track = || {
-        TrackComponent::Subgrid(crate::SubgridTrack {
+        TrackComponent::Subgrid(crate::value::SubgridTrack {
             name_components: Vec::new(),
         })
     };
@@ -3852,12 +3828,12 @@ fn inline_grid_can_host_subgrid_descendant() {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::NONE,
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::new(
@@ -4443,12 +4419,12 @@ fn block_inline_run_content_size_includes_visible_overflow_and_relative_inset() 
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::NONE,
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::splat(AxisSizingRequestOf::new(
@@ -4515,12 +4491,12 @@ fn block_inline_run_content_size_accounts_for_negative_relative_inset_after_cont
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::NONE,
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::splat(AxisSizingRequestOf::new(
@@ -4580,12 +4556,12 @@ fn block_reports_inline_run_first_and_last_baselines() {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::NONE,
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::splat(AxisSizingRequestOf::new(
@@ -4641,12 +4617,12 @@ fn block_reports_inline_run_baseline_including_padding() {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::NONE,
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::splat(AxisSizingRequestOf::new(
@@ -4699,12 +4675,12 @@ fn block_definite_compute_size_keeps_inline_run_baselines() {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::NONE,
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::splat(AxisSizingRequestOf::new(
@@ -4731,7 +4707,7 @@ fn block_definite_compute_size_keeps_block_child_baselines() {
     let child_output = ComputeOutput::from_sizes_and_baselines(
         Size::new(30.0, 20.0),
         Size::new(30.0, 20.0),
-        crate::Baselines {
+        Baselines {
             first: Point::new(None, Some(7.0)),
             last: Point::new(None, Some(17.0)),
         },
@@ -4765,12 +4741,12 @@ fn block_definite_compute_size_keeps_block_child_baselines() {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::NONE,
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::splat(AxisSizingRequestOf::new(
@@ -4838,7 +4814,7 @@ fn assert_block_translates_orthogonal_child_baselines_on_the_child_block_axis<S:
         )
         .measure(1, child_output);
 
-    let output = crate::compute_block(
+    let output = compute_block(
         &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
@@ -4847,9 +4823,9 @@ fn assert_block_translates_orthogonal_child_baselines_on_the_child_block_axis<S:
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(S::from_f64(120.0)), Some(S::from_f64(160.0))),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -4975,7 +4951,7 @@ where
             ),
         );
 
-    let output = crate::compute_block(
+    let output = compute_block(
         &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
@@ -4984,9 +4960,9 @@ where
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(S::from_f64(140.0)), Some(S::from_f64(200.0))),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -5084,7 +5060,7 @@ where
             ),
         );
 
-    let output = crate::compute_block(
+    let output = compute_block(
         &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
@@ -5093,9 +5069,9 @@ where
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(S::from_f64(120.0)), Some(S::from_f64(160.0))),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -5148,7 +5124,7 @@ fn block_definite_compute_size_keeps_non_empty_flex_child_baselines() {
     let child_output = ComputeOutput::from_sizes_and_baselines(
         Size::new(30.0, 20.0),
         Size::new(30.0, 20.0),
-        crate::Baselines {
+        Baselines {
             first: Point::new(None, Some(9.0)),
             last: Point::new(None, Some(19.0)),
         },
@@ -5184,12 +5160,12 @@ fn block_definite_compute_size_keeps_non_empty_flex_child_baselines() {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::NONE,
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::splat(AxisSizingRequestOf::new(
@@ -5223,14 +5199,14 @@ fn numeric_inline_endpoint_uses_one_real_strip_and_moves_the_next_box_all_flows_
         ] {
             for direction in [Direction::Ltr, Direction::Rtl] {
                 for kind in [InlineBoundaryKind::Start, InlineBoundaryKind::End] {
-                    let edge = crate::InlineBoundaryEdgeOf::try_new(
+                    let edge = crate::node_input::InlineBoundaryEdgeOf::try_new(
                         S::ZERO,
                         S::from_f64(3.0),
                         S::from_f64(5.0),
                     )
                     .unwrap();
                     let metrics = InlineMetricsOf::try_new(
-                        crate::InlineBaselineContext::Physical,
+                        InlineBaselineContext::Physical,
                         S::from_f64(8.0),
                         S::from_f64(10.0),
                     )
@@ -5301,9 +5277,7 @@ fn numeric_inline_endpoint_uses_one_real_strip_and_moves_the_next_box_all_flows_
                         &batch,
                         2,
                         crate::test_support::readback::Phase::Final,
-                        crate::test_support::readback::Kind::NonBox(
-                            crate::NonBoxKind::InlineBoundary,
-                        ),
+                        crate::test_support::readback::Kind::NonBox(NonBoxKind::InlineBoundary),
                     );
                     assert_eq!(
                         strip.size,
@@ -5410,7 +5384,7 @@ fn finite_endpoint_components_that_overflow_the_numeric_run_refuse_the_batch() {
                         InlineBoundaryInputOf::contribution(
                             kind,
                             InlineMetricsOf::try_new(
-                                crate::InlineBaselineContext::Physical,
+                                InlineBaselineContext::Physical,
                                 S::from_f64(8.0),
                                 S::from_f64(10.0),
                             )
@@ -5444,13 +5418,13 @@ fn finite_endpoint_components_that_overflow_the_numeric_run_refuse_the_batch() {
         .unwrap_err();
         // The aggregate demand cannot become an accepted finite Normal width.
         // This refusal precedes final traversal and root scroll reconstruction.
-        assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(0));
+        assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(0));
         assert_eq!(error.operation(), LayoutOperation::ValueResolution);
         assert!(
             matches!(
                 error.kind(),
                 LayoutErrorKindOf::InvalidInput(
-                    crate::LayoutInvalidInputOf::InvalidNumeric { value }
+                    crate::error::LayoutInvalidInputOf::InvalidNumeric { value }
                 ) if *value == S::from_f64(f64::INFINITY)
             ),
             "overflowing finite endpoint demand must refuse its positive-infinite width: {error:?}"
@@ -5517,7 +5491,7 @@ fn numeric_endpoint_uses_the_actual_float_band_in_both_scalar_lanes() {
                         InlineBoundaryInputOf::contribution(
                             InlineBoundaryKind::Start,
                             InlineMetricsOf::try_new(
-                                crate::InlineBaselineContext::Physical,
+                                InlineBaselineContext::Physical,
                                 S::from_f64(8.0),
                                 S::from_f64(10.0),
                             )
@@ -5574,7 +5548,7 @@ fn numeric_endpoint_uses_the_actual_float_band_in_both_scalar_lanes() {
                     &batch,
                     2,
                     crate::test_support::readback::Phase::Final,
-                    crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                    crate::test_support::readback::Kind::NonBox(NonBoxKind::InlineBoundary)
                 )
                 .size,
                 Size::new(edge.border_padding_advance(), S::ZERO)

@@ -804,24 +804,24 @@ mod funding_tests {
     const LIMITS: text::scope_alignment::ScopeAlignmentLimits =
         text::scope_alignment::ScopeAlignmentLimits::new(100_000, 100, 1_000_000, 16 << 20);
 
-    fn sizing_request() -> crate::SizingRequestOf<f64> {
-        crate::SizingRequestOf::new(
-            crate::Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+    fn sizing_request() -> crate::value::SizingRequestOf<f64> {
+        crate::value::SizingRequestOf::new(
+            crate::geometry::Size::new(
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(100.0).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    crate::value::SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Indefinite,
+                    crate::value::SizingOperation::Normal,
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            crate::value::OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                crate::value::NearestScrollportOf::Absent,
+                crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         )
     }
@@ -832,28 +832,28 @@ mod funding_tests {
     ) {
         let source =
             crate::test_support::inline_endpoint::Fixture::with_scope_limits("X X", LIMITS);
-        let request: crate::SizingRequestOf<f64> = crate::SizingRequestOf::new(
-            crate::Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+        let request: crate::value::SizingRequestOf<f64> = crate::value::SizingRequestOf::new(
+            crate::geometry::Size::new(
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(100.0).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    crate::value::SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Indefinite,
+                    crate::value::SizingOperation::Normal,
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            crate::value::OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                crate::value::NearestScrollportOf::Absent,
+                crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         );
         let batch = source.compute(
-            crate::InlineBoundaryEdgeOf::ZERO,
-            crate::InlineBoundaryEdgeOf::ZERO,
+            crate::node_input::InlineBoundaryEdgeOf::ZERO,
+            crate::node_input::InlineBoundaryEdgeOf::ZERO,
             false,
             Some(100.0),
             false,
@@ -897,26 +897,28 @@ mod funding_tests {
             wrapping: None,
             formatted,
             line_box_context: crate::line_box::LineBoxContext::new(
-                crate::LineBoxDirectionPolicy::Normal,
-                crate::Direction::Ltr,
+                crate::node_input::LineBoxDirectionPolicy::Normal,
+                crate::node_input::Direction::Ltr,
             ),
             prepared,
             segment: request.segment.clone(),
             scope_alignments: resources,
-            available: crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
-                crate::SizingOperation::Normal,
+            available: crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(100.0).unwrap(),
+                ),
+                crate::value::SizingOperation::Normal,
             ),
             base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
             block_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
-            alignment: crate::TextAlign::Start,
-            wrap_style: crate::TextWrapStyle::Auto,
-            last_alignment: crate::TextAlignLast::Auto,
-            justification: crate::TextJustification::None,
+            alignment: crate::node_input::TextAlign::Start,
+            wrap_style: crate::node_input::TextWrapStyle::Auto,
+            last_alignment: crate::node_input::TextAlignLast::Auto,
+            justification: crate::node_input::TextJustification::None,
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: crate::text_indent::IndentLineState::default(),
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
-            hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+            hyphenate_limit_zone: crate::value::LengthPercentageOf::ZERO,
             tail: super::super::fit::TailContext::Unrestricted,
             orientation: text::selection::LineOrientation::Horizontal,
             atomics: &request.atomics,
@@ -1054,8 +1056,8 @@ mod funding_tests {
         );
         let tree = captured
             .tree::<f64>(
-                crate::InlineBoundaryEdgeOf::ZERO,
-                crate::InlineBoundaryEdgeOf::ZERO,
+                crate::node_input::InlineBoundaryEdgeOf::ZERO,
+                crate::node_input::InlineBoundaryEdgeOf::ZERO,
                 false,
                 Some(100.0),
                 false,
@@ -1064,46 +1066,49 @@ mod funding_tests {
             .children(100, [101])
             .style(
                 200,
-                crate::NodeInputOf {
-                    display: crate::Display::Block,
-                    size: crate::Size::new(
-                        crate::PreferredSizeOf::px(100.0),
-                        crate::PreferredSizeOf::AUTO,
+                crate::node_input::NodeInputOf {
+                    display: crate::node_input::Display::Block,
+                    size: crate::geometry::Size::new(
+                        crate::sizing::PreferredSizeOf::px(100.0),
+                        crate::sizing::PreferredSizeOf::AUTO,
                     ),
                     ..Default::default()
                 },
             )
             .style(
                 100,
-                crate::NodeInputOf {
-                    display: crate::Display::Block,
-                    size: crate::Size::new(
-                        crate::PreferredSizeOf::px(100.0),
-                        crate::PreferredSizeOf::AUTO,
+                crate::node_input::NodeInputOf {
+                    display: crate::node_input::Display::Block,
+                    size: crate::geometry::Size::new(
+                        crate::sizing::PreferredSizeOf::px(100.0),
+                        crate::sizing::PreferredSizeOf::AUTO,
                     ),
-                    text_align: crate::TextAlign::Justify,
-                    text_align_last: crate::TextAlignLast::Justify,
-                    text_justification: crate::TextJustification::InterWord,
-                    text_wrap_style: crate::TextWrapStyle::Balance,
+                    text_align: crate::node_input::TextAlign::Justify,
+                    text_align_last: crate::node_input::TextAlignLast::Justify,
+                    text_justification: crate::node_input::TextJustification::InterWord,
+                    text_wrap_style: crate::node_input::TextWrapStyle::Balance,
                     ..Default::default()
                 },
             )
             .input(101, native.text_input(101));
-        let capture = crate::LayoutFlowInput::try_new(
+        let capture = crate::text_layout::LayoutFlowInput::try_new(
             &tree,
             200,
             vec![captured.binding.clone(), native.binding(100)],
-            crate::WrappingInput::default(),
+            crate::inline_wrapping::WrappingInput::default(),
             Vec::new(),
         )
         .unwrap();
-        let batch = crate::compute_layout_with_flow(
+        let batch = crate::engine::compute_layout_with_flow(
             &capture,
             200,
-            crate::LayoutRootRequestOf::standalone(
+            crate::output::LayoutRootRequestOf::standalone(
                 sizing_request(),
-                crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
-                crate::Size::NONE,
+                crate::geometry::FlowAxes::new(
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
+                ),
+                crate::geometry::Size::NONE,
             ),
         )
         .unwrap();
@@ -1134,10 +1139,10 @@ mod funding_tests {
             funding.as_ref(),
             &formatted,
         );
-        input.alignment = crate::TextAlign::Justify;
-        input.last_alignment = crate::TextAlignLast::Justify;
-        input.justification = crate::TextJustification::InterWord;
-        input.wrap_style = crate::TextWrapStyle::Balance;
+        input.alignment = crate::node_input::TextAlign::Justify;
+        input.last_alignment = crate::node_input::TextAlignLast::Justify;
+        input.justification = crate::node_input::TextJustification::InterWord;
+        input.wrap_style = crate::node_input::TextWrapStyle::Balance;
         // Both real bindings were admitted above. This Native run has no float,
         // so its actual local inline interval is the supplied100px container.
         // It borrows the same mixed operation's captured owner, not a budget token.

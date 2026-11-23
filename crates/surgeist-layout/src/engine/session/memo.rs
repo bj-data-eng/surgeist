@@ -6,9 +6,14 @@ use std::{
 
 use super::{CacheAccess, Compute, ComputeSession, SessionResult};
 use crate::{
-    CacheKeyContext, ComputeInputOf, ComputeOutputOf, LayoutCacheStoreEntryOf, LayoutErrorKindOf,
-    LayoutErrorOf, LayoutErrorSiteOf, LayoutOperation, LayoutOutputEntryOf, LayoutScalar,
-    LayoutTree, LeafMeasureInputOf, Size,
+    cache::CacheKeyContext,
+    error::{LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutOperation},
+    geometry::Size,
+    measurement::LeafMeasureInputOf,
+    node_input::{Display, LayoutInputViewOf},
+    output::{ComputeInputOf, ComputeOutputOf, LayoutCacheStoreEntryOf, LayoutOutputEntryOf},
+    scalar::LayoutScalar,
+    tree::LayoutTree,
 };
 
 #[derive(Clone, Copy)]
@@ -396,28 +401,26 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
         for &index in &graph.finish {
             let node = graph.nodes[index];
             let style = match self.tree.layout_input(node) {
-                crate::LayoutInputViewOf::Box(style) => style,
+                LayoutInputViewOf::Box(style) => style,
                 // With the context exclusions above, numeric leaf breaks and
                 // Contribution boundaries retain only staged source/edge geometry.
                 // BoxEdge requires a wrapping context and remains excluded, as do
                 // Text formatting receipts and scope-owned control effects.
-                crate::LayoutInputViewOf::LineBreak(_)
-                | crate::LayoutInputViewOf::InlineBoundary(_) => {
+                LayoutInputViewOf::LineBreak(_) | LayoutInputViewOf::InlineBoundary(_) => {
                     eligible[index] =
                         profile == Profile::Ordinary && graph.children[index].is_empty();
                     continue;
                 }
-                crate::LayoutInputViewOf::InlineText(_)
-                | crate::LayoutInputViewOf::TextControl(_) => continue,
+                LayoutInputViewOf::InlineText(_) | LayoutInputViewOf::TextControl(_) => continue,
             };
             // Ordinary hidden traversal retains only typed clear/geometry
             // effects in the enclosing completion. Its descendants must still
             // satisfy the same numeric/Box closure; native and scoped custody
             // are not inferred from a node's hidden ancestor.
             eligible[index] = (profile == Profile::Ordinary
-                || style.display != crate::Display::None
+                || style.display != Display::None
                 || graph.children[index].is_empty())
-                && style.float_exclusion != crate::FloatExclusion::Shape
+                && style.float_exclusion != crate::node_input::FloatExclusion::Shape
                 && graph.children[index].iter().all(|&child| eligible[child]);
             if profile == Profile::Scoped {
                 let scopes = self
@@ -430,7 +433,7 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
                             .node_input(graph.nodes[parent])
                             .display
                             .inner_display(),
-                        crate::Display::Flex | crate::Display::Grid | crate::Display::GridLanes
+                        Display::Flex | Display::Grid | Display::GridLanes
                     )
                 });
                 eligible[index] &= !scopes.dispatch.owners.contains(&node)
@@ -438,11 +441,9 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
                     && style.float.is_none()
                     && self.block_floats.needs_work(index) != Some(true)
                     && match style.display.inner_display() {
-                        crate::Display::Flex | crate::Display::Grid | crate::Display::GridLanes => {
-                            true
-                        }
-                        crate::Display::Block => terminal && terminal_parent,
-                        crate::Display::None => terminal,
+                        Display::Flex | Display::Grid | Display::GridLanes => true,
+                        Display::Block => terminal && terminal_parent,
+                        Display::None => terminal,
                         _ => false,
                     };
             }
@@ -478,10 +479,11 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
         // retained row has invariant empty groups across exact request replay.
         // Nonempty Blocks and scope entries have different margin custody.
         if memo.is_scoped()
-            && self.tree.node_input(node).display.inner_display() == crate::Display::Block
+            && self.tree.node_input(node).display.inner_display() == Display::Block
             && !matches!(
                 input.parent_formatting_context(),
-                crate::ParentFormattingContext::Flex | crate::ParentFormattingContext::Grid
+                crate::output::ParentFormattingContext::Flex
+                    | crate::output::ParentFormattingContext::Grid
             )
         {
             memo.barrier();
@@ -495,7 +497,7 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
         (memo.table.eligible[index]
             && self.entry_sources.is_none()
             && !self.block_floats.blocks_cache(node, &input)
-            && (index != 0 || input.run_mode() != crate::RunMode::PerformRootLayout))
+            && (index != 0 || input.run_mode() != crate::output::RunMode::PerformRootLayout))
             .then_some(RequestKey {
                 index,
                 input,
@@ -643,16 +645,21 @@ fn memo_allocation<Node, S: LayoutScalar, M>(node: Node) -> LayoutErrorOf<Node, 
 }
 
 #[cfg(test)]
-type TracedLayoutResult<Tree> = crate::LayoutResultOf<
-    <Tree as crate::Traverse>::Node,
+type TracedLayoutResult<Tree> = crate::error::LayoutResultOf<
+    <Tree as crate::tree::Traverse>::Node,
     (
-        crate::CompletedLayoutBatchOf<
-            <Tree as crate::Traverse>::Node,
-            <Tree as crate::Traverse>::Scalar,
+        crate::output::CompletedLayoutBatchOf<
+            <Tree as crate::tree::Traverse>::Node,
+            <Tree as crate::tree::Traverse>::Scalar,
         >,
-        Vec<UncachedAdmission<<Tree as crate::Traverse>::Node, <Tree as crate::Traverse>::Scalar>>,
+        Vec<
+            UncachedAdmission<
+                <Tree as crate::tree::Traverse>::Node,
+                <Tree as crate::tree::Traverse>::Scalar,
+            >,
+        >,
     ),
-    <Tree as crate::Traverse>::Scalar,
+    <Tree as crate::tree::Traverse>::Scalar,
     <Tree as LayoutTree>::MeasureError,
 >;
 
@@ -663,14 +670,14 @@ type TracedLayoutResult<Tree> = crate::LayoutResultOf<
 pub(crate) fn compute_ordinary_with_request_trace<Tree: LayoutTree>(
     tree: &Tree,
     root: Tree::Node,
-    request: crate::LayoutRootRequestOf<Tree::Scalar>,
+    request: crate::output::LayoutRootRequestOf<Tree::Scalar>,
 ) -> TracedLayoutResult<Tree> {
     let (graph, invalidated) =
         crate::engine::validation::validate_layout_request_with_text_graph(tree, root, &[], &[])?;
     let wrapping = crate::inline_wrapping::WrappingContext::new(
         tree,
         &graph,
-        &crate::WrappingInput::default(),
+        &crate::inline_wrapping::WrappingInput::default(),
         &[],
         |_| false,
     )
@@ -697,10 +704,16 @@ mod tests {
     use super::*;
     use crate::test_support::layout_tree::PublicLayoutTreeOf;
     use crate::{
-        AvailableSpaceOf, AxisSizingRequestOf, ContainingLayoutContext, Direction, Display,
-        FlowAxes, LayoutInputViewOf, NearestScrollportOf, NodeInputOf, OrthogonalFallbackLimitOf,
-        OrthogonalFallbackOf, ParentFormattingContext, PreferredSizeOf, SizingOperation,
-        SizingRequestOf, Traverse, WrappingInput, WritingMode,
+        geometry::FlowAxes,
+        inline_wrapping::WrappingInput,
+        node_input::{Direction, Display, LayoutInputViewOf, NodeInputOf, WritingMode},
+        output::{ContainingLayoutContext, ParentFormattingContext},
+        sizing::PreferredSizeOf,
+        tree::Traverse,
+        value::{
+            AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, OrthogonalFallbackLimitOf,
+            OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+        },
     };
 
     struct ColdBlockTree<S: LayoutScalar> {

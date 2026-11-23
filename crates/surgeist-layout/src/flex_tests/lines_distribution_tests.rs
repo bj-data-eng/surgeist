@@ -5,6 +5,10 @@ use super::fixtures::{
 };
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    block_fragmentation::{NonBoxKind, input::LayoutPublicationTargets},
+    node_input::LayoutInputViewOf,
+};
 
 fn assert_fri07_c02_collapse_round_single_line_and_gap<S: LayoutScalar>() {
     let tree = PublicLayoutTreeOf::new()
@@ -298,14 +302,14 @@ fn assert_fri07_c02_collapse_round_largest_strut_and_all_collapsed<S: LayoutScal
         &batch,
         2,
         crate::test_support::readback::Phase::Unrounded,
-        crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+        crate::test_support::readback::Kind::NonBox(NonBoxKind::Hidden),
     )
     .assert_numeric(NodeOutputOf::with_source_index(SourceIndex::new(0)));
     crate::test_support::readback::observe(
         &batch,
         3,
         crate::test_support::readback::Phase::Unrounded,
-        crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+        crate::test_support::readback::Kind::NonBox(NonBoxKind::Hidden),
     )
     .assert_numeric(NodeOutputOf::with_source_index(SourceIndex::new(1)));
 }
@@ -599,8 +603,8 @@ impl<S: LayoutScalar> LayoutTree for Fri07C02CollapseRoundLedgerTree<S> {
         &self.styles[&node]
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
-        crate::LayoutInputViewOf::Box(&self.styles[&node])
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'_, S> {
+        LayoutInputViewOf::Box(&self.styles[&node])
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
@@ -922,14 +926,14 @@ enum Fri07C02CollapsedOutputMeasureError {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Fri07C02CollapsedOutputRetained<S: LayoutScalar> {
-    unrounded: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
+    unrounded: HashMap<u32, crate::output::LayoutOutputEntryOf<u32, S>>,
     final_outputs: HashMap<u32, NodeOutputOf<S>>,
     caches: HashMap<u32, CacheOf<S>>,
 }
 
 #[derive(Clone, Debug)]
 struct Fri07C02CollapsedOutputTree<S: LayoutScalar> {
-    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
+    pub(super) publication_targets: LayoutPublicationTargets<u32>,
     tree: PublicLayoutTreeOf<S>,
     measure_mode: Cell<Fri07C02CollapsedOutputMeasureMode>,
     measurement_requests: RefCell<Vec<LeafMeasureInputOf<S>>>,
@@ -968,7 +972,7 @@ impl<S: LayoutScalar> Fri07C02CollapsedOutputTree<S> {
                 },
             );
         Self {
-            publication_targets: crate::LayoutPublicationTargets::new(),
+            publication_targets: LayoutPublicationTargets::new(),
             tree,
             measure_mode: Cell::new(Fri07C02CollapsedOutputMeasureMode::Values),
             measurement_requests: RefCell::new(Vec::new()),
@@ -1017,7 +1021,7 @@ impl<S: LayoutScalar> LayoutTree for Fri07C02CollapsedOutputTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -1068,16 +1072,16 @@ impl<S: LayoutScalar> LayoutTree for Fri07C02CollapsedOutputTree<S> {
     fn unrounded_layout(
         &self,
         node: Self::Node,
-    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, S>> {
+    ) -> Option<crate::output::LayoutOutputEntryOf<Self::Node, S>> {
         self.retained.unrounded.get(&node).copied()
     }
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C02CollapsedOutputTree<S> {
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
 
@@ -1086,7 +1090,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C02CollapsedOutputTree<S>
 
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
+        preparation: crate::block_fragmentation::publication::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
         let batch = preparation.batch();
         let mut prepared = self.retained.clone();
@@ -1112,7 +1116,12 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C02CollapsedOutputTree<S>
 
     fn commit_layout_batch(
         &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+        commit: crate::block_fragmentation::publication::LayoutBatchCommit<
+            '_,
+            u32,
+            S,
+            Self::Prepared,
+        >,
     ) {
         let prepared = commit.into_prepared();
         self.retained = prepared;
@@ -1132,7 +1141,7 @@ fn assert_fri07_c02_collapsed_output_cache_and_failures_are_atomic<S: LayoutScal
         &cold,
         2,
         crate::test_support::readback::Phase::Unrounded,
-        crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+        crate::test_support::readback::Kind::NonBox(NonBoxKind::Hidden),
     )
     .assert_numeric(NodeOutputOf::with_source_index(SourceIndex::new(0)));
     cold.apply_to(&mut tree)
@@ -1529,7 +1538,7 @@ impl<S: LayoutScalar> LayoutTree for Fri07C02CompositionMatrixTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -1853,7 +1862,7 @@ fn fri07_c02_composition_case_geometry<S: LayoutScalar>(
         2,
         Phase::Final,
         if case.collapse == FlexItemCollapse::Collapsed {
-            readback::Kind::NonBox(crate::NonBoxKind::Hidden)
+            readback::Kind::NonBox(NonBoxKind::Hidden)
         } else {
             readback::Kind::SingleBox
         },
@@ -2330,7 +2339,7 @@ fn assert_fri07_c02_composition_replacedness_is_observable<S: LayoutScalar>() {
             &batch,
             3,
             crate::test_support::readback::Phase::Unrounded,
-            crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+            crate::test_support::readback::Kind::NonBox(NonBoxKind::Hidden),
         )
         .assert_numeric(NodeOutputOf::with_source_index(SourceIndex::new(1)));
         widths.push(target.size.width);
@@ -2385,12 +2394,12 @@ fn flex_row_distributes_positive_free_space_with_flex_grow() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2469,12 +2478,12 @@ fn flex_row_with_grow_sum_below_one_uses_that_fraction_of_free_space() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2544,12 +2553,12 @@ fn flex_row_distributes_negative_free_space_with_flex_shrink() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2615,12 +2624,12 @@ fn flex_row_relayouts_content_box_percentage_item_at_shrunk_target() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(730.0), Some(300.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2707,12 +2716,12 @@ fn flex_row_visible_item_does_not_shrink_below_automatic_min_content_width() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2785,12 +2794,12 @@ fn flex_row_with_shrink_sum_below_one_uses_that_fraction_of_negative_free_space(
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2857,12 +2866,12 @@ fn flex_row_wraps_items_into_multiple_lines() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2934,12 +2943,12 @@ fn flex_row_auto_width_wraps_against_definite_available_width() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -3145,12 +3154,12 @@ fn flex_row_growth_respects_max_main_size() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -3222,12 +3231,12 @@ fn flex_row_reverse_places_items_from_the_reversed_main_axis() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -3295,12 +3304,12 @@ fn flex_row_rtl_places_items_from_the_right_edge() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -3376,12 +3385,12 @@ fn flex_row_rtl_relative_insets_follow_rtl_main_axis() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -3449,12 +3458,12 @@ fn flex_column_reverse_places_items_from_the_reversed_main_axis() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(

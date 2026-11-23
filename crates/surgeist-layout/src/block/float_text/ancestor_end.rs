@@ -4,7 +4,7 @@ use super::{FloatEvent, cell_origin_incidence, source_computed_cut, text_origin_
 use crate::text_layout::AdmittedRun;
 use crate::text_layout::fit::FitError;
 use crate::text_layout::scope_alignment::{EntryBacking, EntryFundingRef};
-use crate::{LayoutScalar, block::floats::AcceptedFloatPrefix};
+use crate::{block::floats::AcceptedFloatPrefix, scalar::LayoutScalar};
 use surgeist_text as text;
 
 struct ClosingEnd {
@@ -95,7 +95,7 @@ pub(in crate::block) fn source_interval<Node: Copy + Eq>(
                         return Ok(index + usize::from(after));
                     }
                 }
-                Err(crate::WrappingScopeError::UnsupportedIncidence.into())
+                Err(crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence.into())
             }
         }
     };
@@ -192,7 +192,9 @@ impl ClosingEnds {
             };
             let Some((start, end)) = interval(&owner)? else {
                 if actual.is_some_and(|allocation| allocation.box_context().is_some()) {
-                    return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+                    return Err(
+                        crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence.into(),
+                    );
                 }
                 continue;
             };

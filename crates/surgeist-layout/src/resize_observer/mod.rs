@@ -2,8 +2,10 @@ mod pixel_edge;
 
 use crate::output::GeometryStateOf;
 use crate::{
-    DefaultScalar, Direction, FlowAxes, LayoutScalar, PhysicalAxis, Point, SingleBoxOutputRefOf,
-    Size, WritingMode,
+    block_fragmentation::SingleBoxOutputRefOf,
+    geometry::{FlowAxes, PhysicalAxis, Point, Size},
+    node_input::{Direction, WritingMode},
+    scalar::{DefaultScalar, LayoutScalar},
 };
 
 /// The pre-transform device-pixel grid for an accepted CSS content box.
@@ -23,7 +25,7 @@ impl ResizeObserverPixelGrid {
         content_origin: Point<f64>,
         scale: f64,
     ) -> Result<Self, ResizeObserverMeasurementError> {
-        use ResizeObserverMeasurementError as Error;
+        use crate::resize_observer::ResizeObserverMeasurementError as Error;
         for (axis, coordinate) in [
             (PhysicalAxis::Horizontal, content_origin.x),
             (PhysicalAxis::Vertical, content_origin.y),

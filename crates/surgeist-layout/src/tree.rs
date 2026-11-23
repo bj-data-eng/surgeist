@@ -1,7 +1,10 @@
 use crate::measurement::LeafMeasureInputOf;
 use crate::{
-    CacheKeyContext, ComputeInputOf, ComputeOutputOf, FloatExclusionIntervalOf,
-    FloatExclusionQueryOf, LayoutInputViewOf, LayoutScalar, NodeInputOf, Size,
+    cache::CacheKeyContext,
+    geometry::Size,
+    node_input::{FloatExclusionIntervalOf, FloatExclusionQueryOf, LayoutInputViewOf, NodeInputOf},
+    output::{ComputeInputOf, ComputeOutputOf},
+    scalar::LayoutScalar,
 };
 
 type FloatExclusionProviderResultOf<S, M> = Result<Option<FloatExclusionIntervalOf<S>>, M>;
@@ -67,7 +70,7 @@ pub trait LayoutTree: Traverse {
     fn unrounded_layout(
         &self,
         _node: Self::Node,
-    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>> {
+    ) -> Option<crate::output::LayoutOutputEntryOf<Self::Node, Self::Scalar>> {
         None
     }
 
@@ -97,16 +100,29 @@ pub trait LayoutBatchSink<Node, S: LayoutScalar> {
     type Error;
     type Prepared;
 
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<Node>;
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<Node>;
+    fn publication_targets(
+        &self,
+    ) -> &crate::block_fragmentation::input::LayoutPublicationTargets<Node>;
+    fn publication_targets_mut(
+        &mut self,
+    ) -> &mut crate::block_fragmentation::input::LayoutPublicationTargets<Node>;
 
     fn prepare_layout_batch<'call>(
         &self,
-        preparation: crate::LayoutBatchPreparation<'call, Node, S>,
+        preparation: crate::block_fragmentation::publication::LayoutBatchPreparation<
+            'call,
+            Node,
+            S,
+        >,
     ) -> Result<Self::Prepared, Self::Error>;
 
     fn commit_layout_batch<'call>(
         &mut self,
-        commit: crate::LayoutBatchCommit<'call, Node, S, Self::Prepared>,
+        commit: crate::block_fragmentation::publication::LayoutBatchCommit<
+            'call,
+            Node,
+            S,
+            Self::Prepared,
+        >,
     );
 }

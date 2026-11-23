@@ -2,6 +2,7 @@
 //! Physical expectations follow pinned Writing Modes4 Table11, not the slot helper.
 
 use super::*;
+use crate::{geometry::Point, node_input::InlineBaselineContext};
 
 fn n<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
@@ -18,7 +19,7 @@ fn atomic<S: LayoutScalar>(
     let size = axes.physical_size(LogicalSizeOf::new(n(inline), n(10.0)));
     MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {
-            baseline_reference: crate::InlineBaselineContext::Physical,
+            baseline_reference: InlineBaselineContext::Physical,
             source_index: source,
             size,
             content_size: size,
@@ -48,24 +49,24 @@ fn input<S: LayoutScalar>(
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
         meter: crate::accounting::Meter::new(),
-        inline_baseline_context: crate::InlineBaselineContext::Physical,
+        inline_baseline_context: InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
-        text_wrap_style: crate::TextWrapStyle::Auto,
+        text_wrap_style: crate::node_input::TextWrapStyle::Auto,
         wrapping: None,
         line_box_context: crate::line_box::LineBoxContext::new(
-            crate::LineBoxDirectionPolicy::Normal,
+            crate::node_input::LineBoxDirectionPolicy::Normal,
             axes.direction(),
         ),
         observe_tail: true,
-        available_inline_extent: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(n(capacity)).unwrap(),
+        available_inline_extent: crate::value::AxisSizingRequestOf::new(
+            crate::value::AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(n(capacity)).unwrap(),
             ),
-            crate::SizingOperation::Normal,
+            crate::value::SizingOperation::Normal,
         ),
         flow_axes: axes,
         text_align: TextAlign::Start,
-        text_align_last: crate::TextAlignLast::Auto,
+        text_align_last: crate::node_input::TextAlignLast::Auto,
         indent: crate::text_indent::ResolvedTextIndent::ZERO,
         indent_state: crate::text_indent::IndentLineState::default(),
         participants,
@@ -96,7 +97,7 @@ fn physical_atomic<S: LayoutScalar>(
     axes: FlowAxes,
     row: &AtomicInlineSourceOf<S>,
     frame_inline: f64,
-) -> crate::Point<S> {
+) -> Point<S> {
     axes.physical_point(
         crate::inline::expect_logical_position(row.position),
         axes.logical_size(row.item.size),
@@ -104,10 +105,10 @@ fn physical_atomic<S: LayoutScalar>(
     )
 }
 
-fn physical_inline<S: LayoutScalar>(mode: WritingMode, value: f64) -> crate::Point<S> {
+fn physical_inline<S: LayoutScalar>(mode: WritingMode, value: f64) -> Point<S> {
     match mode {
-        WritingMode::HorizontalTb => crate::Point::new(n(value), S::ZERO),
-        _ => crate::Point::new(S::ZERO, n(value)),
+        WritingMode::HorizontalTb => Point::new(n(value), S::ZERO),
+        _ => Point::new(S::ZERO, n(value)),
     }
 }
 
@@ -189,7 +190,7 @@ fn mixed_lane<S: LayoutScalar>() {
             assert_eq!(row.visual_index, Some(visual[index]));
             assert_eq!(
                 physical_atomic(axes, row, 35.0),
-                crate::Point::new(n(positions[index]), S::ZERO)
+                Point::new(n(positions[index]), S::ZERO)
             );
         }
     }
@@ -206,13 +207,15 @@ fn decorated_lane<S: LayoutScalar>() {
     let flow = InlineFlowOf::new(
         WritingMode::HorizontalTb,
         Direction::Rtl,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(60.0)).unwrap()),
-            crate::SizingOperation::Normal,
+        crate::value::AxisSizingRequestOf::new(
+            crate::value::AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(n(60.0)).unwrap(),
+            ),
+            crate::value::SizingOperation::Normal,
         ),
     );
     let metrics =
-        InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, n(8.0), n(10.0)).unwrap();
+        InlineMetricsOf::try_new(InlineBaselineContext::Physical, n(8.0), n(10.0)).unwrap();
     let boundary = |source, kind, border, padding| {
         InlineBoundaryControlOf::new(
             source,
@@ -255,10 +258,7 @@ fn decorated_lane<S: LayoutScalar>() {
     for (row, (source, x, visual)) in report.atomics.iter().zip([(23, 37.0, 2), (41, 15.0, 1)]) {
         assert_eq!(row.item.source_index, source);
         assert_eq!(row.visual_index, Some(visual));
-        assert_eq!(
-            physical_atomic(axes, row, 60.0),
-            crate::Point::new(n(x), S::ZERO)
-        );
+        assert_eq!(physical_atomic(axes, row, 60.0), Point::new(n(x), S::ZERO));
     }
     for (row, original) in report.atomics.iter().zip([a, b]) {
         let MixedInlineParticipantOf::Atomic { item, .. } = original else {
@@ -326,7 +326,7 @@ fn opposed_lane<S: LayoutScalar>() {
         // LTR line independently of this containing RTL flow. No opaque Text
         // source, endpoint, receipt or fabricated SelectedInlineLine is needed.
         let mut context = crate::line_box::LineBoxContext::new(
-            crate::LineBoxDirectionPolicy::Plaintext,
+            crate::node_input::LineBoxDirectionPolicy::Plaintext,
             Direction::Rtl,
         );
         context.commit(context.resolve(Some(
@@ -345,7 +345,7 @@ fn opposed_lane<S: LayoutScalar>() {
             assert_eq!(row.visual_index, Some([1, 0][index]));
             assert_eq!(
                 physical_atomic(axes, row, 60.0),
-                crate::Point::new(n(positions[index]), S::ZERO)
+                Point::new(n(positions[index]), S::ZERO)
             );
         }
         assert_eq!(report.line_bands.len(), 1);

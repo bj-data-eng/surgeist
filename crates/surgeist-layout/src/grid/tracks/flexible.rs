@@ -20,8 +20,8 @@ pub(in crate::grid) fn grid_axis_physical_axis(
     axis: GridAxisKind,
 ) -> crate::geometry::PhysicalAxis {
     match axis.logical_axis() {
-        crate::LogicalAxis::Inline => flow_axes.inline_axis(),
-        crate::LogicalAxis::Block => flow_axes.block_axis(),
+        crate::geometry::LogicalAxis::Inline => flow_axes.inline_axis(),
+        crate::geometry::LogicalAxis::Block => flow_axes.block_axis(),
     }
 }
 
@@ -611,7 +611,7 @@ pub(in crate::grid) fn estimate_definite_axis_tracks<S: LayoutScalar>(
 #[cfg(test)]
 mod flex_item_tests {
     use super::*;
-    use crate::TrackFlexFactorOf;
+    use crate::value::TrackFlexFactorOf;
 
     fn flex<S: LayoutScalar>(factor: S) -> TrackSizingOf<S> {
         TrackSizingOf::minmax(

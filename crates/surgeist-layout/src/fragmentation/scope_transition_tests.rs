@@ -1247,10 +1247,13 @@ fn position(occurrence: usize) -> FragmentationPosition {
 fn contexts() -> Vec<FragmentationContext> {
     vec![FragmentationContext {
         kind: FragmentationKind::Page {
-            progression: crate::PageProgression::LeftToRight,
+            progression: crate::fragmentation::page::PageProgression::LeftToRight,
         },
         parent: None,
-        flow_axes: crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+        flow_axes: crate::geometry::FlowAxes::new(
+            crate::node_input::WritingMode::HorizontalTb,
+            crate::node_input::Direction::Ltr,
+        ),
     }]
 }
 fn parent_input<S: LayoutScalar>(used: f64) -> Arc<FragmentationInputOf<Key, S>> {

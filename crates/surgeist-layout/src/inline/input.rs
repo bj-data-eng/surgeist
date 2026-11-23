@@ -1,6 +1,9 @@
 use crate::block::BlockChildProjection;
 use crate::{
-    Compute, InlineBoundaryInputOf, LayoutInputViewOf, LayoutScalar, LineBreakInputOf, Traverse,
+    engine::contracts::Compute,
+    node_input::{InlineBoundaryInputOf, LayoutInputViewOf, LineBreakInputOf, Position},
+    scalar::LayoutScalar,
+    tree::Traverse,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -51,7 +54,7 @@ pub(crate) fn starts_run<S: LayoutScalar>(input: LayoutInputViewOf<'_, S>) -> bo
     match input {
         LayoutInputViewOf::Box(input) => {
             input.display.is_inline_level()
-                && input.position != crate::Position::Absolute
+                && input.position != Position::Absolute
                 && input.float.is_none()
         }
         LayoutInputViewOf::InlineText(_)
@@ -64,8 +67,8 @@ pub(crate) fn starts_run<S: LayoutScalar>(input: LayoutInputViewOf<'_, S>) -> bo
 pub(crate) fn continues_run<S: LayoutScalar>(input: LayoutInputViewOf<'_, S>) -> bool {
     match input {
         LayoutInputViewOf::Box(input) => {
-            input.display == crate::Display::None
-                || input.position == crate::Position::Absolute
+            input.display == crate::node_input::Display::None
+                || input.position == Position::Absolute
                 || (input.display.is_inline_level() && input.float.is_none())
         }
         LayoutInputViewOf::InlineText(_)
@@ -85,8 +88,8 @@ pub(crate) fn entry_participation<'input, S: LayoutScalar>(
     for input in inputs {
         participates |= match input {
             LayoutInputViewOf::Box(input) => {
-                input.display != crate::Display::None
-                    && input.position != crate::Position::Absolute
+                input.display != crate::node_input::Display::None
+                    && input.position != Position::Absolute
                     && input.float.is_none()
             }
             LayoutInputViewOf::LineBreak(input) => !input.display().is_none(),
@@ -121,11 +124,11 @@ pub(crate) fn run_ranges<'input, Node: Copy, S: LayoutScalar>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::LayoutInputOf;
-    use crate::test_support::text::{PreparedParagraph, ahem_style};
-    use crate::{
+    use crate::node_input::LayoutInputOf;
+    use crate::node_input::{
         Clear, Direction, InlineBoundaryKind, InlineMetricsOf, VerticalAlignOf, WritingMode,
     };
+    use crate::test_support::text::{PreparedParagraph, ahem_style};
     use surgeist_text::source::Source;
 
     fn projection_from_input<S: LayoutScalar>(
@@ -174,7 +177,7 @@ mod tests {
         assert_eq!(projected_text.origin(), &paragraph.origin(17));
 
         let break_metrics = InlineMetricsOf::try_new(
-            crate::InlineBaselineContext::Physical,
+            crate::node_input::InlineBaselineContext::Physical,
             S::from_f64(13.0),
             S::from_f64(19.0),
         )
@@ -200,7 +203,7 @@ mod tests {
         assert_eq!(projected_break.clear(), Clear::Right);
 
         let boundary_metrics = InlineMetricsOf::try_new(
-            crate::InlineBaselineContext::Physical,
+            crate::node_input::InlineBaselineContext::Physical,
             S::from_f64(29.0),
             S::from_f64(31.0),
         )
@@ -208,7 +211,7 @@ mod tests {
         let boundary = InlineBoundaryInputOf::contribution(
             InlineBoundaryKind::End,
             boundary_metrics,
-            crate::InlineBoundaryEdgeOf::ZERO,
+            crate::node_input::InlineBoundaryEdgeOf::ZERO,
         )
         .expect("zero-margin contribution")
         .with_writing_mode(WritingMode::SidewaysRl)

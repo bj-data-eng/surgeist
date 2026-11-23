@@ -27,9 +27,19 @@ use crate::error::{
 use crate::scroll::SettledAutoScrollbarState;
 use crate::text_layout::scope_alignment::EntryBacking;
 use crate::{
-    CompletedLayoutBatchOf, ComputeInputOf, ComputeOutputOf, InlineFragmentOutputEntryOf,
-    InlineFragmentOutputOf, LayoutCacheClearEntry, LayoutCacheStoreEntryOf, LayoutInputViewOf,
-    LayoutOutputEntryOf, LayoutScalar, LayoutTree, NodeInputOf, RunMode, Size, Traverse,
+    block_fragmentation::NonBoxKind,
+    cache::CacheKeyContext,
+    error::LayoutInvalidInputOf,
+    geometry::{Point, Size},
+    inline_wrapping::WrappingScopeError,
+    node_input::{Display, LayoutInputViewOf, NodeInputOf},
+    output::{
+        CompletedLayoutBatchOf, ComputeInputOf, ComputeOutputOf, InlineFragmentOutputEntryOf,
+        InlineFragmentOutputOf, LayoutCacheClearEntry, LayoutCacheStoreEntryOf,
+        LayoutOutputEntryOf, RunMode, SourceIndex,
+    },
+    scalar::LayoutScalar,
+    tree::{LayoutTree, Traverse},
 };
 
 type SessionResult<Tree, T> = LayoutResultOf<
@@ -104,7 +114,7 @@ where
     Tree: LayoutTree,
 {
     tree: &'a Tree,
-    bound: Option<crate::LayoutTargetBasis>,
+    bound: Option<crate::block_fragmentation::input::LayoutTargetBasis>,
     block_bodies: Option<Vec<super::block_scope::Body<Tree::Node, Tree::Scalar>>>,
     fragmentation: Option<FragmentComputation<Tree::Node, Tree::Scalar>>,
     block_floats: crate::block::float_context::State<Tree::Node, Tree::Scalar>,
@@ -448,7 +458,7 @@ where
         Err(LayoutErrorOf::new(
             LayoutErrorSiteOf::Node(root),
             LayoutOperation::RootLayout,
-            LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::BlockFragmentationRequest),
+            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::BlockFragmentationRequest),
         ))
     }
 
@@ -489,7 +499,7 @@ where
     /// A session over a flow capture whose counts no test reads.
     #[cfg(test)]
     pub(crate) fn with_flow_unobserved(
-        capture: &'a crate::LayoutFlowInput<'_, Tree>,
+        capture: &'a crate::text_layout::LayoutFlowInput<'_, Tree>,
         invalidated_nodes: Vec<Tree::Node>,
     ) -> Self {
         Self::with_flow(capture, invalidated_nodes, Meter::new())
@@ -744,7 +754,7 @@ where
 
     pub(super) fn bind_fragment_frame(
         &mut self,
-        target: crate::LayoutTargetBasis,
+        target: crate::block_fragmentation::input::LayoutTargetBasis,
         allocations: Vec<
             crate::block_fragmentation::FragmentBoxAllocation<Tree::Node, Tree::Scalar>,
         >,
@@ -844,7 +854,7 @@ where
     }
 
     pub(crate) fn with_flow(
-        capture: &'a crate::LayoutFlowInput<'_, Tree>,
+        capture: &'a crate::text_layout::LayoutFlowInput<'_, Tree>,
         invalidated_nodes: Vec<Tree::Node>,
         meter: Meter,
     ) -> Self {
@@ -908,7 +918,7 @@ where
         root: Tree::Node,
     ) -> SessionResult<Tree, CanonicalFrames<Tree>> {
         use crate::output::{AtomicReadbackPhase, GeometryStateOf};
-        let mut pending = vec![(root, crate::Point::<f64>::ZERO, crate::Point::<f64>::ZERO)];
+        let mut pending = vec![(root, Point::<f64>::ZERO, Point::<f64>::ZERO)];
         let mut frames = Vec::new();
         while let Some((node, parent_visual, parent_normal)) = pending.pop() {
             let entry = self
@@ -945,7 +955,7 @@ where
                     ));
                 }
             };
-            let origin_sum = |parent: crate::Point<f64>, location: crate::Point<Tree::Scalar>| {
+            let origin_sum = |parent: Point<f64>, location: Point<Tree::Scalar>| {
                 let mut result = parent;
                 for (base, delta, target) in [
                     (parent.x, location.x.to_f64(), &mut result.x),
@@ -953,9 +963,9 @@ where
                 ] {
                     let value = base + delta;
                     let reason = if !value.is_finite() {
-                        Some(crate::LayoutTextNumericError::NonFinite)
+                        Some(crate::error::LayoutTextNumericError::NonFinite)
                     } else if delta != 0.0 && value == base {
-                        Some(crate::LayoutTextNumericError::NonZeroLost)
+                        Some(crate::error::LayoutTextNumericError::NonZeroLost)
                     } else {
                         None
                     };
@@ -1248,7 +1258,7 @@ where
                     .cloned()
                     .map(|fragment| {
                         InlineFragmentOutputEntryOf::new(
-                            crate::InlineFragmentOwner::Node(final_group.node),
+                            crate::output::InlineFragmentOwner::Node(final_group.node),
                             fragment,
                         )
                     })
@@ -1267,7 +1277,7 @@ where
                     .cloned()
                     .map(|fragment| {
                         InlineFragmentOutputEntryOf::new(
-                            crate::InlineFragmentOwner::Node(group.node),
+                            crate::output::InlineFragmentOwner::Node(group.node),
                             fragment,
                         )
                     })
@@ -1315,7 +1325,8 @@ where
                         && let Some(crate::block_fragmentation::NodePublication::One(value)) =
                             batch.nodes.iter_mut().find(|entry| entry.node() == node)
                     {
-                        value.parent = Some(crate::FragmentCoordinateSpace::Fragment(id));
+                        value.parent =
+                            Some(crate::block_fragmentation::FragmentCoordinateSpace::Fragment(id));
                     }
                 }
             }
@@ -1354,7 +1365,7 @@ where
                 children
                     .into_iter()
                     .enumerate()
-                    .map(|(index, child)| (crate::SourceIndex::new(index), child))
+                    .map(|(index, child)| (SourceIndex::new(index), child))
                     .collect::<Vec<_>>(),
             ));
         }
@@ -1433,8 +1444,7 @@ where
         // of a slot, by the position of that first write.
         let mut last_value = std::collections::BTreeMap::<usize, usize>::new();
         for positions in buckets.values() {
-            let mut stores: Vec<(&ComputeInputOf<Tree::Scalar>, &crate::CacheKeyContext)> =
-                Vec::new();
+            let mut stores: Vec<(&ComputeInputOf<Tree::Scalar>, &CacheKeyContext)> = Vec::new();
             // A geometry write follows, and a hidden one, which makes every
             // write of the node before it dead.
             let mut geometry = false;
@@ -1585,10 +1595,7 @@ where
                 .native_completions
                 .try_reserve(1)
                 .map_err(|_| {
-                    crate::inline_wrapping::wrapping_error(
-                        node,
-                        crate::WrappingScopeError::Allocation,
-                    )
+                    crate::inline_wrapping::wrapping_error(node, WrappingScopeError::Allocation)
                 })?;
             self.wrapping.native_completions.push(completion);
         }
@@ -1615,7 +1622,7 @@ where
             self.wrapping.native_runs[index] = run;
         } else {
             self.wrapping.native_runs.try_reserve(1).map_err(|_| {
-                crate::inline_wrapping::wrapping_error(node, crate::WrappingScopeError::Allocation)
+                crate::inline_wrapping::wrapping_error(node, WrappingScopeError::Allocation)
             })?;
             self.wrapping.native_runs.push(run);
         }
@@ -1637,11 +1644,11 @@ where
                 .tree
                 .layout_input(node)
                 .as_box()
-                .is_some_and(|style| style.display == crate::Display::None))
+                .is_some_and(|style| style.display == Display::None))
         .then_some(index)
     }
 
-    fn staged_source_index(&self, node: Tree::Node) -> crate::SourceIndex {
+    fn staged_source_index(&self, node: Tree::Node) -> SourceIndex {
         if let Some(memo) = &self.memo {
             memo.observe_geometry(node);
         }
@@ -1651,7 +1658,7 @@ where
             .rev()
             .find(|entry| entry.node() == node)
             .map(|entry| entry.output().source_index)
-            .unwrap_or(crate::SourceIndex::ZERO)
+            .unwrap_or(SourceIndex::ZERO)
     }
 
     fn subtree_uses_shape_provider(&self, root: Tree::Node) -> bool {
@@ -1662,7 +1669,9 @@ where
                 continue;
             }
             visited.push(node);
-            if self.tree.node_input(node).float_exclusion == crate::FloatExclusion::Shape {
+            if self.tree.node_input(node).float_exclusion
+                == crate::node_input::FloatExclusion::Shape
+            {
                 return true;
             }
             pending.extend(self.tree.children(node));
@@ -1718,7 +1727,7 @@ where
     fn publication_kind(
         &self,
         entry: &LayoutOutputEntryOf<Tree::Node, Tree::Scalar>,
-    ) -> Option<crate::NonBoxKind> {
+    ) -> Option<NonBoxKind> {
         use crate::output::GeometryStateOf as G;
         let hidden = match entry.geometry_state() {
             G::OrdinaryUnrounded { measured_normal } => measured_normal.is_hidden(),
@@ -1727,14 +1736,14 @@ where
             }
         };
         if hidden {
-            return Some(crate::NonBoxKind::Hidden);
+            return Some(NonBoxKind::Hidden);
         }
         match self.tree.layout_input(entry.node()) {
-            crate::LayoutInputViewOf::Box(_) => None,
-            crate::LayoutInputViewOf::InlineText(_) => Some(crate::NonBoxKind::InlineText),
-            crate::LayoutInputViewOf::TextControl(_) => Some(crate::NonBoxKind::TextControl),
-            crate::LayoutInputViewOf::LineBreak(_) => Some(crate::NonBoxKind::LineBreak),
-            crate::LayoutInputViewOf::InlineBoundary(_) => Some(crate::NonBoxKind::InlineBoundary),
+            LayoutInputViewOf::Box(_) => None,
+            LayoutInputViewOf::InlineText(_) => Some(NonBoxKind::InlineText),
+            LayoutInputViewOf::TextControl(_) => Some(NonBoxKind::TextControl),
+            LayoutInputViewOf::LineBreak(_) => Some(NonBoxKind::LineBreak),
+            LayoutInputViewOf::InlineBoundary(_) => Some(NonBoxKind::InlineBoundary),
         }
     }
 
@@ -1755,21 +1764,20 @@ where
             input
         };
         let style = self.tree.node_input(node);
-        if style.block_generation == crate::BlockGeneration::Anonymous {
-            if style.display != crate::Display::Block
-                || style.position == crate::Position::Absolute
+        if style.block_generation == crate::node_input::BlockGeneration::Anonymous {
+            if style.display != Display::Block
+                || style.position == crate::node_input::Position::Absolute
                 || !style.float.is_none()
                 || matches!(
                     input.parent_formatting_context(),
-                    crate::ParentFormattingContext::Flex | crate::ParentFormattingContext::Grid
+                    crate::output::ParentFormattingContext::Flex
+                        | crate::output::ParentFormattingContext::Grid
                 )
             {
                 return Err(LayoutErrorOf::new(
                     LayoutErrorSiteOf::Node(node),
                     LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::InvalidInput(
-                        crate::LayoutInvalidInputOf::AnonymousBlockRole,
-                    ),
+                    LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::AnonymousBlockRole),
                 ));
             }
             // Hidden traversal publishes zero output independently of indentation.
@@ -1779,7 +1787,7 @@ where
                         LayoutErrorSiteOf::Node(node),
                         LayoutOperation::ChildLayout,
                         LayoutErrorKindOf::MissingContext(
-                            crate::LayoutMissingContext::AnonymousGeneratingBlock,
+                            crate::error::LayoutMissingContext::AnonymousGeneratingBlock,
                         ),
                     )
                 })?;
@@ -1788,7 +1796,7 @@ where
                         LayoutErrorSiteOf::Node(node),
                         LayoutOperation::ChildLayout,
                         LayoutErrorKindOf::InvalidInput(
-                            crate::LayoutInvalidInputOf::AnonymousIndentMismatch,
+                            LayoutInvalidInputOf::AnonymousIndentMismatch,
                         ),
                     ));
                 }
@@ -1809,7 +1817,9 @@ where
                 return Err(LayoutErrorOf::new(
                     LayoutErrorSiteOf::Node(node),
                     LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::TextCapture),
+                    LayoutErrorKindOf::MissingContext(
+                        crate::error::LayoutMissingContext::TextCapture,
+                    ),
                 ));
             }
             let known = input.known();
@@ -1824,8 +1834,7 @@ where
 
         let input = self.prepare_child_input(node, input)?;
         let style = self.tree.node_input(node);
-        if input.run_mode() == RunMode::PerformHiddenLayout || style.display == crate::Display::None
-        {
+        if input.run_mode() == RunMode::PerformHiddenLayout || style.display == Display::None {
             #[cfg(test)]
             HIDDEN_COMPUTE_SESSION_REQUESTS.with(|requests| {
                 requests.borrow_mut().push((
@@ -1867,7 +1876,7 @@ where
             let context = if host_cache {
                 self.cache_context()
             } else {
-                crate::CacheKeyContext::new()
+                CacheKeyContext::new()
             };
             #[cfg(test)]
             {
@@ -1897,7 +1906,7 @@ where
         } else {
             #[cfg(test)]
             {
-                admission_context = crate::CacheKeyContext::new();
+                admission_context = crate::cache::CacheKeyContext::new();
             }
             (None, None)
         };
@@ -2254,7 +2263,8 @@ where
             if result.is_ok()
                 && let Some(text) = &mut self.text
             {
-                let anonymous = style.block_generation == crate::BlockGeneration::Anonymous;
+                let anonymous =
+                    style.block_generation == crate::node_input::BlockGeneration::Anonymous;
                 let error = |error| {
                     crate::error::staging_text_error(
                         LayoutErrorSiteOf::Node(node),
@@ -2281,19 +2291,15 @@ where
         }
 
         let output = match style.display.inner_display() {
-            crate::Display::Block => crate::block::compute_block_scoped(self, node, input),
-            crate::Display::Flex => {
-                crate::flex::compute_flex(self, node, input).map_err(Into::into)
-            }
-            crate::Display::Grid | crate::Display::GridLanes => {
+            Display::Block => crate::block::compute_block_scoped(self, node, input),
+            Display::Flex => crate::flex::compute_flex(self, node, input).map_err(Into::into),
+            Display::Grid | Display::GridLanes => {
                 crate::grid::compute_grid(self, node, input).map_err(Into::into)
             }
-            crate::Display::None => self
+            Display::None => self
                 .drive_hidden(self.hidden_request(node, input))
                 .map_err(Into::into),
-            crate::Display::InlineBlock
-            | crate::Display::InlineGrid
-            | crate::Display::InlineGridLanes => {
+            Display::InlineBlock | Display::InlineGrid | Display::InlineGridLanes => {
                 unreachable!("inner_display removes inline display variants")
             }
         }?;
@@ -2349,7 +2355,7 @@ where
 
         if self.block_scopes().is_none()
             || self.tree.has_leaf_measurement(request.node)
-            || self.tree.node_input(request.node).display.inner_display() != crate::Display::Block
+            || self.tree.node_input(request.node).display.inner_display() != Display::Block
         {
             return Ok(ScopedChildStart::Fallback {
                 node: request.node,
@@ -2358,7 +2364,7 @@ where
         }
         let input = self.prepare_child_input(request.node, request.input)?;
         if input.run_mode() == RunMode::PerformHiddenLayout
-            || self.tree.node_input(request.node).display == crate::Display::None
+            || self.tree.node_input(request.node).display == Display::None
         {
             return Ok(ScopedChildStart::Fallback {
                 node: request.node,
@@ -2517,9 +2523,8 @@ where
         &mut self,
         effects: &crate::engine::StagedEffects<Self::Node, Self::Scalar>,
     ) -> SessionResult<Tree, ()> {
-        let allocation = |node| {
-            crate::inline_wrapping::wrapping_error(node, crate::WrappingScopeError::Allocation)
-        };
+        let allocation =
+            |node| crate::inline_wrapping::wrapping_error(node, WrappingScopeError::Allocation);
         self.meter.charge(LayoutWork::EffectReplayed, effects.len());
         for effect in effects.iter() {
             match effect {
@@ -2690,14 +2695,11 @@ where
             }
             return Err(crate::inline_wrapping::wrapping_error(
                 node,
-                crate::WrappingScopeError::InconsistentIncidence,
+                WrappingScopeError::InconsistentIncidence,
             ));
         };
         let completion = completion.ok_or_else(|| {
-            crate::inline_wrapping::wrapping_error(
-                node,
-                crate::WrappingScopeError::InconsistentIncidence,
-            )
+            crate::inline_wrapping::wrapping_error(node, WrappingScopeError::InconsistentIncidence)
         })?;
         let actual_source = completion
             .selection(0..completion.ranks.len())
@@ -2713,7 +2715,7 @@ where
         {
             return Err(crate::inline_wrapping::wrapping_error(
                 node,
-                crate::WrappingScopeError::InconsistentIncidence,
+                WrappingScopeError::InconsistentIncidence,
             ));
         }
         if lines.iter().any(|line| {
@@ -2725,7 +2727,7 @@ where
         }) {
             return Err(crate::inline_wrapping::wrapping_error(
                 node,
-                crate::WrappingScopeError::InconsistentIncidence,
+                WrappingScopeError::InconsistentIncidence,
             ));
         }
         let run = crate::inline_wrapping::family::NativePublication::new(
@@ -2795,7 +2797,7 @@ where
         &self,
         node: Self::Node,
         input: ComputeInputOf<Self::Scalar>,
-        operation: crate::SizingOperation,
+        operation: crate::value::SizingOperation,
     ) -> LayoutResultOf<Self::Node, Option<Self::Scalar>, Self::Scalar, Tree::MeasureError> {
         let Some(context) = self.fragment_intrinsics() else {
             return Ok(None);
@@ -2804,7 +2806,7 @@ where
             return Ok(None);
         };
         let style = self.tree.node_input(node);
-        let own = crate::FlowAxes::new(style.writing_mode, style.direction);
+        let own = crate::geometry::FlowAxes::new(style.writing_mode, style.direction);
         // A used block allocation may change Normal geometry, never the
         // descendant percentage basis or canonical inline containing context.
         if entry.input.parent() != input.parent()
@@ -2827,7 +2829,7 @@ where
         &mut self,
         node: Self::Node,
         input: ComputeInputOf<Self::Scalar>,
-        axis: crate::PhysicalAxis,
+        axis: crate::geometry::PhysicalAxis,
     ) -> LayoutResultOf<Self::Node, Self::Scalar, Self::Scalar, Tree::MeasureError> {
         self.drive_axis(node, input, axis)
     }
@@ -2987,7 +2989,7 @@ where
                 .ok_or_else(|| {
                     crate::inline_wrapping::wrapping_error(
                         packet.node,
-                        crate::WrappingScopeError::InconsistentIncidence,
+                        WrappingScopeError::InconsistentIncidence,
                     )
                 })?;
             if !completion.input.run_mode().is_perform_layout()
@@ -2995,7 +2997,7 @@ where
             {
                 return Err(crate::inline_wrapping::wrapping_error(
                     packet.node,
-                    crate::WrappingScopeError::InconsistentIncidence,
+                    WrappingScopeError::InconsistentIncidence,
                 ));
             }
             self.drop_native_runs(completion.family);
@@ -3047,9 +3049,13 @@ where
     fn float_exclusion_interval(
         &self,
         node: Self::Node,
-        query: crate::FloatExclusionQueryOf<Self::Scalar>,
-    ) -> Option<Result<Option<crate::FloatExclusionIntervalOf<Self::Scalar>>, Tree::MeasureError>>
-    {
+        query: crate::node_input::FloatExclusionQueryOf<Self::Scalar>,
+    ) -> Option<
+        Result<
+            Option<crate::node_input::FloatExclusionIntervalOf<Self::Scalar>>,
+            Tree::MeasureError,
+        >,
+    > {
         self.tree.float_exclusion_interval(node, query)
     }
 }
@@ -3177,7 +3183,7 @@ where
     type Node = Tree::Node;
     type Scalar = Tree::Scalar;
 
-    fn cache_context(&self) -> crate::CacheKeyContext {
+    fn cache_context(&self) -> CacheKeyContext {
         self.tree.cache_context()
     }
 
@@ -3185,7 +3191,7 @@ where
         &self,
         node: Self::Node,
         input: &ComputeInputOf<Self::Scalar>,
-        context: crate::CacheKeyContext,
+        context: CacheKeyContext,
     ) -> SessionResult<Tree, Option<ComputeOutputOf<Self::Scalar>>> {
         if self.bound.is_some()
             || self.cache.invalidated.contains(&node)
@@ -3243,7 +3249,7 @@ where
         &mut self,
         node: Self::Node,
         input: &ComputeInputOf<Self::Scalar>,
-        context: crate::CacheKeyContext,
+        context: CacheKeyContext,
         output: ComputeOutputOf<Self::Scalar>,
     ) -> SessionResult<Tree, ()> {
         if let Some(formatted) = self.text.as_mut().and_then(|text| text.formatted.as_mut()) {
@@ -3376,7 +3382,7 @@ where
 }
 
 #[cfg(test)]
-use crate::NodeOutputOf;
+use crate::output::NodeOutputOf;
 
 #[cfg(test)]
 #[path = "formatted_session_tests.rs"]
@@ -3396,17 +3402,20 @@ mod tests {
     }
 
     use super::*;
-    use crate::{DefaultScalar, LayoutErrorSite, NodeInput, Point, ScrollRectOf, round_layout};
+    use crate::{
+        engine::round_layout, error::LayoutErrorSite, geometry::Point, node_input::NodeInput,
+        scalar::DefaultScalar, scroll::ScrollRectOf,
+    };
 
     #[test]
     fn rejected_float_probe_cannot_export_shared_descendant_rows_or_outputs() {
         fn lane<S: LayoutScalar>() {
             let sized = |width: f64, height: Option<f64>| NodeInputOf {
-                display: crate::Display::Block,
+                display: crate::node_input::Display::Block,
                 size: Size::new(
-                    crate::PreferredSizeOf::px(S::from_f64(width)),
-                    height.map_or(crate::PreferredSizeOf::AUTO, |height| {
-                        crate::PreferredSizeOf::px(S::from_f64(height))
+                    crate::sizing::PreferredSizeOf::px(S::from_f64(width)),
+                    height.map_or(crate::sizing::PreferredSizeOf::AUTO, |height| {
+                        crate::sizing::PreferredSizeOf::px(S::from_f64(height))
                     }),
                 ),
                 ..NodeInputOf::default()
@@ -3418,7 +3427,7 @@ mod tests {
                 .style(
                     1,
                     NodeInputOf {
-                        float: crate::Float::Left,
+                        float: crate::node_input::Float::Left,
                         ..sized(40.0, None)
                     },
                 )
@@ -3426,7 +3435,7 @@ mod tests {
                 .style(
                     3,
                     NodeInputOf {
-                        float: crate::Float::Left,
+                        float: crate::node_input::Float::Left,
                         ..sized(10.0, Some(30.0))
                     },
                 );
@@ -3434,27 +3443,32 @@ mod tests {
             let input = ComputeInputOf::leaf_layout(
                 Size::NONE,
                 Size::new(Some(S::from_f64(100.0)), None),
-                crate::ContainingLayoutContext::new(
-                    crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
-                    crate::ParentFormattingContext::BlockFlow,
+                crate::output::ContainingLayoutContext::new(
+                    crate::geometry::FlowAxes::new(
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
+                    ),
+                    crate::output::ParentFormattingContext::BlockFlow,
                 ),
-                crate::SizingRequestOf::new(
+                crate::value::SizingRequestOf::new(
                     Size::new(
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                        crate::value::AxisSizingRequestOf::new(
+                            crate::value::AvailableSpaceOf::Definite(
+                                crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            crate::value::SizingOperation::Normal,
                         ),
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::Normal,
+                        crate::value::AxisSizingRequestOf::new(
+                            crate::value::AvailableSpaceOf::Indefinite,
+                            crate::value::SizingOperation::Normal,
                         ),
                     ),
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Unknown,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    crate::value::OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        crate::value::NearestScrollportOf::Unknown,
+                        crate::geometry::Size::splat(
+                            crate::value::OrthogonalFallbackLimitOf::Unknown,
+                        ),
                     ),
                 ),
             )
@@ -3500,10 +3514,10 @@ mod tests {
                 .style(
                     1,
                     NodeInputOf::<S> {
-                        display: crate::Display::Block,
+                        display: crate::node_input::Display::Block,
                         size: Size::new(
-                            crate::PreferredSizeOf::px(S::from_f64(20.0)),
-                            crate::PreferredSizeOf::px(S::from_f64(10.0)),
+                            crate::sizing::PreferredSizeOf::px(S::from_f64(20.0)),
+                            crate::sizing::PreferredSizeOf::px(S::from_f64(10.0)),
                         ),
                         ..NodeInputOf::default()
                     },
@@ -3517,26 +3531,28 @@ mod tests {
                     1,
                     ComputeInputOf::for_child(
                         RunMode::PerformLayout,
-                        crate::SizingMode::InherentSize,
-                        crate::RequestedAxis::Both,
+                        crate::output::SizingMode::InherentSize,
+                        crate::output::RequestedAxis::Both,
                         Size::NONE,
                         Size::new(Some(S::from_f64(100.0)), Some(S::from_f64(50.0))),
-                        crate::ContainingLayoutContext::new(
-                            crate::FlowAxes::new(
-                                crate::WritingMode::HorizontalTb,
-                                crate::Direction::Ltr,
+                        crate::output::ContainingLayoutContext::new(
+                            crate::geometry::FlowAxes::new(
+                                crate::node_input::WritingMode::HorizontalTb,
+                                crate::node_input::Direction::Ltr,
                             ),
-                            crate::ParentFormattingContext::BlockFlow,
+                            crate::output::ParentFormattingContext::BlockFlow,
                         ),
-                        crate::SizingRequestOf::new(
-                            Size::splat(crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Indefinite,
-                                crate::SizingOperation::Normal,
+                        crate::value::SizingRequestOf::new(
+                            Size::splat(crate::value::AxisSizingRequestOf::new(
+                                crate::value::AvailableSpaceOf::Indefinite,
+                                crate::value::SizingOperation::Normal,
                             )),
-                            crate::OrthogonalFallbackOf::new(
-                                crate::Size::NONE,
-                                crate::NearestScrollportOf::Unknown,
-                                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                            crate::value::OrthogonalFallbackOf::new(
+                                crate::geometry::Size::NONE,
+                                crate::value::NearestScrollportOf::Unknown,
+                                crate::geometry::Size::splat(
+                                    crate::value::OrthogonalFallbackLimitOf::Unknown,
+                                ),
                             ),
                         ),
                     ),
@@ -3593,8 +3609,11 @@ mod tests {
             &self.input
         }
 
-        fn layout_input(&self, _node: Self::Node) -> crate::LayoutInputViewOf<'_, DefaultScalar> {
-            crate::LayoutInputViewOf::Box(&self.input)
+        fn layout_input(
+            &self,
+            _node: Self::Node,
+        ) -> crate::node_input::LayoutInputViewOf<'_, DefaultScalar> {
+            crate::node_input::LayoutInputViewOf::Box(&self.input)
         }
     }
 
@@ -3682,16 +3701,16 @@ mod tests {
             .style(
                 0,
                 NodeInputOf {
-                    display: crate::Display::Block,
+                    display: crate::node_input::Display::Block,
                     ..NodeInputOf::default()
                 },
             )
             .input(1, paragraph.text_input(1));
-        let capture = crate::LayoutFlowInput::try_new(
+        let capture = crate::text_layout::LayoutFlowInput::try_new(
             &tree,
             0,
             vec![paragraph.binding(0)],
-            crate::WrappingInput {
+            crate::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -3773,7 +3792,27 @@ mod grid_overflow_observation_tests {
     use super::*;
     use crate::test_support::layout_tree::PublicLayoutTreeOf;
     use crate::test_support::readback::{self, Phase};
-    use crate::*;
+    use crate::{
+        cache::{CacheKeyContext, CacheOf},
+        engine::{compute_layout_with_flow, compute_layout_with_flow_invalidated},
+        error::{LayoutErrorKindOf, LayoutErrorSiteOf, LayoutOperation},
+        geometry::{Edges, FlowAxes, Point, Size},
+        measurement::LeafMeasureInputOf,
+        node_input::{
+            AlignContent, AlignItems, ComputedOverflow, Direction, Display, LayoutInputViewOf,
+            NodeInputOf, Overflow, Position, ScrollbarGutter, ScrollbarWidthOf, TextAlign,
+            WritingMode,
+        },
+        output::{
+            CompletedLayoutBatchOf, ComputeInputOf, ComputeOutputOf, ContainingLayoutContext,
+            InlineFragmentOutputOf, LayoutOutputEntryOf, LayoutRootRequestOf,
+            ParentFormattingContext, RequestedAxis, RunMode, SizingMode,
+        },
+        scalar::LayoutScalar,
+        sizing::PreferredSizeOf,
+        tree::{LayoutBatchSink, LayoutTree, Traverse},
+        value::{LengthAutoOf, NonNegativeFiniteOf, TrackComponentOf, TrackFlexFactorOf},
+    };
     use std::collections::HashMap;
 
     #[derive(Clone, Debug, Default, PartialEq)]
@@ -3817,7 +3856,7 @@ mod grid_overflow_observation_tests {
     }
 
     struct GridGutterInlineTree<S: LayoutScalar> {
-        targets: crate::LayoutPublicationTargets<u32>,
+        targets: crate::block_fragmentation::input::LayoutPublicationTargets<u32>,
         tree: PublicLayoutTreeOf<S>,
         retained: ObservationRetainedState<S>,
         fragments: Vec<InlineFragmentOutputOf<S>>,
@@ -3894,7 +3933,7 @@ mod grid_overflow_observation_tests {
                     },
                 );
             Self {
-                targets: crate::LayoutPublicationTargets::new(),
+                targets: crate::block_fragmentation::input::LayoutPublicationTargets::new(),
                 tree,
                 text,
                 retained: ObservationRetainedState::default(),
@@ -3907,28 +3946,33 @@ mod grid_overflow_observation_tests {
 
         fn request(width: f64) -> LayoutRootRequestOf<S> {
             {
-                let width = crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap();
+                let width = crate::value::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap();
                 // This fixture's real root is Htb/LTR. Its declared percentage
                 // parent width is independent of unavailable ICB dimensions.
-                crate::LayoutRootRequestOf::standalone(
-                    crate::SizingRequestOf::new(
+                crate::output::LayoutRootRequestOf::standalone(
+                    crate::value::SizingRequestOf::new(
                         Size::new(
-                            crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Definite(width),
-                                crate::SizingOperation::Normal,
+                            crate::value::AxisSizingRequestOf::new(
+                                crate::value::AvailableSpaceOf::Definite(width),
+                                crate::value::SizingOperation::Normal,
                             ),
-                            crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Indefinite,
-                                crate::SizingOperation::Normal,
+                            crate::value::AxisSizingRequestOf::new(
+                                crate::value::AvailableSpaceOf::Indefinite,
+                                crate::value::SizingOperation::Normal,
                             ),
                         ),
-                        crate::OrthogonalFallbackOf::new(
-                            crate::Size::NONE,
-                            crate::NearestScrollportOf::Absent,
-                            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        crate::value::OrthogonalFallbackOf::new(
+                            crate::geometry::Size::NONE,
+                            crate::value::NearestScrollportOf::Absent,
+                            crate::geometry::Size::splat(
+                                crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                            ),
                         ),
                     ),
-                    crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+                    crate::geometry::FlowAxes::new(
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
+                    ),
                     Size::new(Some(width), None),
                 )
             }
@@ -4018,15 +4062,23 @@ mod grid_overflow_observation_tests {
     impl<S: LayoutScalar> LayoutBatchSink<u32, S> for GridGutterInlineTree<S> {
         type Error = core::convert::Infallible;
         type Prepared = (ObservationRetainedState<S>, Vec<InlineFragmentOutputOf<S>>);
-        fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        fn publication_targets(
+            &self,
+        ) -> &crate::block_fragmentation::input::LayoutPublicationTargets<u32> {
             &self.targets
         }
-        fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        fn publication_targets_mut(
+            &mut self,
+        ) -> &mut crate::block_fragmentation::input::LayoutPublicationTargets<u32> {
             &mut self.targets
         }
         fn prepare_layout_batch<'call>(
             &self,
-            preparation: crate::LayoutBatchPreparation<'call, u32, S>,
+            preparation: crate::block_fragmentation::publication::LayoutBatchPreparation<
+                'call,
+                u32,
+                S,
+            >,
         ) -> Result<Self::Prepared, Self::Error> {
             let batch = preparation.batch();
             let mut retained = self.retained.clone();
@@ -4044,14 +4096,19 @@ mod grid_overflow_observation_tests {
                 batch
                     .unrounded_inline_fragments()
                     .iter()
-                    .filter(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(4))
+                    .filter(|entry| entry.owner() == &crate::output::InlineFragmentOwner::Node(4))
                     .map(|entry| entry.fragment().clone())
                     .collect(),
             ))
         }
         fn commit_layout_batch<'call>(
             &mut self,
-            commit: crate::LayoutBatchCommit<'call, u32, S, Self::Prepared>,
+            commit: crate::block_fragmentation::publication::LayoutBatchCommit<
+                'call,
+                u32,
+                S,
+                Self::Prepared,
+            >,
         ) {
             (self.retained, self.fragments) = commit.into_prepared();
         }
@@ -4079,11 +4136,11 @@ mod grid_overflow_observation_tests {
         for display in [Display::Grid, Display::GridLanes] {
             for seed_width in [80.0, 50.0] {
                 let mut tree = GridGutterInlineTree::<S>::new(display);
-                let capture = crate::LayoutFlowInput::try_new(
+                let capture = crate::text_layout::LayoutFlowInput::try_new(
                     &tree,
                     2,
                     vec![tree.text.binding(3)],
-                    crate::WrappingInput {
+                    crate::inline_wrapping::WrappingInput {
                         native_inline_boxes: Vec::new(),
                         gaps: Vec::new(),
                         scopes: Vec::new(),
@@ -4114,11 +4171,11 @@ mod grid_overflow_observation_tests {
                 drop(capture);
                 seed.apply_to(&mut tree).unwrap();
                 tree.cache_reads.borrow_mut().clear();
-                let capture = crate::LayoutFlowInput::try_new(
+                let capture = crate::text_layout::LayoutFlowInput::try_new(
                     &tree,
                     2,
                     vec![tree.text.binding(3)],
-                    crate::WrappingInput {
+                    crate::inline_wrapping::WrappingInput {
                         native_inline_boxes: Vec::new(),
                         gaps: Vec::new(),
                         scopes: Vec::new(),
@@ -4142,21 +4199,23 @@ mod grid_overflow_observation_tests {
                             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                             ParentFormattingContext::NoParent,
                         ),
-                        crate::SizingRequestOf::new(
+                        crate::value::SizingRequestOf::new(
                             Size::new(
-                                crate::AxisSizingRequestOf::new(
-                                    crate::AvailableSpaceOf::Indefinite,
-                                    crate::SizingOperation::MaxContent,
+                                crate::value::AxisSizingRequestOf::new(
+                                    crate::value::AvailableSpaceOf::Indefinite,
+                                    crate::value::SizingOperation::MaxContent,
                                 ),
-                                crate::AxisSizingRequestOf::new(
-                                    crate::AvailableSpaceOf::Indefinite,
-                                    crate::SizingOperation::Normal,
+                                crate::value::AxisSizingRequestOf::new(
+                                    crate::value::AvailableSpaceOf::Indefinite,
+                                    crate::value::SizingOperation::Normal,
                                 ),
                             ),
-                            crate::OrthogonalFallbackOf::new(
-                                crate::Size::NONE,
-                                crate::NearestScrollportOf::Absent,
-                                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                            crate::value::OrthogonalFallbackOf::new(
+                                crate::geometry::Size::NONE,
+                                crate::value::NearestScrollportOf::Absent,
+                                crate::geometry::Size::splat(
+                                    crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                                ),
                             ),
                         ),
                     ),
@@ -4201,11 +4260,11 @@ mod grid_overflow_observation_tests {
                 let before = (tree.retained.clone(), tree.fragments.clone());
                 tree.measurement_reads.borrow_mut().clear();
                 tree.fail_at_width.set(Some(S::from_f64(45.0)));
-                let capture = crate::LayoutFlowInput::try_new(
+                let capture = crate::text_layout::LayoutFlowInput::try_new(
                     &tree,
                     2,
                     vec![tree.text.binding(3)],
-                    crate::WrappingInput {
+                    crate::inline_wrapping::WrappingInput {
                         native_inline_boxes: Vec::new(),
                         gaps: Vec::new(),
                         scopes: Vec::new(),
@@ -4229,21 +4288,23 @@ mod grid_overflow_observation_tests {
                             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                             ParentFormattingContext::NoParent,
                         ),
-                        crate::SizingRequestOf::new(
+                        crate::value::SizingRequestOf::new(
                             Size::new(
-                                crate::AxisSizingRequestOf::new(
-                                    crate::AvailableSpaceOf::Indefinite,
-                                    crate::SizingOperation::MaxContent,
+                                crate::value::AxisSizingRequestOf::new(
+                                    crate::value::AvailableSpaceOf::Indefinite,
+                                    crate::value::SizingOperation::MaxContent,
                                 ),
-                                crate::AxisSizingRequestOf::new(
-                                    crate::AvailableSpaceOf::Indefinite,
-                                    crate::SizingOperation::Normal,
+                                crate::value::AxisSizingRequestOf::new(
+                                    crate::value::AvailableSpaceOf::Indefinite,
+                                    crate::value::SizingOperation::Normal,
                                 ),
                             ),
-                            crate::OrthogonalFallbackOf::new(
-                                crate::Size::NONE,
-                                crate::NearestScrollportOf::Absent,
-                                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                            crate::value::OrthogonalFallbackOf::new(
+                                crate::geometry::Size::NONE,
+                                crate::value::NearestScrollportOf::Absent,
+                                crate::geometry::Size::splat(
+                                    crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                                ),
                             ),
                         ),
                     ),
@@ -4317,33 +4378,33 @@ mod grid_overflow_observation_tests {
             .style(
                 0,
                 NodeInputOf {
-                    display: crate::Display::Flex,
+                    display: crate::node_input::Display::Flex,
                     size: Size::new(
-                        crate::PreferredSizeOf::px(S::from_f64(100.0)),
-                        crate::PreferredSizeOf::px(S::from_f64(20.0)),
+                        crate::sizing::PreferredSizeOf::px(S::from_f64(100.0)),
+                        crate::sizing::PreferredSizeOf::px(S::from_f64(20.0)),
                     ),
-                    justify_content: Some(crate::AlignContent::Center),
-                    align_items: Some(crate::AlignItems::Start),
+                    justify_content: Some(crate::node_input::AlignContent::Center),
+                    align_items: Some(crate::node_input::AlignItems::Start),
                     ..NodeInputOf::default()
                 },
             )
             .style(
                 1,
                 NodeInputOf {
-                    display: crate::Display::Block,
+                    display: crate::node_input::Display::Block,
                     size: Size::new(
-                        crate::PreferredSizeOf::px(S::from_f64(50.0)),
-                        crate::PreferredSizeOf::AUTO,
+                        crate::sizing::PreferredSizeOf::px(S::from_f64(50.0)),
+                        crate::sizing::PreferredSizeOf::AUTO,
                     ),
                     ..NodeInputOf::default()
                 },
             )
             .input(2, text.text_input(2));
-        let capture = crate::LayoutFlowInput::try_new(
+        let capture = crate::text_layout::LayoutFlowInput::try_new(
             &tree,
             0,
             vec![text.binding(1)],
-            crate::WrappingInput {
+            crate::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -4356,19 +4417,24 @@ mod grid_overflow_observation_tests {
             ComputeSession::with_flow_unobserved(&capture, capture.invalidated.clone());
         // Both real Flex dimensions are authored100x20. This is a normal
         // publication/replay request, not a formal intrinsic query.
-        let request = crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(
-                Size::splat(crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
+        let request = crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(
+                Size::splat(crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Indefinite,
+                    crate::value::SizingOperation::Normal,
                 )),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    crate::value::NearestScrollportOf::Absent,
+                    crate::geometry::Size::splat(
+                        crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
-            crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             Size::NONE,
         );
         super::super::root::compute_root(&mut session, 0, request).unwrap();

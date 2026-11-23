@@ -20,8 +20,13 @@ use crate::grid::{
     begin_grid_context_computation,
 };
 use crate::{
-    Compute, ComputeInputOf, ComputeOutputOf, Display, FlowAxes, LayoutErrorKindOf, LayoutErrorOf,
-    LayoutErrorSiteOf, LayoutOperation, LayoutScalar, LayoutTree, PhysicalAxis, Traverse,
+    engine::contracts::Compute,
+    error::{LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutOperation},
+    geometry::{FlowAxes, PhysicalAxis},
+    node_input::Display,
+    output::{ComputeInputOf, ComputeOutputOf},
+    scalar::LayoutScalar,
+    tree::{LayoutTree, Traverse},
 };
 
 enum Request<'input, Node, S: LayoutScalar> {

@@ -1,6 +1,7 @@
 //! Intrinsic width tags remain distinct when an orthogonal host supplies height.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation};
 
 fn n<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
@@ -190,38 +191,33 @@ fn characterize<S: LayoutScalar>() {
         assert!(!native.has_leaf_measurement(node));
     }
     let parent = FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr);
-    let fallback = crate::OrthogonalFallbackOf::new(
+    let fallback = crate::value::OrthogonalFallbackOf::new(
         Size::splat(Some(
-            crate::NonNegativeFiniteOf::new(n(400.0))
-                .expect("declared native initial containing block"),
+            NonNegativeFiniteOf::new(n(400.0)).expect("declared native initial containing block"),
         )),
-        crate::NearestScrollportOf::Absent,
-        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        crate::value::NearestScrollportOf::Absent,
+        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
     );
     let context = FlexItemRootContextOf::new(
         parent,
         Size::splat(Some(
-            crate::NonNegativeFiniteOf::new(n(400.0))
+            NonNegativeFiniteOf::new(n(400.0))
                 .expect("declared fixture extent is finite and nonnegative"),
         )),
         Size::new(
             None,
             Some(
-                crate::NonNegativeFiniteOf::new(n(20.0))
-                    .expect("declared parent-inline host allocation"),
+                NonNegativeFiniteOf::new(n(20.0)).expect("declared parent-inline host allocation"),
             ),
         ),
     );
     assert_eq!(
         context.percentage_parent(),
-        Size::splat(Some(crate::NonNegativeFiniteOf::new(n(400.0)).unwrap()))
+        Size::splat(Some(NonNegativeFiniteOf::new(n(400.0)).unwrap()))
     );
     assert_eq!(
         context.allocated_size(),
-        Size::new(
-            None,
-            Some(crate::NonNegativeFiniteOf::new(n(20.0)).unwrap())
-        )
+        Size::new(None, Some(NonNegativeFiniteOf::new(n(20.0)).unwrap()))
     );
     assert_eq!(context.parent_flow_axes(), parent);
     let host = NativeCache {
@@ -232,28 +228,22 @@ fn characterize<S: LayoutScalar>() {
     };
     for minimum in [true, false, true] {
         let width = if minimum {
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent,
-            )
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent)
         } else {
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            )
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent)
         };
         let available = Size::new(
             width,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(n(20.0))
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    NonNegativeFiniteOf::new(n(20.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         );
         let request = LayoutRootRequestOf::flex_item(
-            crate::SizingRequestOf::new(available, fallback),
+            crate::value::SizingRequestOf::new(available, fallback),
             context,
         );
         assert_eq!(request.sizing_request().axes(), available);

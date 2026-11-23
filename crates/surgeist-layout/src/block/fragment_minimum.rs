@@ -13,7 +13,7 @@ pub(crate) struct Receipt<S: LayoutScalar> {
 }
 
 pub(super) fn receipt<S: LayoutScalar>(
-    style: &crate::NodeInputOf<S>,
+    style: &crate::node_input::NodeInputOf<S>,
     constants: &Constants<S>,
 ) -> Result<Option<Receipt<S>>, crate::sizing::resolve::SizingResolutionError<S>> {
     let minimum = match constants.flow_axes.block_axis() {
@@ -47,7 +47,7 @@ pub(super) fn apply<S: LayoutScalar>(
 }
 
 pub(crate) fn absolute<S: LayoutScalar>(
-    minimum: &crate::MinSizeOf<S>,
+    minimum: &crate::sizing::MinSizeOf<S>,
     axis: PhysicalAxis,
 ) -> Result<bool, crate::sizing::resolve::SizingResolutionError<S>> {
     use crate::sizing::resolve::{FixedFallbackSource, fixed_fallback_minimum};
@@ -60,8 +60,8 @@ pub(crate) fn absolute<S: LayoutScalar>(
 /// Raw inset dependence is an admission fact, independent of the widths a
 /// particular sequence happens to use or the frame where the box first fits.
 pub(crate) fn basis_dependent_border_box<S: LayoutScalar>(
-    style: &crate::NodeInputOf<S>,
-    axes: crate::FlowAxes,
+    style: &crate::node_input::NodeInputOf<S>,
+    axes: crate::geometry::FlowAxes,
 ) -> bool {
     if style.box_sizing != BoxSizing::BorderBox {
         return false;
@@ -75,5 +75,5 @@ pub(crate) fn basis_dependent_border_box<S: LayoutScalar>(
         border.block_end,
     ]
     .into_iter()
-    .any(crate::LengthOf::depends_on_basis)
+    .any(crate::value::LengthOf::depends_on_basis)
 }

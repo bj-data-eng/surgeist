@@ -1,5 +1,6 @@
 //! Real CW and whole-upright preparation consumed by physical Layout placement.
 use super::*;
+use crate::value::SizingOperation;
 
 fn capture(orientation: text::selection::LineOrientation) -> TextParagraphBinding<u32> {
     let style = own(4.0, Wrap::None, text::style::OverflowWrap::Normal, false);
@@ -51,7 +52,7 @@ fn capture(orientation: text::selection::LineOrientation) -> TextParagraphBindin
     assert_eq!(prepared.analyzed_source().typography(), typography);
     let origin = prepared.origin_views().next().unwrap().handle();
     TextParagraphBinding {
-        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+        inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes: vec![1],
@@ -92,27 +93,27 @@ fn allocated<S: LayoutScalar>(orientation: text::selection::LineOrientation, mod
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput::default(),
+        crate::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&flow, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(42.0)).unwrap(),
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(42.0)).unwrap(),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
@@ -120,21 +121,21 @@ fn allocated<S: LayoutScalar>(orientation: text::selection::LineOrientation, mod
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         logical_requests.inline = logical_requests
             .inline
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )

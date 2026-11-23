@@ -1,4 +1,5 @@
 use super::*;
+use crate::block_fragmentation::NodeLayoutRefOf;
 use crate::test_support::readback::{self, Phase};
 
 fn layout_children<S: LayoutScalar, const N: usize>(
@@ -860,9 +861,9 @@ fn assert_main_placement_projects_wide_reverse_offset<S: LayoutScalar>(quarter: 
     let child = batch
         .node_layout(1)
         .map(|layout| match layout {
-            crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-            crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-            crate::NodeLayoutRefOf::Fragments(_) => {
+            NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+            NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+            NodeLayoutRefOf::Fragments(_) => {
                 panic!("continuous fixture unexpectedly fragmented")
             }
         })

@@ -761,7 +761,7 @@ fn collapsed_item_causes_survive_recollection_but_hidden_and_absolute_items_do_n
                     &batch,
                     1,
                     Phase::Final,
-                    readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+                    readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::Hidden),
                 )
                 .assert_numeric(NodeOutputOf::with_source_index(SourceIndex::new(0)));
                 let y = if separated { 33.0 } else { 0.0 };
@@ -825,7 +825,7 @@ fn collapsed_item_causes_survive_recollection_but_hidden_and_absolute_items_do_n
                         &batch,
                         1,
                         Phase::Final,
-                        readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+                        readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::Hidden),
                     )
                     .assert_numeric(NodeOutputOf::with_source_index(SourceIndex::new(0)));
                 }

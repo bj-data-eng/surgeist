@@ -1,8 +1,14 @@
 use super::*;
 use crate::engine::ComputeSession;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::{
+    geometry::FlowAxes,
+    node_input::{Display, NodeInputOf, WritingMode},
+    sizing::PreferredSizeOf,
+    value::LengthPercentageOf,
+};
 
-fn input<S: LayoutScalar>(axes: crate::FlowAxes, inline: f64) -> ComputeInputOf<S> {
+fn input<S: LayoutScalar>(axes: FlowAxes, inline: f64) -> ComputeInputOf<S> {
     ComputeInputOf::for_child(
         RunMode::PerformLayout,
         SizingMode::InherentSize,
@@ -10,47 +16,47 @@ fn input<S: LayoutScalar>(axes: crate::FlowAxes, inline: f64) -> ComputeInputOf<
         axes.physical_size(LogicalSizeOf::new(Some(S::from_f64(inline)), None)),
         axes.physical_size(LogicalSizeOf::new(Some(S::from_f64(100.0)), None)),
         ContainingLayoutContext::new(axes, ParentFormattingContext::BlockFlow),
-        crate::SizingRequestOf::new(
-            Size::splat(crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
+        crate::value::SizingRequestOf::new(
+            Size::splat(crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Indefinite,
+                crate::value::SizingOperation::Normal,
             )),
-            crate::OrthogonalFallbackOf::new(
+            crate::value::OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     )
 }
 fn content<S: LayoutScalar>() {
     for vertical in [false, true] {
-        let axes = crate::FlowAxes::new(
+        let axes = FlowAxes::new(
             if vertical {
-                crate::WritingMode::VerticalRl
+                WritingMode::VerticalRl
             } else {
-                crate::WritingMode::HorizontalTb
+                WritingMode::HorizontalTb
             },
             Direction::Ltr,
         );
-        let mut owner = crate::NodeInputOf::<S> {
-            display: crate::Display::Block,
+        let mut owner = NodeInputOf::<S> {
+            display: Display::Block,
             writing_mode: axes.writing_mode(),
             ..Default::default()
         };
         let maximum =
-            crate::MaxSizeOf::value(crate::LengthPercentageOf::px(S::from_f64(20.0)).unwrap());
+            crate::sizing::MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(20.0)).unwrap());
         if vertical {
             owner.max_size.width = maximum;
         } else {
             owner.max_size.height = maximum;
         }
-        let child = crate::NodeInputOf::<S> {
-            display: crate::Display::Block,
+        let child = NodeInputOf::<S> {
+            display: Display::Block,
             writing_mode: axes.writing_mode(),
             size: axes.physical_size(LogicalSizeOf::new(
-                crate::PreferredSizeOf::px(S::from_f64(40.0)),
-                crate::PreferredSizeOf::px(S::from_f64(30.0)),
+                PreferredSizeOf::px(S::from_f64(40.0)),
+                PreferredSizeOf::px(S::from_f64(30.0)),
             )),
             ..Default::default()
         };
@@ -63,7 +69,7 @@ fn content<S: LayoutScalar>() {
             &mut session,
             0,
             input(axes, 40.0),
-            crate::LayoutTree::node_input(&tree, 0),
+            crate::tree::LayoutTree::node_input(&tree, 0),
         )
         .unwrap();
         assert_eq!(
@@ -114,21 +120,21 @@ fn content<S: LayoutScalar>() {
         assert_eq!(bounds.origin(), origin);
         assert_eq!(bounds.size(), actual.size);
     }
-    let axes = crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr);
-    let mut owner = crate::NodeInputOf::<S> {
-        display: crate::Display::Block,
+    let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let mut owner = NodeInputOf::<S> {
+        display: Display::Block,
         ..Default::default()
     };
     owner.min_size.height =
-        crate::MinSizeOf::value(crate::LengthPercentageOf::px(S::from_f64(90.0)).unwrap());
+        crate::sizing::MinSizeOf::value(LengthPercentageOf::px(S::from_f64(90.0)).unwrap());
     owner.max_size.height =
-        crate::MaxSizeOf::value(crate::LengthPercentageOf::px(S::from_f64(70.0)).unwrap());
-    let child = crate::NodeInputOf::<S> {
-        display: crate::Display::Block,
+        crate::sizing::MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(70.0)).unwrap());
+    let child = NodeInputOf::<S> {
+        display: Display::Block,
         size: Size::new(
-            crate::PreferredSizeOf::AUTO,
-            crate::PreferredSizeOf::value(
-                crate::LengthPercentageOf::from_percent_fraction(S::from_f64(0.5)).unwrap(),
+            PreferredSizeOf::AUTO,
+            PreferredSizeOf::value(
+                LengthPercentageOf::from_percent_fraction(S::from_f64(0.5)).unwrap(),
             ),
         ),
         ..Default::default()
@@ -143,7 +149,7 @@ fn content<S: LayoutScalar>() {
         &mut session,
         0,
         input(axes, 100.0),
-        crate::LayoutTree::node_input(&tree, 0),
+        crate::tree::LayoutTree::node_input(&tree, 0),
     )
     .unwrap();
     assert_eq!(

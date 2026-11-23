@@ -7,8 +7,13 @@ use crate::scroll::{
     ScrollTargetProjection, canonical_scroll_box_from_source, scrollbar_size_from_overflow,
 };
 use crate::{
-    Compute, Edges, FlowAxes, LayoutResultOf, LayoutScalar, LogicalAxis, Point, RunMode,
-    ScrollGeometryOf, ScrollRectOf, Size, Traverse,
+    engine::contracts::Compute,
+    error::LayoutResultOf,
+    geometry::{Edges, FlowAxes, LogicalAxis, Point, Size},
+    output::RunMode,
+    scalar::LayoutScalar,
+    scroll::{ScrollGeometryOf, ScrollRectOf},
+    tree::Traverse,
 };
 
 /// Accepted Block contributions and their directed terminal content edges.

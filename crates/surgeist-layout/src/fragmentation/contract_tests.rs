@@ -1,5 +1,8 @@
 use super::*;
-use crate::{Direction, FlowAxes, WritingMode};
+use crate::{
+    geometry::FlowAxes,
+    node_input::{Direction, WritingMode},
+};
 
 /// Schedules without feedback, as a mode owner that only needs the report.
 fn resolve_fragmentation<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>>(
@@ -3480,11 +3483,13 @@ scalars!(
 
 #[test]
 fn principal_used_axes_classify_every_page_progression_and_inverse_side() {
-    use Direction::{Ltr, Rtl};
-    use FragmentationLogicalPageSide::{Recto, Verso};
-    use FragmentationPhysicalPageSide::{Left, Right};
-    use PageProgression::{LeftToRight, RightToLeft};
-    use WritingMode::{HorizontalTb, SidewaysLr, SidewaysRl, VerticalLr, VerticalRl};
+    use crate::fragmentation::page::FragmentationLogicalPageSide::{Recto, Verso};
+    use crate::fragmentation::page::FragmentationPhysicalPageSide::{Left, Right};
+    use crate::fragmentation::page::PageProgression::{LeftToRight, RightToLeft};
+    use crate::node_input::Direction::{Ltr, Rtl};
+    use crate::node_input::WritingMode::{
+        HorizontalTb, SidewaysLr, SidewaysRl, VerticalLr, VerticalRl,
+    };
     // Writing Modes4 §8.2 and Logical1 §3: expected directions and physical
     // sides are authored independently of the classifier's implementation.
     for (mode, direction, expected, recto, verso) in [
@@ -3542,10 +3547,10 @@ fn side_control_reply<S: LayoutScalar>(
 }
 
 fn page_progression_selects_logical_physical_and_latest_sides<S: LayoutScalar>() {
-    use FragmentationBreak::{Left, Recto, Right, Verso};
+    use crate::fragmentation::input::FragmentationBreak::{Left, Recto, Right, Verso};
+    use crate::fragmentation::page::FragmentationPhysicalPageSide as Physical;
+    use crate::fragmentation::page::PageProgression::{LeftToRight, RightToLeft};
     use FragmentationForcedSide as Forced;
-    use FragmentationPhysicalPageSide as Physical;
-    use PageProgression::{LeftToRight, RightToLeft};
     // Explicit first Left overrides the default first-page convention. Start1
     // independently exercises a nonzero frame origin and the opposite parity.
     for (progression, value, start, target, side) in [
@@ -3643,7 +3648,7 @@ scalars!(
 );
 
 fn nearest_page_progression_owns_nested_side_matching<S: LayoutScalar>() {
-    use FragmentationPhysicalPageSide::{Left, Right};
+    use crate::fragmentation::page::FragmentationPhysicalPageSide::{Left, Right};
     for inner_kind in [FragmentationKind::Column, FragmentationKind::Region] {
         let mut fixture = input::<S>(&[(202, 1)], 0.0);
         fixture.contexts = vec![
@@ -3714,7 +3719,7 @@ scalars!(
 );
 
 fn independent_page_contexts_keep_distinct_progression<S: LayoutScalar>() {
-    use FragmentationPhysicalPageSide::{Left, Right};
+    use crate::fragmentation::page::FragmentationPhysicalPageSide::{Left, Right};
     let fixture = FragmentationInputOf {
         contexts: vec![
             context(
@@ -3759,7 +3764,7 @@ scalars!(
 );
 
 fn page_side_absence_zero_geometry_and_nonpage_applicability<S: LayoutScalar>() {
-    use FragmentationPhysicalPageSide::{Left, Right};
+    use crate::fragmentation::page::FragmentationPhysicalPageSide::{Left, Right};
     for kind in [FragmentationKind::Column, FragmentationKind::Region] {
         let mut fixture = input::<S>(&[(205, 1)], 0.0);
         fixture.contexts[0].kind = kind;

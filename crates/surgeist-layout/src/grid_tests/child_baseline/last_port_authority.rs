@@ -1,3 +1,4 @@
+use crate::node_input::GridBaselineReference;
 // Intended child of grid_tests/child_baseline_tests.rs. This exercises actual
 // Grid consumers of native metric outputs, not just BaselinesOf's helper.
 use super::*;
@@ -133,21 +134,21 @@ fn performed_leaf<S: LayoutScalar>(
                     Size::new(
                         AxisSizingRequestOf::new(
                             AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(s::<S>(20.0)).unwrap(),
+                                crate::value::NonNegativeFiniteOf::new(s::<S>(20.0)).unwrap(),
                             ),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
                             AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(s::<S>(40.0)).unwrap(),
+                                crate::value::NonNegativeFiniteOf::new(s::<S>(40.0)).unwrap(),
                             ),
                             SizingOperation::Normal,
                         ),
                     ),
                     OrthogonalFallbackOf::new(
                         Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        crate::value::NearestScrollportOf::Absent,
+                        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             ),
@@ -172,8 +173,8 @@ fn root_query<S: LayoutScalar>(direction: Direction) -> ComputeInputOf<S> {
             ),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     )
@@ -294,7 +295,7 @@ fn membership<S: LayoutScalar>(
     cycle: bool,
 ) -> Option<AncestorBaselineMember<u32, S>> {
     ancestor_baseline_member(AncestorBaselineMemberInput {
-        reference: crate::GridBaselineReference::Physical,
+        reference: GridBaselineReference::Physical,
         source: 1,
         axis: GridAxisKind::Row,
         ancestor_span: span,
@@ -330,7 +331,7 @@ fn intrinsic_member<S: LayoutScalar>(port: LastPort) {
         0,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         1,
         [subject],
     );
@@ -358,7 +359,7 @@ fn intrinsic_member<S: LayoutScalar>(port: LastPort) {
         0,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         1,
         [subject, anchor],
     );
@@ -381,7 +382,7 @@ fn intrinsic_member<S: LayoutScalar>(port: LastPort) {
         0,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         1,
         [first],
     );
@@ -408,7 +409,7 @@ fn axis_and_cycle<S: LayoutScalar>() {
         let rows = vec![TrackSizingOf::<S>::AUTO; 2];
         let cycle = grid_baseline_span_would_cycle(&rows, None)
             && select_grid_baseline(
-                crate::GridBaselineReference::Physical,
+                GridBaselineReference::Physical,
                 AlignItems::LastBaseline,
                 axes,
                 (axes).block_axis(),
@@ -422,7 +423,7 @@ fn axis_and_cycle<S: LayoutScalar>() {
             .is_some_and(|port| port.synthesized);
         assert_eq!(cycle, matches!(port, LastPort::Missing));
         let participation = grid_baseline_participation(
-            crate::GridBaselineReference::Physical,
+            GridBaselineReference::Physical,
             AlignItems::LastBaseline,
             false,
             cycle,
@@ -443,7 +444,7 @@ fn axis_and_cycle<S: LayoutScalar>() {
         assert_eq!(member.is_none(), matches!(port, LastPort::Missing));
         let first_cycle = grid_baseline_span_would_cycle(&rows, None)
             && select_grid_baseline(
-                crate::GridBaselineReference::Physical,
+                GridBaselineReference::Physical,
                 AlignItems::Baseline,
                 axes,
                 (axes).block_axis(),

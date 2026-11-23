@@ -1,6 +1,9 @@
 use crate::{
-    AspectRatioOf, BoxSizing, ComputedOverflow, Edges, FlowAxes, LayoutScalar, LengthAutoOf,
-    LengthOf, MaxSizeOf, MinSizeOf, NodeInputOf, Position, PreferredSizeOf, Size,
+    geometry::{Edges, FlowAxes, Size},
+    node_input::{BoxSizing, ComputedOverflow, NodeInputOf, Position},
+    scalar::LayoutScalar,
+    sizing::{MaxSizeOf, MinSizeOf, PreferredSizeOf},
+    value::{AspectRatioOf, LengthAutoOf, LengthOf},
 };
 
 /// Borrowed box facts whose semantics are identical across formatting algorithms.

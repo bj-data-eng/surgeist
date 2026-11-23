@@ -1,8 +1,14 @@
 use std::sync::Arc;
 
 use crate::{
-    DefaultScalar, FlowAxes, FragmentationBreakKinds, FragmentationInputError, FragmentationKind,
-    FragmentationPhysicalPageSide, LayoutRootRequestOf, LayoutScalar, Point, Size,
+    fragmentation::{
+        input::{FragmentationBreakKinds, FragmentationKind},
+        output::FragmentationInputError,
+        page::FragmentationPhysicalPageSide,
+    },
+    geometry::{FlowAxes, Point, Size},
+    output::LayoutRootRequestOf,
+    scalar::{DefaultScalar, LayoutScalar},
 };
 
 #[derive(Debug)]
@@ -277,6 +283,6 @@ impl std::error::Error for BlockFragmentationFailure {}
 pub(crate) struct FragmentBoxAllocation<Node, S: LayoutScalar> {
     pub(crate) node: Node,
     pub(crate) known: Size<Option<S>>,
-    pub(crate) indefinite_axis: crate::PhysicalAxis,
+    pub(crate) indefinite_axis: crate::geometry::PhysicalAxis,
     pub(crate) minimum_content: Option<S>,
 }

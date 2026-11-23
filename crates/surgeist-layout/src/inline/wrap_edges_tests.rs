@@ -3,11 +3,25 @@ use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::readback::{self, Phase};
 use crate::{
-    ChildOrderCompleteness, CompletedLayoutBatchOf, GeneratedBoxParticipation, GeneratedBoxRef,
-    GeneratedChildBoxInput, InlineBoundaryInputOf, InlineBoxRef, InlineChildOrderInput,
-    LayoutFlowInput, LayoutInputOf, LayoutRootRequestOf, LengthAutoOf, NodeInputOf, NodeOutputOf,
-    Point, PreferredSizeOf, WrapEdge, WrapEdges, WrapInside, WrappingInput, WrappingScopeError,
-    WrappingScopeInput, compute_layout_with_flow,
+    block_fragmentation::input::LayoutPublicationTargets,
+    engine::compute_layout_with_flow,
+    geometry::Point,
+    inline_wrapping::{
+        ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
+        InlineBoxRef, InlineChildOrderInput, WrapEdge, WrapEdges, WrapInside, WrappingInput,
+        WrappingScopeError, WrappingScopeInput,
+    },
+    node_input::{
+        Display, InlineBaselineContext, InlineBoundaryInputOf, LayoutInputOf, LayoutInputViewOf,
+        NodeInputOf,
+    },
+    output::{CompletedLayoutBatchOf, LayoutRootRequestOf, NodeOutputOf},
+    sizing::PreferredSizeOf,
+    text_layout::LayoutFlowInput,
+    tree::{LayoutTree, Traverse},
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, LengthAutoOf, NonNegativeFiniteOf, SizingOperation,
+    },
 };
 
 fn n<S: LayoutScalar>(value: f64) -> S {
@@ -15,7 +29,7 @@ fn n<S: LayoutScalar>(value: f64) -> S {
 }
 fn metrics<S: LayoutScalar>() -> InlineMetricsOf<S> {
     InlineMetricsOf::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
+        InlineBaselineContext::Physical,
         n(10.0),
         n(10.0),
     )
@@ -50,7 +64,7 @@ impl<S: LayoutScalar> Fixture<S> {
             tree: PublicLayoutTreeOf::new().style(
                 0,
                 NodeInputOf {
-                    display: crate::Display::Block,
+                    display: Display::Block,
                     direction,
                     size: Size::new(PreferredSizeOf::px(n(width)), PreferredSizeOf::AUTO),
                     ..NodeInputOf::default()
@@ -74,7 +88,7 @@ impl<S: LayoutScalar> Fixture<S> {
         self.tree.insert_input(
             node,
             LayoutInputOf::box_input(NodeInputOf {
-                display: crate::Display::InlineBlock,
+                display: Display::InlineBlock,
                 direction: self.direction,
                 size: Size::new(PreferredSizeOf::px(n(10.0)), PreferredSizeOf::px(n(10.0))),
                 margin: margin.map(LengthAutoOf::px),
@@ -86,7 +100,7 @@ impl<S: LayoutScalar> Fixture<S> {
         self.nodes.push(node);
         self.participants.push(MixedInlineParticipantOf::Atomic {
             item: AtomicInlineBoxParticipant {
-                baseline_reference: crate::InlineBaselineContext::Physical,
+                baseline_reference: InlineBaselineContext::Physical,
                 source_index: node as usize,
                 size: Size::splat(n(10.0)),
                 content_size: Size::ZERO,
@@ -118,11 +132,9 @@ impl<S: LayoutScalar> Fixture<S> {
                 InlineFlowOf::new(
                     WritingMode::HorizontalTb,
                     self.direction,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(self.width).unwrap(),
-                        ),
-                        crate::SizingOperation::Normal,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(self.width).unwrap()),
+                        SizingOperation::Normal,
                     ),
                 ),
                 metrics(),
@@ -140,7 +152,7 @@ impl<S: LayoutScalar> Fixture<S> {
     }
     fn numeric(&self) -> MixedInlineRunInputOf<S> {
         let flow = self.flow();
-        let raw: Vec<_> = crate::Traverse::children(&self.tree, 0).collect();
+        let raw: Vec<_> = Traverse::children(&self.tree, 0).collect();
         let projection = flow
             .wrapping
             .numeric_projection(
@@ -155,24 +167,22 @@ impl<S: LayoutScalar> Fixture<S> {
             .unwrap();
         MixedInlineRunInputOf {
             meter: crate::accounting::Meter::new(),
-            inline_baseline_context: crate::InlineBaselineContext::Physical,
+            inline_baseline_context: InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
-            text_wrap_style: crate::TextWrapStyle::Auto,
+            text_wrap_style: crate::node_input::TextWrapStyle::Auto,
             line_box_context: crate::line_box::LineBoxContext::new(
-                crate::LineBoxDirectionPolicy::Normal,
+                crate::node_input::LineBoxDirectionPolicy::Normal,
                 self.direction,
             ),
             observe_tail: true,
             wrapping: Some(projection),
-            available_inline_extent: crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(self.width).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            available_inline_extent: AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(self.width).unwrap()),
+                SizingOperation::Normal,
             ),
             flow_axes: FlowAxes::new(WritingMode::HorizontalTb, self.direction),
             text_align: TextAlign::Start,
-            text_align_last: crate::TextAlignLast::Auto,
+            text_align_last: crate::node_input::TextAlignLast::Auto,
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: crate::text_indent::IndentLineState::default(),
             participants: self.participants.clone(),
@@ -184,7 +194,10 @@ impl<S: LayoutScalar> Fixture<S> {
             0,
             request(
                 self.width,
-                crate::FlowAxes::new(crate::WritingMode::HorizontalTb, self.direction),
+                crate::geometry::FlowAxes::new(
+                    crate::node_input::WritingMode::HorizontalTb,
+                    self.direction,
+                ),
             ),
         )
         .unwrap()
@@ -192,39 +205,36 @@ impl<S: LayoutScalar> Fixture<S> {
 }
 fn request<S: LayoutScalar>(
     width: S,
-    containing_flow_axes: crate::FlowAxes,
+    containing_flow_axes: crate::geometry::FlowAxes,
 ) -> LayoutRootRequestOf<S> {
     {
         let requested_axes = Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(width).unwrap()),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(width).unwrap()),
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         logical_requests.inline = logical_requests
             .inline
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -241,7 +251,7 @@ fn boundary_output<S: LayoutScalar>(
         batch,
         node,
         Phase::Final,
-        readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary),
+        readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::InlineBoundary),
     )
 }
 fn fixture_output<S: LayoutScalar>(
@@ -249,10 +259,10 @@ fn fixture_output<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     node: u32,
 ) -> readback::Observation<S> {
-    let expected = match crate::LayoutTree::layout_input(&fixture.tree, node) {
-        crate::LayoutInputViewOf::Box(_) => readback::Kind::SingleBox,
-        crate::LayoutInputViewOf::InlineBoundary(_) => {
-            readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+    let expected = match LayoutTree::layout_input(&fixture.tree, node) {
+        LayoutInputViewOf::Box(_) => readback::Kind::SingleBox,
+        LayoutInputViewOf::InlineBoundary(_) => {
+            readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::InlineBoundary)
         }
         _ => panic!("numeric fixture authors only boxes and inline boundaries"),
     };
@@ -558,7 +568,7 @@ fn nested<S: LayoutScalar>(
         f.tree.insert_input(
             9,
             LayoutInputOf::box_input(NodeInputOf {
-                position: crate::Position::Absolute,
+                position: crate::node_input::Position::Absolute,
                 size: Size::new(PreferredSizeOf::px(n(1.0)), PreferredSizeOf::px(n(1.0))),
                 ..NodeInputOf::default()
             }),
@@ -728,9 +738,11 @@ fn side_proof<S: LayoutScalar>() {
         .expect("requested propagation lacks actual first-child proof");
     assert!(matches!(
         error.kind(),
-        crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(
-            WrappingScopeError::MissingChildOrder
-        ))
+        crate::error::LayoutErrorKindOf::InvalidInput(
+            crate::error::LayoutInvalidInputOf::WrappingScope(
+                WrappingScopeError::MissingChildOrder
+            )
+        )
     ));
 }
 #[test]
@@ -747,7 +759,7 @@ fn opaque_context<S: LayoutScalar>() {
         f.tree.insert_input(
             2,
             LayoutInputOf::box_input(NodeInputOf {
-                display: crate::Display::InlineBlock,
+                display: Display::InlineBlock,
                 direction,
                 size: Size::new(PreferredSizeOf::px(n(10.0)), PreferredSizeOf::px(n(10.0))),
                 atomic_inline_participation: Some(participation(InlineBreakOpportunity::Allowed)),
@@ -758,7 +770,7 @@ fn opaque_context<S: LayoutScalar>() {
         f.tree.insert_input(
             4,
             LayoutInputOf::box_input(NodeInputOf {
-                display: crate::Display::InlineBlock,
+                display: Display::InlineBlock,
                 direction,
                 size: Size::new(PreferredSizeOf::px(n(10.0)), PreferredSizeOf::px(n(10.0))),
                 atomic_inline_participation: Some(participation(InlineBreakOpportunity::Allowed)),
@@ -808,11 +820,11 @@ fn internal_atomic_formatting_context_is_opaque_to_outer_forced_propagation() {
 // answers. The normal engine emits and applies every retained cache entry.
 #[derive(Clone)]
 struct Retained<S: LayoutScalar> {
-    caches: std::collections::HashMap<u32, crate::CacheOf<S>>,
-    outputs: std::collections::HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
+    caches: std::collections::HashMap<u32, crate::cache::CacheOf<S>>,
+    outputs: std::collections::HashMap<u32, crate::output::LayoutOutputEntryOf<u32, S>>,
 }
 struct Cached<S: LayoutScalar> {
-    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
+    pub(super) publication_targets: LayoutPublicationTargets<u32>,
     tree: PublicLayoutTreeOf<S>,
     retained: Retained<S>,
     hits: std::cell::Cell<usize>,
@@ -820,7 +832,7 @@ struct Cached<S: LayoutScalar> {
 impl<S: LayoutScalar> Cached<S> {
     fn new(tree: PublicLayoutTreeOf<S>) -> Self {
         Self {
-            publication_targets: crate::LayoutPublicationTargets::new(),
+            publication_targets: LayoutPublicationTargets::new(),
             tree,
             retained: Retained {
                 caches: Default::default(),
@@ -830,37 +842,37 @@ impl<S: LayoutScalar> Cached<S> {
         }
     }
 }
-impl<S: LayoutScalar> crate::Traverse for Cached<S> {
+impl<S: LayoutScalar> Traverse for Cached<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
-        = <PublicLayoutTreeOf<S> as crate::Traverse>::Children<'a>
+        = <PublicLayoutTreeOf<S> as Traverse>::Children<'a>
     where
         S: 'a;
     fn children(&self, node: u32) -> Self::Children<'_> {
-        crate::Traverse::children(&self.tree, node)
+        Traverse::children(&self.tree, node)
     }
     fn child_count(&self, node: u32) -> usize {
-        crate::Traverse::child_count(&self.tree, node)
+        Traverse::child_count(&self.tree, node)
     }
     fn child(&self, node: u32, index: usize) -> u32 {
-        crate::Traverse::child(&self.tree, node, index)
+        Traverse::child(&self.tree, node, index)
     }
 }
-impl<S: LayoutScalar> crate::LayoutTree for Cached<S> {
+impl<S: LayoutScalar> LayoutTree for Cached<S> {
     type MeasureError = core::convert::Infallible;
     fn node_input(&self, node: u32) -> &NodeInputOf<S> {
-        crate::LayoutTree::node_input(&self.tree, node)
+        LayoutTree::node_input(&self.tree, node)
     }
-    fn layout_input(&self, node: u32) -> crate::LayoutInputViewOf<'_, S> {
-        crate::LayoutTree::layout_input(&self.tree, node)
+    fn layout_input(&self, node: u32) -> LayoutInputViewOf<'_, S> {
+        LayoutTree::layout_input(&self.tree, node)
     }
     fn cache_get(
         &self,
         node: u32,
-        input: &crate::ComputeInputOf<S>,
-        context: crate::CacheKeyContext,
-    ) -> Option<crate::ComputeOutputOf<S>> {
+        input: &crate::output::ComputeInputOf<S>,
+        context: crate::cache::CacheKeyContext,
+    ) -> Option<crate::output::ComputeOutputOf<S>> {
         let result = self
             .retained
             .caches
@@ -871,15 +883,15 @@ impl<S: LayoutScalar> crate::LayoutTree for Cached<S> {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::output::LayoutOutputEntryOf<u32, S>> {
         self.retained.outputs.get(&node).copied()
     }
 }
-impl<S: LayoutScalar> crate::LayoutBatchSink<u32, S> for Cached<S> {
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+impl<S: LayoutScalar> crate::tree::LayoutBatchSink<u32, S> for Cached<S> {
+    fn publication_targets(&self) -> &LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
 
@@ -887,7 +899,7 @@ impl<S: LayoutScalar> crate::LayoutBatchSink<u32, S> for Cached<S> {
     type Prepared = Retained<S>;
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
+        preparation: crate::block_fragmentation::publication::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Retained<S>, Self::Error> {
         let batch = preparation.batch();
         let mut next = self.retained.clone();
@@ -908,7 +920,12 @@ impl<S: LayoutScalar> crate::LayoutBatchSink<u32, S> for Cached<S> {
     }
     fn commit_layout_batch(
         &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+        commit: crate::block_fragmentation::publication::LayoutBatchCommit<
+            '_,
+            u32,
+            S,
+            Self::Prepared,
+        >,
     ) {
         let next = commit.into_prepared();
         self.retained = next;
@@ -929,7 +946,7 @@ fn warm_force<S: LayoutScalar>() {
             .style(
                 100,
                 NodeInputOf {
-                    display: crate::Display::Block,
+                    display: Display::Block,
                     direction,
                     ..NodeInputOf::default()
                 },
@@ -937,7 +954,7 @@ fn warm_force<S: LayoutScalar>() {
             .style(
                 90,
                 NodeInputOf {
-                    display: crate::Display::Block,
+                    display: Display::Block,
                     size: Size::new(PreferredSizeOf::px(n(1.0)), PreferredSizeOf::px(n(1.0))),
                     ..NodeInputOf::default()
                 },
@@ -950,8 +967,8 @@ fn warm_force<S: LayoutScalar>() {
                 &flow,
                 100,
                 request(n(100.0), {
-                    let root_input = crate::LayoutTree::node_input((flow).tree(), 100);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = LayoutTree::node_input((flow).tree(), 100);
+                    crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
                 }),
             )
             .unwrap()
@@ -960,7 +977,7 @@ fn warm_force<S: LayoutScalar>() {
         let old = run(&warm);
         assert_eq!(output(&old, 0).size.height, n(10.0));
         old.apply_to(&mut warm).unwrap();
-        let mut box2 = crate::LayoutTree::node_input(&tree, 2).clone();
+        let mut box2 = LayoutTree::node_input(&tree, 2).clone();
         box2.wrap_edges.before = WrapEdge::Line;
         tree.insert_input(2, LayoutInputOf::box_input(box2));
         warm.tree = tree.clone();
@@ -978,7 +995,7 @@ fn warm_force<S: LayoutScalar>() {
             "unaffected block sibling really uses the retained host cache"
         );
         forced.apply_to(&mut warm).unwrap();
-        let mut box2 = crate::LayoutTree::node_input(&tree, 2).clone();
+        let mut box2 = LayoutTree::node_input(&tree, 2).clone();
         box2.wrap_edges = WrapEdges::AUTO;
         tree.insert_input(2, LayoutInputOf::box_input(box2));
         warm.tree = tree.clone();
@@ -1069,7 +1086,7 @@ fn mixed_inside_edge<S: LayoutScalar>() {
         let narrow = mixed_constraints::<S>(direction, 25.0);
         assert_mixed_output(&narrow, &[&[1, 2], &[3], &[4, 5]]);
         let mut inside_only = mixed_constraints::<S>(direction, 25.0);
-        let mut first = crate::LayoutTree::node_input(&inside_only.tree, 1).clone();
+        let mut first = LayoutTree::node_input(&inside_only.tree, 1).clone();
         first.wrap_edges = WrapEdges::AUTO;
         inside_only
             .tree
@@ -1083,7 +1100,7 @@ fn mixed_inside_edge<S: LayoutScalar>() {
         assert_mixed_output(&wide, &[&[1, 2, 3], &[4, 5]]);
         let mut neutral = mixed_constraints::<S>(direction, 45.0);
         neutral.wrapping = WrappingInput::default();
-        let mut first = crate::LayoutTree::node_input(&neutral.tree, 1).clone();
+        let mut first = LayoutTree::node_input(&neutral.tree, 1).clone();
         first.wrap_edges = WrapEdges::AUTO;
         neutral
             .tree
@@ -1134,13 +1151,15 @@ fn expect_missing_child_order<S: LayoutScalar>(f: &Fixture<S>) {
         .expect("a demanded unknown generated-child incidence cannot be declared complete");
     assert!(matches!(
         error.kind(),
-        crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(
-            WrappingScopeError::MissingChildOrder
-        ))
+        crate::error::LayoutErrorKindOf::InvalidInput(
+            crate::error::LayoutInvalidInputOf::WrappingScope(
+                WrappingScopeError::MissingChildOrder
+            )
+        )
     ));
 }
 fn with_neutral_atomic_edge<S: LayoutScalar>(f: &mut Fixture<S>) {
-    let mut atomic = crate::LayoutTree::node_input(&f.tree, 2).clone();
+    let mut atomic = LayoutTree::node_input(&f.tree, 2).clone();
     atomic.wrap_edges = WrapEdges::AUTO;
     f.tree.insert_input(2, LayoutInputOf::box_input(atomic));
 }
@@ -1176,7 +1195,7 @@ fn unknown_child_incidence<S: LayoutScalar>() {
             visible_break.tree.insert_input(
                 9,
                 LayoutInputOf::line_break(
-                    crate::LineBreakInputOf::new()
+                    crate::node_input::LineBreakInputOf::new()
                         .with_metrics(metrics())
                         .with_direction(direction),
                 ),
@@ -1289,16 +1308,16 @@ fn separated_numeric_runs<S: LayoutScalar>() {
             let mut tree = PublicLayoutTreeOf::<S>::new().children(0, [1, 2, 3]).style(
                 0,
                 NodeInputOf {
-                    display: crate::Display::Block,
+                    display: Display::Block,
                     direction,
                     size: Size::new(PreferredSizeOf::px(n(100.0)), PreferredSizeOf::AUTO),
                     ..NodeInputOf::default()
                 },
             );
             for (node, display, edges) in [
-                (1, crate::Display::InlineBlock, early),
-                (2, crate::Display::Block, WrapEdges::AUTO),
-                (3, crate::Display::InlineBlock, late),
+                (1, Display::InlineBlock, early),
+                (2, Display::Block, WrapEdges::AUTO),
+                (3, Display::InlineBlock, late),
             ] {
                 tree = tree.style(
                     node,
@@ -1307,18 +1326,18 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                         direction,
                         wrap_edges: edges,
                         size: Size::new(PreferredSizeOf::px(n(10.0)), PreferredSizeOf::px(n(10.0))),
-                        atomic_inline_participation: (display == crate::Display::InlineBlock)
+                        atomic_inline_participation: (display == Display::InlineBlock)
                             .then(|| participation(InlineBreakOpportunity::Allowed)),
                         ..NodeInputOf::default()
                     },
                 );
             }
-            let batch = crate::compute_layout(
+            let batch = crate::engine::compute_layout(
                 &tree,
                 0,
                 request(n(100.0), {
-                    let root_input = crate::LayoutTree::node_input(&tree, 0);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = LayoutTree::node_input(&tree, 0);
+                    crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
                 }),
             )
             .unwrap();
@@ -1339,7 +1358,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                         0,
                         crate::inline_wrapping::NativeRunSource {
                             nodes: &[node],
-                            start: crate::Traverse::children(&tree, 0)
+                            start: Traverse::children(&tree, 0)
                                 .position(|actual| actual == node)
                                 .unwrap(),
                         },
@@ -1349,24 +1368,22 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                 let report = layout_mixed_inline_run_with_formatted_observation(
                     MixedInlineRunInputOf {
                         meter: crate::accounting::Meter::new(),
-                        inline_baseline_context: crate::InlineBaselineContext::Physical,
+                        inline_baseline_context: InlineBaselineContext::Physical,
                         groups: crate::group_alignment::Snapshot::default(),
-                        text_wrap_style: crate::TextWrapStyle::Auto,
+                        text_wrap_style: crate::node_input::TextWrapStyle::Auto,
                         line_box_context: crate::line_box::LineBoxContext::new(
-                            crate::LineBoxDirectionPolicy::Normal,
+                            crate::node_input::LineBoxDirectionPolicy::Normal,
                             direction,
                         ),
                         observe_tail: false,
                         wrapping: Some(projection),
-                        available_inline_extent: crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(n(100.0)).unwrap(),
-                            ),
-                            crate::SizingOperation::Normal,
+                        available_inline_extent: AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(100.0)).unwrap()),
+                            SizingOperation::Normal,
                         ),
                         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, direction),
                         text_align: TextAlign::Start,
-                        text_align_last: crate::TextAlignLast::Auto,
+                        text_align_last: crate::node_input::TextAlignLast::Auto,
                         indent: crate::text_indent::ResolvedTextIndent::ZERO,
                         indent_state: crate::text_indent::IndentLineState::default(),
                         // Empty blocks have no inner baseline. The numeric
@@ -1375,7 +1392,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                         // The declared Visible overflow reserves no scrollbar.
                         participants: vec![MixedInlineParticipantOf::Atomic {
                             item: AtomicInlineBoxParticipant {
-                                baseline_reference: crate::InlineBaselineContext::Physical,
+                                baseline_reference: InlineBaselineContext::Physical,
                                 source_index: allocation.source_index.get(),
                                 size: allocation.size,
                                 content_size: allocation.content_size,
