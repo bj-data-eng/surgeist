@@ -3027,7 +3027,7 @@ pub(super) fn compute_oracle_grid_output(tree: &mut OracleTree) -> ComputeOutput
 // The grid container's site and the grid-name error that rejects its layout.
 pub(super) fn oracle_grid_names_rejection(
     tree: &mut OracleTree,
-) -> (crate::LayoutErrorSiteOf<u32>, crate::NamedGridErrorReport) {
+) -> (crate::LayoutErrorSiteOf<u32>, crate::NamedGridError) {
     let Err(error) = crate::compute_grid(&mut tree.borrow_compute(), 1, oracle_grid_input()) else {
         panic!("invalid grid names must not lay out");
     };

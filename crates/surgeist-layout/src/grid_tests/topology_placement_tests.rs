@@ -6147,7 +6147,7 @@ fn named_grid_non_rectangular_template_area_is_rejected_despite_explicit_line_na
     assert_eq!(site, crate::LayoutErrorSiteOf::Node(1));
     assert_eq!(
         report,
-        NamedGridErrorReport::NonRectangularTemplateArea {
+        NamedGridError::NonRectangularTemplateArea {
             name: "bad".to_string(),
         }
     );
@@ -6155,7 +6155,7 @@ fn named_grid_non_rectangular_template_area_is_rejected_despite_explicit_line_na
 
 fn assert_grid_names_rejection<T>(
     result: Result<T, crate::LayoutErrorOf<u32, f32>>,
-    expected: NamedGridErrorReport,
+    expected: NamedGridError,
 ) {
     let Err(error) = result else {
         panic!("invalid grid names must not lay out");
@@ -6233,7 +6233,7 @@ fn invalid_template_areas_are_rejected_instead_of_reported() {
 
     assert_grid_names_rejection(
         result,
-        NamedGridErrorReport::TemplateAreaRowLengthMismatch {
+        NamedGridError::TemplateAreaRowLengthMismatch {
             row: 2,
             expected: 2,
             actual: 1,
@@ -6295,7 +6295,7 @@ fn invalid_line_names_are_rejected_instead_of_reported() {
 
     assert_grid_names_rejection(
         result,
-        NamedGridErrorReport::ReservedLineName {
+        NamedGridError::ReservedLineName {
             name: "auto".to_string(),
         },
     );
@@ -6364,7 +6364,7 @@ fn invalid_grid_item_placement_reports_one_authored_fallback_once() {
         .report()
         .named_grid_errors()
         .iter()
-        .filter(|error| **error == NamedGridErrorReport::ZeroLine)
+        .filter(|error| **error == NamedGridError::ZeroLine)
         .count();
 
     assert_eq!(zero_line_count, 1);
@@ -7467,7 +7467,7 @@ fn named_grid_placement_fallback_is_reported() {
     .unwrap();
 
     assert_eq!(placement, GridPlacement::AUTO);
-    assert!(report.errors().contains(&NamedGridErrorReport::ZeroLine));
+    assert!(report.errors().contains(&NamedGridError::ZeroLine));
 }
 
 #[test]
@@ -7773,7 +7773,7 @@ fn standalone_raw_grid_placement_retains_exact_negative_report() {
     assert_eq!(placement, GridPlacement::AUTO);
     assert_eq!(
         report.errors(),
-        &[NamedGridErrorReport::LineBeforeFirst {
+        &[NamedGridError::LineBeforeFirst {
             axis: GridAxisKind::Column,
             line: isize::MIN + 1
         }],
@@ -7795,7 +7795,7 @@ fn standalone_raw_grid_placement_reports_invalid_shadowed_positioned_input() {
         )
         .unwrap();
         assert_eq!(absolute, typed);
-        assert_eq!(report.errors(), &[NamedGridErrorReport::ZeroLine]);
+        assert_eq!(report.errors(), &[NamedGridError::ZeroLine]);
     }
 }
 

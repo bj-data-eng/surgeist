@@ -7799,7 +7799,7 @@ fn subgrid_axis_placement_reports_one_authored_fallback_once() {
             report
                 .errors()
                 .iter()
-                .filter(|error| **error == NamedGridErrorReport::ZeroLine)
+                .filter(|error| **error == NamedGridError::ZeroLine)
                 .count(),
             1
         );

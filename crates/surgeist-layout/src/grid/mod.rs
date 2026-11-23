@@ -98,10 +98,10 @@ use lanes::{
     grid_axis_for_grid_lanes, lane_axis_for_grid_lanes, layout_grid_lanes_children,
     prepare_grid_lanes_intrinsic_child_input,
 };
-pub use named::NamedGridErrorReport;
+pub use named::NamedGridError;
 pub(crate) use named::NamedGridReport;
 use named::{
-    GridAreaNameFacts, NamedGridError, NamedGridLines, build_grid_named_context,
+    GridAreaNameFacts, NamedGridLines, build_grid_named_context,
     resolve_grid_placement_or_auto_with_report, resolve_positioned_grid_placement_with_report,
     resolve_subgrid_placement,
 };
@@ -133,7 +133,7 @@ pub(crate) struct GridComputationReport {
 
 impl GridComputationReport {
     #[cfg(test)]
-    pub fn named_grid_errors(&self) -> &[NamedGridErrorReport] {
+    pub fn named_grid_errors(&self) -> &[NamedGridError] {
         self.named_grid.errors()
     }
 
@@ -3661,7 +3661,7 @@ fn invalid_grid_names_error<Node, S: LayoutScalar, M>(
     LayoutErrorOf::new(
         LayoutErrorSiteOf::Node(container),
         LayoutOperation::ChildLayout,
-        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::GridNames(error.into())),
+        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::GridNames(error)),
     )
 }
 

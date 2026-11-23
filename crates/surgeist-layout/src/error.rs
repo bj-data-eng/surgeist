@@ -188,7 +188,7 @@ pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
     TreeTopologyCycle,
     /// The grid container's named lines or template areas violate the Grid
     /// specification. The error site is the grid container.
-    GridNames(crate::NamedGridErrorReport),
+    GridNames(crate::NamedGridError),
     TextBinding(crate::text_layout::TextBindingError),
     WrappingScope(crate::inline_wrapping::WrappingScopeError),
 }
