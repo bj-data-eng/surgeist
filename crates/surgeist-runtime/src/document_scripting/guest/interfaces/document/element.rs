@@ -873,7 +873,13 @@ fn install_html_members<'scope>(
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
+    use super::local_strings::Interface as LocalString;
+
     match interface {
+        "HTMLHtmlElement" => LocalString::Html.install(scope, prototype, capture)?,
+        "HTMLBaseElement" => LocalString::Base.install(scope, prototype, capture)?,
+        "HTMLModElement" => LocalString::Mod.install(scope, prototype, capture)?,
+        "HTMLMapElement" => LocalString::Map.install(scope, prototype, capture)?,
         "HTMLElement" => {
             super::reflection::install(
                 scope,

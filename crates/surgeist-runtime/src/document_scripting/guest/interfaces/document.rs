@@ -55,6 +55,7 @@ mod legend;
 mod li;
 mod list_compact;
 mod lists;
+mod local_strings;
 mod marquee;
 mod media;
 mod meta;

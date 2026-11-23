@@ -153,6 +153,8 @@ mod numeric_control_attributes;
 mod option_factory;
 #[path = "document_scripting/ordinary_element_collections.rs"]
 mod ordinary_element_collections;
+#[path = "document_scripting/ordinary_reflections.rs"]
+mod ordinary_reflections;
 #[path = "document_scripting/output_values.rs"]
 mod output_values;
 #[path = "document_scripting/popover_target.rs"]
@@ -2601,6 +2603,8 @@ fn main() {
             "html-prototype-order" => html_prototype_order::attached_html_prototypes_link_constructors_after_own_members(),
             "translate-reflection" => translate_reflection::attached_translate_reads_native_ordinary_ancestry_and_writes_keywords(),
             "body-reflections" => body_reflections::attached_body_reflections_preserve_native_identity_and_exact_strings(),
+            "ordinary-reflections" => ordinary_reflections::attached_reflections_preserve_live_attributes_and_creation_realms(),
+            "ordinary-reflections-source-refusal" => ordinary_reflections::attached_reflection_setter_preserves_source_refusal(),
             "form-attributes" => form_attributes::attached_form_settings_reflect_live_native_attributes(),
             "fieldset-attributes" => fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity(),
             "output-values" => output_values::attached_output_reads_native_values_and_stores_custom_validity(),
@@ -2774,6 +2778,8 @@ fn main() {
     html_prototype_order::attached_html_prototypes_link_constructors_after_own_members();
     translate_reflection::attached_translate_reads_native_ordinary_ancestry_and_writes_keywords();
     body_reflections::attached_body_reflections_preserve_native_identity_and_exact_strings();
+    ordinary_reflections::attached_reflections_preserve_live_attributes_and_creation_realms();
+    ordinary_reflections::attached_reflection_setter_preserves_source_refusal();
     form_attributes::attached_form_settings_reflect_live_native_attributes();
     fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity();
     output_values::attached_output_reads_native_values_and_stores_custom_validity();

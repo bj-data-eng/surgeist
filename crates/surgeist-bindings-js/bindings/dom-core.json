@@ -499,6 +499,54 @@
       "entries": ["HTMLHtmlElement"]
     },
     {
+      "id": "HTMLHtmlElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLHtmlElement&#45;partial",
+      "block": 0,
+      "sha256": "ca21f4e396655e28cfd2bc06119130c3e35129d872a965aadd79eb711d9d2e38",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-html-version",
+      "entries": [
+        "HTMLHtmlElement.obsolete"
+      ]
+    },
+    {
+      "id": "HTMLBaseElement.source",
+      "path": "references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md",
+      "anchor": "htmlbaseelement",
+      "block": 0,
+      "sha256": "99417762bcdd9acd0903138212768db15327a4e71245b1e1b7ce15896270ecfc",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-base-element",
+      "entries": [
+        "HTMLBaseElement"
+      ]
+    },
+    {
+      "id": "HTMLModElement.source",
+      "path": "references/html-language-elements-text-links--877d6146487f--8833a85fd242.md",
+      "anchor": "htmlmodelement",
+      "block": 0,
+      "sha256": "2a0ed68d1935547d07991fc0861d6406782198a4c1fff1f3add92f64113df36c",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlmodelement",
+      "entries": [
+        "HTMLModElement"
+      ]
+    },
+    {
+      "id": "HTMLMapElement.source",
+      "path": "references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md",
+      "anchor": "htmlmapelement",
+      "block": 0,
+      "sha256": "92a9b2f12562761a19c3d07543075919910a9f3555150383609b2eb1d76bbb09",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-map-element",
+      "entries": [
+        "HTMLMapElement"
+      ]
+    },
+    {
       "id": "HTMLHeadElement.source",
       "path": "references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md",
       "anchor": "the&#45;head&#45;element",
@@ -6572,6 +6620,210 @@
           "kind": "constructor",
           "arguments": [],
           "id": "HTMLHtmlElement.constructor:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLHtmlElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLHtmlElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "version",
+          "readonly": false,
+          "id": "HTMLHtmlElement.obsolete.version"
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "HTMLBaseElement",
+      "kind": "interface",
+      "name": "HTMLBaseElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLBaseElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectSetter"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "href",
+          "readonly": false,
+          "id": "HTMLBaseElement.href"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "target",
+          "readonly": false,
+          "id": "HTMLBaseElement.target"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLModElement",
+      "kind": "interface",
+      "name": "HTMLModElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLModElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectURL"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "cite",
+          "readonly": false,
+          "id": "HTMLModElement.cite"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "dateTime",
+          "readonly": false,
+          "id": "HTMLModElement.dateTime"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLMapElement",
+      "kind": "interface",
+      "name": "HTMLMapElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLMapElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "name",
+          "readonly": false,
+          "id": "HTMLMapElement.name"
+        },
+        {
+          "attributes": [
+            {
+              "name": "SameObject"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "HTMLCollection"
+          },
+          "name": "areas",
+          "readonly": true,
+          "id": "HTMLMapElement.areas"
         }
       ],
       "inherits": "HTMLElement"
@@ -20233,14 +20485,196 @@
     "HTMLHtmlElement.constructor:0/construct": {
       "kind": "native",
       "adapter": "htmlhtmlelement.constructor.construct",
-      "producers": [],
-      "requirements": [
+      "producers": [
         {
-          "owner": "surgeist-html",
-          "contract": "The HTMLConstructor algorithm and actual target registry/definition, not ordinary native create_element.",
-          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-html-element"
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
         }
-      ]
+      ],
+      "requirements": []
+    },
+    "HTMLBaseElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlbaseelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLModElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlmodelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMapElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlmapelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHtmlElement.obsolete.version/get": {
+      "kind": "native",
+      "adapter": "htmlhtmlelement.obsolete.version.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLHtmlElement.obsolete.version/set": {
+      "kind": "native",
+      "adapter": "htmlhtmlelement.obsolete.version.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLBaseElement.target/get": {
+      "kind": "native",
+      "adapter": "htmlbaseelement.target.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLBaseElement.target/set": {
+      "kind": "native",
+      "adapter": "htmlbaseelement.target.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLModElement.dateTime/get": {
+      "kind": "native",
+      "adapter": "htmlmodelement.datetime.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLModElement.dateTime/set": {
+      "kind": "native",
+      "adapter": "htmlmodelement.datetime.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMapElement.name/get": {
+      "kind": "native",
+      "adapter": "htmlmapelement.name.get",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLMapElement.name/set": {
+      "kind": "native",
+      "adapter": "htmlmapelement.name.set",
+      "producers": [
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLBaseElement.href/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Reflect the Base href getter against the current Document fallback base and encoding, with its prescribed parse and failure behavior.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-base-href",
+        "issue": 2442
+      },
+      "result_view": "value"
+    },
+    "HTMLBaseElement.href/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Apply the USVString Base href assignment through canonical Source with the reached hosted Base update and URL facts.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-base-href",
+        "issue": 2442
+      },
+      "result_view": "value"
+    },
+    "HTMLModElement.cite/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Supply the exact URL reflection against the current owned Document base and encoding, using qualified parsing and serialization.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-mod-cite",
+        "issue": 3240
+      },
+      "result_view": "value"
+    },
+    "HTMLModElement.cite/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the paired USVString URL reflection through the canonical null-namespace cite Source setter.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-mod-cite",
+        "issue": 3240
+      },
+      "result_view": "value"
+    },
+    "HTMLMapElement.areas/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the live SameObject HTMLCollection from the canonical Map-rooted HTML Area descendant query.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-map-areas",
+        "issue": 3242
+      },
+      "result_view": "live"
     },
     "HTMLHeadElement.constructor:0/construct": {
       "kind": "native",
