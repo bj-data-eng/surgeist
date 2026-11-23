@@ -183,6 +183,8 @@ mod script_async;
 mod script_preparation;
 #[path = "document_scripting/source_events.rs"]
 mod source_events;
+#[path = "document_scripting/source_reflections.rs"]
+mod source_reflections;
 #[path = "document_scripting/standard_window.rs"]
 mod standard_window;
 #[path = "document_scripting/tab_index.rs"]
@@ -2629,6 +2631,9 @@ fn main() {
             "textarea-values" => textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state(),
             "input-state" => input_state::attached_input_exposes_canonical_value_modes_and_checkedness(),
             "script-async" => script_async::script_async_keeps_native_flag_and_content_coherent(),
+            "source-local-reflections" => source_reflections::local_source_reflections_preserve_canonical_picture_recipients(),
+            "source-local-refusal" => source_reflections::local_source_refusal_preserves_attribute_and_waiters(),
+            "source-local-setter-realm" => source_reflections::borrowed_child_source_setter_keeps_its_realm_and_native_recipients(),
             "script-keywords" => script_async::script_keyword_reflections_follow_exact_live_attributes(),
             "map-datalist-collections" => map_datalist_collections::map_areas_and_datalist_options_are_distinct_live_associations(),
             "member-collection-realm" => member_collection_lifetime::member_collections_keep_the_root_creation_realm_after_retirement(),
@@ -2829,6 +2834,9 @@ fn main() {
     link_style_reflections::hosted_link_reflection_preserves_original_source_refusal();
     link_style_reflections::active_style_media_updates_the_original_native_sheet();
     script_async::script_async_keeps_native_flag_and_content_coherent();
+    source_reflections::local_source_reflections_preserve_canonical_picture_recipients();
+    source_reflections::local_source_refusal_preserves_attribute_and_waiters();
+    source_reflections::borrowed_child_source_setter_keeps_its_realm_and_native_recipients();
     script_async::script_keyword_reflections_follow_exact_live_attributes();
     map_datalist_collections::map_areas_and_datalist_options_are_distinct_live_associations();
     member_collection_lifetime::member_collections_keep_the_root_creation_realm_after_retirement();
