@@ -122,6 +122,7 @@ pub(super) enum Receiver {
     Html,
     Svg,
     Mathml,
+    LocalString(super::local_strings::Interface),
     Template,
     Anchor,
     Script,
@@ -195,6 +196,10 @@ impl Receiver {
                         .namespace_uri()
                         .is_some_and(|uri| uri.code_units() == namespace)
                 })
+            }
+            Self::LocalString(interface) => {
+                step()?;
+                html_element_is(node, interface.name())
             }
             Self::Template => node.as_template().is_some(),
             Self::Anchor => {
@@ -342,6 +347,7 @@ impl Receiver {
             Self::Html => const { &ascii(b"HTMLElement required") },
             Self::Svg => const { &ascii(b"SVGElement required") },
             Self::Mathml => const { &ascii(b"MathMLElement required") },
+            Self::LocalString(interface) => interface.error_message(),
             Self::Template => const { &ascii(b"HTMLTemplateElement required") },
             Self::Anchor => const { &ascii(b"HTMLAnchorElement required") },
             Self::Script => const { &ascii(b"HTMLScriptElement required") },
