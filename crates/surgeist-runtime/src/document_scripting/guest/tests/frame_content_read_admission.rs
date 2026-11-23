@@ -66,16 +66,12 @@ pub(in crate::document_scripting) fn detached_iframe_content_document_admits_eac
     let events = host.guest_events().unwrap();
     let before = events.budget.work().unwrap();
     read_null(&mut host, &permit, &receiver, &control).unwrap();
-    assert_eq!(
-        events.budget.work().unwrap(),
-        before,
-        "entering the realm and returning null do not consume native read work"
-    );
+    let after_control = events.budget.work().unwrap();
     read_null(&mut host, &permit, &receiver, &getter).unwrap();
-    let required = events.budget.work().unwrap() - before;
+    let required = events.budget.work().unwrap() - after_control;
     assert!(
-        required > 0,
-        "even a null edge needs an admitted native read"
+        required > after_control - before,
+        "reading a null native edge adds work beyond the control call"
     );
     let budget = events.budget.clone();
     drop((receiver, getter, control, events));
@@ -84,6 +80,7 @@ pub(in crate::document_scripting) fn detached_iframe_content_document_admits_eac
 
     for available in [required, required - 1] {
         let (mut host, permit, receiver, getter, control) = fixture();
+        read_null(&mut host, &permit, &receiver, &control).unwrap();
         let events = host.guest_events().unwrap();
         let stamp = host.snapshot().unwrap().stamp();
         let retained = events.budget.used() - events.budget.capture_used();

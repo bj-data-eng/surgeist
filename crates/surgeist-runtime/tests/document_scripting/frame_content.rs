@@ -75,13 +75,22 @@ pub(super) fn frame_content_follows_native_child_edges_and_identity() {
                 if (typeof svg?.value !== 'function')
                     return 'missing HTMLIFrameElement.prototype.getSVGDocument operation';
                 if (!svg.writable || !svg.enumerable || !svg.configurable ||
-                    svg.value.name !== 'getSVGDocument' || svg.value.length !== 0)
+                    svg.value.name !== 'getSVGDocument' || svg.value.length !== 0 ||
+                    Object.hasOwn(svg.value, 'prototype'))
                     return 'incorrect HTMLIFrameElement.prototype.getSVGDocument operation';
                 if (Object.hasOwn(HTMLFrameElement.prototype, 'getSVGDocument'))
                     return 'Frame has no getSVGDocument operation';
+                for (const [prototype, order] of [
+                    [HTMLFrameElement.prototype, ['noResize', 'contentDocument', 'contentWindow', 'marginHeight']],
+                    [HTMLIFrameElement.prototype, ['loading', 'contentDocument', 'contentWindow', 'getSVGDocument', 'align']]
+                ]) {
+                    if (Object.getOwnPropertyNames(prototype).filter(name => order.includes(name)).join() !== order.join())
+                        return 'child content operations must follow the pinned declaration order';
+                }
                 for (const tag of ['frame', 'iframe']) {
                     const detached = document.implementation.createHTMLDocument().createElement(tag);
-                    if (detached.contentDocument !== null || detached.contentWindow !== null)
+                    if (detached.contentDocument !== null || detached.contentWindow !== null ||
+                        (tag === 'iframe' && detached.getSVGDocument() !== null))
                         return 'a never-inserted container has no content navigable';
                 }
                 return 'ok';
@@ -378,7 +387,8 @@ pub(super) fn sandboxed_iframe_content_distinguishes_null_from_unavailable_proxy
                 const iframe = document.getElementById('opaqueContentIframe');
                 if (typeof Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentDocument')?.get !== 'function')
                     return 'missing HTMLIFrameElement.prototype.contentDocument getter';
-                return iframe.contentDocument === null ? 'ok' : 'opaque contentDocument must be null';
+                return iframe.contentDocument === null && iframe.getSVGDocument() === null
+                    ? 'ok' : 'opaque child document reads must be null';
             })()"#,
         ),
         "ok",
