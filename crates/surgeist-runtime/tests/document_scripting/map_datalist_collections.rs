@@ -2,8 +2,21 @@
 
 use super::{window_length::observe, *};
 
+pub(super) fn collection_session() -> (DomSession, DomHostedTopLevel) {
+    let mut dom = native_dom();
+    dom.set_limits(
+        dom.limits()
+            .with_select_processing(32, 1_000_000, 1_000_000)
+            .unwrap(),
+    )
+    .unwrap();
+    let mut session = DomSession::new(dom, limits()).unwrap();
+    let (_, top) = create(&mut session);
+    (session, top)
+}
+
 pub(super) fn map_areas_and_datalist_options_are_distinct_live_associations() {
-    let (mut session, top) = setup();
+    let (mut session, top) = collection_session();
     let document = top.document();
     let snapshot = session.snapshot();
     let html = snapshot
@@ -53,6 +66,9 @@ pub(super) fn map_areas_and_datalist_options_are_distinct_live_associations() {
                     try { descriptor.get.call(other); return 'accepted wrong receiver for ' + member; }
                     catch (error) { if (Object.getPrototypeOf(error) !== TypeError.prototype) throw error; }
                 }
+                // A disconnected Map can exercise ordinary Area membership without
+                // reaching hosted hyperlink updates during connection.
+                if (tag === 'area') root.remove();
                 const view = root[member];
                 const arbitrary = root.getElementsByTagNameNS(html, tag);
                 const second = document.createElement(local);
@@ -112,7 +128,7 @@ pub(super) fn map_areas_and_datalist_options_are_distinct_live_associations() {
         for (const {root, member, tag, view, arbitrary, first, nested, prefixed} of savedMemberCollections) {
             if (root[member] !== view || view.length !== 4 || arbitrary.length !== 4 ||
                 view[0] !== first || view[1] !== nested || view[2] !== prefixed ||
-                view[3] !== document.getElementById('native-' + tag))
+                view[3]?.id !== 'native-' + tag || view.namedItem('native-' + tag) !== view[3])
                 return 'retained association missed native insertion for ' + member;
             first.remove();
             if (root[member] !== view || view.length !== 2 || arbitrary.length !== 2 ||
