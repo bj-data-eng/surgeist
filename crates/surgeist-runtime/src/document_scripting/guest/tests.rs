@@ -18,6 +18,7 @@ pub(in crate::document_scripting) mod canvas_dimension_admission;
 pub(in crate::document_scripting) mod control_autocomplete_admission;
 pub(in crate::document_scripting) mod conversion_admission;
 pub(in crate::document_scripting) mod dataset_admission;
+pub(in crate::document_scripting) mod definition_waiter_admission;
 pub(in crate::document_scripting) mod document_default_view;
 pub(in crate::document_scripting) mod document_event_admission;
 pub(in crate::document_scripting) mod document_metadata_admission;
@@ -1311,8 +1312,15 @@ pub(in crate::document_scripting) fn registry_when_defined_retains_original_prom
         assert_guest(scope, r#"(() => {
             const registry = customElements;
             if (typeof registry.whenDefined !== 'function') return false;
-            const waiting = registry.whenDefined('x-waiting');
-            if (!(waiting instanceof Promise) || registry.whenDefined('x-waiting') !== waiting) return false;
+            let reentered;
+            const waiting = registry.whenDefined({
+                toString() {
+                    reentered = registry.whenDefined('x-waiting');
+                    return 'x-waiting';
+                }
+            });
+            if (!(waiting instanceof Promise) || waiting !== reentered ||
+                registry.whenDefined('x-waiting') !== waiting) return false;
             globalThis.definitionResults = [];
             waiting.then(value => definitionResults.push(value));
             registry.whenDefined('Invalid').catch(error => definitionResults.push(error.name));
