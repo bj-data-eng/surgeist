@@ -88,10 +88,8 @@ pub use lanes::{
     DefiniteLaneIntrinsicItem, DefiniteLaneIntrinsicItemOf, IndefiniteLaneContributionGroup,
     IndefiniteLaneContributionGroupOf, LaneContributionFacts, LaneContributionFactsOf,
     LaneIntrinsicItem, LaneIntrinsicItemKind, LaneIntrinsicItemOf, LaneIntrinsicSizingInput,
-    LaneIntrinsicSizingInputOf, LaneIntrinsicSizingReport, LaneIntrinsicSizingReportOf, LaneItem,
-    LaneItemOf, LaneItemOffset, LaneItemOffsetOf, LanePlacementError, LanePlacementInput,
-    LanePlacementInputOf, LanePlacementReport, LanePlacementReportOf, LaneTrackSpan,
-    LaneTrackSpanLength, lane_intrinsic_sizing, place_lanes,
+    LaneIntrinsicSizingInputOf, LaneIntrinsicSizingReport, LaneIntrinsicSizingReportOf,
+    LanePlacementError, LaneTrackSpan, LaneTrackSpanLength, lane_intrinsic_sizing,
 };
 use lanes::{
     GridLanesFinish, GridLanesLayoutInput, LaneIntrinsicTrackSizeInput, LanePacking,

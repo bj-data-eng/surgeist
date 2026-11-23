@@ -5256,15 +5256,10 @@ fn fri04_c04_grid_dispatch_scrollable_auto_minimum_lane_reports_exact_grid_lanes
 
 #[test]
 fn lanes_reject_overflowed_affine_tolerance_resolution() {
-    let err = place_lanes(LanePlacementInput::<&str> {
-        grid_axis_tracks: 2,
-        grid_axis: crate::GridAxisKind::Column,
-        reversed: false,
-        lane_gap: 0.0,
-        tolerance: GridFlowTolerance::Length(Length::value(invalid_numeric_lp())),
-        tolerance_basis: f32::MAX,
-        items: Vec::new(),
-    })
+    let err = resolve_tolerance(
+        GridFlowTolerance::Length(Length::value(invalid_numeric_lp())),
+        f32::MAX,
+    )
     .expect_err("overflowed affine tolerance should return a typed error");
 
     assert_eq!(err, LanePlacementError::InvalidGridFlowToleranceResolution);

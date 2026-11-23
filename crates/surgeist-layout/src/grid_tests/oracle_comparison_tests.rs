@@ -4850,6 +4850,7 @@ mod root_oracle {
 }
 
 mod root_layout_oracle {
+    use crate::test_support::lane_placement::{LaneFixture, LaneFixtureItem};
     use crate::test_support::{
         grid_layout_comparison::{GridLayoutComparison, GridLayoutNode},
         layout_tree::{OracleMeasurement, OracleTree},
@@ -4867,14 +4868,12 @@ mod root_layout_oracle {
         GridTemplateAreaRow, GridTemplateAreas,
         LaneContributionFacts as ProductionLaneContributionFacts,
         LaneIntrinsicItem as ProductionLaneIntrinsicItem,
-        LaneIntrinsicSizingInput as ProductionLaneIntrinsicSizingInput,
-        LaneItem as ProductionLaneItem, LanePlacementInput as ProductionLanePlacementInput, Length,
-        LengthAuto, MaxTrackSizing, MinTrackSizing, NodeInput, OrthogonalFallbackOf, Point,
-        Position, PreferredSize, RawGridLine, RawGridPlacement, RequestedAxis, RunMode, Size,
+        LaneIntrinsicSizingInput as ProductionLaneIntrinsicSizingInput, Length, LengthAuto,
+        MaxTrackSizing, MinTrackSizing, NodeInput, OrthogonalFallbackOf, Point, Position,
+        PreferredSize, RawGridLine, RawGridPlacement, RequestedAxis, RunMode, Size,
         SizingCalculation, SizingMode, SizingOperation, SizingRequestOf, TrackComponent,
         TrackFlexFactor, TrackSizing as ProductionTrackSizing, WritingMode, compute_root,
-        lane_intrinsic_sizing as production_lane_intrinsic_sizing,
-        place_lanes as production_place_lanes, round_layout,
+        lane_intrinsic_sizing as production_lane_intrinsic_sizing, round_layout,
     };
     use crate::{FlowAxes, LayoutRootRequestOf};
 
@@ -6998,18 +6997,17 @@ mod root_layout_oracle {
 
     #[test]
     fn lanes_row_auto_flow_matches_oracle_placement() {
-        assert_production_lane_placement_matches_oracle(
-            ProductionLanePlacementInput {
-                grid_axis_tracks: 3,
+        assert_lane_layout_matches_oracle(
+            LaneFixture {
+                tracks: 3,
                 grid_axis: crate::GridAxisKind::Column,
                 reversed: false,
                 lane_gap: 10.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
-                tolerance_basis: 0.0,
                 items: vec![
-                    production_auto_lane_item("a", 1, 20.0),
-                    production_auto_lane_item("b", 1, 30.0),
-                    production_auto_lane_item("c", 2, 10.0),
+                    LaneFixtureItem::auto(1, 20.0),
+                    LaneFixtureItem::auto(1, 30.0),
+                    LaneFixtureItem::auto(2, 10.0),
                 ],
             },
             LanePlacementInput {
@@ -7029,18 +7027,17 @@ mod root_layout_oracle {
 
     #[test]
     fn lanes_column_auto_flow_matches_oracle_placement() {
-        assert_production_lane_placement_matches_oracle(
-            ProductionLanePlacementInput {
-                grid_axis_tracks: 2,
+        assert_lane_layout_matches_oracle(
+            LaneFixture {
+                tracks: 2,
                 grid_axis: crate::GridAxisKind::Row,
                 reversed: false,
                 lane_gap: 4.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
-                tolerance_basis: 0.0,
                 items: vec![
-                    production_auto_lane_item("a", 1, 10.0),
-                    production_auto_lane_item("b", 1, 20.0),
-                    production_auto_lane_item("c", 1, 30.0),
+                    LaneFixtureItem::auto(1, 10.0),
+                    LaneFixtureItem::auto(1, 20.0),
+                    LaneFixtureItem::auto(1, 30.0),
                 ],
             },
             LanePlacementInput {
@@ -7060,17 +7057,16 @@ mod root_layout_oracle {
 
     #[test]
     fn lanes_definite_grid_axis_item_matches_oracle_placement() {
-        assert_production_lane_placement_matches_oracle(
-            ProductionLanePlacementInput {
-                grid_axis_tracks: 3,
+        assert_lane_layout_matches_oracle(
+            LaneFixture {
+                tracks: 3,
                 grid_axis: crate::GridAxisKind::Column,
                 reversed: false,
                 lane_gap: 5.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
-                tolerance_basis: 0.0,
                 items: vec![
-                    production_definite_lane_item("a", 2, 2, 40.0),
-                    production_auto_lane_item("b", 1, 20.0),
+                    LaneFixtureItem::definite(2, 2, 40.0),
+                    LaneFixtureItem::auto(1, 20.0),
                 ],
             },
             LanePlacementInput {
@@ -7089,15 +7085,14 @@ mod root_layout_oracle {
 
     #[test]
     fn lanes_auto_span_clamping_matches_oracle_placement() {
-        assert_production_lane_placement_matches_oracle(
-            ProductionLanePlacementInput {
-                grid_axis_tracks: 2,
+        assert_lane_layout_matches_oracle(
+            LaneFixture {
+                tracks: 2,
                 grid_axis: crate::GridAxisKind::Column,
                 reversed: false,
                 lane_gap: 0.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
-                tolerance_basis: 0.0,
-                items: vec![production_auto_lane_item("a", 7, 10.0)],
+                items: vec![LaneFixtureItem::auto(7, 10.0)],
             },
             LanePlacementInput {
                 grid_axis_tracks: 2,
@@ -7112,18 +7107,17 @@ mod root_layout_oracle {
 
     #[test]
     fn lanes_finite_tolerance_matches_oracle_placement() {
-        assert_production_lane_placement_matches_oracle(
-            ProductionLanePlacementInput {
-                grid_axis_tracks: 3,
+        assert_lane_layout_matches_oracle(
+            LaneFixture {
+                tracks: 3,
                 grid_axis: crate::GridAxisKind::Column,
                 reversed: false,
                 lane_gap: 0.0,
                 tolerance: GridFlowTolerance::Length(Length::px(10.0)),
-                tolerance_basis: 0.0,
                 items: vec![
-                    production_definite_lane_item("a", 1, 1, 10.0),
-                    production_definite_lane_item("b", 2, 1, 20.0),
-                    production_auto_lane_item("c", 1, 10.0),
+                    LaneFixtureItem::definite(1, 1, 10.0),
+                    LaneFixtureItem::definite(2, 1, 20.0),
+                    LaneFixtureItem::auto(1, 10.0),
                 ],
             },
             LanePlacementInput {
@@ -7143,17 +7137,16 @@ mod root_layout_oracle {
 
     #[test]
     fn lanes_finite_search_does_not_wrap_candidate_span_across_grid_axis_end() {
-        assert_production_lane_placement_matches_oracle(
-            ProductionLanePlacementInput {
-                grid_axis_tracks: 3,
+        assert_lane_layout_matches_oracle(
+            LaneFixture {
+                tracks: 3,
                 grid_axis: crate::GridAxisKind::Column,
                 reversed: false,
                 lane_gap: 0.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
-                tolerance_basis: 0.0,
                 items: vec![
-                    production_auto_lane_item("a", 2, 10.0),
-                    production_auto_lane_item("b", 2, 10.0),
+                    LaneFixtureItem::auto(2, 10.0),
+                    LaneFixtureItem::auto(2, 10.0),
                 ],
             },
             LanePlacementInput {
@@ -7172,18 +7165,17 @@ mod root_layout_oracle {
 
     #[test]
     fn lanes_infinite_tolerance_matches_oracle_placement() {
-        assert_production_lane_placement_matches_oracle(
-            ProductionLanePlacementInput {
-                grid_axis_tracks: 2,
+        assert_lane_layout_matches_oracle(
+            LaneFixture {
+                tracks: 2,
                 grid_axis: crate::GridAxisKind::Row,
                 reversed: false,
                 lane_gap: 0.0,
                 tolerance: GridFlowTolerance::Infinite,
-                tolerance_basis: 0.0,
                 items: vec![
-                    production_auto_lane_item("a", 1, 10.0),
-                    production_auto_lane_item("b", 1, 10.0),
-                    production_auto_lane_item("c", 1, 10.0),
+                    LaneFixtureItem::auto(1, 10.0),
+                    LaneFixtureItem::auto(1, 10.0),
+                    LaneFixtureItem::auto(1, 10.0),
                 ],
             },
             LanePlacementInput {
@@ -8577,44 +8569,32 @@ mod root_layout_oracle {
             .assert_layout();
     }
 
-    fn assert_production_lane_placement_matches_oracle(
-        production_input: ProductionLanePlacementInput<&'static str>,
+    /// Lays the fixture out through `compute_layout` and compares each item's
+    /// grid-axis line, span and lane-axis offset, and the content extent, with
+    /// the oracle's placement of the same items.
+    fn assert_lane_layout_matches_oracle(
+        fixture: LaneFixture<f32>,
         oracle_input: LanePlacementInput,
     ) {
-        let production = production_place_lanes(production_input).unwrap();
+        let production = fixture.layout();
         let oracle = grid::place_lanes(oracle_input).unwrap();
 
         assert_eq!(
-            production_grid_axis(production.lane_axis),
-            oracle.lane_axis,
-            "lane axis"
+            production.content_extent, oracle.content_size,
+            "content size"
         );
-        assert_eq!(
-            production_grid_axis(production.grid_axis),
-            oracle.grid_axis,
-            "grid axis"
-        );
-        assert_eq!(production.content_size, oracle.content_size, "content size");
         assert_eq!(
             production
-                .item_offsets
+                .starts
                 .iter()
-                .map(|item| (
-                    item.item,
-                    item.grid_axis_start,
-                    item.grid_axis_span,
-                    item.offset
-                ))
+                .zip(&production.spans)
+                .zip(&production.offsets)
+                .map(|((start, span), offset)| (*start, *span, *offset))
                 .collect::<Vec<_>>(),
             oracle
                 .item_offsets
                 .iter()
-                .map(|item| (
-                    item.id,
-                    item.grid_axis_start,
-                    item.grid_axis_span,
-                    item.offset
-                ))
+                .map(|item| (item.grid_axis_start, item.grid_axis_span, item.offset))
                 .collect::<Vec<_>>(),
             "item offsets"
         );
@@ -8723,40 +8703,6 @@ mod root_layout_oracle {
             max_content,
             min_size: min_content,
             automatic_minimum_applies: true,
-        }
-    }
-
-    fn production_grid_axis(axis: ProductionGridAxisKind) -> GridAxis {
-        match axis {
-            ProductionGridAxisKind::Column => GridAxis::Column,
-            ProductionGridAxisKind::Row => GridAxis::Row,
-        }
-    }
-
-    fn production_auto_lane_item(
-        item: &'static str,
-        grid_axis_span: usize,
-        lane_axis_margin_box: f32,
-    ) -> ProductionLaneItem<&'static str> {
-        ProductionLaneItem {
-            item,
-            grid_axis_span,
-            definite_grid_axis_start: None,
-            lane_axis_margin_box,
-        }
-    }
-
-    fn production_definite_lane_item(
-        item: &'static str,
-        grid_axis_start: usize,
-        grid_axis_span: usize,
-        lane_axis_margin_box: f32,
-    ) -> ProductionLaneItem<&'static str> {
-        ProductionLaneItem {
-            item,
-            grid_axis_span,
-            definite_grid_axis_start: Some(grid_axis_start),
-            lane_axis_margin_box,
         }
     }
 }

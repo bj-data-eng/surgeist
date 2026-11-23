@@ -18,6 +18,7 @@ use super::fixtures::{
     with_projected_subgrid_child_input,
 };
 use super::*;
+use crate::test_support::lane_placement::{LaneFixture, LaneFixtureItem};
 use crate::test_support::readback::{self, Phase};
 
 fn assert_explicit_lanes_flow_ignores_the_stacking_template<S: LayoutScalar>() {
@@ -2990,38 +2991,9 @@ fn lane_track_span_length_rejects_zero() {
 }
 
 #[test]
-fn lane_errors_carry_context() {
-    let err = place_lanes(LanePlacementInput {
-        grid_axis_tracks: 2,
-        grid_axis: crate::GridAxisKind::Column,
-        reversed: false,
-        lane_gap: 0.0,
-        tolerance: GridFlowTolerance::Infinite,
-        tolerance_basis: 0.0,
-        items: vec![LaneItem {
-            item: "item",
-            grid_axis_span: 1,
-            definite_grid_axis_start: Some(0),
-            lane_axis_margin_box: 1.0,
-        }],
-    })
-    .expect_err("zero grid axis start should be rejected with context");
-
-    assert_eq!(err, LanePlacementError::InvalidGridAxisStart { start: 0 });
-}
-
-#[test]
 fn lanes_reject_invalid_raw_tolerance_basis() {
-    let err = place_lanes(LanePlacementInput::<&str> {
-        grid_axis_tracks: 2,
-        grid_axis: crate::GridAxisKind::Column,
-        reversed: false,
-        lane_gap: 0.0,
-        tolerance: GridFlowTolerance::Percent(0.25),
-        tolerance_basis: f32::NAN,
-        items: Vec::new(),
-    })
-    .expect_err("invalid raw tolerance basis should return a typed error");
+    let err = resolve_tolerance(GridFlowTolerance::Percent(0.25), f32::NAN)
+        .expect_err("invalid raw tolerance basis should return a typed error");
 
     assert_eq!(err, LanePlacementError::InvalidGridFlowToleranceBasis);
 }
@@ -7418,51 +7390,25 @@ fn lane_intrinsic_public_inputs_accept_non_default_scalar() {
 
     assert_eq!(input.gap, 1.5_f64);
     assert_eq!(input.items[0].contribution().max_content, 2.5_f64);
-
-    let placement_input = LanePlacementInputOf::<_, f64> {
-        grid_axis_tracks: 1,
-        grid_axis: crate::GridAxisKind::Column,
-        reversed: false,
-        lane_gap: 1.5_f64,
-        tolerance: GridFlowToleranceOf::Percent(0.25_f64),
-        tolerance_basis: 10.5_f64,
-        items: Vec::<LaneItemOf<&str, f64>>::new(),
-    };
-
-    assert_eq!(
-        placement_input.tolerance,
-        GridFlowToleranceOf::Percent(0.25_f64)
-    );
 }
 
 #[test]
 fn lane_public_helpers_compute_with_non_default_scalar() {
-    let placement = place_lanes(LanePlacementInputOf::<_, f64> {
-        grid_axis_tracks: 2,
+    let placement = LaneFixture::<f64> {
         grid_axis: crate::GridAxisKind::Column,
         reversed: false,
+        tracks: 2,
         lane_gap: 0.5,
         tolerance: GridFlowToleranceOf::Normal { font_size: 0.0 },
-        tolerance_basis: 0.0,
         items: vec![
-            LaneItemOf {
-                item: "a",
-                grid_axis_span: 1,
-                definite_grid_axis_start: None,
-                lane_axis_margin_box: 10.25,
-            },
-            LaneItemOf {
-                item: "b",
-                grid_axis_span: 1,
-                definite_grid_axis_start: None,
-                lane_axis_margin_box: 12.5,
-            },
+            LaneFixtureItem::auto(1, 10.25),
+            LaneFixtureItem::auto(1, 12.5),
         ],
-    })
-    .expect("f64 lane placement should compute");
+    }
+    .layout();
 
-    assert_eq!(placement.content_size, 12.5);
-    assert_eq!(placement.item_offsets[1].offset, 0.0);
+    assert_eq!(placement.content_extent, 12.5);
+    assert_eq!(placement.offsets[1], 0.0);
 
     let intrinsic = lane_intrinsic_sizing(LaneIntrinsicSizingInputOf::<f64> {
         axis: GridAxisKind::Column,

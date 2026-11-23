@@ -346,10 +346,9 @@ pub use grid::{
     GridComputationOf, GridComputationReport, IndefiniteLaneContributionGroup,
     IndefiniteLaneContributionGroupOf, LaneContributionFacts, LaneContributionFactsOf,
     LaneIntrinsicItem, LaneIntrinsicItemKind, LaneIntrinsicItemOf, LaneIntrinsicSizingInput,
-    LaneIntrinsicSizingInputOf, LaneIntrinsicSizingReport, LaneIntrinsicSizingReportOf, LaneItem,
-    LaneItemOf, LaneItemOffset, LaneItemOffsetOf, LanePlacementError, LanePlacementInput,
-    LanePlacementInputOf, LanePlacementReport, LanePlacementReportOf, LaneTrackSpan,
-    LaneTrackSpanLength, NamedGridErrorReport, NamedGridReport, lane_intrinsic_sizing, place_lanes,
+    LaneIntrinsicSizingInputOf, LaneIntrinsicSizingReport, LaneIntrinsicSizingReportOf,
+    LanePlacementError, LaneTrackSpan, LaneTrackSpanLength, NamedGridErrorReport, NamedGridReport,
+    lane_intrinsic_sizing,
 };
 #[cfg(test)]
 pub(crate) use grid::{compute_grid, compute_grid_with_report};

@@ -1116,10 +1116,9 @@ rectangle, with auto margins resolved to zero. Absolute children leave track dem
 and other absolute children's frozen bounds unchanged; their overflow still
 contributes to final scroll geometry.
 
-- Sparse lane placement uses `place_lanes`, `LanePlacementInputOf`, and
-  `LanePlacementReportOf`, with an explicit grid axis and reverse traversal.
-  Container layout consumes `NodeInputOf::grid_lanes_flow` for the resolved axis
-  pair, progression and dense packing.
+- Sparse lane placement runs inside container layout, which consumes
+  `NodeInputOf::grid_lanes_flow` for the resolved axis pair, progression and
+  dense packing.
 - Intrinsic lane sizing: `lane_intrinsic_sizing`, `LaneIntrinsicSizingInputOf`, and `LaneIntrinsicSizingReportOf`.
 - Grid computation reports: `GridComputationOf` and `GridComputationReport`.
 - Finite track construction: `TrackSizingOf`, `TrackComponentOf`, `TrackComponentListOf`, and `track_sizing_components_of`.

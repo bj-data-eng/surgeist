@@ -20,54 +20,6 @@ mod settlement;
 use packed::{PackedLaneItem, PackedLanePlacement};
 use settlement::{LaneItemPlacement, stage_lane_items};
 
-/// Inputs for sparse placement over a finite number of equal-size tracks.
-///
-/// Dense placement requires track-size compatibility and is owned by
-/// container layout, which consumes `NodeInputOf::grid_lanes_flow`.
-#[derive(Clone, Debug, PartialEq)]
-pub struct LanePlacementInputOf<Item, S: LayoutScalar = DefaultScalar> {
-    pub grid_axis_tracks: usize,
-    pub grid_axis: GridAxisKind,
-    pub reversed: bool,
-    pub lane_gap: S,
-    pub tolerance: GridFlowToleranceOf<S>,
-    pub tolerance_basis: S,
-    pub items: Vec<LaneItemOf<Item, S>>,
-}
-
-pub type LanePlacementInput<Item> = LanePlacementInputOf<Item, DefaultScalar>;
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct LaneItemOf<Item, S: LayoutScalar = DefaultScalar> {
-    pub item: Item,
-    pub grid_axis_span: usize,
-    pub definite_grid_axis_start: Option<usize>,
-    pub lane_axis_margin_box: S,
-}
-
-pub type LaneItem<Item> = LaneItemOf<Item, DefaultScalar>;
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct LaneItemOffsetOf<Item, S: LayoutScalar = DefaultScalar> {
-    pub item: Item,
-    pub grid_axis_start: usize,
-    pub grid_axis_span: usize,
-    pub offset: S,
-    pub lane_axis_margin_box: S,
-}
-
-pub type LaneItemOffset<Item> = LaneItemOffsetOf<Item, DefaultScalar>;
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct LanePlacementReportOf<Item, S: LayoutScalar = DefaultScalar> {
-    pub lane_axis: GridAxisKind,
-    pub grid_axis: GridAxisKind,
-    pub item_offsets: Vec<LaneItemOffsetOf<Item, S>>,
-    pub content_size: S,
-}
-
-pub type LanePlacementReport<Item> = LanePlacementReportOf<Item, DefaultScalar>;
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct GridLanesItemContainingBlockOf<S: LayoutScalar = DefaultScalar> {
     grid_axis: GridAxisKind,
@@ -414,97 +366,6 @@ pub(super) fn apply_grid_lanes_auto_fit_policy<'input, Node, S: LayoutScalar>(
         })
         .collect::<Vec<_>>();
     topology.apply_lanes_auto_fit_policy(axis, track_count, explicit_start, &lanes_placements)
-}
-
-/// Places items sparsely over a finite set of tracks.
-pub fn place_lanes<Item, S: LayoutScalar>(
-    input: LanePlacementInputOf<Item, S>,
-) -> Result<LanePlacementReportOf<Item, S>, LanePlacementError> {
-    if input.grid_axis_tracks == 0 {
-        return Err(LanePlacementError::EmptyTrackList);
-    }
-
-    let mut running = vec![S::ZERO; input.grid_axis_tracks];
-    let mut item_offsets = Vec::new();
-    let mut cursor = 0usize;
-    let tolerance = resolve_tolerance(input.tolerance, input.tolerance_basis)?;
-    let mut content_size = S::ZERO;
-    let collapsed = vec![false; input.grid_axis_tracks];
-
-    for item in input.items {
-        let (start_zero, span) = match item.definite_grid_axis_start {
-            Some(start_line) => {
-                if start_line == 0 {
-                    return Err(LanePlacementError::InvalidGridAxisStart { start: start_line });
-                }
-                if item.grid_axis_span == 0 {
-                    return Err(LanePlacementError::InvalidGridAxisSpan {
-                        span: item.grid_axis_span,
-                    });
-                }
-                let start_zero = start_line - 1;
-                if start_zero + item.grid_axis_span > input.grid_axis_tracks {
-                    return Err(LanePlacementError::GridAxisSpanOutOfRange {
-                        start: start_line,
-                        span: item.grid_axis_span,
-                        tracks: input.grid_axis_tracks,
-                    });
-                }
-                (start_zero, item.grid_axis_span)
-            }
-            None => {
-                let span = item.grid_axis_span.clamp(1, input.grid_axis_tracks);
-                let start_zero = if matches!(input.tolerance, GridFlowToleranceOf::Infinite) {
-                    infinite_candidate_start(cursor, span, &collapsed, input.reversed)
-                } else {
-                    finite_candidate_start(
-                        &running,
-                        cursor,
-                        span,
-                        tolerance,
-                        &collapsed,
-                        input.reversed,
-                    )
-                };
-                let Some(start_zero) = start_zero else {
-                    return Err(LanePlacementError::GridAxisSpanOutOfRange {
-                        start: 1,
-                        span,
-                        tracks: input.grid_axis_tracks,
-                    });
-                };
-                (start_zero, span)
-            }
-        };
-
-        if item.definite_grid_axis_start.is_none() {
-            cursor = lane_cursor_after(start_zero, span, input.grid_axis_tracks, input.reversed);
-        }
-        let previous = max_running_position(&running, start_zero, span);
-        let new_position = previous + item.lane_axis_margin_box.max(S::ZERO) + input.lane_gap;
-        content_size = content_size.max(previous + item.lane_axis_margin_box);
-        for position in &mut running[start_zero..start_zero + span] {
-            *position = new_position;
-        }
-
-        item_offsets.push(LaneItemOffsetOf {
-            item: item.item,
-            grid_axis_start: start_zero + 1,
-            grid_axis_span: span,
-            offset: previous,
-            lane_axis_margin_box: item.lane_axis_margin_box,
-        });
-    }
-
-    Ok(LanePlacementReportOf {
-        lane_axis: match input.grid_axis {
-            GridAxisKind::Column => GridAxisKind::Row,
-            GridAxisKind::Row => GridAxisKind::Column,
-        },
-        grid_axis: input.grid_axis,
-        item_offsets,
-        content_size,
-    })
 }
 
 pub fn lane_intrinsic_sizing<S: LayoutScalar>(
@@ -4336,7 +4197,7 @@ fn grid_axis_lines(lines: GridLines, axis: GridAxisKind) -> GridAxisLines {
     }
 }
 
-fn resolve_tolerance<S: LayoutScalar>(
+pub(super) fn resolve_tolerance<S: LayoutScalar>(
     tolerance: GridFlowToleranceOf<S>,
     basis: S,
 ) -> Result<S, LanePlacementError> {
@@ -4464,85 +4325,46 @@ fn max_running_position<S: LayoutScalar>(running: &[S], start: usize, span: usiz
 mod resolved_flow_tests {
     use super::*;
     use crate::GridLanesFlow;
+    use crate::test_support::lane_placement::{LaneFixture, LaneFixtureItem};
 
     fn assert_reverse_candidates<S: LayoutScalar>() {
         for tolerance in [
-            GridFlowToleranceOf::Length(LengthOf::ZERO),
+            GridFlowToleranceOf::<S>::Length(LengthOf::ZERO),
             GridFlowToleranceOf::Infinite,
         ] {
-            let report = place_lanes(LanePlacementInputOf {
-                grid_axis_tracks: 3,
+            let placed = LaneFixture {
                 grid_axis: GridAxisKind::Column,
                 reversed: true,
-                lane_gap: S::ZERO,
+                tracks: 3,
+                lane_gap: 0.0,
                 tolerance,
-                tolerance_basis: S::ZERO,
                 items: [10.0, 20.0, 30.0, 5.0]
                     .into_iter()
-                    .enumerate()
-                    .map(|(item, height)| LaneItemOf {
-                        item,
-                        grid_axis_span: 1,
-                        definite_grid_axis_start: None,
-                        lane_axis_margin_box: S::from_f64(height),
-                    })
+                    .map(|height| LaneFixtureItem::auto(1, height))
                     .collect(),
-            })
-            .unwrap();
-            assert_eq!(
-                report
-                    .item_offsets
-                    .iter()
-                    .map(|item| item.grid_axis_start)
-                    .collect::<Vec<_>>(),
-                [3, 2, 1, 3]
-            );
-            assert_eq!(
-                report
-                    .item_offsets
-                    .iter()
-                    .map(|item| item.offset)
-                    .collect::<Vec<_>>(),
-                [0.0, 0.0, 0.0, 10.0].map(S::from_f64)
-            );
+            }
+            .layout();
+            assert_eq!(placed.starts, [3, 2, 1, 3]);
+            assert_eq!(placed.offsets, [0.0, 0.0, 0.0, 10.0].map(S::from_f64));
         }
-        let report = place_lanes(LanePlacementInputOf {
-            grid_axis_tracks: 4,
+        let placed = LaneFixture {
             grid_axis: GridAxisKind::Row,
             reversed: true,
-            lane_gap: S::ZERO,
-            tolerance: GridFlowToleranceOf::Infinite,
-            tolerance_basis: S::ZERO,
+            tracks: 4,
+            lane_gap: 0.0,
+            tolerance: GridFlowToleranceOf::<S>::Infinite,
             items: [(None, 2), (Some(1), 1), (None, 1), (None, 2)]
                 .into_iter()
-                .enumerate()
-                .map(|(item, (line, span))| LaneItemOf {
-                    item,
-                    grid_axis_span: span,
-                    definite_grid_axis_start: line,
-                    lane_axis_margin_box: S::from_f64(10.0),
+                .map(|(line, span)| match line {
+                    Some(line) => LaneFixtureItem::definite(line, span, 10.0),
+                    None => LaneFixtureItem::auto(span, 10.0),
                 })
                 .collect(),
-        })
-        .unwrap();
-        assert_eq!(
-            report
-                .item_offsets
-                .iter()
-                .map(|item| item.grid_axis_start)
-                .collect::<Vec<_>>(),
-            [3, 1, 2, 3]
-        );
-        assert_eq!(
-            report
-                .item_offsets
-                .iter()
-                .map(|item| item.offset)
-                .collect::<Vec<_>>(),
-            [0.0, 0.0, 0.0, 10.0].map(S::from_f64)
-        );
-        assert_eq!(report.grid_axis, GridAxisKind::Row);
-        assert_eq!(report.lane_axis, GridAxisKind::Column);
+        }
+        .layout();
+        assert_eq!(placed.starts, [3, 1, 2, 3]);
+        assert_eq!(placed.spans, [2, 1, 1, 2]);
+        assert_eq!(placed.offsets, [0.0, 0.0, 0.0, 10.0].map(S::from_f64));
     }
 
     #[test]
