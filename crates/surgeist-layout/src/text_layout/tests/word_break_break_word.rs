@@ -2,6 +2,7 @@
 //! Ahem at 10px gives each authored A/SPACE a 10px raw advance.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation};
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -62,7 +63,7 @@ fn paragraph(
 
 fn compute<S: LayoutScalar>(
     paragraph: &PreparedParagraph,
-    width: crate::AxisSizingRequestOf<S>,
+    width: AxisSizingRequestOf<S>,
     rtl: bool,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let tree = PublicLayoutTreeOf::<S>::new()
@@ -81,7 +82,7 @@ fn compute<S: LayoutScalar>(
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -92,33 +93,30 @@ fn compute<S: LayoutScalar>(
     .unwrap();
     compute_layout_with_flow(&capture, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
             width,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -285,37 +283,37 @@ fn break_word_uses_conditional_finite_and_min_content_cuts_for_every_declared_ov
                 }));
                 for (available, width, lines) in [
                     (
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
                         20.0,
                         &twenty[..],
                     ),
                     (
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
                         40.0,
                         &forty[..],
                     ),
                     (
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MinContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
                         ),
                         10.0,
                         &minimum[..],
                     ),
                     (
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MaxContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
                         ),
                         40.0,
                         &forty[..],
@@ -337,10 +335,7 @@ fn break_word_uses_conditional_finite_and_min_content_cuts_for_every_declared_ov
             );
             let minimum = compute::<S>(
                 &overflow_only,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MinContent,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
                 rtl,
             );
             assert_output(&minimum, &overflow_only, "AAAA", 40.0, &forty);
@@ -353,11 +348,11 @@ fn break_word_uses_conditional_finite_and_min_content_cuts_for_every_declared_ov
             );
             let narrow = compute::<S>(
                 &normal,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 rtl,
             );
@@ -382,11 +377,11 @@ fn break_word_chooses_the_fitting_ordinary_space_before_emergency_interiors() {
                 );
                 let narrow = compute::<S>(
                     &p,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     rtl,
                 );
@@ -408,11 +403,11 @@ fn break_word_chooses_the_fitting_ordinary_space_before_emergency_interiors() {
                 );
                 let wide = compute::<S>(
                     &p,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(50.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(50.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     rtl,
                 );
@@ -448,11 +443,11 @@ fn break_word_child_respects_ancestor_nowrap_and_preserves_forced_breaks() {
             );
             let actual = compute::<S>(
                 &p,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 rtl,
             );

@@ -1,4 +1,8 @@
 use super::*;
+use crate::{
+    node_input::{InlineBaselineContext, TextWrapStyle},
+    value::{AvailableSpaceOf, NonNegativeFiniteOf, SizingOperation},
+};
 use std::cell::RefCell;
 use std::convert::Infallible;
 use surgeist_text::font::FontBaseline;
@@ -21,7 +25,7 @@ fn atomic<S: LayoutScalar>(
     MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {
             baseline_reference: if top {
-                crate::InlineBaselineContext::Physical
+                InlineBaselineContext::Physical
             } else {
                 named()
             },
@@ -50,8 +54,8 @@ fn atomic<S: LayoutScalar>(
     }
 }
 
-fn named() -> crate::InlineBaselineContext {
-    crate::InlineBaselineContext::Named(FontBaseline::Alphabetic)
+fn named() -> InlineBaselineContext {
+    InlineBaselineContext::Named(FontBaseline::Alphabetic)
 }
 
 fn input<S: LayoutScalar>(
@@ -61,22 +65,20 @@ fn input<S: LayoutScalar>(
         meter: crate::accounting::Meter::new(),
         inline_baseline_context: named(),
         groups: crate::group_alignment::Snapshot::default(),
-        text_wrap_style: crate::TextWrapStyle::Auto,
+        text_wrap_style: TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
-            crate::LineBoxDirectionPolicy::Normal,
+            crate::node_input::LineBoxDirectionPolicy::Normal,
             Direction::Ltr,
         ),
         observe_tail: true,
         wrapping: None,
         available_inline_extent: AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         text_align: TextAlign::Start,
-        text_align_last: crate::TextAlignLast::Auto,
+        text_align_last: crate::node_input::TextAlignLast::Auto,
         indent: crate::text_indent::ResolvedTextIndent::ZERO,
         indent_state: crate::text_indent::IndentLineState::default(),
         participants,
@@ -239,7 +241,7 @@ fn invalid_receiver_stops_before_the_receiving_lines_provider_calls() {
     ];
     assert_eq!(*trace.borrow(), previous);
     let mut response = resolved();
-    response.reference = crate::InlineBaselineContext::Physical;
+    response.reference = InlineBaselineContext::Physical;
     assert!(matches!(
         run.accept_receiver(response),
         Err(NumericWrappingError::InvalidAtomicReceiverBasis)
@@ -265,12 +267,10 @@ fn balanced_input<S: LayoutScalar>() -> MixedInlineRunInputOf<S> {
         };
         item.size.width = S::from_f64(width);
     }
-    query.text_wrap_style = crate::TextWrapStyle::Balance;
+    query.text_wrap_style = TextWrapStyle::Balance;
     query.available_inline_extent = AxisSizingRequestOf::new(
-        crate::AvailableSpaceOf::Definite(
-            crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
-        ),
-        crate::SizingOperation::Normal,
+        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap()),
+        SizingOperation::Normal,
     );
     query
 }
@@ -482,7 +482,7 @@ fn balanced_group_receipts_reject_real_count_and_terminal_mismatches() {
         &[30.0, 30.0, 10.0, 10.0],
         &[],
         Direction::Ltr,
-        crate::TextWrapStyle::Balance,
+        TextWrapStyle::Balance,
     );
     let (reference, _) = walk(&query, None, 60.0);
     let references = numeric_reference_groups(&reference.selected_lines).unwrap();
@@ -500,7 +500,7 @@ fn balanced_group_receipts_reject_real_count_and_terminal_mismatches() {
         &[30.0, 30.0, 10.0, 10.0],
         &[2],
         Direction::Ltr,
-        crate::TextWrapStyle::Balance,
+        TextWrapStyle::Balance,
     );
     let (terminal, outcome) = walk(&forced, Some(2), 60.0);
     assert!(outcome == NumericWalkOutcome::GroupComplete);
@@ -531,12 +531,10 @@ fn tail_input<S: LayoutScalar>(widths: &[f64]) -> MixedInlineRunInputOf<S> {
         })
         .collect();
     let mut query = input(participants);
-    query.text_wrap_style = crate::TextWrapStyle::AvoidShortLastLine;
+    query.text_wrap_style = TextWrapStyle::AvoidShortLastLine;
     query.available_inline_extent = AxisSizingRequestOf::new(
-        crate::AvailableSpaceOf::Definite(
-            crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
-        ),
-        crate::SizingOperation::Normal,
+        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap()),
+        SizingOperation::Normal,
     );
     query
 }

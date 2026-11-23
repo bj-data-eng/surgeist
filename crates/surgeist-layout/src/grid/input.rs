@@ -1,10 +1,16 @@
 use crate::node_projection::CommonBoxProjection;
 use crate::{
-    AlignContent, AlignItems, AspectRatioOf, BoxSizing, ComputedOverflow, Display, Edges, FlowAxes,
-    GridAutoFlow, GridFlowToleranceOf, GridLanesFlow, GridPlacement, GridTemplateAreas, ItemOrder,
-    LayoutScalar, LengthAutoOf, LengthOf, MaxSizeOf, MinSizeOf, NodeInputOf, OverflowClipMarginOf,
-    Position, PreferredSizeOf, RawGridPlacement, ScrollMarginOf, ScrollPaddingOf, ScrollSnapAlign,
-    ScrollSnapStop, ScrollSnapType, ScrollbarGutter, ScrollbarWidthOf, Size, TrackComponentOf,
+    geometry::{Edges, FlowAxes, PhysicalAxis, Size},
+    grid::GridAxisKind,
+    node_input::{
+        AlignContent, AlignItems, BoxSizing, ComputedOverflow, Display, GridAutoFlow,
+        GridFlowToleranceOf, GridLanesFlow, GridPlacement, ItemOrder, NodeInputOf,
+        OverflowClipMarginOf, Position, RawGridPlacement, ScrollMarginOf, ScrollPaddingOf,
+        ScrollSnapAlign, ScrollSnapStop, ScrollSnapType, ScrollbarGutter, ScrollbarWidthOf,
+    },
+    scalar::LayoutScalar,
+    sizing::{MaxSizeOf, MinSizeOf, PreferredSizeOf},
+    value::{AspectRatioOf, GridTemplateAreas, LengthAutoOf, LengthOf, TrackComponentOf},
 };
 
 pub(super) trait GridOverflowFacts {
@@ -34,12 +40,12 @@ impl<S: LayoutScalar> GridOverflowFacts for GridContainerProjection<'_, S> {
 pub(super) struct GridContainerProjection<'a, S: LayoutScalar> {
     pub(super) common: CommonBoxProjection<'a, S>,
     pub(super) display: Display,
-    pub(super) baseline_references: crate::GridBaselineReferences,
+    pub(super) baseline_references: crate::node_input::GridBaselineReferences,
     pub(super) item_is_replaced: bool,
     pub(super) item_is_table: bool,
     pub(super) box_sizing: BoxSizing,
-    pub(super) writing_mode: crate::WritingMode,
-    pub(super) direction: crate::Direction,
+    pub(super) writing_mode: crate::node_input::WritingMode,
+    pub(super) direction: crate::node_input::Direction,
     pub(super) overflow: ComputedOverflow,
     pub(super) overflow_clip_margin: OverflowClipMarginOf<S>,
     pub(super) scroll_padding: ScrollPaddingOf<S>,
@@ -78,15 +84,15 @@ pub(super) struct GridContainerProjection<'a, S: LayoutScalar> {
 impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
     pub(super) fn with_minimum<R>(
         &self,
-        axis: crate::PhysicalAxis,
+        axis: PhysicalAxis,
         consume: impl FnOnce(&MinSizeOf<S>) -> R,
     ) -> R {
         let (suppressed, minimum) = match axis {
-            crate::PhysicalAxis::Horizontal => (
+            PhysicalAxis::Horizontal => (
                 self.suppressed_intrinsic_minimum.width,
                 &self.min_size.width,
             ),
-            crate::PhysicalAxis::Vertical => (
+            PhysicalAxis::Vertical => (
                 self.suppressed_intrinsic_minimum.height,
                 &self.min_size.height,
             ),
@@ -189,23 +195,23 @@ impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
             align_content: input.align_content,
             justify_content: input.justify_content,
             gap: &input.gap,
-            grid_template_columns: if active(crate::GridAxisKind::Column) {
+            grid_template_columns: if active(GridAxisKind::Column) {
                 &input.grid_template_columns
             } else {
                 &[]
             },
-            grid_template_rows: if active(crate::GridAxisKind::Row) {
+            grid_template_rows: if active(GridAxisKind::Row) {
                 &input.grid_template_rows
             } else {
                 &[]
             },
             grid_template_areas: &input.grid_template_areas,
-            grid_auto_columns: if active(crate::GridAxisKind::Column) {
+            grid_auto_columns: if active(GridAxisKind::Column) {
                 &input.grid_auto_columns
             } else {
                 &[]
             },
-            grid_auto_rows: if active(crate::GridAxisKind::Row) {
+            grid_auto_rows: if active(GridAxisKind::Row) {
                 &input.grid_auto_rows
             } else {
                 &[]
@@ -318,8 +324,8 @@ pub(super) use project_grid_child_input;
 
 #[must_use]
 pub(super) fn order_modified_indexes(
-    items: &[(ItemOrder, crate::SourceIndex)],
-) -> Vec<crate::SourceIndex> {
+    items: &[(ItemOrder, crate::output::SourceIndex)],
+) -> Vec<crate::output::SourceIndex> {
     crate::node_input::item_order_permutation(items)
 }
 
@@ -333,8 +339,8 @@ pub(super) struct GridItemProjection<'input, S: LayoutScalar> {
     pub(super) item_order: ItemOrder,
     pub(super) box_sizing: BoxSizing,
     pub(super) flow_axes: FlowAxes,
-    pub(super) writing_mode: crate::WritingMode,
-    pub(super) direction: crate::Direction,
+    pub(super) writing_mode: crate::node_input::WritingMode,
+    pub(super) direction: crate::node_input::Direction,
     pub(super) overflow: ComputedOverflow,
     pub(super) overflow_clip_margin: OverflowClipMarginOf<S>,
     pub(super) scrollbar_gutter: ScrollbarGutter,
@@ -498,14 +504,14 @@ impl<'input, S: LayoutScalar> GridChildInput<'input, S> {
             && let Some(container) = &mut self.nested_container
         {
             let mapping = super::axis::map_grid_axis(super::axis::GridAxisMappingInput {
-                queried_axis: crate::GridAxisKind::Column,
+                queried_axis: GridAxisKind::Column,
                 parent_style: parent,
                 child_style: &self.item,
             });
             let axis = if mapping.parent_axis == parent.grid_lanes_flow.grid_axis() {
-                crate::GridAxisKind::Column
+                GridAxisKind::Column
             } else {
-                crate::GridAxisKind::Row
+                GridAxisKind::Row
             };
             let flow = container.source.grid_lanes_flow;
             container.adopted_lanes_flow =
@@ -525,10 +531,10 @@ impl<'input, S: LayoutScalar> GridChildInput<'input, S> {
     }
 
     #[must_use]
-    pub(super) fn subgrid_requested(&self, axis: crate::GridAxisKind) -> bool {
+    pub(super) fn subgrid_requested(&self, axis: GridAxisKind) -> bool {
         match axis {
-            crate::GridAxisKind::Column => self.requested_subgrid_axes.width,
-            crate::GridAxisKind::Row => self.requested_subgrid_axes.height,
+            GridAxisKind::Column => self.requested_subgrid_axes.width,
+            GridAxisKind::Row => self.requested_subgrid_axes.height,
         }
     }
 }
@@ -543,14 +549,21 @@ impl<'input, S: LayoutScalar> GridOverflowFacts for GridItemProjection<'input, S
 mod tests {
     use super::{GridChildInput, GridContainerInput, GridContainerProjection};
     use crate::{
-        AlignContent, AlignItems, AspectRatioOf, BoxSizing, ComputedOverflow, Direction, Display,
-        Edges, FlowAxes, GridAutoFlow, GridFlowToleranceOf, GridPlacement, GridTemplateAreaRow,
-        GridTemplateAreas, ItemOrder, LayoutScalar, LengthAutoOf, LengthOf, LengthPercentageOf,
-        MaxSizeOf, MinSizeOf, NodeInputOf, Overflow, OverflowClipBox, OverflowClipMarginOf,
-        PhysicalAxis, PhysicalSide, Position, PreferredSizeOf, RawGridLine, RawGridPlacement,
-        ScrollMarginOf, ScrollPaddingOf, ScrollPaddingValueOf, ScrollSnapAlign,
-        ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType,
-        ScrollbarGutter, ScrollbarWidthOf, Size, TrackComponentOf, WritingMode,
+        geometry::{Edges, FlowAxes, PhysicalAxis, PhysicalSide, Size},
+        node_input::{
+            AlignContent, AlignItems, BoxSizing, ComputedOverflow, Direction, Display,
+            GridAutoFlow, GridFlowToleranceOf, GridPlacement, ItemOrder, NodeInputOf, Overflow,
+            OverflowClipBox, OverflowClipMarginOf, Position, RawGridLine, RawGridPlacement,
+            ScrollMarginOf, ScrollPaddingOf, ScrollPaddingValueOf, ScrollSnapAlign,
+            ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness,
+            ScrollSnapType, ScrollbarGutter, ScrollbarWidthOf, WritingMode,
+        },
+        scalar::LayoutScalar,
+        sizing::{MaxSizeOf, MinSizeOf, PreferredSizeOf},
+        value::{
+            AspectRatioOf, GridTemplateAreaRow, GridTemplateAreas, LengthAutoOf, LengthOf,
+            LengthPercentageOf, TrackComponentOf,
+        },
     };
 
     fn scalar<S: LayoutScalar>(value: f64) -> S {
@@ -752,7 +765,9 @@ mod tests {
             item_is_replaced: true,
             item_is_table: true,
             align_items: Some(AlignItems::LastBaseline),
-            justify_items: Some(AlignItems::Safe(crate::ItemAlignmentPosition::Center)),
+            justify_items: Some(AlignItems::Safe(
+                crate::node_input::ItemAlignmentPosition::Center,
+            )),
             align_content: Some(AlignContent::SpaceEvenly),
             justify_content: Some(AlignContent::SafeFlexEnd),
             gap: expected_gap,
@@ -762,7 +777,11 @@ mod tests {
             grid_auto_columns: expected_auto_columns.clone(),
             grid_auto_rows: expected_auto_rows.clone(),
             grid_auto_flow: GridAutoFlow::ColumnDense,
-            grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, true, true),
+            grid_lanes_flow: crate::node_input::GridLanesFlow::new(
+                crate::grid::GridAxisKind::Row,
+                true,
+                true,
+            ),
             grid_flow_tolerance: expected_tolerance,
             scrollbar_gutter: ScrollbarGutter::StableBothEdges,
             scrollbar_width: expected_scrollbar_width,
@@ -836,7 +855,9 @@ mod tests {
         assert_eq!(projection.align_items, Some(AlignItems::LastBaseline));
         assert_eq!(
             projection.justify_items,
-            Some(AlignItems::Safe(crate::ItemAlignmentPosition::Center))
+            Some(AlignItems::Safe(
+                crate::node_input::ItemAlignmentPosition::Center
+            ))
         );
         assert_eq!(projection.align_content, Some(AlignContent::SpaceEvenly));
         assert_eq!(projection.justify_content, Some(AlignContent::SafeFlexEnd));
@@ -849,7 +870,7 @@ mod tests {
         assert_eq!(projection.grid_auto_flow, GridAutoFlow::ColumnDense);
         assert_eq!(
             projection.grid_lanes_flow,
-            crate::GridLanesFlow::new(crate::GridAxisKind::Row, true, true)
+            crate::node_input::GridLanesFlow::new(crate::grid::GridAxisKind::Row, true, true)
         );
         assert_eq!(projection.grid_flow_tolerance, expected_tolerance);
         assert_eq!(
@@ -981,9 +1002,13 @@ mod tests {
             border: expected_border,
             inset: expected_inset,
             align_self: Some(AlignItems::LastBaseline),
-            justify_self: Some(AlignItems::Safe(crate::ItemAlignmentPosition::Center)),
+            justify_self: Some(AlignItems::Safe(
+                crate::node_input::ItemAlignmentPosition::Center,
+            )),
             align_items: Some(AlignItems::Baseline),
-            justify_items: Some(AlignItems::Safe(crate::ItemAlignmentPosition::FlexEnd)),
+            justify_items: Some(AlignItems::Safe(
+                crate::node_input::ItemAlignmentPosition::FlexEnd,
+            )),
             align_content: Some(AlignContent::SpaceAround),
             justify_content: Some(AlignContent::SpaceBetween),
             gap: expected_gap,
@@ -1057,7 +1082,9 @@ mod tests {
         assert_eq!(projection.align_self, Some(AlignItems::LastBaseline));
         assert_eq!(
             projection.justify_self,
-            Some(AlignItems::Safe(crate::ItemAlignmentPosition::Center))
+            Some(AlignItems::Safe(
+                crate::node_input::ItemAlignmentPosition::Center
+            ))
         );
         assert_eq!(projection.grid_column, expected_column);
         assert_eq!(projection.grid_row, expected_row);
@@ -1089,7 +1116,9 @@ mod tests {
         assert_eq!(nested_container.align_items, Some(AlignItems::Baseline));
         assert_eq!(
             nested_container.justify_items,
-            Some(AlignItems::Safe(crate::ItemAlignmentPosition::FlexEnd))
+            Some(AlignItems::Safe(
+                crate::node_input::ItemAlignmentPosition::FlexEnd
+            ))
         );
         assert_eq!(
             nested_container.align_content,

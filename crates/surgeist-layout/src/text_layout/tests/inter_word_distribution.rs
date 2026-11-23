@@ -30,7 +30,7 @@ fn compute<S: LayoutScalar>(
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -43,8 +43,8 @@ fn compute<S: LayoutScalar>(
         &capture,
         0,
         request(70.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap()

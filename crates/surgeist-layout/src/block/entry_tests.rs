@@ -1,6 +1,10 @@
 use super::*;
 use crate::engine::ComputeSession;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::{
+    node_input::{Display, NodeInputOf},
+    sizing::PreferredSizeOf,
+};
 use std::cell::Cell;
 
 #[path = "../block_tests/clearance_frontier_tests.rs"]
@@ -9,14 +13,14 @@ mod clearance_frontier;
 thread_local! {
     static MEASUREMENTS: Cell<usize> = const { Cell::new(0) };
 }
-fn measured_zero<S: LayoutScalar>(_: crate::LeafMeasureInputOf<S>) -> Size<S> {
+fn measured_zero<S: LayoutScalar>(_: crate::measurement::LeafMeasureInputOf<S>) -> Size<S> {
     MEASUREMENTS.with(|value| value.set(value.get() + 1));
     Size::ZERO
 }
 fn input<S: LayoutScalar>() -> ComputeInputOf<S> {
-    let axis = crate::AxisSizingRequestOf::new(
-        crate::AvailableSpaceOf::Indefinite,
-        crate::SizingOperation::Normal,
+    let axis = crate::value::AxisSizingRequestOf::new(
+        crate::value::AvailableSpaceOf::Indefinite,
+        crate::value::SizingOperation::Normal,
     );
     ComputeInputOf::for_child(
         RunMode::PerformLayout,
@@ -25,15 +29,18 @@ fn input<S: LayoutScalar>() -> ComputeInputOf<S> {
         Size::new(Some(S::from_f64(100.0)), None),
         Size::new(Some(S::from_f64(100.0)), None),
         ContainingLayoutContext::new(
-            crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                Direction::Ltr,
+            ),
             ParentFormattingContext::BlockFlow,
         ),
-        crate::SizingRequestOf::new(
+        crate::value::SizingRequestOf::new(
             Size::splat(axis),
-            crate::OrthogonalFallbackOf::new(
+            crate::value::OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     )
@@ -44,16 +51,16 @@ fn first_margin<S: LayoutScalar>() {
         (false, false, 29.0),
         (true, true, 11.0),
     ] {
-        let mut owner = crate::NodeInputOf::<S> {
-            display: crate::Display::Block,
+        let mut owner = NodeInputOf::<S> {
+            display: Display::Block,
             ..Default::default()
         };
         owner.margin.top = LengthAutoOf::px(S::from_f64(11.0));
         if separating {
-            owner.padding.top = crate::LengthOf::px(S::from_f64(10.0));
+            owner.padding.top = crate::value::LengthOf::px(S::from_f64(10.0));
         }
-        let first = crate::NodeInputOf::<S> {
-            display: crate::Display::Block,
+        let first = NodeInputOf::<S> {
+            display: Display::Block,
             margin: Edges::new(
                 LengthAutoOf::px(S::from_f64(5.0)),
                 LengthAutoOf::ZERO,
@@ -62,11 +69,11 @@ fn first_margin<S: LayoutScalar>() {
             ),
             ..Default::default()
         };
-        let later = crate::NodeInputOf::<S> {
-            display: crate::Display::Block,
+        let later = NodeInputOf::<S> {
+            display: Display::Block,
             size: Size::new(
-                crate::PreferredSizeOf::px(S::from_f64(10.0)),
-                crate::PreferredSizeOf::px(S::from_f64(20.0)),
+                PreferredSizeOf::px(S::from_f64(10.0)),
+                PreferredSizeOf::px(S::from_f64(20.0)),
             ),
             margin: Edges::new(
                 LengthAutoOf::px(S::from_f64(29.0)),
@@ -100,7 +107,8 @@ fn first_margin<S: LayoutScalar>() {
         MEASUREMENTS.with(|value| assert_eq!(value.get(), 0));
         let body = session.compute_child(0, input()).unwrap();
         assert_eq!(
-            body.block_margin_collapse.at(crate::PhysicalSide::Top),
+            body.block_margin_collapse
+                .at(crate::geometry::PhysicalSide::Top),
             CollapsibleMarginOf::from_margin(S::from_f64(expected))
         );
         if measured {
@@ -111,20 +119,19 @@ fn first_margin<S: LayoutScalar>() {
             };
             assert_eq!(leaf_start.margin, CollapsibleMarginOf::ZERO);
             let leaf = session.compute_child(1, input()).unwrap();
-            assert!(
-                leaf.block_margin_collapse
-                    .can_collapse_through(crate::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        Direction::Ltr
-                    ))
-            );
+            assert!(leaf.block_margin_collapse.can_collapse_through(
+                crate::geometry::FlowAxes::new(
+                    crate::node_input::WritingMode::HorizontalTb,
+                    Direction::Ltr
+                )
+            ));
         }
     }
-    let mut last = crate::NodeInputOf::<S> {
-        display: crate::Display::Block,
+    let mut last = NodeInputOf::<S> {
+        display: Display::Block,
         size: Size::new(
-            crate::PreferredSizeOf::AUTO,
-            crate::PreferredSizeOf::px(S::from_f64(10.0)),
+            PreferredSizeOf::AUTO,
+            PreferredSizeOf::px(S::from_f64(10.0)),
         ),
         ..Default::default()
     };
@@ -132,8 +139,8 @@ fn first_margin<S: LayoutScalar>() {
     let tree = PublicLayoutTreeOf::new()
         .style(
             0,
-            crate::NodeInputOf::<S> {
-                display: crate::Display::Block,
+            NodeInputOf::<S> {
+                display: Display::Block,
                 ..Default::default()
             },
         )
@@ -170,7 +177,7 @@ fn complete_start_prefix_or_body_demand_does_not_measure_f64() {
     first_margin::<f64>();
 }
 
-fn measured_ten<S: LayoutScalar>(_: crate::LeafMeasureInputOf<S>) -> Size<S> {
+fn measured_ten<S: LayoutScalar>(_: crate::measurement::LeafMeasureInputOf<S>) -> Size<S> {
     MEASUREMENTS.with(|value| value.set(value.get() + 1));
     Size::new(S::from_f64(100.0), S::from_f64(10.0))
 }
@@ -182,15 +189,15 @@ fn opaque_last_child_bottom_margin_requires_body_without_qualification_measureme
             let tree = PublicLayoutTreeOf::new()
                 .style(
                     0,
-                    crate::NodeInputOf::<S> {
-                        display: crate::Display::Block,
+                    NodeInputOf::<S> {
+                        display: Display::Block,
                         ..Default::default()
                     },
                 )
                 .style(
                     1,
-                    crate::NodeInputOf::<S> {
-                        display: crate::Display::Block,
+                    NodeInputOf::<S> {
+                        display: Display::Block,
                         margin: Edges::new(
                             LengthAutoOf::px(S::from_f64(5.0)),
                             LengthAutoOf::ZERO,

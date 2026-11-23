@@ -97,18 +97,18 @@ fn assert_native_cyclic_subgrid_gap<S: LayoutScalar>() {
         let control = compute_layout(&leaf_control, 2, {
             let axes = Size::splat(available);
             let definite = axes.map(|axis| axis.space().definite_size());
-            crate::LayoutRootRequestOf::standalone(
+            crate::output::LayoutRootRequestOf::standalone(
                 SizingRequestOf::new(
                     axes,
                     OrthogonalFallbackOf::new(
                         definite,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        crate::value::NearestScrollportOf::Absent,
+                        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
                 definite,
             )
@@ -125,25 +125,32 @@ fn assert_native_cyclic_subgrid_gap<S: LayoutScalar>() {
     let batch = compute_layout(&tree, 0, {
         let axes = Size::new(
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(100.0)).unwrap()),
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(n(100.0)).unwrap(),
+                ),
                 SizingOperation::Normal,
             ),
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(20.0)).unwrap()),
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(n(20.0)).unwrap(),
+                ),
                 SizingOperation::Normal,
             ),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    crate::value::NearestScrollportOf::Absent,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })

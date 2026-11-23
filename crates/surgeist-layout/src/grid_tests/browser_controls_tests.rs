@@ -429,11 +429,11 @@ fn fri06_c12_t08_vertical_auto_rows_preserve_full_fixture_targets() {
     {
         let axes = Size::new(
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(600.0).unwrap()),
+                AvailableSpaceOf::Definite(crate::value::NonNegativeFiniteOf::new(600.0).unwrap()),
                 SizingOperation::Normal,
             ),
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(400.0).unwrap()),
+                AvailableSpaceOf::Definite(crate::value::NonNegativeFiniteOf::new(400.0).unwrap()),
                 SizingOperation::Normal,
             ),
         );
@@ -445,8 +445,8 @@ fn fri06_c12_t08_vertical_auto_rows_preserve_full_fixture_targets() {
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    crate::value::NearestScrollportOf::Absent,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
             flow,

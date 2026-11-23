@@ -170,7 +170,7 @@ fn zero_extent_force_case<S: LayoutScalar>(repeated: bool, capped: bool, termina
             LayoutSourceBasis::fresh(),
             request,
             FragmentationKind::Page {
-                progression: crate::PageProgression::LeftToRight,
+                progression: crate::fragmentation::page::PageProgression::LeftToRight,
             },
             axes,
             frames.clone(),
@@ -193,7 +193,7 @@ fn zero_extent_force_case<S: LayoutScalar>(repeated: bool, capped: bool, termina
             frames: &frames,
             axes,
             kind: FragmentationKind::Page {
-                progression: crate::PageProgression::LeftToRight,
+                progression: crate::fragmentation::page::PageProgression::LeftToRight,
             },
             target: bound.target_basis(),
             template: request,

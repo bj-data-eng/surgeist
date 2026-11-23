@@ -1,5 +1,5 @@
 use super::*;
-use crate::LayoutTree;
+use crate::tree::LayoutTree;
 
 fn preserve_row_margins<S: LayoutScalar>() {
     let n = S::from_f64;
@@ -118,7 +118,7 @@ fn preserve_row_margins<S: LayoutScalar>() {
                             flow.physical_size(LogicalSizeOf::new(
                                 AxisSizingRequestOf::new(
                                     AvailableSpaceOf::Definite(
-                                        crate::NonNegativeFiniteOf::new(n(30.0)).unwrap(),
+                                        crate::value::NonNegativeFiniteOf::new(n(30.0)).unwrap(),
                                     ),
                                     SizingOperation::Normal,
                                 ),
@@ -126,8 +126,8 @@ fn preserve_row_margins<S: LayoutScalar>() {
                             )),
                             OrthogonalFallbackOf::new(
                                 Size::NONE,
-                                crate::NearestScrollportOf::Absent,
-                                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                                crate::value::NearestScrollportOf::Absent,
+                                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                             ),
                         ),
                     ),
@@ -145,18 +145,18 @@ fn preserve_row_margins<S: LayoutScalar>() {
                     SizingOperation::MaxContent,
                 ));
                 let definite = axes.map(|axis| axis.space().definite_size());
-                crate::LayoutRootRequestOf::standalone(
+                crate::output::LayoutRootRequestOf::standalone(
                     SizingRequestOf::new(
                         axes,
                         OrthogonalFallbackOf::new(
                             definite,
-                            crate::NearestScrollportOf::Absent,
-                            Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                            crate::value::NearestScrollportOf::Absent,
+                            Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                         ),
                     ),
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
                     definite,
                 )

@@ -1,4 +1,7 @@
-use crate::{DefaultScalar, LayoutScalar, LengthResolutionStatus, TrackComponentOf, TrackSizingOf};
+use crate::{
+    scalar::{DefaultScalar, LayoutScalar},
+    value::{LengthResolutionStatus, TrackComponentOf, TrackSizingOf},
+};
 
 use super::GridContainerProjection;
 use super::named::{GridAreaNameFacts, GridNamedContext, NamedGridLines};
@@ -413,7 +416,7 @@ fn collapse_lanes_auto_fit_axis(
                 .checked_sub(explicit_start)
                 .and_then(|index| origins.get(index))
                 .and_then(|origin| origin.auto_repeat)
-                .is_some_and(|origin| origin.kind == crate::TrackRepeat::AutoFit);
+                .is_some_and(|origin| origin.kind == crate::value::TrackRepeat::AutoFit);
         }
     }
     Ok(())
@@ -430,7 +433,7 @@ fn collapse_auto_fit_axis(
     for (index, origin) in origins.iter().enumerate() {
         if !origin
             .auto_repeat
-            .is_some_and(|origin| origin.kind == crate::TrackRepeat::AutoFit)
+            .is_some_and(|origin| origin.kind == crate::value::TrackRepeat::AutoFit)
         {
             continue;
         }

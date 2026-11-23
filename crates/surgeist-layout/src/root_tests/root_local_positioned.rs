@@ -1759,15 +1759,15 @@ fn block_with_orthogonal_subgrids<S: LayoutScalar>(root: NodeInputOf<S>) -> Publ
     grid.gap = Size::new(LengthOf::px(n(7.0)), LengthOf::px(n(11.0)));
     let mut column_subgrid = grid.clone();
     column_subgrid.grid_template_columns = vec![TrackComponentOf::Subgrid(
-        crate::SubgridTrack::new(Vec::new()),
+        crate::value::SubgridTrack::new(Vec::new()),
     )];
     column_subgrid.grid_column = GridPlacement::try_lines(1, 3).unwrap();
     column_subgrid.grid_row = GridPlacement::try_lines(1, 3).unwrap();
     let mut row_subgrid = column_subgrid.clone();
     row_subgrid.grid_template_columns = grid.grid_template_columns.clone();
-    row_subgrid.grid_template_rows = vec![TrackComponentOf::Subgrid(crate::SubgridTrack::new(
-        Vec::new(),
-    ))];
+    row_subgrid.grid_template_rows = vec![TrackComponentOf::Subgrid(
+        crate::value::SubgridTrack::new(Vec::new()),
+    )];
     let cell = |start| NodeInputOf {
         display: Display::Flex,
         writing_mode: mode,

@@ -1,6 +1,7 @@
 //! Effective fixed max-track caps include a definite minimum that exceeds max.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::value::NonNegativeFiniteOf;
 
 fn n<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
@@ -52,23 +53,23 @@ fn qualify_native_content<S: LayoutScalar>(overflow: Overflow) {
             let axes = Size::new(
                 available,
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(10.0)).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(10.0)).unwrap()),
                     SizingOperation::Normal,
                 ),
             );
             let definite = axes.map(|axis| axis.space().definite_size());
-            crate::LayoutRootRequestOf::standalone(
+            crate::output::LayoutRootRequestOf::standalone(
                 SizingRequestOf::new(
                     axes,
                     OrthogonalFallbackOf::new(
                         definite,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        crate::value::NearestScrollportOf::Absent,
+                        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
                 definite,
             )
@@ -177,7 +178,7 @@ fn assert_caps<S: LayoutScalar>(
         assert!(tree.node_input(2).size.width.is_auto());
         let available = match constraint {
             Constraint::Definite => AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(100.0)).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(100.0)).unwrap()),
                 SizingOperation::Normal,
             ),
             Constraint::MinContent => {
@@ -188,23 +189,23 @@ fn assert_caps<S: LayoutScalar>(
             let axes = Size::new(
                 available,
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(20.0)).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(20.0)).unwrap()),
                     SizingOperation::Normal,
                 ),
             );
             let definite = axes.map(|axis| axis.space().definite_size());
-            crate::LayoutRootRequestOf::standalone(
+            crate::output::LayoutRootRequestOf::standalone(
                 SizingRequestOf::new(
                     axes,
                     OrthogonalFallbackOf::new(
                         definite,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        crate::value::NearestScrollportOf::Absent,
+                        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
                 definite,
             )

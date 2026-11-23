@@ -7,11 +7,21 @@
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::readback::{self, Phase};
 use crate::{
-    AlignContent, AvailableSpaceOf, AxisSizingRequestOf, Direction, Display, FlowAxes,
-    GridAxisKind, GridFlowToleranceOf, GridLanesFlow, GridPlacement, LayoutRootRequestOf,
-    LayoutScalar, LengthOf, NearestScrollportOf, NodeInputOf, NonNegativeFiniteOf,
-    OrthogonalFallbackLimitOf, OrthogonalFallbackOf, PreferredSizeOf, Size, SizingOperation,
-    SizingRequestOf, TrackComponentOf, WritingMode, compute_layout,
+    engine::compute_layout,
+    geometry::{FlowAxes, Size},
+    grid::GridAxisKind,
+    node_input::{
+        AlignContent, Direction, Display, GridFlowToleranceOf, GridLanesFlow, GridPlacement,
+        NodeInputOf, WritingMode,
+    },
+    output::LayoutRootRequestOf,
+    scalar::LayoutScalar,
+    sizing::PreferredSizeOf,
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, LengthOf, NearestScrollportOf, NonNegativeFiniteOf,
+        OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+        TrackComponentOf,
+    },
 };
 
 /// Size of every grid-axis track.

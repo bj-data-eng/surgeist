@@ -1,7 +1,10 @@
 use crate::{
-    GridLine, GridPlacement, GridSpan, GridTemplateAreas, LayoutScalar, RawGridLine,
-    RawGridPlacement, SubgridLineNameComponent, SubgridLineNameRepeatCount, TrackComponentOf,
-    TrackRepeat,
+    node_input::{GridPlacement, RawGridLine, RawGridPlacement},
+    scalar::LayoutScalar,
+    value::{
+        GridLine, GridSpan, GridTemplateAreas, SubgridLineNameComponent,
+        SubgridLineNameRepeatCount, TrackComponentOf, TrackRepeat,
+    },
 };
 
 use super::{

@@ -2,7 +2,20 @@
 //! This is an owning test, not a public parent-route/ComputeSize coverage claim.
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
-use crate::*;
+use crate::{
+    engine::contracts::Compute,
+    geometry::{FlowAxes, Size},
+    inline_wrapping::{
+        ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
+        InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, WrapEdges, WrapInside,
+        WrappingInput, WrappingScopeInput,
+    },
+    node_input::{Direction, Display, NodeInputOf, WritingMode},
+    output::{ComputeInputOf, ContainingLayoutContext, ParentFormattingContext},
+    scalar::LayoutScalar,
+    sizing::PreferredSizeOf,
+    text_layout::{LayoutFlowInput, TextParagraphBinding},
+};
 use surgeist_text as t;
 
 fn fixture<S: LayoutScalar>(
@@ -175,7 +188,7 @@ fn known_size_baseline<S: LayoutScalar>() {
             _ => unreachable!("fixture declares its actual captured outer box"),
         };
         let binding = TextParagraphBinding {
-            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+            inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 0,
             nodes: vec![],
@@ -192,11 +205,11 @@ fn known_size_baseline<S: LayoutScalar>() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         );
-        let available = Size::splat(crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+        let available = Size::splat(crate::value::AxisSizingRequestOf::new(
+            crate::value::AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
             ),
-            crate::SizingOperation::Normal,
+            crate::value::SizingOperation::Normal,
         ));
         // The actual public constructor issues ComputeSize/ContentSize/Both;
         // do not substitute a viewport root or a PerformLayout parent probe.
@@ -204,12 +217,12 @@ fn known_size_baseline<S: LayoutScalar>() {
             known,
             parent,
             containing,
-            crate::SizingRequestOf::new(
+            crate::value::SizingRequestOf::new(
                 available,
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                crate::value::OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::value::NearestScrollportOf::Unknown,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
         )
@@ -231,12 +244,12 @@ fn known_size_baseline<S: LayoutScalar>() {
                     known,
                     parent,
                     containing,
-                    crate::SizingRequestOf::new(
+                    crate::value::SizingRequestOf::new(
                         available,
-                        crate::OrthogonalFallbackOf::new(
-                            crate::Size::NONE,
-                            crate::NearestScrollportOf::Unknown,
-                            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                        crate::value::OrthogonalFallbackOf::new(
+                            Size::NONE,
+                            crate::value::NearestScrollportOf::Unknown,
+                            Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
                         ),
                     ),
                 )

@@ -1,6 +1,28 @@
 use super::output::*;
 use crate::output::{CompletedBatchEntries, NormalGeometryOf};
-use crate::*;
+use crate::{
+    block_fragmentation::{
+        BlockFragmentainerOf, BoxFragmentGeometryOf, BoxGeometryPairOf, FragmentCoordinateSpace,
+        FragmentOutputOf, FragmentPayloadOf, LayoutBoundRequestOf, LayoutFragmentId,
+        LayoutFragmentainerId, LayoutFragmentainerOutputOf, LayoutHandleError,
+        OverflowFragmentGeometryOf, OverflowGeometryPairOf,
+        input::{LayoutPublicationTargets, LayoutSourceBasis},
+        publication::{LayoutBatchApplyError, LayoutBatchCommit, LayoutBatchPreparation},
+    },
+    fragmentation::input::{FragmentationBreakKinds, FragmentationKind},
+    geometry::{FlowAxes, Point, Size},
+    node_input::{BlockGeneration, Direction, WritingMode},
+    output::{
+        CompletedLayoutBatchOf, LayoutOutputEntryOf, LayoutRootRequestOf, NodeOutputOf, SourceIndex,
+    },
+    scalar::LayoutScalar,
+    scroll::ScrollRectOf,
+    tree::LayoutBatchSink,
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, OrthogonalFallbackLimitOf,
+        OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+    },
+};
 use std::cell::Cell;
 
 fn scalar<S: LayoutScalar>(value: f64) -> S {
@@ -108,7 +130,7 @@ fn graph<S: LayoutScalar>() -> CompletedLayoutBatchOf<usize, S> {
                 index,
             },
             kind: FragmentationKind::Page {
-                progression: crate::PageProgression::LeftToRight,
+                progression: crate::fragmentation::page::PageProgression::LeftToRight,
             },
             axes,
             frame: BlockFragmentainerOf {

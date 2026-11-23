@@ -5,6 +5,10 @@ use crate::inline_wrapping::{
     NativeOrderingProjection, NativeOrderingSelection, NumericWrapping, NumericWrappingError,
     WrappingScopeError,
 };
+use crate::{
+    error::LayoutTextNumericError,
+    node_input::{Direction, InlineBoundaryKind},
+};
 use std::{ops::Range, sync::Arc};
 use surgeist_text::supplied_line::SuppliedLine;
 
@@ -148,7 +152,7 @@ pub(super) fn canonical_flow<S: LayoutScalar>(
             if !flow.is_finite() {
                 return Err(NumericWrappingError::Geometry {
                     value: flow.to_f64(),
-                    reason: crate::LayoutTextNumericError::NonFinite,
+                    reason: LayoutTextNumericError::NonFinite,
                 });
             }
         }
@@ -209,7 +213,7 @@ fn schedule<S: LayoutScalar>(
     let context = wrapping.ordering().ok_or_else(invalid)?;
     let ranks = selection.ranks;
     let mut edges = buffer(line.len())?;
-    let positive_side = FlowAxes::new(axes.writing_mode(), crate::Direction::Ltr).inline_start();
+    let positive_side = FlowAxes::new(axes.writing_mode(), Direction::Ltr).inline_start();
     for unit in 0..line.len() {
         let MixedInlineParticipantOf::Boundary(control) = line.participant(unit) else {
             continue;
@@ -221,8 +225,8 @@ fn schedule<S: LayoutScalar>(
         }
         let source = line.source_start().checked_add(unit).ok_or_else(invalid)?;
         let endpoint = match control.kind() {
-            crate::InlineBoundaryKind::Start => 0,
-            crate::InlineBoundaryKind::End => 1,
+            InlineBoundaryKind::Start => 0,
+            InlineBoundaryKind::End => 1,
         };
         let owner = if alias {
             usize::MAX
@@ -370,7 +374,7 @@ pub(super) fn execute<S: LayoutScalar>(
     let margin = edge.margin();
     let extent = edge.border_padding_advance();
     let flow = edge.flow_advance();
-    let rtl = axes.direction() == crate::Direction::Rtl;
+    let rtl = axes.direction() == Direction::Rtl;
     let end = if rtl {
         incoming - flow
     } else {
@@ -392,7 +396,7 @@ pub(super) fn execute<S: LayoutScalar>(
         } else {
             Err(NumericWrappingError::Geometry {
                 value: value.to_f64(),
-                reason: crate::LayoutTextNumericError::NonFinite,
+                reason: LayoutTextNumericError::NonFinite,
             })
         }
     };
@@ -400,16 +404,16 @@ pub(super) fn execute<S: LayoutScalar>(
     if flow != S::ZERO && end == incoming {
         return Err(NumericWrappingError::Geometry {
             value: flow.to_f64(),
-            reason: crate::LayoutTextNumericError::NonZeroLost,
+            reason: LayoutTextNumericError::NonZeroLost,
         });
     }
-    let positive = FlowAxes::new(axes.writing_mode(), crate::Direction::Ltr).inline_start();
+    let positive = FlowAxes::new(axes.writing_mode(), Direction::Ltr).inline_start();
     let parent = control
         .parent_edge_axes()
         .expect("explicit native box edge retains parent basis");
     let side = match control.kind() {
-        crate::InlineBoundaryKind::Start => parent.inline_start(),
-        crate::InlineBoundaryKind::End => parent.inline_end(),
+        InlineBoundaryKind::Start => parent.inline_start(),
+        InlineBoundaryKind::End => parent.inline_end(),
     };
     let left = side == positive;
     let start = if rtl {
@@ -442,7 +446,7 @@ pub(super) fn execute<S: LayoutScalar>(
     if collapsed {
         return Err(NumericWrappingError::Geometry {
             value: margin.to_f64(),
-            reason: crate::LayoutTextNumericError::NonZeroLost,
+            reason: LayoutTextNumericError::NonZeroLost,
         });
     }
     Ok((
@@ -500,7 +504,7 @@ pub(super) fn resolve_aliases<S: LayoutScalar>(
                         .position(|&r| r == rank)
                         .ok_or_else(invalid)?;
                     let flow = slots[target].executed_flow.ok_or_else(invalid)?;
-                    if affinity == crate::InlineGapAffinity::Before {
+                    if affinity == crate::inline_wrapping::InlineGapAffinity::Before {
                         flow.0
                     } else {
                         flow.1
@@ -586,8 +590,7 @@ pub(super) fn accepted<S: LayoutScalar>(
             } else {
                 control.parent_edge_axes().ok_or_else(invalid)?.inline_end()
             };
-            let left =
-                side == FlowAxes::new(axes.writing_mode(), crate::Direction::Ltr).inline_start();
+            let left = side == FlowAxes::new(axes.writing_mode(), Direction::Ltr).inline_start();
             let mut found = None;
             for &candidate in &payload {
                 if context.profile.owns(owner, selection.ranks[candidate])?

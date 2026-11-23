@@ -1,12 +1,16 @@
 //! Scalar Block inline demand, independent of Normal block progression.
 
 use super::*;
-use crate::{FlowAxes, SizingOperation, SizingRequestOf};
+use crate::{
+    geometry::FlowAxes,
+    node_input::Display,
+    value::{SizingOperation, SizingRequestOf},
+};
 
 pub(super) fn normal_fill<S: LayoutScalar>(
     style: &BlockContainerProjection<'_, S>,
     input: ComputeInputOf<S>,
-    float: crate::Float,
+    float: crate::node_input::Float,
 ) -> bool {
     input.sizing_mode() == SizingMode::InherentSize
         && normal_block_auto_inline(&style.common, style.display, float)
@@ -98,7 +102,7 @@ where
             let available = inherited
                 .space()
                 .definite_size()
-                .map(crate::NonNegativeFiniteOf::get);
+                .map(crate::value::NonNegativeFiniteOf::get);
             if normal_fill(style, input, tree.node_input(node).float)
                 && let Some(available) = available
             {
@@ -195,8 +199,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> InlineContentPass<Node, S> {
             let InlineParticipantKindOf::Box(style) = projection.kind() else {
                 return Err(profile_error(child));
             };
-            if style.display == crate::Display::None || style.common.position == Position::Absolute
-            {
+            if style.display == Display::None || style.common.position == Position::Absolute {
                 continue;
             }
             if !style.float.is_none() || style.display.is_inline_level() {
@@ -387,7 +390,7 @@ pub(crate) fn profile_error<Node: Copy, S: LayoutScalar, M>(
         LayoutErrorSiteOf::Node(node),
         LayoutOperation::ChildLayout,
         LayoutErrorKindOf::UnsupportedCapability(
-            crate::LayoutUnsupportedCapability::BlockFragmentationProfile,
+            crate::error::LayoutUnsupportedCapability::BlockFragmentationProfile,
         ),
     )
 }
@@ -432,7 +435,7 @@ where
         let InlineParticipantKindOf::Box(style) = projection.kind() else {
             return Err(profile_error(child));
         };
-        if style.display == crate::Display::None || style.common.position == Position::Absolute {
+        if style.display == Display::None || style.common.position == Position::Absolute {
             continue;
         }
         let prepared = super::in_flow::prepare_child(
@@ -478,7 +481,7 @@ where
 {
     let node_style = tree.node_input(node);
     let own = FlowAxes::new(node_style.writing_mode, node_style.direction);
-    if node_style.display == crate::Display::None
+    if node_style.display == Display::None
         || tree.has_leaf_measurement(node)
         || tree.child_count(node) == 0
         || node_style.item_is_replaced
@@ -535,7 +538,7 @@ where
 /// Invocation-local full-source demand custody. Each instance is prepared from
 /// the complete source tree under one effective root context, never a window.
 pub(crate) struct FragmentContext<Node, S: LayoutScalar> {
-    pub(crate) target: crate::LayoutTargetBasis,
-    pub(crate) request: crate::LayoutRootRequestOf<S>,
+    pub(crate) target: crate::block_fragmentation::input::LayoutTargetBasis,
+    pub(crate) request: crate::output::LayoutRootRequestOf<S>,
     pub(crate) entries: Vec<InlineComponents<Node, S>>,
 }

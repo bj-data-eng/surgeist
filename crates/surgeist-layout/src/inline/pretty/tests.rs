@@ -3,7 +3,11 @@ use crate::inline::balance_tests::{groups, input};
 use crate::inline::tail::tests::{ContourFailure, TriangleTree};
 use crate::inline_wrapping::body::BodyAdmission;
 use crate::test_support::readback::{self, Phase};
-use crate::{LayoutInputOf, NodeInputOf, PreferredSizeOf, VerticalAlignOf};
+use crate::{
+    node_input::{Display, LayoutInputOf, NodeInputOf, TextWrapStyle, VerticalAlignOf},
+    sizing::PreferredSizeOf,
+    value::LengthPercentageOf,
+};
 use std::cell::RefCell;
 
 #[derive(Clone)]
@@ -156,7 +160,7 @@ fn native_pretty_preserves_tail_then_improves_body_and_keeps_actual_fixed_guards
                 &[30.0, 30.0, 10.0],
                 &[],
                 direction,
-                crate::TextWrapStyle::Pretty,
+                TextWrapStyle::Pretty,
             ));
             assert_eq!(groups(&tail), [vec![0], vec![1, 2]]);
             let proofs = GROUPS.with(|proofs| proofs.borrow().clone());
@@ -169,7 +173,7 @@ fn native_pretty_preserves_tail_then_improves_body_and_keeps_actual_fixed_guards
                 &[30.0, 30.0, 20.0, 50.0],
                 &[],
                 direction,
-                crate::TextWrapStyle::Pretty,
+                TextWrapStyle::Pretty,
             ));
             assert_eq!(groups(&body), [vec![0], vec![1, 2], vec![3]]);
             let proofs = GROUPS.with(|proofs| proofs.borrow().clone());
@@ -187,13 +191,13 @@ fn native_pretty_preserves_tail_then_improves_body_and_keeps_actual_fixed_guards
                     vec![vec![0], vec![1, 2], vec![3]],
                 ),
             ] {
-                let mut request = input::<S>(widths, &[], direction, crate::TextWrapStyle::Pretty);
+                let mut request = input::<S>(widths, &[], direction, TextWrapStyle::Pretty);
                 if widths[0] == 160.0 {
-                    request.available_inline_extent = crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(170.0)).unwrap(),
+                    request.available_inline_extent = crate::value::AxisSizingRequestOf::new(
+                        crate::value::AvailableSpaceOf::Definite(
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(170.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        crate::value::SizingOperation::Normal,
                     );
                 }
                 assert_eq!(groups(&run(request)), expected);
@@ -212,7 +216,7 @@ fn actual_body_trials_use_one_fixed_reference_instead_of_ratcheting_terminal_gua
             &[40.0, 20.0, 10.0, 10.0, 50.0],
             &[],
             Direction::Ltr,
-            crate::TextWrapStyle::Pretty,
+            TextWrapStyle::Pretty,
         ));
         let trials = BODY.with(|proofs| proofs.borrow().clone());
         let first = trials
@@ -249,16 +253,16 @@ fn actual_body_trials_use_one_fixed_reference_instead_of_ratcheting_terminal_gua
 }
 
 fn fullness_veto_rectangle<S: LayoutScalar>() -> TriangleTree<S> {
-    let mut tree = TriangleTree::new(crate::TextWrapStyle::Pretty, false);
+    let mut tree = TriangleTree::new(TextWrapStyle::Pretty, false);
     tree.inner.insert_children(0, [1, 2, 3, 4, 5, 6]);
     tree.inner.insert_input(
         1,
         LayoutInputOf::box_input(NodeInputOf {
-            display: crate::Display::Block,
-            float: crate::Float::Left,
+            display: Display::Block,
+            float: crate::node_input::Float::Left,
             size: Size::new(
-                PreferredSizeOf::value(crate::LengthPercentageOf::px(S::from_f64(20.0)).unwrap()),
-                PreferredSizeOf::value(crate::LengthPercentageOf::px(S::from_f64(50.0)).unwrap()),
+                PreferredSizeOf::value(LengthPercentageOf::px(S::from_f64(20.0)).unwrap()),
+                PreferredSizeOf::value(LengthPercentageOf::px(S::from_f64(50.0)).unwrap()),
             ),
             ..NodeInputOf::default()
         }),
@@ -273,7 +277,7 @@ fn fullness_veto_rectangle<S: LayoutScalar>() -> TriangleTree<S> {
         tree.inner.insert_input(
             id,
             LayoutInputOf::box_input(NodeInputOf {
-                display: crate::Display::InlineBlock,
+                display: Display::InlineBlock,
                 direction: Direction::Ltr,
                 vertical_align: VerticalAlignOf::Baseline,
                 atomic_inline_participation: Some(AtomicInlineParticipation::new(
@@ -281,12 +285,8 @@ fn fullness_veto_rectangle<S: LayoutScalar>() -> TriangleTree<S> {
                     InlineBreakOpportunity::Allowed,
                 )),
                 size: Size::new(
-                    PreferredSizeOf::value(
-                        crate::LengthPercentageOf::px(S::from_f64(width)).unwrap(),
-                    ),
-                    PreferredSizeOf::value(
-                        crate::LengthPercentageOf::px(S::from_f64(height)).unwrap(),
-                    ),
+                    PreferredSizeOf::value(LengthPercentageOf::px(S::from_f64(width)).unwrap()),
+                    PreferredSizeOf::value(LengthPercentageOf::px(S::from_f64(height)).unwrap()),
                 ),
                 ..NodeInputOf::default()
             }),
@@ -308,13 +308,13 @@ fn real_fitter_trials_independently_veto_fixed_terminal_advance_fullness_and_pai
                         &[100.0, 50.0, 50.0, 10.0],
                         &[],
                         Direction::Ltr,
-                        crate::TextWrapStyle::Pretty,
+                        TextWrapStyle::Pretty,
                     );
-                    request.available_inline_extent = crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                    request.available_inline_extent = crate::value::AxisSizingRequestOf::new(
+                        crate::value::AvailableSpaceOf::Definite(
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        crate::value::SizingOperation::Normal,
                     );
                     run(request);
                 }
@@ -330,7 +330,7 @@ fn real_fitter_trials_independently_veto_fixed_terminal_advance_fullness_and_pai
                         &[50.0, 10.0, 30.0, 40.0, 10.0, 30.0, 10.0, 10.0],
                         &[],
                         Direction::Ltr,
-                        crate::TextWrapStyle::Pretty,
+                        TextWrapStyle::Pretty,
                     ));
                 }
                 _ => unreachable!(),
@@ -447,16 +447,16 @@ fn real_fitter_trials_independently_veto_fixed_terminal_advance_fullness_and_pai
 }
 
 fn rectangle<S: LayoutScalar>() -> TriangleTree<S> {
-    let mut tree = TriangleTree::new(crate::TextWrapStyle::Pretty, false);
+    let mut tree = TriangleTree::new(TextWrapStyle::Pretty, false);
     tree.inner.insert_children(0, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
     tree.inner.insert_input(
         1,
         LayoutInputOf::box_input(NodeInputOf {
-            display: crate::Display::Block,
-            float: crate::Float::Left,
+            display: Display::Block,
+            float: crate::node_input::Float::Left,
             size: Size::new(
-                PreferredSizeOf::value(crate::LengthPercentageOf::px(S::from_f64(20.0)).unwrap()),
-                PreferredSizeOf::value(crate::LengthPercentageOf::px(S::from_f64(60.0)).unwrap()),
+                PreferredSizeOf::value(LengthPercentageOf::px(S::from_f64(20.0)).unwrap()),
+                PreferredSizeOf::value(LengthPercentageOf::px(S::from_f64(60.0)).unwrap()),
             ),
             ..NodeInputOf::default()
         }),
@@ -473,7 +473,7 @@ fn rectangle<S: LayoutScalar>() -> TriangleTree<S> {
         tree.inner.insert_input(
             id,
             LayoutInputOf::box_input(NodeInputOf {
-                display: crate::Display::InlineBlock,
+                display: Display::InlineBlock,
                 direction: Direction::Ltr,
                 vertical_align: VerticalAlignOf::Baseline,
                 atomic_inline_participation: Some(AtomicInlineParticipation::new(
@@ -481,12 +481,8 @@ fn rectangle<S: LayoutScalar>() -> TriangleTree<S> {
                     InlineBreakOpportunity::Allowed,
                 )),
                 size: Size::new(
-                    PreferredSizeOf::value(
-                        crate::LengthPercentageOf::px(S::from_f64(width)).unwrap(),
-                    ),
-                    PreferredSizeOf::value(
-                        crate::LengthPercentageOf::px(S::from_f64(height)).unwrap(),
-                    ),
+                    PreferredSizeOf::value(LengthPercentageOf::px(S::from_f64(width)).unwrap()),
+                    PreferredSizeOf::value(LengthPercentageOf::px(S::from_f64(height)).unwrap()),
                 ),
                 ..NodeInputOf::default()
             }),
@@ -495,9 +491,9 @@ fn rectangle<S: LayoutScalar>() -> TriangleTree<S> {
     tree.inner.insert_input(
         6,
         LayoutInputOf::line_break(
-            crate::LineBreakInputOf::new().with_metrics(
+            crate::node_input::LineBreakInputOf::new().with_metrics(
                 InlineMetricsOf::try_new(
-                    crate::InlineBaselineContext::Physical,
+                    crate::node_input::InlineBaselineContext::Physical,
                     S::from_f64(10.0),
                     S::from_f64(10.0),
                 )
@@ -551,7 +547,7 @@ fn current_entry_pretty_reference_can_change_later_group_count_after_real_float_
                 );
                 assert_eq!(
                     node(id).source_index,
-                    crate::SourceIndex::new(id as usize - 1)
+                    crate::output::SourceIndex::new(id as usize - 1)
                 );
             }
         }
@@ -582,18 +578,8 @@ fn pretty_has_no_ten_line_cap_and_preserves_real_forced_phantom_and_optional_dom
                 .into_iter()
                 .chain([30.0, 30.0, 20.0, 50.0])
                 .collect::<Vec<_>>();
-            let auto = run(input::<S>(
-                &widths,
-                &[],
-                direction,
-                crate::TextWrapStyle::Auto,
-            ));
-            let pretty = run(input::<S>(
-                &widths,
-                &[],
-                direction,
-                crate::TextWrapStyle::Pretty,
-            ));
+            let auto = run(input::<S>(&widths, &[], direction, TextWrapStyle::Auto));
+            let pretty = run(input::<S>(&widths, &[], direction, TextWrapStyle::Pretty));
             assert_eq!(pretty.line_bands.len(), 12);
             assert_eq!(&pretty.atomics[..9], &auto.atomics[..9]);
             assert_eq!(&groups(&pretty)[9..], &[vec![9], vec![10, 11], vec![12]]);
@@ -602,7 +588,7 @@ fn pretty_has_no_ten_line_cap_and_preserves_real_forced_phantom_and_optional_dom
                 &[30.0, 30.0, 20.0, 50.0],
                 &[3],
                 direction,
-                crate::TextWrapStyle::Pretty,
+                TextWrapStyle::Pretty,
             ));
             assert_eq!(groups(&forced), [vec![0], vec![1, 2], vec![3]]);
             assert_eq!(
@@ -614,16 +600,16 @@ fn pretty_has_no_ten_line_cap_and_preserves_real_forced_phantom_and_optional_dom
                 &[70.0, 10.0],
                 &[],
                 direction,
-                crate::TextWrapStyle::Pretty,
+                TextWrapStyle::Pretty,
             ));
             let auto = run(input::<S>(
                 &[70.0, 10.0],
                 &[],
                 direction,
-                crate::TextWrapStyle::Auto,
+                TextWrapStyle::Auto,
             ));
             assert_eq!(overflow, auto);
-            let mut zero = input::<S>(&[0.0], &[], direction, crate::TextWrapStyle::Pretty);
+            let mut zero = input::<S>(&[0.0], &[], direction, TextWrapStyle::Pretty);
             let MixedInlineParticipantOf::Atomic { item, .. } = &mut zero.participants[0] else {
                 unreachable!()
             };
@@ -642,7 +628,7 @@ fn pretty_has_no_ten_line_cap_and_preserves_real_forced_phantom_and_optional_dom
 
 #[test]
 fn pretty_does_not_replay_unrelated_prefix_groups_for_body_targets() {
-    fn work(groups_count: usize, style: crate::TextWrapStyle) -> (usize, Vec<usize>) {
+    fn work(groups_count: usize, style: TextWrapStyle) -> (usize, Vec<usize>) {
         let widths = [60.0]
             .into_iter()
             .cycle()
@@ -676,8 +662,8 @@ fn pretty_does_not_replay_unrelated_prefix_groups_for_body_targets() {
         (result.line_bands.len(), visits)
     }
     for count in [8, 16] {
-        let (auto_rows, auto) = work(count, crate::TextWrapStyle::Auto);
-        let (pretty_rows, pretty) = work(count, crate::TextWrapStyle::Pretty);
+        let (auto_rows, auto) = work(count, TextWrapStyle::Auto);
+        let (pretty_rows, pretty) = work(count, TextWrapStyle::Pretty);
         assert_eq!(auto_rows, pretty_rows);
         // The declared ordinary establishment and final validation each visit
         // these real one-line Forced groups once; later target portfolios do not.
@@ -691,13 +677,13 @@ fn pretty_does_not_replay_unrelated_prefix_groups_for_body_targets() {
 #[test]
 fn pretty_triangle_differs_from_real_balance_and_keeps_losing_trial_provider_error() {
     fn lane<S: LayoutScalar>() {
-        let auto = TriangleTree::<S>::new(crate::TextWrapStyle::Auto, false)
+        let auto = TriangleTree::<S>::new(TextWrapStyle::Auto, false)
             .compute()
             .unwrap();
-        let pretty = TriangleTree::<S>::new(crate::TextWrapStyle::Pretty, false)
+        let pretty = TriangleTree::<S>::new(TextWrapStyle::Pretty, false)
             .compute()
             .unwrap();
-        let balance = TriangleTree::<S>::new(crate::TextWrapStyle::Balance, false)
+        let balance = TriangleTree::<S>::new(TextWrapStyle::Balance, false)
             .compute()
             .unwrap();
         assert_eq!(
@@ -713,23 +699,23 @@ fn pretty_triangle_differs_from_real_balance_and_keeps_losing_trial_provider_err
             readback::continuous_custody(&balance, Phase::Final).as_slice()
         );
         let prior = readback::continuous_custody(&auto, Phase::Final);
-        let failure = TriangleTree::<S>::new(crate::TextWrapStyle::Pretty, true)
+        let failure = TriangleTree::<S>::new(TextWrapStyle::Pretty, true)
             .compute()
             .unwrap_err();
         assert_eq!(
             failure.operation(),
-            crate::LayoutOperation::FloatExclusionQuery
+            crate::error::LayoutOperation::FloatExclusionQuery
         );
         assert_eq!(
             failure.site(),
-            crate::LayoutErrorSiteOf::ContainerSubject {
+            crate::error::LayoutErrorSiteOf::ContainerSubject {
                 container: 0,
                 subject: 1
             }
         );
         assert!(matches!(
             failure.kind(),
-            crate::LayoutErrorKindOf::Measurement(ContourFailure::CrossesBottomFromWithin)
+            crate::error::LayoutErrorKindOf::Measurement(ContourFailure::CrossesBottomFromWithin)
         ));
         assert_eq!(
             readback::continuous_custody(&auto, Phase::Final).as_slice(),
@@ -776,7 +762,7 @@ fn actual_body_walk_receipts_reject_count_terminal_and_optional_domain_changes()
         &[30.0, 30.0, 20.0, 50.0],
         &[],
         Direction::Ltr,
-        crate::TextWrapStyle::Pretty,
+        TextWrapStyle::Pretty,
     );
     let entry = NumericSequence::new(&query, true).checkpoint();
     let (ordinary, outcome) = walk(&query, None, |_| 60.0);
@@ -794,7 +780,7 @@ fn actual_body_walk_receipts_reject_count_terminal_and_optional_domain_changes()
         &[30.0, 30.0, 20.0, 50.0],
         &[3],
         Direction::Ltr,
-        crate::TextWrapStyle::Pretty,
+        TextWrapStyle::Pretty,
     );
     let (terminal, outcome) = walk(&forced, Some(3), |_| 60.0);
     assert!(outcome == NumericWalkOutcome::GroupComplete);

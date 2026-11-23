@@ -1,5 +1,9 @@
 //! Source-cut normalization of one still-open adjoining entry component.
 use super::*;
+use crate::{
+    geometry::FlowAxes,
+    node_input::{Clear, Float},
+};
 
 /// The actual receiving parent's unconsumed component. This does not describe
 /// a guessed position of the queried child or advance the parent's cursor.
@@ -109,13 +113,13 @@ impl<Node: Copy, S: LayoutScalar> SourceFloat<Node, S> {
     ) -> Self {
         if inline.reversed {
             pending.side = match pending.side {
-                crate::Float::Left => crate::Float::Right,
-                crate::Float::Right => crate::Float::Left,
+                Float::Left => Float::Right,
+                Float::Right => Float::Left,
                 value => value,
             };
             pending.clear = match pending.clear {
-                crate::Clear::Left => crate::Clear::Right,
-                crate::Clear::Right => crate::Clear::Left,
+                Clear::Left => Clear::Right,
+                Clear::Right => Clear::Left,
                 value => value,
             };
         }
@@ -139,8 +143,8 @@ fn projected_bound<Node: Copy, S: LayoutScalar, M>(
     summary: &EntrySummary<Node, S>,
     support: CollapsibleMarginOf<S>,
     count: usize,
-    clear: crate::Clear,
-    axes: crate::FlowAxes,
+    clear: Clear,
+    axes: FlowAxes,
 ) -> LayoutResultOf<Node, Option<super::super::floats::CommonBfcPosition<S>>, S, M> {
     let incoming = summary
         .query
@@ -190,8 +194,8 @@ pub(super) struct Offer<Node, S: LayoutScalar> {
     pub(super) node: Node,
     pub(super) index: usize,
     pub(super) before: CollapsibleMarginOf<S>,
-    pub(super) clear: crate::Clear,
-    pub(super) axes: crate::FlowAxes,
+    pub(super) clear: Clear,
+    pub(super) axes: FlowAxes,
     pub(super) floats_before: usize,
 }
 
@@ -341,7 +345,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntrySummary<Node, S> {
             }
         }
         let raw = tree.node_input(cut.container);
-        let axes = crate::FlowAxes::new(raw.writing_mode, raw.direction);
+        let axes = FlowAxes::new(raw.writing_mode, raw.direction);
         if source != Some(cut.node)
             || projected_bound(
                 self,

@@ -4,7 +4,7 @@ use surgeist_text::font::FontBaseline;
 
 fn common_named_reference<S: LayoutScalar>() {
     let n = S::from_f64;
-    let reference = crate::InlineBaselineContext::Named(FontBaseline::Central);
+    let reference = crate::node_input::InlineBaselineContext::Named(FontBaseline::Central);
     let metrics = InlineMetricsOf::try_new(reference, n(8.0), n(10.0)).unwrap();
     let boundary = InlineBoundaryControlOf::new(
         0,
@@ -12,9 +12,9 @@ fn common_named_reference<S: LayoutScalar>() {
         InlineFlowOf::new(
             WritingMode::HorizontalTb,
             Direction::Ltr,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Indefinite,
+                crate::value::SizingOperation::MaxContent,
             ),
         ),
         metrics,
@@ -40,31 +40,31 @@ fn common_named_reference<S: LayoutScalar>() {
             meter: crate::accounting::Meter::new(),
             inline_baseline_context: reference,
             groups: crate::group_alignment::Snapshot::default(),
-            text_wrap_style: crate::TextWrapStyle::Auto,
+            text_wrap_style: crate::node_input::TextWrapStyle::Auto,
             line_box_context: crate::line_box::LineBoxContext::new(
-                crate::LineBoxDirectionPolicy::Normal,
+                crate::node_input::LineBoxDirectionPolicy::Normal,
                 Direction::Ltr,
             ),
             observe_tail: false,
             wrapping: None,
-            available_inline_extent: crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(n(110.0)).unwrap(),
+            available_inline_extent: crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(n(110.0)).unwrap(),
                 ),
-                crate::SizingOperation::Normal,
+                crate::value::SizingOperation::Normal,
             ),
             flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             text_align: TextAlign::Start,
-            text_align_last: crate::TextAlignLast::Start,
+            text_align_last: crate::node_input::TextAlignLast::Start,
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: crate::text_indent::IndentLineState::default(),
             participants: vec![
                 MixedInlineParticipantOf::Boundary(boundary),
                 MixedInlineParticipantOf::Atomic {
                     item,
-                    participation: crate::AtomicInlineParticipation::new(
+                    participation: crate::node_input::AtomicInlineParticipation::new(
                         BidiLevel::try_new(0).unwrap(),
-                        crate::InlineBreakOpportunity::Prohibited,
+                        crate::node_input::InlineBreakOpportunity::Prohibited,
                     ),
                 },
             ],

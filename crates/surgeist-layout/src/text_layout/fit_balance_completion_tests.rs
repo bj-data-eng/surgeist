@@ -1,6 +1,12 @@
 //! Actual terminal LF retains distinct Forced and Paragraph completion receipts.
 use super::*;
 use crate::test_support::text::{PreparedParagraph, ahem_style};
+use crate::{
+    geometry::Size,
+    node_input::{NodeInputOf, TextWrapStyle},
+    sizing::PreferredSizeOf,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation},
+};
 use surgeist_text as text;
 
 fn paragraph(raw: &str) -> PreparedParagraph {
@@ -11,13 +17,13 @@ fn paragraph(raw: &str) -> PreparedParagraph {
     PreparedParagraph::plain(1, text::source::Source::new(raw), style)
 }
 
-fn fit_terminal(paragraph: &PreparedParagraph, style: crate::TextWrapStyle) -> Vec<FittedLine> {
+fn fit_terminal(paragraph: &PreparedParagraph, style: TextWrapStyle) -> Vec<FittedLine> {
     fit_with_terminal_context(paragraph, style, 60.0, TailContext::Unrestricted)
 }
 
 pub(in super::super) fn fit_with_terminal_context(
     paragraph: &PreparedParagraph,
-    style: crate::TextWrapStyle,
+    style: TextWrapStyle,
     available: f64,
     tail: TailContext,
 ) -> Vec<FittedLine> {
@@ -38,7 +44,7 @@ pub(in super::super) fn fit_with_terminal_context(
 
 pub(in super::super) fn fit_with_allocation(
     paragraph: &PreparedParagraph,
-    style: crate::TextWrapStyle,
+    style: TextWrapStyle,
     available: f64,
     tail: TailContext,
     allocate: impl FnMut(
@@ -68,17 +74,17 @@ pub(in super::super) fn fit_with_allocation(
             wrapping: None,
             formatted: &FormattedTailSnapshot::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
-                crate::LineBoxDirectionPolicy::Normal,
-                crate::Direction::Ltr,
+                crate::node_input::LineBoxDirectionPolicy::Normal,
+                crate::node_input::Direction::Ltr,
             ),
             prepared: &paragraph.prepared,
             segment: paragraph.prepared.source_segments().next().unwrap(),
             scope_alignments: &scope_alignments,
-            available: crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(available).unwrap(),
+            available: AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(available).unwrap(),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             base_direction: ParagraphBaseDirection::LeftToRight,
             block_direction: ParagraphBaseDirection::LeftToRight,
@@ -89,7 +95,7 @@ pub(in super::super) fn fit_with_allocation(
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: crate::text_indent::IndentLineState::default(),
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
-            hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+            hyphenate_limit_zone: crate::value::LengthPercentageOf::ZERO,
             tail,
             orientation: LineOrientation::Horizontal,
             atomics: &[],
@@ -286,14 +292,14 @@ fn balance_terminal_source_lf_keeps_equal_boundary_paragraph_completion_nonforma
             .code_units(),
         [65, 65, 65, 32, 66, 66, 32, 67, 10]
     );
-    let auto = fit_terminal(&paragraph, crate::TextWrapStyle::Auto);
+    let auto = fit_terminal(&paragraph, TextWrapStyle::Auto);
     let auto_expected = [
         (text::source::Range::new(0, 7), 60.0, LineEnd::Soft),
         (text::source::Range::new(7, 9), 10.0, LineEnd::Forced),
         (text::source::Range::new(9, 9), 0.0, LineEnd::Paragraph),
     ];
     assert_completion(&paragraph, &auto, &auto_expected, 9);
-    let balanced = fit_terminal(&paragraph, crate::TextWrapStyle::Balance);
+    let balanced = fit_terminal(&paragraph, TextWrapStyle::Balance);
     let balanced_expected = [
         (text::source::Range::new(0, 4), 30.0, LineEnd::Soft),
         (text::source::Range::new(4, 9), 40.0, LineEnd::Forced),
@@ -320,9 +326,9 @@ fn balance_source_lf_without_text_still_has_real_forced_line_and_nonformatted_ta
         (text::source::Range::new(1, 1), 0.0, LineEnd::Paragraph),
     ];
     for style in [
-        crate::TextWrapStyle::Auto,
-        crate::TextWrapStyle::Balance,
-        crate::TextWrapStyle::AvoidShortLastLine,
+        TextWrapStyle::Auto,
+        TextWrapStyle::Balance,
+        TextWrapStyle::AvoidShortLastLine,
     ] {
         let lines = fit_terminal(&paragraph, style);
         assert_completion(&paragraph, &lines, &expected, 1);
@@ -353,8 +359,8 @@ fn paragraph_tail_leaves_terminal_forced_group_and_phantom_receipt_ordinary() {
         (text::source::Range::new(7, 9), 10.0, LineEnd::Forced),
         (text::source::Range::new(9, 9), 0.0, LineEnd::Paragraph),
     ];
-    let auto = fit_terminal(&paragraph, crate::TextWrapStyle::Auto);
-    let repaired = fit_terminal(&paragraph, crate::TextWrapStyle::AvoidShortLastLine);
+    let auto = fit_terminal(&paragraph, TextWrapStyle::Auto);
+    let repaired = fit_terminal(&paragraph, TextWrapStyle::AvoidShortLastLine);
     assert_completion(&paragraph, &auto, &expected, 9);
     assert_completion(&paragraph, &repaired, &expected, 9);
     assert!(
@@ -384,10 +390,7 @@ fn paragraph_tail_cannot_reactivate_manual_penultimate_indication_excluded_by_al
         .unwrap();
     assert_eq!(manual.boundary().view().source_before().get(), 8);
     assert_eq!(manual.alternatives().count(), 1);
-    for mode in [
-        crate::TextWrapStyle::Auto,
-        crate::TextWrapStyle::AvoidShortLastLine,
-    ] {
+    for mode in [TextWrapStyle::Auto, TextWrapStyle::AvoidShortLastLine] {
         for (tail, expected) in [
             (
                 TailContext::Unrestricted,
@@ -445,7 +448,7 @@ fn paragraph_tail_retains_zero_atomic_existence_without_formatting_an_out_of_flo
     use crate::test_support::layout_tree::PublicLayoutTreeOf;
     use crate::test_support::text::ParagraphPart;
 
-    fn check<S: crate::LayoutScalar>() {
+    fn check<S: crate::scalar::LayoutScalar>() {
         let style = text::style::Style {
             white_space: text::style::WhiteSpace::PreserveBreaks,
             wrap: text::style::Wrap::Word,
@@ -488,68 +491,65 @@ fn paragraph_tail_retains_zero_atomic_existence_without_formatting_an_out_of_flo
                 .children(2, [])
                 .style(
                     0,
-                    crate::NodeInputOf {
-                        display: crate::Display::Block,
-                        text_wrap_style: crate::TextWrapStyle::AvoidShortLastLine,
-                        size: crate::Size::new(
-                            crate::PreferredSizeOf::px(S::from_f64(60.0)),
-                            crate::PreferredSizeOf::AUTO,
+                    NodeInputOf {
+                        display: crate::node_input::Display::Block,
+                        text_wrap_style: TextWrapStyle::AvoidShortLastLine,
+                        size: Size::new(
+                            PreferredSizeOf::px(S::from_f64(60.0)),
+                            PreferredSizeOf::AUTO,
                         ),
-                        ..crate::NodeInputOf::default()
+                        ..NodeInputOf::default()
                     },
                 )
                 .input(1, paragraph.text_input(1))
                 .style(
                     2,
-                    crate::NodeInputOf {
-                        display: crate::Display::InlineBlock,
+                    NodeInputOf {
+                        display: crate::node_input::Display::InlineBlock,
                         position: if in_flow {
-                            crate::Position::Relative
+                            crate::node_input::Position::Relative
                         } else {
-                            crate::Position::Absolute
+                            crate::node_input::Position::Absolute
                         },
-                        size: crate::Size::new(
-                            crate::PreferredSizeOf::px(S::ZERO),
-                            crate::PreferredSizeOf::px(S::ZERO),
-                        ),
-                        ..crate::NodeInputOf::default()
+                        size: Size::new(PreferredSizeOf::px(S::ZERO), PreferredSizeOf::px(S::ZERO)),
+                        ..NodeInputOf::default()
                     },
                 );
-            let flow = crate::LayoutFlowInput::try_new(
+            let flow = crate::text_layout::LayoutFlowInput::try_new(
                 &tree,
                 0,
                 vec![binding],
-                crate::WrappingInput::default(),
+                crate::inline_wrapping::WrappingInput::default(),
                 Vec::new(),
             )
             .unwrap();
             let mut session =
                 crate::engine::ComputeSession::with_flow_unobserved(&flow, Vec::new());
             crate::engine::compute_root(&mut session, 0, {
-                let width = crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap();
-                let root_input = crate::LayoutTree::node_input(&tree, 0);
+                let width = crate::value::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap();
+                let root_input = crate::tree::LayoutTree::node_input(&tree, 0);
                 // This is the actual fixture's Native NoParent frame. Its
                 // declared percentage width supplies no independent ICB size.
-                crate::LayoutRootRequestOf::standalone(
-                    crate::SizingRequestOf::new(
-                        crate::Size::new(
-                            crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Definite(width),
-                                crate::SizingOperation::Normal,
+                crate::output::LayoutRootRequestOf::standalone(
+                    crate::value::SizingRequestOf::new(
+                        Size::new(
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Definite(width),
+                                SizingOperation::Normal,
                             ),
-                            crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Indefinite,
-                                crate::SizingOperation::Normal,
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Indefinite,
+                                SizingOperation::Normal,
                             ),
                         ),
-                        crate::OrthogonalFallbackOf::new(
-                            crate::Size::NONE,
-                            crate::NearestScrollportOf::Absent,
-                            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        crate::value::OrthogonalFallbackOf::new(
+                            Size::NONE,
+                            crate::value::NearestScrollportOf::Absent,
+                            Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                         ),
                     ),
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction),
-                    crate::Size::new(Some(width), None),
+                    crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction),
+                    Size::new(Some(width), None),
                 )
             })
             .unwrap();

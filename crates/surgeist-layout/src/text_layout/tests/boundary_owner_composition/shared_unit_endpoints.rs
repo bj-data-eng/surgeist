@@ -2,6 +2,10 @@
 use super::super::float_encounters::CachedHost;
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    inline_wrapping::WrappingInput,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation},
+};
 
 const SOURCE: &str = "A\u{301}B";
 
@@ -251,10 +255,7 @@ fn prove_controls<S: LayoutScalar>(font: &[u8], rtl: bool) {
         let whole = compute::<S>(
             &p,
             rtl,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let lines = qualify(
             &whole,
@@ -290,17 +291,24 @@ where
     let mut packets = Vec::new();
     for (width, advances, ranges) in [
         (
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             vec![whole],
             vec![text::source::Range::new(0, 3)],
         ),
         (
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent,
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+            vec![first, 10.0],
+            vec![
+                text::source::Range::new(0, 2),
+                text::source::Range::new(2, 3),
+            ],
+        ),
+        (
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(finite[0])).unwrap(),
+                ),
+                SizingOperation::Normal,
             ),
             vec![first, 10.0],
             vec![
@@ -309,24 +317,11 @@ where
             ],
         ),
         (
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(finite[0])).unwrap(),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(finite[1])).unwrap(),
                 ),
-                crate::SizingOperation::Normal,
-            ),
-            vec![first, 10.0],
-            vec![
-                text::source::Range::new(0, 2),
-                text::source::Range::new(2, 3),
-            ],
-        ),
-        (
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(finite[1])).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
             vec![first, 10.0],
             vec![
@@ -340,14 +335,14 @@ where
             0,
             {
                 let containing_flow_axes = {
-                    let root_input = crate::LayoutTree::node_input((input).tree(), 0);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = crate::tree::LayoutTree::node_input((input).tree(), 0);
+                    crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
                 };
                 let requested_axes = Size::new(
                     width,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::MaxContent,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
                     ),
                 );
                 let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
@@ -355,18 +350,20 @@ where
                 // the explicitly requested inline contribution operation.
                 logical_requests.block = logical_requests
                     .block
-                    .with_operation(crate::SizingOperation::Normal);
+                    .with_operation(SizingOperation::Normal);
                 let axes = containing_flow_axes.physical_size(logical_requests);
                 // The old Native NoParent fixture explicitly supplied these percentage
                 // bases. It supplied no independent ICB dimensions or ancestor scrollport.
                 let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-                let fallback = crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                let fallback = crate::value::OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    crate::value::NearestScrollportOf::Absent,
+                    crate::geometry::Size::splat(
+                        crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 );
-                crate::LayoutRootRequestOf::standalone(
-                    crate::SizingRequestOf::new(axes, fallback),
+                crate::output::LayoutRootRequestOf::standalone(
+                    crate::value::SizingRequestOf::new(axes, fallback),
                     containing_flow_axes,
                     percentage_parent,
                 )
@@ -467,12 +464,10 @@ where
         );
         let root = readback::single_box_output(&batch, 0, Phase::Unrounded);
         let expected_width = match (width.operation(), width.space()) {
-            (crate::SizingOperation::MinContent, _) => first,
-            (crate::SizingOperation::MaxContent, _) => whole,
-            (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Definite(value)) => {
-                value.get().to_f64()
-            }
-            (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Indefinite) => {
+            (SizingOperation::MinContent, _) => first,
+            (SizingOperation::MaxContent, _) => whole,
+            (SizingOperation::Normal, AvailableSpaceOf::Definite(value)) => value.get().to_f64(),
+            (SizingOperation::Normal, AvailableSpaceOf::Indefinite) => {
                 unreachable!("this fixture explicitly supplies intrinsic or finite requests")
             }
         };
@@ -483,7 +478,7 @@ where
                 S::from_f64(ranges.len() as f64 * 10.0)
             )
         );
-        if width.operation() == crate::SizingOperation::MaxContent {
+        if width.operation() == SizingOperation::MaxContent {
             let start = edges.0;
             let positions = lines[0]
                 .run_views()
@@ -614,7 +609,7 @@ fn physical_sibling_endpoints_inside_shared_mark_unit_admit_zero_and_positive_ed
                     &tree,
                     0,
                     vec![p.clone()],
-                    crate::WrappingInput {
+                    WrappingInput {
                         native_inline_boxes: Vec::new(),
                         gaps: Vec::new(),
                         scopes: Vec::new(),
@@ -683,7 +678,7 @@ fn physical_nested_pairs_keep_the_mark_attached_and_count_each_edge_once() {
                 &tree,
                 0,
                 vec![p.clone()],
-                crate::WrappingInput {
+                WrappingInput {
                     native_inline_boxes: Vec::new(),
                     gaps: Vec::new(),
                     scopes: Vec::new(),
@@ -788,7 +783,7 @@ fn cached_packets<S: LayoutScalar>(
         host,
         0,
         vec![p.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),

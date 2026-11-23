@@ -111,7 +111,7 @@ fn assert_one_paragraph<S: LayoutScalar>(with_float: bool) {
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -126,8 +126,8 @@ fn assert_one_paragraph<S: LayoutScalar>(with_float: bool) {
         &capture,
         0,
         request(40.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -206,7 +206,7 @@ fn assert_two_explicit_paragraphs<S: LayoutScalar>() {
         &tree,
         0,
         vec![first.binding(0), second.binding(0)],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -219,8 +219,8 @@ fn assert_two_explicit_paragraphs<S: LayoutScalar>() {
         &capture,
         0,
         request(40.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();

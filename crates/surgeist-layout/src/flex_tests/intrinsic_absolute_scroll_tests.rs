@@ -6,6 +6,10 @@ use super::fixtures::{
 };
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    block_fragmentation::{NodeLayoutRefOf, NonBoxKind, input::LayoutPublicationTargets},
+    node_input::LayoutInputViewOf,
+};
 
 type RecursiveTree = OracleTree;
 fn fri07_c01_absolute_auto_margin_layout<S: LayoutScalar>(
@@ -555,8 +559,8 @@ impl<S: LayoutScalar> LayoutTree for Fri07C01IntrinsicTree<S> {
             .unwrap_or_else(|| panic!("intrinsic test node {node} must have style"))
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, Self::Scalar> {
-        crate::LayoutInputViewOf::Box(self.node_input(node))
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'_, Self::Scalar> {
+        LayoutInputViewOf::Box(self.node_input(node))
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
@@ -1035,14 +1039,14 @@ enum Fri07C01CompositionMeasureError {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Fri07C01CompositionRetained<S: LayoutScalar> {
-    unrounded: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
+    unrounded: HashMap<u32, crate::output::LayoutOutputEntryOf<u32, S>>,
     final_outputs: HashMap<u32, NodeOutputOf<S>>,
     caches: HashMap<u32, CacheOf<S>>,
 }
 
 #[derive(Clone, Debug)]
 struct Fri07C01CompositionTree<S: LayoutScalar> {
-    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
+    pub(super) publication_targets: LayoutPublicationTargets<u32>,
     tree: PublicLayoutTreeOf<S>,
     measure_mode: Cell<Fri07C01CompositionMeasureMode>,
     measurement_requests: RefCell<Vec<(u32, LeafMeasureInputOf<S>)>>,
@@ -1103,7 +1107,7 @@ impl<S: LayoutScalar> Fri07C01CompositionTree<S> {
             .style(4, intrinsic_item(FlexBasisOf::MAX_CONTENT, -2, true));
 
         Self {
-            publication_targets: crate::LayoutPublicationTargets::new(),
+            publication_targets: LayoutPublicationTargets::new(),
             tree,
             measure_mode: Cell::new(Fri07C01CompositionMeasureMode::Values),
             measurement_requests: RefCell::new(Vec::new()),
@@ -1168,7 +1172,7 @@ impl<S: LayoutScalar> LayoutTree for Fri07C01CompositionTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -1280,16 +1284,16 @@ impl<S: LayoutScalar> LayoutTree for Fri07C01CompositionTree<S> {
     fn unrounded_layout(
         &self,
         node: Self::Node,
-    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, S>> {
+    ) -> Option<crate::output::LayoutOutputEntryOf<Self::Node, S>> {
         self.retained.unrounded.get(&node).copied()
     }
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C01CompositionTree<S> {
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
 
@@ -1298,7 +1302,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C01CompositionTree<S> {
 
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
+        preparation: crate::block_fragmentation::publication::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
         let batch = preparation.batch();
         let mut prepared = self.retained.clone();
@@ -1324,7 +1328,12 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C01CompositionTree<S> {
 
     fn commit_layout_batch(
         &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+        commit: crate::block_fragmentation::publication::LayoutBatchCommit<
+            '_,
+            u32,
+            S,
+            Self::Prepared,
+        >,
     ) {
         let prepared = commit.into_prepared();
         self.retained = prepared;
@@ -1642,7 +1651,7 @@ impl Fri07C03ComposedCase {
 
 #[derive(Clone, Debug)]
 struct Fri07C03ComposedTree<S: LayoutScalar> {
-    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
+    pub(super) publication_targets: LayoutPublicationTargets<u32>,
     tree: PublicLayoutTreeOf<S>,
     axes: FlexAxes,
     measure_mode: Cell<Fri07C03ComposedMeasureMode>,
@@ -1692,7 +1701,7 @@ impl<S: LayoutScalar> LayoutTree for Fri07C03ComposedTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -1766,16 +1775,16 @@ impl<S: LayoutScalar> LayoutTree for Fri07C03ComposedTree<S> {
     fn unrounded_layout(
         &self,
         node: Self::Node,
-    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, S>> {
+    ) -> Option<crate::output::LayoutOutputEntryOf<Self::Node, S>> {
         self.retained.unrounded.get(&node).copied()
     }
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C03ComposedTree<S> {
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
 
@@ -1784,7 +1793,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C03ComposedTree<S> {
 
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
+        preparation: crate::block_fragmentation::publication::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
         let batch = preparation.batch();
         let mut prepared = self.retained.clone();
@@ -1810,7 +1819,12 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C03ComposedTree<S> {
 
     fn commit_layout_batch(
         &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+        commit: crate::block_fragmentation::publication::LayoutBatchCommit<
+            '_,
+            u32,
+            S,
+            Self::Prepared,
+        >,
     ) {
         let prepared = commit.into_prepared();
         self.retained = prepared;
@@ -1951,7 +1965,7 @@ fn fri07_c03_composed_layout_tree<S: LayoutScalar>(
         );
 
     Fri07C03ComposedTree {
-        publication_targets: crate::LayoutPublicationTargets::new(),
+        publication_targets: LayoutPublicationTargets::new(),
         tree,
         axes,
         measure_mode: Cell::new(Fri07C03ComposedMeasureMode::Values),
@@ -2019,7 +2033,7 @@ fn fri07_c03_composed_layout_snapshot<S: LayoutScalar>(
     let outputs = core::array::from_fn(|index| {
         let node = (index + 1) as u32;
         let expected = if tree.node_input(node).flex_item_collapse == FlexItemCollapse::Collapsed {
-            readback::Kind::NonBox(crate::NonBoxKind::Hidden)
+            readback::Kind::NonBox(NonBoxKind::Hidden)
         } else {
             readback::Kind::SingleBox
         };
@@ -3033,14 +3047,14 @@ fn assert_fri07_c03_composed_state_settlement_and_inert_absolute<S: LayoutScalar
         &baseline,
         4,
         crate::test_support::readback::Phase::Unrounded,
-        crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+        crate::test_support::readback::Kind::NonBox(NonBoxKind::Hidden),
     )
     .assert_numeric(NodeOutputOf::with_source_index(case.source_index(4)));
     crate::test_support::readback::observe(
         &baseline,
         4,
         crate::test_support::readback::Phase::Final,
-        crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+        crate::test_support::readback::Kind::NonBox(NonBoxKind::Hidden),
     )
     .assert_numeric(NodeOutputOf::with_source_index(case.source_index(4)));
 
@@ -3555,12 +3569,12 @@ fn flex_content_size_includes_visible_child_overflow_content() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -3635,12 +3649,12 @@ fn flex_final_content_size_uses_rerun_output() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(80.0), None),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -3703,12 +3717,12 @@ fn flex_relative_child_inset_offsets_final_layout_location() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -3772,12 +3786,12 @@ fn flex_relative_child_trailing_inset_offsets_negative() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -3813,7 +3827,7 @@ fn flex_container_reserves_scrollbar_gutter_from_inner_size() {
         NodeInput {
             size: Size::new(PreferredSize::px(100.0), PreferredSize::px(40.0)),
             overflow: computed_overflow(Overflow::Auto, Overflow::Scroll),
-            scrollbar_width: crate::ScrollbarWidthOf::try_new(10.0).unwrap(),
+            scrollbar_width: crate::node_input::ScrollbarWidthOf::try_new(10.0).unwrap(),
             ..NodeInput::default()
         },
     );
@@ -3835,12 +3849,12 @@ fn flex_container_reserves_scrollbar_gutter_from_inner_size() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -3883,7 +3897,7 @@ fn flex_scrollbar_gutter_uses_left_inset_for_rtl_containers() {
             direction: Direction::Rtl,
             size: Size::new(PreferredSize::px(100.0), PreferredSize::px(40.0)),
             overflow: computed_overflow(Overflow::Auto, Overflow::Scroll),
-            scrollbar_width: crate::ScrollbarWidthOf::try_new(10.0).unwrap(),
+            scrollbar_width: crate::node_input::ScrollbarWidthOf::try_new(10.0).unwrap(),
             ..NodeInput::default()
         },
     );
@@ -3904,12 +3918,12 @@ fn flex_scrollbar_gutter_uses_left_inset_for_rtl_containers() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -3956,7 +3970,7 @@ fn flex_child_layout_records_scrollbar_size_for_scroll_overflow() {
         NodeInput {
             size: Size::new(PreferredSize::px(20.0), PreferredSize::px(10.0)),
             overflow: computed_overflow(Overflow::Scroll, Overflow::Scroll),
-            scrollbar_width: crate::ScrollbarWidthOf::try_new(7.0).unwrap(),
+            scrollbar_width: crate::node_input::ScrollbarWidthOf::try_new(7.0).unwrap(),
             ..NodeInput::default()
         },
     );
@@ -3970,12 +3984,12 @@ fn flex_child_layout_records_scrollbar_size_for_scroll_overflow() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -4051,12 +4065,12 @@ fn flex_absolute_child_uses_insets_without_affecting_flow() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -4128,12 +4142,12 @@ fn flex_absolute_child_applies_aspect_ratio_to_inset_derived_width() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -4205,12 +4219,12 @@ fn flex_absolute_child_with_opposing_horizontal_insets_honors_rtl_end_edge() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -4286,12 +4300,12 @@ fn flex_absolute_child_max_height_shrinks_flex_grandchild() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(100.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -4456,12 +4470,12 @@ fn flex_absolute_child_cross_start_margin_uses_physical_edge_in_rtl_column() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(100.0), Some(100.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -4527,12 +4541,12 @@ fn flex_absolute_child_uses_min_size_when_min_exceeds_max_size() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(100.0), Some(100.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -4583,12 +4597,12 @@ fn flex_absolute_child_size_cannot_shrink_below_padding_and_border() {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::NONE,
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::new(
@@ -4677,7 +4691,7 @@ fn flex_absolute_child_layout_records_scrollbar_size_for_scroll_overflow() {
             position: Position::Absolute,
             size: Size::new(PreferredSize::px(20.0), PreferredSize::px(10.0)),
             overflow: computed_overflow(Overflow::Scroll, Overflow::Scroll),
-            scrollbar_width: crate::ScrollbarWidthOf::try_new(8.0).unwrap(),
+            scrollbar_width: crate::node_input::ScrollbarWidthOf::try_new(8.0).unwrap(),
             ..NodeInput::default()
         },
     );
@@ -4691,12 +4705,12 @@ fn flex_absolute_child_layout_records_scrollbar_size_for_scroll_overflow() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -4759,12 +4773,12 @@ fn flex_absolute_child_can_resolve_from_trailing_insets() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -4835,12 +4849,12 @@ fn fri07_c01_absolute_auto_margin_original_auto_end_inset_zeroes_inline_margins(
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -4906,12 +4920,12 @@ fn flex_absolute_child_without_insets_uses_flex_alignment() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -5247,7 +5261,7 @@ fn fri05_c04_child_geometry_source(style: NodeInput, size: Size<f32>) -> Compute
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(9, [])
         .style(9, style);
-    crate::compute_block(
+    crate::block::compute_block(
         &mut tree.borrow_compute(),
         9,
         fri05_c04_flex_input(size, flow_axes),
@@ -5972,7 +5986,8 @@ fn fri05_c04_flex_origin_output(
             }
             .with_scroll_geometry(Some(unrounded)),
         ));
-    crate::round_layout(&mut tree.borrow_compute(), 0).expect("canonical flex geometry rounds");
+    crate::engine::round_layout(&mut tree.borrow_compute(), 0)
+        .expect("canonical flex geometry rounds");
     let rounded = tree
         .final_layout(0)
         .and_then(|output| output.scroll_geometry)
@@ -6022,7 +6037,7 @@ struct Fri05C04FlexAutoPassTree {
     child_outputs: HashMap<u32, ComputeOutput>,
     child_inputs: Vec<ComputeInput>,
     child_requests: Vec<(u32, ComputeInput)>,
-    layouts: Vec<(u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>)>,
+    layouts: Vec<(u32, crate::output::LayoutOutputEntryOf<u32, DefaultScalar>)>,
 }
 
 impl Traverse for Fri05C04FlexAutoPassTree {
@@ -6058,7 +6073,7 @@ struct Fri05C04FlexAutoPassTreeCompute<'input> {
     child_outputs: &'input mut HashMap<u32, ComputeOutput>,
     child_inputs: &'input mut Vec<ComputeInput>,
     child_requests: &'input mut Vec<(u32, ComputeInput)>,
-    layouts: &'input mut Vec<(u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>)>,
+    layouts: &'input mut Vec<(u32, crate::output::LayoutOutputEntryOf<u32, DefaultScalar>)>,
 }
 
 impl Fri05C04FlexAutoPassTree {
@@ -6106,7 +6121,7 @@ impl<'input> Compute<'input> for Fri05C04FlexAutoPassTreeCompute<'input> {
         &mut self,
         _node: Self::Node,
         _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
-    ) -> crate::LayoutResultOf<
+    ) -> crate::error::LayoutResultOf<
         Self::Node,
         crate::grid::GridOverflowObservation<Self::Scalar>,
         Self::Scalar,
@@ -6121,8 +6136,8 @@ impl<'input> Compute<'input> for Fri05C04FlexAutoPassTreeCompute<'input> {
         &self.styles[&node]
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputView<'input> {
-        crate::LayoutInputViewOf::Box(&self.styles[&node])
+    fn layout_input(&self, node: Self::Node) -> crate::node_input::LayoutInputView<'input> {
+        LayoutInputViewOf::Box(&self.styles[&node])
     }
 
     fn staged_unrounded(
@@ -6142,7 +6157,10 @@ impl<'input> Compute<'input> for Fri05C04FlexAutoPassTreeCompute<'input> {
             .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
     }
 
-    fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+    fn set_unrounded(
+        &mut self,
+        entry: crate::output::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+    ) {
         self.layouts.push((entry.node(), entry));
     }
 
@@ -6150,7 +6168,7 @@ impl<'input> Compute<'input> for Fri05C04FlexAutoPassTreeCompute<'input> {
         &mut self,
         node: Self::Node,
         input: ComputeInput,
-    ) -> crate::LayoutResultOf<Self::Node, ComputeOutput, Self::Scalar> {
+    ) -> crate::error::LayoutResultOf<Self::Node, ComputeOutput, Self::Scalar> {
         self.child_inputs.push(input);
         self.child_requests.push((node, input));
         if self.styles[&node].display == Display::Flex && self.child_count(node) != 0 {
@@ -6733,7 +6751,7 @@ where
     let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
         .children(0, [])
         .style(0, style);
-    let output = crate::compute_flex(
+    let output = crate::flex::compute_flex(
         &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
@@ -6776,7 +6794,7 @@ where
                 ..NodeInputOf::default()
             },
         );
-    let error = crate::compute_flex(
+    let error = crate::flex::compute_flex(
         &mut failing_tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
@@ -6859,7 +6877,7 @@ fn assert_flex_basis_does_not_replace_intrinsic_content<S: LayoutScalar>() {
     let normal = request(SizingOperation::Normal, AvailableSpaceOf::Indefinite);
     let max_content = request(SizingOperation::MaxContent, AvailableSpaceOf::Indefinite);
     let mut tree = Fri07C01CompositionTree {
-        publication_targets: crate::LayoutPublicationTargets::new(),
+        publication_targets: LayoutPublicationTargets::new(),
         tree: PublicLayoutTreeOf::new()
             .children(1, [3])
             .children(3, [5])
@@ -7052,9 +7070,9 @@ fn selected_flex_intrinsic_root<S: LayoutScalar>(
         .unwrap()
         .node_layout(1)
         .map(|layout| match layout {
-            crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-            crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-            crate::NodeLayoutRefOf::Fragments(_) => {
+            NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+            NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+            NodeLayoutRefOf::Fragments(_) => {
                 panic!("continuous fixture unexpectedly fragmented")
             }
         })
@@ -7397,9 +7415,9 @@ fn flex_padding_floor_basis_preserves_the_unallocated_automatic_minimum() {
                 .unwrap()
                 .node_layout(2)
                 .map(|layout| match layout {
-                    crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-                    crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                    crate::NodeLayoutRefOf::Fragments(_) => {
+                    NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                    NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                    NodeLayoutRefOf::Fragments(_) => {
                         panic!("continuous fixture unexpectedly fragmented")
                     }
                 })

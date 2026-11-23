@@ -7,9 +7,16 @@ use crate::geometry::LogicalAxis;
 use crate::layout_math::{MaxBeforeMinScalarClampExt, OptionalSizeExt};
 use crate::sizing::resolve::SizeResultExt;
 use crate::{
-    AlignItems, AxisSizingRequestOf, Compute, ComputeInputOf, ComputeOutputOf,
-    ContainingLayoutContext, LayoutResultOf, LayoutScalar, ParentFormattingContext, RunMode, Size,
-    SizingMode, SizingOperation,
+    engine::contracts::Compute,
+    error::LayoutResultOf,
+    geometry::Size,
+    node_input::AlignItems,
+    output::{
+        ComputeInputOf, ComputeOutputOf, ContainingLayoutContext, ParentFormattingContext, RunMode,
+        SizingMode,
+    },
+    scalar::LayoutScalar,
+    value::{AxisSizingRequestOf, SizingOperation},
 };
 
 pub(super) fn intrinsic_content_main_size<Node, S: LayoutScalar>(
@@ -25,9 +32,9 @@ pub(super) fn intrinsic_content_main_size<Node, S: LayoutScalar>(
         && constants.axes.main_logical_axis() == LogicalAxis::Inline
         && {
             let request = constants.axes.main_size(input.sizing_request().axes());
-            request.operation() == crate::SizingOperation::MaxContent
-                || request.operation() == crate::SizingOperation::Normal
-                    && request.space() == crate::AvailableSpaceOf::Indefinite
+            request.operation() == SizingOperation::MaxContent
+                || request.operation() == SizingOperation::Normal
+                    && request.space() == crate::value::AvailableSpaceOf::Indefinite
         }
     {
         return lines
@@ -70,7 +77,7 @@ pub(super) fn begin_main_size<Node: Copy, S: LayoutScalar>(
     {
         let main_request = constants.available_main;
         let content_main = match (main_request.operation(), main_request.space()) {
-            (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Definite(available_main)) => {
+            (SizingOperation::Normal, crate::value::AvailableSpaceOf::Definite(available_main)) => {
                 let available_main = available_main.get();
                 let longest = lines
                     .iter()
@@ -272,7 +279,7 @@ impl<S: LayoutScalar> IntrinsicMainSize<S> {
                 axes.cross_size(pending.child_known).zip(style.aspect_ratio)
             {
                 let padding_border = (item.padding + item.border).sum_axes();
-                let ratio_insets = if style.box_sizing == crate::BoxSizing::ContentBox {
+                let ratio_insets = if style.box_sizing == crate::node_input::BoxSizing::ContentBox {
                     padding_border
                 } else {
                     Size::ZERO
@@ -392,7 +399,7 @@ fn intrinsic_item_contribution<Node, S: LayoutScalar>(
 fn intrinsic_item_cross_available<Node, S: LayoutScalar>(
     constants: &Constants<S>,
     item: &CollectedFlexItem<Node, S>,
-) -> Result<AxisSizingRequestOf<S>, crate::LengthResolutionStatus<S>> {
+) -> Result<AxisSizingRequestOf<S>, crate::value::LengthResolutionStatus<S>> {
     let cross_margin_sum = constants.axes.cross_edge_sum(item.margin);
     let child_min_cross = constants
         .axes

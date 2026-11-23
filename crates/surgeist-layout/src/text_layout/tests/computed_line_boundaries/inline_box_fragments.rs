@@ -1,9 +1,13 @@
 //! Explicit family demand is an admission/custody capability, not geometry inference.
 use super::*;
-use crate::{InlineBoxFragmentationDemand as Demand, LayoutTree, Traverse};
+use crate::{
+    text_layout::InlineBoxFragmentationDemand as Demand,
+    tree::{LayoutTree, Traverse},
+    value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation},
+};
 
-fn wrapping() -> crate::WrappingInput<u32> {
-    crate::WrappingInput {
+fn wrapping() -> crate::inline_wrapping::WrappingInput<u32> {
+    crate::inline_wrapping::WrappingInput {
         native_inline_boxes: Vec::new(),
         gaps: Vec::new(),
         scopes: Vec::new(),
@@ -39,21 +43,26 @@ impl LayoutTree for EmptyTree {
         assert_eq!(node, 0);
         &self.0
     }
-    fn layout_input(&self, node: u32) -> crate::LayoutInputViewOf<'_, f64> {
-        crate::LayoutInputViewOf::Box(self.node_input(node))
+    fn layout_input(&self, node: u32) -> crate::node_input::LayoutInputViewOf<'_, f64> {
+        crate::node_input::LayoutInputViewOf::Box(self.node_input(node))
     }
 }
-impl crate::WrapEdgeSource for EmptyTree {
-    fn wrap_edge_source_node(&self, node: u32) -> crate::WrapEdgeSourceNodeView<'_, f64> {
-        crate::WrapEdgeSourceNodeView::Box(self.node_input(node))
+impl crate::inline_wrapping::WrapEdgeSource for EmptyTree {
+    fn wrap_edge_source_node(
+        &self,
+        node: u32,
+    ) -> crate::inline_wrapping::WrapEdgeSourceNodeView<'_, f64> {
+        crate::inline_wrapping::WrapEdgeSourceNodeView::Box(self.node_input(node))
     }
-    fn source_wrapping_scopes(&self) -> &[crate::SourceWrappingScopeInput<u32>] {
+    fn source_wrapping_scopes(&self) -> &[crate::inline_wrapping::SourceWrappingScopeInput<u32>] {
         &[]
     }
-    fn source_scope_associations(&self) -> &[crate::SourceScopeAssociation<u32>] {
+    fn source_scope_associations(&self) -> &[crate::inline_wrapping::SourceScopeAssociation<u32>] {
         &[]
     }
-    fn generated_child_order(&self) -> &[crate::InlineChildOrderInput<u32, usize>] {
+    fn generated_child_order(
+        &self,
+    ) -> &[crate::inline_wrapping::InlineChildOrderInput<u32, usize>] {
         &[]
     }
 }
@@ -75,11 +84,11 @@ fn both_checked_constructors_refuse_complete_bodies_for_association_only() {
         E::ExitParagraph(0),
         E::ExitScope(0),
     ];
-    let (processed, receipt) = crate::process_wrapping_source(
+    let (processed, receipt) = crate::inline_wrapping::process_wrapping_source(
         &tree,
         0,
         input,
-        crate::SourceOccurrenceAssociations::default(),
+        crate::inline_wrapping::SourceOccurrenceAssociations::default(),
     )
     .unwrap()
     .into_parts();
@@ -123,8 +132,11 @@ fn both_checked_constructors_refuse_complete_bodies_for_association_only() {
         let Err(error) = result else {
             panic!("association-only demand must refuse")
         };
-        assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(0));
-        assert_eq!(error.operation(), crate::LayoutOperation::TextCapture);
+        assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(0));
+        assert_eq!(
+            error.operation(),
+            crate::error::LayoutOperation::TextCapture
+        );
         assert!(
             matches!(
                 error.kind(),
@@ -144,9 +156,9 @@ fn complete_bodies_flow_retains_one_binding_family_and_existing_source_geometry(
     let batch = compute::<f64>(
         &fixture,
         false,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+            SizingOperation::Normal,
         ),
     );
     assert_eq!(batch.placed_text().len(), 1);
@@ -175,9 +187,9 @@ fn complete_bodies_flow_retains_one_binding_family_and_existing_source_geometry(
     let ordinary = compute::<f64>(
         &unrequested,
         false,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+            SizingOperation::Normal,
         ),
     );
     assert!(ordinary.placed_text()[0].inline_box_fragments().is_none());
@@ -218,9 +230,9 @@ fn unknown_topology_refuses_precisely_without_replacing_prior_output_and_recover
     let prior = compute::<f64>(
         &complete,
         false,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+            SizingOperation::Normal,
         ),
     );
     let before = prior.placed_text()[0]
@@ -254,8 +266,11 @@ fn unknown_topology_refuses_precisely_without_replacing_prior_output_and_recover
     ) else {
         panic!("Unknown topology cannot establish complete fragments")
     };
-    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(0));
-    assert_eq!(error.operation(), crate::LayoutOperation::TextCapture);
+    assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(0));
+    assert_eq!(
+        error.operation(),
+        crate::error::LayoutOperation::TextCapture
+    );
     assert!(
         matches!(error.kind(), LayoutErrorKindOf::Text(error) if matches!(
             error.detail(), Some(text::ErrorDetail::InvalidTextProtocol {
@@ -278,9 +293,9 @@ fn unknown_topology_refuses_precisely_without_replacing_prior_output_and_recover
     let recovered = compute::<f64>(
         &complete,
         false,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+            SizingOperation::Normal,
         ),
     );
     assert_eq!(

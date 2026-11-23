@@ -75,7 +75,7 @@ fn fractional_atomic_layout<S: LayoutScalar>(
     }
     // Nominal declared geometry is distinct from canonical emitted corners.
     assert_eq!(
-        crate::LayoutTree::node_input(&tree, 2).size,
+        crate::tree::LayoutTree::node_input(&tree, 2).size,
         Size::new(
             PreferredSizeOf::px(px::<S>(nominal.width)),
             PreferredSizeOf::px(px::<S>(nominal.height))
@@ -85,7 +85,7 @@ fn fractional_atomic_layout<S: LayoutScalar>(
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -226,7 +226,7 @@ fn fractional_atomic_top_preserves_normal_line<S: LayoutScalar>() {
         let text = batch
             .unrounded_inline_fragments()
             .iter()
-            .find(|entry| *entry.owner() == crate::InlineFragmentOwner::Node(1))
+            .find(|entry| *entry.owner() == crate::output::InlineFragmentOwner::Node(1))
             .unwrap()
             .fragment();
         assert_eq!(text.baseline().y, px::<S>(10.0));
@@ -257,7 +257,7 @@ fn fractional_atomic_left_preserves_following_text<S: LayoutScalar>() {
         let following = batch
             .unrounded_inline_fragments()
             .iter()
-            .find(|entry| *entry.owner() == crate::InlineFragmentOwner::Node(3))
+            .find(|entry| *entry.owner() == crate::output::InlineFragmentOwner::Node(3))
             .unwrap()
             .fragment();
         let rect = following.rect().unwrap();

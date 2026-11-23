@@ -7,7 +7,22 @@ use crate::inline::{
     layout_mixed_inline_run, layout_mixed_inline_run_with_band_source,
     mapped_post_line_clear_intent,
 };
-use crate::*;
+use crate::{
+    engine::compute_layout_with_flow,
+    geometry::{Edges, FlowAxes, Point, Size},
+    node_input::{
+        AtomicInlineParticipation, Clear, Direction, Display, InlineBaselineContext,
+        InlineBoundaryEdgeOf, InlineBoundaryKind, InlineBreakOpportunity, InlineMetrics,
+        InlineMetricsOf, LineBoxDirectionPolicy, NodeInputOf, TextAlign, TextAlignLast,
+        TextWrapStyle, WritingMode,
+    },
+    scalar::LayoutScalar,
+    text_layout::LayoutFlowInput,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation},
+};
+use surgeist_text::supplied_line::BidiLevel;
+use surgeist_text::supplied_line::BidiLevelError;
+use surgeist_text::supplied_line::InlineWhitespaceEdge;
 
 fn mr02_atomic<S: LayoutScalar>(
     source_index: usize,
@@ -19,7 +34,7 @@ fn mr02_atomic<S: LayoutScalar>(
 ) -> MixedInlineParticipantOf<S> {
     MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {
-            baseline_reference: crate::InlineBaselineContext::Physical,
+            baseline_reference: InlineBaselineContext::Physical,
             source_index,
             size: Size::new(S::from_f64(extent), S::from_f64(block_extent)),
             content_size: Size::new(S::from_f64(extent), S::from_f64(block_extent)),
@@ -38,16 +53,16 @@ fn mr02_atomic<S: LayoutScalar>(
 }
 
 fn mr02_input<S: LayoutScalar>(
-    available_inline_extent: crate::AxisSizingRequestOf<S>,
+    available_inline_extent: AxisSizingRequestOf<S>,
     participants: Vec<MixedInlineParticipantOf<S>>,
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
         meter: crate::accounting::Meter::new(),
-        inline_baseline_context: crate::InlineBaselineContext::Physical,
+        inline_baseline_context: InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
-        text_wrap_style: crate::TextWrapStyle::Auto,
+        text_wrap_style: TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
-            crate::LineBoxDirectionPolicy::Normal,
+            LineBoxDirectionPolicy::Normal,
             Direction::Ltr,
         ),
         observe_tail: false,
@@ -55,7 +70,7 @@ fn mr02_input<S: LayoutScalar>(
         available_inline_extent,
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         text_align: TextAlign::Start,
-        text_align_last: crate::TextAlignLast::Auto,
+        text_align_last: TextAlignLast::Auto,
         indent: crate::text_indent::ResolvedTextIndent::ZERO,
         indent_state: crate::text_indent::IndentLineState::default(),
         participants,
@@ -100,7 +115,7 @@ fn authored_atomic_shape_band_break_target_keeps_34_38_then_42_46_both_scalars()
                 100,
                 flow,
                 InlineMetricsOf::from_ascent_descent(
-                    crate::InlineBaselineContext::Physical,
+                    InlineBaselineContext::Physical,
                     S::from_f64(16.0),
                     S::from_f64(4.0),
                 )
@@ -124,11 +139,11 @@ fn authored_atomic_shape_band_break_target_keeps_34_38_then_42_46_both_scalars()
             }
             layout_mixed_inline_run_with_band_source(
                 mr02_input(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(180.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(180.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     participants,
                 ),
@@ -192,16 +207,13 @@ fn fri06_mr02_inline_linear_empty_strut_and_forced_clear_preserve_metrics_both_s
     fn assert_lane<S: LayoutScalar>() {
         let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
         let metrics = InlineMetricsOf::from_ascent_descent(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(9.0),
             S::from_f64(3.0),
         )
         .unwrap();
         let report = layout_mixed_inline_run(mr02_input(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             vec![mixed_forced_line_break(7, flow_axes, metrics, Clear::Both)],
         ))
         .unwrap();
@@ -250,11 +262,9 @@ fn supplied_edges_and_real_atomic_overflow_preserve_discard_and_endpoint_roles_b
     );
     fn assert_lane<S: LayoutScalar>() {
         let report = layout_mixed_inline_run(mr02_input(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(15.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(15.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             vec![
                 mr02_atomic(11, 10.0, 10.0, 8.0, 0, InlineBreakOpportunity::Allowed),
@@ -280,11 +290,9 @@ fn supplied_edges_and_real_atomic_overflow_preserve_discard_and_endpoint_roles_b
             (13, 1, S::from_f64(30.0))
         );
         let endpoint_breaks = layout_mixed_inline_run(mr02_input(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(5.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(5.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             vec![
                 mr02_atomic(30, 5.0, 10.0, 8.0, 0, InlineBreakOpportunity::Allowed),
@@ -345,7 +353,7 @@ fn actual_prepared_collapse_keeps_original_source_while_suppressing_line_edges_b
             &tree,
             0,
             vec![paragraph.binding(0)],
-            crate::WrappingInput {
+            crate::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -356,41 +364,38 @@ fn actual_prepared_collapse_keeps_original_source_while_suppressing_line_edges_b
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, {
             let containing_flow_axes = {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+                crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
             };
             let requested_axes = Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(15.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(15.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MaxContent,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             );
             let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
             // These fixtures perform ordinary block-size layout independently of
             // the explicitly requested inline contribution operation.
             logical_requests.block = logical_requests
                 .block
-                .with_operation(crate::SizingOperation::Normal);
+                .with_operation(SizingOperation::Normal);
             logical_requests.inline = logical_requests
                 .inline
-                .with_operation(crate::SizingOperation::Normal);
+                .with_operation(SizingOperation::Normal);
             let axes = containing_flow_axes.physical_size(logical_requests);
             // The old Native NoParent fixture explicitly supplied these percentage
             // bases. It supplied no independent ICB dimensions or ancestor scrollport.
             let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-            let fallback = crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            let fallback = crate::value::OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                crate::value::NearestScrollportOf::Absent,
+                crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             );
-            crate::LayoutRootRequestOf::standalone(
-                crate::SizingRequestOf::new(axes, fallback),
+            crate::output::LayoutRootRequestOf::standalone(
+                crate::value::SizingRequestOf::new(axes, fallback),
                 containing_flow_axes,
                 percentage_parent,
             )
@@ -461,16 +466,13 @@ fn actual_prepared_collapse_keeps_original_source_while_suppressing_line_edges_b
 fn fri06_mr02_inline_linear_bidi_mixed_sources_preserve_visual_order_and_baselines_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let boundary_metrics = InlineMetricsOf::from_ascent_descent(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(6.0),
             S::from_f64(2.0),
         )
         .unwrap();
         let report = layout_mixed_inline_run(mr02_input(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             vec![
                 mr02_atomic(40, 10.0, 10.0, 8.0, 1, InlineBreakOpportunity::Prohibited),
                 mixed_boundary(
@@ -528,10 +530,7 @@ fn mr02_intrinsic_extents<S: LayoutScalar>() -> (S, S) {
     // These are numeric boxes. Text replacement semantics are exercised
     // separately through an actual prepared paragraph, never a replacement width.
     let min = layout_mixed_inline_run(mr02_input(
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
         vec![
             mr02_atomic(51, 0.1, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
             mr02_atomic(52, 0.2, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
@@ -540,10 +539,7 @@ fn mr02_intrinsic_extents<S: LayoutScalar>() -> (S, S) {
     ))
     .unwrap();
     let max = layout_mixed_inline_run(mr02_input(
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         vec![
             mr02_atomic(51, 0.1, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
             mr02_atomic(52, 0.2, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
@@ -575,11 +571,11 @@ fn fri06_mr02_inline_linear_float_band_retry_preserves_queries_and_reselection_b
         let mut queries = Vec::new();
         let report = layout_mixed_inline_run_with_band_source(
             mr02_input(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 vec![
                     mr02_atomic(60, 30.0, 10.0, 8.0, 0, InlineBreakOpportunity::Allowed),
@@ -656,11 +652,9 @@ fn mr02_candidate_scan_work(participant_count: usize) -> usize {
     let report = layout_counting(
         &meter,
         mr02_input(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(1_000_000.0).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(1_000_000.0).unwrap()),
+                SizingOperation::Normal,
             ),
             participants,
         ),
@@ -701,10 +695,7 @@ fn forced_line_break_for(
         crate::inline::InlineFlowOf::new(
             writing_mode,
             direction,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         ),
         metrics,
         crate::inline::InlineControlAlignment::Baseline,
@@ -726,14 +717,11 @@ fn inline_boundary_control(
         crate::inline::InlineFlowOf::new(
             writing_mode,
             direction,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         ),
         metrics,
         alignment,
-        crate::InlineBoundaryEdgeOf::ZERO,
+        crate::node_input::InlineBoundaryEdgeOf::ZERO,
         None,
     )
 }
@@ -766,10 +754,7 @@ fn mixed_forced_line_break<S: LayoutScalar>(
         crate::inline::InlineFlowOf::new(
             flow_axes.writing_mode(),
             flow_axes.direction(),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         ),
         metrics,
         crate::inline::InlineControlAlignment::Baseline,
@@ -780,13 +765,9 @@ fn mixed_forced_line_break<S: LayoutScalar>(
 fn fri06_c12_t07_endpoint_break_private_line_membership() -> (usize, usize, usize) {
     let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let metrics =
-        InlineMetrics::from_ascent_descent(crate::InlineBaselineContext::Physical, 8.0, 2.0)
-            .unwrap();
+        InlineMetrics::from_ascent_descent(InlineBaselineContext::Physical, 8.0, 2.0).unwrap();
     let report = layout_mixed_inline_run(mr02_input(
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         vec![
             mr02_atomic(0, 20.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
             mixed_forced_line_break(1, flow_axes, metrics, Clear::None),
@@ -836,14 +817,11 @@ fn mixed_boundary<S: LayoutScalar>(
         crate::inline::InlineFlowOf::new(
             flow_axes.writing_mode(),
             flow_axes.direction(),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         ),
         metrics,
         crate::inline::InlineControlAlignment::Baseline,
-        crate::InlineBoundaryEdgeOf::ZERO,
+        crate::node_input::InlineBoundaryEdgeOf::ZERO,
         None,
     ))
 }
@@ -885,35 +863,35 @@ fn fri06_c03_strut_private_builder_retains_control_baselines_and_post_line_inten
     fn assert_lane<S: LayoutScalar>() {
         let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
         let boundary_metrics = InlineMetricsOf::from_line_height_and_baseline(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(18.0),
             S::from_f64(13.0),
         )
         .unwrap();
         let break_metrics = InlineMetricsOf::from_line_height_and_baseline(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(20.0),
             S::from_f64(15.0),
         )
         .unwrap();
         let report = layout_mixed_inline_run(MixedInlineRunInputOf {
             meter: crate::accounting::Meter::new(),
-            inline_baseline_context: crate::InlineBaselineContext::Physical,
+            inline_baseline_context: InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
-            text_wrap_style: crate::TextWrapStyle::Auto,
+            text_wrap_style: TextWrapStyle::Auto,
             line_box_context: crate::line_box::LineBoxContext::new(
-                crate::LineBoxDirectionPolicy::Normal,
+                LineBoxDirectionPolicy::Normal,
                 flow_axes.direction(),
             ),
             observe_tail: false,
             wrapping: None,
-            available_inline_extent: crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
+            available_inline_extent: AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::MaxContent,
             ),
             flow_axes,
             text_align: TextAlign::Start,
-            text_align_last: crate::TextAlignLast::Auto,
+            text_align_last: TextAlignLast::Auto,
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: crate::text_indent::IndentLineState::default(),
             participants: vec![
@@ -944,7 +922,7 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
         let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
         let participant = |source_index, following_break| MixedInlineParticipantOf::Atomic {
             item: AtomicInlineBoxParticipant {
-                baseline_reference: crate::InlineBaselineContext::Physical,
+                baseline_reference: InlineBaselineContext::Physical,
                 source_index,
                 size: Size::new(S::from_f64(30.0), S::from_f64(10.0)),
                 content_size: Size::new(S::from_f64(30.0), S::from_f64(10.0)),
@@ -964,24 +942,24 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
         let report = layout_mixed_inline_run_with_band_source(
             MixedInlineRunInputOf {
                 meter: crate::accounting::Meter::new(),
-                inline_baseline_context: crate::InlineBaselineContext::Physical,
+                inline_baseline_context: InlineBaselineContext::Physical,
                 groups: crate::group_alignment::Snapshot::default(),
-                text_wrap_style: crate::TextWrapStyle::Auto,
+                text_wrap_style: TextWrapStyle::Auto,
                 line_box_context: crate::line_box::LineBoxContext::new(
-                    crate::LineBoxDirectionPolicy::Normal,
+                    LineBoxDirectionPolicy::Normal,
                     flow_axes.direction(),
                 ),
                 observe_tail: false,
                 wrapping: None,
-                available_inline_extent: crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                available_inline_extent: AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 flow_axes,
                 text_align: TextAlign::Start,
-                text_align_last: crate::TextAlignLast::Auto,
+                text_align_last: TextAlignLast::Auto,
                 indent: crate::text_indent::ResolvedTextIndent::ZERO,
                 indent_state: crate::text_indent::IndentLineState::default(),
                 participants: vec![
@@ -1148,9 +1126,9 @@ fn inline_axis_mapping_maps_vertical_lr_rtl() {
 #[test]
 fn atomic_inline_line_aligns_items_to_max_baseline() {
     let report = layout_inline_run(InlineRunInput {
-        available_width: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(200.0).unwrap()),
-            crate::SizingOperation::Normal,
+        available_width: AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(200.0).unwrap()),
+            SizingOperation::Normal,
         ),
         writing_mode: WritingMode::HorizontalTb,
         direction: Direction::Ltr,
@@ -1169,9 +1147,9 @@ fn atomic_inline_line_aligns_items_to_max_baseline() {
 #[test]
 fn atomic_inline_items_wrap_between_items_for_definite_width() {
     let report = layout_inline_run(InlineRunInput {
-        available_width: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(25.0).unwrap()),
-            crate::SizingOperation::Normal,
+        available_width: AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(25.0).unwrap()),
+            SizingOperation::Normal,
         ),
         writing_mode: WritingMode::HorizontalTb,
         direction: Direction::Ltr,
@@ -1190,9 +1168,9 @@ fn atomic_inline_items_wrap_between_items_for_definite_width() {
 #[test]
 fn atomic_inline_min_content_available_wraps_to_max_item_advance() {
     let report = layout_inline_run(InlineRunInput {
-        available_width: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
+        available_width: AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MinContent,
         ),
         writing_mode: WritingMode::HorizontalTb,
         direction: Direction::Ltr,
@@ -1234,16 +1212,13 @@ fn atomic_inline_intrinsic_widths_use_max_item_and_sum() {
 
 #[test]
 fn atomic_inline_horizontal_rtl_maps_item_origins_in_report() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        10.0,
-        10.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 10.0, 10.0)
+            .unwrap();
     let report = layout_inline_run(InlineRunInput {
-        available_width: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
+        available_width: AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
         ),
         writing_mode: WritingMode::HorizontalTb,
         direction: Direction::Rtl,
@@ -1262,20 +1237,17 @@ fn atomic_inline_horizontal_rtl_maps_item_origins_in_report() {
 
 #[test]
 fn forced_line_break_control_preserves_layout_ready_fields() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        24.0,
-        18.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 24.0, 18.0)
+            .unwrap();
     let control = crate::inline::ForcedLineBreakControlOf::new(
         7,
         crate::inline::InlineFlowOf::new(
             WritingMode::HorizontalTb,
             Direction::Rtl,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(320.0).unwrap()),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(320.0).unwrap()),
+                SizingOperation::Normal,
             ),
         ),
         metrics,
@@ -1288,9 +1260,9 @@ fn forced_line_break_control_preserves_layout_ready_fields() {
     assert_eq!(control.flow().direction(), Direction::Rtl);
     assert_eq!(
         control.flow().available_inline_extent(),
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(320.0).unwrap()),
-            crate::SizingOperation::Normal
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(320.0).unwrap()),
+            SizingOperation::Normal
         )
     );
     assert_eq!(control.metrics(), metrics);
@@ -1303,12 +1275,9 @@ fn forced_line_break_control_preserves_layout_ready_fields() {
 
 #[test]
 fn inline_boundary_control_preserves_layout_ready_fields() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        24.0,
-        18.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 24.0, 18.0)
+            .unwrap();
     let control = inline_boundary_control(
         9,
         InlineBoundaryKind::Start,
@@ -1324,10 +1293,7 @@ fn inline_boundary_control_preserves_layout_ready_fields() {
     assert_eq!(control.flow().direction(), Direction::Rtl);
     assert_eq!(
         control.flow().available_inline_extent(),
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent
-        )
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent)
     );
     assert_eq!(control.metrics(), metrics);
     assert_eq!(
@@ -1342,22 +1308,16 @@ fn inline_boundary_control_preserves_layout_ready_fields() {
 
 #[test]
 fn inline_boundaries_expand_horizontal_line_metrics_without_advance() {
-    let start_metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        10.0,
-        8.0,
-    )
-    .unwrap();
-    let end_metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        30.0,
-        20.0,
-    )
-    .unwrap();
+    let start_metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 10.0, 8.0)
+            .unwrap();
+    let end_metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 30.0, 20.0)
+            .unwrap();
     let report = layout_inline_run(InlineRunInput {
-        available_width: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
+        available_width: AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
         ),
         writing_mode: WritingMode::HorizontalTb,
         direction: Direction::Ltr,
@@ -1401,16 +1361,13 @@ fn inline_boundaries_expand_horizontal_line_metrics_without_advance() {
 
 #[test]
 fn inline_boundaries_before_overwide_first_box_do_not_create_leading_line() {
-    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        50.0,
-        35.0,
-    )
-    .unwrap();
+    let boundary_metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 50.0, 35.0)
+            .unwrap();
     let report = layout_inline_run(InlineRunInput {
-        available_width: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
-            crate::SizingOperation::Normal,
+        available_width: AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(20.0).unwrap()),
+            SizingOperation::Normal,
         ),
         writing_mode: WritingMode::HorizontalTb,
         direction: Direction::Ltr,
@@ -1440,21 +1397,15 @@ fn inline_boundaries_before_overwide_first_box_do_not_create_leading_line() {
 
 #[test]
 fn forced_line_break_control_can_be_used_as_atomic_inline_item() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        10.0,
-        8.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 10.0, 8.0)
+            .unwrap();
     let control = crate::inline::ForcedLineBreakControlOf::new(
         1,
         crate::inline::InlineFlowOf::new(
             WritingMode::HorizontalTb,
             Direction::Ltr,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         ),
         metrics,
         crate::inline::InlineControlAlignment::Baseline,
@@ -1462,9 +1413,9 @@ fn forced_line_break_control_can_be_used_as_atomic_inline_item() {
     );
 
     let report = layout_inline_run(InlineRunInput {
-        available_width: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
+        available_width: AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
         ),
         writing_mode: WritingMode::HorizontalTb,
         direction: Direction::Ltr,
@@ -1512,9 +1463,9 @@ fn atomic_inline_intrinsic_widths_split_at_forced_line_breaks() {
 #[test]
 fn atomic_inline_vertical_margins_participate_in_line_metrics() {
     let report = layout_inline_run(InlineRunInput {
-        available_width: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
+        available_width: AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
         ),
         writing_mode: WritingMode::HorizontalTb,
         direction: Direction::Ltr,
@@ -1535,9 +1486,9 @@ fn atomic_inline_vertical_margins_participate_in_line_metrics() {
 #[test]
 fn atomic_inline_sideways_lr_ltr_maps_inline_progression_bottom_to_top() {
     let report = layout_inline_run(InlineRunInput {
-        available_width: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(70.0).unwrap()),
-            crate::SizingOperation::Normal,
+        available_width: AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(70.0).unwrap()),
+            SizingOperation::Normal,
         ),
         writing_mode: WritingMode::SidewaysLr,
         direction: Direction::Ltr,
@@ -1553,10 +1504,10 @@ fn atomic_inline_sideways_lr_ltr_maps_inline_progression_bottom_to_top() {
 
 #[test]
 fn atomic_inline_empty_items_report_zero_size_and_no_baselines() {
-    let report = layout_inline_run(InlineRunInput::<crate::DefaultScalar> {
-        available_width: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
+    let report = layout_inline_run(InlineRunInput::<crate::scalar::DefaultScalar> {
+        available_width: AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
         ),
         writing_mode: WritingMode::HorizontalTb,
         direction: Direction::Ltr,
@@ -2026,9 +1977,13 @@ mod root_layout_oracle {
     use crate::test_support::layout_tree::OracleTree;
     use crate::test_support::oracle::inline;
     use crate::{
-        AtomicInlineParticipation, BidiLevel, Display, InlineBreakOpportunity, NodeInput,
-        PreferredSize, Size, TrackComponent, compute_root, round_layout,
+        engine::{compute_root, round_layout},
+        geometry::Size,
+        node_input::{AtomicInlineParticipation, Display, InlineBreakOpportunity, NodeInput},
+        sizing::PreferredSize,
+        value::TrackComponent,
     };
+    use surgeist_text::supplied_line::BidiLevel;
 
     fn assert_atomic_inline_layout_matches_oracle(display: Display) {
         let item_sizes = [
@@ -2049,22 +2004,25 @@ mod root_layout_oracle {
             tree = tree.style(node, atomic_inline_node_input(display, size));
         }
 
-        let host = crate::NonNegativeFiniteOf::new(50.0).unwrap();
+        let host = crate::value::NonNegativeFiniteOf::new(50.0).unwrap();
         let frame = crate::test_support::requests::NativeRootFrameOf::new(
-            crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             Size::splat(Some(host)),
-            crate::OrthogonalFallbackOf::new(
+            crate::value::OrthogonalFallbackOf::new(
                 Size::splat(Some(host)),
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         );
         compute_root(
             &mut tree.borrow_compute(),
             0,
-            frame.request(Size::splat(crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(host),
-                crate::SizingOperation::Normal,
+            frame.request(Size::splat(crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(host),
+                crate::value::SizingOperation::Normal,
             ))),
         )
         .unwrap();
@@ -2188,10 +2146,7 @@ fn resolved_bidi_level_126_preserves_l2_mixed_line_order_both_scalars() {
 
     fn assert_line<S: LayoutScalar>() {
         let report = layout_mixed_inline_run(mr02_input::<S>(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             vec![
                 mr02_atomic(0, 3.0, 10.0, 8.0, 125, InlineBreakOpportunity::Prohibited),
                 mr02_atomic(1, 5.0, 10.0, 8.0, 126, InlineBreakOpportunity::Prohibited),
@@ -2240,11 +2195,9 @@ fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter
         let report = layout_counting(
             &meter,
             mr02_input(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(1_000_000.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(1_000_000.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
                 participants,
             ),
@@ -2259,12 +2212,9 @@ fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter
         assert_eq!(inline_candidate_scan_visits(&meter), count * 2);
 
         let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-        let metrics = InlineMetricsOf::<f64>::from_ascent_descent(
-            crate::InlineBaselineContext::Physical,
-            8.0,
-            2.0,
-        )
-        .unwrap();
+        let metrics =
+            InlineMetricsOf::<f64>::from_ascent_descent(InlineBaselineContext::Physical, 8.0, 2.0)
+                .unwrap();
         let participants = (0..count)
             .flat_map(|index| {
                 [
@@ -2277,11 +2227,9 @@ fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter
         let report = layout_counting(
             &meter,
             mr02_input(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
                 participants,
             ),
@@ -2306,11 +2254,9 @@ fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter
         let report = layout_counting(
             &meter,
             mr02_input(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(1.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(1.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
                 participants,
             ),
@@ -2337,11 +2283,11 @@ fn assert_mandatory_atomic_queries_are_confined_to_each_actual_line<S: LayoutSca
         let report = layout_counting(
             &meter,
             mr02_input(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 participants,
             ),
@@ -2413,11 +2359,11 @@ fn numeric_unexpandable_alignment_uses_actual_last_line_policy_both_scalars() {
                 (TextAlign::Center, 15.0),
             ] {
                 let mut input = mr02_input(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(50.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(50.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     vec![mr02_atomic(
                         0,
@@ -2433,7 +2379,7 @@ fn numeric_unexpandable_alignment_uses_actual_last_line_policy_both_scalars() {
                     if rtl { Direction::Rtl } else { Direction::Ltr },
                 );
                 input.line_box_context = crate::line_box::LineBoxContext::new(
-                    crate::LineBoxDirectionPolicy::Normal,
+                    LineBoxDirectionPolicy::Normal,
                     input.flow_axes.direction(),
                 );
                 input.text_align = align;
@@ -2452,11 +2398,11 @@ fn numeric_unexpandable_alignment_uses_actual_last_line_policy_both_scalars() {
             (TextAlignLast::Justify, 15.0),
         ] {
             let mut input = mr02_input(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(50.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(50.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 vec![mr02_atomic(
                     0,
@@ -2489,11 +2435,9 @@ fn assert_numeric_mandatory_atomic_last_alignment<S: LayoutScalar>() {
         (TextAlignLast::End, 30.0, 40.0),
     ] {
         let mut input = mr02_input(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(50.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(50.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             vec![
                 mr02_atomic(0, 20.0, 10.0, 8.0, 0, InlineBreakOpportunity::Mandatory),
@@ -2545,16 +2489,13 @@ fn last_tail_observations_keep_actual_numeric_endings_and_zero_atomic_content() 
         };
         let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
         let metrics = InlineMetricsOf::from_ascent_descent(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(8.0),
             S::from_f64(2.0),
         )
         .unwrap();
         let report = observe(mr02_input(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             vec![
                 mixed_boundary(0, flow, metrics),
                 mixed_forced_line_break(1, flow, metrics, Clear::None),
@@ -2572,11 +2513,9 @@ fn last_tail_observations_keep_actual_numeric_endings_and_zero_atomic_content() 
         // Paragraph receiver is absent. The following zero atomics stay real.
         assert_eq!(report.line_bands.len(), 1);
         let report = observe(mr02_input(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::ZERO).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::ZERO).unwrap()),
+                SizingOperation::Normal,
             ),
             vec![
                 mr02_atomic(0, 0.0, 0.0, 0.0, 0, InlineBreakOpportunity::Mandatory),
@@ -2612,13 +2551,13 @@ fn positive_numeric_endpoint_contributes_once_to_intrinsics_and_retries_a_real_f
                     crate::inline::InlineFlowOf::new(
                         WritingMode::HorizontalTb,
                         Direction::Ltr,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MaxContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
                         ),
                     ),
                     InlineMetricsOf::try_new(
-                        crate::InlineBaselineContext::Physical,
+                        InlineBaselineContext::Physical,
                         S::from_f64(8.0),
                         S::from_f64(10.0),
                     )
@@ -2633,14 +2572,8 @@ fn positive_numeric_endpoint_contributes_once_to_intrinsics_and_retries_a_real_f
         let edge =
             InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(3.0), S::from_f64(5.0)).unwrap();
         for available in [
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent,
-            ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         ] {
             let report =
                 layout_mixed_inline_run(mr02_input(available, participants(edge))).unwrap();
@@ -2656,11 +2589,11 @@ fn positive_numeric_endpoint_contributes_once_to_intrinsics_and_retries_a_real_f
         {
             let report = layout_mixed_inline_run_with_band_source(
                 mr02_input(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     participants(edge),
                 ),

@@ -3,8 +3,9 @@ use super::{
     construction::{CanonicalScrollGeometryErrorOf, CanonicalScrollGeometrySourceOf},
 };
 use crate::{
-    DefaultScalar, Edges, FlowAxes, LayoutScalar, LogicalAxis, Overflow, PhysicalAxis, Point,
-    ScrollMarginOf, ScrollSnapAlign, ScrollSnapStop, ScrollSnapType, Size, scalar::canonical_zero,
+    geometry::{Edges, FlowAxes, LogicalAxis, PhysicalAxis, Point, Size},
+    node_input::{Overflow, ScrollMarginOf, ScrollSnapAlign, ScrollSnapStop, ScrollSnapType},
+    scalar::{DefaultScalar, LayoutScalar, canonical_zero},
 };
 
 /// Atomic construction error for a finite physical scroll rectangle.
@@ -1060,7 +1061,7 @@ impl<S: LayoutScalar> ScrollGeometryOf<S> {
 #[cfg(test)]
 mod fri05_c02_carrier_tests {
     use super::*;
-    use crate::{Direction, ScrollSnapAlignValue, WritingMode};
+    use crate::node_input::{Direction, ScrollSnapAlignValue, WritingMode};
 
     fn assert_fri06_mr02_signed_zero_scroll_boundaries<S: LayoutScalar>(largest: S) {
         let zero_rect =

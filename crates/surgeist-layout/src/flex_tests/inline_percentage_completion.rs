@@ -2,6 +2,7 @@
 //! Intrinsic contributions still treat those percentages as initial; computed
 //! percentage cross sizes never acquire computed-Auto stretch eligibility.
 use super::*;
+use crate::block_fragmentation::NodeLayoutRefOf;
 use crate::test_support::readback::{self, Phase};
 use crate::test_support::requests::NativeRootFrameOf;
 
@@ -439,13 +440,13 @@ fn direct<S: LayoutScalar>(modes: &[WritingMode], operations: &[SizingOperation]
                                     batch
                                         .node_layouts()
                                         .map(|(_, layout)| match layout {
-                                            crate::NodeLayoutRefOf::SingleBox(value) => {
+                                            NodeLayoutRefOf::SingleBox(value) => {
                                                 value.unrounded_entry()
                                             }
-                                            crate::NodeLayoutRefOf::NonBox(value) => {
+                                            NodeLayoutRefOf::NonBox(value) => {
                                                 value.unrounded_entry()
                                             }
-                                            crate::NodeLayoutRefOf::Fragments(_) => {
+                                            NodeLayoutRefOf::Fragments(_) => {
                                                 panic!("continuous fixture unexpectedly fragmented")
                                             }
                                         })
@@ -454,13 +455,11 @@ fn direct<S: LayoutScalar>(modes: &[WritingMode], operations: &[SizingOperation]
                                     batch
                                         .node_layouts()
                                         .map(|(_, layout)| match layout {
-                                            crate::NodeLayoutRefOf::SingleBox(value) => {
+                                            NodeLayoutRefOf::SingleBox(value) => {
                                                 value.final_entry()
                                             }
-                                            crate::NodeLayoutRefOf::NonBox(value) => {
-                                                value.final_entry()
-                                            }
-                                            crate::NodeLayoutRefOf::Fragments(_) => {
+                                            NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                                            NodeLayoutRefOf::Fragments(_) => {
                                                 panic!("continuous fixture unexpectedly fragmented")
                                             }
                                         })
@@ -1083,13 +1082,9 @@ fn inline_ratio_finishes_auto_main<S: LayoutScalar>() {
                             batch
                                 .node_layouts()
                                 .map(|(_, layout)| match layout {
-                                    crate::NodeLayoutRefOf::SingleBox(value) => {
-                                        value.unrounded_entry()
-                                    }
-                                    crate::NodeLayoutRefOf::NonBox(value) => {
-                                        value.unrounded_entry()
-                                    }
-                                    crate::NodeLayoutRefOf::Fragments(_) => {
+                                    NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                                    NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                                    NodeLayoutRefOf::Fragments(_) => {
                                         panic!("continuous fixture unexpectedly fragmented")
                                     }
                                 })
@@ -1688,9 +1683,9 @@ fn assert_relative_main_percentage_uses_accepted_extent<S: LayoutScalar>() {
             batch
                 .node_layout(node)
                 .map(|layout| match layout {
-                    crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-                    crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                    crate::NodeLayoutRefOf::Fragments(_) => {
+                    NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                    NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                    NodeLayoutRefOf::Fragments(_) => {
                         panic!("continuous fixture unexpectedly fragmented")
                     }
                 })
@@ -1749,9 +1744,9 @@ fn assert_vertical_relative_main_percentage_uses_physical_width<S: LayoutScalar>
         batch
             .node_layout(node)
             .map(|layout| match layout {
-                crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-                crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                crate::NodeLayoutRefOf::Fragments(_) => {
+                NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             })
@@ -1821,9 +1816,9 @@ fn assert_relative_cross_projection_keeps_representable_range<S: LayoutScalar>(q
     let entry = batch
         .node_layout(1)
         .map(|layout| match layout {
-            crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-            crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-            crate::NodeLayoutRefOf::Fragments(_) => {
+            NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+            NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+            NodeLayoutRefOf::Fragments(_) => {
                 panic!("continuous fixture unexpectedly fragmented")
             }
         })

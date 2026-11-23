@@ -159,7 +159,7 @@ fn interrupted_float<S: LayoutScalar>(joined: bool) {
         &shared_tree,
         WRAPPER,
         bindings,
-        crate::WrappingInput::default(),
+        crate::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();

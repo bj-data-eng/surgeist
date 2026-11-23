@@ -822,7 +822,7 @@ mod tests {
             LayoutSourceBasis::fresh(),
             request,
             FragmentationKind::Page {
-                progression: crate::PageProgression::LeftToRight,
+                progression: crate::fragmentation::page::PageProgression::LeftToRight,
             },
             axes(),
             frames.to_vec(),
@@ -844,7 +844,7 @@ mod tests {
             frames: &frames,
             axes: axes(),
             kind: FragmentationKind::Page {
-                progression: crate::PageProgression::LeftToRight,
+                progression: crate::fragmentation::page::PageProgression::LeftToRight,
             },
             target: bound.target_basis(),
             template: request,
@@ -883,7 +883,7 @@ mod tests {
     }
     impl<S: LayoutScalar> LayoutTree for Window<'_, S> {
         type MeasureError = std::convert::Infallible;
-        fn layout_input(&self, node: u32) -> crate::LayoutInputViewOf<'_, S> {
+        fn layout_input(&self, node: u32) -> crate::node_input::LayoutInputViewOf<'_, S> {
             self.tree.layout_input(node)
         }
         fn node_input(&self, node: u32) -> &NodeInputOf<S> {
@@ -1348,7 +1348,7 @@ mod tests {
                     frames: environment.frames,
                     axes: axes(),
                     kind: FragmentationKind::Page {
-                        progression: crate::PageProgression::LeftToRight,
+                        progression: crate::fragmentation::page::PageProgression::LeftToRight,
                     },
                     target: environment.target.clone(),
                     invalidated: vec![2],

@@ -2,20 +2,20 @@
 //! No browser rectangle, Text/font identity or completed Grid output is supplied.
 use super::*;
 use crate::test_support::readback::{self, Phase};
-use crate::{LayoutTree, Traverse};
+use crate::tree::{LayoutTree, Traverse};
 use std::cell::RefCell;
 
 fn n<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
 }
-fn nn<S: LayoutScalar>(value: f64) -> crate::NonNegativeFiniteOf<S> {
-    crate::NonNegativeFiniteOf::new(n(value)).unwrap()
+fn nn<S: LayoutScalar>(value: f64) -> crate::value::NonNegativeFiniteOf<S> {
+    crate::value::NonNegativeFiniteOf::new(n(value)).unwrap()
 }
 fn fallback<S: LayoutScalar>() -> OrthogonalFallbackOf<S> {
     OrthogonalFallbackOf::new(
         Size::new(Some(nn(800.0)), Some(nn(600.0))),
-        crate::NearestScrollportOf::Absent,
-        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        crate::value::NearestScrollportOf::Absent,
+        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
     )
 }
 #[derive(Clone, Copy, Debug)]
@@ -164,7 +164,7 @@ fn formal_request<S: LayoutScalar>(operation: SizingOperation) -> LayoutRootRequ
     )
 }
 fn local_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
-    let context = crate::RootLocalPositionedContextOf::horizontal_auto_insets(
+    let context = crate::output::RootLocalPositionedContextOf::horizontal_auto_insets(
         Size::new(nn(800.0), nn(600.0)),
         Direction::Ltr,
         S::ZERO,

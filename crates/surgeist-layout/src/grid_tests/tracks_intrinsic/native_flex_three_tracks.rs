@@ -142,18 +142,18 @@ fn assert_native_three_track_flex_span<S: LayoutScalar>() {
         let control = compute_layout(&tree, 1, {
             let axes = Size::splat(available);
             let definite = axes.map(|axis| axis.space().definite_size());
-            crate::LayoutRootRequestOf::standalone(
+            crate::output::LayoutRootRequestOf::standalone(
                 SizingRequestOf::new(
                     axes,
                     OrthogonalFallbackOf::new(
                         definite,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        crate::value::NearestScrollportOf::Absent,
+                        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
                 definite,
             )
@@ -181,16 +181,19 @@ fn assert_native_three_track_flex_span<S: LayoutScalar>() {
             SizingOperation::Normal,
         ));
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    crate::value::NearestScrollportOf::Absent,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     };

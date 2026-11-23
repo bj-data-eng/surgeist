@@ -1,5 +1,5 @@
 use super::{policy, validation, *};
-use crate::LayoutScalar;
+use crate::scalar::LayoutScalar;
 use std::sync::Arc;
 
 /// A completed scheduler step. The mode may retain accepted production or fail

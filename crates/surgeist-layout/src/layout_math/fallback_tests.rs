@@ -7,7 +7,35 @@ use crate::sizing::resolve::{
     fixed_fallback_preferred, resolve_minimum_optional,
 };
 use crate::test_support::readback::{self, Phase};
-use crate::*;
+use crate::{
+    engine::compute_layout,
+    error::{
+        CalcSizeBehaviorBasis, LayoutErrorKindOf, LayoutErrorSiteOf, LayoutOperation,
+        SizingAlgorithm, SizingBehavior, SizingProperty,
+    },
+    geometry::{Edges, FlowAxes, PhysicalAxis, Point, Size},
+    measurement::LeafMeasureInputOf,
+    node_input::{
+        BoxSizing, ComputedOverflow, Direction, Display, LayoutInputViewOf, NodeInputOf, Overflow,
+        ScrollbarGutter, ScrollbarWidthOf, WritingMode,
+    },
+    output::{
+        ComputeInputOf, ContainingLayoutContext, LayoutRootRequestOf, ParentFormattingContext,
+        RequestedAxis, RunMode, SizingMode,
+    },
+    scalar::LayoutScalar,
+    sizing::{
+        CalcSizeCalculationOf, MaxSizeCalcBasis, MaxSizeOf, MinSizeCalcBasis, MinSizeOf,
+        PreferredSizeCalcBasis, PreferredSizeOf,
+    },
+    tree::{LayoutTree, Traverse},
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, LengthOf, LengthPercentageOf,
+        LengthResolutionStatus, NearestScrollportOf, NonNegativeFiniteOf,
+        OrthogonalFallbackErrorOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf,
+        SizingOperation, SizingRequestOf,
+    },
+};
 
 fn n<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
@@ -806,7 +834,7 @@ impl<S: LayoutScalar> Traverse for OpaqueProbe<S> {
     where
         Self: 'a;
     fn children(&self, node: u32) -> Self::Children<'_> {
-        crate::Traverse::children(&self.tree, node)
+        crate::tree::Traverse::children(&self.tree, node)
     }
     fn child_count(&self, node: u32) -> usize {
         self.tree.child_count(node)

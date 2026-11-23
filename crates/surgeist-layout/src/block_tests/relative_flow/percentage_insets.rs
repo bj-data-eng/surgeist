@@ -53,7 +53,7 @@ fn percentage_horizontal_contexts<S: LayoutScalar>(definite_bases: &[bool]) {
                     }
                     tree.insert_input(0, LayoutInputOf::box_input(parent));
                     for node in [1, 2, 3] {
-                        let mut child = crate::LayoutTree::node_input(&tree, node).clone();
+                        let mut child = crate::tree::LayoutTree::node_input(&tree, node).clone();
                         child.direction = opposite(direction);
                         tree.insert_input(node, LayoutInputOf::box_input(child));
                     }

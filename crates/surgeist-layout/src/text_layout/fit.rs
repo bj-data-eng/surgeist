@@ -8,7 +8,11 @@ pub(crate) use super::roles::{RoleBasis, RoleUse, RoleUseRows};
 use crate::accounting::LayoutWork;
 use crate::inline_wrapping::balance::{BalanceGoal, NaturalResidual};
 use crate::inline_wrapping::quality::{LineQualityGoal, LineQualityKey};
-use crate::{TextAlign, TextAlignLast, TextJustification};
+use crate::{
+    error::LayoutTextNumericError,
+    node_input::{TextAlign, TextAlignLast, TextJustification, TextWrapStyle},
+    value::{LengthPercentageOf, NumericResolutionOf, SizingOperation},
+};
 
 #[path = "fit_balance.rs"]
 mod balance;
@@ -338,14 +342,14 @@ pub(crate) struct ReusableLine {
 pub(crate) enum FitError {
     Allocation,
     Text(surgeist_text::Error),
-    TextWritingMode(crate::WritingMode),
+    TextWritingMode(crate::node_input::WritingMode),
     Wrapping(crate::inline_wrapping::WrappingScopeError),
     FeedbackCycle,
     InvalidTailBasis,
     InvalidPrettyBasis,
     SpacingBudget { available: f64, advance: f64 },
     NonFinite(f64),
-    Numeric(f64, crate::LayoutTextNumericError),
+    Numeric(f64, LayoutTextNumericError),
     InvalidGeometry,
     Dependency,
     MissingZoneBasis,
@@ -356,7 +360,7 @@ pub(crate) enum FitError {
 impl From<crate::scalar::GeometryAddError> for FitError {
     fn from(error: crate::scalar::GeometryAddError) -> Self {
         match error.reason {
-            crate::LayoutTextNumericError::NonFinite => Self::NonFinite(error.value),
+            LayoutTextNumericError::NonFinite => Self::NonFinite(error.value),
             reason => Self::Numeric(error.value, reason),
         }
     }
@@ -388,17 +392,17 @@ pub(crate) struct FitInput<'a> {
     pub inline_boxes: Option<&'a surgeist_text::inline_box::PreparedInlineBoxFamily>,
     pub segment: surgeist_text::prepared::PreparedSourceSegment,
     pub scope_alignments: &'a dyn super::scope_alignment::ScopeAlignmentFacts,
-    pub available: crate::AxisSizingRequestOf<f64>,
+    pub available: crate::value::AxisSizingRequestOf<f64>,
     pub base_direction: ParagraphBaseDirection,
     pub block_direction: ParagraphBaseDirection,
     pub alignment: TextAlign,
-    pub wrap_style: crate::TextWrapStyle,
+    pub wrap_style: TextWrapStyle,
     pub last_alignment: TextAlignLast,
     pub justification: TextJustification,
     pub indent: crate::text_indent::ResolvedTextIndent<f64>,
     pub indent_state: crate::text_indent::IndentLineState,
     pub hyphenation_state: crate::hyphenation::LineHyphenationState,
-    pub hyphenate_limit_zone: crate::LengthPercentageOf<f64>,
+    pub hyphenate_limit_zone: LengthPercentageOf<f64>,
     pub tail: TailContext,
     pub orientation: LineOrientation,
     pub atomics: &'a [AtomicAllocation],
@@ -1664,25 +1668,23 @@ where
                 continue;
             }
             let fit_width = match input.available.operation() {
-                crate::SizingOperation::MinContent => {
-                    Some(finite((band.end - band.start).max(0.0))?)
-                }
-                crate::SizingOperation::Normal | crate::SizingOperation::MaxContent => {
+                SizingOperation::MinContent => Some(finite((band.end - band.start).max(0.0))?),
+                SizingOperation::Normal | SizingOperation::MaxContent => {
                     request.context.available_inline
                 }
             };
             let admission = match input.available.operation() {
-                crate::SizingOperation::MinContent => finalized
+                SizingOperation::MinContent => finalized
                     .measurements()
                     .margin_edge_min_content_contribution(),
-                crate::SizingOperation::MaxContent => finalized
+                SizingOperation::MaxContent => finalized
                     .measurements()
                     .margin_edge_max_content_contribution(),
                 // Line breaking chooses what fits before justification (CSS Text 3 section 6.4.1),
                 // so a line that justification stretched is admitted by its natural line. The
                 // stretch fills the available size, and its rounding must not reject a line that
                 // fits naturally.
-                crate::SizingOperation::Normal => {
+                SizingOperation::Normal => {
                     if amounts.iter().any(|amount| *amount != 0.0) {
                         natural_fit
                     } else {
@@ -1705,14 +1707,14 @@ where
             // A failed width counts as a fit, because a fit forbids the stop and a misfit
             // would allow it.
             let natural_fits = match input.available.operation() {
-                crate::SizingOperation::Normal => {
+                SizingOperation::Normal => {
                     !disposition.is_formatted()
                         || match css_margin_edge_width(natural_fit, request.context.indent) {
                             Ok(css_width) => fits_width(natural_fit, css_width),
                             Err(_) => true,
                         }
                 }
-                crate::SizingOperation::MinContent | crate::SizingOperation::MaxContent => fits,
+                SizingOperation::MinContent | SizingOperation::MaxContent => fits,
             };
             let usage = finalized.measurements().formatted_line_usage();
             if usage.first() || usage.last() {
@@ -1807,15 +1809,13 @@ where
                     _ => None,
                 }
             });
-            if automatic.is_some()
-                && (input.available.operation() == crate::SizingOperation::MaxContent)
-            {
+            if automatic.is_some() && (input.available.operation() == SizingOperation::MaxContent) {
                 continue;
             }
             if let Some(alternative) = alternative.as_ref().filter(|_| automatic.is_some())
-                && let Some(limit) = query.hyphenation_state.suppressed_limit(
-                    input.available.operation() == crate::SizingOperation::MinContent,
-                )
+                && let Some(limit) = query
+                    .hyphenation_state
+                    .suppressed_limit(input.available.operation() == SizingOperation::MinContent)
             {
                 dispositions.push(ConditionalDisposition::AutoLineLimit {
                     alternative: alternative.clone(),
@@ -1995,7 +1995,7 @@ where
                 continue;
             }
             if let Some(alternative) = alternative.filter(|_| automatic.is_some()) {
-                if input.available.operation() == crate::SizingOperation::MinContent {
+                if input.available.operation() == SizingOperation::MinContent {
                     dispositions.push(ConditionalDisposition::AutoIntrinsicRefinement(alternative));
                 } else {
                     dispositions.push(ConditionalDisposition::AutoFitExhausted(
@@ -2019,7 +2019,7 @@ where
             if endpoint_choice.is_none() || fits {
                 endpoint_choice = Some(candidate);
             }
-            if fits && (input.available.operation() != crate::SizingOperation::MinContent) {
+            if fits && (input.available.operation() != SizingOperation::MinContent) {
                 break;
             }
         }
@@ -2300,7 +2300,7 @@ impl CandidateFrame {
 }
 
 fn selection_width(
-    available: crate::AxisSizingRequestOf<f64>,
+    available: crate::value::AxisSizingRequestOf<f64>,
     band: Band,
 ) -> Result<Option<f64>, FitError> {
     match crate::layout_math::normal_available_size(available) {
@@ -2319,7 +2319,7 @@ fn tab_context(
     if input.prepared.preparation_options().tabs() == TabPreparation::FontAdvance {
         return Ok(TabContext::FontAdvance);
     }
-    if input.available.operation() != crate::SizingOperation::Normal {
+    if input.available.operation() != SizingOperation::Normal {
         return Ok(TabContext::IntrinsicCssStops);
     }
     let displacement = if input.base_direction == input.block_direction {
@@ -2545,26 +2545,26 @@ pub(crate) fn fit(
         clear: clear_source,
     };
     match runner.input.wrap_style {
-        crate::TextWrapStyle::Balance
+        TextWrapStyle::Balance
             if crate::layout_math::normal_available_size(runner.input.available).is_some() =>
         {
             return balance::fit(&mut runner, entry, checkpoint_group);
         }
-        crate::TextWrapStyle::AvoidShortLastLine
+        TextWrapStyle::AvoidShortLastLine
             if crate::layout_math::normal_available_size(runner.input.available).is_some() =>
         {
             return tail::fit(&mut runner, entry, checkpoint_group);
         }
-        crate::TextWrapStyle::Pretty
+        TextWrapStyle::Pretty
             if crate::layout_math::normal_available_size(runner.input.available).is_some() =>
         {
             return runner.pretty(entry, checkpoint_group);
         }
-        crate::TextWrapStyle::Auto
-        | crate::TextWrapStyle::Stable
-        | crate::TextWrapStyle::Balance
-        | crate::TextWrapStyle::AvoidShortLastLine
-        | crate::TextWrapStyle::Pretty => {}
+        TextWrapStyle::Auto
+        | TextWrapStyle::Stable
+        | TextWrapStyle::Balance
+        | TextWrapStyle::AvoidShortLastLine
+        | TextWrapStyle::Pretty => {}
     }
     let mut result = Vec::new();
     let scope = SequenceScope {
@@ -2889,10 +2889,7 @@ pub(super) fn css_margin_edge_width(
     let add = |base: f64, delta: f64| -> Result<f64, FitError> {
         let result = super::run::add(base, delta)?;
         if base != 0.0 && result == delta {
-            return Err(FitError::Numeric(
-                base,
-                crate::LayoutTextNumericError::NonZeroLost,
-            ));
+            return Err(FitError::Numeric(base, LayoutTextNumericError::NonZeroLost));
         }
         Ok(result)
     };
@@ -2919,7 +2916,7 @@ fn finite(value: f64) -> Result<f64, FitError> {
 /// of a candidate's possibly different font-height/float allocation frame.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ZoneBasis {
-    policy: crate::LengthPercentageOf<f64>,
+    policy: LengthPercentageOf<f64>,
     references: Vec<ZoneReference>,
 }
 
@@ -2943,14 +2940,13 @@ struct ZoneReference {
     encounters: Vec<EncounterBasis>,
     placed_start: f64,
 }
-fn used_zone(policy: crate::LengthPercentageOf<f64>, span: f64) -> Result<f64, FitError> {
-    let basis = crate::PercentageBasisOf::definite(span).map_err(|_| FitError::InvalidGeometry)?;
+fn used_zone(policy: LengthPercentageOf<f64>, span: f64) -> Result<f64, FitError> {
+    let basis =
+        crate::value::PercentageBasisOf::definite(span).map_err(|_| FitError::InvalidGeometry)?;
     match policy.resolve_against(basis) {
-        crate::NumericResolutionOf::Resolved(value) => Ok(if value == 0.0 { 0.0 } else { value }),
-        crate::NumericResolutionOf::MissingBasis { .. } => Err(FitError::MissingZoneBasis),
-        crate::NumericResolutionOf::InvalidNumeric { resolved, .. } => {
-            Err(FitError::NonFinite(resolved))
-        }
+        NumericResolutionOf::Resolved(value) => Ok(if value == 0.0 { 0.0 } else { value }),
+        NumericResolutionOf::MissingBasis { .. } => Err(FitError::MissingZoneBasis),
+        NumericResolutionOf::InvalidNumeric { resolved, .. } => Err(FitError::NonFinite(resolved)),
     }
 }
 

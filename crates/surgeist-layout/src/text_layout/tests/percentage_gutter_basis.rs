@@ -25,7 +25,8 @@ fn percentage_gutter_fixture<S: LayoutScalar>(
     parent.size.height = PreferredSizeOf::px(custody_n::<S>(20.0));
     parent.overflow = ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap();
     parent.scrollbar_gutter = ScrollbarGutter::Auto;
-    parent.scrollbar_width = crate::ScrollbarWidthOf::try_new(custody_n::<S>(2.0)).unwrap();
+    parent.scrollbar_width =
+        crate::node_input::ScrollbarWidthOf::try_new(custody_n::<S>(2.0)).unwrap();
     let mut atomic = custody_atom(false, 0.0);
     atomic.inset.top = top;
     let mut tree = custody_restorable_fixture(p, false, 0.0)
@@ -239,9 +240,11 @@ fn accepted_gutter_updates_percentage_basis_atomically<S: LayoutScalar>() {
     host.inner.reject_batch = true;
     assert_eq!(
         changed.apply_to(&mut host),
-        Err(crate::LayoutBatchApplyError::Preparation(
-            "reject complete replacement"
-        ))
+        Err(
+            crate::block_fragmentation::publication::LayoutBatchApplyError::Preparation(
+                "reject complete replacement"
+            )
+        )
     );
     assert_eq!(host.inner.caches, prior_caches);
     custody_same_scene(host.inner.published.as_ref().unwrap(), &prior);

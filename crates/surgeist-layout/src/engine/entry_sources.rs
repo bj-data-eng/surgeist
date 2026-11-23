@@ -1,8 +1,12 @@
 //! Native producer observations shared by one entry operation and its trials.
 use crate::text_layout::scope_alignment::{EntryFunding, ScopeLease};
 use crate::{
-    CacheKeyContext, ComputeInputOf, ComputeOutputOf, LayoutScalar, LayoutTree, LeafMeasureInputOf,
-    Size,
+    cache::CacheKeyContext,
+    geometry::Size,
+    measurement::LeafMeasureInputOf,
+    output::{ComputeInputOf, ComputeOutputOf},
+    scalar::LayoutScalar,
+    tree::LayoutTree,
 };
 use std::collections::TryReserveError;
 use std::sync::{Arc, Mutex};
@@ -211,9 +215,11 @@ impl<Node: Copy + Eq, S: LayoutScalar> SourceMemo<Node, S> {
             eligible.try_reserve_exact(graph.nodes.len())?;
             eligible.resize(graph.nodes.len(), false);
             for &index in &graph.finish {
-                if let crate::LayoutInputViewOf::Box(style) = tree.layout_input(graph.nodes[index])
+                if let crate::node_input::LayoutInputViewOf::Box(style) =
+                    tree.layout_input(graph.nodes[index])
                 {
-                    eligible[index] = style.float_exclusion != crate::FloatExclusion::Shape
+                    eligible[index] = style.float_exclusion
+                        != crate::node_input::FloatExclusion::Shape
                         && graph.children[index].iter().all(|&child| eligible[child]);
                 }
             }

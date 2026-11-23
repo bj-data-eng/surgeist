@@ -1,8 +1,12 @@
 use surgeist_text::font::FontBaseline;
 use surgeist_text::supplied_line::BidiLevel;
 
-use super::super::{DefaultScalar, LayoutScalar};
 use super::{Clear, Direction};
+use crate::{
+    geometry::FlowAxes,
+    scalar::{DefaultScalar, LayoutScalar},
+    value::FiniteScalarErrorOf,
+};
 
 /// Resolved alignment reference of a native inline formatting context.
 /// Physical coordinates do not assert a font or named baseline origin.
@@ -39,8 +43,8 @@ pub enum InlineBaselineError {
     /// A finite named coordinate cannot be represented in its output frame.
     UnrepresentableCoordinate,
     AxisMismatch {
-        expected: crate::PhysicalAxis,
-        actual: crate::PhysicalAxis,
+        expected: crate::geometry::PhysicalAxis,
+        actual: crate::geometry::PhysicalAxis,
     },
     ReferenceMismatch {
         expected: InlineBaselineContext,
@@ -97,7 +101,7 @@ pub enum BlockGeneration {
 /// only the absolute component.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextIndentOf<S: LayoutScalar = DefaultScalar> {
-    pub amount: crate::LengthPercentageOf<S>,
+    pub amount: crate::value::LengthPercentageOf<S>,
     pub each_line: bool,
     pub hanging: bool,
 }
@@ -106,7 +110,7 @@ pub type TextIndent = TextIndentOf<DefaultScalar>;
 
 impl<S: LayoutScalar> TextIndentOf<S> {
     pub const ZERO: Self = Self {
-        amount: crate::LengthPercentageOf::ZERO,
+        amount: crate::value::LengthPercentageOf::ZERO,
         each_line: false,
         hanging: false,
     };
@@ -220,7 +224,7 @@ pub enum VerticalAlignOf<S: LayoutScalar = DefaultScalar> {
     Baseline,
     Top,
     Bottom,
-    Shift(crate::BaselineOffsetOf<S>),
+    Shift(crate::baseline_offset::BaselineOffsetOf<S>),
 }
 
 pub type VerticalAlign = VerticalAlignOf<DefaultScalar>;
@@ -538,11 +542,11 @@ pub enum InlineBoundaryKind {
 /// Intrinsic component, arithmetic or operation-role refusal for one inline edge.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum InlineBoundaryEdgeErrorOf<S: LayoutScalar = DefaultScalar> {
-    InvalidMargin(crate::FiniteScalarErrorOf<S>),
-    InvalidBorder(crate::NonNegativeFiniteScalarErrorOf<S>),
-    InvalidPadding(crate::NonNegativeFiniteScalarErrorOf<S>),
-    InvalidBorderPaddingAdvance(crate::FiniteScalarErrorOf<S>),
-    InvalidFlowAdvance(crate::FiniteScalarErrorOf<S>),
+    InvalidMargin(FiniteScalarErrorOf<S>),
+    InvalidBorder(crate::value::NonNegativeFiniteScalarErrorOf<S>),
+    InvalidPadding(crate::value::NonNegativeFiniteScalarErrorOf<S>),
+    InvalidBorderPaddingAdvance(FiniteScalarErrorOf<S>),
+    InvalidFlowAdvance(FiniteScalarErrorOf<S>),
     LostMargin { value: S },
     LostBorderPaddingAdvance { value: S },
     MarginRequiresBoxEdge { margin: S },
@@ -598,30 +602,30 @@ impl<S: LayoutScalar> InlineBoundaryEdgeOf<S> {
     };
     /// Validate components and native-lane flow without tightening ordinary BP rounding.
     pub fn try_new(margin: S, border: S, padding: S) -> Result<Self, InlineBoundaryEdgeErrorOf<S>> {
-        use InlineBoundaryEdgeErrorOf as E;
+        use crate::node_input::InlineBoundaryEdgeErrorOf as E;
         if !margin.is_finite() {
-            return Err(E::InvalidMargin(crate::FiniteScalarErrorOf::NonFinite {
+            return Err(E::InvalidMargin(FiniteScalarErrorOf::NonFinite {
                 value: margin,
             }));
         }
         let margin = crate::scalar::canonical_zero(margin);
-        let border = crate::NonNegativeFiniteOf::new(border)
+        let border = crate::value::NonNegativeFiniteOf::new(border)
             .map_err(E::InvalidBorder)?
             .get();
-        let padding = crate::NonNegativeFiniteOf::new(padding)
+        let padding = crate::value::NonNegativeFiniteOf::new(padding)
             .map_err(E::InvalidPadding)?
             .get();
         let extent = border + padding;
         if !extent.is_finite() {
             return Err(E::InvalidBorderPaddingAdvance(
-                crate::FiniteScalarErrorOf::NonFinite { value: extent },
+                FiniteScalarErrorOf::NonFinite { value: extent },
             ));
         }
         let flow = margin + extent;
         if !flow.is_finite() {
-            return Err(E::InvalidFlowAdvance(
-                crate::FiniteScalarErrorOf::NonFinite { value: flow },
-            ));
+            return Err(E::InvalidFlowAdvance(FiniteScalarErrorOf::NonFinite {
+                value: flow,
+            }));
         }
         if margin != S::ZERO && flow == extent {
             return Err(E::LostMargin { value: margin });
@@ -676,7 +680,7 @@ pub struct InlineBoundaryInputOf<S: LayoutScalar = DefaultScalar> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum InlineBoundaryOperation {
     Contribution,
-    BoxEdge { parent_axes: crate::FlowAxes },
+    BoxEdge { parent_axes: FlowAxes },
 }
 
 pub type InlineBoundaryInput = InlineBoundaryInputOf<DefaultScalar>;
@@ -713,7 +717,7 @@ impl<S: LayoutScalar> InlineBoundaryInputOf<S> {
         kind: InlineBoundaryKind,
         metrics: InlineMetricsOf<S>,
         edge: InlineBoundaryEdgeOf<S>,
-        parent_axes: crate::FlowAxes,
+        parent_axes: FlowAxes,
     ) -> Self {
         Self {
             kind,
@@ -729,7 +733,7 @@ impl<S: LayoutScalar> InlineBoundaryInputOf<S> {
     /// The actual immediate parent basis for this explicit BoxEdge operation.
     /// A contribution carries no parent-side claim.
     #[must_use]
-    pub const fn parent_edge_axes(self) -> Option<crate::FlowAxes> {
+    pub const fn parent_edge_axes(self) -> Option<FlowAxes> {
         match self.operation {
             InlineBoundaryOperation::Contribution => None,
             InlineBoundaryOperation::BoxEdge { parent_axes } => Some(parent_axes),

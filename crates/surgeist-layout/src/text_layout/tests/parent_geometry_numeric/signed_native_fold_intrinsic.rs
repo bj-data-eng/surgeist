@@ -1,40 +1,38 @@
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation};
 
 fn intrinsic_fold_batch<S: LayoutScalar>(
     tree: &PublicLayoutTreeOf<S>,
-    available: crate::AxisSizingRequestOf<S>,
+    available: AxisSizingRequestOf<S>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let input = LayoutFlowInput::try_new(tree, 0, Vec::new(), wrapping(true), Vec::new()).unwrap();
     compute_layout_with_flow(&input, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((input).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((input).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
             available,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -81,7 +79,7 @@ fn intrinsic_fold_geometry<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, 
     }
 }
 
-fn intrinsic_fold_lane<S: LayoutScalar>(margin: S, available: crate::AxisSizingRequestOf<S>) {
+fn intrinsic_fold_lane<S: LayoutScalar>(margin: S, available: AxisSizingRequestOf<S>) {
     let ten = S::from_f64(10.0);
     assert_ne!(margin + ten, margin);
     assert_ne!(-margin + ten, -margin);
@@ -93,10 +91,7 @@ fn intrinsic_fold_lane<S: LayoutScalar>(margin: S, available: crate::AxisSizingR
     tree = tree.style(0, root);
     let prior = intrinsic_fold_batch(
         &tree,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
     );
     intrinsic_fold_geometry(&prior, margin);
     let mut root = tree.node_input(0).clone();
@@ -115,10 +110,7 @@ fn intrinsic_fold_lane<S: LayoutScalar>(margin: S, available: crate::AxisSizingR
 fn min_content_uses_actual_reordered_signed_native_flow_f32() {
     intrinsic_fold_lane::<f32>(
         33_554_432.0,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
     );
 }
 
@@ -126,10 +118,7 @@ fn min_content_uses_actual_reordered_signed_native_flow_f32() {
 fn min_content_uses_actual_reordered_signed_native_flow_f64() {
     intrinsic_fold_lane::<f64>(
         18_014_398_509_481_984.0,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
     );
 }
 
@@ -137,10 +126,7 @@ fn min_content_uses_actual_reordered_signed_native_flow_f64() {
 fn max_content_uses_actual_reordered_signed_native_flow_f32() {
     intrinsic_fold_lane::<f32>(
         33_554_432.0,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
     );
 }
 
@@ -148,9 +134,6 @@ fn max_content_uses_actual_reordered_signed_native_flow_f32() {
 fn max_content_uses_actual_reordered_signed_native_flow_f64() {
     intrinsic_fold_lane::<f64>(
         18_014_398_509_481_984.0,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
     );
 }

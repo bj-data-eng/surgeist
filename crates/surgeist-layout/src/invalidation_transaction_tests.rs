@@ -2,7 +2,25 @@ use crate::test_support::readback::{self, Phase};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
-use crate::*;
+use crate::{
+    block_fragmentation::{input::LayoutPublicationTargets, publication::LayoutBatchApplyError},
+    cache::{Cache, CacheKeyContext},
+    engine::{compute_layout, compute_layout_invalidated},
+    error::{LayoutErrorKind, LayoutErrorSite, LayoutInvalidInput, LayoutOperation},
+    geometry::{FlowAxes, Point, Size},
+    measurement::LeafMeasureInput,
+    node_input::{Direction, NodeInput, WritingMode},
+    output::{
+        CompletedLayoutBatch, ComputeInput, ComputeOutput, ContainingLayoutContext,
+        InlineFragmentOutput, InlineFragmentOutputEntry, InlineFragmentOwner,
+        LayoutCacheClearEntry, LayoutCacheStoreEntry, LayoutOutputEntry, LayoutRootRequest,
+        NodeOutput, ParentFormattingContext,
+    },
+    scalar::DefaultScalar,
+    scroll::ScrollRect,
+    tree::{LayoutBatchSink, LayoutTree, Traverse},
+    value::{AvailableSpaceOf, AxisSizingRequest, NonNegativeFiniteOf, SizingOperation},
+};
 
 #[derive(Clone, Debug, Default)]
 struct InvalidationTree {
@@ -109,8 +127,8 @@ impl LayoutTree for InvalidationTree {
         &self.styles[&node]
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputView<'_> {
-        crate::LayoutInputViewOf::Box(&self.styles[&node])
+    fn layout_input(&self, node: Self::Node) -> crate::node_input::LayoutInputView<'_> {
+        crate::node_input::LayoutInputViewOf::Box(&self.styles[&node])
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
@@ -149,34 +167,34 @@ fn invalidation_request() -> LayoutRootRequest {
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::new(
             Some(
-                crate::NonNegativeFiniteOf::new(200.0)
+                NonNegativeFiniteOf::new(200.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
             Some(
-                crate::NonNegativeFiniteOf::new(120.0)
+                NonNegativeFiniteOf::new(120.0)
                     .expect("declared fixture extent is finite and nonnegative"),
             ),
         ),
-        crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Unknown,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        crate::value::OrthogonalFallbackOf::new(
+            Size::NONE,
+            crate::value::NearestScrollportOf::Unknown,
+            Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
         ),
     )
     .request(Size::new(
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(200.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                NonNegativeFiniteOf::new(200.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(120.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                NonNegativeFiniteOf::new(120.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
     ))
 }
@@ -444,7 +462,7 @@ enum Mutation {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 struct TransactionSink {
-    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
+    pub(super) publication_targets: LayoutPublicationTargets<u32>,
     fail_preparation: bool,
     unrounded: Vec<LayoutOutputEntry<u32>>,
     final_layout: Vec<LayoutOutputEntry<u32>>,
@@ -456,10 +474,10 @@ struct TransactionSink {
 }
 
 impl LayoutBatchSink<u32, DefaultScalar> for TransactionSink {
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
 
@@ -468,7 +486,11 @@ impl LayoutBatchSink<u32, DefaultScalar> for TransactionSink {
 
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, DefaultScalar>,
+        preparation: crate::block_fragmentation::publication::LayoutBatchPreparation<
+            '_,
+            u32,
+            DefaultScalar,
+        >,
     ) -> Result<Self::Prepared, Self::Error> {
         let batch = preparation.batch();
         if self.fail_preparation {
@@ -486,7 +508,12 @@ impl LayoutBatchSink<u32, DefaultScalar> for TransactionSink {
 
     fn commit_layout_batch(
         &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, DefaultScalar, Self::Prepared>,
+        commit: crate::block_fragmentation::publication::LayoutBatchCommit<
+            '_,
+            u32,
+            DefaultScalar,
+            Self::Prepared,
+        >,
     ) {
         let prepared = commit.into_prepared();
         self.unrounded.clear();
@@ -507,7 +534,7 @@ impl LayoutBatchSink<u32, DefaultScalar> for TransactionSink {
         }
         self.unrounded_fragments.clear();
         for entry in prepared.unrounded_fragments {
-            let crate::InlineFragmentOwner::Node(node) = *entry.owner() else {
+            let InlineFragmentOwner::Node(node) = *entry.owner() else {
                 panic!("transaction fixture uses node ownership")
             };
             self.unrounded_fragments.push(entry);
@@ -517,7 +544,7 @@ impl LayoutBatchSink<u32, DefaultScalar> for TransactionSink {
         }
         self.final_fragments.clear();
         for entry in prepared.final_fragments {
-            let crate::InlineFragmentOwner::Node(node) = *entry.owner() else {
+            let InlineFragmentOwner::Node(node) = *entry.owner() else {
                 panic!("transaction fixture uses node ownership")
             };
             self.final_fragments.push(entry);
@@ -554,18 +581,18 @@ fn transaction_batch() -> CompletedLayoutBatch<u32> {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        crate::SizingRequestOf::new(
-            Size::splat(crate::AxisSizingRequest::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(100.0)
+        crate::value::SizingRequestOf::new(
+            Size::splat(AxisSizingRequest::new(
+                AvailableSpaceOf::Definite(
+                    NonNegativeFiniteOf::new(100.0)
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             )),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            crate::value::OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::value::NearestScrollportOf::Unknown,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
             ),
         ),
     );
@@ -586,11 +613,11 @@ fn transaction_batch() -> CompletedLayoutBatch<u32> {
                 NodeOutput::new(),
             )],
             unrounded_inline: vec![InlineFragmentOutputEntry::new(
-                crate::InlineFragmentOwner::Node(1),
+                InlineFragmentOwner::Node(1),
                 fragment.clone(),
             )],
             final_inline: vec![InlineFragmentOutputEntry::new(
-                crate::InlineFragmentOwner::Node(1),
+                InlineFragmentOwner::Node(1),
                 fragment,
             )],
             stores: vec![
@@ -617,7 +644,7 @@ fn apply_and_release_dirty(
     batch: &CompletedLayoutBatch<u32>,
     sink: &mut TransactionSink,
     dirty: &mut Vec<u32>,
-) -> Result<(), crate::LayoutBatchApplyError<&'static str>> {
+) -> Result<(), LayoutBatchApplyError<&'static str>> {
     batch.apply_to(sink)?;
     dirty.clear();
     Ok(())
@@ -627,7 +654,7 @@ fn apply_and_release_dirty(
 fn fri06_c01_batch_transaction_preparation_failure_mutates_nothing_and_keeps_dirty() {
     let batch = transaction_batch();
     let mut sink = TransactionSink {
-        publication_targets: crate::LayoutPublicationTargets::new(),
+        publication_targets: LayoutPublicationTargets::new(),
         fail_preparation: true,
         unrounded: vec![crate::test_support::layout_tree::ordinary_unrounded_box(
             90,
@@ -643,7 +670,7 @@ fn fri06_c01_batch_transaction_preparation_failure_mutates_nothing_and_keeps_dir
 
     assert_eq!(
         error,
-        crate::LayoutBatchApplyError::Preparation("immutable preparation failed")
+        LayoutBatchApplyError::Preparation("immutable preparation failed")
     );
     assert_eq!(sink, before);
     assert!(sink.mutations.borrow().is_empty());
@@ -654,7 +681,7 @@ fn fri06_c01_batch_transaction_preparation_failure_mutates_nothing_and_keeps_dir
 fn fri06_c01_batch_transaction_successful_preparation_uses_no_interior_mutation() {
     let batch = transaction_batch();
     let mut sink = TransactionSink {
-        publication_targets: crate::LayoutPublicationTargets::new(),
+        publication_targets: LayoutPublicationTargets::new(),
         unrounded: vec![crate::test_support::layout_tree::ordinary_unrounded_box(
             90,
             NodeOutput::new(),
@@ -672,15 +699,19 @@ fn fri06_c01_batch_transaction_successful_preparation_uses_no_interior_mutation(
     impl LayoutBatchSink<u32, DefaultScalar> for PreparationObserver<'_> {
         type Error = &'static str;
         type Prepared = PreparedReplacement;
-        fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        fn publication_targets(&self) -> &LayoutPublicationTargets<u32> {
             self.inner.publication_targets()
         }
-        fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        fn publication_targets_mut(&mut self) -> &mut LayoutPublicationTargets<u32> {
             self.inner.publication_targets_mut()
         }
         fn prepare_layout_batch(
             &self,
-            preparation: crate::LayoutBatchPreparation<'_, u32, DefaultScalar>,
+            preparation: crate::block_fragmentation::publication::LayoutBatchPreparation<
+                '_,
+                u32,
+                DefaultScalar,
+            >,
         ) -> Result<Self::Prepared, Self::Error> {
             let prepared = self.inner.prepare_layout_batch(preparation)?;
             assert_eq!(*self.inner, self.before);
@@ -708,7 +739,12 @@ fn fri06_c01_batch_transaction_successful_preparation_uses_no_interior_mutation(
         }
         fn commit_layout_batch(
             &mut self,
-            _commit: crate::LayoutBatchCommit<'_, u32, DefaultScalar, Self::Prepared>,
+            _commit: crate::block_fragmentation::publication::LayoutBatchCommit<
+                '_,
+                u32,
+                DefaultScalar,
+                Self::Prepared,
+            >,
         ) {
             panic!("preparation observation deliberately refuses before commit");
         }
@@ -721,7 +757,7 @@ fn fri06_c01_batch_transaction_successful_preparation_uses_no_interior_mutation(
     };
     assert_eq!(
         batch.apply_to(&mut observer),
-        Err(crate::LayoutBatchApplyError::Preparation(
+        Err(LayoutBatchApplyError::Preparation(
             "observed successful immutable preparation"
         ))
     );

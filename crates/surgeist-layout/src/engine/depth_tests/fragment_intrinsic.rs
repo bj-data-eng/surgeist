@@ -1,6 +1,10 @@
 use super::scoped_flex::{boxes, scoped_layout};
 use super::*;
-use crate::{Edges, LengthOf, Point, PreferredSizeOf};
+use crate::{
+    geometry::{Edges, Point},
+    sizing::PreferredSizeOf,
+    value::LengthOf,
+};
 
 /// A chain of same-axis Block containers under one block-fragmentation
 /// request. Node 0 is the 60px-wide root and node `depth` is the leaf, a

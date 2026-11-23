@@ -1,5 +1,8 @@
-use super::super::{DefaultScalar, LayoutScalar, NonNegativeFiniteScalarErrorOf};
 use super::validate_numeric_property;
+use crate::{
+    scalar::{DefaultScalar, LayoutScalar},
+    value::NonNegativeFiniteScalarErrorOf,
+};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum FlexWrap {

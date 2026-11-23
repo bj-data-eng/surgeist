@@ -99,7 +99,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> PrefixDriver<Node, S> {
                 Progress::Descend(node, input, reporting_side) => {
                     case_work(self.funding.as_ref(), node, 1)?;
                     let raw = tree.node_input(node);
-                    let own = crate::FlowAxes::new(raw.writing_mode, raw.direction);
+                    let own = crate::geometry::FlowAxes::new(raw.writing_mode, raw.direction);
                     if tree.has_leaf_measurement(node) {
                         if self.query.purpose.needs_frame() {
                             return Ok(self.suspend(
@@ -113,7 +113,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> PrefixDriver<Node, S> {
                             start: CollapsibleMarginOf::ZERO,
                             through: Through::Unknown,
                         }
-                    } else if raw.display.inner_display() != crate::Display::Block
+                    } else if raw.display.inner_display() != crate::node_input::Display::Block
                         || own.block_axis() != reporting_side.axis()
                     {
                         Prefix {
@@ -476,8 +476,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
             case_work(self.driver.funding.as_ref(), self.node, 1)?;
             let node = frame.children[frame.next];
             frame.next += 1;
-            if let crate::LayoutInputViewOf::Box(style) = tree.layout_input(node)
-                && style.display != crate::Display::None
+            if let crate::node_input::LayoutInputViewOf::Box(style) = tree.layout_input(node)
+                && style.display != crate::node_input::Display::None
                 && style.position != Position::Absolute
                 && !style.float.is_none()
             {
@@ -596,7 +596,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
         case_work(self.driver.funding.as_ref(), self.node, 1)?;
         let output = tree.measure_entry_leaf(self.node, self.input)?;
         let own = tree.node_input(self.node);
-        let axes = crate::FlowAxes::new(own.writing_mode, own.direction);
+        let axes = crate::geometry::FlowAxes::new(own.writing_mode, own.direction);
         let start = output.block_margin_collapse.at(self.reporting_side);
         let through = if axes.block_axis() == self.reporting_side.axis()
             && output.block_margin_collapse.can_collapse_through(axes)

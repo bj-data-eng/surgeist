@@ -69,7 +69,7 @@ fn margin_window_with_entry<S: LayoutScalar>(capped: bool, prefix: f64, margin: 
         LayoutSourceBasis::fresh(),
         request,
         FragmentationKind::Page {
-            progression: crate::PageProgression::LeftToRight,
+            progression: crate::fragmentation::page::PageProgression::LeftToRight,
         },
         axes,
         frames.clone(),
@@ -96,7 +96,7 @@ fn margin_window_with_entry<S: LayoutScalar>(capped: bool, prefix: f64, margin: 
         frames: &frames,
         axes,
         kind: FragmentationKind::Page {
-            progression: crate::PageProgression::LeftToRight,
+            progression: crate::fragmentation::page::PageProgression::LeftToRight,
         },
         target: bound.target_basis(),
         template: request,

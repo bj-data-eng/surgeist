@@ -1,15 +1,16 @@
 //! Authentic entry summaries and the resident authority needed to resume them.
 use super::*;
 use crate::block::entry::canonical::{EntryPosition, Separation};
+use crate::node_input::NodeInputOf;
 use std::convert::Infallible;
 use std::sync::Arc;
 
-fn float_style<S: LayoutScalar>(height: f64) -> crate::NodeInputOf<S> {
-    crate::NodeInputOf {
-        float: crate::Float::Left,
+fn float_style<S: LayoutScalar>(height: f64) -> NodeInputOf<S> {
+    NodeInputOf {
+        float: crate::node_input::Float::Left,
         size: Size::new(
-            crate::PreferredSizeOf::px(S::from_f64(20.0)),
-            crate::PreferredSizeOf::px(S::from_f64(height)),
+            crate::sizing::PreferredSizeOf::px(S::from_f64(20.0)),
+            crate::sizing::PreferredSizeOf::px(S::from_f64(height)),
         ),
         ..block(0.0, 0.0, None)
     }
@@ -33,8 +34,8 @@ fn scene<S: LayoutScalar>(local_float: bool, target: u32) -> PublicLayoutTreeOf<
         .style(1, float_style(if local_float { 5.0 } else { 10.0 }))
         .style(
             target,
-            crate::NodeInputOf {
-                clear: crate::Clear::Left,
+            NodeInputOf {
+                clear: crate::node_input::Clear::Left,
                 ..block(10.0, 0.0, Some(10.0))
             },
         )
@@ -67,7 +68,7 @@ fn receiving_frame<S: LayoutScalar>(
                 inner_size: constants.node_inner_size,
                 request: constants.sizing_request,
                 run_mode: RunMode::ComputeSize,
-                axis: crate::RequestedAxis::Both,
+                axis: crate::output::RequestedAxis::Both,
                 first_in_flow: &mut first,
             },
         )
@@ -144,12 +145,17 @@ fn install<S: LayoutScalar>(
     *resident = resident.fork_framed(incoming);
 }
 
-fn required_basis<S: LayoutScalar>(error: &crate::LayoutErrorOf<u32, S, Infallible>) {
-    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(0));
-    assert_eq!(error.operation(), crate::LayoutOperation::ChildLayout);
+fn required_basis<S: LayoutScalar>(error: &crate::error::LayoutErrorOf<u32, S, Infallible>) {
+    assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(0));
+    assert_eq!(
+        error.operation(),
+        crate::error::LayoutOperation::ChildLayout
+    );
     assert!(matches!(
         error.kind(),
-        crate::LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis)
+        crate::error::LayoutErrorKindOf::MissingContext(
+            crate::error::LayoutMissingContext::RequiredBasis
+        )
     ));
 }
 
@@ -241,8 +247,8 @@ fn source_cut_authority<S: LayoutScalar>() {
     // A changed relevant side cannot reuse the old left-float bound.
     let wrong_side = tree.clone().style(
         2,
-        crate::NodeInputOf {
-            clear: crate::Clear::Right,
+        NodeInputOf {
+            clear: crate::node_input::Clear::Right,
             ..block(10.0, 0.0, Some(10.0))
         },
     );

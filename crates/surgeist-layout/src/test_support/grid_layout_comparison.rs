@@ -7,10 +7,22 @@ use super::oracle::grid::{
 };
 use crate::test_support::layout_tree::{OracleTree, OracleTreeOf};
 use crate::{
-    AlignContent, AlignItems, Compute, ComputeInput, ComputeOutput, ComputedOverflow, Direction,
-    Display, Edges, GridAutoFlow, GridPlacement, Length, LengthAuto, NodeInput, NodeOutput,
-    NodeOutputOf, Point, Position, PreferredSize, RequestedAxis, Round, RunMode, Size, SizingMode,
-    SubgridTrack, TrackComponent, WritingMode, compute_grid, round_layout,
+    engine::{
+        contracts::{Compute, Round},
+        round_layout,
+    },
+    geometry::{Edges, Point, Size},
+    grid::compute_grid,
+    node_input::{
+        AlignContent, AlignItems, ComputedOverflow, Direction, Display, GridAutoFlow,
+        GridLanesFlow, GridPlacement, NodeInput, Position, WritingMode,
+    },
+    output::{
+        ComputeInput, ComputeOutput, NodeOutput, NodeOutputOf, RequestedAxis, RunMode, SizingMode,
+    },
+    scalar::LayoutScalar,
+    sizing::PreferredSize,
+    value::{Length, LengthAuto, SubgridTrack, TrackComponent},
 };
 
 type Scalar = f32;
@@ -45,7 +57,7 @@ pub struct GridLayoutComparison {
     justify_content: AlignContent,
     align_content: AlignContent,
     auto_flow: GridAutoFlow,
-    lanes_flow: crate::GridLanesFlow,
+    lanes_flow: GridLanesFlow,
     expected_columns: Option<TrackSizingReport>,
     expected_rows: Option<TrackSizingReport>,
     expected_lane_placement_reports: Vec<LanePlacementReport>,
@@ -102,7 +114,7 @@ impl Default for GridLayoutComparison {
             justify_content: AlignContent::Start,
             align_content: AlignContent::Start,
             auto_flow: GridAutoFlow::Row,
-            lanes_flow: crate::GridLanesFlow::default(),
+            lanes_flow: GridLanesFlow::default(),
             expected_columns: None,
             expected_rows: None,
             expected_lane_placement_reports: Vec::new(),
@@ -161,7 +173,7 @@ impl GridLayoutComparison {
         self
     }
 
-    pub fn lanes_flow(mut self, flow: crate::GridLanesFlow) -> Self {
+    pub fn lanes_flow(mut self, flow: GridLanesFlow) -> Self {
         self.lanes_flow = flow;
         self
     }
@@ -257,22 +269,22 @@ impl GridLayoutComparison {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::new(Some(self.container.width), Some(self.container.height)),
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
-                crate::SizingRequestOf::new(
-                    Size::splat(crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::Normal,
+                crate::value::SizingRequestOf::new(
+                    Size::splat(crate::value::AxisSizingRequestOf::new(
+                        crate::value::AvailableSpaceOf::Indefinite,
+                        crate::value::SizingOperation::Normal,
                     )),
-                    crate::OrthogonalFallbackOf::new(
+                    crate::value::OrthogonalFallbackOf::new(
                         Size::new(None, None),
-                        crate::NearestScrollportOf::Unknown,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                        crate::value::NearestScrollportOf::Unknown,
+                        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
                     ),
                 ),
             ),
@@ -339,22 +351,22 @@ impl GridLayoutComparison {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::new(None, None),
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
-                crate::SizingRequestOf::new(
-                    Size::splat(crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::Normal,
+                crate::value::SizingRequestOf::new(
+                    Size::splat(crate::value::AxisSizingRequestOf::new(
+                        crate::value::AvailableSpaceOf::Indefinite,
+                        crate::value::SizingOperation::Normal,
                     )),
-                    crate::OrthogonalFallbackOf::new(
+                    crate::value::OrthogonalFallbackOf::new(
                         Size::new(None, None),
-                        crate::NearestScrollportOf::Unknown,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                        crate::value::NearestScrollportOf::Unknown,
+                        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
                     ),
                 ),
             ),
@@ -786,7 +798,7 @@ impl GridComparisonPhase {
         }
     }
 
-    fn output<S: crate::LayoutScalar>(self, tree: &OracleTreeOf<S>, node: u32) -> NodeOutputOf<S> {
+    fn output<S: LayoutScalar>(self, tree: &OracleTreeOf<S>, node: u32) -> NodeOutputOf<S> {
         match self {
             Self::Unrounded => tree
                 .layout(node)
@@ -799,7 +811,7 @@ impl GridComparisonPhase {
 }
 
 fn walk_grid_comparison_expectations(
-    tree: &OracleTreeOf<impl crate::LayoutScalar + std::fmt::Display>,
+    tree: &OracleTreeOf<impl LayoutScalar + std::fmt::Display>,
     children: &[GridLayoutNode],
     identities: &GridComparisonIdentityMap<'_>,
     phase: GridComparisonPhase,
@@ -915,7 +927,7 @@ fn assert_node_output_close(
 
 fn assert_node_output_close_of<S>(node: u32, actual: NodeOutputOf<S>, expected: ExpectedLayout)
 where
-    S: crate::LayoutScalar + std::fmt::Display,
+    S: LayoutScalar + std::fmt::Display,
 {
     assert_close_of(
         actual.location.x,
@@ -954,7 +966,7 @@ fn assert_close(actual: f32, expected: f32, label: &str) {
 
 fn assert_close_of<S>(actual: S, expected: S, label: &str)
 where
-    S: crate::LayoutScalar + std::fmt::Display,
+    S: LayoutScalar + std::fmt::Display,
 {
     let tolerance = S::from_f32(ComparisonTolerance::oracle_grid().value);
     assert!(
@@ -969,7 +981,11 @@ mod tests {
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
     use super::*;
-    use crate::{ContainingLayoutContext, LayoutScalar, ParentFormattingContext, Traverse};
+    use crate::{
+        output::{ContainingLayoutContext, ParentFormattingContext},
+        scalar::LayoutScalar,
+        tree::Traverse,
+    };
 
     fn comparison_fixture() -> GridLayoutComparison {
         GridLayoutComparison::new()
@@ -1008,15 +1024,15 @@ mod tests {
                 crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            crate::SizingRequestOf::new(
-                Size::splat(crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
+            crate::value::SizingRequestOf::new(
+                Size::splat(crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Indefinite,
+                    crate::value::SizingOperation::Normal,
                 )),
-                crate::OrthogonalFallbackOf::new(
+                crate::value::OrthogonalFallbackOf::new(
                     Size::new(None, None),
-                    crate::NearestScrollportOf::Unknown,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    crate::value::NearestScrollportOf::Unknown,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
                 ),
             ),
         )
@@ -1058,12 +1074,12 @@ mod tests {
         let final_output = output((3.0, 4.0), (19.0, 23.0));
         Round::set_final(
             &mut tree.borrow_compute(),
-            crate::LayoutOutputEntryOf::ordinary_canonical(
+            crate::output::LayoutOutputEntryOf::ordinary_canonical(
                 7,
                 crate::output::NormalGeometryOf::box_geometry(
                     final_output.location,
                     final_output.size,
-                    crate::ScrollRectOf::try_new(Point::ZERO, final_output.size).unwrap(),
+                    crate::scroll::ScrollRectOf::try_new(Point::ZERO, final_output.size).unwrap(),
                 ),
                 final_output,
             ),

@@ -4,15 +4,18 @@ use crate::sizing::resolve::{
     resolve_preferred_optional,
 };
 use crate::{
-    LayoutScalar, LengthResolutionStatus, MaxSizeOf, MinSizeOf, PreferredSizeOf, Size,
-    SizingAlgorithm,
+    error::SizingAlgorithm,
+    geometry::Size,
+    scalar::LayoutScalar,
+    sizing::{MaxSizeOf, MinSizeOf, PreferredSizeOf},
+    value::LengthResolutionStatus,
 };
 
 type BlockSizeLimits<S> = (Size<Option<S>>, Size<Option<S>>);
 
 pub(super) fn transfer_block_ratio_inline_limits<S: LayoutScalar>(
-    flow: crate::FlowAxes,
-    ratio: crate::AspectRatioOf<S>,
+    flow: crate::geometry::FlowAxes,
+    ratio: crate::value::AspectRatioOf<S>,
     min: Size<Option<S>>,
     max: Size<Option<S>>,
 ) -> Result<BlockSizeLimits<S>, LengthResolutionStatus<S>> {
@@ -139,10 +142,10 @@ impl<S: LayoutScalar> BlockOptionalSizeSubExt<S> for Size<Option<S>> {
 #[cfg(test)]
 mod characterization_tests {
     use super::*;
-    use crate::AspectRatioOf;
     use crate::layout_math::{
         MaxBeforeMinScalarClampExt, MaxBeforeMinSizeClampExt, OptionalSizeExt, OptionalSizeMaxExt,
     };
+    use crate::value::AspectRatioOf;
 
     fn characterize_optional_max<S: LayoutScalar>() {
         let scalar = S::from_f64;

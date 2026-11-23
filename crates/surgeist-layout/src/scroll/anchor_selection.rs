@@ -4,7 +4,10 @@ use core::slice;
 use std::collections::HashSet;
 
 use super::{ScrollRectOf, scroll_rect_axis_interval};
-use crate::{DefaultScalar, LayoutScalar, PhysicalAxis};
+use crate::{
+    geometry::PhysicalAxis,
+    scalar::{DefaultScalar, LayoutScalar},
+};
 
 #[cfg(test)]
 mod tests;

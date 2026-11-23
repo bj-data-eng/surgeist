@@ -1,6 +1,10 @@
 //! Explicit native convention facts supply one exact A, once on each side.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    node_input::TextWrapStyle,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation},
+};
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -209,17 +213,17 @@ fn qualify(p: &text::prepared::PreparedText, definition: Definition, consecutive
 
 fn compute<S: LayoutScalar>(
     p: &text::prepared::PreparedText,
-    available: crate::AxisSizingRequestOf<S>,
+    available: AxisSizingRequestOf<S>,
     width: Option<f64>,
 ) -> CompletedLayoutBatchOf<u32, S> {
-    compute_with_style::<S>(p, available, width, crate::TextWrapStyle::Auto)
+    compute_with_style::<S>(p, available, width, TextWrapStyle::Auto)
 }
 
 fn compute_with_style<S: LayoutScalar>(
     p: &text::prepared::PreparedText,
-    available: crate::AxisSizingRequestOf<S>,
+    available: AxisSizingRequestOf<S>,
     width: Option<f64>,
-    wrap_style: crate::TextWrapStyle,
+    wrap_style: TextWrapStyle,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let origins = p
         .origin_views()
@@ -275,7 +279,7 @@ fn compute_with_style<S: LayoutScalar>(
         );
     }
     let binding = TextParagraphBinding {
-        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+        inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: p.clone(),
         container: 0,
         nodes,
@@ -288,7 +292,7 @@ fn compute_with_style<S: LayoutScalar>(
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -299,33 +303,30 @@ fn compute_with_style<S: LayoutScalar>(
     .unwrap();
     let input = {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((captured).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((captured).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
             available,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -354,13 +355,7 @@ fn assert_lines<S: LayoutScalar>(
     consecutive: bool,
     placement: text::hyphenation::HyphenationPlacement,
 ) {
-    assert_lines_with_style::<S>(
-        p,
-        definition,
-        consecutive,
-        placement,
-        crate::TextWrapStyle::Auto,
-    );
+    assert_lines_with_style::<S>(p, definition, consecutive, placement, TextWrapStyle::Auto);
 }
 
 fn assert_lines_with_style<S: LayoutScalar>(
@@ -368,18 +363,18 @@ fn assert_lines_with_style<S: LayoutScalar>(
     definition: Definition,
     consecutive: bool,
     placement: text::hyphenation::HyphenationPlacement,
-    wrap_style: crate::TextWrapStyle,
+    wrap_style: TextWrapStyle,
 ) {
     let source = original(definition, consecutive)
         .encode_utf16()
         .collect::<Vec<_>>();
     let batch = compute_with_style::<S>(
         p,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
         Some(40.0),
         wrap_style,
@@ -532,17 +527,11 @@ fn assert_intrinsics<S: LayoutScalar>(
 ) {
     for (available, expected) in [
         (
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
             minimum,
         ),
         (
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             maximum,
         ),
     ] {
@@ -553,12 +542,12 @@ fn assert_intrinsics<S: LayoutScalar>(
 }
 
 fn assert_outgoing_counter_once(p: &text::prepared::PreparedText) {
-    assert_outgoing_counter_once_with_style(p, crate::TextWrapStyle::Auto);
+    assert_outgoing_counter_once_with_style(p, TextWrapStyle::Auto);
 }
 
 fn assert_outgoing_counter_once_with_style(
     p: &text::prepared::PreparedText,
-    wrap_style: crate::TextWrapStyle,
+    wrap_style: TextWrapStyle,
 ) {
     // Exercise the actual private fitter's committed state, not a duplicated
     // counter fold over public output. No floats/atomics/struts are authored.
@@ -592,15 +581,15 @@ fn assert_outgoing_counter_once_with_style(
             wrapping: None,
             formatted: &super::super::formatted::FormattedTailSnapshot::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
-                crate::LineBoxDirectionPolicy::Normal,
+                crate::node_input::LineBoxDirectionPolicy::Normal,
                 Direction::Ltr,
             ),
             prepared: p,
             segment: p.source_segments().next().unwrap(),
             scope_alignments: &scope_alignments,
-            available: crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
-                crate::SizingOperation::Normal,
+            available: AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::value::NonNegativeFiniteOf::new(40.0).unwrap()),
+                SizingOperation::Normal,
             ),
             base_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
             block_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
@@ -764,10 +753,10 @@ fn check_pretty<S: LayoutScalar>() {
                 definition,
                 consecutive,
                 text::hyphenation::HyphenationPlacement::BothSides,
-                crate::TextWrapStyle::Pretty,
+                TextWrapStyle::Pretty,
             );
             if consecutive {
-                assert_outgoing_counter_once_with_style(&p, crate::TextWrapStyle::Pretty);
+                assert_outgoing_counter_once_with_style(&p, TextWrapStyle::Pretty);
             }
         }
     }

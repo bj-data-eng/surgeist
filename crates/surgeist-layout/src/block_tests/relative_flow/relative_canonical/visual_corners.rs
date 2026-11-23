@@ -95,7 +95,7 @@ fn actual_visual_corners_preserve_normal_receipt<S: LayoutScalar>() {
             let following = batch
                 .unrounded_inline_fragments()
                 .iter()
-                .find(|entry| *entry.owner() == crate::InlineFragmentOwner::Node(3))
+                .find(|entry| *entry.owner() == crate::output::InlineFragmentOwner::Node(3))
                 .unwrap()
                 .fragment()
                 .rect()

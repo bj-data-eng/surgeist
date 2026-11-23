@@ -1,5 +1,25 @@
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
-use crate::*;
+use crate::{
+    block_fragmentation::NodeLayoutRefOf,
+    engine::{compute_layout, measure_definite_inline_atomic_size},
+    error::{
+        LayoutErrorKindOf, LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutMissingContext,
+        LayoutOperation, LayoutUnsupportedCapability,
+    },
+    geometry::{Edges, FlowAxes, Size},
+    node_input::{
+        AtomicInlineParticipation, BoxSizing, Direction, Display, InlineBreakOpportunity,
+        NodeInputOf, Position, WritingMode,
+    },
+    output::{LayoutRootRequestOf, RootLocalPositionedContextOf},
+    scalar::LayoutScalar,
+    sizing::{MaxSizeOf, PreferredSizeOf},
+    value::{
+        LengthOf, NearestScrollportOf, NonNegativeFiniteOf, OrthogonalFallbackLimitOf,
+        OrthogonalFallbackOf,
+    },
+};
+use surgeist_text::supplied_line::BidiLevel;
 
 const CONTAINER: u32 = 0;
 const ATOMIC: u32 = 2;
@@ -138,9 +158,9 @@ fn definite_inline_atomic_uses_the_content_box_basis_and_production_child_constr
             let child = composition
                 .node_layout(ATOMIC)
                 .map(|layout| match layout {
-                    crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-                    crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                    crate::NodeLayoutRefOf::Fragments(_) => {
+                    NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                    NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                    NodeLayoutRefOf::Fragments(_) => {
                         panic!("continuous fixture unexpectedly fragmented")
                     }
                 })
@@ -356,9 +376,9 @@ fn assert_fractional_border_extent_agrees_with_composition<S: LayoutScalar>(half
     let child = composition
         .node_layout(ATOMIC)
         .map(|layout| match layout {
-            crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-            crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-            crate::NodeLayoutRefOf::Fragments(_) => {
+            NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+            NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+            NodeLayoutRefOf::Fragments(_) => {
                 panic!("continuous fixture unexpectedly fragmented")
             }
         })

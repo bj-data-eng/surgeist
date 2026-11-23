@@ -9,15 +9,6 @@ use super::inline::{
     layout_mixed_inline_run_with_formatted_observation,
 };
 use super::value::{ResolvedLengthAutoOf, UnresolvedLengthReason};
-use super::{
-    BoxSizing, Clear, CollapsibleMarginOf, Compute, ComputeInputOf, ComputeOutputOf,
-    ContainingLayoutContext, Direction, Edges, InlineBoundaryInputOf, InlineFragmentOutputOf,
-    LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation,
-    LayoutResultOf, LayoutScalar, LengthAutoOf, LineBreakInputOf, NodeOutputOf, Overflow,
-    ParentFormattingContext, PhysicalBlockMarginCollapseOf, Point, Position, RequestedAxis,
-    RunMode, Size, SizingAlgorithm, SizingMode, TextAlign, TextAlignLast, TextJustification,
-    Traverse, VerticalAlignOf,
-};
 use crate::engine::containment::{
     compute_empty_box, contained_outer_size, empty_sizing_input, size_containment,
 };
@@ -32,9 +23,33 @@ use crate::layout_math::{
 use crate::output::MeasuredInsetBasisOf;
 use crate::scroll::{CanonicalScrollBoxSourceOf, UsedOverflow, canonical_scroll_box_from_source};
 use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
+use crate::{
+    engine::contracts::Compute,
+    error::{
+        LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation,
+        LayoutResultOf, SizingAlgorithm,
+    },
+    geometry::{Edges, Point, Size},
+    node_input::{
+        BlockGeneration, BoxSizing, Clear, Direction, InlineBoundaryInputOf, LineBreakInputOf,
+        Overflow, Position, SizeContainment, TextAlign, TextAlignLast, TextJustification,
+        VerticalAlignOf,
+    },
+    output::{
+        CollapsibleMarginOf, ComputeInputOf, ComputeOutputOf, ContainingLayoutContext,
+        InlineFragmentOutputOf, NamedBaselinesOf, NodeOutputOf, ParentFormattingContext,
+        PhysicalBlockMarginCollapseOf, RequestedAxis, RunMode, SizingMode,
+    },
+    scalar::LayoutScalar,
+    tree::Traverse,
+    value::{LengthAutoOf, SizingOperation},
+};
 
 #[cfg(test)]
-use super::{LengthOf, NodeInputOf, WritingMode};
+use crate::{
+    node_input::{NodeInputOf, WritingMode},
+    value::LengthOf,
+};
 
 mod absolute;
 pub(crate) mod baseline_frame;
@@ -104,7 +119,7 @@ where
                 subject: atomic,
             },
             LayoutOperation::RootLayout,
-            LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis),
+            LayoutErrorKindOf::MissingContext(crate::error::LayoutMissingContext::RequiredBasis),
         ));
     };
     let inner_inline = constants.accepted_inline_inner(container, outer_inline)?;
@@ -349,14 +364,14 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockComputation<'input, Node, S>
 /// Actual empty-box sizing supplied by the containment owner. Scalar demand
 /// and canonical preparation consume the same authority as Normal Block layout.
 struct ContainmentSizing<S: LayoutScalar> {
-    kind: crate::SizeContainment,
+    kind: SizeContainment,
     empty: ComputeOutputOf<S>,
     outer: Size<Option<S>>,
 }
 
 fn containment_sizing<'input, Node, S, M>(
     node: Node,
-    style: &'input crate::NodeInputOf<S>,
+    style: &'input crate::node_input::NodeInputOf<S>,
     input: ComputeInputOf<S>,
     minimum: Option<fragment_minimum::Override<S>>,
 ) -> LayoutResultOf<Node, Option<ContainmentSizing<S>>, S, M>
@@ -365,7 +380,7 @@ where
     S: LayoutScalar,
 {
     let kind = size_containment(style);
-    if kind == crate::SizeContainment::None {
+    if kind == SizeContainment::None {
         return Ok(None);
     }
     let empty = compute_empty_box(node, style, |probe| {
@@ -379,7 +394,7 @@ where
         ))
     })?
     .output;
-    let axes = crate::FlowAxes::new(style.writing_mode, style.direction);
+    let axes = crate::geometry::FlowAxes::new(style.writing_mode, style.direction);
     Ok(Some(ContainmentSizing {
         kind,
         outer: contained_outer_size(kind, axes, empty.size),
@@ -420,15 +435,16 @@ where
     let contained_size = if let Some(containment) =
         containment_sizing(node, group_style, input, tree.fragment_minimum(node))?
     {
-        let flow_axes = crate::FlowAxes::new(group_style.writing_mode, group_style.direction);
+        let flow_axes =
+            crate::geometry::FlowAxes::new(group_style.writing_mode, group_style.direction);
         let shared_normal_flow = float_context::Role::for_input(group_style, input)
             == float_context::Role::Shared
             && flow_axes
                 .logical_size(input.sizing_request().axes())
                 .inline
                 .operation()
-                == crate::SizingOperation::Normal;
-        if containment.kind == crate::SizeContainment::BothAxes
+                == SizingOperation::Normal;
+        if containment.kind == SizeContainment::BothAxes
             && !input.run_mode().is_perform_layout()
             && inherited.is_none()
             && !shared_normal_flow
@@ -443,7 +459,7 @@ where
     } else {
         Size::NONE
     };
-    let anonymous = group_style.block_generation == crate::BlockGeneration::Anonymous;
+    let anonymous = group_style.block_generation == BlockGeneration::Anonymous;
     if let Some(groups) = tree.group_computation() {
         groups.begin(node, input, group_style);
     }
@@ -650,7 +666,7 @@ where
                 &style,
                 &constants,
                 ComputeOutputOf::<S>::from_outer_size(Size::new(width, height)),
-                crate::NamedBaselinesOf::absent(),
+                NamedBaselinesOf::absent(),
             )?,
             used: input,
             floats: None,
@@ -675,7 +691,7 @@ where
                 &style,
                 &constants,
                 ComputeOutputOf::<S>::from_outer_size(Size::new(width, height)),
-                crate::NamedBaselinesOf::unknown(),
+                NamedBaselinesOf::unknown(),
             )?,
             used: input,
             floats: None,
@@ -1010,7 +1026,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockFlow<'input, Node, S> {
             &constants,
             input,
             InFlowPassContext {
-                inline_operation: crate::SizingOperation::Normal,
+                inline_operation: SizingOperation::Normal,
                 inner_inline: Some(inner_inline),
                 set_layout,
                 inherited,
@@ -1052,7 +1068,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> BlockFlow<'input, Node, S> {
             &constants,
             self.input,
             InFlowPassContext {
-                inline_operation: crate::SizingOperation::Normal,
+                inline_operation: SizingOperation::Normal,
                 inner_inline: logical_inner_size.inline,
                 set_layout: self.input.run_mode().is_perform_layout(),
                 inherited,
@@ -1193,7 +1209,7 @@ impl<S: LayoutScalar> BlockFlowSizing<S> {
         let ratio_block_outer = if constants.ratio_dependent_block
             && definite_child_inner.block.is_none()
             && normal_block_fill
-            && inherited_inline_request.operation() == crate::SizingOperation::Normal
+            && inherited_inline_request.operation() == SizingOperation::Normal
             && (logical_inner_size.inline.is_some()
                 || inherited_inline_request.space().definite_size().is_some())
         {
@@ -1214,7 +1230,7 @@ impl<S: LayoutScalar> BlockFlowSizing<S> {
             {
                 return Err(crate::error::sizing_resolution_error(
                     node,
-                    crate::LengthResolutionStatus::InvalidNumeric { value: block }.into(),
+                    crate::value::LengthResolutionStatus::InvalidNumeric { value: block }.into(),
                 )
                 .into());
             }
@@ -1266,7 +1282,7 @@ impl<S: LayoutScalar> BlockFlowSizing<S> {
                 || input.run_mode().is_perform_layout() && ratio_needs_content_minimum
                 || constants
                     .flow_axes
-                    .logical_axis_progression(crate::LogicalAxis::Block)
+                    .logical_axis_progression(crate::geometry::LogicalAxis::Block)
                     .is_decreasing()
                     && logical_inner_size.block.is_none());
         crate::layout_math::checked_available_space(accepted_inline_inner)
@@ -1388,8 +1404,8 @@ type PreparedFlow<Node, S> = ControlFlow<BlockResult<Node, S>, PositionedFlow<No
 
 struct PositionedFlow<Node, S: LayoutScalar> {
     output_size: Size<S>,
-    baselines: crate::BaselinesOf<S>,
-    named_baselines: crate::NamedBaselinesOf<S>,
+    baselines: crate::output::BaselinesOf<S>,
+    named_baselines: NamedBaselinesOf<S>,
     block_margin_collapse: PhysicalBlockMarginCollapseOf<S>,
     contributions: scroll::BlockScrollContributions<S>,
     static_positions: Vec<(Node, StaticPositionOf<S>)>,
@@ -1632,14 +1648,14 @@ struct Constants<S: LayoutScalar> {
     node_min_size: Size<Option<S>>,
     node_max_size: Size<Option<S>>,
     direction: Direction,
-    line_box_direction_policy: crate::LineBoxDirectionPolicy,
-    inline_baseline_context: crate::InlineBaselineContext,
-    text_indent: crate::TextIndentOf<S>,
-    hyphenate_limit_lines: crate::HyphenateLimitLines,
-    hyphenate_limit_last: crate::HyphenateLimitLast,
-    hyphenate_limit_zone: crate::LengthPercentageOf<S>,
+    line_box_direction_policy: crate::node_input::LineBoxDirectionPolicy,
+    inline_baseline_context: crate::node_input::InlineBaselineContext,
+    text_indent: crate::node_input::TextIndentOf<S>,
+    hyphenate_limit_lines: crate::hyphenation::HyphenateLimitLines,
+    hyphenate_limit_last: crate::hyphenation::HyphenateLimitLast,
+    hyphenate_limit_zone: crate::value::LengthPercentageOf<S>,
     first_formatted: bool,
-    wrap_style: crate::TextWrapStyle,
+    wrap_style: crate::node_input::TextWrapStyle,
     text_align: TextAlign,
     text_align_last: TextAlignLast,
     text_justification: TextJustification,
@@ -1649,8 +1665,8 @@ struct Constants<S: LayoutScalar> {
     padding_border_size: Size<S>,
     scrollbar_gutter: Edges<S>,
     content_box_inset: Edges<S>,
-    sizing_request: crate::SizingRequestOf<S>,
-    positioned_fallback_limits: Size<crate::OrthogonalFallbackLimitOf<S>>,
+    sizing_request: crate::value::SizingRequestOf<S>,
+    positioned_fallback_limits: Size<crate::value::OrthogonalFallbackLimitOf<S>>,
     settled_auto_scrollbars: crate::scroll::SettledAutoScrollbarState,
     own_top_margin: CollapsibleMarginOf<S>,
     own_bottom_margin: CollapsibleMarginOf<S>,
@@ -1859,7 +1875,7 @@ impl<S: LayoutScalar> Constants<S> {
                     matches!(
                         input.parent_formatting_context(),
                         ParentFormattingContext::BlockFlow | ParentFormattingContext::NoParent
-                    ) && inline_request.operation() == crate::SizingOperation::Normal
+                    ) && inline_request.operation() == SizingOperation::Normal
                         && (flow_axes.logical_size(input.known()).inline.is_some()
                             || inline_request.space().definite_size().is_some())
                 });
@@ -1903,7 +1919,7 @@ impl<S: LayoutScalar> Constants<S> {
             &style.common,
             input.containing_flow_axes().writing_mode(),
         );
-        let is_margin_collapsing_block = style.display == super::Display::Block;
+        let is_margin_collapsing_block = style.display == crate::node_input::Display::Block;
         let ratio_dependent_block = input.sizing_mode() == SizingMode::InherentSize
             && automatic_block_depends_on_ratio(&style.common);
         let can_collapse_through = is_margin_collapsing_block
@@ -1931,7 +1947,7 @@ impl<S: LayoutScalar> Constants<S> {
                 request
                     .space()
                     .definite_size()
-                    .map(crate::NonNegativeFiniteOf::get)
+                    .map(crate::value::NonNegativeFiniteOf::get)
             }))
             .or(max_size)
             .unwrap_or(unconstrained_scroll_box_size)
@@ -2019,23 +2035,23 @@ impl<S: LayoutScalar> Constants<S> {
         let logical_margin = flow_axes.logical_edges(margin);
 
         let first_formatted = match style.block_generation {
-            crate::BlockGeneration::Principal => true,
-            crate::BlockGeneration::Anonymous => {
+            BlockGeneration::Principal => true,
+            BlockGeneration::Anonymous => {
                 let context = input.block_indent_context().ok_or_else(|| {
-                    crate::LayoutErrorOf::new(
-                        crate::LayoutErrorSiteOf::Node(node),
-                        crate::LayoutOperation::ChildLayout,
-                        crate::LayoutErrorKindOf::MissingContext(
-                            crate::LayoutMissingContext::AnonymousGeneratingBlock,
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::MissingContext(
+                            crate::error::LayoutMissingContext::AnonymousGeneratingBlock,
                         ),
                     )
                 })?;
                 if context.inherited != style.text_indent {
-                    return Err(crate::LayoutErrorOf::new(
-                        crate::LayoutErrorSiteOf::Node(node),
-                        crate::LayoutOperation::ChildLayout,
-                        crate::LayoutErrorKindOf::InvalidInput(
-                            crate::LayoutInvalidInputOf::AnonymousIndentMismatch,
+                    return Err(LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::InvalidInput(
+                            crate::error::LayoutInvalidInputOf::AnonymousIndentMismatch,
                         ),
                     ));
                 }
@@ -2133,7 +2149,7 @@ fn block_baseline_output<Node: Copy, S: LayoutScalar, M>(
     style: &BlockContainerProjection<'_, S>,
     constants: &Constants<S>,
     mut output: ComputeOutputOf<S>,
-    mut facts: crate::NamedBaselinesOf<S>,
+    mut facts: NamedBaselinesOf<S>,
 ) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M> {
     let used = crate::scroll::UsedOverflow::from_computed(
         style.common.overflow,
@@ -2144,11 +2160,11 @@ fn block_baseline_output<Node: Copy, S: LayoutScalar, M>(
     }
     let size = output.size;
     let mut baselines = output.baselines();
-    let numeric_error = |crate::FiniteScalarErrorOf::NonFinite { value }| {
-        crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(node),
-            crate::LayoutOperation::ChildLayout,
-            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::InvalidNumeric {
+    let numeric_error = |crate::value::FiniteScalarErrorOf::NonFinite { value }| {
+        LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::ChildLayout,
+            LayoutErrorKindOf::InvalidInput(crate::error::LayoutInvalidInputOf::InvalidNumeric {
                 value,
             }),
         )
@@ -2156,32 +2172,34 @@ fn block_baseline_output<Node: Copy, S: LayoutScalar, M>(
     // Positional facts already use Layout's canonical ZERO INITIAL ANCHOR,
     // after actual content alignment. Range extrema/padding are not offsets.
     // The exceptional exterior edge is not translated by its own scroll.
-    if style.baseline_source == crate::BaselineSource::Auto
-        && style.display.inner_display() == crate::Display::Block
+    if style.baseline_source == crate::node_input::BaselineSource::Auto
+        && style.display.inner_display() == crate::node_input::Display::Block
         && !style.common.item_is_replaced
     {
         let end_margin = constants.own_bottom_margin.resolve();
         let coordinate = match constants.flow_axes.block_end() {
-            crate::PhysicalSide::Top | crate::PhysicalSide::Left => -end_margin,
-            crate::PhysicalSide::Bottom => size.height + end_margin,
-            crate::PhysicalSide::Right => size.width + end_margin,
+            crate::geometry::PhysicalSide::Top | crate::geometry::PhysicalSide::Left => -end_margin,
+            crate::geometry::PhysicalSide::Bottom => size.height + end_margin,
+            crate::geometry::PhysicalSide::Right => size.width + end_margin,
         };
-        let coordinate =
-            crate::BaselineCoordinateOf::try_new(constants.flow_axes.block_axis(), coordinate)
-                .map_err(numeric_error)?;
+        let coordinate = crate::output::BaselineCoordinateOf::try_new(
+            constants.flow_axes.block_axis(),
+            coordinate,
+        )
+        .map_err(numeric_error)?;
         baselines.record_last(
-            crate::BaselinesOf::from_block_coordinates(
+            crate::output::BaselinesOf::from_block_coordinates(
                 constants.flow_axes,
                 None,
                 Some(coordinate.offset()),
             )
             .last,
         );
-        let edge = crate::BaselineFactOf::Available(coordinate);
+        let edge = crate::output::BaselineFactOf::Available(coordinate);
         for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
             facts = facts.with(
                 name,
-                crate::BaselinePairOf::new(facts.get(name).first(), edge),
+                crate::output::BaselinePairOf::new(facts.get(name).first(), edge),
             );
         }
     }
@@ -2196,8 +2214,8 @@ fn block_baseline_output<Node: Copy, S: LayoutScalar, M>(
 #[cfg(test)]
 mod fri06_c13_t06_characterization_tests {
     use super::*;
-    use crate::LengthPercentageOf;
     use crate::layout_math::{resolution_optional, resolution_or_zero};
+    use crate::value::LengthPercentageOf;
 
     fn input<S: LayoutScalar>(
         containing_flow_axes: crate::geometry::FlowAxes,
@@ -2210,15 +2228,17 @@ mod fri06_c13_t06_characterization_tests {
             Size::NONE,
             parent,
             ContainingLayoutContext::new(containing_flow_axes, ParentFormattingContext::NoParent),
-            crate::SizingRequestOf::new(
-                Size::splat(crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
+            crate::value::SizingRequestOf::new(
+                Size::splat(crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Indefinite,
+                    crate::value::SizingOperation::Normal,
                 )),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    crate::value::NearestScrollportOf::Absent,
+                    crate::geometry::Size::splat(
+                        crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
         )
@@ -2261,7 +2281,7 @@ mod fri06_c13_t06_characterization_tests {
             S::from_f64(4.0),
         );
         let style = NodeInputOf {
-            display: crate::Display::Block,
+            display: crate::node_input::Display::Block,
             padding: percentage_edges(),
             border,
             ..NodeInputOf::default()
@@ -2312,7 +2332,7 @@ mod fri06_c13_t06_characterization_tests {
                 .expect("finite negative overflow coefficients"),
         );
         let failing_style = NodeInputOf {
-            display: crate::Display::Block,
+            display: crate::node_input::Display::Block,
             padding: Edges::new(
                 LengthOf::ZERO,
                 LengthOf::ZERO,

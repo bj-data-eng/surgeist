@@ -2,6 +2,15 @@ use super::*;
 use crate::engine::ComputeSession;
 use crate::geometry::{LogicalEdgesOf, LogicalPointOf};
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::{
+    error::LayoutErrorKindOf,
+    inline_wrapping::WrappingInput,
+    measurement::LeafMeasureInputOf,
+    node_input::{Clear, Display, Float, NodeInputOf},
+    sizing::PreferredSizeOf,
+    text_layout::LayoutFlowInput,
+    value::LengthAutoOf,
+};
 use std::cell::Cell;
 
 #[path = "funding_tests.rs"]
@@ -25,59 +34,65 @@ fn leaf<S: LayoutScalar>(height: f64) -> Size<S> {
     Size::new(S::from_f64(100.0), S::from_f64(height))
 }
 
-fn zero<S: LayoutScalar>(_: crate::LeafMeasureInputOf<S>) -> Size<S> {
+fn zero<S: LayoutScalar>(_: LeafMeasureInputOf<S>) -> Size<S> {
     leaf(0.0)
 }
 
-fn positive<S: LayoutScalar>(_: crate::LeafMeasureInputOf<S>) -> Size<S> {
+fn positive<S: LayoutScalar>(_: LeafMeasureInputOf<S>) -> Size<S> {
     leaf(2.0)
 }
 
-fn block<S: LayoutScalar>(top: f64, bottom: f64, height: Option<f64>) -> crate::NodeInputOf<S> {
-    crate::NodeInputOf {
-        display: crate::Display::Block,
+fn block<S: LayoutScalar>(top: f64, bottom: f64, height: Option<f64>) -> NodeInputOf<S> {
+    NodeInputOf {
+        display: Display::Block,
         size: Size::new(
-            crate::PreferredSizeOf::px(S::from_f64(100.0)),
-            height.map_or(crate::PreferredSizeOf::AUTO, |height| {
-                crate::PreferredSizeOf::px(S::from_f64(height))
+            PreferredSizeOf::px(S::from_f64(100.0)),
+            height.map_or(PreferredSizeOf::AUTO, |height| {
+                PreferredSizeOf::px(S::from_f64(height))
             }),
         ),
         margin: Edges::new(
-            crate::LengthAutoOf::px(S::from_f64(top)),
-            crate::LengthAutoOf::ZERO,
-            crate::LengthAutoOf::px(S::from_f64(bottom)),
-            crate::LengthAutoOf::ZERO,
+            LengthAutoOf::px(S::from_f64(top)),
+            LengthAutoOf::ZERO,
+            LengthAutoOf::px(S::from_f64(bottom)),
+            LengthAutoOf::ZERO,
         ),
-        ..crate::NodeInputOf::default()
+        ..NodeInputOf::default()
     }
 }
 
 fn query<S: LayoutScalar>(purpose: EntryPurpose) -> EntryQuery<u32, S> {
-    let axes = crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr);
+    let axes = crate::geometry::FlowAxes::new(
+        crate::node_input::WritingMode::HorizontalTb,
+        crate::node_input::Direction::Ltr,
+    );
     let input = ComputeInputOf::for_child(
         RunMode::ComputeSize,
-        crate::SizingMode::InherentSize,
-        crate::RequestedAxis::Both,
+        crate::output::SizingMode::InherentSize,
+        crate::output::RequestedAxis::Both,
         Size::new(Some(S::from_f64(100.0)), None),
         Size::splat(Some(S::from_f64(100.0))),
-        crate::ContainingLayoutContext::new(axes, crate::ParentFormattingContext::BlockFlow),
-        crate::SizingRequestOf::new(
+        crate::output::ContainingLayoutContext::new(
+            axes,
+            crate::output::ParentFormattingContext::BlockFlow,
+        ),
+        crate::value::SizingRequestOf::new(
             Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    crate::value::SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Indefinite,
+                    crate::value::SizingOperation::Normal,
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
+            crate::value::OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     );
@@ -110,10 +125,7 @@ fn query<S: LayoutScalar>(purpose: EntryPurpose) -> EntryQuery<u32, S> {
 
 fn opaque<S: LayoutScalar>() {
     for (measure, expected) in [
-        (
-            zero::<S> as fn(crate::LeafMeasureInputOf<S>) -> Size<S>,
-            29.0,
-        ),
+        (zero::<S> as fn(LeafMeasureInputOf<S>) -> Size<S>, 29.0),
         (positive::<S>, 5.0),
     ] {
         let tree = PublicLayoutTreeOf::new()
@@ -169,8 +181,8 @@ fn framed_entry_suspends_before_unqualified_clear_top_and_later_body() {
         .style(1, block(8.0, 12.0, None))
         .style(
             2,
-            crate::NodeInputOf {
-                clear: crate::Clear::Left,
+            NodeInputOf {
+                clear: Clear::Left,
                 ..block(20.0, 0.0, None)
             },
         )
@@ -212,7 +224,7 @@ fn framed_entry_requires_the_exact_target_request_before_sampling() {
         let error = owner.qualify_entry(request).err().unwrap();
         assert!(matches!(
             error.kind(),
-            crate::LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis)
+            LayoutErrorKindOf::MissingContext(crate::error::LayoutMissingContext::RequiredBasis)
         ));
         CALLS.with(|calls| assert_eq!(calls.get(), 0));
     }
@@ -220,8 +232,8 @@ fn framed_entry_requires_the_exact_target_request_before_sampling() {
 
 #[test]
 fn numeric_frontier_retains_the_actual_source_range_without_placing_it() {
-    let atomic = crate::NodeInputOf {
-        display: crate::Display::InlineBlock,
+    let atomic = NodeInputOf {
+        display: Display::InlineBlock,
         ..block::<f64>(0.0, 0.0, Some(0.0))
     };
     let tree = PublicLayoutTreeOf::new()
@@ -230,8 +242,8 @@ fn numeric_frontier_retains_the_actual_source_range_without_placing_it() {
         .style(1, atomic.clone())
         .style(
             2,
-            crate::NodeInputOf {
-                display: crate::Display::None,
+            NodeInputOf {
+                display: Display::None,
                 ..block(0.0, 0.0, None)
             },
         )
@@ -260,7 +272,9 @@ fn hidden_break_does_not_create_a_native_frontier_in_framed_entry() {
         .style(0, block::<f64>(0.0, 0.0, None))
         .input(
             1,
-            crate::LayoutInputOf::line_break(crate::LineBreakInputOf::new().hidden()),
+            crate::node_input::LayoutInputOf::line_break(
+                crate::node_input::LineBreakInputOf::new().hidden(),
+            ),
         )
         .style(2, block(29.0, 0.0, Some(20.0)));
     let mut owner = ComputeSession::unobserved(&tree, Vec::new());
@@ -292,11 +306,11 @@ fn native_frontier_keeps_issued_section_custody_without_placing_source() {
         .children(0, [10])
         .style(0, block::<f64>(0.0, 0.0, None))
         .input(10, paragraph.text_input(10));
-    let capture = crate::LayoutFlowInput::try_new(
+    let capture = LayoutFlowInput::try_new(
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput::default(),
+        WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
@@ -330,11 +344,11 @@ fn native_frontier_keeps_issued_section_custody_without_placing_source() {
         .children(0, [10])
         .style(0, block::<f64>(0.0, 0.0, None))
         .input(10, foreign.text_input(10));
-    let foreign_capture = crate::LayoutFlowInput::try_new(
+    let foreign_capture = LayoutFlowInput::try_new(
         &foreign_tree,
         0,
         vec![foreign.binding(0)],
-        crate::WrappingInput::default(),
+        WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
@@ -351,7 +365,7 @@ fn native_frontier_keeps_issued_section_custody_without_placing_source() {
     let error = demand.validate_window(&mut owner).unwrap_err();
     assert!(matches!(
         error.kind(),
-        crate::LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis)
+        LayoutErrorKindOf::MissingContext(crate::error::LayoutMissingContext::RequiredBasis)
     ));
 }
 
@@ -362,22 +376,22 @@ fn component<S: LayoutScalar>(left: f64, right: f64, own_top: f64) {
         .style(0, block(0.0, 0.0, Some(100.0)))
         .style(
             1,
-            crate::NodeInputOf {
-                float: crate::Float::Left,
+            NodeInputOf {
+                float: Float::Left,
                 size: Size::new(
-                    crate::PreferredSizeOf::px(S::from_f64(20.0)),
-                    crate::PreferredSizeOf::px(S::from_f64(left)),
+                    PreferredSizeOf::px(S::from_f64(20.0)),
+                    PreferredSizeOf::px(S::from_f64(left)),
                 ),
                 ..block(0.0, 0.0, None)
             },
         )
         .style(
             6,
-            crate::NodeInputOf {
-                float: crate::Float::Right,
+            NodeInputOf {
+                float: Float::Right,
                 size: Size::new(
-                    crate::PreferredSizeOf::px(S::from_f64(20.0)),
-                    crate::PreferredSizeOf::px(S::from_f64(right)),
+                    PreferredSizeOf::px(S::from_f64(20.0)),
+                    PreferredSizeOf::px(S::from_f64(right)),
                 ),
                 ..block(0.0, 0.0, None)
             },
@@ -385,15 +399,15 @@ fn component<S: LayoutScalar>(left: f64, right: f64, own_top: f64) {
         .style(2, block(own_top, 0.0, None))
         .style(
             3,
-            crate::NodeInputOf {
-                clear: crate::Clear::Left,
+            NodeInputOf {
+                clear: Clear::Left,
                 ..block(8.0, 12.0, None)
             },
         )
         .style(
             4,
-            crate::NodeInputOf {
-                clear: crate::Clear::Right,
+            NodeInputOf {
+                clear: Clear::Right,
                 ..block(20.0, 0.0, Some(10.0))
             },
         );
@@ -567,12 +581,12 @@ fn entry_source_native_tail_resumes_floats_in_issued_source_order() {
         static FAIL_FIRST: Cell<bool> = const { Cell::new(false) };
         static ORDER: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
     }
-    fn first(input: crate::LeafMeasureInputOf<f64>) -> Size<f64> {
+    fn first(input: LeafMeasureInputOf<f64>) -> Size<f64> {
         assert_eq!(input.known_content_size(), Size::new(Some(20.0), None));
         ORDER.with(|order| order.borrow_mut().push(1));
         Size::new(20.0, if FAIL_FIRST.get() { f64::NAN } else { 7.0 })
     }
-    fn second(input: crate::LeafMeasureInputOf<f64>) -> Size<f64> {
+    fn second(input: LeafMeasureInputOf<f64>) -> Size<f64> {
         assert_eq!(input.known_content_size(), Size::new(Some(20.0), None));
         ORDER.with(|order| order.borrow_mut().push(2));
         Size::new(20.0, if FAIL_SECOND.get() { f64::NAN } else { 9.0 })
@@ -592,12 +606,9 @@ fn entry_source_native_tail_resumes_floats_in_issued_source_order() {
     );
     let mut binding = paragraph.binding(0);
     binding.nodes = vec![10, 1, 2];
-    let floated = || crate::NodeInputOf {
-        float: crate::Float::Left,
-        size: Size::new(
-            crate::PreferredSizeOf::px(20.0),
-            crate::PreferredSizeOf::AUTO,
-        ),
+    let floated = || NodeInputOf {
+        float: Float::Left,
+        size: Size::new(PreferredSizeOf::px(20.0), PreferredSizeOf::AUTO),
         ..block(0.0, 0.0, None)
     };
     let tree = PublicLayoutTreeOf::new()
@@ -609,11 +620,11 @@ fn entry_source_native_tail_resumes_floats_in_issued_source_order() {
         .style(3, block(0.0, 0.0, Some(10.0)))
         .measure_with(1, first)
         .measure_with(2, second);
-    let capture = crate::LayoutFlowInput::try_new(
+    let capture = LayoutFlowInput::try_new(
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput::default(),
+        WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
@@ -669,10 +680,13 @@ fn entry_source_native_tail_resumes_floats_in_issued_source_order() {
         .qualify_entry(request())
         .err()
         .expect("first source producer refuses");
-    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(1));
-    assert_eq!(error.operation(), crate::LayoutOperation::LeafMeasurement);
+    assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(1));
+    assert_eq!(
+        error.operation(),
+        crate::error::LayoutOperation::LeafMeasurement
+    );
     assert!(
-        matches!(error.kind(),crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::MeasurementOutput(output)) if output.axis()==crate::PhysicalAxis::Vertical && matches!(output.error(),crate::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.is_nan()))
+        matches!(error.kind(),LayoutErrorKindOf::InvalidInput(crate::error::LayoutInvalidInputOf::MeasurementOutput(output)) if output.axis()==crate::geometry::PhysicalAxis::Vertical && matches!(output.error(),crate::value::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.is_nan()))
     );
     ORDER.with(|order| assert_eq!(&*order.borrow(), &[1], "later source producer must not run"));
     FAIL_FIRST.set(false);
@@ -684,10 +698,13 @@ fn entry_source_native_tail_resumes_floats_in_issued_source_order() {
         .qualify_entry(request())
         .err()
         .expect("later source producer refuses after first resume");
-    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(2));
-    assert_eq!(error.operation(), crate::LayoutOperation::LeafMeasurement);
+    assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(2));
+    assert_eq!(
+        error.operation(),
+        crate::error::LayoutOperation::LeafMeasurement
+    );
     assert!(
-        matches!(error.kind(),crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::MeasurementOutput(output)) if output.axis()==crate::PhysicalAxis::Vertical && matches!(output.error(),crate::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.is_nan()))
+        matches!(error.kind(),LayoutErrorKindOf::InvalidInput(crate::error::LayoutInvalidInputOf::MeasurementOutput(output)) if output.axis()==crate::geometry::PhysicalAxis::Vertical && matches!(output.error(),crate::value::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.is_nan()))
     );
     ORDER.with(|order| assert_eq!(&*order.borrow(), &[1, 2]));
     for node in [0, 10, 1, 2, 3] {

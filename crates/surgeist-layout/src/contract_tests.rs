@@ -1,5 +1,47 @@
-use crate::DefaultScalar;
-use crate::*;
+use crate::scalar::DefaultScalar;
+use crate::{
+    block_fragmentation::NodeLayoutRefOf,
+    cache::CacheKeyContext,
+    engine::compute_layout,
+    error::{
+        AtomicInlineParticipationRoleError, FloatExclusionRoleError, LayoutErrorKind,
+        LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInvalidInput,
+        LayoutInvalidInputOf, LayoutMissingContext, LayoutOperation, LayoutUnsupportedCapability,
+        NonBoxNodeRoleError,
+    },
+    geometry::{Edges, FlowAxes, PhysicalAxis, PhysicalSide, Point, Size},
+    measurement::compute_leaf,
+    node_input::{
+        AlignContent, AlignItems, AtomicInlineParticipation, BoxSizing, Clear, ComputedOverflow,
+        Direction, Display, FlexDirection, FlexGrow, FlexGrowOf, FlexShrink, FlexShrinkOf,
+        FlexWrap, Float, FloatExclusion, FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf,
+        FloatExclusionQuery, FloatExclusionQueryOf, GridAutoFlow, InlineBaselineContext,
+        InlineBoundaryEdgeErrorOf, InlineBoundaryEdgeOf, InlineBoundaryInput,
+        InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakOpportunity, InlineMetrics,
+        InlineMetricsError, InlineMetricsOf, LayoutInput, LayoutInputOf, LineBreakDisplay,
+        LineBreakInput, LineBreakInputOf, NodeInput, NodeInputOf, Overflow, Position,
+        ScrollbarWidth, TextAlign, VerticalAlign, VerticalAlignOf, WritingMode,
+    },
+    output::{
+        CollapsibleMargin, ComputeInput, ComputeInputOf, ComputeOutput, ComputeOutputOf,
+        ContainingLayoutContext, FlexItemRootContextOf, LayoutRootRequestOf, NodeOutput,
+        NodeOutputOf, ParentFormattingContext, SourceIndex,
+    },
+    scalar::LayoutScalar,
+    scroll::{ScrollRect, ScrollRectOf},
+    sizing::{PreferredSize, PreferredSizeOf},
+    text_layout::{LayoutFlowInput, TextBindingError, TextParticipation},
+    tree::{LayoutTree, Traverse},
+    value::{
+        AvailableSpace, AvailableSpaceOf, AxisSizingRequest, AxisSizingRequestOf,
+        FiniteScalarErrorOf, Length, LengthAuto, LengthResolutionStatus, NearestScrollportOf,
+        NonNegativeFiniteOf, NonNegativeFiniteScalarErrorOf, OrthogonalFallbackLimitOf,
+        OrthogonalFallbackOf, SizingOperation, SizingRequestOf, TrackComponent, TrackComponentOf,
+    },
+};
+use surgeist_text::supplied_line::BidiLevel;
+use surgeist_text::supplied_line::BidiLevelError;
+use surgeist_text::supplied_line::InlineWhitespaceEdge;
 
 #[test]
 fn default_scalar_remains_single_precision() {
@@ -15,7 +57,7 @@ fn default_scalar_remains_single_precision() {
 
 #[test]
 fn layout_scalar_supports_f32_and_f64() {
-    fn assert_scalar<S: crate::LayoutScalar>() {
+    fn assert_scalar<S: LayoutScalar>() {
         assert!(S::ONE.is_finite());
         assert_eq!(S::ZERO + S::ONE, S::ONE);
         assert_eq!(S::from_usize(3), S::ONE + S::ONE + S::ONE);
@@ -38,18 +80,18 @@ fn layout_scalar_supports_f32_and_f64() {
 fn parent_formatting_context_is_closed_and_exact() {
     fn name(context: ParentFormattingContext) -> &'static str {
         match context {
-            crate::ParentFormattingContext::NoParent => "no-parent",
-            crate::ParentFormattingContext::BlockFlow => "block-flow",
-            crate::ParentFormattingContext::Flex => "flex",
-            crate::ParentFormattingContext::Grid => "grid",
+            ParentFormattingContext::NoParent => "no-parent",
+            ParentFormattingContext::BlockFlow => "block-flow",
+            ParentFormattingContext::Flex => "flex",
+            ParentFormattingContext::Grid => "grid",
         }
     }
 
     let contexts = [
-        crate::ParentFormattingContext::NoParent,
-        crate::ParentFormattingContext::BlockFlow,
-        crate::ParentFormattingContext::Flex,
-        crate::ParentFormattingContext::Grid,
+        ParentFormattingContext::NoParent,
+        ParentFormattingContext::BlockFlow,
+        ParentFormattingContext::Flex,
+        ParentFormattingContext::Grid,
     ];
 
     assert_eq!(
@@ -71,15 +113,15 @@ fn containing_layout_context_keeps_flow_and_role_together() {
         FlowAxes::new(WritingMode::SidewaysLr, Direction::Ltr),
     ];
     let formatting_contexts = [
-        crate::ParentFormattingContext::NoParent,
-        crate::ParentFormattingContext::BlockFlow,
-        crate::ParentFormattingContext::Flex,
-        crate::ParentFormattingContext::Grid,
+        ParentFormattingContext::NoParent,
+        ParentFormattingContext::BlockFlow,
+        ParentFormattingContext::Flex,
+        ParentFormattingContext::Grid,
     ];
 
     for flow_axes in flow_axes {
         for formatting_context in formatting_contexts {
-            let context = crate::ContainingLayoutContext::new(flow_axes, formatting_context);
+            let context = ContainingLayoutContext::new(flow_axes, formatting_context);
 
             assert_eq!(context.flow_axes(), flow_axes);
             assert_eq!(context.formatting_context(), formatting_context);
@@ -108,35 +150,38 @@ fn flex_item_root_context_requires_explicit_parent_axes() {
 
 #[test]
 fn value_types_support_f64_scalar_lane() {
-    let length = crate::LengthOf::<f64>::percent(0.25);
+    let length = crate::value::LengthOf::<f64>::percent(0.25);
     let length = length.resolve(400.0);
     assert_eq!(length.value, Some(100.0));
-    assert_eq!(length.status(), crate::LengthResolutionStatus::Resolved);
+    assert_eq!(
+        length.status(),
+        crate::value::LengthResolutionStatus::Resolved
+    );
 
-    let dimension = crate::PreferredSizeOf::<f64>::px(42.5);
+    let dimension = PreferredSizeOf::<f64>::px(42.5);
     let dimension = dimension
         .resolve_simple_with_status(Some(1000.0))
         .expect("affine preferred size is supported");
     assert_eq!(dimension.value, Some(42.5));
-    assert_eq!(dimension.status(), crate::LengthResolutionStatus::Resolved);
+    assert_eq!(
+        dimension.status(),
+        crate::value::LengthResolutionStatus::Resolved
+    );
 
-    let ratio = crate::AspectRatioOf::<f64>::new(16.0 / 9.0)
+    let ratio = crate::value::AspectRatioOf::<f64>::new(16.0 / 9.0)
         .expect("positive finite f64 aspect ratio should be accepted");
     assert_eq!(ratio.get(), 16.0 / 9.0);
 
-    assert!(crate::AspectRatioOf::<f64>::new(f64::INFINITY).is_none());
+    assert!(crate::value::AspectRatioOf::<f64>::new(f64::INFINITY).is_none());
 }
 
 #[test]
 fn node_input_and_output_support_f64_scalar_lane() {
-    let input = crate::NodeInputOf::<f64> {
-        size: crate::Size::new(
-            crate::PreferredSizeOf::px(123.5),
-            crate::PreferredSizeOf::percent(0.25),
-        ),
-        margin: crate::Edges::all(crate::LengthAutoOf::px(2.5)),
+    let input = crate::node_input::NodeInputOf::<f64> {
+        size: Size::new(PreferredSizeOf::px(123.5), PreferredSizeOf::percent(0.25)),
+        margin: Edges::all(crate::value::LengthAutoOf::px(2.5)),
         flex_grow: FlexGrowOf::try_new(1.0).unwrap(),
-        ..crate::NodeInputOf::<f64>::default()
+        ..crate::node_input::NodeInputOf::<f64>::default()
     };
 
     let width = input
@@ -155,12 +200,12 @@ fn node_input_and_output_support_f64_scalar_lane() {
     assert_eq!(height.status(), LengthResolutionStatus::Resolved);
 
     let precision_sentinel = 16_777_217.0_f64;
-    let output = crate::NodeOutputOf::<f64> {
-        size: crate::Size::new(precision_sentinel, 10.0),
-        ..crate::NodeOutputOf::<f64>::default()
+    let output = NodeOutputOf::<f64> {
+        size: Size::new(precision_sentinel, 10.0),
+        ..NodeOutputOf::<f64>::default()
     };
     let compute_output =
-        crate::ComputeOutputOf::<f64>::from_outer_size(crate::Size::new(precision_sentinel, 4.0));
+        crate::output::ComputeOutputOf::<f64>::from_outer_size(Size::new(precision_sentinel, 4.0));
 
     assert_eq!(output.size.width, precision_sentinel);
     assert_eq!(compute_output.size.width, precision_sentinel);
@@ -341,7 +386,7 @@ fn assert_duplicate_run_nodes<S: LayoutScalar>(nodes: &[u32]) {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -418,7 +463,10 @@ impl<S: LayoutScalar> LayoutTree for Fri06C01Tree<S> {
             .unwrap_or(&self.non_box_inputs[node])
     }
 
-    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, Self::Scalar> {
+    fn layout_input(
+        &self,
+        node: Self::Node,
+    ) -> crate::node_input::LayoutInputViewOf<'_, Self::Scalar> {
         self.inputs[node].as_view()
     }
 
@@ -469,21 +517,21 @@ fn fri06_c01_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
     crate::test_support::requests::NativeRootFrameOf::new(
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::splat(Some(
-            crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+            NonNegativeFiniteOf::new(S::from_f64(100.0))
                 .expect("declared fixture extent is finite and nonnegative"),
         )),
-        crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Unknown,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Unknown,
+            Size::splat(OrthogonalFallbackLimitOf::Unknown),
         ),
     )
-    .request(Size::splat(crate::AxisSizingRequestOf::new(
-        crate::AvailableSpaceOf::Definite(
-            crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+    .request(Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Definite(
+            NonNegativeFiniteOf::new(S::from_f64(100.0))
                 .expect("fixture physical extent is finite and nonnegative"),
         ),
-        crate::SizingOperation::Normal,
+        SizingOperation::Normal,
     )))
 }
 
@@ -962,7 +1010,7 @@ fn fri06_c01_float_exclusion_diagnostics_preserve_provider_and_site_context() {
 
 #[test]
 fn public_order_source_types_and_defaults_are_exact() {
-    use crate::{ItemOrder, SourceIndex};
+    use crate::{node_input::ItemOrder, output::SourceIndex};
 
     assert_eq!(ItemOrder::default(), ItemOrder::ZERO);
     assert_eq!(NodeInput::DEFAULT.item_order, ItemOrder::ZERO);
@@ -1006,7 +1054,7 @@ fn compute_output_defaults_to_no_scroll_geometry() {
 
 #[test]
 fn node_output_defaults_to_no_scroll_geometry() {
-    let output = NodeOutput::with_source_index(crate::SourceIndex::new(7));
+    let output = NodeOutput::with_source_index(crate::output::SourceIndex::new(7));
 
     assert_eq!(output.scroll_geometry, None);
 }
@@ -1014,42 +1062,45 @@ fn node_output_defaults_to_no_scroll_geometry() {
 #[test]
 fn f32_default_keeps_representative_layout_types_smaller_than_f64_lane() {
     assert!(
-        std::mem::size_of::<crate::ComputeOutput>()
-            < std::mem::size_of::<crate::ComputeOutputOf<f64>>()
+        std::mem::size_of::<crate::output::ComputeOutput>()
+            < std::mem::size_of::<crate::output::ComputeOutputOf<f64>>()
     );
     assert!(
-        std::mem::size_of::<crate::NodeOutput>() < std::mem::size_of::<crate::NodeOutputOf<f64>>()
+        std::mem::size_of::<crate::output::NodeOutput>() < std::mem::size_of::<NodeOutputOf<f64>>()
     );
     assert!(
-        std::mem::size_of::<crate::CollapsibleMargin>()
-            < std::mem::size_of::<crate::CollapsibleMarginOf<f64>>()
+        std::mem::size_of::<crate::output::CollapsibleMargin>()
+            < std::mem::size_of::<crate::output::CollapsibleMarginOf<f64>>()
     );
-    assert!(std::mem::size_of::<crate::Cache>() < std::mem::size_of::<crate::CacheOf<f64>>());
+    assert!(
+        std::mem::size_of::<crate::cache::Cache>()
+            < std::mem::size_of::<crate::cache::CacheOf<f64>>()
+    );
 }
 
 #[test]
 fn f64_affine_resolution_preserves_large_coordinate_precision() {
-    let value = crate::LengthPercentageOf::<f64>::from_coefficients(16_777_217.0, 0.5)
+    let value = crate::value::LengthPercentageOf::<f64>::from_coefficients(16_777_217.0, 0.5)
         .expect("finite coefficients");
 
-    let resolution = crate::LengthOf::value(value).resolve_with_status(Some(21.0));
+    let resolution = crate::value::LengthOf::value(value).resolve_with_status(Some(21.0));
     assert_eq!(resolution.value, Some(16_777_227.5));
     assert!(resolution.depends_on_basis);
 }
 
 #[test]
 fn geometry_supports_default_and_f64_scalars() {
-    let default_size = crate::Size::new(2.0, 3.0);
+    let default_size = Size::new(2.0, 3.0);
     assert_eq!(default_size.width, 2.0);
 
-    assert_eq!(crate::Point::<f64>::ZERO, Point::new(0.0, 0.0));
-    assert_eq!(crate::Size::<f64>::ZERO, Size::new(0.0, 0.0));
-    assert_eq!(crate::Edges::<f64>::ZERO, Edges::new(0.0, 0.0, 0.0, 0.0));
+    assert_eq!(Point::<f64>::ZERO, Point::new(0.0, 0.0));
+    assert_eq!(Size::<f64>::ZERO, Size::new(0.0, 0.0));
+    assert_eq!(Edges::<f64>::ZERO, Edges::new(0.0, 0.0, 0.0, 0.0));
 
-    let f64_size = crate::Size::<f64>::new(2.0_f64, 3.0_f64);
+    let f64_size = Size::<f64>::new(2.0_f64, 3.0_f64);
     assert_eq!(f64_size.height, 3.0_f64);
 
-    let f64_edges = crate::Edges::<f64>::new(1.0, 2.0, 3.0, 4.0);
+    let f64_edges = Edges::<f64>::new(1.0, 2.0, 3.0, 4.0);
     assert_eq!(f64_edges.horizontal_sum(), 6.0_f64);
     assert_eq!(f64_edges.vertical_sum(), 4.0_f64);
     assert_eq!(f64_edges.sum_axes(), Size::new(6.0_f64, 4.0_f64));
@@ -1057,9 +1108,10 @@ fn geometry_supports_default_and_f64_scalars() {
 
 #[test]
 fn scroll_geometry_core_is_scalar_generic() {
-    fn assert_scalar<S: crate::LayoutScalar>() {
-        let range = crate::PhysicalScrollRangeOf::<S>::try_new(S::ZERO, S::ZERO, S::ZERO, S::ZERO)
-            .expect("zero physical range is valid");
+    fn assert_scalar<S: LayoutScalar>() {
+        let range =
+            crate::scroll::PhysicalScrollRangeOf::<S>::try_new(S::ZERO, S::ZERO, S::ZERO, S::ZERO)
+                .expect("zero physical range is valid");
         assert_eq!(range.x().minimum(), S::ZERO);
         assert_eq!(range.y().maximum(), S::ZERO);
     }
@@ -1072,30 +1124,30 @@ fn scroll_geometry_core_is_scalar_generic() {
 fn fri05_c02_carrier_public_aliases_and_generic_traits_are_available() {
     fn assert_traits<T: Clone + Copy + core::fmt::Debug + PartialEq>() {}
 
-    assert_traits::<crate::PhysicalClipAxis>();
-    assert_traits::<crate::PhysicalClipAxisOf<f64>>();
-    assert_traits::<crate::OverflowClip>();
-    assert_traits::<crate::OverflowClipOf<f64>>();
-    assert_traits::<crate::ScrollTargetGeometry>();
-    assert_traits::<crate::ScrollTargetGeometryOf<f64>>();
-    assert_traits::<crate::ScrollRectError>();
-    assert_traits::<crate::ScrollRectErrorOf<f64>>();
+    assert_traits::<crate::scroll::PhysicalClipAxis>();
+    assert_traits::<crate::scroll::PhysicalClipAxisOf<f64>>();
+    assert_traits::<crate::scroll::OverflowClip>();
+    assert_traits::<crate::scroll::OverflowClipOf<f64>>();
+    assert_traits::<crate::scroll::ScrollTargetGeometry>();
+    assert_traits::<crate::scroll::ScrollTargetGeometryOf<f64>>();
+    assert_traits::<crate::scroll::ScrollRectError>();
+    assert_traits::<crate::scroll::ScrollRectErrorOf<f64>>();
 }
 
-struct Fri05C03ContractGeometryFacts<S: crate::LayoutScalar> {
-    flow_axes: crate::FlowAxes,
-    overflow: crate::ComputedOverflow,
+struct Fri05C03ContractGeometryFacts<S: LayoutScalar> {
+    flow_axes: crate::geometry::FlowAxes,
+    overflow: crate::node_input::ComputedOverflow,
     item_is_replaced: bool,
-    border_box_size: crate::Size<S>,
-    padding: crate::Edges<S>,
-    border: crate::Edges<S>,
+    border_box_size: Size<S>,
+    padding: Edges<S>,
+    border: Edges<S>,
     scrollbar_width: S,
-    scrollable_overflow: crate::ScrollRectOf<S>,
+    scrollable_overflow: ScrollRectOf<S>,
 }
 
-fn fri05_c03_contract_geometry<S: crate::LayoutScalar>(
+fn fri05_c03_contract_geometry<S: LayoutScalar>(
     facts: Fri05C03ContractGeometryFacts<S>,
-) -> crate::ScrollGeometryOf<S> {
+) -> crate::scroll::ScrollGeometryOf<S> {
     let mut contributions =
         crate::scroll::ScrollContributionAccumulatorOf::new(facts.scrollable_overflow);
     contributions.include_direct_line(facts.scrollable_overflow);
@@ -1107,8 +1159,9 @@ fn fri05_c03_contract_geometry<S: crate::LayoutScalar>(
             border_box_size: facts.border_box_size,
             border: facts.border,
             padding: facts.padding,
-            scrollbar_gutter: crate::ScrollbarGutter::Auto,
-            scrollbar_width: crate::ScrollbarWidthOf::try_new(facts.scrollbar_width).unwrap(),
+            scrollbar_gutter: crate::node_input::ScrollbarGutter::Auto,
+            scrollbar_width: crate::node_input::ScrollbarWidthOf::try_new(facts.scrollbar_width)
+                .unwrap(),
             settled_auto_scrollbars: crate::scroll::SettledAutoScrollbarState::INITIAL,
             clip_margin: crate::scroll::ClipMarginSourceOf::default(),
             scroll_padding: crate::scroll::OptimalRegionInsetsOf::default(),
@@ -1117,16 +1170,12 @@ fn fri05_c03_contract_geometry<S: crate::LayoutScalar>(
                 crate::scroll::ScrollOriginProgression::FlowEndward,
                 crate::scroll::ScrollOriginProgression::FlowEndward,
             ),
-            scroll_snap_type: crate::ScrollSnapType::default(),
-            target_border_box: crate::ScrollRectOf::try_new(
-                crate::Point::ZERO,
-                facts.border_box_size,
-            )
-            .unwrap(),
-            target_scroll_margin: crate::ScrollMarginOf::default(),
+            scroll_snap_type: crate::node_input::ScrollSnapType::default(),
+            target_border_box: ScrollRectOf::try_new(Point::ZERO, facts.border_box_size).unwrap(),
+            target_scroll_margin: crate::node_input::ScrollMarginOf::default(),
             target_flow_axes: facts.flow_axes,
-            target_snap_align: crate::ScrollSnapAlign::default(),
-            target_snap_stop: crate::ScrollSnapStop::default(),
+            target_snap_align: crate::node_input::ScrollSnapAlign::default(),
+            target_snap_stop: crate::node_input::ScrollSnapStop::default(),
         },
     )
     .expect("canonical contract source facts produce geometry")
@@ -1134,49 +1183,51 @@ fn fri05_c03_contract_geometry<S: crate::LayoutScalar>(
 
 #[test]
 fn fri05_c03_public_geometry_all_exact_accessors_compose_in_both_scalar_lanes() {
-    fn assert_scalar<S: crate::LayoutScalar>() {
+    fn assert_scalar<S: LayoutScalar>() {
         let scalar = S::from_f64;
-        let flow_axes =
-            crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr);
-        let scrollable_overflow = crate::ScrollRectOf::try_new(
-            crate::Point::new(scalar(-5.0), scalar(-3.0)),
-            crate::Size::new(scalar(140.0), scalar(70.0)),
+        let flow_axes = crate::geometry::FlowAxes::new(
+            crate::node_input::WritingMode::HorizontalTb,
+            crate::node_input::Direction::Ltr,
+        );
+        let scrollable_overflow = ScrollRectOf::try_new(
+            Point::new(scalar(-5.0), scalar(-3.0)),
+            Size::new(scalar(140.0), scalar(70.0)),
         )
         .expect("finite overflow source is valid");
         let geometry = fri05_c03_contract_geometry(Fri05C03ContractGeometryFacts {
             flow_axes,
-            overflow: crate::ComputedOverflow::try_new(
-                crate::Overflow::Scroll,
-                crate::Overflow::Scroll,
+            overflow: crate::node_input::ComputedOverflow::try_new(
+                Overflow::Scroll,
+                Overflow::Scroll,
             )
             .expect("same-group computed overflow is valid"),
             item_is_replaced: false,
-            border_box_size: crate::Size::new(scalar(100.0), scalar(40.0)),
-            padding: crate::Edges::all(scalar(2.0)),
-            border: crate::Edges::all(scalar(1.0)),
+            border_box_size: Size::new(scalar(100.0), scalar(40.0)),
+            padding: Edges::all(scalar(2.0)),
+            border: Edges::all(scalar(1.0)),
             scrollbar_width: scalar(10.0),
             scrollable_overflow,
         });
 
         assert_eq!(geometry.flow_axes(), flow_axes);
-        assert_eq!(geometry.used_overflow_x(), crate::Overflow::Scroll);
-        assert_eq!(geometry.used_overflow_y(), crate::Overflow::Scroll);
-        assert_eq!(geometry.border_box().origin(), crate::Point::ZERO);
+        assert_eq!(geometry.used_overflow_x(), Overflow::Scroll);
+        assert_eq!(geometry.used_overflow_y(), Overflow::Scroll);
+        assert_eq!(geometry.border_box().origin(), Point::ZERO);
         assert_eq!(
             geometry.border_box().size(),
-            crate::Size::new(scalar(100.0), scalar(40.0))
+            Size::new(scalar(100.0), scalar(40.0))
         );
         assert_eq!(
             geometry.padding_box().origin(),
-            crate::Point::new(scalar(1.0), scalar(1.0))
+            Point::new(scalar(1.0), scalar(1.0))
         );
         assert_eq!(
             geometry.content_box().size(),
-            crate::Size::new(scalar(84.0), scalar(24.0))
+            Size::new(scalar(84.0), scalar(24.0))
         );
         assert_eq!(
             geometry.scrollport().size(),
-            crate::Size::new(scalar(88.0), scalar(28.0))
+            Size::new(scalar(88.0), scalar(28.0))
         );
         assert!(geometry.overflow_clip().x().is_some());
         assert!(geometry.overflow_clip().y().is_some());
@@ -1191,19 +1242,28 @@ fn fri05_c03_public_geometry_all_exact_accessors_compose_in_both_scalar_lanes() 
         assert!(gutters.right().is_some());
         assert!(gutters.bottom().is_some());
         assert_eq!(gutters.left(), None);
-        assert_eq!(geometry.scrollbar_size(), crate::Size::splat(scalar(10.0)));
-        assert_eq!(geometry.resolved_scroll_padding(), crate::Edges::ZERO);
+        assert_eq!(geometry.scrollbar_size(), Size::splat(scalar(10.0)));
+        assert_eq!(geometry.resolved_scroll_padding(), Edges::ZERO);
         assert_eq!(geometry.optimal_viewing_region(), geometry.scrollport());
-        assert_eq!(geometry.scroll_snap_type(), crate::ScrollSnapType::None);
+        assert_eq!(
+            geometry.scroll_snap_type(),
+            crate::node_input::ScrollSnapType::None
+        );
         let target = geometry.target();
         assert_eq!(target.border_box(), geometry.border_box());
         assert_eq!(target.flow_axes(), flow_axes);
         assert_eq!(
             target.scroll_margin(),
-            crate::ScrollMarginOf::<S>::default()
+            crate::node_input::ScrollMarginOf::<S>::default()
         );
-        assert_eq!(target.snap_align(), crate::ScrollSnapAlign::default());
-        assert_eq!(target.snap_stop(), crate::ScrollSnapStop::Normal);
+        assert_eq!(
+            target.snap_align(),
+            crate::node_input::ScrollSnapAlign::default()
+        );
+        assert_eq!(
+            target.snap_stop(),
+            crate::node_input::ScrollSnapStop::Normal
+        );
     }
 
     assert_scalar::<f32>();
@@ -1305,11 +1365,11 @@ fn node_input_defaults_match_the_layout_contract() {
     );
     assert_eq!(
         node_input.min_size,
-        Size::new(crate::MinSize::AUTO, crate::MinSize::AUTO)
+        Size::new(crate::sizing::MinSize::AUTO, crate::sizing::MinSize::AUTO)
     );
     assert_eq!(
         node_input.max_size,
-        Size::new(crate::MaxSize::NONE, crate::MaxSize::NONE)
+        Size::new(crate::sizing::MaxSize::NONE, crate::sizing::MaxSize::NONE)
     );
     assert_eq!(node_input.margin, Edges::all(LengthAuto::ZERO));
     assert_eq!(node_input.padding, Edges::all(Length::ZERO));
@@ -1317,7 +1377,7 @@ fn node_input_defaults_match_the_layout_contract() {
     assert_eq!(node_input.gap, Size::new(Length::NORMAL, Length::NORMAL));
     assert_eq!(node_input.flex_direction, FlexDirection::Row);
     assert_eq!(node_input.flex_wrap, FlexWrap::NoWrap);
-    assert_eq!(node_input.flex_basis, crate::FlexBasis::AUTO);
+    assert_eq!(node_input.flex_basis, crate::sizing::FlexBasis::AUTO);
     assert_eq!(node_input.flex_grow.get(), 0.0);
     assert_eq!(node_input.flex_shrink.get(), 1.0);
     assert_eq!(
@@ -1369,7 +1429,7 @@ fn node_input_defaults_use_property_specific_numeric_wrappers() {
     assert_eq!(node_input.flex_shrink.get(), 1.0);
 
     let node_input = NodeInputOf::<f64> {
-        scrollbar_width: crate::ScrollbarWidthOf::try_new(3.0).unwrap(),
+        scrollbar_width: crate::node_input::ScrollbarWidthOf::try_new(3.0).unwrap(),
         flex_grow: FlexGrowOf::try_new(4.0).unwrap(),
         flex_shrink: FlexShrinkOf::try_new(5.0).unwrap(),
         ..NodeInputOf::<f64>::default()
@@ -1392,12 +1452,9 @@ fn line_break_input_defaults_to_visible_horizontal_break_context() {
 
 #[test]
 fn line_break_input_carries_inline_metrics() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        20.0,
-        15.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 20.0, 15.0)
+            .unwrap();
     let input = LineBreakInput::new().with_metrics(metrics);
 
     assert_eq!(input.metrics(), metrics);
@@ -1407,7 +1464,7 @@ fn line_break_input_carries_inline_metrics() {
 #[test]
 fn line_break_input_supports_f64_metrics() {
     let metrics = InlineMetricsOf::<f64>::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
+        InlineBaselineContext::Physical,
         32.0,
         25.0,
     )
@@ -1419,16 +1476,13 @@ fn line_break_input_supports_f64_metrics() {
 
 #[test]
 fn inline_boundary_input_requires_explicit_metrics() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        28.0,
-        20.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 28.0, 20.0)
+            .unwrap();
     let input = InlineBoundaryInput::contribution(
         InlineBoundaryKind::Start,
         metrics,
-        crate::InlineBoundaryEdgeOf::ZERO,
+        InlineBoundaryEdgeOf::ZERO,
     )
     .unwrap()
     .with_writing_mode(WritingMode::VerticalRl)
@@ -1445,7 +1499,7 @@ fn inline_boundary_input_requires_explicit_metrics() {
 #[test]
 fn inline_boundary_input_supports_f64_metrics() {
     let metrics = InlineMetricsOf::<f64>::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
+        InlineBaselineContext::Physical,
         40.0,
         30.0,
     )
@@ -1464,26 +1518,21 @@ fn inline_boundary_input_supports_f64_metrics() {
 
 #[test]
 fn inline_metrics_validate_line_box_invariants() {
-    let metrics =
-        InlineMetrics::try_new(crate::InlineBaselineContext::Physical, 12.0, 18.0).unwrap();
+    let metrics = InlineMetrics::try_new(InlineBaselineContext::Physical, 12.0, 18.0).unwrap();
 
     assert_eq!(metrics.baseline(), 12.0);
     assert_eq!(metrics.line_extent(), 18.0);
     assert_eq!(metrics.after_baseline(), 6.0);
 
     assert_eq!(
-        InlineMetrics::try_new(crate::InlineBaselineContext::Physical, 19.0, 18.0),
+        InlineMetrics::try_new(InlineBaselineContext::Physical, 19.0, 18.0),
         Err(InlineMetricsError::BaselineExceedsLineExtent {
             baseline: 19.0,
             line_extent: 18.0,
         })
     );
     assert_eq!(
-        InlineMetrics::from_line_height_and_baseline(
-            crate::InlineBaselineContext::Physical,
-            10.0,
-            12.0
-        ),
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 10.0, 12.0),
         Err(InlineMetricsError::BaselineExceedsLineHeight {
             baseline: 12.0,
             line_height: 10.0,
@@ -1494,11 +1543,11 @@ fn inline_metrics_validate_line_box_invariants() {
 #[test]
 fn inline_metrics_reject_non_finite_and_negative_values() {
     assert!(matches!(
-        InlineMetrics::try_new(crate::InlineBaselineContext::Physical, f32::NAN, 18.0),
+        InlineMetrics::try_new(InlineBaselineContext::Physical, f32::NAN, 18.0),
         Err(InlineMetricsError::NonFinite { value }) if value.is_nan()
     ));
     assert_eq!(
-        InlineMetrics::try_new(crate::InlineBaselineContext::Physical, 12.0, -18.0),
+        InlineMetrics::try_new(InlineBaselineContext::Physical, 12.0, -18.0),
         Err(InlineMetricsError::Negative { value: -18.0 })
     );
 }
@@ -1506,7 +1555,7 @@ fn inline_metrics_reject_non_finite_and_negative_values() {
 #[test]
 fn inline_metrics_support_f64_scalar_lane() {
     let metrics = InlineMetricsOf::<f64>::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
+        InlineBaselineContext::Physical,
         9_000_000_000_000.0,
         8_000_000_000_000.0,
     )
@@ -1531,16 +1580,13 @@ fn layout_input_distinguishes_box_from_line_break() {
 
 #[test]
 fn layout_input_distinguishes_inline_boundary_from_boxes_and_breaks() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(
-        crate::InlineBaselineContext::Physical,
-        18.0,
-        14.0,
-    )
-    .unwrap();
+    let metrics =
+        InlineMetrics::from_line_height_and_baseline(InlineBaselineContext::Physical, 18.0, 14.0)
+            .unwrap();
     let boundary = InlineBoundaryInput::contribution(
         InlineBoundaryKind::Start,
         metrics,
-        crate::InlineBoundaryEdgeOf::ZERO,
+        InlineBoundaryEdgeOf::ZERO,
     )
     .unwrap();
     let layout_input = LayoutInput::inline_boundary(boundary);
@@ -1721,32 +1767,32 @@ fn public_leaf_construction_retains_explicit_containing_flow() {
     let known = Size::new(Some(120.0), None);
     let parent = Size::new(Some(640.0), Some(480.0));
     let available = Size::new(
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(640.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                NonNegativeFiniteOf::new(640.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
-        crate::AxisSizingRequest::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(480.0)
+        AxisSizingRequest::new(
+            AvailableSpaceOf::Definite(
+                NonNegativeFiniteOf::new(480.0)
                     .expect("fixture physical extent is finite and nonnegative"),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
     );
 
     let layout = ComputeInput::leaf_layout(
         known,
         parent,
-        crate::ContainingLayoutContext::new(flow_axes, crate::ParentFormattingContext::NoParent),
-        crate::SizingRequestOf::new(
+        ContainingLayoutContext::new(flow_axes, ParentFormattingContext::NoParent),
+        SizingRequestOf::new(
             available,
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Unknown,
+                Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         ),
     )
@@ -1754,13 +1800,13 @@ fn public_leaf_construction_retains_explicit_containing_flow() {
     let content_size = ComputeInput::leaf_content_size(
         known,
         parent,
-        crate::ContainingLayoutContext::new(flow_axes, crate::ParentFormattingContext::NoParent),
-        crate::SizingRequestOf::new(
+        ContainingLayoutContext::new(flow_axes, ParentFormattingContext::NoParent),
+        SizingRequestOf::new(
             available,
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Unknown,
+                Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         ),
     )
@@ -1772,35 +1818,35 @@ fn public_leaf_construction_retains_explicit_containing_flow() {
 
 #[test]
 fn compute_input_requires_complete_containing_layout_context() {
-    let context = crate::ContainingLayoutContext::new(
+    let context = ContainingLayoutContext::new(
         FlowAxes::new(WritingMode::SidewaysLr, Direction::Ltr),
-        crate::ParentFormattingContext::Grid,
+        ParentFormattingContext::Grid,
     );
     let input = ComputeInput::leaf_layout(
         Size::NONE,
         Size::new(Some(640.0), Some(480.0)),
         context,
-        crate::SizingRequestOf::new(
+        SizingRequestOf::new(
             Size::new(
-                crate::AxisSizingRequest::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(640.0)
+                AxisSizingRequest::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(640.0)
                             .expect("fixture physical extent is finite and nonnegative"),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequest::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(480.0)
+                AxisSizingRequest::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(480.0)
                             .expect("fixture physical extent is finite and nonnegative"),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Unknown,
+                Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         ),
     )
@@ -1809,7 +1855,7 @@ fn compute_input_requires_complete_containing_layout_context() {
     assert_eq!(input.containing_layout_context(), context);
     assert_eq!(
         input.parent_formatting_context(),
-        crate::ParentFormattingContext::Grid
+        ParentFormattingContext::Grid
     );
     assert_eq!(input.containing_flow_axes(), context.flow_axes());
 }
@@ -1825,28 +1871,28 @@ fn public_diagnostics_report_physical_axes() {
     let input = ComputeInput::leaf_layout(
         Size::NONE,
         Size::new(Some(640.0), Some(480.0)),
-        crate::ContainingLayoutContext::new(flow_axes, crate::ParentFormattingContext::NoParent),
-        crate::SizingRequestOf::new(
+        ContainingLayoutContext::new(flow_axes, ParentFormattingContext::NoParent),
+        SizingRequestOf::new(
             Size::new(
-                crate::AxisSizingRequest::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(640.0)
+                AxisSizingRequest::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(640.0)
                             .expect("fixture physical extent is finite and nonnegative"),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequest::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(480.0)
+                AxisSizingRequest::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(480.0)
                             .expect("fixture physical extent is finite and nonnegative"),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Unknown,
+                Size::splat(OrthogonalFallbackLimitOf::Unknown),
             ),
         ),
     )
@@ -1878,7 +1924,7 @@ fn node_input_default_retains_horizontal_tb_ltr_for_both_scalar_lanes() {
 fn borrowed_input_views_reuse_validated_backing_in_both_scalar_lanes() {
     fn assert_lane<S: LayoutScalar>() {
         let metrics = InlineMetricsOf::try_new(
-            crate::InlineBaselineContext::Physical,
+            InlineBaselineContext::Physical,
             S::from_f64(7.0),
             S::from_f64(11.0),
         )
@@ -1894,7 +1940,7 @@ fn borrowed_input_views_reuse_validated_backing_in_both_scalar_lanes() {
         let boundary = InlineBoundaryInputOf::contribution(
             InlineBoundaryKind::Start,
             metrics,
-            crate::InlineBoundaryEdgeOf::ZERO,
+            InlineBoundaryEdgeOf::ZERO,
         )
         .unwrap();
         let tree = crate::test_support::layout_tree::PublicLayoutTreeOf::new()
@@ -1973,34 +2019,34 @@ fn borrowed_input_completed_geometry_and_caches_outlive_source_in_both_scalar_la
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 Size::new(
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                        NonNegativeFiniteOf::new(S::from_f64(100.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                     Some(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(50.0))
+                        NonNegativeFiniteOf::new(S::from_f64(50.0))
                             .expect("declared fixture extent is finite and nonnegative"),
                     ),
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
                 ),
             )
             .request(Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(100.0))
                             .expect("fixture physical extent is finite and nonnegative"),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(50.0))
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(50.0))
                             .expect("fixture physical extent is finite and nonnegative"),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
             ));
             compute_layout(&tree, 0, request).unwrap()
@@ -2008,9 +2054,9 @@ fn borrowed_input_completed_geometry_and_caches_outlive_source_in_both_scalar_la
         let child = batch
             .node_layout(1)
             .map(|layout| match layout {
-                crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
-                crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
-                crate::NodeLayoutRefOf::Fragments(_) => {
+                NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             })
@@ -2090,7 +2136,7 @@ fn inline_boundary_edge_exposes_the_used_scalar_sum_without_widened_resummation(
     );
     let input = InlineBoundaryInputOf::contribution(
         InlineBoundaryKind::End,
-        InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0).unwrap(),
+        InlineMetricsOf::try_new(InlineBaselineContext::Physical, 8.0, 10.0).unwrap(),
         edge,
     )
     .unwrap();

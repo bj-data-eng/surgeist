@@ -137,7 +137,7 @@ fn lay_out<S: LayoutScalar>(spans: &[Span], setup: Setup, host: &TestHost) -> St
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -150,8 +150,8 @@ fn lay_out<S: LayoutScalar>(spans: &[Span], setup: Setup, host: &TestHost) -> St
         &capture,
         0,
         request(setup.width, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
         &[],
         Some(&host.scope()),

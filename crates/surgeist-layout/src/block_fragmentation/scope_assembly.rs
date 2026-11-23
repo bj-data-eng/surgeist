@@ -4,7 +4,43 @@
 use super::output::{NodePublication, ResultIdentity};
 use super::source::Inventory;
 use crate::output::CompletedBatchEntries;
-use crate::*;
+#[cfg(test)]
+use crate::tree::LayoutBatchSink;
+use crate::{
+    block_fragmentation::{
+        BlockFragmentainerOf, BlockFragmentationFailure, FragmentCoordinateSpace, FragmentOutputOf,
+        FragmentPayloadOf, LayoutFragmentId, LayoutFragmentainerId, LayoutFragmentainerOutputOf,
+        NonBoxKind, input::LayoutTargetBasis,
+    },
+    error::{LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutOperation, LayoutResultOf},
+    fragmentation::{
+        input::{FragmentationBreakKinds, FragmentationKind},
+        output::FragmentationGraphicalCoverageOf,
+    },
+    geometry::FlowAxes,
+    output::{
+        CompletedLayoutBatchOf, LayoutCacheClearEntry, LayoutOutputEntryOf, NodeOutputOf,
+        SourceIndex,
+    },
+    scalar::LayoutScalar,
+};
+#[cfg(test)]
+use crate::{
+    block_fragmentation::{
+        BoxGeometryPairOf, LayoutBoundRequestOf, LayoutHandleError, OverflowFragmentGeometryOf,
+        OverflowGeometryPairOf,
+        input::{LayoutPublicationTargets, LayoutSourceBasis},
+        publication::{LayoutBatchApplyError, LayoutBatchCommit, LayoutBatchPreparation},
+    },
+    geometry::{Point, Size},
+    node_input::{BlockGeneration, Direction, Display, NodeInputOf, WritingMode},
+    output::LayoutRootRequestOf,
+    scroll::ScrollRectOf,
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, OrthogonalFallbackLimitOf,
+        OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+    },
+};
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -593,7 +629,7 @@ mod tests {
             LayoutSourceBasis::fresh(),
             LayoutRootRequestOf::standalone(sizing, axes(), Size::NONE),
             FragmentationKind::Page {
-                progression: crate::PageProgression::LeftToRight,
+                progression: crate::fragmentation::page::PageProgression::LeftToRight,
             },
             axes(),
             frames.to_vec(),
@@ -701,7 +737,7 @@ mod tests {
             frames: &fixture.frames,
             axes: axes(),
             kind: FragmentationKind::Page {
-                progression: crate::PageProgression::LeftToRight,
+                progression: crate::fragmentation::page::PageProgression::LeftToRight,
             },
             target: target(&fixture.frames),
             invalidated,

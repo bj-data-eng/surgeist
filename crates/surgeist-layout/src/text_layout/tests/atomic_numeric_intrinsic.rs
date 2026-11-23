@@ -2,14 +2,15 @@
 
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation};
 
 fn numeric_tree<S: LayoutScalar>(
-    available: crate::AxisSizingRequestOf<S>,
+    available: AxisSizingRequestOf<S>,
     end_margin: f64,
     first_indent: f64,
 ) -> PublicLayoutTreeOf<S> {
     let preferred = match available.space() {
-        crate::AvailableSpaceOf::Definite(value) => PreferredSizeOf::px(value.get()),
+        AvailableSpaceOf::Definite(value) => PreferredSizeOf::px(value.get()),
         _ => PreferredSizeOf::AUTO,
     };
     let mut host = PublicLayoutTreeOf::<S>::new().children(0, [1, 2]).style(
@@ -57,40 +58,37 @@ fn numeric_tree<S: LayoutScalar>(
 }
 
 fn numeric_batch<S: LayoutScalar>(
-    available: crate::AxisSizingRequestOf<S>,
+    available: AxisSizingRequestOf<S>,
     end_margin: f64,
     first_indent: f64,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let host = numeric_tree(available, end_margin, first_indent);
     compute_layout(&host, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input(&host, 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input(&host, 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
             available,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -169,10 +167,7 @@ fn numeric_intrinsic_minimum<S: LayoutScalar>() {
     // middle admits two independent pieces: paragraph min=max(6,6)=6.
     // Border geometry remains10 in each line at x0, with row tops0 and10.
     let batch = numeric_batch::<S>(
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
         -4.0,
         0.0,
     );
@@ -183,10 +178,7 @@ fn numeric_intrinsic_maximum<S: LayoutScalar>() {
     // Max-content keeps both on one line: 6+6=12. The second border is6..16;
     // actual raw physical overflow is16, not the used intrinsic width12.
     let batch = numeric_batch::<S>(
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         -4.0,
         0.0,
     );
@@ -201,11 +193,11 @@ fn numeric_signed_retraction<S: LayoutScalar>() {
     // The middle is Allowed, but must not force a spurious second
     // line merely because the first prefix/border extends beyond the band.
     let batch = numeric_batch::<S>(
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(5.0)).unwrap(),
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(S::from_f64(5.0)).unwrap(),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
         -20.0,
         10.0,
@@ -217,11 +209,11 @@ fn numeric_zero_flow<S: LayoutScalar>() {
     // Zero flow is not no participation: two distinct10px border boxes remain
     // at0..10, while each actual CSS margin box advances10-10=0.
     let batch = numeric_batch::<S>(
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(5.0)).unwrap(),
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(S::from_f64(5.0)).unwrap(),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
         -10.0,
         0.0,

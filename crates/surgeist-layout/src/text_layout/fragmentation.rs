@@ -1,5 +1,6 @@
 //! Checked per-binding family custody; Text remains the source/fragment owner.
 use super::{AdmittedInlineBoxes, InlineBoxFragmentationDemand, TextParagraphBinding};
+use crate::{error::LayoutErrorOf, tree::LayoutTree};
 use std::sync::Arc;
 use surgeist_text::{
     inline_box::PreparedInlineBoxFamily, scope_alignment::ScopeAlignmentLimitKind,
@@ -114,7 +115,7 @@ impl InlineBoxFamilies {
     /// Pre-admit the actual descriptor preflight plus the conservative native
     /// declaration-key bound before pure semantic Eq. Ordinary Native families
     /// with no applicable feature retention do not acquire a universal quota.
-    pub(crate) fn admit_comparison<S: crate::LayoutScalar>(
+    pub(crate) fn admit_comparison<S: crate::scalar::LayoutScalar>(
         &self,
         other: &Self,
         limits: surgeist_text::scope_alignment::ScopeAlignmentLimits,
@@ -157,37 +158,37 @@ pub(crate) fn foreign_family() -> surgeist_text::Error {
     })
 }
 
-type ResultOf<Tree, T> = crate::LayoutResultOf<
-    <Tree as crate::Traverse>::Node,
+type ResultOf<Tree, T> = crate::error::LayoutResultOf<
+    <Tree as crate::tree::Traverse>::Node,
     T,
-    <Tree as crate::Traverse>::Scalar,
-    <Tree as crate::LayoutTree>::MeasureError,
+    <Tree as crate::tree::Traverse>::Scalar,
+    <Tree as LayoutTree>::MeasureError,
 >;
 
-fn text_error<Tree: crate::LayoutTree>(
+fn text_error<Tree: LayoutTree>(
     node: Tree::Node,
     error: surgeist_text::Error,
-) -> crate::LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError> {
+) -> LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError> {
     crate::error::staging_text_error(
-        crate::LayoutErrorSiteOf::Node(node),
-        crate::LayoutOperation::TextCapture,
+        crate::error::LayoutErrorSiteOf::Node(node),
+        crate::error::LayoutOperation::TextCapture,
         error,
     )
 }
-fn allocation<Tree: crate::LayoutTree>(
+fn allocation<Tree: LayoutTree>(
     node: Tree::Node,
-) -> crate::LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError> {
-    crate::LayoutErrorOf::new(
-        crate::LayoutErrorSiteOf::Node(node),
-        crate::LayoutOperation::TextCapture,
-        crate::LayoutErrorKindOf::Allocation,
+) -> LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError> {
+    LayoutErrorOf::new(
+        crate::error::LayoutErrorSiteOf::Node(node),
+        crate::error::LayoutOperation::TextCapture,
+        crate::error::LayoutErrorKindOf::Allocation,
     )
 }
 
 /// Only a requested input allocates this canonical initialized slot
 /// buffer. Its Vec header becomes the one shared Arc payload, not another
 /// embedded-header charge in each row or resource clone.
-pub(super) fn reserve_slots<Tree: crate::LayoutTree>(
+pub(super) fn reserve_slots<Tree: LayoutTree>(
     root: Tree::Node,
     paragraphs: &[TextParagraphBinding<Tree::Node>],
     admission: &mut super::scope_alignment::ScopeAlignmentAdmission<Tree::Scalar>,
@@ -236,10 +237,10 @@ fn extra_native_source<Node: Copy + Eq>(
     Ok(source.captured_scope().is_none().then_some(source))
 }
 
-fn validate_inventory<Tree: crate::LayoutTree>(
+fn validate_inventory<Tree: LayoutTree>(
     binding: &TextParagraphBinding<Tree::Node>,
     proofs: &[crate::inline_wrapping::WrappingScopeProof<Tree::Node>],
-    inventory: &[crate::InlineChildOrderInput<Tree::Node>],
+    inventory: &[crate::inline_wrapping::InlineChildOrderInput<Tree::Node>],
     mut inspect: impl FnMut() -> surgeist_text::Result<()>,
 ) -> ResultOf<Tree, ()> {
     for row in inventory {
@@ -249,8 +250,9 @@ fn validate_inventory<Tree: crate::LayoutTree>(
         }
         for item in std::iter::once(&row.parent).chain(row.children.iter().map(|row| &row.box_)) {
             inspect().map_err(|error| text_error::<Tree>(binding.container, error))?;
-            let crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::NativePair { start, end }) =
-                item
+            let crate::inline_wrapping::GeneratedBoxRef::Inline(
+                crate::inline_wrapping::InlineBoxRef::NativePair { start, end },
+            ) = item
             else {
                 continue;
             };
@@ -272,7 +274,7 @@ fn validate_inventory<Tree: crate::LayoutTree>(
             if !found {
                 return Err(crate::inline_wrapping::wrapping_error(
                     binding.container,
-                    crate::WrappingScopeError::CaptureAssociation,
+                    crate::inline_wrapping::WrappingScopeError::CaptureAssociation,
                 ));
             }
         }
@@ -283,10 +285,10 @@ fn validate_inventory<Tree: crate::LayoutTree>(
 /// Build each demanded family once against the already checked canonical
 /// native inventory. All earlier families remain actual census roots; no
 /// product-reference scratch or independent receipt sum is constructed.
-pub(super) fn prepare_families<Tree: crate::LayoutTree>(
+pub(super) fn prepare_families<Tree: LayoutTree>(
     paragraphs: &[TextParagraphBinding<Tree::Node>],
     proofs: &[crate::inline_wrapping::WrappingScopeProof<Tree::Node>],
-    inventory: &[crate::InlineChildOrderInput<Tree::Node>],
+    inventory: &[crate::inline_wrapping::InlineChildOrderInput<Tree::Node>],
     resources: &super::scope_alignment::ScopeAlignmentResources<Tree::Scalar>,
     mut slots: Vec<Option<PreparedInlineBoxFamily>>,
 ) -> ResultOf<Tree, InlineBoxFamilies> {

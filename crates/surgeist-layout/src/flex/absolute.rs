@@ -15,9 +15,17 @@ use crate::sizing::resolve::{
     resolve_minimum_optional,
 };
 use crate::{
-    AlignItems, AxisSizingRequestOf, Compute, ComputeInputOf, ContainingLayoutContext, Edges,
-    FlexItemCollapse, LayoutResultOf, LayoutScalar, NodeOutputOf, ParentFormattingContext, Point,
-    Position, RequestedAxis, RunMode, Size, SizingMode, Traverse,
+    engine::contracts::Compute,
+    error::LayoutResultOf,
+    geometry::{Edges, Point, Size},
+    node_input::{AlignItems, FlexItemCollapse, Position},
+    output::{
+        ComputeInputOf, ContainingLayoutContext, NodeOutputOf, ParentFormattingContext,
+        RequestedAxis, RunMode, SizingMode, SourceIndex,
+    },
+    scalar::LayoutScalar,
+    tree::Traverse,
+    value::AxisSizingRequestOf,
 };
 
 pub(super) struct AbsoluteChildren<Node, S: LayoutScalar> {
@@ -69,8 +77,9 @@ impl<Node: Copy, S: LayoutScalar> AbsoluteChildren<Node, S> {
         let available = crate::layout_math::transpose_axis_requests_at_node(
             node,
             containing_size.map(|value| {
-                crate::layout_math::checked_available_space(value)
-                    .map(|space| AxisSizingRequestOf::new(space, crate::SizingOperation::Normal))
+                crate::layout_math::checked_available_space(value).map(|space| {
+                    AxisSizingRequestOf::new(space, crate::value::SizingOperation::Normal)
+                })
             }),
         )?;
         Ok(Self {
@@ -96,7 +105,7 @@ impl<Node: Copy, S: LayoutScalar> AbsoluteChildren<Node, S> {
         for (source_index, child) in self.children.by_ref() {
             let prepared = with_flex_item_projection::<Tree, M, _>(tree, child, |tree, style| {
                 if style.common.position != Position::Absolute
-                    || style.display == crate::Display::None
+                    || style.display == crate::node_input::Display::None
                 {
                     return Ok(None);
                 }
@@ -244,7 +253,7 @@ impl<Node: Copy, S: LayoutScalar> AbsoluteChildren<Node, S> {
                         .with_orthogonal_fallback(
                             constants.sizing_request.orthogonal_fallback().for_child(
                                 constants.positioned_fallback_limits,
-                                crate::ScrollportFallbackChangeOf::Preserve,
+                                crate::value::ScrollportFallbackChangeOf::Preserve,
                             ),
                         ),
                 )
@@ -276,7 +285,7 @@ impl<Node: Copy, S: LayoutScalar> AbsoluteChildren<Node, S> {
         tree: &mut Tree,
         node: Node,
         request: AbsoluteChild<Node, S>,
-        output: crate::ComputeOutputOf<S>,
+        output: crate::output::ComputeOutputOf<S>,
     ) -> LayoutResultOf<Node, FlexChildContribution<S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
@@ -346,7 +355,7 @@ impl<Node: Copy, S: LayoutScalar> AbsoluteChildren<Node, S> {
         .map_err(|error| layout_child_geometry_error(node, child, error))?;
         let output = retain_flex_scroll_geometry(output, scroll_geometry);
 
-        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+        tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
             child,
             crate::output::NormalGeometryOf::box_geometry(
                 location,
@@ -354,7 +363,7 @@ impl<Node: Copy, S: LayoutScalar> AbsoluteChildren<Node, S> {
                 scroll_geometry.content_box(),
             ),
             NodeOutputOf::<Tree::Scalar> {
-                source_index: crate::SourceIndex::new(source_index),
+                source_index: SourceIndex::new(source_index),
                 location,
                 size: final_size,
                 named_baselines: output.named_baselines,
@@ -367,7 +376,7 @@ impl<Node: Copy, S: LayoutScalar> AbsoluteChildren<Node, S> {
             .with_scroll_geometry(Some(scroll_geometry)),
         ));
         Ok(FlexChildContribution {
-            source_index: crate::SourceIndex::new(source_index),
+            source_index: SourceIndex::new(source_index),
             location,
             margin,
             geometry: scroll_geometry,
@@ -390,14 +399,17 @@ where
         with_flex_item_projection::<Tree, M, _>(tree, child, |tree, style| {
             let is_collapsed_in_flow = style.common.position != Position::Absolute
                 && style.collapse == FlexItemCollapse::Collapsed;
-            if style.display != crate::Display::None && !is_collapsed_in_flow {
+            if style.display != crate::node_input::Display::None && !is_collapsed_in_flow {
                 return Ok(());
             }
 
-            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+            tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
                 child,
-                crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
-                NodeOutputOf::with_source_index(crate::SourceIndex::new(source_index)),
+                crate::output::NormalGeometryOf::metadata(
+                    crate::geometry::Point::ZERO,
+                    crate::geometry::Size::ZERO,
+                ),
+                NodeOutputOf::with_source_index(SourceIndex::new(source_index)),
             ));
             tree.compute_child(
                 child,

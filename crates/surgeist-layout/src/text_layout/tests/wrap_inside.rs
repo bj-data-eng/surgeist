@@ -3,6 +3,12 @@
 
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    block_fragmentation::input::LayoutPublicationTargets,
+    geometry::FlowAxes,
+    inline_wrapping::WrappingInput,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation},
+};
 use std::{cell::Cell, collections::HashMap, ops::Range, sync::Arc};
 use surgeist_text as text;
 
@@ -279,7 +285,7 @@ fn captured_with_profile(
         .collect();
     Captured {
         binding: TextParagraphBinding {
-            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+            inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes,
@@ -326,7 +332,7 @@ fn text_tree<S: LayoutScalar>(
                     InlineBoundaryInputOf::contribution(
                         kind,
                         InlineMetricsOf::try_new(
-                            crate::InlineBaselineContext::Physical,
+                            crate::node_input::InlineBaselineContext::Physical,
                             S::from_f64(8.0),
                             S::from_f64(10.0),
                         )
@@ -345,34 +351,31 @@ fn text_tree<S: LayoutScalar>(
 }
 
 fn request_at<S: LayoutScalar>(
-    width: crate::AxisSizingRequestOf<S>,
-    containing_flow_axes: crate::FlowAxes,
+    width: AxisSizingRequestOf<S>,
+    containing_flow_axes: FlowAxes,
 ) -> LayoutRootRequestOf<S> {
     {
         let requested_axes = Size::new(
             width,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -411,7 +414,7 @@ fn policies(fixture: &Captured, values: &[WrapInside]) -> Vec<WrappingScopeInput
 fn compute<S: LayoutScalar>(
     fixture: &Captured,
     values: &[WrapInside],
-    width: crate::AxisSizingRequestOf<S>,
+    width: AxisSizingRequestOf<S>,
     rtl: bool,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let tree = text_tree(&fixture.binding, rtl);
@@ -419,7 +422,7 @@ fn compute<S: LayoutScalar>(
         &tree,
         0,
         vec![fixture.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: policies(fixture, values),
@@ -432,8 +435,8 @@ fn compute<S: LayoutScalar>(
         &input,
         0,
         request_at(width, {
-            let root_input = crate::LayoutTree::node_input((input).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((input).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap()
@@ -506,22 +509,18 @@ fn outside_and_nested<S: LayoutScalar>() {
         let auto = compute::<S>(
             &f,
             &[WrapInside::Auto],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             rtl,
         );
         let avoid = compute::<S>(
             &f,
             &[WrapInside::Avoid],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             rtl,
         );
@@ -545,7 +544,7 @@ fn outside_and_nested<S: LayoutScalar>() {
             &tree,
             0,
             vec![physical.binding.clone()],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: vec![pair(10000, 10001, WrapInside::Avoid)],
@@ -558,15 +557,15 @@ fn outside_and_nested<S: LayoutScalar>() {
             &flow,
             0,
             request_at(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 {
-                    let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                    FlowAxes::new(root_input.writing_mode, root_input.direction)
                 },
             ),
         )
@@ -590,11 +589,11 @@ fn outside_and_nested<S: LayoutScalar>() {
             cuts(&compute::<S>(
                 &nested,
                 &[WrapInside::Avoid; 2],
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()
                     ),
-                    crate::SizingOperation::Normal
+                    SizingOperation::Normal
                 ),
                 rtl
             )),
@@ -605,11 +604,11 @@ fn outside_and_nested<S: LayoutScalar>() {
             cuts(&compute::<S>(
                 &nested,
                 &[WrapInside::Avoid, WrapInside::Auto],
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()
                     ),
-                    crate::SizingOperation::Normal
+                    SizingOperation::Normal
                 ),
                 rtl
             )),
@@ -628,11 +627,11 @@ fn outside_and_nested<S: LayoutScalar>() {
             cuts(&compute::<S>(
                 &noninherited,
                 &[WrapInside::Avoid, WrapInside::Auto],
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()
                     ),
-                    crate::SizingOperation::Normal
+                    SizingOperation::Normal
                 ),
                 rtl
             )),
@@ -661,11 +660,9 @@ fn necessary_and_intrinsic<S: LayoutScalar>() {
         cuts(&compute::<S>(
             &f,
             &[WrapInside::Avoid],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()
-                ),
-                crate::SizingOperation::Normal
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()),
+                SizingOperation::Normal
             ),
             false
         )),
@@ -673,17 +670,11 @@ fn necessary_and_intrinsic<S: LayoutScalar>() {
     );
     for (available, expected) in [
         (
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
             10.0,
         ),
         (
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             60.0,
         ),
     ] {
@@ -732,11 +723,9 @@ fn incomparable<S: LayoutScalar>() {
         cuts(&compute::<S>(
             &f,
             &[WrapInside::Avoid; 3],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(50.0)).unwrap()
-                ),
-                crate::SizingOperation::Normal
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(50.0)).unwrap()),
+                SizingOperation::Normal
             ),
             false
         )),
@@ -768,11 +757,9 @@ fn restrictions<S: LayoutScalar>() {
         cuts(&compute::<S>(
             &f,
             &[WrapInside::Avoid],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()
-                ),
-                crate::SizingOperation::Normal
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()),
+                SizingOperation::Normal
             ),
             false
         )),
@@ -790,11 +777,9 @@ fn restrictions<S: LayoutScalar>() {
     let batch = compute::<S>(
         &f,
         &[WrapInside::Avoid],
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         false,
     );
@@ -819,11 +804,9 @@ fn restrictions<S: LayoutScalar>() {
         cuts(&compute::<S>(
             &f,
             &[WrapInside::Avoid],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()
-                ),
-                crate::SizingOperation::Normal
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()),
+                SizingOperation::Normal
             ),
             false
         )),
@@ -843,11 +826,11 @@ fn restrictions<S: LayoutScalar>() {
             cuts(&compute::<S>(
                 &f,
                 &[WrapInside::Avoid],
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap()
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap()
                     ),
-                    crate::SizingOperation::Normal
+                    SizingOperation::Normal
                 ),
                 false
             )),
@@ -867,11 +850,9 @@ fn restrictions<S: LayoutScalar>() {
     let batch = compute::<S>(
         &f,
         &[WrapInside::Avoid],
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         false,
     );
@@ -947,7 +928,7 @@ fn numeric_tree<S: LayoutScalar>(
                     InlineBoundaryInputOf::contribution(
                         kind,
                         InlineMetricsOf::try_new(
-                            crate::InlineBaselineContext::Physical,
+                            crate::node_input::InlineBaselineContext::Physical,
                             S::from_f64(10.0),
                             S::from_f64(10.0),
                         )
@@ -974,7 +955,7 @@ fn pair(start: u32, end: u32, policy: WrapInside) -> WrappingScopeInput<u32> {
 }
 
 fn numeric<S: LayoutScalar>() {
-    use InlineBreakOpportunity::{Allowed, Mandatory, Prohibited};
+    use crate::node_input::InlineBreakOpportunity::{Allowed, Mandatory, Prohibited};
     for rtl in [false, true] {
         for (permissions, policy, outer, first) in [
             ([Allowed; 3], WrapInside::Auto, false, 2),
@@ -992,7 +973,7 @@ fn numeric<S: LayoutScalar>() {
                 &tree,
                 0,
                 vec![],
-                crate::WrappingInput {
+                WrappingInput {
                     native_inline_boxes: Vec::new(),
                     gaps: Vec::new(),
                     scopes,
@@ -1005,15 +986,15 @@ fn numeric<S: LayoutScalar>() {
                 &flow,
                 0,
                 request_at(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     {
-                        let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                        let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                        FlowAxes::new(root_input.writing_mode, root_input.direction)
                     },
                 ),
             )
@@ -1104,7 +1085,7 @@ fn malformed_native_scope_definitions_refuse_without_guessing_flat_pairs() {
             &tree,
             0,
             vec![],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: definitions,
@@ -1125,7 +1106,7 @@ fn malformed_native_scope_definitions_refuse_without_guessing_flat_pairs() {
         &crossing,
         0,
         vec![],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![pair(6, 7, WrapInside::Avoid), pair(2, 5, WrapInside::Avoid)],
@@ -1168,7 +1149,7 @@ fn foreign_canonical_scope_is_not_reinterpreted_by_matching_source_or_ordinal() 
         &tree,
         0,
         vec![one.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: policies(&other, &[WrapInside::Avoid]),
@@ -1189,7 +1170,7 @@ fn foreign_canonical_scope_is_not_reinterpreted_by_matching_source_or_ordinal() 
         &tree,
         0,
         vec![one.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![WrappingScopeInput::Captured {
@@ -1215,7 +1196,7 @@ fn foreign_canonical_scope_is_not_reinterpreted_by_matching_source_or_ordinal() 
         &numeric,
         0,
         vec![],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: policies(&one, &[WrapInside::Avoid]),
@@ -1252,7 +1233,7 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
         &tree,
         0,
         vec![f.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![pair(10000, 10003, WrapInside::Avoid)],
@@ -1272,7 +1253,7 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
         &tree,
         0,
         vec![f.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![pair(10000, 10001, WrapInside::Avoid)],
@@ -1304,7 +1285,7 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
         &tree,
         0,
         vec![unmatched.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -1317,7 +1298,7 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
         &tree,
         0,
         vec![unmatched.binding.clone()],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![pair(10000, 10001, WrapInside::Avoid)],
@@ -1404,7 +1385,7 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
             &tree,
             0,
             vec![f.binding.clone()],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: policies(&f, &[WrapInside::Avoid; 2]),
@@ -1420,15 +1401,15 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
             &input,
             0,
             request_at(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 {
-                    let root_input = crate::LayoutTree::node_input((input).tree(), 0);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = crate::tree::LayoutTree::node_input((input).tree(), 0);
+                    FlowAxes::new(root_input.writing_mode, root_input.direction)
                 },
             ),
         )
@@ -1492,11 +1473,9 @@ fn phrase<S: LayoutScalar>() {
     let batch = compute::<S>(
         &f,
         &[WrapInside::Avoid],
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         false,
     );
@@ -1540,22 +1519,18 @@ fn hanging<S: LayoutScalar>() {
     let auto = compute::<S>(
         &f,
         &[WrapInside::Auto],
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         false,
     );
     let avoid = compute::<S>(
         &f,
         &[WrapInside::Avoid],
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         false,
     );
@@ -1592,22 +1567,18 @@ fn spacing<S: LayoutScalar>() {
     let auto = compute::<S>(
         &f,
         &[WrapInside::Auto],
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         false,
     );
     let avoid = compute::<S>(
         &f,
         &[WrapInside::Avoid],
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         false,
     );
@@ -1689,7 +1660,7 @@ fn receiving<S: LayoutScalar>() {
             &tree,
             0,
             vec![p.binding(0)],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 // This native box owns Ahem10/absolute10, Baseline8/10,
@@ -1720,15 +1691,15 @@ fn receiving<S: LayoutScalar>() {
             &flow,
             0,
             request_at(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 {
-                    let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                    FlowAxes::new(root_input.writing_mode, root_input.direction)
                 },
             ),
         )
@@ -1816,7 +1787,7 @@ fn receiving<S: LayoutScalar>() {
             &tree,
             0,
             vec![p.binding(0)],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 // This native box owns Ahem10/absolute10, Baseline8/10,
@@ -1848,15 +1819,15 @@ fn receiving<S: LayoutScalar>() {
                 &flow,
                 0,
                 request_at(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     {
-                        let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                        let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                        FlowAxes::new(root_input.writing_mode, root_input.direction)
                     },
                 ),
             )
@@ -1936,7 +1907,7 @@ fn replacement_and_terminal<S: LayoutScalar>() {
         &tree,
         0,
         vec![p.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![pair(2, 5, WrapInside::Avoid)],
@@ -1949,15 +1920,13 @@ fn replacement_and_terminal<S: LayoutScalar>() {
         &flow,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )
@@ -1994,11 +1963,9 @@ fn replacement_and_terminal<S: LayoutScalar>() {
     let batch = compute::<S>(
         &f,
         &[WrapInside::Avoid],
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         false,
     );
@@ -2084,7 +2051,7 @@ fn atomic_and_float<S: LayoutScalar>() {
         &tree,
         0,
         vec![p.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![pair(2, 5, WrapInside::Avoid)],
@@ -2097,15 +2064,13 @@ fn atomic_and_float<S: LayoutScalar>() {
         &flow,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )
@@ -2153,7 +2118,7 @@ fn atomic_and_float<S: LayoutScalar>() {
         &tree,
         0,
         vec![p.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![pair(2, 5, WrapInside::Avoid)],
@@ -2166,15 +2131,13 @@ fn atomic_and_float<S: LayoutScalar>() {
         &flow,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )
@@ -2212,11 +2175,9 @@ fn collapsed_and_explicit<S: LayoutScalar>() {
         let batch = compute::<S>(
             &f,
             &[policy],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             false,
         );
@@ -2240,11 +2201,9 @@ fn collapsed_and_explicit<S: LayoutScalar>() {
         cuts(&compute::<S>(
             &f,
             &[WrapInside::Avoid],
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap()
-                ),
-                crate::SizingOperation::Normal
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap()),
+                SizingOperation::Normal
             ),
             false
         )),
@@ -2261,12 +2220,12 @@ fn collapsed_space_and_explicit_zwsp_keep_actual_source_seams() {
 #[derive(Clone)]
 struct Retained<S: LayoutScalar> {
     caches: HashMap<u32, CacheOf<S>>,
-    outputs: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
+    outputs: HashMap<u32, crate::output::LayoutOutputEntryOf<u32, S>>,
     fragments: Vec<InlineFragmentOutputEntryOf<u32, S>>,
 }
 
 struct CachedTree<S: LayoutScalar> {
-    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
+    pub(super) publication_targets: LayoutPublicationTargets<u32>,
     tree: PublicLayoutTreeOf<S>,
     retained: Retained<S>,
     hits: Cell<usize>,
@@ -2275,7 +2234,7 @@ struct CachedTree<S: LayoutScalar> {
 impl<S: LayoutScalar> CachedTree<S> {
     fn new(tree: PublicLayoutTreeOf<S>) -> Self {
         Self {
-            publication_targets: crate::LayoutPublicationTargets::new(),
+            publication_targets: LayoutPublicationTargets::new(),
             tree,
             retained: Retained {
                 caches: HashMap::new(),
@@ -2329,16 +2288,16 @@ impl<S: LayoutScalar> LayoutTree for CachedTree<S> {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::output::LayoutOutputEntryOf<u32, S>> {
         self.retained.outputs.get(&node).copied()
     }
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for CachedTree<S> {
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
 
@@ -2346,7 +2305,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for CachedTree<S> {
     type Prepared = Retained<S>;
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
+        preparation: crate::block_fragmentation::publication::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Retained<S>, Self::Error> {
         let batch = preparation.batch();
         let mut next = self.retained.clone();
@@ -2367,7 +2326,12 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for CachedTree<S> {
     }
     fn commit_layout_batch(
         &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+        commit: crate::block_fragmentation::publication::LayoutBatchCommit<
+            '_,
+            u32,
+            S,
+            Self::Prepared,
+        >,
     ) {
         let next = commit.into_prepared();
         self.retained = next;
@@ -2412,7 +2376,7 @@ fn warm_policy<S: LayoutScalar>() {
             tree,
             100,
             vec![f.binding.clone()],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: policies(&f, &[policy]),
@@ -2425,15 +2389,15 @@ fn warm_policy<S: LayoutScalar>() {
             &flow,
             100,
             request_at(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 {
-                    let root_input = crate::LayoutTree::node_input((flow).tree(), 100);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 100);
+                    FlowAxes::new(root_input.writing_mode, root_input.direction)
                 },
             ),
         )
@@ -2680,7 +2644,7 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
                 &tree,
                 0,
                 vec![f.binding.clone()],
-                crate::WrappingInput {
+                WrappingInput {
                     native_inline_boxes: Vec::new(),
                     gaps: Vec::new(),
                     scopes: definitions,
@@ -2693,15 +2657,15 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
                 &flow,
                 0,
                 request_at(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     {
-                        let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                        let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                        FlowAxes::new(root_input.writing_mode, root_input.direction)
                     },
                 ),
             )
@@ -2725,7 +2689,7 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
                 &tree,
                 0,
                 vec![f.binding.clone()],
-                crate::WrappingInput {
+                WrappingInput {
                     native_inline_boxes: Vec::new(),
                     gaps: Vec::new(),
                     scopes: definitions,
@@ -2743,15 +2707,15 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
                 &flow,
                 0,
                 request_at(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     {
-                        let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                        let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                        FlowAxes::new(root_input.writing_mode, root_input.direction)
                     },
                 ),
             ) {
@@ -2809,7 +2773,7 @@ fn mixed_crossing<S: LayoutScalar>() -> Vec<String> {
                 &tree,
                 0,
                 vec![f.binding.clone()],
-                crate::WrappingInput {
+                WrappingInput {
                     native_inline_boxes: Vec::new(),
                     gaps: Vec::new(),
                     scopes: definitions,

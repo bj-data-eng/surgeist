@@ -9,11 +9,21 @@ use crate::output::MeasuredInsetBasisOf;
 use crate::text_layout::scope_alignment::{EntryBacking, EntryFunding, ScopeLease};
 use crate::value::ResolvedLengthAutoOf;
 use crate::{
-    AxisSizingRequestOf, Clear, Compute, Edges, Float, FloatExclusion,
-    FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQueryOf,
-    LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInvalidInputOf,
-    LayoutMissingContext, LayoutOperation, LayoutResultOf, LayoutScalar, LengthResolutionStatus,
-    NodeOutputOf, Point, ScrollGeometryOf, ScrollRectOf, Size, Traverse,
+    engine::contracts::Compute,
+    error::{
+        LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInvalidInputOf,
+        LayoutMissingContext, LayoutOperation, LayoutResultOf,
+    },
+    geometry::{Edges, FlowAxes, Point, Size},
+    node_input::{
+        Clear, Float, FloatExclusion, FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf,
+        FloatExclusionQueryOf,
+    },
+    output::NodeOutputOf,
+    scalar::LayoutScalar,
+    scroll::{ScrollGeometryOf, ScrollRectOf},
+    tree::Traverse,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, LengthResolutionStatus, SizingOperation},
 };
 
 #[cfg(test)]
@@ -30,7 +40,7 @@ pub(super) struct PendingFloat<Node, S: LayoutScalar> {
     pub(super) block_start: S,
     pub(super) size: Size<S>,
     /// Actual child-local facts for publication, independent of placement.
-    pub(super) named_baselines: crate::NamedBaselinesOf<S>,
+    pub(super) named_baselines: crate::output::NamedBaselinesOf<S>,
     pub(super) content_size: Size<S>,
     pub(super) border: Edges<S>,
     pub(super) padding: Edges<S>,
@@ -105,7 +115,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> NativeFloatBasis<Node, S> {
 pub(super) struct NativeFloatPlacement<Node, S: LayoutScalar> {
     basis: NativeFloatBasis<Node, S>,
     logical: LogicalPointOf<S>,
-    axes: crate::FlowAxes,
+    axes: FlowAxes,
     inline_start: S,
     inline_end: S,
 }
@@ -323,8 +333,8 @@ fn entry_bound<Node: Copy, S: LayoutScalar, M>(
     node: Node,
     ledger: &[FloatLedgerEntry<S, Node>],
     clear: Clear,
-    axes: crate::FlowAxes,
-    receiver: crate::FlowAxes,
+    axes: FlowAxes,
+    receiver: FlowAxes,
     origin: S,
     funding: Option<&EntryFunding<S>>,
 ) -> LayoutResultOf<Node, Option<CommonBfcPosition<S>>, S, M> {
@@ -380,7 +390,7 @@ impl<S: LayoutScalar, Node: Copy> EntryFloatLedger<S, Node> {
         &self,
         node: Node,
         clear: Clear,
-        receiver: crate::FlowAxes,
+        receiver: FlowAxes,
         funding: Option<&EntryFunding<S>>,
     ) -> LayoutResultOf<Node, Option<CommonBfcPosition<S>>, S, M> {
         entry_bound(
@@ -418,7 +428,7 @@ impl<S: LayoutScalar, Node> InheritedFloatExclusions<S, Node> {
         }
     }
 
-    pub(in crate::block) fn parent_axes(&self) -> crate::FlowAxes {
+    pub(in crate::block) fn parent_axes(&self) -> FlowAxes {
         self.parent_flow_axes
     }
     pub(in crate::block) fn entry_ledger_funded(
@@ -484,7 +494,7 @@ impl<S: LayoutScalar, Node> InheritedFloatExclusions<S, Node> {
         &self,
         node: Node,
         clear: Clear,
-        receiver: crate::FlowAxes,
+        receiver: FlowAxes,
         funding: Option<&EntryFunding<S>>,
     ) -> LayoutResultOf<Node, Option<CommonBfcPosition<S>>, S, M>
     where
@@ -518,7 +528,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         &self,
         node: Node,
         clear: Clear,
-        receiver: crate::FlowAxes,
+        receiver: FlowAxes,
         funding: Option<&EntryFunding<S>>,
     ) -> LayoutResultOf<Node, Option<CommonBfcPosition<S>>, S, M> {
         entry_bound(
@@ -1440,7 +1450,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         };
         if self
             .flow_axes
-            .logical_axis_progression(crate::LogicalAxis::Inline)
+            .logical_axis_progression(crate::geometry::LogicalAxis::Inline)
             .is_decreasing()
         {
             (
@@ -1601,7 +1611,7 @@ where
         contributions
             .include_in_flow_geometry(visual_location, float.margin, scroll_geometry)
             .map_err(|error| layout_child_geometry_error(container, float.node, error))?;
-        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+        tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
             float.node,
             crate::output::NormalGeometryOf::box_geometry(
                 normal_location,
@@ -1609,7 +1619,7 @@ where
                 scroll_geometry.content_box(),
             ),
             NodeOutputOf::<S> {
-                source_index: crate::SourceIndex::new(float.source_index),
+                source_index: crate::output::SourceIndex::new(float.source_index),
                 location: visual_location,
                 size: float.size,
                 named_baselines: float.named_baselines,
@@ -1648,12 +1658,10 @@ impl<S: LayoutScalar> FloatIntrinsics<S> {
             self.available_inline.operation(),
             self.available_inline.space(),
         ) {
-            (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Definite(_)) => {}
-            (crate::SizingOperation::MinContent, _) => {
-                self.contribution = self.contribution.max(width)
-            }
-            (crate::SizingOperation::MaxContent, _)
-            | (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Indefinite) => {
+            (SizingOperation::Normal, AvailableSpaceOf::Definite(_)) => {}
+            (SizingOperation::MinContent, _) => self.contribution = self.contribution.max(width),
+            (SizingOperation::MaxContent, _)
+            | (SizingOperation::Normal, AvailableSpaceOf::Indefinite) => {
                 match clear {
                     Clear::None => {}
                     Clear::Left => self.line_start = S::ZERO,
@@ -1679,12 +1687,10 @@ impl<S: LayoutScalar> FloatIntrinsics<S> {
             self.available_inline.operation(),
             self.available_inline.space(),
         ) {
-            (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Definite(_)) => {}
-            (crate::SizingOperation::MinContent, _) => {
-                self.contribution = self.contribution.max(width)
-            }
-            (crate::SizingOperation::MaxContent, _)
-            | (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Indefinite) => {
+            (SizingOperation::Normal, AvailableSpaceOf::Definite(_)) => {}
+            (SizingOperation::MinContent, _) => self.contribution = self.contribution.max(width),
+            (SizingOperation::MaxContent, _)
+            | (SizingOperation::Normal, AvailableSpaceOf::Indefinite) => {
                 self.contribution = self.contribution.max(width);
                 if let Some(demand) = intrinsic_demand {
                     self.contribution = self.contribution.max(demand);

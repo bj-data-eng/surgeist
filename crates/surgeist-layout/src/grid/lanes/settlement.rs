@@ -1,5 +1,5 @@
 use super::*;
-use crate::FlowAxes;
+use crate::geometry::FlowAxes;
 
 pub(super) struct LaneItemPlacement<'a, Node, S: LayoutScalar> {
     pub(super) node: Node,
@@ -141,7 +141,7 @@ where
         let (horizontal, vertical) =
             subgrid_parent_propagation_axes(subgrid_item, flow_axes, item.child_flow_axes);
         child_contributions.push(GridChildContribution {
-            source_index: crate::SourceIndex::new(item.source_index),
+            source_index: crate::output::SourceIndex::new(item.source_index),
             location,
             margin: item.margin,
             geometry: scroll_geometry,
@@ -150,7 +150,7 @@ where
                 .retain_physical_axes(horizontal, vertical),
             in_flow: true,
         });
-        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+        tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
             item.node,
             crate::output::NormalGeometryOf::box_geometry(
                 normal_location,
@@ -158,7 +158,7 @@ where
                 scroll_geometry.content_box(),
             ),
             NodeOutputOf {
-                source_index: crate::SourceIndex::new(item.source_index),
+                source_index: crate::output::SourceIndex::new(item.source_index),
                 location,
                 size: item.output.size,
                 named_baselines: item.output.named_baselines,

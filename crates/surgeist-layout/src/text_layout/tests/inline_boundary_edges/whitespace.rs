@@ -2,6 +2,10 @@
 //! CSS Text3 sections 1.5 and 4.1.2 define the independent trimming expectations.
 
 use super::*;
+use crate::value::{
+    AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, NonNegativeFiniteOf,
+    OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+};
 
 fn actual_pair(
     fixture: &Fixture,
@@ -139,23 +143,23 @@ fn collapsible_terminal_space_before_real_end_border_padding_is_trimmed_in_wide_
                 false,
                 Some(width),
                 false,
-                crate::SizingRequestOf::new(
-                    crate::Size::new(
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                SizingRequestOf::new(
+                    crate::geometry::Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::Normal,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
                         ),
                     ),
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        NearestScrollportOf::Absent,
+                        crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             );
@@ -224,23 +228,23 @@ fn collapsible_leading_space_after_real_start_border_padding_is_trimmed() {
                 false,
                 Some(width),
                 false,
-                crate::SizingRequestOf::new(
-                    crate::Size::new(
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                SizingRequestOf::new(
+                    crate::geometry::Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::Normal,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
                         ),
                     ),
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        NearestScrollportOf::Absent,
+                        crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             );
@@ -308,23 +312,20 @@ fn a_following_real_sibling_keeps_internal_collapsible_space_and_real_end_strip(
             false,
             Some(100.0),
             false,
-            crate::SizingRequestOf::new(
-                crate::Size::new(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+            SizingRequestOf::new(
+                crate::geometry::Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::Normal,
-                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Absent,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         );
@@ -386,23 +387,20 @@ fn preserved_terminal_space_is_not_trimmed_by_the_collapsible_space_rule() {
             false,
             Some(100.0),
             false,
-            crate::SizingRequestOf::new(
-                crate::Size::new(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+            SizingRequestOf::new(
+                crate::geometry::Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::Normal,
-                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
                 ),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    NearestScrollportOf::Absent,
+                    crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         );

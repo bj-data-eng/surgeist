@@ -1,6 +1,7 @@
 use super::super::{formatted, roles};
 use super::*;
 use crate::accounting::LayoutWork;
+use crate::value::SizingOperation;
 
 pub(super) struct AcceptedCandidate {
     candidate: EvaluatedCandidate,
@@ -72,13 +73,13 @@ impl OpportunityWalk {
             ordered: opportunities.windows(2).all(|pair| pair[0].0 <= pair[1].0),
             monotone: matches!(
                 input.wrap_style,
-                crate::TextWrapStyle::Auto | crate::TextWrapStyle::Stable
+                crate::node_input::TextWrapStyle::Auto | crate::node_input::TextWrapStyle::Stable
             ) && input.wrapping.is_none()
                 && input.inline_boxes.is_none()
                 && input.atomics.is_empty()
                 && input.controls.iter().all(|row| row.boundary.is_none())
                 && matches!(input.orientation, LineOrientation::Horizontal)
-                && input.available.operation() == crate::SizingOperation::Normal
+                && input.available.operation() == SizingOperation::Normal
                 && crate::layout_math::normal_available_size(input.available).is_some()
                 && opportunities.iter().all(|(_, _, kind, alternatives)| {
                     alternatives.is_empty() && *kind != PreparedBreakKind::Discretionary
@@ -166,14 +167,14 @@ where
                 return Ok(None);
             };
             let purpose = match input.available.operation() {
-                crate::SizingOperation::MinContent => Some(ConditionalPurpose::MinContent),
-                crate::SizingOperation::Normal
+                SizingOperation::MinContent => Some(ConditionalPurpose::MinContent),
+                SizingOperation::Normal
                     if !candidate.fits
                         && crate::layout_math::normal_available_size(input.available).is_some() =>
                 {
                     Some(ConditionalPurpose::Overflow)
                 }
-                crate::SizingOperation::Normal | crate::SizingOperation::MaxContent => None,
+                SizingOperation::Normal | SizingOperation::MaxContent => None,
             };
             let ConditionalLineChoice {
                 mut candidate,
@@ -472,10 +473,9 @@ where
                         );
                     }
                     if (choice.is_none()
-                        || ((input.available.operation() != crate::SizingOperation::MinContent)
+                        || ((input.available.operation() != SizingOperation::MinContent)
                             && (candidate.fits
-                                || (input.available.operation()
-                                    == crate::SizingOperation::MaxContent))))
+                                || (input.available.operation() == SizingOperation::MaxContent))))
                         && prefer_candidate(goal, &candidate, choice.as_ref())?
                     {
                         choice = Some(candidate);
@@ -488,8 +488,7 @@ where
                         skipped_ordinary.extend(dispositions);
                     }
                 }
-                if input.available.operation() == crate::SizingOperation::MinContent
-                    && ordinary_formatted
+                if input.available.operation() == SizingOperation::MinContent && ordinary_formatted
                 {
                     break;
                 }

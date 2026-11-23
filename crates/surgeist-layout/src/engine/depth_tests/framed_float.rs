@@ -1,4 +1,5 @@
 use super::*;
+use crate::sizing::PreferredSizeOf;
 
 fn framed_float_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
     let terminal = 2 * depth + 1;
@@ -9,10 +10,10 @@ fn framed_float_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
                 node,
                 NodeInputOf {
                     display: Display::Block,
-                    float: crate::Float::Left,
+                    float: crate::node_input::Float::Left,
                     size: Size::new(
-                        crate::PreferredSizeOf::px(S::from_f64(60.0)),
-                        crate::PreferredSizeOf::AUTO,
+                        PreferredSizeOf::px(S::from_f64(60.0)),
+                        PreferredSizeOf::AUTO,
                     ),
                     ..NodeInputOf::default()
                 },
@@ -23,10 +24,7 @@ fn framed_float_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
         terminal,
         NodeInputOf {
             display: Display::Block,
-            size: Size::new(
-                crate::PreferredSizeOf::AUTO,
-                crate::PreferredSizeOf::px(S::from_f64(7.0)),
-            ),
+            size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(S::from_f64(7.0))),
             ..NodeInputOf::default()
         },
     )
@@ -57,10 +55,10 @@ fn assert_framed_float_tree_geometry<S: LayoutScalar>(tree: &PublicLayoutTreeOf<
             Size::new(S::from_f64(width), S::from_f64(height)),
             "node {node}"
         );
-        assert_eq!(output.location, crate::Point::ZERO, "node {node}");
+        assert_eq!(output.location, crate::geometry::Point::ZERO, "node {node}");
         assert_eq!(
             output.source_index,
-            crate::SourceIndex::new(0),
+            crate::output::SourceIndex::new(0),
             "node {node}"
         );
     }
@@ -72,13 +70,19 @@ fn assert_framed_float_refusal<S: LayoutScalar>(depth: u32) {
         .style(terminal, NodeInputOf::default())
         .measure(terminal, Size::new(S::from_f64(60.0), S::NAN));
     let error = compute_layout(&tree, 0, standalone()).unwrap_err();
-    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(terminal));
-    assert_eq!(error.operation(), crate::LayoutOperation::LeafMeasurement);
+    assert_eq!(
+        error.site(),
+        crate::error::LayoutErrorSiteOf::Node(terminal)
+    );
+    assert_eq!(
+        error.operation(),
+        crate::error::LayoutOperation::LeafMeasurement
+    );
     assert!(matches!(
         error.kind(),
-        crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::MeasurementOutput(output))
-            if output.axis() == crate::PhysicalAxis::Vertical
-                && matches!(output.error(), crate::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.to_f64().is_nan())
+        crate::error::LayoutErrorKindOf::InvalidInput(crate::error::LayoutInvalidInputOf::MeasurementOutput(output))
+            if output.axis() == crate::geometry::PhysicalAxis::Vertical
+                && matches!(output.error(), crate::value::NonNegativeFiniteScalarErrorOf::NonFinite { value } if value.to_f64().is_nan())
     ));
 }
 

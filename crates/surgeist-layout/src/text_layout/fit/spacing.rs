@@ -152,7 +152,7 @@ fn direct_allocation(
     if share == 0.0 {
         return Err(FitError::Numeric(
             extra,
-            crate::LayoutTextNumericError::NonZeroLost,
+            crate::error::LayoutTextNumericError::NonZeroLost,
         ));
     }
     for &index in direct {

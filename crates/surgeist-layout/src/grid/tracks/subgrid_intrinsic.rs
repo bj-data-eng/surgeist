@@ -726,7 +726,7 @@ impl<Node: Copy, S: LayoutScalar> SubgridIntrinsicContributionReport<Node, S> {
         axis: GridAxisKind,
         count: usize,
         flow: FlowAxes,
-        reference: crate::GridBaselineReference,
+        reference: crate::node_input::GridBaselineReference,
     ) -> Self {
         Self {
             row_contributions: Vec::new(),
@@ -1047,9 +1047,9 @@ where
                         RequestedAxis::Both,
                         Size::NONE,
                         input.constants.node_inner_size,
-                        crate::ContainingLayoutContext::new(
+                        crate::output::ContainingLayoutContext::new(
                             input.constants.flow_axes,
-                            crate::ParentFormattingContext::Grid,
+                            crate::output::ParentFormattingContext::Grid,
                         ),
                         SizingRequestOf::new(
                             input.available,
@@ -1232,7 +1232,9 @@ mod tests {
     use super::*;
     use crate::test_support::layout_tree::OracleTree;
     use crate::{
-        Length, LengthPercentageOf, NodeInput, SizingCalculationOf, TrackComponent, TrackSizing,
+        node_input::NodeInput,
+        sizing::SizingCalculationOf,
+        value::{Length, LengthPercentageOf, TrackComponent, TrackSizing},
     };
 
     fn fri04_c03_grid_track_nested<S: LayoutScalar>(target: f64) -> SizingCalculationOf<S> {
@@ -1305,12 +1307,12 @@ mod tests {
                         size: LogicalSizeOf::new(S::ZERO, S::ZERO),
                     },
                     parent_flow_axes: crate::geometry::FlowAxes::new(
-                        crate::WritingMode::VerticalRl,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::VerticalRl,
+                        crate::node_input::Direction::Ltr,
                     ),
                     child_flow_axes: crate::geometry::FlowAxes::new(
-                        crate::WritingMode::VerticalRl,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::VerticalRl,
+                        crate::node_input::Direction::Ltr,
                     ),
                     explicit_parent_content_size: Size::new(
                         Some(S::from_f64(41.0)),
@@ -1346,12 +1348,12 @@ mod tests {
                         size: LogicalSizeOf::new(S::ZERO, S::ZERO),
                     },
                     parent_flow_axes: crate::geometry::FlowAxes::new(
-                        crate::WritingMode::VerticalRl,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::VerticalRl,
+                        crate::node_input::Direction::Ltr,
                     ),
                     child_flow_axes: crate::geometry::FlowAxes::new(
-                        crate::WritingMode::VerticalRl,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::VerticalRl,
+                        crate::node_input::Direction::Ltr,
                     ),
                     explicit_parent_content_size: Size::new(
                         Some(S::from_f64(41.0)),
@@ -1381,12 +1383,12 @@ mod tests {
                     size: LogicalSizeOf::new(S::ZERO, S::ZERO),
                 },
                 parent_flow_axes: crate::geometry::FlowAxes::new(
-                    crate::WritingMode::VerticalRl,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::VerticalRl,
+                    crate::node_input::Direction::Ltr,
                 ),
                 child_flow_axes: crate::geometry::FlowAxes::new(
-                    crate::WritingMode::VerticalRl,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::VerticalRl,
+                    crate::node_input::Direction::Ltr,
                 ),
                 explicit_parent_content_size: Size::new(
                     Some(S::from_f64(41.0)),
@@ -1424,7 +1426,10 @@ mod tests {
             let horizontal_style = NodeInput::default();
             let horizontal =
                 FlowAxes::new(horizontal_style.writing_mode, horizontal_style.direction);
-            let vertical = FlowAxes::new(crate::WritingMode::VerticalLr, crate::Direction::Ltr);
+            let vertical = FlowAxes::new(
+                crate::node_input::WritingMode::VerticalLr,
+                crate::node_input::Direction::Ltr,
+            );
             let outer_constraint = IntrinsicSubgridAxisConstraint {
                 physical_axis: inherited_subgrid_physical_axis(
                     axis_report(GridAxisKind::Column, GridAxisKind::Row),
@@ -1441,9 +1446,9 @@ mod tests {
                     RequestedAxis::Both,
                     Size::new(None, Some(S::from_f64(19.0))),
                     Size::new(None, Some(S::from_f64(29.0))),
-                    crate::ContainingLayoutContext::new(
+                    crate::output::ContainingLayoutContext::new(
                         horizontal,
-                        crate::ParentFormattingContext::Grid,
+                        crate::output::ParentFormattingContext::Grid,
                     ),
                     SizingRequestOf::new(
                         Size::new(
@@ -1458,8 +1463,8 @@ mod tests {
                         ),
                         OrthogonalFallbackOf::new(
                             Size::NONE,
-                            crate::NearestScrollportOf::Absent,
-                            Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                            crate::value::NearestScrollportOf::Absent,
+                            Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                         ),
                     ),
                 ),
@@ -1519,15 +1524,15 @@ mod tests {
     fn vertical_intrinsic_grid_percentage_edges_use_logical_area_basis() {
         let parent_style = NodeInput {
             display: Display::Grid,
-            writing_mode: crate::WritingMode::VerticalRl,
+            writing_mode: crate::node_input::WritingMode::VerticalRl,
             justify_items: Some(AlignItems::Start),
             align_items: Some(AlignItems::Start),
             ..NodeInput::default()
         };
         let child_style = NodeInput {
             display: Display::Grid,
-            writing_mode: crate::WritingMode::VerticalRl,
-            grid_template_columns: vec![TrackComponent::Subgrid(crate::SubgridTrack {
+            writing_mode: crate::node_input::WritingMode::VerticalRl,
+            grid_template_columns: vec![TrackComponent::Subgrid(crate::value::SubgridTrack {
                 name_components: Vec::new(),
             })],
             padding: Edges::all(Length::percent(0.1)),
@@ -1539,8 +1544,8 @@ mod tests {
         let constants = Constants {
             child_orthogonal_fallback: OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
             ),
             flow_axes: crate::geometry::FlowAxes::new(
                 parent_style.writing_mode,
@@ -1624,29 +1629,29 @@ mod tests {
                     RequestedAxis::Both,
                     Size::NONE,
                     Size::NONE,
-                    crate::ContainingLayoutContext::new(
+                    crate::output::ContainingLayoutContext::new(
                         constants.flow_axes,
-                        crate::ParentFormattingContext::Grid,
+                        crate::output::ParentFormattingContext::Grid,
                     ),
                     SizingRequestOf::new(
                         Size::new(
                             AxisSizingRequestOf::new(
                                 AvailableSpaceOf::Definite(
-                                    crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                                    crate::value::NonNegativeFiniteOf::new(100.0).unwrap(),
                                 ),
                                 SizingOperation::Normal,
                             ),
                             AxisSizingRequestOf::new(
                                 AvailableSpaceOf::Definite(
-                                    crate::NonNegativeFiniteOf::new(200.0).unwrap(),
+                                    crate::value::NonNegativeFiniteOf::new(200.0).unwrap(),
                                 ),
                                 SizingOperation::Normal,
                             ),
                         ),
                         OrthogonalFallbackOf::new(
                             Size::NONE,
-                            crate::NearestScrollportOf::Absent,
-                            Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                            crate::value::NearestScrollportOf::Absent,
+                            Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                         ),
                     ),
                 ),
@@ -1661,15 +1666,15 @@ mod tests {
     fn vertical_intrinsic_subgrid_percentage_gap_uses_logical_content_box() {
         let parent_style = NodeInput {
             display: Display::Grid,
-            writing_mode: crate::WritingMode::VerticalRl,
+            writing_mode: crate::node_input::WritingMode::VerticalRl,
             justify_items: Some(AlignItems::Start),
             align_items: Some(AlignItems::Start),
             ..NodeInput::default()
         };
         let child_style = NodeInput {
             display: Display::Grid,
-            writing_mode: crate::WritingMode::VerticalRl,
-            grid_template_columns: vec![TrackComponent::Subgrid(crate::SubgridTrack {
+            writing_mode: crate::node_input::WritingMode::VerticalRl,
+            grid_template_columns: vec![TrackComponent::Subgrid(crate::value::SubgridTrack {
                 name_components: Vec::new(),
             })],
             grid_template_rows: vec![TrackComponent::px(100.0)],
@@ -1689,8 +1694,8 @@ mod tests {
         let constants = Constants {
             child_orthogonal_fallback: OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
             ),
             flow_axes: crate::geometry::FlowAxes::new(
                 parent_style.writing_mode,
@@ -1774,29 +1779,29 @@ mod tests {
                     RequestedAxis::Both,
                     Size::NONE,
                     Size::NONE,
-                    crate::ContainingLayoutContext::new(
+                    crate::output::ContainingLayoutContext::new(
                         constants.flow_axes,
-                        crate::ParentFormattingContext::Grid,
+                        crate::output::ParentFormattingContext::Grid,
                     ),
                     SizingRequestOf::new(
                         Size::new(
                             AxisSizingRequestOf::new(
                                 AvailableSpaceOf::Definite(
-                                    crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                                    crate::value::NonNegativeFiniteOf::new(100.0).unwrap(),
                                 ),
                                 SizingOperation::Normal,
                             ),
                             AxisSizingRequestOf::new(
                                 AvailableSpaceOf::Definite(
-                                    crate::NonNegativeFiniteOf::new(200.0).unwrap(),
+                                    crate::value::NonNegativeFiniteOf::new(200.0).unwrap(),
                                 ),
                                 SizingOperation::Normal,
                             ),
                         ),
                         OrthogonalFallbackOf::new(
                             Size::NONE,
-                            crate::NearestScrollportOf::Absent,
-                            Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                            crate::value::NearestScrollportOf::Absent,
+                            Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                         ),
                     ),
                 ),

@@ -1,5 +1,6 @@
 //! Final relative-percentage overflow cannot publish stale visual geometry.
 use super::*;
+use crate::value::SizingOperation;
 
 fn captured_final_percent_failure_preserves_publication<S: LayoutScalar>(maximum: S) {
     assert!(maximum.to_f64().is_finite() && maximum > S::ZERO);
@@ -53,7 +54,7 @@ fn captured_final_percent_failure_preserves_publication<S: LayoutScalar>(maximum
     let overflow_top = LengthAutoOf::value(coefficient);
     assert_eq!(
         overflow_top.resolve_with_status(None).status(),
-        crate::LengthResolutionStatus::MissingBasis
+        crate::value::LengthResolutionStatus::MissingBasis
     );
     let expected_product = maximum * custody_n::<S>(12.0);
     assert_eq!(expected_product.to_f64(), f64::INFINITY);
@@ -70,7 +71,7 @@ fn captured_final_percent_failure_preserves_publication<S: LayoutScalar>(maximum
             &host,
             0,
             vec![binding.clone()],
-            crate::WrappingInput {
+            crate::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -84,19 +85,19 @@ fn captured_final_percent_failure_preserves_publication<S: LayoutScalar>(maximum
             0,
             {
                 let containing_flow_axes = {
-                    let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                    crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
                 };
                 let requested_axes = Size::new(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(custody_n::<S>(50.0)).unwrap(),
+                    crate::value::AxisSizingRequestOf::new(
+                        crate::value::AvailableSpaceOf::Definite(
+                            crate::value::NonNegativeFiniteOf::new(custody_n::<S>(50.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::MaxContent,
+                    crate::value::AxisSizingRequestOf::new(
+                        crate::value::AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
                     ),
                 );
                 let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
@@ -104,21 +105,23 @@ fn captured_final_percent_failure_preserves_publication<S: LayoutScalar>(maximum
                 // the explicitly requested inline contribution operation.
                 logical_requests.block = logical_requests
                     .block
-                    .with_operation(crate::SizingOperation::Normal);
+                    .with_operation(SizingOperation::Normal);
                 logical_requests.inline = logical_requests
                     .inline
-                    .with_operation(crate::SizingOperation::Normal);
+                    .with_operation(SizingOperation::Normal);
                 let axes = containing_flow_axes.physical_size(logical_requests);
                 // The old Native NoParent fixture explicitly supplied these percentage
                 // bases. It supplied no independent ICB dimensions or ancestor scrollport.
                 let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-                let fallback = crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                let fallback = crate::value::OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    crate::value::NearestScrollportOf::Absent,
+                    crate::geometry::Size::splat(
+                        crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 );
-                crate::LayoutRootRequestOf::standalone(
-                    crate::SizingRequestOf::new(axes, fallback),
+                crate::output::LayoutRootRequestOf::standalone(
+                    crate::value::SizingRequestOf::new(axes, fallback),
                     containing_flow_axes,
                     percentage_parent,
                 )

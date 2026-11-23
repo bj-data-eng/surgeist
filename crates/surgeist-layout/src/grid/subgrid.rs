@@ -3,7 +3,10 @@ use std::collections::BTreeMap;
 use super::*;
 use crate::geometry::{FlowAxes, LogicalSizeOf};
 use crate::geometry::{PhysicalAxis, PhysicalProgression};
-use crate::{MaxSizeOf, NodeInputOf};
+use crate::{
+    node_input::{NodeInputOf, SizeContainment},
+    sizing::MaxSizeOf,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct GridSubgridReport<Node> {
@@ -332,7 +335,7 @@ impl<'a, S: LayoutScalar> GridMinimumParentFunctions<'a, S> {
 
 #[derive(Clone, Copy)]
 pub(super) struct SubgridParentTrackSource<'a, S: LayoutScalar> {
-    pub(super) baseline_references: crate::GridBaselineReferences,
+    pub(super) baseline_references: crate::node_input::GridBaselineReferences,
     pub(super) flow_axes: FlowAxes,
     pub(super) gap: Size<S>,
     pub(super) columns: Option<&'a UsedGridAxisGeometryOf<S>>,
@@ -346,7 +349,7 @@ pub(super) struct SubgridParentTrackSource<'a, S: LayoutScalar> {
 
 #[derive(Clone, Copy)]
 pub(super) struct SubgridInheritedAxisSource<'a, S: LayoutScalar> {
-    pub(super) baseline_reference: crate::GridBaselineReference,
+    pub(super) baseline_reference: crate::node_input::GridBaselineReference,
     pub(super) geometry: Option<&'a UsedGridAxisGeometryOf<S>>,
     pub(super) allocated: Option<&'a [S]>,
     pub(super) minimum_functions: Option<GridMinimumTrackFunctions<'a, S>>,
@@ -482,7 +485,7 @@ impl GridMinimumWrapperTraversal {
 /// visitor may query or recurse here; only scalar leaf frames escape traversal.
 pub(super) struct GridMinimumWrapperChild<'input, 'a, Node, S: LayoutScalar> {
     pub(super) node: Node,
-    pub(super) source_index: crate::SourceIndex,
+    pub(super) source_index: crate::output::SourceIndex,
     pub(super) execution: IntrinsicGridChildInput<'input, 'a, Node, S>,
     pub(super) prepared: ComputeInputOf<S>,
     pub(super) minimum_source: SubgridParentTrackSource<'a, S>,
@@ -1462,7 +1465,7 @@ pub(super) struct InheritedCurrentGridBaselinePlacement<Node, S: LayoutScalar = 
 pub(super) struct InheritedCurrentGridBaselinePlacementInput<Node, S: LayoutScalar = DefaultScalar>
 {
     pub(super) axis: GridAxisKind,
-    pub(super) reference: crate::GridBaselineReference,
+    pub(super) reference: crate::node_input::GridBaselineReference,
     pub(super) physical_axis: PhysicalAxis,
     pub(super) mapping: CheckedOwnerToCurrentPlacementMap<Node, S>,
     pub(super) direct_witness: CurrentGridDirectWitness<Node>,
@@ -2040,9 +2043,9 @@ impl<S: LayoutScalar> RootTraversal<S> {
                         RequestedAxis::Both,
                         Size::NONE,
                         grid.constants.node_inner_size,
-                        crate::ContainingLayoutContext::new(
+                        crate::output::ContainingLayoutContext::new(
                             grid.constants.flow_axes,
-                            crate::ParentFormattingContext::Grid,
+                            crate::output::ParentFormattingContext::Grid,
                         ),
                         SizingRequestOf::new(
                             input.query.available,
@@ -2996,8 +2999,8 @@ pub(super) fn grid_minimum_wrapper_contained<S: LayoutScalar>(
     axis: GridAxisKind,
 ) -> bool {
     let containment = size_containment(input);
-    containment == crate::SizeContainment::BothAxes
-        || (containment == crate::SizeContainment::InlineAxis && axis == GridAxisKind::Column)
+    containment == SizeContainment::BothAxes
+        || (containment == SizeContainment::InlineAxis && axis == GridAxisKind::Column)
 }
 
 pub(super) fn lane_subgrid_wrapper_constants<'input, Tree, M>(
@@ -3203,7 +3206,7 @@ fn start_wrapper_resolution<'input, Tree, M>(
     tree: &mut Tree,
     identity: &WrapperResolutionIdentity<'input, '_, Tree::Node, Tree::Scalar>,
     container_style: &GridContainerProjection<'input, Tree::Scalar>,
-    containment: crate::SizeContainment,
+    containment: SizeContainment,
 ) -> ResolutionStarted<'input, Tree, M>
 where
     Tree: Compute<'input, M>,
@@ -3249,7 +3252,7 @@ where
         )?
     };
     let stage = query_stage.mapped(containing_flow_axes, constants.flow_axes);
-    let contained_inline = if containment == crate::SizeContainment::InlineAxis
+    let contained_inline = if containment == SizeContainment::InlineAxis
         && parent_context.columns.is_none()
         && stage.has_resolved_axis(GridAxisKind::Column)
     {
@@ -4061,9 +4064,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperLevel<'input, Node, S> {
                 RequestedAxis::Both,
                 Size::NONE,
                 constants.node_inner_size,
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     constants.flow_axes,
-                    crate::ParentFormattingContext::Grid,
+                    crate::output::ParentFormattingContext::Grid,
                 ),
                 SizingRequestOf::new(child_query.available, constants.child_orthogonal_fallback),
             ),
@@ -4071,7 +4074,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperLevel<'input, Node, S> {
         let child_prepared = intrinsic_stage_child_input::<Tree, M>(child, &execution)?;
         Ok(Some(GridMinimumWrapperChild {
             node: child,
-            source_index: crate::SourceIndex::new(index),
+            source_index: crate::output::SourceIndex::new(index),
             execution,
             prepared: child_prepared,
             minimum_source,
@@ -4535,21 +4538,35 @@ mod tests {
 
     use super::*;
     use crate::{
-        Compute, ComputeInput, ComputeOutput, DefaultScalar, LayoutErrorKind, LayoutErrorSite,
-        LayoutInvalidInput, LayoutOperation, LayoutResultOf, LengthPercentageOf, NodeInput,
-        NodeInputOf, PreferredSize, Size, SubgridTrack, TrackComponent, Traverse,
+        engine::contracts::Compute,
+        error::{
+            LayoutErrorKind, LayoutErrorSite, LayoutInvalidInput, LayoutOperation, LayoutResultOf,
+        },
+        geometry::Size,
+        node_input::{NodeInput, NodeInputOf},
+        output::{ComputeInput, ComputeOutput},
+        scalar::DefaultScalar,
+        sizing::PreferredSize,
+        tree::Traverse,
+        value::{LengthPercentageOf, SubgridTrack, TrackComponent},
     };
 
     #[test]
     fn lane_leaf_frame_has_no_stacking_track_maximum() {
-        let flow = FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr);
+        let flow = FlowAxes::new(
+            crate::node_input::WritingMode::HorizontalTb,
+            crate::node_input::Direction::Ltr,
+        );
         let prepared = ComputeInputOf::for_child(
             RunMode::ComputeSize,
             SizingMode::InherentSize,
             RequestedAxis::Both,
             Size::NONE,
             Size::NONE,
-            crate::ContainingLayoutContext::new(flow, crate::ParentFormattingContext::Grid),
+            crate::output::ContainingLayoutContext::new(
+                flow,
+                crate::output::ParentFormattingContext::Grid,
+            ),
             SizingRequestOf::new(
                 Size::splat(AxisSizingRequestOf::new(
                     AvailableSpaceOf::Indefinite,
@@ -4557,8 +4574,8 @@ mod tests {
                 )),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    crate::value::NearestScrollportOf::Absent,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         );
@@ -4573,7 +4590,7 @@ mod tests {
         };
         let frame = |algorithm, lane_grid_axis| {
             SubgridParentTrackSource {
-                baseline_references: crate::GridBaselineReferences::default(),
+                baseline_references: crate::node_input::GridBaselineReferences::default(),
                 flow_axes: flow,
                 gap: Size::ZERO,
                 columns: None,
@@ -4661,7 +4678,7 @@ mod tests {
             &mut self,
             _node: Self::Node,
             _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
-        ) -> crate::LayoutResultOf<
+        ) -> crate::error::LayoutResultOf<
             Self::Node,
             crate::grid::GridOverflowObservation<Self::Scalar>,
             Self::Scalar,
@@ -4676,29 +4693,29 @@ mod tests {
             self.input
         }
 
-        fn layout_input(&self, _node: Self::Node) -> crate::LayoutInputView<'input> {
-            crate::LayoutInputViewOf::Box(self.input)
+        fn layout_input(&self, _node: Self::Node) -> crate::node_input::LayoutInputView<'input> {
+            crate::node_input::LayoutInputViewOf::Box(self.input)
         }
 
         fn staged_unrounded(
             &self,
             node: Self::Node,
-        ) -> crate::LayoutResultOf<
+        ) -> crate::error::LayoutResultOf<
             Self::Node,
-            crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+            crate::output::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
             Self::Scalar,
             Infallible,
         > {
-            Err(crate::LayoutErrorOf::new(
-                crate::LayoutErrorSiteOf::Node(node),
-                crate::LayoutOperation::ChildLayout,
-                crate::LayoutErrorKindOf::InternalInvariant(
-                    crate::LayoutInternalInvariant::MissingStagedUnroundedOutput,
+            Err(crate::error::LayoutErrorOf::new(
+                crate::error::LayoutErrorSiteOf::Node(node),
+                crate::error::LayoutOperation::ChildLayout,
+                crate::error::LayoutErrorKindOf::InternalInvariant(
+                    crate::error::LayoutInternalInvariant::MissingStagedUnroundedOutput,
                 ),
             ))
         }
 
-        fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntry<Self::Node>) {}
+        fn set_unrounded(&mut self, _entry: crate::output::LayoutOutputEntry<Self::Node>) {}
 
         fn compute_child(
             &mut self,
@@ -4711,8 +4728,14 @@ mod tests {
 
     fn assert_resolved_subgrid_axis_gap_uses_node_logical_axes<S: LayoutScalar>() {
         for (writing_mode, direction) in [
-            (crate::WritingMode::VerticalRl, crate::Direction::Ltr),
-            (crate::WritingMode::SidewaysLr, crate::Direction::Rtl),
+            (
+                crate::node_input::WritingMode::VerticalRl,
+                crate::node_input::Direction::Ltr,
+            ),
+            (
+                crate::node_input::WritingMode::SidewaysLr,
+                crate::node_input::Direction::Rtl,
+            ),
         ] {
             let style = NodeInputOf::<S> {
                 display: Display::Grid,
@@ -4811,7 +4834,10 @@ mod tests {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(20.0), Some(20.0)),
-            crate::ContainingLayoutContext::new(parent_axes, crate::ParentFormattingContext::Grid),
+            crate::output::ContainingLayoutContext::new(
+                parent_axes,
+                crate::output::ParentFormattingContext::Grid,
+            ),
             SizingRequestOf::new(
                 Size::splat(AxisSizingRequestOf::new(
                     AvailableSpaceOf::Indefinite,
@@ -4819,8 +4845,8 @@ mod tests {
                 )),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    crate::value::NearestScrollportOf::Absent,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         );
@@ -4837,7 +4863,7 @@ mod tests {
                 Size::ZERO,
                 IntrinsicGridQuery::complete(GridContributionPurpose::MaxContent),
                 SubgridParentTrackSource {
-                    baseline_references: crate::GridBaselineReferences::default(),
+                    baseline_references: crate::node_input::GridBaselineReferences::default(),
                     flow_axes: parent_axes,
                     gap: Size::ZERO,
                     columns: None,
@@ -4853,7 +4879,8 @@ mod tests {
                 prepared,
                 Size::new(None, Some(f32::MAX)),
                 SubgridChildParentContextInput {
-                    parent_baseline_references: crate::GridBaselineReferences::default(),
+                    parent_baseline_references: crate::node_input::GridBaselineReferences::default(
+                    ),
                     item: item_report,
                     child_style: child_input.item(),
                     child_container: Some(*container),

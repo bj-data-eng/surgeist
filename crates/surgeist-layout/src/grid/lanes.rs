@@ -7,7 +7,11 @@ use crate::sizing::resolve::{
     ResolvedPreferredSize, SizingResolutionError, resolve_maximum_optional,
     resolve_minimum_optional, resolve_preferred_sizing,
 };
-use crate::{GridFlowToleranceOf, LengthResolutionOf, LengthResolutionStatus, PercentageBasisOf};
+use crate::{
+    node_input::GridFlowToleranceOf,
+    output::{ContainingLayoutContext, ParentFormattingContext},
+    value::{LengthResolutionOf, LengthResolutionStatus, PercentageBasisOf},
+};
 use std::collections::TryReserveError;
 use std::ops::Range;
 
@@ -1273,9 +1277,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicRole<Node, S> {
                         RequestedAxis::Both,
                         Size::NONE,
                         constants.node_inner_size,
-                        crate::ContainingLayoutContext::new(
+                        ContainingLayoutContext::new(
                             constants.flow_axes,
-                            crate::ParentFormattingContext::Grid,
+                            ParentFormattingContext::Grid,
                         ),
                         SizingRequestOf::new(
                             grid.query.available,
@@ -1382,9 +1386,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicRole<Node, S> {
                     RequestedAxis::Both,
                     Size::NONE,
                     constants.node_inner_size,
-                    crate::ContainingLayoutContext::new(
+                    ContainingLayoutContext::new(
                         constants.flow_axes,
-                        crate::ParentFormattingContext::Grid,
+                        ParentFormattingContext::Grid,
                     ),
                     SizingRequestOf::new(grid.query.available, constants.child_orthogonal_fallback),
                 ),
@@ -1510,7 +1514,7 @@ pub(super) struct NestedLaneIntrinsicProjectionOf<S: LayoutScalar = DefaultScala
 // contribution pass. Retain a separate memo for each descendant slot.
 struct NestedLaneTraversalMemoOf<S: LayoutScalar, Node> {
     states: Vec<NestedLaneTraversalStateOf<S, Node>>,
-    children: Vec<(crate::SourceIndex, Self)>,
+    children: Vec<(crate::output::SourceIndex, Self)>,
     empty_leaf: Option<LaneEmptyLeafFloorOf<S>>,
 }
 
@@ -1565,7 +1569,10 @@ impl<S: LayoutScalar, Node: Copy + Eq> NestedLaneTraversalMemoOf<S, Node> {
         }
     }
 
-    fn child(&mut self, source_index: crate::SourceIndex) -> Result<&mut Self, TryReserveError> {
+    fn child(
+        &mut self,
+        source_index: crate::output::SourceIndex,
+    ) -> Result<&mut Self, TryReserveError> {
         let index = match self
             .children
             .binary_search_by_key(&source_index, |child| child.0)
@@ -1907,7 +1914,7 @@ where
             || {
                 placement
                     .span()
-                    .map_or(1, crate::GridSpan::get)
+                    .map_or(1, crate::value::GridSpan::get)
                     .min(projection.wrapper_span)
             },
             |(start, end)| end - start,
@@ -2401,9 +2408,9 @@ where
                 child,
                 source_index,
                 ComputeInputOf::hidden_in_containing_pass(
-                    crate::ContainingLayoutContext::new(
+                    ContainingLayoutContext::new(
                         constants.flow_axes,
-                        crate::ParentFormattingContext::Grid,
+                        ParentFormattingContext::Grid,
                     ),
                     containing_auto_scrollbar_pass,
                 ),
@@ -3486,7 +3493,7 @@ where
             RequestedAxis::Both,
             known,
             parent,
-            crate::ContainingLayoutContext::new(flow_axes, crate::ParentFormattingContext::Grid),
+            ContainingLayoutContext::new(flow_axes, ParentFormattingContext::Grid),
             SizingRequestOf::new(available, constants.child_orthogonal_fallback),
         ),
         flow_axes,
@@ -3794,7 +3801,7 @@ fn max_running_position<S: LayoutScalar>(running: &[S], start: usize, span: usiz
 #[cfg(test)]
 mod resolved_flow_tests {
     use super::*;
-    use crate::GridLanesFlow;
+    use crate::node_input::GridLanesFlow;
     use crate::test_support::lane_placement::{LaneFixture, LaneFixtureItem};
 
     fn assert_reverse_candidates<S: LayoutScalar>() {

@@ -1,8 +1,12 @@
 use std::sync::Arc;
 
 use crate::{
-    BlockGeneration, DefaultScalar, Edges, FragmentationGraphicalCoverageOf, LayoutOutputEntryOf,
-    LayoutScalar, NamedBaselinesOf, NodeOutputOf, Point, ScrollGeometryOf, Size, SourceIndex,
+    fragmentation::{input::FragmentationKind, output::FragmentationGraphicalCoverageOf},
+    geometry::{Edges, Point, Size},
+    node_input::BlockGeneration,
+    output::{LayoutOutputEntryOf, NamedBaselinesOf, NodeOutputOf, SourceIndex},
+    scalar::{DefaultScalar, LayoutScalar},
+    scroll::ScrollGeometryOf,
 };
 
 #[derive(Debug)]
@@ -123,7 +127,7 @@ impl<Node: Copy, S: LayoutScalar> BoxGeometryPairOf<Node, S> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OverflowFragmentGeometryOf<S: LayoutScalar = DefaultScalar> {
     pub origin: Point<S>,
-    pub content_bounds: crate::ScrollRectOf<S>,
+    pub content_bounds: crate::scroll::ScrollRectOf<S>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -405,8 +409,8 @@ impl std::error::Error for LayoutHandleError {}
 #[derive(Clone, Debug)]
 pub struct LayoutFragmentainerOutputOf<S: LayoutScalar = DefaultScalar> {
     pub(crate) id: LayoutFragmentainerId,
-    pub(crate) kind: crate::FragmentationKind,
-    pub(crate) axes: crate::FlowAxes,
+    pub(crate) kind: FragmentationKind,
+    pub(crate) axes: crate::geometry::FlowAxes,
     pub(crate) frame: super::BlockFragmentainerOf<S>,
 }
 impl<S: LayoutScalar> LayoutFragmentainerOutputOf<S> {
@@ -415,11 +419,11 @@ impl<S: LayoutScalar> LayoutFragmentainerOutputOf<S> {
         &self.id
     }
     #[must_use]
-    pub fn kind(&self) -> crate::FragmentationKind {
+    pub fn kind(&self) -> FragmentationKind {
         self.kind
     }
     #[must_use]
-    pub fn flow_axes(&self) -> crate::FlowAxes {
+    pub fn flow_axes(&self) -> crate::geometry::FlowAxes {
         self.axes
     }
     #[must_use]
@@ -438,17 +442,17 @@ impl<S: LayoutScalar> LayoutFragmentainerOutputOf<S> {
         self.frame.size
     }
     #[must_use]
-    pub fn boundary(&self) -> crate::FragmentationBreakKinds {
+    pub fn boundary(&self) -> crate::fragmentation::input::FragmentationBreakKinds {
         self.frame.breaks
     }
     #[must_use]
-    pub fn page_side(&self) -> Option<crate::FragmentationPageSide> {
+    pub fn page_side(&self) -> Option<crate::fragmentation::page::FragmentationPageSide> {
         match self.kind {
-            crate::FragmentationKind::Page { progression } => self
+            FragmentationKind::Page { progression } => self
                 .frame
                 .page_side
                 .map(|physical| progression.classify(physical)),
-            crate::FragmentationKind::Column | crate::FragmentationKind::Region => None,
+            FragmentationKind::Column | FragmentationKind::Region => None,
         }
     }
 }

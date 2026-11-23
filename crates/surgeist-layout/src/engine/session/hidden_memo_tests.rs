@@ -2,10 +2,19 @@ use super::*;
 use crate::engine::validation::ValidationGraph;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::{
-    AlignContent, AvailableSpaceOf, AxisSizingRequestOf, ContainingLayoutContext, Direction,
-    Display, FlowAxes, LayoutInputViewOf, NearestScrollportOf, NodeInputOf,
-    OrthogonalFallbackLimitOf, OrthogonalFallbackOf, ParentFormattingContext, PreferredSizeOf,
-    SizingOperation, SizingRequestOf, TrackComponentOf, Traverse, WrappingInput, WritingMode,
+    geometry::FlowAxes,
+    inline_wrapping::WrappingInput,
+    node_input::{
+        AlignContent, Direction, Display, LayoutInputOf, LayoutInputViewOf, NodeInputOf,
+        WritingMode,
+    },
+    output::{ContainingLayoutContext, ParentFormattingContext, SourceIndex},
+    sizing::PreferredSizeOf,
+    tree::Traverse,
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, OrthogonalFallbackLimitOf,
+        OrthogonalFallbackOf, SizingOperation, SizingRequestOf, TrackComponentOf,
+    },
 };
 use surgeist_text::font::FontBaseline;
 
@@ -125,12 +134,14 @@ fn shared_tree<S: LayoutScalar>(hidden_first: bool, refuse: bool) -> SharedTree<
 
 fn request<S: LayoutScalar>(parent: ParentFormattingContext) -> ComputeInputOf<S> {
     let extent = |value| {
-        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(S::from_f64(value)).unwrap())
+        AvailableSpaceOf::Definite(
+            crate::value::NonNegativeFiniteOf::new(S::from_f64(value)).unwrap(),
+        )
     };
     ComputeInputOf::for_child(
-        crate::RunMode::PerformLayout,
-        crate::SizingMode::InherentSize,
-        crate::RequestedAxis::Both,
+        crate::output::RunMode::PerformLayout,
+        crate::output::SizingMode::InherentSize,
+        crate::output::RequestedAxis::Both,
         Size::new(Some(S::from_f64(40.0)), Some(S::from_f64(20.0))),
         Size::new(Some(S::from_f64(40.0)), Some(S::from_f64(20.0))),
         ContainingLayoutContext::new(
@@ -183,7 +194,7 @@ fn assert_shared_effects<S: LayoutScalar>(
 ) {
     let n = S::from_f64;
     let shared = session.staged_unrounded(SHARED).unwrap();
-    assert_eq!(shared.output().location, crate::Point::ZERO);
+    assert_eq!(shared.output().location, crate::geometry::Point::ZERO);
     assert_eq!(
         shared.output().size,
         if hidden_first {
@@ -194,23 +205,23 @@ fn assert_shared_effects<S: LayoutScalar>(
     );
     assert_eq!(
         shared.output().source_index,
-        crate::SourceIndex::new(usize::from(!hidden_first))
+        SourceIndex::new(usize::from(!hidden_first))
     );
     let visible = session.staged_unrounded(VISIBLE).unwrap();
     assert_eq!(visible.output().size, Size::new(n(30.0), n(10.0)));
     assert_eq!(
         visible.output().source_index,
-        crate::SourceIndex::new(usize::from(hidden_first))
+        SourceIndex::new(usize::from(hidden_first))
     );
     let hidden = session.staged_unrounded(HIDDEN).unwrap();
     assert_eq!(hidden.output().size, Size::ZERO);
     assert_eq!(
         hidden.output().source_index,
-        crate::SourceIndex::new(usize::from(!hidden_first))
+        SourceIndex::new(usize::from(!hidden_first))
     );
     let filler = session.staged_unrounded(FILLER).unwrap();
     assert_eq!(filler.output().size, Size::ZERO);
-    assert_eq!(filler.output().source_index, crate::SourceIndex::ZERO);
+    assert_eq!(filler.output().source_index, SourceIndex::ZERO);
     assert!(
         session
             .cache
@@ -314,11 +325,14 @@ fn assert_shared_refusal<S: LayoutScalar>() {
             let error = trial
                 .compute_child(ROOT, request(ParentFormattingContext::Grid))
                 .unwrap_err();
-            assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(SHARED));
-            assert_eq!(error.operation(), crate::LayoutOperation::LeafMeasurement);
+            assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(SHARED));
+            assert_eq!(
+                error.operation(),
+                crate::error::LayoutOperation::LeafMeasurement
+            );
             assert!(matches!(
                 error.kind(),
-                crate::LayoutErrorKindOf::Measurement(OriginalRefusal)
+                crate::error::LayoutErrorKindOf::Measurement(OriginalRefusal)
             ));
         }
         assert_eq!(tree.measurements.get(), 2);
@@ -353,15 +367,18 @@ fn assert_hidden_numeric_replay<S: LayoutScalar>() {
     const END: u32 = 7;
     for hidden_first in [true, false] {
         let mut tree = shared_tree::<S>(hidden_first, false);
-        let metrics = crate::InlineMetricsOf::try_new(
-            crate::InlineBaselineContext::Named(FontBaseline::Alphabetic),
+        let metrics = crate::node_input::InlineMetricsOf::try_new(
+            crate::node_input::InlineBaselineContext::Named(FontBaseline::Alphabetic),
             S::from_f64(8.0),
             S::from_f64(10.0),
         )
         .unwrap();
-        let edge =
-            crate::InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::from_f64(1.0))
-                .unwrap();
+        let edge = crate::node_input::InlineBoundaryEdgeOf::try_new(
+            S::ZERO,
+            S::from_f64(2.0),
+            S::from_f64(1.0),
+        )
+        .unwrap();
         // These controls are authored visible. Only their Box ancestor hides
         // them; their numeric metrics and strips must not publish visible work.
         tree.source = tree
@@ -369,15 +386,15 @@ fn assert_hidden_numeric_replay<S: LayoutScalar>() {
             .children(HIDDEN, [BREAK, START, END])
             .input(
                 BREAK,
-                crate::LayoutInputOf::line_break(
-                    crate::LineBreakInputOf::new().with_metrics(metrics),
+                LayoutInputOf::line_break(
+                    crate::node_input::LineBreakInputOf::new().with_metrics(metrics),
                 ),
             )
             .input(
                 START,
-                crate::LayoutInputOf::inline_boundary(
-                    crate::InlineBoundaryInputOf::contribution(
-                        crate::InlineBoundaryKind::Start,
+                LayoutInputOf::inline_boundary(
+                    crate::node_input::InlineBoundaryInputOf::contribution(
+                        crate::node_input::InlineBoundaryKind::Start,
                         metrics,
                         edge,
                     )
@@ -386,9 +403,9 @@ fn assert_hidden_numeric_replay<S: LayoutScalar>() {
             )
             .input(
                 END,
-                crate::LayoutInputOf::inline_boundary(
-                    crate::InlineBoundaryInputOf::contribution(
-                        crate::InlineBoundaryKind::End,
+                LayoutInputOf::inline_boundary(
+                    crate::node_input::InlineBoundaryInputOf::contribution(
+                        crate::node_input::InlineBoundaryKind::End,
                         metrics,
                         edge,
                     )
@@ -435,10 +452,13 @@ fn assert_hidden_numeric_replay<S: LayoutScalar>() {
             );
             for (source, node) in [BREAK, START, END].into_iter().enumerate() {
                 let entry = session.staged_unrounded(node).unwrap();
-                assert_eq!(entry.non_box, Some(crate::NonBoxKind::Hidden));
-                assert_eq!(entry.output().location, crate::Point::ZERO);
+                assert_eq!(
+                    entry.non_box,
+                    Some(crate::block_fragmentation::NonBoxKind::Hidden)
+                );
+                assert_eq!(entry.output().location, crate::geometry::Point::ZERO);
                 assert_eq!(entry.output().size, Size::ZERO);
-                assert_eq!(entry.output().source_index, crate::SourceIndex::new(source));
+                assert_eq!(entry.output().source_index, SourceIndex::new(source));
             }
             assert_eq!(
                 session.staged_unrounded(SHARED).unwrap().output().size,

@@ -2,6 +2,10 @@ use super::super::relative::{self, InsetReference};
 use super::prepare::InlineRunControl;
 use super::*;
 use crate::inline::InlineSourcePositionOf;
+use crate::{
+    error::LayoutTextNumericError,
+    output::{LayoutOutputEntryOf, SourceIndex},
+};
 
 type TextFragmentGroup<Node, S> = (
     Node,
@@ -83,8 +87,10 @@ where
         fragment,
     } in output.fragments
     {
-        let crate::InlineFragmentOwner::Node(node) = owner else {
-            scope_fragments.push(crate::InlineFragmentOutputEntryOf::new(owner, fragment));
+        let crate::output::InlineFragmentOwner::Node(node) = owner else {
+            scope_fragments.push(crate::output::InlineFragmentOutputEntryOf::new(
+                owner, fragment,
+            ));
             continue;
         };
         let index = groups
@@ -140,16 +146,19 @@ where
                     .position(|node| *node == child)
                     .expect("nonformatted descendant is an actual bound control");
             let (border, padding) = match tree.layout_input(child) {
-                crate::LayoutInputViewOf::InlineBoundary(boundary) => {
+                crate::node_input::LayoutInputViewOf::InlineBoundary(boundary) => {
                     crate::inline::InlineEndpointOf::from_input(boundary).physical_components()
                 }
                 _ => (Edges::ZERO, Edges::ZERO),
             };
-            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+            tree.set_unrounded(LayoutOutputEntryOf::ordinary_unrounded(
                 child,
-                crate::output::NormalGeometryOf::metadata(normal_location, crate::Size::ZERO),
+                crate::output::NormalGeometryOf::metadata(
+                    normal_location,
+                    crate::geometry::Size::ZERO,
+                ),
                 NodeOutputOf::<S> {
-                    source_index: crate::SourceIndex::new(source_index),
+                    source_index: SourceIndex::new(source_index),
                     location,
                     border,
                     padding,
@@ -181,11 +190,11 @@ where
                     .iter()
                     .position(|child| *child == node)
                     .expect("capture admitted this source node");
-            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+            tree.set_unrounded(LayoutOutputEntryOf::ordinary_unrounded(
                 node,
                 crate::output::NormalGeometryOf::metadata(normal_location, normal_size),
                 NodeOutputOf {
-                    source_index: crate::SourceIndex::new(source_index),
+                    source_index: SourceIndex::new(source_index),
                     location,
                     size,
                     content_size: size,
@@ -362,7 +371,7 @@ where
                 band.inline_end - band.inline_start,
                 band.block_end - band.block_start,
             );
-            let rect = crate::ScrollRectOf::try_new(
+            let rect = crate::scroll::ScrollRectOf::try_new(
                 project_point(band.inline_start, band.block_start, size),
                 constants.flow_axes.physical_size(size),
             )
@@ -457,7 +466,7 @@ where
                 None => output.named_baselines,
             };
             let visual = NodeOutputOf::<S> {
-                source_index: crate::SourceIndex::new(source_index),
+                source_index: SourceIndex::new(source_index),
                 location,
                 size: source.item.size,
                 named_baselines,
@@ -469,7 +478,7 @@ where
             }
             .with_scroll_geometry(Some(scroll_geometry));
             let entry = match source.canonical_geometry {
-                Some(canonical) => crate::LayoutOutputEntryOf::canonical_atomic(
+                Some(canonical) => LayoutOutputEntryOf::canonical_atomic(
                     child,
                     canonical.measured_normal,
                     canonical.measured_padding_origin,
@@ -478,7 +487,7 @@ where
                     canonical.visual_origin,
                     visual,
                 ),
-                None => crate::LayoutOutputEntryOf::ordinary_unrounded(
+                None => LayoutOutputEntryOf::ordinary_unrounded(
                     child,
                     crate::output::NormalGeometryOf::box_geometry(
                         normal_location,
@@ -547,22 +556,28 @@ where
                 };
                 let before_flow = flow_point(before_flow);
                 let after_flow = flow_point(after_flow);
-                let positive =
-                    FlowAxes::new(constants.flow_axes.writing_mode(), crate::Direction::Ltr)
-                        .inline_start();
+                let positive = FlowAxes::new(
+                    constants.flow_axes.writing_mode(),
+                    crate::node_input::Direction::Ltr,
+                )
+                .inline_start();
                 let side = match endpoint.kind {
-                    crate::InlineBoundaryKind::Start => endpoint.axes.inline_start(),
-                    crate::InlineBoundaryKind::End => endpoint.axes.inline_end(),
+                    crate::node_input::InlineBoundaryKind::Start => endpoint.axes.inline_start(),
+                    crate::node_input::InlineBoundaryKind::End => endpoint.axes.inline_end(),
                 };
                 let (before, after) = match (positive, side == positive) {
-                    (crate::PhysicalSide::Left, true) => (before_flow.x, location.x),
-                    (crate::PhysicalSide::Left, false) => (location.x + size.width, after_flow.x),
-                    (crate::PhysicalSide::Top, true) => (before_flow.y, location.y),
-                    (crate::PhysicalSide::Top, false) => (location.y + size.height, after_flow.y),
-                    (crate::PhysicalSide::Bottom, true) => {
+                    (crate::geometry::PhysicalSide::Left, true) => (before_flow.x, location.x),
+                    (crate::geometry::PhysicalSide::Left, false) => {
+                        (location.x + size.width, after_flow.x)
+                    }
+                    (crate::geometry::PhysicalSide::Top, true) => (before_flow.y, location.y),
+                    (crate::geometry::PhysicalSide::Top, false) => {
+                        (location.y + size.height, after_flow.y)
+                    }
+                    (crate::geometry::PhysicalSide::Bottom, true) => {
                         (before_flow.y, location.y + size.height)
                     }
-                    (crate::PhysicalSide::Bottom, false) => (location.y, after_flow.y),
+                    (crate::geometry::PhysicalSide::Bottom, false) => (location.y, after_flow.y),
                     _ => unreachable!("the forward native inline basis is left, top or bottom"),
                 };
                 if !before.is_finite() || !after.is_finite() {
@@ -575,7 +590,7 @@ where
                             } else {
                                 before.to_f64()
                             },
-                            reason: crate::LayoutTextNumericError::NonFinite,
+                            reason: LayoutTextNumericError::NonFinite,
                         },
                     ));
                 }
@@ -585,7 +600,7 @@ where
                         LayoutOperation::ChildLayout,
                         LayoutErrorKindOf::TextNumeric {
                             value: endpoint.edge.margin().to_f64(),
-                            reason: crate::LayoutTextNumericError::NonZeroLost,
+                            reason: LayoutTextNumericError::NonZeroLost,
                         },
                     ));
                 }
@@ -602,11 +617,11 @@ where
                     )
                     .map_err(|error| layout_child_geometry_error(container, child, error))?;
             }
-            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+            tree.set_unrounded(LayoutOutputEntryOf::ordinary_unrounded(
                 child,
                 crate::output::NormalGeometryOf::metadata(normal_location, size),
                 NodeOutputOf::<S> {
-                    source_index: crate::SourceIndex::new(source_index),
+                    source_index: SourceIndex::new(source_index),
                     location,
                     size,
                     border,
@@ -678,13 +693,13 @@ pub(super) fn checked_shift_projection<S: LayoutScalar>(
         if !after.is_finite() {
             return Err(crate::group_alignment::NumericError::new(
                 after.to_f64(),
-                crate::LayoutTextNumericError::NonFinite,
+                LayoutTextNumericError::NonFinite,
             ));
         }
         if after == before {
             return Err(crate::group_alignment::NumericError::new(
                 offset.get().to_f64(),
-                crate::LayoutTextNumericError::NonZeroLost,
+                LayoutTextNumericError::NonZeroLost,
             ));
         }
     }

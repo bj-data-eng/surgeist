@@ -1,4 +1,8 @@
 use super::*;
+use crate::{
+    inline_wrapping::WrappingInput,
+    node_input::{Display, NodeInputOf},
+};
 
 #[test]
 fn raw_numeric_run_admits_its_actual_repeated_acyclic_occurrence() {
@@ -7,27 +11,29 @@ fn raw_numeric_run_admits_its_actual_repeated_acyclic_occurrence() {
         .children(0, [1, 2, 1])
         .style(
             0,
-            crate::NodeInputOf {
-                display: crate::Display::Block,
+            NodeInputOf {
+                display: Display::Block,
                 ..Default::default()
             },
         )
         .style(
             1,
-            crate::NodeInputOf {
-                display: crate::Display::InlineBlock,
-                atomic_inline_participation: Some(crate::AtomicInlineParticipation::new(
-                    surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
-                    crate::InlineBreakOpportunity::Prohibited,
-                )),
+            NodeInputOf {
+                display: Display::InlineBlock,
+                atomic_inline_participation: Some(
+                    crate::node_input::AtomicInlineParticipation::new(
+                        surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
+                        crate::node_input::InlineBreakOpportunity::Prohibited,
+                    ),
+                ),
                 ..Default::default()
             },
         )
         .style(
             2,
-            crate::NodeInputOf {
-                display: crate::Display::Block,
-                float: crate::Float::Left,
+            NodeInputOf {
+                display: Display::Block,
+                float: crate::node_input::Float::Left,
                 ..Default::default()
             },
         );
@@ -35,10 +41,7 @@ fn raw_numeric_run_admits_its_actual_repeated_acyclic_occurrence() {
         crate::engine::validation::validate_layout_request_with_text_graph(&tree, 0, &[], &[])
             .unwrap();
     let context =
-        WrappingContext::new(&tree, &graph, &crate::WrappingInput::default(), &[], |_| {
-            false
-        })
-        .unwrap();
+        WrappingContext::new(&tree, &graph, &WrappingInput::default(), &[], |_| false).unwrap();
     // The actual post-float run is the second occurrence of1. An earlier
     // occurrence outside this checked raw slice supplies no substitute rank.
     context
@@ -129,17 +132,17 @@ fn retained_incomparable_class_blocks_a_later_descendant_without_depth_scoring()
 
 #[test]
 fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
-    use crate::test_support::layout_tree::PublicLayoutTreeOf;
-    use crate::{
+    use crate::node_input::{
         InlineBoundaryEdgeOf, InlineBoundaryInputOf, InlineBoundaryKind, InlineMetricsOf,
         LayoutInputOf, NodeInputOf,
     };
+    use crate::test_support::layout_tree::PublicLayoutTreeOf;
     let boundary = |kind| {
         LayoutInputOf::inline_boundary(
             InlineBoundaryInputOf::contribution(
                 kind,
                 InlineMetricsOf::from_line_height_and_baseline(
-                    crate::InlineBaselineContext::Physical,
+                    crate::node_input::InlineBaselineContext::Physical,
                     10.0f64,
                     10.0,
                 )
@@ -174,7 +177,7 @@ fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
         WrappingContext::new(
             &tree,
             &graph,
-            &crate::WrappingInput {
+            &WrappingInput {
                 scopes: vec![pair(1, 4), pair(2, 3)],
                 ..Default::default()
             },
@@ -187,7 +190,7 @@ fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
         WrappingContext::new(
             &tree,
             &graph,
-            &crate::WrappingInput {
+            &WrappingInput {
                 scopes: vec![pair(1, 3), pair(2, 4)],
                 ..Default::default()
             },
@@ -201,7 +204,7 @@ fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
         WrappingContext::new(
             &tree,
             &graph,
-            &crate::WrappingInput {
+            &WrappingInput {
                 scopes: vec![pair(3, 4)],
                 ..Default::default()
             },
@@ -215,7 +218,7 @@ fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
         WrappingContext::new(
             &tree,
             &graph,
-            &crate::WrappingInput {
+            &WrappingInput {
                 scopes: vec![pair(2, 3), pair(2, 3)],
                 ..Default::default()
             },
@@ -229,7 +232,7 @@ fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
         WrappingContext::new(
             &tree,
             &graph,
-            &crate::WrappingInput {
+            &WrappingInput {
                 scopes: vec![pair(1, 9)],
                 ..Default::default()
             },

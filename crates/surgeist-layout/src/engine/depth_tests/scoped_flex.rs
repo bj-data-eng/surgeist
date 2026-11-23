@@ -1,8 +1,17 @@
 use super::*;
 use crate::{
-    AlignItems, AspectRatioOf, BlockFragmentainerOf, FlexDirection, FragmentationBreakKinds,
-    FragmentationKind, LayoutBoundRequestOf, LayoutFlowInput, LayoutSourceBasis, MinSizeOf,
-    PageProgression, Point, PreferredSizeOf, WrappingInput,
+    block_fragmentation::{BlockFragmentainerOf, LayoutBoundRequestOf, input::LayoutSourceBasis},
+    fragmentation::{
+        input::{FragmentationBreakKinds, FragmentationKind},
+        page::PageProgression,
+    },
+    geometry::Point,
+    inline_wrapping::WrappingInput,
+    node_input::{AlignItems, FlexDirection},
+    output::CompletedLayoutBatchOf,
+    sizing::{MinSizeOf, PreferredSizeOf},
+    text_layout::LayoutFlowInput,
+    value::AspectRatioOf,
 };
 
 /// Lays out `tree` under a one-page block fragmentation request, with a
@@ -10,7 +19,7 @@ use crate::{
 pub(super) fn scoped_layout<S: LayoutScalar>(
     tree: &PublicLayoutTreeOf<S>,
     nodes: u32,
-) -> crate::CompletedLayoutBatchOf<u32, S> {
+) -> CompletedLayoutBatchOf<u32, S> {
     scoped_layout_accounted(tree, nodes, None)
 }
 
@@ -19,7 +28,7 @@ pub(super) fn scoped_layout_accounted<S: LayoutScalar>(
     tree: &PublicLayoutTreeOf<S>,
     nodes: u32,
     host: Option<&crate::accounting::TestHost>,
-) -> crate::CompletedLayoutBatchOf<u32, S> {
+) -> CompletedLayoutBatchOf<u32, S> {
     let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let sizing = SizingRequestOf::new(
         Size::new(
@@ -77,9 +86,9 @@ pub(super) fn scoped_layout_accounted<S: LayoutScalar>(
 
 /// The geometry of the one actual box published for each node.
 pub(super) fn boxes<S: LayoutScalar>(
-    batch: &crate::CompletedLayoutBatchOf<u32, S>,
+    batch: &CompletedLayoutBatchOf<u32, S>,
     nodes: u32,
-) -> Vec<crate::BoxFragmentGeometryOf<S>> {
+) -> Vec<crate::block_fragmentation::BoxFragmentGeometryOf<S>> {
     let mut found = vec![None; nodes as usize];
     for fragment in batch.fragments() {
         let slot = &mut found[fragment.node() as usize];

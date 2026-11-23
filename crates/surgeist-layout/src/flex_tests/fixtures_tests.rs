@@ -1,4 +1,5 @@
 use super::*;
+use crate::block_fragmentation::NodeLayoutRefOf;
 
 pub(super) type FlexTree<S = DefaultScalar> = OracleTreeOf<S>;
 pub(super) fn fri07_c01_composition_output<S: LayoutScalar>(
@@ -22,9 +23,9 @@ pub(super) fn fri07_c02_collapse_round_output<S: LayoutScalar>(
         .node_layout(node)
         .expect("collapse fixture publishes the requested node")
     {
-        crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
-        crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-        crate::NodeLayoutRefOf::Fragments(_) => {
+        NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+        NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+        NodeLayoutRefOf::Fragments(_) => {
             panic!("continuous collapse fixture unexpectedly fragmented")
         }
     };

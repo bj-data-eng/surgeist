@@ -3,6 +3,10 @@
 use super::*;
 use crate::test_support::inline_endpoint::Fixture;
 use crate::test_support::readback::{self, Phase};
+use crate::value::{
+    AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, NonNegativeFiniteOf,
+    OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+};
 use surgeist_text as text;
 
 #[path = "inline_boundary_edges/whitespace.rs"]
@@ -18,7 +22,7 @@ fn output<S: LayoutScalar>(
         batch,
         node,
         Phase::Unrounded,
-        readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary),
+        readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::InlineBoundary),
     )
 }
 
@@ -69,23 +73,23 @@ fn end_edge_stops_local_hanging_and_moves_the_actual_line_below_a_float_both_sca
                 false,
                 Some(40.0),
                 true,
-                crate::SizingRequestOf::new(
-                    crate::Size::new(
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                SizingRequestOf::new(
+                    crate::geometry::Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::Normal,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
                         ),
                     ),
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        NearestScrollportOf::Absent,
+                        crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             );
@@ -169,23 +173,23 @@ fn actual_tab_sees_endpoint_total_and_f32_threshold_before_output_narrowing() {
                 false,
                 Some(100.0),
                 false,
-                crate::SizingRequestOf::new(
-                    crate::Size::new(
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                SizingRequestOf::new(
+                    crate::geometry::Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::Normal,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
                         ),
                     ),
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        NearestScrollportOf::Absent,
+                        crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             );
@@ -229,21 +233,21 @@ fn actual_tab_sees_endpoint_total_and_f32_threshold_before_output_narrowing() {
                 false,
                 None,
                 false,
-                crate::SizingRequestOf::new(
-                    crate::Size::new(
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MaxContent,
+                SizingRequestOf::new(
+                    crate::geometry::Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
                         ),
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::Normal,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
                         ),
                     ),
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        NearestScrollportOf::Absent,
+                        crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             );
@@ -281,23 +285,18 @@ fn actual_tab_sees_endpoint_total_and_f32_threshold_before_output_narrowing() {
         false,
         Some(100.0),
         false,
-        crate::SizingRequestOf::new(
-            crate::Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+        SizingRequestOf::new(
+            crate::geometry::Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Absent,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     );
@@ -340,23 +339,23 @@ fn endpoint_node_uses_its_own_direction_and_control_fragment_without_a_scope_env
                 own_rtl,
                 Some(100.0),
                 false,
-                crate::SizingRequestOf::new(
-                    crate::Size::new(
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                SizingRequestOf::new(
+                    crate::geometry::Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::Normal,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
                         ),
                     ),
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    OrthogonalFallbackOf::new(
+                        crate::geometry::Size::NONE,
+                        NearestScrollportOf::Absent,
+                        crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             );
@@ -436,23 +435,18 @@ fn generated_separator_scope_rectangles_keep_their_own_geometry_when_endpoints_w
         false,
         Some(500.0),
         false,
-        crate::SizingRequestOf::new(
-            crate::Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(500.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+        SizingRequestOf::new(
+            crate::geometry::Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Absent,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     );
@@ -462,23 +456,18 @@ fn generated_separator_scope_rectangles_keep_their_own_geometry_when_endpoints_w
         false,
         Some(500.0),
         false,
-        crate::SizingRequestOf::new(
-            crate::Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(500.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+        SizingRequestOf::new(
+            crate::geometry::Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                NearestScrollportOf::Absent,
+                crate::geometry::Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     );
@@ -546,7 +535,7 @@ fn justification_feedback_preserves_one_selected_endpoint_total() {
             &tree,
             0,
             vec![fixture.binding.clone()],
-            crate::WrappingInput {
+            crate::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -559,8 +548,8 @@ fn justification_feedback_preserves_one_selected_endpoint_total() {
             &capture,
             0,
             request(48.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+                crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();

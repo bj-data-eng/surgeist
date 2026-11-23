@@ -7,6 +7,7 @@
 
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation};
 
 fn endpoint(p: &TextParagraphBinding<u32>, node: u32) -> text::prepared::PreparedControl {
     p.controls
@@ -124,39 +125,33 @@ fn execute<S: LayoutScalar>(
     }
     compute_layout_with_flow(&input, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((input).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((input).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         logical_requests.inline = logical_requests
             .inline
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -221,7 +216,7 @@ fn strip<S: LayoutScalar>(
         batch,
         node,
         Phase::Unrounded,
-        readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary),
+        readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::InlineBoundary),
     );
     assert_eq!(
         (row.location.x, row.size.width),
@@ -352,10 +347,7 @@ fn mark<S: LayoutScalar>(rtl: bool) {
     let baseline = compute::<S>(
         &p,
         rtl,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
     );
     let ordinary = qualify(
         &baseline,
@@ -498,10 +490,7 @@ fn ccmp<S: LayoutScalar>(rtl: bool) {
     let baseline = compute::<S>(
         &p,
         rtl,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
     );
     let ordinary = qualify(
         &baseline,

@@ -2,7 +2,11 @@
 // Only native leaf1 is responsive. Grid0 and its completed geometry are real.
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
-use crate::{LayoutTree, Traverse};
+use crate::{
+    output::LayoutRootRequestOf,
+    tree::{LayoutTree, Traverse},
+    value::{NearestScrollportOf, NonNegativeFiniteOf, OrthogonalFallbackLimitOf},
+};
 use std::cell::RefCell;
 
 struct DistinctLeaf<S: LayoutScalar> {
@@ -161,8 +165,8 @@ fn qualify_actual_native_queries<S: LayoutScalar>(tree: &DistinctLeaf<S>) {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         );
@@ -193,29 +197,28 @@ fn case<S: LayoutScalar>(width: f64, cap: GrowthCap, overflow: Overflow, track: 
     let batch = compute_layout(&tree, 0, {
         let axes = Size::new(
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
-                ),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(width)).unwrap()),
                 SizingOperation::Normal,
             ),
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
-                ),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap()),
                 SizingOperation::Normal,
             ),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })
@@ -423,7 +426,7 @@ fn fit_case<S: LayoutScalar>(request: FitRequest, overflow: Overflow, expected_t
                 width,
                 AxisSizingRequestOf::new(
                     AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                        NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
                     ),
                     SizingOperation::Normal,
                 ),
@@ -437,23 +440,24 @@ fn fit_case<S: LayoutScalar>(request: FitRequest, overflow: Overflow, expected_t
         let axes = Size::new(
             available,
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
-                ),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap()),
                 SizingOperation::Normal,
             ),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })
@@ -635,23 +639,24 @@ fn mixed_span_nonaffected_fixed_min_base<S: LayoutScalar>() {
         let axes = Size::new(
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
-                ),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap()),
                 SizingOperation::Normal,
             ),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })
@@ -748,8 +753,8 @@ fn mixed_span_visible_explicit_zero_minimum<S: LayoutScalar>(end_marker_in_a: bo
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -766,23 +771,24 @@ fn mixed_span_visible_explicit_zero_minimum<S: LayoutScalar>(end_marker_in_a: bo
         let axes = Size::new(
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
-                ),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap()),
                 SizingOperation::Normal,
             ),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })

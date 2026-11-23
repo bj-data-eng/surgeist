@@ -1,4 +1,5 @@
 use super::*;
+use crate::geometry::FlowAxes;
 use crate::layout_math::resolve_auto_optional;
 use crate::output::{GeometryStateOf, MeasuredInsetBasisOf};
 use crate::sizing::resolve::select_relative_insets;
@@ -17,10 +18,7 @@ fn depends_on_basis<S: LayoutScalar>(inset: Edges<LengthAutoOf<S>>) -> bool {
         .any(|value| value.depends_on_basis())
 }
 
-pub(super) fn needs_basis<S: LayoutScalar>(
-    inset: Edges<LengthAutoOf<S>>,
-    axes: crate::FlowAxes,
-) -> bool {
+pub(super) fn needs_basis<S: LayoutScalar>(inset: Edges<LengthAutoOf<S>>, axes: FlowAxes) -> bool {
     depends_on_basis(select_relative_insets(inset, axes))
 }
 
@@ -28,16 +26,16 @@ pub(super) fn needs_basis<S: LayoutScalar>(
 pub(super) fn has_pending_children<'input, Tree, M>(
     tree: &Tree,
     children: &[Tree::Node],
-    axes: crate::FlowAxes,
+    axes: FlowAxes,
 ) -> bool
 where
     Tree: Compute<'input, M>,
 {
     children.iter().any(|child| {
-        let crate::LayoutInputViewOf::Box(input) = tree.layout_input(*child) else {
+        let crate::node_input::LayoutInputViewOf::Box(input) = tree.layout_input(*child) else {
             return false;
         };
-        input.display != crate::Display::None
+        input.display != crate::node_input::Display::None
             && input.position != Position::Absolute
             && input.float.is_none()
             && needs_basis(input.inset, axes)
@@ -49,7 +47,7 @@ pub(super) fn resolve<'input, Tree, S, M>(
     child: Tree::Node,
     inset: Edges<LengthAutoOf<S>>,
     reference: InsetReference<S>,
-    axes: crate::FlowAxes,
+    axes: FlowAxes,
 ) -> LayoutResultOf<Tree::Node, Point<S>, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
@@ -63,7 +61,9 @@ where
             return Err(LayoutErrorOf::new(
                 LayoutErrorSiteOf::Node(child),
                 LayoutOperation::ValueResolution,
-                LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis),
+                LayoutErrorKindOf::MissingContext(
+                    crate::error::LayoutMissingContext::RequiredBasis,
+                ),
             ));
         }
         InsetReference::Accepted(None) => Size::NONE,
@@ -113,7 +113,7 @@ pub(super) fn settle_children<'input, Tree, S, M>(
     container: Tree::Node,
     children: &[Tree::Node],
     basis: MeasuredInsetBasisOf<S>,
-    axes: crate::FlowAxes,
+    axes: FlowAxes,
     contributions: &mut scroll::BlockScrollContributions<S>,
 ) -> LayoutResultOf<Tree::Node, (), S, M>
 where
@@ -157,7 +157,7 @@ fn settle_selected_children<'input, Tree, S, M>(
     container: Tree::Node,
     children: &[Tree::Node],
     reference: SettlementReference<'_, Tree::Node, S>,
-    axes: crate::FlowAxes,
+    axes: FlowAxes,
     contributions: &mut scroll::BlockScrollContributions<S>,
 ) -> LayoutResultOf<Tree::Node, (), S, M>
 where
@@ -165,10 +165,10 @@ where
     S: LayoutScalar,
 {
     for &child in children {
-        let crate::LayoutInputViewOf::Box(input) = tree.layout_input(child) else {
+        let crate::node_input::LayoutInputViewOf::Box(input) = tree.layout_input(child) else {
             continue;
         };
-        if input.display == crate::Display::None
+        if input.display == crate::node_input::Display::None
             || input.position == Position::Absolute
             || !input.float.is_none()
             || !needs_basis(input.inset, axes)
@@ -184,7 +184,7 @@ where
                     LayoutErrorSiteOf::Node(child),
                     LayoutOperation::ChildLayout,
                     LayoutErrorKindOf::InternalInvariant(
-                        crate::LayoutInternalInvariant::InvalidOutputGeometryPhase,
+                        crate::error::LayoutInternalInvariant::InvalidOutputGeometryPhase,
                     ),
                 ));
             }
@@ -224,14 +224,14 @@ where
                 },
                 LayoutOperation::ChildLayout,
                 LayoutErrorKindOf::InternalInvariant(
-                    crate::LayoutInternalInvariant::MissingStagedUnroundedOutput,
+                    crate::error::LayoutInternalInvariant::MissingStagedUnroundedOutput,
                 ),
             )
         })?;
         contributions
             .include_in_flow_geometry(visual.location, visual.margin, geometry)
             .map_err(|error| layout_child_geometry_error(container, child, error))?;
-        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+        tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
             child,
             measured_normal,
             visual,

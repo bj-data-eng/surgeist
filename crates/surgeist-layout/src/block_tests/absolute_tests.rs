@@ -1,5 +1,10 @@
 use super::fixtures::{BlockTree, computed_overflow};
 use super::*;
+use crate::{
+    block::compute_block,
+    node_input::WritingMode,
+    output::{ContainingLayoutContext, ParentFormattingContext},
+};
 
 #[test]
 fn block_layout_lays_out_absolute_children_without_flow_contribution_and_hides_display_none() {
@@ -60,7 +65,7 @@ fn block_layout_lays_out_absolute_children_without_flow_contribution_and_hides_d
             .run_mode(RunMode::PerformHiddenLayout),
     );
 
-    let output = crate::compute_block(
+    let output = compute_block(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -69,12 +74,12 @@ fn block_layout_lays_out_absolute_children_without_flow_contribution_and_hides_d
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -110,13 +115,16 @@ fn block_layout_lays_out_absolute_children_without_flow_contribution_and_hides_d
     );
     assert_eq!(
         tree.layout(4).expect("child layout is staged"),
-        NodeOutput::with_source_index(crate::SourceIndex::new(2))
+        NodeOutput::with_source_index(crate::output::SourceIndex::new(2))
     );
     assert_eq!(
         tree.inputs(4),
-        vec![ComputeInput::hidden(crate::ContainingLayoutContext::new(
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr,),
-            crate::ParentFormattingContext::BlockFlow
+        vec![ComputeInput::hidden(ContainingLayoutContext::new(
+            crate::geometry::FlowAxes::new(
+                WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
+            ParentFormattingContext::BlockFlow
         ))]
     );
 }
@@ -161,7 +169,7 @@ fn block_absolute_child_without_insets_uses_static_position_after_flow() {
         ComputeOutput::from_sizes(Size::new(20.0, 5.0), Size::new(20.0, 5.0)),
     );
 
-    let output = crate::compute_block(
+    let output = compute_block(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -170,12 +178,12 @@ fn block_absolute_child_without_insets_uses_static_position_after_flow() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -238,7 +246,7 @@ fn block_absolute_child_auto_size_applies_aspect_ratio_to_max_size() {
         ComputeOutput::from_sizes(Size::new(80.0, 40.0), Size::new(80.0, 40.0)),
     );
 
-    crate::compute_block(
+    compute_block(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -247,12 +255,12 @@ fn block_absolute_child_auto_size_applies_aspect_ratio_to_max_size() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -308,7 +316,7 @@ fn block_absolute_child_auto_size_resolves_from_opposing_insets() {
         },
     );
 
-    let output = crate::compute_block(
+    let output = compute_block(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -317,12 +325,12 @@ fn block_absolute_child_auto_size_resolves_from_opposing_insets() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -383,7 +391,7 @@ fn block_absolute_child_applies_aspect_ratio_to_inset_derived_width() {
         },
     );
 
-    crate::compute_block(
+    compute_block(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -392,12 +400,12 @@ fn block_absolute_child_applies_aspect_ratio_to_inset_derived_width() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -459,7 +467,7 @@ fn block_absolute_child_expands_horizontal_auto_margins() {
         },
     );
 
-    crate::compute_block(
+    compute_block(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -468,12 +476,12 @@ fn block_absolute_child_expands_horizontal_auto_margins() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -547,7 +555,7 @@ fn block_absolute_child_divides_positive_inline_space_between_auto_margins() {
         },
     );
 
-    crate::compute_block(
+    compute_block(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -556,12 +564,12 @@ fn block_absolute_child_divides_positive_inline_space_between_auto_margins() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -631,7 +639,7 @@ fn block_absolute_child_with_opposing_horizontal_insets_honors_rtl_end_edge() {
         },
     );
 
-    crate::compute_block(
+    compute_block(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -640,12 +648,12 @@ fn block_absolute_child_with_opposing_horizontal_insets_honors_rtl_end_edge() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(

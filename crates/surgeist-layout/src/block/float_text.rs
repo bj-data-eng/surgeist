@@ -7,7 +7,7 @@ use std::sync::Arc;
 use super::floats::{
     AcceptedFloatPlacement, AcceptedFloatPrefix, FloatExclusions, FloatInlineSpace, PendingFloat,
 };
-use crate::LayoutScalar;
+use crate::scalar::LayoutScalar;
 use crate::text_layout::fit::{EncounterBasis, EncounterReplay, FitError};
 use crate::text_layout::scope_alignment::EntryBacking;
 use crate::text_layout::scope_alignment::EntryFundingRef;
@@ -227,7 +227,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
         run: &crate::text_layout::AdmittedRun<'_, Node>,
         associations: &crate::text_layout::capture::ScopeAssociations<Node>,
         offset: usize,
-        request: crate::ComputeInputOf<S>,
+        request: crate::output::ComputeInputOf<S>,
         funding: Option<EntryFundingRef<'_>>,
     ) -> Result<Self, FitError> {
         let binding = run.binding;
@@ -562,7 +562,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         line: &FinalizedLine,
         replay: EncounterReplay,
         funding: Option<EntryFundingRef<'_>>,
-    ) -> crate::LayoutResultOf<Node, Vec<EncounterBasis>, S, M> {
+    ) -> crate::error::LayoutResultOf<Node, Vec<EncounterBasis>, S, M> {
         self.reset_candidate()
             .map_err(|error| super::inline_run::text_run_error(container, error))?;
         let portion_start = line
@@ -684,14 +684,14 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                         cut.side_of_node(event.native_offset).ok_or_else(|| {
                             super::inline_run::text_run_error(
                                 container,
-                                FitError::Wrapping(crate::WrappingScopeError::UnsupportedIncidence),
+                                FitError::Wrapping(crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence),
                             )
                         })? == std::cmp::Ordering::Less,
                     ),
                     Some(crate::text_layout::boxes::NativeBoxCut::Unavailable) => {
                         return Err(super::inline_run::text_run_error(
                             container,
-                            FitError::Wrapping(crate::WrappingScopeError::UnsupportedIncidence),
+                            FitError::Wrapping(crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence),
                         ));
                     }
                     Some(crate::text_layout::boxes::NativeBoxCut::Prefix) | None => None,

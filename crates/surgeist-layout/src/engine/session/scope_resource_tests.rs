@@ -6,7 +6,35 @@ use crate::engine::{compute_root, round_layout};
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::text_layout::scope_alignment::ScopeAlignmentFacts;
 use crate::text_layout::{TextControlBinding, TextOriginBinding, TextParagraphBinding};
-use crate::*;
+use crate::{
+    baseline_offset::BaselineOffsetOf,
+    cache::CacheKeyContext,
+    engine::{
+        compute_layout_with_flow,
+        contracts::{CacheAccess, Compute},
+    },
+    error::{
+        LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant,
+        LayoutOperation,
+    },
+    geometry::{FlowAxes, Size},
+    inline_wrapping::WrappingInput,
+    node_input::{
+        Direction, Display, InlineBaselineContext, InlineBoundaryEdgeOf, InlineBoundaryInputOf,
+        InlineBoundaryKind, InlineMetricsOf, LayoutInputOf, NodeInputOf, VerticalAlignOf,
+        WritingMode,
+    },
+    output::{
+        CompletedLayoutBatchOf, ComputeInputOf, ComputeOutputOf, ContainingLayoutContext,
+        LayoutRootRequestOf, ParentFormattingContext, RequestedAxis, RunMode, SizingMode,
+    },
+    sizing::PreferredSizeOf,
+    text_layout::{LayoutFlowInput, TextParticipation, TextScopeAlignmentInputOf},
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, OrthogonalFallbackLimitOf,
+        OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+    },
+};
 use std::sync::Arc;
 use surgeist_text as text;
 use surgeist_text::font::FontBaseline;
@@ -189,7 +217,7 @@ impl Fixture {
             })
             .collect();
         let binding = TextParagraphBinding {
-            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+            inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1, 20, 2, 21],
@@ -260,16 +288,20 @@ impl Fixture {
 }
 fn request() -> LayoutRootRequestOf<f64> {
     {
-        let containing_flow_axes =
-            crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr);
+        let containing_flow_axes = crate::geometry::FlowAxes::new(
+            crate::node_input::WritingMode::HorizontalTb,
+            crate::node_input::Direction::Ltr,
+        );
         let requested_axes = Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
-                crate::SizingOperation::Normal,
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(20.0).unwrap(),
+                ),
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Indefinite,
+                SizingOperation::MaxContent,
             ),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
@@ -277,21 +309,21 @@ fn request() -> LayoutRootRequestOf<f64> {
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         logical_requests.inline = logical_requests
             .inline
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -726,12 +758,7 @@ fn cache_store_with_spent_scope_records_reports_a_resource_limit_not_text() {
     let (mut trial, resources) = funded_trial(&session);
     exhaust_records(&resources);
     let error = trial
-        .cache_store(
-            0,
-            &cache_input(),
-            crate::CacheKeyContext::new(),
-            cache_output(),
-        )
+        .cache_store(0, &cache_input(), CacheKeyContext::new(), cache_output())
         .expect_err("a store must refuse once the record budget is spent");
     assert_cache_failure_is_resource_limit(
         &error,
@@ -753,20 +780,10 @@ fn cache_store_replacing_a_stored_entry_with_spent_scope_work_reports_a_resource
         let (mut trial, resources) = funded_trial(&session);
         // Control: the first store is funded while work remains.
         trial
-            .cache_store(
-                0,
-                &cache_input(),
-                crate::CacheKeyContext::new(),
-                cache_output(),
-            )
+            .cache_store(0, &cache_input(), CacheKeyContext::new(), cache_output())
             .unwrap();
         spend_work_leaving(&resources, keep);
-        match trial.cache_store(
-            0,
-            &cache_input(),
-            crate::CacheKeyContext::new(),
-            cache_output(),
-        ) {
+        match trial.cache_store(0, &cache_input(), CacheKeyContext::new(), cache_output()) {
             Ok(()) => {}
             Err(error) => {
                 refused += 1;

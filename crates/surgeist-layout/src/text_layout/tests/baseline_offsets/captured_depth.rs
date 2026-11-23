@@ -99,7 +99,7 @@ fn assert_captured_named_chain<S: LayoutScalar>(depth: u32, source: BaselineSour
         );
         assert_eq!(
             actual.source_index,
-            crate::SourceIndex::new(usize::from(node != 0)),
+            crate::output::SourceIndex::new(usize::from(node != 0)),
             "node {node}"
         );
         let pair = actual.named_baselines.get(FontBaseline::Alphabetic);
@@ -118,9 +118,9 @@ fn assert_captured_named_chain<S: LayoutScalar>(depth: u32, source: BaselineSour
                 &batch,
                 text_node,
                 phase,
-                readback::Kind::NonBox(crate::NonBoxKind::InlineText),
+                readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::InlineText),
             );
-            assert_eq!(actual.source_index, crate::SourceIndex::ZERO);
+            assert_eq!(actual.source_index, crate::output::SourceIndex::ZERO);
             assert_eq!(actual.location, Point::new(S::ZERO, n(text_top)));
             let text_size = Size::new(n(10.0), n(if node == depth { 20.0 } else { 10.0 }));
             assert_eq!(actual.size, text_size);
@@ -171,7 +171,7 @@ fn assert_captured_named_chain<S: LayoutScalar>(depth: u32, source: BaselineSour
         ] {
             let fragments = fragments
                 .iter()
-                .filter(|row| *row.owner() == crate::InlineFragmentOwner::Node(text_node))
+                .filter(|row| *row.owner() == crate::output::InlineFragmentOwner::Node(text_node))
                 .collect::<Vec<_>>();
             assert_eq!(fragments.len(), expected_fragments.len(), "node {node}");
             for (row, (range, line_index, (x, y, width, height), baseline)) in

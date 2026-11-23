@@ -4,11 +4,11 @@
 //! owner supplies actual legal opportunities and source correspondence under
 //! each queried fragmentainer. All flows complete or the operation fails.
 
-mod input;
-mod output;
-mod page;
+pub(crate) mod input;
+pub(crate) mod output;
+pub(crate) mod page;
 mod policy;
-mod scheduler;
+pub(crate) mod scheduler;
 mod validation;
 pub use input::*;
 pub use output::*;

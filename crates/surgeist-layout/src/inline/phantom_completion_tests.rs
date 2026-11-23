@@ -1,20 +1,24 @@
 //! Owning numeric completion tests: participants, providers and state.
 use super::*;
+use crate::{
+    node_input::{InlineBaselineContext, NodeInputOf},
+    value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation},
+};
 use std::cell::{Cell, RefCell};
 
 fn band_failure_stops_before_post_line_work<S: LayoutScalar>() {
     let flow = InlineFlowOf::new(
         WritingMode::HorizontalTb,
         Direction::Ltr,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(60.0)).unwrap()),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(60.0)).unwrap()),
+            SizingOperation::Normal,
         ),
     );
     let force = ForcedLineBreakControlOf::new(
         53,
         flow,
-        InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, S::ZERO, S::ZERO).unwrap(),
+        InlineMetricsOf::try_new(InlineBaselineContext::Physical, S::ZERO, S::ZERO).unwrap(),
         InlineControlAlignment::Baseline,
         Clear::Both,
     );
@@ -84,19 +88,12 @@ fn boundary<S: LayoutScalar>(
         InlineFlowOf::new(
             WritingMode::HorizontalTb,
             direction,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(n(60.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(60.0)).unwrap()),
+                SizingOperation::Normal,
             ),
         ),
-        InlineMetricsOf::try_new(
-            crate::InlineBaselineContext::Physical,
-            n(baseline),
-            n(extent),
-        )
-        .unwrap(),
+        InlineMetricsOf::try_new(InlineBaselineContext::Physical, n(baseline), n(extent)).unwrap(),
         InlineControlAlignment::Baseline,
         InlineBoundaryEdgeOf::try_new(S::ZERO, n(border), n(padding)).unwrap(),
         None,
@@ -108,22 +105,22 @@ fn input<S: LayoutScalar>(
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
         meter: crate::accounting::Meter::new(),
-        inline_baseline_context: crate::InlineBaselineContext::Physical,
+        inline_baseline_context: InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
-        text_wrap_style: crate::TextWrapStyle::Auto,
+        text_wrap_style: crate::node_input::TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
-            crate::LineBoxDirectionPolicy::Plaintext,
+            crate::node_input::LineBoxDirectionPolicy::Plaintext,
             direction,
         ),
         observe_tail: true,
         wrapping: None,
-        available_inline_extent: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(60.0)).unwrap()),
-            crate::SizingOperation::Normal,
+        available_inline_extent: AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(60.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, direction),
         text_align: TextAlign::Start,
-        text_align_last: crate::TextAlignLast::Auto,
+        text_align_last: crate::node_input::TextAlignLast::Auto,
         indent: crate::text_indent::ResolvedTextIndent::ZERO,
         indent_state: crate::text_indent::IndentLineState::default(),
         participants,
@@ -148,18 +145,12 @@ fn phantom<S: LayoutScalar>(direction: Direction) {
         ],
     );
     for available in [
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(60.0)).unwrap()),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(60.0)).unwrap()),
+            SizingOperation::Normal,
         ),
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
-        ),
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
     ] {
         let mut query = original.clone();
         query.available_inline_extent = available;
@@ -227,7 +218,7 @@ fn zero_atomic<S: LayoutScalar>(direction: Direction) {
     let calls = Cell::new(0);
     let clears = RefCell::new(Vec::new());
     let atomic = AtomicInlineBoxParticipant {
-        baseline_reference: crate::InlineBaselineContext::Physical,
+        baseline_reference: InlineBaselineContext::Physical,
         source_index: 37,
         size: Size::ZERO,
         content_size: Size::ZERO,
@@ -310,14 +301,12 @@ fn zero_forced<S: LayoutScalar>(direction: Direction) {
         InlineFlowOf::new(
             WritingMode::HorizontalTb,
             direction,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(n(60.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(60.0)).unwrap()),
+                SizingOperation::Normal,
             ),
         ),
-        InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, S::ZERO, S::ZERO).unwrap(),
+        InlineMetricsOf::try_new(InlineBaselineContext::Physical, S::ZERO, S::ZERO).unwrap(),
         InlineControlAlignment::Baseline,
         Clear::Both,
     );
@@ -477,17 +466,17 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
     let end = boundary::<S>(2, InlineBoundaryKind::End, direction, 8.0, 10.0, 0.0, 0.0);
     let mut tree = PublicLayoutTreeOf::<S>::new().style(
         0,
-        crate::NodeInputOf {
-            display: crate::Display::Block,
+        NodeInputOf {
+            display: crate::node_input::Display::Block,
             direction,
-            ..crate::NodeInputOf::default()
+            ..NodeInputOf::default()
         },
     );
     for control in [start, end] {
         tree.insert_input(
             control.source_index() as u32,
-            crate::LayoutInputOf::inline_boundary(
-                crate::InlineBoundaryInputOf::contribution(
+            crate::node_input::LayoutInputOf::inline_boundary(
+                crate::node_input::InlineBoundaryInputOf::contribution(
                     control.kind(),
                     control.metrics(),
                     control.edge(),
@@ -498,20 +487,20 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
         );
     }
     tree.insert_children(0, [1, 2]);
-    let flow = crate::LayoutFlowInput::try_new(
+    let flow = crate::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         vec![],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
-            scopes: vec![crate::WrappingScopeInput::NativePair {
+            scopes: vec![crate::inline_wrapping::WrappingScopeInput::NativePair {
                 start: 1,
                 end: 2,
-                wrap_inside: crate::WrapInside::Auto,
-                edges: crate::WrapEdges {
-                    before: crate::WrapEdge::Auto,
-                    after: crate::WrapEdge::Line,
+                wrap_inside: crate::inline_wrapping::WrapInside::Auto,
+                edges: crate::inline_wrapping::WrapEdges {
+                    before: crate::inline_wrapping::WrapEdge::Auto,
+                    after: crate::inline_wrapping::WrapEdge::Line,
                 },
                 metric_contribution: None,
             }],
@@ -607,17 +596,17 @@ fn scoped_metric_witness<S: LayoutScalar>(
     let end = boundary::<S>(2, InlineBoundaryKind::End, direction, 8.0, 10.0, 0.0, 0.0);
     let mut tree = PublicLayoutTreeOf::<S>::new().style(
         0,
-        crate::NodeInputOf {
-            display: crate::Display::Block,
+        NodeInputOf {
+            display: crate::node_input::Display::Block,
             direction,
-            ..crate::NodeInputOf::default()
+            ..NodeInputOf::default()
         },
     );
     for control in [start, end] {
         tree.insert_input(
             control.source_index() as u32,
-            crate::LayoutInputOf::inline_boundary(
-                crate::InlineBoundaryInputOf::contribution(
+            crate::node_input::LayoutInputOf::inline_boundary(
+                crate::node_input::InlineBoundaryInputOf::contribution(
                     control.kind(),
                     control.metrics(),
                     control.edge(),
@@ -628,28 +617,30 @@ fn scoped_metric_witness<S: LayoutScalar>(
         );
     }
     tree.insert_children(0, [1, 2]);
-    let flow = crate::LayoutFlowInput::try_new(
+    let flow = crate::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         vec![],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
-            scopes: vec![crate::WrappingScopeInput::NativePair {
+            scopes: vec![crate::inline_wrapping::WrappingScopeInput::NativePair {
                 start: 1,
                 end: 2,
-                wrap_inside: crate::WrapInside::Auto,
-                edges: crate::WrapEdges::AUTO,
-                metric_contribution: Some(crate::InlineBoxMetricContribution::Strut(
-                    surgeist_text::allocation::LineBoxStrut {
-                        scope: None,
-                        metrics: surgeist_text::allocation::LineStrut {
-                            baseline: declared_baseline,
-                            line_extent: 10.0,
+                wrap_inside: crate::inline_wrapping::WrapInside::Auto,
+                edges: crate::inline_wrapping::WrapEdges::AUTO,
+                metric_contribution: Some(
+                    crate::inline_wrapping::InlineBoxMetricContribution::Strut(
+                        surgeist_text::allocation::LineBoxStrut {
+                            scope: None,
+                            metrics: surgeist_text::allocation::LineStrut {
+                                baseline: declared_baseline,
+                                line_extent: 10.0,
+                            },
+                            alignment: surgeist_text::allocation::LineBoxAlignment::Baseline,
                         },
-                        alignment: surgeist_text::allocation::LineBoxAlignment::Baseline,
-                    },
-                )),
+                    ),
+                ),
             }],
             child_order: vec![],
         },
@@ -690,7 +681,7 @@ fn scoped_metric_witness<S: LayoutScalar>(
         assert_eq!(
             result.expect_err("valid9/10 numbers contradict these actual8/10 endpoint witnesses"),
             crate::inline_wrapping::NumericWrappingError::Scope(
-                crate::WrappingScopeError::ConflictingBoxMetrics,
+                crate::inline_wrapping::WrappingScopeError::ConflictingBoxMetrics,
             ),
         );
     } else {

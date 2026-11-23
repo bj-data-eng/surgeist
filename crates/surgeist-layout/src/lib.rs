@@ -227,9 +227,6 @@ mod browser_parity_modules;
 #[cfg(test)]
 use browser_parity_modules::*;
 
-#[cfg(test)]
-use surgeist_text::supplied_line::{BidiLevel, BidiLevelError, InlineWhitespaceEdge};
-
 mod accounting;
 mod baseline_offset;
 mod block;
@@ -248,25 +245,11 @@ mod engine;
 mod error;
 mod flex;
 mod fragmentation;
-pub(crate) use fragmentation::{
-    FragmentainerOf, FragmentationBoundaryControls, FragmentationBreakControl,
-    FragmentationBreakReason, FragmentationContext, FragmentationControlKind, FragmentationCutOf,
-    FragmentationError, FragmentationFallback, FragmentationFlowOf,
-    FragmentationGraphicalProgressOf, FragmentationInputOf, FragmentationMeasuredHeadOf,
-    FragmentationOccurrence, FragmentationOpportunityKindOf, FragmentationOpportunityOf,
-    FragmentationPieceKindOf, FragmentationPosition, FragmentationProvider, FragmentationQueryOf,
-    FragmentationReplyOf, FragmentationRole, FragmentationStart, FragmentationWindowEnd,
-    FragmentationWindowOf,
-};
 pub use fragmentation::{
     FragmentationBreak, FragmentationBreakInside, FragmentationBreakKinds,
     FragmentationGraphicalCoverageOf, FragmentationInputError, FragmentationKind,
     FragmentationLogicalPageSide, FragmentationPageSide, FragmentationPhysicalPageSide,
     PageProgression,
-};
-#[cfg(test)]
-pub(crate) use fragmentation::{
-    FragmentationCoverage, FragmentationPieceOf, FragmentationReportOf, FragmentationStage,
 };
 mod geometry;
 mod grid;
@@ -308,22 +291,7 @@ mod sizing;
 mod tree;
 mod value;
 
-/// Default scalar precision used by the non-generic public layout aliases.
-///
-/// This is intentionally `f32`, matching the crate's browser-parity fixture
-/// boundary and the default Surgeist layout coordinate contract.
-pub type DefaultScalar = f32;
-
-#[cfg(test)]
-pub(crate) use block::compute_block;
 pub use cache::{Cache, CacheKeyContext, CacheOf, ClearState};
-pub(crate) use engine::contracts::Compute;
-#[cfg(test)]
-pub(crate) use engine::contracts::{CacheAccess, Round};
-#[cfg(test)]
-pub(crate) use engine::round_layout;
-#[cfg(test)]
-pub(crate) use engine::{compute_hidden, compute_root};
 pub use engine::{
     compute_layout, compute_layout_invalidated, compute_layout_with_flow,
     compute_layout_with_flow_invalidated, measure_definite_inline_atomic_size,
@@ -337,12 +305,8 @@ pub use error::{
     LayoutUnsupportedCapability, NonBoxNodeRoleError, SizingAlgorithm, SizingBehavior,
     SizingProperty, UnsupportedSizingBehavior,
 };
-#[cfg(test)]
-pub(crate) use flex::compute_flex;
 pub use geometry::{Edges, FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide, Point, Size};
 pub use grid::{GridAxisKind, NamedGridError};
-#[cfg(test)]
-pub(crate) use grid::{compute_grid, compute_grid_with_report};
 pub use measurement::{LeafMeasureInput, LeafMeasureInputOf, compute_leaf};
 pub use node_input::{
     AlignContent, AlignItems, AtomicInlineParticipation, BaselineSource, BlockFlowContext,
@@ -380,11 +344,11 @@ pub use output::{
     PositionedRootContext, PositionedRootContextOf, RootContextMismatch,
     RootLocalPositionedContext, RootLocalPositionedContextOf, SourceIndex,
 };
-pub(crate) use output::{RequestedAxis, RunMode, SizingMode};
 pub use resize_observer::{
     ResizeObserverBoxSize, ResizeObserverContentRectOf, ResizeObserverMeasurementError,
     ResizeObserverMeasurementOf, ResizeObserverPixelGrid,
 };
+pub use scalar::DefaultScalar;
 /// Supported scalar contract for generic layout APIs.
 pub use scalar::LayoutScalar;
 pub use scroll::{

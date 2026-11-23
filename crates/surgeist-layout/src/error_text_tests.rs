@@ -19,15 +19,15 @@ fn geometry_failure<E: Into<ScrollGeometryCauseOf<f64>>>(
     }
 }
 
-fn rect_cause() -> crate::ScrollRectErrorOf<f64> {
-    crate::ScrollRectErrorOf::NegativeSize {
+fn rect_cause() -> crate::scroll::ScrollRectErrorOf<f64> {
+    crate::scroll::ScrollRectErrorOf::NegativeSize {
         axis: PhysicalAxis::Vertical,
         value: -2.0,
     }
 }
 
-fn coordinate_cause() -> crate::ScrollCoordinateErrorOf<f64> {
-    crate::ScrollCoordinateErrorOf::NonFinitePhysicalOffset {
+fn coordinate_cause() -> crate::scroll::ScrollCoordinateErrorOf<f64> {
+    crate::scroll::ScrollCoordinateErrorOf::NonFinitePhysicalOffset {
         axis: PhysicalAxis::Horizontal,
         value: f64::INFINITY,
     }
@@ -85,7 +85,7 @@ fn unsupported(
 
 /// Every behavior with its words, checked complete by `behavior_index`.
 fn behavior_rows() -> Vec<(SizingBehavior, &'static str)> {
-    use CalcSizeBehaviorBasis as B;
+    use crate::error::CalcSizeBehaviorBasis as B;
     vec![
         (SizingBehavior::MinContent, "min-content"),
         (SizingBehavior::MaxContent, "max-content"),
@@ -132,7 +132,7 @@ fn behavior_rows() -> Vec<(SizingBehavior, &'static str)> {
 /// to compile when a variant is added, and `assert_complete` fails when the
 /// new variant has no row.
 fn behavior_index(behavior: SizingBehavior) -> usize {
-    use CalcSizeBehaviorBasis as B;
+    use crate::error::CalcSizeBehaviorBasis as B;
     match behavior {
         SizingBehavior::MinContent => 0,
         SizingBehavior::MaxContent => 1,
@@ -171,8 +171,8 @@ fn algorithm_index(algorithm: SizingAlgorithm) -> usize {
     }
 }
 
-fn writing_mode_index(mode: crate::WritingMode) -> usize {
-    use crate::WritingMode as W;
+fn writing_mode_index(mode: crate::node_input::WritingMode) -> usize {
+    use crate::node_input::WritingMode as W;
     match mode {
         W::HorizontalTb => 0,
         W::VerticalRl => 1,
@@ -272,7 +272,7 @@ fn unsupported_sizing_behavior_names_every_property_algorithm_and_axis() {
 
 #[test]
 fn unsupported_text_writing_mode_names_every_writing_mode() {
-    use crate::WritingMode as W;
+    use crate::node_input::WritingMode as W;
     let modes = [
         (W::HorizontalTb, "horizontal-tb"),
         (W::VerticalRl, "vertical-rl"),
@@ -307,8 +307,8 @@ fn axis_and_side_labels_are_words() {
             physical_side_label(PhysicalSide::Right),
             physical_side_label(PhysicalSide::Bottom),
             physical_side_label(PhysicalSide::Left),
-            grid_axis_label(crate::GridAxisKind::Column),
-            grid_axis_label(crate::GridAxisKind::Row),
+            grid_axis_label(crate::grid::GridAxisKind::Column),
+            grid_axis_label(crate::grid::GridAxisKind::Row),
         ],
         [
             "horizontal",

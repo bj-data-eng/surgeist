@@ -6,11 +6,11 @@ use super::{
     AlignContent, AlignItems, BaselinesOf, Compute, ComputeOutputOf, Constants, Direction,
     FlexAxes, LayoutScalar, Point, RunMode, Size, with_flex_item_projection,
 };
-use crate::WritingMode;
 use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide};
 use crate::layout_math::OptionalSizeExt;
+use crate::node_input::WritingMode;
 use crate::output::PhysicalBaseline;
-use crate::{Edges, LayoutResultOf, LengthResolutionStatus};
+use crate::{error::LayoutResultOf, geometry::Edges, value::LengthResolutionStatus};
 use core::cmp::Ordering;
 use core::ops::{Add, ControlFlow, Div};
 
@@ -1024,7 +1024,11 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
 #[cfg(test)]
 mod final_baseline_selection_tests {
     use super::*;
-    use crate::{Edges, FlexDirection, FlexWrap, LengthOf, NodeInputOf};
+    use crate::{
+        geometry::Edges,
+        node_input::{FlexDirection, FlexWrap, NodeInputOf},
+        value::LengthOf,
+    };
 
     fn default_flow_axes<S: LayoutScalar>() -> FlowAxes {
         let style = NodeInputOf::<S>::default();
@@ -1044,7 +1048,7 @@ mod final_baseline_selection_tests {
         );
         FinalFlexItem {
             _node: core::marker::PhantomData,
-            source_index: crate::SourceIndex::ZERO,
+            source_index: crate::output::SourceIndex::ZERO,
             output,
             margin: Edges::ZERO,
             baseline_preference: BaselinePort::for_alignment(align_self),
@@ -1084,21 +1088,25 @@ mod final_baseline_selection_tests {
             authored_justify_content: None,
             justify_content: AlignContent::FlexStart,
             wraps: false,
-            sizing_request: crate::SizingRequestOf::new(
-                Size::splat(crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
+            sizing_request: crate::value::SizingRequestOf::new(
+                Size::splat(crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Indefinite,
+                    crate::value::SizingOperation::Normal,
                 )),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    crate::value::NearestScrollportOf::Absent,
+                    crate::geometry::Size::splat(
+                        crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
-            positioned_fallback_limits: Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
-            available_main: crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
+            positioned_fallback_limits: Size::splat(
+                crate::value::OrthogonalFallbackLimitOf::Unbounded,
+            ),
+            available_main: crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Indefinite,
+                crate::value::SizingOperation::Normal,
             ),
         }
     }

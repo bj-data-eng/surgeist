@@ -2,6 +2,12 @@
 
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    geometry::FlowAxes,
+    inline_wrapping::WrappingInput,
+    node_input::{InlineBaselineContext, LayoutInputViewOf},
+    tree::LayoutTree,
+};
 use std::sync::Arc;
 use surgeist_text as text;
 
@@ -167,9 +173,8 @@ fn continuation(
             LayoutInputOf::inline_boundary(
                 InlineBoundaryInputOf::contribution(
                     kind,
-                    InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
-                        .unwrap(),
-                    crate::InlineBoundaryEdgeOf::ZERO,
+                    InlineMetricsOf::try_new(InlineBaselineContext::Physical, 8.0, 10.0).unwrap(),
+                    crate::node_input::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
             ),
@@ -212,7 +217,8 @@ fn continuation(
                 })
                 .collect();
             TextParagraphBinding {
-                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+                inline_box_fragments:
+                    crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container,
                 nodes,
@@ -236,7 +242,7 @@ fn complete_inline_scope_around_real_block_without_generated_output_is_accepted(
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -249,8 +255,8 @@ fn complete_inline_scope_around_real_block_without_generated_output_is_accepted(
         &capture,
         0,
         request(500.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -272,7 +278,7 @@ fn complete_inline_scope_around_real_block_without_generated_output_is_accepted(
 #[test]
 fn complete_inline_scope_keeps_generated_output_before_and_after_real_block() {
     let (tree, bindings) = continuation(true, true);
-    let capture = LayoutFlowInput::try_new(&tree, 0, bindings.clone(), crate::WrappingInput {
+    let capture = LayoutFlowInput::try_new(&tree, 0, bindings.clone(), WrappingInput {
             native_inline_boxes: Vec::new(),
         gaps: Vec::new(), scopes: Vec::new(), child_order: Vec::new() }, Vec::new()).unwrap_or_else(|error| {
         panic!("the complete global inline pair [1,5] must support its actual paragraph projections: {error:?}")
@@ -281,8 +287,8 @@ fn complete_inline_scope_keeps_generated_output_before_and_after_real_block() {
         &capture,
         0,
         request(500.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -353,7 +359,7 @@ fn missing_global_inline_boundary_capture_remains_a_refusal() {
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -638,9 +644,8 @@ fn segmented_fixture(
                     } else {
                         InlineBoundaryKind::End
                     },
-                    InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
-                        .unwrap(),
-                    crate::InlineBoundaryEdgeOf::ZERO,
+                    InlineMetricsOf::try_new(InlineBaselineContext::Physical, 8.0, 10.0).unwrap(),
+                    crate::node_input::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
             ),
@@ -685,7 +690,7 @@ fn segmented_fixture(
             })
             .collect();
         bindings.push(TextParagraphBinding {
-            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+            inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container,
             nodes,
@@ -714,7 +719,7 @@ fn middle_continuation_with_neither_endpoint_keeps_one_global_owner_and_local_ge
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -727,8 +732,8 @@ fn middle_continuation_with_neither_endpoint_keeps_one_global_owner_and_local_ge
         &capture,
         0,
         request(500.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -781,7 +786,7 @@ fn source_nonemitting_endpoint_paragraphs_supply_remote_controls_without_generat
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -794,8 +799,8 @@ fn source_nonemitting_endpoint_paragraphs_supply_remote_controls_without_generat
         &capture,
         0,
         request(500.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -841,7 +846,7 @@ fn foreign_same_ordinal_capture_cannot_supply_a_remote_endpoint() {
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -873,7 +878,7 @@ fn multiple_actual_paths_to_a_needed_scope_node_refuse_ambiguity() {
         &tree,
         99,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -899,7 +904,7 @@ fn absent_nonemitting_endpoint_paragraph_is_a_missing_real_association() {
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -925,7 +930,7 @@ fn real_nested_block_order_must_agree_with_the_global_capture() {
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -951,7 +956,7 @@ fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
             tree,
             0,
             bindings.clone(),
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -964,8 +969,8 @@ fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
             &capture,
             0,
             request(500.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((capture).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap()
@@ -980,8 +985,7 @@ fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
             LayoutInputOf::inline_boundary(
                 InlineBoundaryInputOf::contribution(
                     kind,
-                    InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
-                        .unwrap(),
+                    InlineMetricsOf::try_new(InlineBaselineContext::Physical, 8.0, 10.0).unwrap(),
                     InlineBoundaryEdgeOf::try_new(0.0, border, padding).unwrap(),
                 )
                 .unwrap(),
@@ -991,13 +995,13 @@ fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
     let positive = compute(&tree);
     assert_eq!(positive.placed_text().len(), 3);
     let node = |batch: &CompletedLayoutBatchOf<u32, f64>, node| {
-        let expected = match crate::LayoutTree::layout_input(&tree, node) {
-            crate::LayoutInputViewOf::Box(_) => readback::Kind::SingleBox,
-            crate::LayoutInputViewOf::InlineText(_) => {
-                readback::Kind::NonBox(crate::NonBoxKind::InlineText)
+        let expected = match LayoutTree::layout_input(&tree, node) {
+            LayoutInputViewOf::Box(_) => readback::Kind::SingleBox,
+            LayoutInputViewOf::InlineText(_) => {
+                readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::InlineText)
             }
-            crate::LayoutInputViewOf::InlineBoundary(_) => {
-                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            LayoutInputViewOf::InlineBoundary(_) => {
+                readback::Kind::NonBox(crate::block_fragmentation::NonBoxKind::InlineBoundary)
             }
             _ => panic!("continuation fixture authors boxes, inline text and boundaries"),
         };

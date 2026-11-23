@@ -193,7 +193,7 @@ fn continuation_case() -> Case {
         .collect();
     Case {
         binding: TextParagraphBinding {
-            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+            inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1, 20, 2, 22, 3, 23, 21],
@@ -286,8 +286,8 @@ fn continuation<S: LayoutScalar>() {
         &input,
         0,
         request(20.0, {
-            let root_input = crate::LayoutTree::node_input((input).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((input).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -471,8 +471,8 @@ fn continuation<S: LayoutScalar>() {
         &input,
         0,
         request(20.0, {
-            let root_input = crate::LayoutTree::node_input((input).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((input).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();

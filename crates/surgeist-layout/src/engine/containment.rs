@@ -3,8 +3,11 @@ use crate::geometry::{FlowAxes, LogicalSizeOf, Size};
 use crate::grid::{GridOverflowObservation, GridOverflowProbe};
 use crate::output::{ComputeInputOf, NamedBaselineDemand, RunMode};
 use crate::{
-    BlockGeneration, ComputeOutputOf, Display, LayoutInputViewOf, LayoutOutputEntryOf,
-    LayoutResultOf, LayoutScalar, NodeInputOf, SizeContainment, Traverse,
+    error::LayoutResultOf,
+    node_input::{BlockGeneration, Display, LayoutInputViewOf, NodeInputOf, SizeContainment},
+    output::{ComputeOutputOf, LayoutOutputEntryOf},
+    scalar::LayoutScalar,
+    tree::Traverse,
 };
 
 #[cfg(test)]

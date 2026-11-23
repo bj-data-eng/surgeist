@@ -3,7 +3,25 @@ use crate::test_support::readback::{self, Phase};
 // retained grid_align_items_baseline_child_multiline_* fixture families.
 use crate::engine::contracts::Compute;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
-use crate::*;
+use crate::{
+    engine::compute_layout,
+    geometry::{Edges, FlowAxes, Point, Size},
+    node_input::{
+        AlignItems, BoxSizing, ComputedOverflow, Direction, Display, NodeInputOf, Overflow,
+        WritingMode,
+    },
+    output::{
+        BaselinesOf, CompletedLayoutBatchOf, ComputeInputOf, ContainingLayoutContext, NodeOutputOf,
+        ParentFormattingContext, RequestedAxis, RunMode, SizingMode,
+    },
+    scalar::LayoutScalar,
+    sizing::PreferredSizeOf,
+    tree::{LayoutTree, Traverse},
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, OrthogonalFallbackLimitOf,
+        OrthogonalFallbackOf, SizingOperation, SizingRequestOf, TrackComponentOf,
+    },
+};
 
 #[derive(Clone, Copy, Debug)]
 enum OuterHeight {
@@ -150,16 +168,19 @@ fn check<S: LayoutScalar>(case: Case) {
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })
@@ -278,8 +299,8 @@ fn check<S: LayoutScalar>(case: Case) {
                     ),
                     OrthogonalFallbackOf::new(
                         Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             ),
@@ -318,8 +339,8 @@ fn check<S: LayoutScalar>(case: Case) {
                     ),
                     OrthogonalFallbackOf::new(
                         Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             ),

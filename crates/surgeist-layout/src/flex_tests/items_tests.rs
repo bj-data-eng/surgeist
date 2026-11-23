@@ -1209,8 +1209,10 @@ where
     crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let flow_axes = FlowAxes::new(WritingMode::VerticalLr, Direction::Ltr);
-    let expected =
-        crate::ContainingLayoutContext::new(flow_axes, crate::ParentFormattingContext::Flex);
+    let expected = crate::output::ContainingLayoutContext::new(
+        flow_axes,
+        crate::output::ParentFormattingContext::Flex,
+    );
 
     for run_mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
         let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
@@ -1248,7 +1250,7 @@ where
                 ComputeOutputOf::from_outer_size(Size::new(S::from_f64(30.0), S::from_f64(12.0))),
             );
 
-        crate::compute_flex(
+        crate::flex::compute_flex(
             &mut tree.borrow_compute(),
             0,
             ComputeInputOf::for_child(
@@ -1257,9 +1259,9 @@ where
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::new(Some(S::from_f64(300.0)), Some(S::from_f64(240.0))),
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Rtl),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::splat(AxisSizingRequestOf::new(
@@ -1379,12 +1381,12 @@ fn flex_row_lays_out_fixed_children_with_gap_and_container_insets() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -1469,12 +1471,12 @@ fn f64_flex_layout_preserves_fractional_growth() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(container_width), None),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -1557,12 +1559,12 @@ fn flex_margin_resolution_handles_invalid_affine_numeric_result_without_panickin
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(120.0), Some(40.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -1663,7 +1665,7 @@ fn flex_compute_size_short_circuits_when_container_size_is_definite() {
             &mut self,
             _node: Self::Node,
             _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
-        ) -> crate::LayoutResultOf<
+        ) -> LayoutResultOf<
             Self::Node,
             crate::grid::GridOverflowObservation<Self::Scalar>,
             Self::Scalar,
@@ -1678,8 +1680,8 @@ fn flex_compute_size_short_circuits_when_container_size_is_definite() {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
-            crate::LayoutInputViewOf::Box(self.node_input(node))
+        fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'input, Self::Scalar> {
+            LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn staged_unrounded(
@@ -1695,13 +1697,17 @@ fn flex_compute_size_short_circuits_when_container_size_is_definite() {
             ))
         }
 
-        fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
+        fn set_unrounded(
+            &mut self,
+            _entry: crate::output::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+        ) {
+        }
 
         fn compute_child(
             &mut self,
             _node: Self::Node,
             _input: ComputeInput,
-        ) -> crate::LayoutResultOf<Self::Node, crate::ComputeOutputOf<Self::Scalar>, Self::Scalar>
+        ) -> LayoutResultOf<Self::Node, crate::output::ComputeOutputOf<Self::Scalar>, Self::Scalar>
         {
             panic!("definite compute-size should not measure children")
         }
@@ -1728,12 +1734,12 @@ fn flex_compute_size_short_circuits_when_container_size_is_definite() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -1786,12 +1792,12 @@ fn flex_compute_size_measures_children_without_perform_layout() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -1841,12 +1847,12 @@ fn flex_row_auto_main_item_uses_content_sizing_for_base_size() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(50.0), Some(10.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -1931,12 +1937,12 @@ fn flex_row_hidden_overflow_item_has_zero_automatic_minimum() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(20.0), Some(50.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2018,12 +2024,12 @@ fn flex_column_hidden_overflow_aspect_item_has_zero_automatic_minimum() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(20.0), Some(50.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2105,12 +2111,12 @@ fn flex_column_cross_axis_hidden_overflow_aspect_item_has_zero_automatic_minimum
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(20.0), Some(50.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2211,7 +2217,7 @@ fn flex_compute_size_uses_definite_min_max_without_measuring_children() {
             &mut self,
             _node: Self::Node,
             _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
-        ) -> crate::LayoutResultOf<
+        ) -> LayoutResultOf<
             Self::Node,
             crate::grid::GridOverflowObservation<Self::Scalar>,
             Self::Scalar,
@@ -2226,8 +2232,8 @@ fn flex_compute_size_uses_definite_min_max_without_measuring_children() {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
-            crate::LayoutInputViewOf::Box(self.node_input(node))
+        fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'input, Self::Scalar> {
+            LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn staged_unrounded(
@@ -2243,13 +2249,17 @@ fn flex_compute_size_uses_definite_min_max_without_measuring_children() {
             ))
         }
 
-        fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
+        fn set_unrounded(
+            &mut self,
+            _entry: crate::output::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+        ) {
+        }
 
         fn compute_child(
             &mut self,
             _node: Self::Node,
             _input: ComputeInput,
-        ) -> crate::LayoutResultOf<Self::Node, crate::ComputeOutputOf<Self::Scalar>, Self::Scalar>
+        ) -> LayoutResultOf<Self::Node, crate::output::ComputeOutputOf<Self::Scalar>, Self::Scalar>
         {
             panic!("definite min/max compute-size should not measure children")
         }
@@ -2277,12 +2287,12 @@ fn flex_compute_size_uses_definite_min_max_without_measuring_children() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2347,12 +2357,12 @@ fn flex_display_none_child_gets_zero_layout_and_hidden_input() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2378,14 +2388,19 @@ fn flex_display_none_child_gets_zero_layout_and_hidden_input() {
     );
     assert_eq!(
         tree.layout(3).expect("child layout is staged"),
-        NodeOutput::with_source_index(crate::SourceIndex::new(1))
+        NodeOutput::with_source_index(crate::output::SourceIndex::new(1))
     );
     assert_eq!(
         tree.inputs(3),
-        vec![ComputeInput::hidden(crate::ContainingLayoutContext::new(
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr,),
-            crate::ParentFormattingContext::Flex
-        ))]
+        vec![ComputeInput::hidden(
+            crate::output::ContainingLayoutContext::new(
+                crate::geometry::FlowAxes::new(
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
+                ),
+                crate::output::ParentFormattingContext::Flex
+            )
+        )]
     );
 }
 
@@ -2422,12 +2437,12 @@ fn flex_row_stretch_transfers_cross_size_through_aspect_ratio() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2493,12 +2508,12 @@ fn flex_row_stretched_aspect_ratio_item_does_not_shrink_below_transferred_size()
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2664,12 +2679,12 @@ fn flex_row_aspect_ratio_auto_min_respects_authored_width_cap() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2732,12 +2747,12 @@ fn flex_row_uses_flex_basis_as_the_main_base_size() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2817,12 +2832,12 @@ fn flex_row_flex_basis_zero_preserves_padding_border_without_authored_content_wi
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2910,12 +2925,12 @@ fn flex_row_flex_basis_padding_floor_preserves_leaf_content_intrinsic_size() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(500.0), Some(400.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -2943,7 +2958,12 @@ fn flex_row_flex_basis_padding_floor_preserves_leaf_content_intrinsic_size() {
     );
 }
 
-use crate::{LengthPercentageOf, NodeInput, PreferredSize};
+use crate::{
+    error::LayoutResultOf,
+    node_input::{LayoutInputViewOf, NodeInput},
+    sizing::PreferredSize,
+    value::LengthPercentageOf,
+};
 
 #[test]
 fn flex_percent_dependent_affine_size_requests_definite_cross_rerun() {

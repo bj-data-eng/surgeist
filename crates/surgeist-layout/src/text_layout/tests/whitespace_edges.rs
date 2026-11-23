@@ -1,5 +1,9 @@
 //! Actual intrinsic consumer observations of source-forced preserved whitespace.
 use super::*;
+use crate::{
+    geometry::Edges,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation},
+};
 
 #[path = "whitespace_edges/intrinsic_frame.rs"]
 mod intrinsic_frame;
@@ -9,14 +13,14 @@ mod measurements;
 
 fn intrinsic<S: LayoutScalar>(
     text: &str,
-    available: crate::AxisSizingRequestOf<S>,
+    available: AxisSizingRequestOf<S>,
 ) -> super::super::run::Output<u32, S> {
     run_in_band(text, available, false)
 }
 
 fn run_in_band<S: LayoutScalar>(
     text: &str,
-    available: crate::AxisSizingRequestOf<S>,
+    available: AxisSizingRequestOf<S>,
     narrow_before_twenty: bool,
 ) -> super::super::run::Output<u32, S> {
     let paragraph = PreparedParagraph::plain(1, Source::new(text), ahem_style(10.0, 10.0));
@@ -31,7 +35,7 @@ fn run_in_band<S: LayoutScalar>(
             display: Display::Block,
             writing_mode: WritingMode::HorizontalTb,
             direction: Direction::Ltr,
-            line_box_direction_policy: crate::LineBoxDirectionPolicy::Normal,
+            line_box_direction_policy: crate::node_input::LineBoxDirectionPolicy::Normal,
             ..NodeInputOf::default()
         },
     );
@@ -39,7 +43,7 @@ fn run_in_band<S: LayoutScalar>(
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -70,29 +74,29 @@ fn run_in_band<S: LayoutScalar>(
                 &binding.prepared,
             )
             .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),
-            inline_baseline_context: crate::InlineBaselineContext::Physical,
+            inline_baseline_context: crate::node_input::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
-            wrap_style: crate::TextWrapStyle::Auto,
+            wrap_style: crate::node_input::TextWrapStyle::Auto,
             wrapping: None,
             formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
-                crate::LineBoxDirectionPolicy::Normal,
+                crate::node_input::LineBoxDirectionPolicy::Normal,
                 Direction::Ltr,
             ),
             frame: super::super::run::Frame::Canonical {
                 normal: crate::text_layout::run::CanonicalLineFrame {
                     origin: Point::ZERO,
                     size,
-                    content_insets: crate::Edges::ZERO,
+                    content_insets: Edges::ZERO,
                 },
                 visual: crate::text_layout::run::CanonicalLineFrame {
                     origin: Point::ZERO,
                     size,
-                    content_insets: crate::Edges::ZERO,
+                    content_insets: Edges::ZERO,
                 },
             },
             containing_size: size,
-            content_insets: crate::Edges::ZERO,
+            content_insets: Edges::ZERO,
             cursor_block: S::ZERO,
             adjoining_displacement: S::ZERO,
             axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
@@ -103,7 +107,7 @@ fn run_in_band<S: LayoutScalar>(
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: crate::text_indent::IndentLineState::default(),
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
-            hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+            hyphenate_limit_zone: crate::value::LengthPercentageOf::ZERO,
             tail: crate::text_layout::fit::TailContext::Unrestricted,
         },
         &[],
@@ -179,19 +183,13 @@ fn qualify<S: LayoutScalar>(
 fn minimum<S: LayoutScalar>() {
     let ordinary = intrinsic::<S>(
         "XX",
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
     );
     qualify(&ordinary, &[88, 88], &[20.0]);
     assert_eq!(ordinary.report.inline_extent, S::from_f64(20.0));
     let output = intrinsic::<S>(
         "X \nY",
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
     );
     qualify(&output, &[88, 32, 10, 89], &[20.0, 10.0]);
     // The real Forced separator contributes no minimum intrinsic width; this
@@ -211,10 +209,7 @@ fn minimum_content_omits_conditional_space_without_rewriting_raw_lines_f64() {
 fn maximum<S: LayoutScalar>() {
     let ordinary = intrinsic::<S>(
         "XX",
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
     );
     qualify(&ordinary, &[88, 88], &[20.0]);
     assert_eq!(
@@ -223,10 +218,7 @@ fn maximum<S: LayoutScalar>() {
     );
     let output = intrinsic::<S>(
         "X \nY",
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
     );
     qualify(&output, &[88, 32, 10, 89], &[20.0, 10.0]);
     assert_eq!(output.report.inline_extent, S::from_f64(20.0));
@@ -250,11 +242,9 @@ fn maximum_content_includes_conditional_space_in_actual_line_allocation_f64() {
 fn finite_fit<S: LayoutScalar>() {
     let fitting = run_in_band::<S>(
         "X",
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         true,
     );
@@ -269,11 +259,9 @@ fn finite_fit<S: LayoutScalar>() {
     assert_eq!(fitting.line_bounds[0].allocation.origin().y, S::ZERO);
     let wider = run_in_band::<S>(
         "XX",
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         true,
     );
@@ -291,11 +279,9 @@ fn finite_fit<S: LayoutScalar>() {
     );
     let output = run_in_band::<S>(
         "X \nY",
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         true,
     );

@@ -91,9 +91,13 @@ fn bind(
                 LayoutInputOf::inline_boundary(
                     InlineBoundaryInputOf::contribution(
                         kind,
-                        InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
-                            .unwrap(),
-                        crate::InlineBoundaryEdgeOf::ZERO,
+                        InlineMetricsOf::try_new(
+                            crate::node_input::InlineBaselineContext::Physical,
+                            8.0,
+                            10.0,
+                        )
+                        .unwrap(),
+                        crate::node_input::InlineBoundaryEdgeOf::ZERO,
                     )
                     .unwrap(),
                 ),
@@ -105,7 +109,7 @@ fn bind(
         })
         .collect();
     TextParagraphBinding {
-        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+        inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes,
@@ -247,7 +251,7 @@ fn many_disjoint_owners_keep_their_own_geometry_without_requiring_empty_gaps() {
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -260,8 +264,8 @@ fn many_disjoint_owners_keep_their_own_geometry_without_requiring_empty_gaps() {
         &capture,
         0,
         request(500.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -432,7 +436,7 @@ fn local_emitter_does_not_require_unique_paths_for_dormant_same_domain_text() {
         &tree,
         0,
         bindings,
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),

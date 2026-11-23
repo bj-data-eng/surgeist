@@ -249,7 +249,7 @@ fn scroll_box_clip_gutter_failure_names_the_rejected_fact_and_sources_its_cause(
 
 #[test]
 fn layout_failure_chain_names_each_level_down_to_the_rejected_coordinate() {
-    let error: crate::LayoutErrorOf<u32, f64> = crate::error::layout_own_geometry_error(
+    let error: crate::error::LayoutErrorOf<u32, f64> = crate::error::layout_own_geometry_error(
         5,
         crate::output::RunMode::PerformLayout,
         CanonicalScrollGeometryErrorOf::Range(coordinate_cause()),

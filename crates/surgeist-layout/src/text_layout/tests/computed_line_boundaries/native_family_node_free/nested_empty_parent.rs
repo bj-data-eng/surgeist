@@ -1,6 +1,12 @@
 //! Original parent custody for captured node-free empty scopes.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    geometry::FlowAxes,
+    inline_wrapping::{GeneratedBoxRef, InlineBoxRef, InlineGapAnchor},
+    tree::LayoutTree,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation},
+};
 
 #[derive(Clone, Copy)]
 enum NestedNomination {
@@ -74,8 +80,8 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
         E::ExitParagraph(0),
         E::ExitScope(root_scope),
     ];
-    let local_parent = crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(parent_scope));
-    let local_child = crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(child_scope));
+    let local_parent = GeneratedBoxRef::Inline(InlineBoxRef::Scope(parent_scope));
+    let local_child = GeneratedBoxRef::Inline(InlineBoxRef::Scope(child_scope));
     let source = EmptyInlineSource::<S> {
         tree: PublicLayoutTreeOf::new().children(0, []).style(
             0,
@@ -86,34 +92,31 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
         ),
         scopes: [parent_scope, child_scope]
             .into_iter()
-            .map(|scope| crate::SourceWrappingScopeInput {
-                box_: crate::InlineBoxRef::Scope(scope),
-                wrap_inside: crate::WrapInside::Auto,
-                edges: crate::WrapEdges::AUTO,
+            .map(|scope| crate::inline_wrapping::SourceWrappingScopeInput {
+                box_: InlineBoxRef::Scope(scope),
+                wrap_inside: crate::inline_wrapping::WrapInside::Auto,
+                edges: crate::inline_wrapping::WrapEdges::AUTO,
             })
             .collect(),
         associations: [parent_scope, child_scope]
             .into_iter()
-            .map(|scope| crate::SourceScopeAssociation {
+            .map(|scope| crate::inline_wrapping::SourceScopeAssociation {
                 scope,
                 flow: 0,
                 pair: None,
             })
             .collect(),
         orders: vec![
-            complete_order(
-                crate::GeneratedBoxRef::Node(0),
-                vec![child(local_parent.clone())],
-            ),
+            complete_order(GeneratedBoxRef::Node(0), vec![child(local_parent.clone())]),
             complete_order(local_parent, vec![child(local_child.clone())]),
             complete_order(local_child, Vec::new()),
         ],
     };
-    let (processed, receipt) = crate::process_wrapping_source(
+    let (processed, receipt) = crate::inline_wrapping::process_wrapping_source(
         &source,
         0,
         input,
-        crate::SourceOccurrenceAssociations::default(),
+        crate::inline_wrapping::SourceOccurrenceAssociations::default(),
     )
     .expect("the nested source authenticates Root -> P -> C complete proofs")
     .into_parts();
@@ -163,23 +166,22 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
         assert!(scope.entry_control().is_none());
         assert!(scope.exit_control().is_none());
     }
-    let parent_ref = crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(parent.clone()));
-    let child_ref = crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(child_scope.clone()));
-    let wrapping = crate::WrappingInput {
+    let parent_ref = GeneratedBoxRef::Inline(InlineBoxRef::Scope(parent.clone()));
+    let child_ref = GeneratedBoxRef::Inline(InlineBoxRef::Scope(child_scope.clone()));
+    let wrapping = crate::inline_wrapping::WrappingInput {
         scopes: [&parent, &child_scope]
             .into_iter()
-            .map(|scope| crate::WrappingScopeInput::Captured {
-                scope: scope.clone(),
-                wrap_inside: crate::WrapInside::Auto,
-                edges: crate::WrapEdges::AUTO,
-                metric_contribution: None,
-            })
+            .map(
+                |scope| crate::inline_wrapping::WrappingScopeInput::Captured {
+                    scope: scope.clone(),
+                    wrap_inside: crate::inline_wrapping::WrapInside::Auto,
+                    edges: crate::inline_wrapping::WrapEdges::AUTO,
+                    metric_contribution: None,
+                },
+            )
             .collect(),
         child_order: vec![
-            complete_order(
-                crate::GeneratedBoxRef::Node(0),
-                vec![child(parent_ref.clone())],
-            ),
+            complete_order(GeneratedBoxRef::Node(0), vec![child(parent_ref.clone())]),
             complete_order(parent_ref.clone(), vec![child(child_ref.clone())]),
             complete_order(child_ref.clone(), Vec::new()),
         ],
@@ -208,20 +210,18 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
     let root_index = baseline.graph.index(0).unwrap();
     assert_eq!(baseline.graph.nodes.len(), 1);
     assert!(baseline.graph.children[root_index].is_empty());
-    assert_eq!(crate::Traverse::child_count(&source, 0), 0);
+    assert_eq!(crate::tree::Traverse::child_count(&source, 0), 0);
     let prior = compute_layout_with_flow(
         &baseline,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((baseline).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((baseline).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )
@@ -249,7 +249,7 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
     let mut demand = wrapping;
     demand
         .native_inline_boxes
-        .push(crate::NativeInlineBoxFamilyInput { formatter: 0 });
+        .push(crate::inline_wrapping::NativeInlineBoxFamilyInput { formatter: 0 });
     if matches!(
         nomination,
         NestedNomination::ParentAndChild
@@ -257,28 +257,32 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
             | NestedNomination::EmptyRootParentAndChild
     ) {
         let anchor = if matches!(nomination, NestedNomination::EmptyRootParentAndChild) {
-            crate::InlineGapAnchor::EmptyParent(crate::GeneratedBoxRef::Node(0))
+            InlineGapAnchor::EmptyParent(GeneratedBoxRef::Node(0))
         } else {
-            crate::InlineGapAnchor::Formatter {
+            InlineGapAnchor::Formatter {
                 node: 0,
-                edge: crate::InlineFormatterEdge::Start,
+                edge: crate::inline_wrapping::InlineFormatterEdge::Start,
             }
         };
-        demand.gaps.push(crate::InlineGapGroupInput {
-            anchor,
-            boxes: vec![crate::InlineBoxRef::Scope(parent.clone())],
-        });
+        demand
+            .gaps
+            .push(crate::inline_wrapping::InlineGapGroupInput {
+                anchor,
+                boxes: vec![InlineBoxRef::Scope(parent.clone())],
+            });
     }
     if !matches!(nomination, NestedNomination::ParentOnly) {
         let anchor_parent = if matches!(nomination, NestedNomination::SkippedParent) {
-            crate::GeneratedBoxRef::Node(0)
+            GeneratedBoxRef::Node(0)
         } else {
             parent_ref.clone()
         };
-        demand.gaps.push(crate::InlineGapGroupInput {
-            anchor: crate::InlineGapAnchor::EmptyParent(anchor_parent),
-            boxes: vec![crate::InlineBoxRef::Scope(child_scope.clone())],
-        });
+        demand
+            .gaps
+            .push(crate::inline_wrapping::InlineGapGroupInput {
+                anchor: InlineGapAnchor::EmptyParent(anchor_parent),
+                boxes: vec![InlineBoxRef::Scope(child_scope.clone())],
+            });
     }
     match nomination {
         NestedNomination::DirectParent
@@ -294,15 +298,15 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
                 &demanded,
                 0,
                 request_at(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     {
-                        let root_input = crate::LayoutTree::node_input((demanded).tree(), 0);
-                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                        let root_input = LayoutTree::node_input((demanded).tree(), 0);
+                        FlowAxes::new(root_input.writing_mode, root_input.direction)
                     },
                 ),
             )
@@ -331,11 +335,11 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
             let c = &child_fragments[0];
             assert_eq!(p.family(), family);
             assert_eq!(c.family(), family);
-            assert_eq!(p.parent().unwrap().owner(), crate::GeneratedBoxRef::Node(0));
+            assert_eq!(p.parent().unwrap().owner(), GeneratedBoxRef::Node(0));
             assert_eq!(c.parent(), Some(p.clone()));
             assert_eq!(c.nearest_common_ancestor(p).unwrap(), *p);
             assert_eq!(p.body_root(), c.body_root());
-            assert_eq!(c.body_root().owner(), crate::GeneratedBoxRef::Node(0));
+            assert_eq!(c.body_root().owner(), GeneratedBoxRef::Node(0));
         }
         NestedNomination::SkippedParent => {
             let Err(error) = construct(demand) else {
@@ -347,7 +351,7 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
                 matches!(
                     error.kind(),
                     LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
-                        crate::WrappingScopeError::InvalidGapAnchor
+                        crate::inline_wrapping::WrappingScopeError::InvalidGapAnchor
                     ))
                 ),
                 "{error:?}"
@@ -360,15 +364,13 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
         &baseline,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((baseline).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((baseline).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )

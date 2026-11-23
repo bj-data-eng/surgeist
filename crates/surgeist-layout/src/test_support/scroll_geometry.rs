@@ -1,8 +1,13 @@
 use crate::{
-    ComputeInputOf, ContainingLayoutContext, Direction, FlowAxes, LayoutErrorKindOf, LayoutErrorOf,
-    LayoutErrorSiteOf, LayoutOperation, LayoutScalar, LengthPercentageOf, NumericResolutionOf,
-    ParentFormattingContext, PercentageBasisOf, RequestedAxis, RunMode, ScrollPaddingOf,
-    ScrollPaddingValueOf, Size, SizingMode, WritingMode,
+    error::{LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutOperation},
+    geometry::{FlowAxes, Size},
+    node_input::{Direction, ScrollPaddingOf, ScrollPaddingValueOf, WritingMode},
+    output::{
+        ComputeInputOf, ContainingLayoutContext, ParentFormattingContext, RequestedAxis, RunMode,
+        SizingMode,
+    },
+    scalar::LayoutScalar,
+    value::{LengthPercentageOf, NumericResolutionOf, PercentageBasisOf},
 };
 
 pub(crate) fn geometry_error_largest_finite<S: LayoutScalar>() -> S {
@@ -15,7 +20,7 @@ pub(crate) fn geometry_error_largest_finite<S: LayoutScalar>() -> S {
 
 pub(crate) fn geometry_error_input<S: LayoutScalar>(run_mode: RunMode) -> ComputeInputOf<S> {
     let largest = geometry_error_largest_finite::<S>();
-    let physical_extent = crate::NonNegativeFiniteOf::new(largest)
+    let physical_extent = crate::value::NonNegativeFiniteOf::new(largest)
         .expect("the selected scalar maximum is finite and nonnegative");
     // Finite query space and the authored percentage parent are independent of
     // any unsupplied ICB, scrollport or containing-limit authority.
@@ -29,15 +34,15 @@ pub(crate) fn geometry_error_input<S: LayoutScalar>(run_mode: RunMode) -> Comput
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        crate::SizingRequestOf::new(
-            Size::splat(crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(physical_extent),
-                crate::SizingOperation::Normal,
+        crate::value::SizingRequestOf::new(
+            Size::splat(crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(physical_extent),
+                crate::value::SizingOperation::Normal,
             )),
-            crate::OrthogonalFallbackOf::new(
+            crate::value::OrthogonalFallbackOf::new(
                 Size::new(None, None),
-                crate::NearestScrollportOf::Unknown,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                crate::value::NearestScrollportOf::Unknown,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
             ),
         ),
     )
@@ -58,7 +63,7 @@ pub(crate) fn assert_geometry_error<S: LayoutScalar, M: core::fmt::Debug>(
         CanonicalScrollGeometryErrorOf as Canonical, ScrollBoxClipGutterErrorOf as Gutter,
         ScrollContributionErrorOf as Contribution,
     };
-    use crate::{PhysicalAxis, ScrollRectErrorOf as Rect};
+    use crate::{geometry::PhysicalAxis, scroll::ScrollRectErrorOf as Rect};
 
     assert_eq!(error.site(), site);
     assert_eq!(error.operation(), operation);

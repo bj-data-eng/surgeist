@@ -1,7 +1,7 @@
 // Intended child of grid_tests/scroll_composition_tests.rs.
 // Actual native measured leaf under flattened-subgrid/Lanes owners.
 use super::*;
-use crate::LayoutTree;
+use crate::tree::LayoutTree;
 
 #[derive(Clone, Copy, Debug)]
 enum Form {
@@ -142,8 +142,8 @@ fn qualify_leaf<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) {
                     ),
                     OrthogonalFallbackOf::new(
                         Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        crate::value::NearestScrollportOf::Absent,
+                        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             ),
@@ -191,16 +191,19 @@ fn contributes<S: LayoutScalar>(form: Form, overflow: Overflow) {
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    crate::value::NearestScrollportOf::Absent,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })

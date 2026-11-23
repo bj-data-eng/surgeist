@@ -5,9 +5,9 @@ mod scope_view;
 mod scopes;
 mod source;
 pub(crate) use compute::compute;
-mod input;
+pub(crate) mod input;
 mod output;
-mod publication;
+pub(crate) mod publication;
 pub use input::{
     BlockFragmentainerOf, BlockFragmentationFailure, LayoutBoundRequestOf,
     LayoutPublicationTargets, LayoutSourceBasis, LayoutTargetBasis,

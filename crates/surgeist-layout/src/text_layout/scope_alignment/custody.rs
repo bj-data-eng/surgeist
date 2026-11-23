@@ -1,6 +1,6 @@
 //! Actual Layout-owned scope resource custody.
 use super::{ScopeAlignmentSnapshot, check, overflow, refusal, reserve_buffer};
-use crate::LayoutScalar;
+use crate::scalar::LayoutScalar;
 use std::{
     mem::size_of,
     sync::{Arc, Mutex},

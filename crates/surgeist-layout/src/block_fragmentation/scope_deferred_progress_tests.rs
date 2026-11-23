@@ -83,7 +83,7 @@ fn deferred_after_zero_extent_with_before<S: LayoutScalar>(
         LayoutSourceBasis::fresh(),
         request,
         FragmentationKind::Page {
-            progression: crate::PageProgression::LeftToRight,
+            progression: crate::fragmentation::page::PageProgression::LeftToRight,
         },
         axes,
         frames.clone(),
@@ -110,7 +110,7 @@ fn deferred_after_zero_extent_with_before<S: LayoutScalar>(
         frames: &frames,
         axes,
         kind: FragmentationKind::Page {
-            progression: crate::PageProgression::LeftToRight,
+            progression: crate::fragmentation::page::PageProgression::LeftToRight,
         },
         target: bound.target_basis(),
         template: request,

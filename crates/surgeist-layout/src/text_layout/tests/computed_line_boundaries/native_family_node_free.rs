@@ -1,74 +1,86 @@
 //! Unscheduled captured empty Inline scopes retain authentic native family identity.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    geometry::FlowAxes,
+    inline_wrapping::{
+        GeneratedBoxRef, GeneratedChildBoxInput, InlineBoxRef, InlineChildOrderInput,
+        InlineGapAnchor, InlineGapGroupInput, SourceScopeAssociation, SourceWrappingScopeInput,
+    },
+    tree::{LayoutTree, Traverse},
+    value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation},
+};
 
 struct EmptyInlineSource<S: LayoutScalar> {
     tree: PublicLayoutTreeOf<S>,
-    scopes: Vec<crate::SourceWrappingScopeInput<u32>>,
-    associations: Vec<crate::SourceScopeAssociation<u32>>,
-    orders: Vec<crate::InlineChildOrderInput<u32, usize>>,
+    scopes: Vec<SourceWrappingScopeInput<u32>>,
+    associations: Vec<SourceScopeAssociation<u32>>,
+    orders: Vec<InlineChildOrderInput<u32, usize>>,
 }
-impl<S: LayoutScalar> crate::Traverse for EmptyInlineSource<S> {
+impl<S: LayoutScalar> Traverse for EmptyInlineSource<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
-        = <PublicLayoutTreeOf<S> as crate::Traverse>::Children<'a>
+        = <PublicLayoutTreeOf<S> as Traverse>::Children<'a>
     where
         Self: 'a;
     fn children(&self, node: u32) -> Self::Children<'_> {
-        crate::Traverse::children(&self.tree, node)
+        Traverse::children(&self.tree, node)
     }
     fn child_count(&self, node: u32) -> usize {
-        crate::Traverse::child_count(&self.tree, node)
+        Traverse::child_count(&self.tree, node)
     }
     fn child(&self, node: u32, index: usize) -> u32 {
-        crate::Traverse::child(&self.tree, node, index)
+        Traverse::child(&self.tree, node, index)
     }
 }
-impl<S: LayoutScalar> crate::LayoutTree for EmptyInlineSource<S> {
-    type MeasureError = <PublicLayoutTreeOf<S> as crate::LayoutTree>::MeasureError;
+impl<S: LayoutScalar> LayoutTree for EmptyInlineSource<S> {
+    type MeasureError = <PublicLayoutTreeOf<S> as LayoutTree>::MeasureError;
     fn node_input(&self, node: u32) -> &NodeInputOf<S> {
-        crate::LayoutTree::node_input(&self.tree, node)
+        LayoutTree::node_input(&self.tree, node)
     }
     fn layout_input(&self, node: u32) -> LayoutInputViewOf<'_, S> {
-        crate::LayoutTree::layout_input(&self.tree, node)
+        LayoutTree::layout_input(&self.tree, node)
     }
 }
-impl<S: LayoutScalar> crate::WrapEdgeSource for EmptyInlineSource<S> {
-    fn wrap_edge_source_node(&self, node: u32) -> crate::WrapEdgeSourceNodeView<'_, S> {
-        match crate::LayoutTree::layout_input(&self.tree, node) {
-            LayoutInputViewOf::Box(input) => crate::WrapEdgeSourceNodeView::Box(input),
+impl<S: LayoutScalar> crate::inline_wrapping::WrapEdgeSource for EmptyInlineSource<S> {
+    fn wrap_edge_source_node(
+        &self,
+        node: u32,
+    ) -> crate::inline_wrapping::WrapEdgeSourceNodeView<'_, S> {
+        match LayoutTree::layout_input(&self.tree, node) {
+            LayoutInputViewOf::Box(input) => {
+                crate::inline_wrapping::WrapEdgeSourceNodeView::Box(input)
+            }
             _ => panic!("this authentic empty native tree has only its Block root"),
         }
     }
-    fn source_wrapping_scopes(&self) -> &[crate::SourceWrappingScopeInput<u32>] {
+    fn source_wrapping_scopes(&self) -> &[SourceWrappingScopeInput<u32>] {
         &self.scopes
     }
-    fn source_scope_associations(&self) -> &[crate::SourceScopeAssociation<u32>] {
+    fn source_scope_associations(&self) -> &[SourceScopeAssociation<u32>] {
         &self.associations
     }
-    fn generated_child_order(&self) -> &[crate::InlineChildOrderInput<u32, usize>] {
+    fn generated_child_order(&self) -> &[InlineChildOrderInput<u32, usize>] {
         &self.orders
     }
 }
 fn complete_order<Scope>(
-    parent: crate::GeneratedBoxRef<u32, Scope>,
-    children: Vec<crate::GeneratedChildBoxInput<u32, Scope>>,
-) -> crate::InlineChildOrderInput<u32, Scope> {
-    crate::InlineChildOrderInput {
+    parent: GeneratedBoxRef<u32, Scope>,
+    children: Vec<GeneratedChildBoxInput<u32, Scope>>,
+) -> InlineChildOrderInput<u32, Scope> {
+    InlineChildOrderInput {
         parent,
         children,
-        prefix: crate::ChildOrderCompleteness::Complete,
-        suffix: crate::ChildOrderCompleteness::Complete,
+        prefix: crate::inline_wrapping::ChildOrderCompleteness::Complete,
+        suffix: crate::inline_wrapping::ChildOrderCompleteness::Complete,
         formatting_context: 0,
     }
 }
-fn child<Scope>(
-    box_: crate::GeneratedBoxRef<u32, Scope>,
-) -> crate::GeneratedChildBoxInput<u32, Scope> {
-    crate::GeneratedChildBoxInput {
+fn child<Scope>(box_: GeneratedBoxRef<u32, Scope>) -> GeneratedChildBoxInput<u32, Scope> {
+    GeneratedChildBoxInput {
         box_,
-        participation: crate::GeneratedBoxParticipation::InFlow,
+        participation: crate::inline_wrapping::GeneratedBoxParticipation::InFlow,
     }
 }
 #[derive(Clone, Copy)]
@@ -101,7 +113,7 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
             ..
         }
     ));
-    let local_box = crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(1usize));
+    let local_box = GeneratedBoxRef::Inline(InlineBoxRef::Scope(1usize));
     let source = EmptyInlineSource::<S> {
         tree: PublicLayoutTreeOf::new().children(0, []).style(
             0,
@@ -110,29 +122,26 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
                 ..NodeInputOf::default()
             },
         ),
-        scopes: vec![crate::SourceWrappingScopeInput {
-            box_: crate::InlineBoxRef::Scope(1),
-            wrap_inside: crate::WrapInside::Auto,
-            edges: crate::WrapEdges::AUTO,
+        scopes: vec![SourceWrappingScopeInput {
+            box_: InlineBoxRef::Scope(1),
+            wrap_inside: crate::inline_wrapping::WrapInside::Auto,
+            edges: crate::inline_wrapping::WrapEdges::AUTO,
         }],
-        associations: vec![crate::SourceScopeAssociation {
+        associations: vec![SourceScopeAssociation {
             scope: 1,
             flow: 0,
             pair: None,
         }],
         orders: vec![
-            complete_order(
-                crate::GeneratedBoxRef::Node(0),
-                vec![child(local_box.clone())],
-            ),
+            complete_order(GeneratedBoxRef::Node(0), vec![child(local_box.clone())]),
             complete_order(local_box, Vec::new()),
         ],
     };
-    let (processed, receipt) = crate::process_wrapping_source(
+    let (processed, receipt) = crate::inline_wrapping::process_wrapping_source(
         &source,
         0,
         input,
-        crate::SourceOccurrenceAssociations::default(),
+        crate::inline_wrapping::SourceOccurrenceAssociations::default(),
     )
     .expect("real source projection authenticates the complete empty Inline child proof")
     .into_parts();
@@ -157,17 +166,17 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
     assert_eq!(scope.parent(), Some(f.processed.captured_scope(0).unwrap()));
     assert!(scope.entry_control().is_none());
     assert!(scope.exit_control().is_none());
-    assert_eq!(crate::Traverse::child_count(&source, 0), 0);
-    let box_ = crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(scope.clone()));
-    let wrapping = crate::WrappingInput {
-        scopes: vec![crate::WrappingScopeInput::Captured {
+    assert_eq!(Traverse::child_count(&source, 0), 0);
+    let box_ = GeneratedBoxRef::Inline(InlineBoxRef::Scope(scope.clone()));
+    let wrapping = crate::inline_wrapping::WrappingInput {
+        scopes: vec![crate::inline_wrapping::WrappingScopeInput::Captured {
             scope: scope.clone(),
-            wrap_inside: crate::WrapInside::Auto,
-            edges: crate::WrapEdges::AUTO,
+            wrap_inside: crate::inline_wrapping::WrapInside::Auto,
+            edges: crate::inline_wrapping::WrapEdges::AUTO,
             metric_contribution: None,
         }],
         child_order: vec![
-            complete_order(crate::GeneratedBoxRef::Node(0), vec![child(box_.clone())]),
+            complete_order(GeneratedBoxRef::Node(0), vec![child(box_.clone())]),
             complete_order(box_, Vec::new()),
         ],
         gaps: Vec::new(),
@@ -200,15 +209,13 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
         &baseline,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((baseline).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((baseline).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )
@@ -239,32 +246,32 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
     let mut demand = wrapping;
     demand
         .native_inline_boxes
-        .push(crate::NativeInlineBoxFamilyInput { formatter: 0 });
+        .push(crate::inline_wrapping::NativeInlineBoxFamilyInput { formatter: 0 });
     let reason = match attachment {
         Attachment::ExplicitStart => {
-            demand.gaps.push(crate::InlineGapGroupInput {
-                anchor: crate::InlineGapAnchor::Formatter {
+            demand.gaps.push(InlineGapGroupInput {
+                anchor: InlineGapAnchor::Formatter {
                     node: 0,
-                    edge: crate::InlineFormatterEdge::Start,
+                    edge: crate::inline_wrapping::InlineFormatterEdge::Start,
                 },
-                boxes: vec![crate::InlineBoxRef::Scope(scope.clone())],
+                boxes: vec![InlineBoxRef::Scope(scope.clone())],
             });
             "an actual unscheduled node-free captured Inline with an explicit authenticated gap must retain native family identity"
         }
         Attachment::EmptyParentRoot => {
-            demand.gaps.push(crate::InlineGapGroupInput {
-                anchor: crate::InlineGapAnchor::EmptyParent(crate::GeneratedBoxRef::Node(0)),
-                boxes: vec![crate::InlineBoxRef::Scope(scope.clone())],
+            demand.gaps.push(InlineGapGroupInput {
+                anchor: InlineGapAnchor::EmptyParent(GeneratedBoxRef::Node(0)),
+                boxes: vec![InlineBoxRef::Scope(scope.clone())],
             });
             "the actual ordering-empty formatter parent must authenticate its real node-free captured Inline attachment"
         }
         Attachment::DuplicateStart | Attachment::StartAndEmptyParent => {
-            let first = crate::InlineGapGroupInput {
-                anchor: crate::InlineGapAnchor::Formatter {
+            let first = InlineGapGroupInput {
+                anchor: InlineGapAnchor::Formatter {
                     node: 0,
-                    edge: crate::InlineFormatterEdge::Start,
+                    edge: crate::inline_wrapping::InlineFormatterEdge::Start,
                 },
-                boxes: vec![crate::InlineBoxRef::Scope(scope.clone())],
+                boxes: vec![InlineBoxRef::Scope(scope.clone())],
             };
             demand.gaps.push(first.clone());
             let valid = construct(demand.clone())
@@ -274,15 +281,15 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
                 &valid,
                 0,
                 request_at(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     {
-                        let root_input = crate::LayoutTree::node_input((valid).tree(), 0);
-                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                        let root_input = LayoutTree::node_input((valid).tree(), 0);
+                        FlowAxes::new(root_input.writing_mode, root_input.direction)
                     },
                 ),
             )
@@ -299,17 +306,15 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
                 valid_families[0]
                     .fragments()
                     .filter(|fragment| fragment.owner()
-                        == crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(
-                            scope.clone()
-                        )))
+                        == GeneratedBoxRef::Inline(InlineBoxRef::Scope(scope.clone())))
                     .count(),
                 1
             );
             let second = match attachment {
                 Attachment::DuplicateStart => first,
-                Attachment::StartAndEmptyParent => crate::InlineGapGroupInput {
-                    anchor: crate::InlineGapAnchor::EmptyParent(crate::GeneratedBoxRef::Node(0)),
-                    boxes: vec![crate::InlineBoxRef::Scope(scope.clone())],
+                Attachment::StartAndEmptyParent => InlineGapGroupInput {
+                    anchor: InlineGapAnchor::EmptyParent(GeneratedBoxRef::Node(0)),
+                    boxes: vec![InlineBoxRef::Scope(scope.clone())],
                 },
                 _ => unreachable!("this branch contains only the two duplicate nominations"),
             };
@@ -321,7 +326,7 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
                 matches!(
                     error.kind(),
                     LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
-                        crate::WrappingScopeError::ConflictingGap
+                        crate::inline_wrapping::WrappingScopeError::ConflictingGap
                     ))
                 ),
                 "{error:?}"
@@ -330,15 +335,15 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
                 &baseline,
                 0,
                 request_at(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     {
-                        let root_input = crate::LayoutTree::node_input((baseline).tree(), 0);
-                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                        let root_input = LayoutTree::node_input((baseline).tree(), 0);
+                        FlowAxes::new(root_input.writing_mode, root_input.direction)
                     },
                 ),
             )
@@ -356,9 +361,7 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
                 valid_families[0]
                     .fragments()
                     .filter(|fragment| fragment.owner()
-                        == crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(
-                            scope.clone()
-                        )))
+                        == GeneratedBoxRef::Inline(InlineBoxRef::Scope(scope.clone())))
                     .count(),
                 1
             );
@@ -377,15 +380,13 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
         &demanded,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()),
+                SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((demanded).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((demanded).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )
@@ -407,8 +408,7 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
     let owners = family
         .fragments()
         .filter(|fragment| {
-            fragment.owner()
-                == crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(scope.clone()))
+            fragment.owner() == GeneratedBoxRef::Inline(InlineBoxRef::Scope(scope.clone()))
         })
         .collect::<Vec<_>>();
     assert_eq!(
@@ -419,12 +419,9 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
     assert_eq!(owners[0].family(), family);
     assert_eq!(
         owners[0].parent().unwrap().owner(),
-        crate::GeneratedBoxRef::Node(0)
+        GeneratedBoxRef::Node(0)
     );
-    assert_eq!(
-        owners[0].body_root().owner(),
-        crate::GeneratedBoxRef::Node(0)
-    );
+    assert_eq!(owners[0].body_root().owner(), GeneratedBoxRef::Node(0));
     assert_eq!(prior.native_inline_box_families().count(), 0);
 }
 

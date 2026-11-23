@@ -1,6 +1,7 @@
 //! One canonical signed pen drives CSS TAB execution and original-logical receipts.
 //! A fresh partial recipe executes its own grid without borrowing a closing margin.
 use super::*;
+use crate::geometry::Size;
 
 fn execute<S: LayoutScalar>(fixture: &Fixture) -> CompletedLayoutBatchOf<u32, S> {
     let mut tree = native_tree::<S>(fixture, false, 40.0, false);
@@ -39,8 +40,8 @@ fn execute<S: LayoutScalar>(fixture: &Fixture) -> CompletedLayoutBatchOf<u32, S>
         &input,
         0,
         request(40.0, {
-            let root_input = crate::LayoutTree::node_input((input).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((input).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap()
@@ -67,23 +68,23 @@ fn lane<S: LayoutScalar>() {
         false,
         Some(10.0),
         false,
-        crate::SizingRequestOf::new(
-            crate::Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+        crate::value::SizingRequestOf::new(
+            Size::new(
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    crate::value::SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Indefinite,
+                    crate::value::SizingOperation::Normal,
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            crate::value::OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     );

@@ -116,7 +116,7 @@ fn replace_inset<S: LayoutScalar>(
     node: u32,
     inset: Edges<LengthAutoOf<S>>,
 ) {
-    let mut style = crate::LayoutTree::node_input(tree, node).clone();
+    let mut style = crate::tree::LayoutTree::node_input(tree, node).clone();
     style.inset = inset;
     tree.insert_input(node, LayoutInputOf::box_input(style));
 }
@@ -643,7 +643,7 @@ fn relative_flow_negative_overflow_keeps_normal_height_f64() {
 
 fn collapsed_margin<S: LayoutScalar>(display: Display) {
     let mut tree = three_boxes::<S>(Display::Block, Direction::Ltr, BoxSizing::BorderBox, false);
-    let mut first = crate::LayoutTree::node_input(&tree, 1).clone();
+    let mut first = crate::tree::LayoutTree::node_input(&tree, 1).clone();
     first.margin.bottom = LengthAutoOf::px(px::<S>(6.0));
     tree.insert_input(1, LayoutInputOf::box_input(first));
     let mut middle = ten_box::<S>(display, Direction::Ltr, BoxSizing::BorderBox, false);

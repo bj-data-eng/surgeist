@@ -43,7 +43,7 @@ pub(in crate::grid) struct ExecutedBaselineInventory<Node, S: LayoutScalar> {
     owner: Node,
     axes: FlowAxes,
     size: Size<S>,
-    references: crate::GridBaselineReferences,
+    references: crate::node_input::GridBaselineReferences,
     execution_input: ComputeInputOf<S>,
     stage: GridSizingStage,
     counts: LogicalSizeOf<Option<usize>>,

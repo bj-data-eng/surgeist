@@ -1,7 +1,7 @@
 //! Resolved native post-baseline displacement, independent of font discovery.
 use crate::{
-    DefaultScalar, FiniteScalarErrorOf, LayoutScalar, LengthPercentageOf, NonNegativeFiniteOf,
-    PercentageBasisOf,
+    scalar::{DefaultScalar, LayoutScalar},
+    value::{FiniteScalarErrorOf, LengthPercentageOf, NonNegativeFiniteOf, PercentageBasisOf},
 };
 
 /// A finite displacement toward the containing line's over side.
@@ -134,13 +134,13 @@ pub(crate) fn displaced<S: LayoutScalar>(
     if !base.is_finite() || !delta.is_finite() || !result.is_finite() {
         return Err(crate::group_alignment::NumericError::new(
             result.to_f64(),
-            crate::LayoutTextNumericError::NonFinite,
+            crate::error::LayoutTextNumericError::NonFinite,
         ));
     }
     if (delta != S::ZERO && result == base) || (base != S::ZERO && result == delta) {
         return Err(crate::group_alignment::NumericError::new(
             delta.to_f64(),
-            crate::LayoutTextNumericError::NonZeroLost,
+            crate::error::LayoutTextNumericError::NonZeroLost,
         ));
     }
     Ok(crate::scalar::canonical_zero(result))
@@ -243,8 +243,8 @@ mod tests {
             0
         );
         assert_ne!(
-            crate::VerticalAlignOf::<S>::Baseline,
-            crate::VerticalAlignOf::Shift(BaselineOffsetOf::ZERO)
+            crate::node_input::VerticalAlignOf::<S>::Baseline,
+            crate::node_input::VerticalAlignOf::Shift(BaselineOffsetOf::ZERO)
         );
     }
 
@@ -308,15 +308,15 @@ mod tests {
             |result: Result<S, crate::group_alignment::NumericError>| result.unwrap_err().reason();
         assert_eq!(
             reason(displaced(large, S::ONE)),
-            crate::LayoutTextNumericError::NonZeroLost
+            crate::error::LayoutTextNumericError::NonZeroLost
         );
         assert_eq!(
             reason(displaced(S::ONE, large)),
-            crate::LayoutTextNumericError::NonZeroLost
+            crate::error::LayoutTextNumericError::NonZeroLost
         );
         assert_eq!(
             reason(displaced(maximum, maximum)),
-            crate::LayoutTextNumericError::NonFinite
+            crate::error::LayoutTextNumericError::NonFinite
         );
         assert_eq!(displaced(large, -large).unwrap(), S::ZERO);
     }

@@ -1,8 +1,14 @@
 use crate::geometry::{FlowAxes, LogicalEdgesOf, LogicalSizeOf, PhysicalAxis, PhysicalProgression};
 use crate::scroll::ScrollOriginProgression;
 use crate::{
-    AlignItems, AspectRatioOf, BoxSizing, Edges, LayoutScalar, LengthAutoOf, LengthOf,
-    LengthResolutionOf, LengthResolutionStatus, Size,
+    geometry::{Edges, Size},
+    node_input::{AlignItems, BoxSizing},
+    scalar::LayoutScalar,
+    value::{
+        AspectRatioOf, AvailableSpaceOf, AxisSizingRequestOf, LengthAutoOf, LengthOf,
+        LengthResolutionOf, LengthResolutionStatus, NonNegativeFiniteOf, OrthogonalFallbackLimitOf,
+        SizingOperation,
+    },
 };
 
 // With two definite insets the logical end inset is weaker. Retaining the
@@ -50,11 +56,11 @@ pub(crate) fn absolute_inset_extents<S: LayoutScalar>(
 }
 
 pub(crate) fn absolute_inset_child_axes<S: LayoutScalar>(
-    available: Size<crate::AxisSizingRequestOf<S>>,
+    available: Size<AxisSizingRequestOf<S>>,
     inset_extents: Size<Option<S>>,
     margin: Edges<Option<S>>,
     measured_leaf: bool,
-) -> Size<Result<crate::AxisSizingRequestOf<S>, LengthResolutionStatus<S>>> {
+) -> Size<Result<AxisSizingRequestOf<S>, LengthResolutionStatus<S>>> {
     // The leaf receiver debits its margins while resolving content space.
     let margin_debit = if measured_leaf {
         Size::ZERO
@@ -237,7 +243,7 @@ pub(crate) fn absolute_stretch_fit_sizes<S: LayoutScalar>(
     margin: Edges<Option<S>>,
     extent: Size<Option<S>>,
     alignment: Size<Option<AlignItems>>,
-    child: &crate::NodeInputOf<S>,
+    child: &crate::node_input::NodeInputOf<S>,
     padding_border_size: Size<S>,
 ) -> (Size<Option<S>>, Option<AspectRatioOf<S>>) {
     let stretch = |insets: (Option<S>, Option<S>),
@@ -306,7 +312,7 @@ pub(crate) fn absolute_stretch_fit_sizes<S: LayoutScalar>(
 
     // Stretch fit floors the determining border box at its padding and border.
     // The ratio then transfers within the box selected by box-sizing.
-    let sizing_box_inset = if child.box_sizing == crate::BoxSizing::ContentBox {
+    let sizing_box_inset = if child.box_sizing == crate::node_input::BoxSizing::ContentBox {
         padding_border_size
     } else {
         Size::ZERO
@@ -559,17 +565,17 @@ pub(crate) fn resolve_absolute_axis_margins<S: LayoutScalar>(
 /// Checks a physical space produced by an owning sizing algorithm.
 pub(crate) fn checked_available_space<S: LayoutScalar>(
     value: S,
-) -> Result<crate::AvailableSpaceOf<S>, LengthResolutionStatus<S>> {
-    crate::NonNegativeFiniteOf::new(value)
-        .map(crate::AvailableSpaceOf::Definite)
+) -> Result<AvailableSpaceOf<S>, LengthResolutionStatus<S>> {
+    NonNegativeFiniteOf::new(value)
+        .map(AvailableSpaceOf::Definite)
         .map_err(|_| LengthResolutionStatus::InvalidNumeric { value })
 }
 
 /// Preserves the recipient of failures while lowering physical axis requests.
 pub(crate) fn transpose_axis_requests_at_node<Node: Copy, S: LayoutScalar, M>(
     node: Node,
-    requests: Size<Result<crate::AxisSizingRequestOf<S>, LengthResolutionStatus<S>>>,
-) -> crate::LayoutResultOf<Node, Size<crate::AxisSizingRequestOf<S>>, S, M> {
+    requests: Size<Result<AxisSizingRequestOf<S>, LengthResolutionStatus<S>>>,
+) -> crate::error::LayoutResultOf<Node, Size<AxisSizingRequestOf<S>>, S, M> {
     Ok(Size::new(
         requests
             .width
@@ -582,9 +588,9 @@ pub(crate) fn transpose_axis_requests_at_node<Node: Copy, S: LayoutScalar, M>(
 
 /// Retains a request unless its producer supplies a replacement extent.
 pub(crate) fn with_available_extent<S: LayoutScalar>(
-    request: crate::AxisSizingRequestOf<S>,
+    request: AxisSizingRequestOf<S>,
     extent: Option<S>,
-) -> Result<crate::AxisSizingRequestOf<S>, LengthResolutionStatus<S>> {
+) -> Result<AxisSizingRequestOf<S>, LengthResolutionStatus<S>> {
     extent
         .map(|value| checked_available_space(value).map(|space| request.with_space(space)))
         .transpose()
@@ -610,9 +616,9 @@ pub(crate) fn remaining_available_extent<S: LayoutScalar>(
 
 /// Lowers signed edge arithmetic without changing the sizing operation.
 pub(crate) fn inset_axis_request<S: LayoutScalar>(
-    request: crate::AxisSizingRequestOf<S>,
+    request: AxisSizingRequestOf<S>,
     inset: S,
-) -> Result<crate::AxisSizingRequestOf<S>, LengthResolutionStatus<S>> {
+) -> Result<AxisSizingRequestOf<S>, LengthResolutionStatus<S>> {
     if !inset.is_finite() {
         return Err(LengthResolutionStatus::InvalidNumeric { value: inset });
     }
@@ -625,18 +631,18 @@ pub(crate) fn inset_axis_request<S: LayoutScalar>(
 
 /// A bound changes available space, never the requested intrinsic operation.
 pub(crate) fn clamp_axis_request_space<S: LayoutScalar>(
-    request: crate::AxisSizingRequestOf<S>,
+    request: AxisSizingRequestOf<S>,
     minimum: Option<S>,
     maximum: Option<S>,
-) -> Result<crate::AxisSizingRequestOf<S>, LengthResolutionStatus<S>> {
+) -> Result<AxisSizingRequestOf<S>, LengthResolutionStatus<S>> {
     for value in [minimum, maximum].into_iter().flatten() {
         if !value.is_finite() {
             return Err(LengthResolutionStatus::InvalidNumeric { value });
         }
     }
     let bound = match request.operation() {
-        crate::SizingOperation::MinContent => minimum,
-        crate::SizingOperation::Normal | crate::SizingOperation::MaxContent => maximum,
+        SizingOperation::MinContent => minimum,
+        SizingOperation::Normal | SizingOperation::MaxContent => maximum,
     };
     let value = request
         .space()
@@ -645,19 +651,17 @@ pub(crate) fn clamp_axis_request_space<S: LayoutScalar>(
         .or(bound);
     Ok(request.with_space(match value {
         Some(value) => checked_available_space(value.max(S::ZERO))?,
-        None => crate::AvailableSpaceOf::Indefinite,
+        None => AvailableSpaceOf::Indefinite,
     }))
 }
 
 /// Actual finite normal layout, excluding bounded intrinsic queries.
-pub(crate) fn normal_available_size<S: LayoutScalar>(
-    request: crate::AxisSizingRequestOf<S>,
-) -> Option<S> {
-    if request.operation() == crate::SizingOperation::Normal {
+pub(crate) fn normal_available_size<S: LayoutScalar>(request: AxisSizingRequestOf<S>) -> Option<S> {
+    if request.operation() == SizingOperation::Normal {
         request
             .space()
             .definite_size()
-            .map(crate::NonNegativeFiniteOf::get)
+            .map(NonNegativeFiniteOf::get)
     } else {
         None
     }
@@ -665,33 +669,33 @@ pub(crate) fn normal_available_size<S: LayoutScalar>(
 
 /// The sealed f32/f64 Layout scalars widen losslessly to the Text adapter lane.
 pub(crate) fn text_axis_request<S: LayoutScalar>(
-    request: crate::AxisSizingRequestOf<S>,
-) -> crate::AxisSizingRequestOf<f64> {
+    request: AxisSizingRequestOf<S>,
+) -> AxisSizingRequestOf<f64> {
     let space = match request.space() {
-        crate::AvailableSpaceOf::Definite(value) => crate::AvailableSpaceOf::Definite(
-            crate::NonNegativeFiniteOf::new(value.get().to_f64())
+        AvailableSpaceOf::Definite(value) => AvailableSpaceOf::Definite(
+            NonNegativeFiniteOf::new(value.get().to_f64())
                 .expect("a checked Layout scalar widens to finite nonnegative f64"),
         ),
-        crate::AvailableSpaceOf::Indefinite => crate::AvailableSpaceOf::Indefinite,
+        AvailableSpaceOf::Indefinite => AvailableSpaceOf::Indefinite,
     };
-    crate::AxisSizingRequestOf::new(space, request.operation())
+    AxisSizingRequestOf::new(space, request.operation())
 }
 
 /// The actual physical query purpose, not its output mask or finiteness.
 pub(crate) fn fallback_preferred_is_available<S: LayoutScalar>(
-    input: crate::ComputeInputOf<S>,
-    axis: crate::PhysicalAxis,
+    input: crate::output::ComputeInputOf<S>,
+    axis: crate::geometry::PhysicalAxis,
 ) -> bool {
-    if input.sizing_mode() == crate::SizingMode::InherentSize {
+    if input.sizing_mode() == crate::output::SizingMode::InherentSize {
         return true;
     }
     let axes = input.sizing_request().axes();
     let (current, opposite) = match axis {
-        crate::PhysicalAxis::Horizontal => (axes.width, axes.height),
-        crate::PhysicalAxis::Vertical => (axes.height, axes.width),
+        crate::geometry::PhysicalAxis::Horizontal => (axes.width, axes.height),
+        crate::geometry::PhysicalAxis::Vertical => (axes.height, axes.width),
     };
-    current.operation() == crate::SizingOperation::Normal
-        && opposite.operation() != crate::SizingOperation::Normal
+    current.operation() == SizingOperation::Normal
+        && opposite.operation() != SizingOperation::Normal
 }
 
 /// Qualified outer-box source roles for one physical axis.
@@ -711,8 +715,8 @@ pub(crate) struct FixedFallbackSources<S: LayoutScalar> {
 /// Reads original owner properties only for the fixed-source roles needed by
 /// its local cap and actual scrollport. Query/body substitutions never enter.
 pub(crate) fn qualify_fixed_fallback_sources<S: LayoutScalar>(
-    input: crate::ComputeInputOf<S>,
-    algorithm: crate::SizingAlgorithm,
+    input: crate::output::ComputeInputOf<S>,
+    algorithm: crate::error::SizingAlgorithm,
     common: &crate::node_projection::CommonBoxProjection<'_, S>,
     definite_outer: Size<Option<S>>,
     box_sizing_adjustment: Size<S>,
@@ -722,10 +726,10 @@ pub(crate) fn qualify_fixed_fallback_sources<S: LayoutScalar>(
         FixedFallbackSource, SizingResolutionError, fixed_fallback_maximum, fixed_fallback_minimum,
         fixed_fallback_preferred,
     };
-    let qualify = |axis: crate::PhysicalAxis,
-                   preferred: &crate::PreferredSizeOf<S>,
-                   minimum: &crate::MinSizeOf<S>,
-                   maximum: &crate::MaxSizeOf<S>,
+    let qualify = |axis: crate::geometry::PhysicalAxis,
+                   preferred: &crate::sizing::PreferredSizeOf<S>,
+                   minimum: &crate::sizing::MinSizeOf<S>,
+                   maximum: &crate::sizing::MaxSizeOf<S>,
                    known: Option<S>,
                    adjustment: S|
      -> Result<FixedFallbackAxisSources<S>, SizingResolutionError<S>> {
@@ -743,8 +747,8 @@ pub(crate) fn qualify_fixed_fallback_sources<S: LayoutScalar>(
             algorithm,
             axis,
             match axis {
-                crate::PhysicalAxis::Horizontal => input.parent().width,
-                crate::PhysicalAxis::Vertical => input.parent().height,
+                crate::geometry::PhysicalAxis::Horizontal => input.parent().width,
+                crate::geometry::PhysicalAxis::Vertical => input.parent().height,
             },
         ))?)?;
         let definite = if let Some(known) = known {
@@ -757,8 +761,8 @@ pub(crate) fn qualify_fixed_fallback_sources<S: LayoutScalar>(
                 algorithm,
                 axis,
                 match axis {
-                    crate::PhysicalAxis::Horizontal => input.parent().width,
-                    crate::PhysicalAxis::Vertical => input.parent().height,
+                    crate::geometry::PhysicalAxis::Horizontal => input.parent().width,
+                    crate::geometry::PhysicalAxis::Vertical => input.parent().height,
                 },
             )?)?
         } else if preferred.is_auto() || preferred.is_min_content() || preferred.is_max_content() {
@@ -776,8 +780,8 @@ pub(crate) fn qualify_fixed_fallback_sources<S: LayoutScalar>(
                 algorithm,
                 axis,
                 match axis {
-                    crate::PhysicalAxis::Horizontal => input.parent().width,
-                    crate::PhysicalAxis::Vertical => input.parent().height,
+                    crate::geometry::PhysicalAxis::Horizontal => input.parent().width,
+                    crate::geometry::PhysicalAxis::Vertical => input.parent().height,
                 },
             ))?)?
         } else {
@@ -790,7 +794,7 @@ pub(crate) fn qualify_fixed_fallback_sources<S: LayoutScalar>(
         })
     };
     let width = qualify(
-        crate::PhysicalAxis::Horizontal,
+        crate::geometry::PhysicalAxis::Horizontal,
         &common.size.width,
         &common.min_size.width,
         &common.max_size.width,
@@ -798,7 +802,7 @@ pub(crate) fn qualify_fixed_fallback_sources<S: LayoutScalar>(
         box_sizing_adjustment.width,
     )?;
     let height = qualify(
-        crate::PhysicalAxis::Vertical,
+        crate::geometry::PhysicalAxis::Vertical,
         &common.size.height,
         &common.min_size.height,
         &common.max_size.height,
@@ -850,10 +854,10 @@ fn inner_fallback_source<S: LayoutScalar>(
 
 fn fixed_fallback_value<S: LayoutScalar>(
     source: crate::sizing::resolve::FixedFallbackSource<S>,
-) -> Option<crate::NonNegativeFiniteOf<S>> {
+) -> Option<NonNegativeFiniteOf<S>> {
     match source {
         crate::sizing::resolve::FixedFallbackSource::Fixed(value) => Some(
-            crate::NonNegativeFiniteOf::new(value)
+            NonNegativeFiniteOf::new(value)
                 .expect("the owning checked debit produced a finite nonnegative inner bound"),
         ),
         _ => None,
@@ -866,20 +870,20 @@ pub(crate) fn containing_orthogonal_fallback_limits<S: LayoutScalar>(
     minimum_outer: Size<crate::sizing::resolve::FixedFallbackSource<S>>,
     maximum_outer: Size<crate::sizing::resolve::FixedFallbackSource<S>>,
     debit: Size<S>,
-) -> Result<Size<crate::OrthogonalFallbackLimitOf<S>>, LengthResolutionStatus<S>> {
+) -> Result<Size<OrthogonalFallbackLimitOf<S>>, LengthResolutionStatus<S>> {
     use crate::sizing::resolve::FixedFallbackSource;
     let axis = |minimum,
                 maximum,
                 debit|
-     -> Result<crate::OrthogonalFallbackLimitOf<S>, LengthResolutionStatus<S>> {
+     -> Result<OrthogonalFallbackLimitOf<S>, LengthResolutionStatus<S>> {
         match maximum {
-            FixedFallbackSource::NoFixedBound => Ok(crate::OrthogonalFallbackLimitOf::Unbounded),
-            FixedFallbackSource::Unqualified => Ok(crate::OrthogonalFallbackLimitOf::Unknown),
+            FixedFallbackSource::NoFixedBound => Ok(OrthogonalFallbackLimitOf::Unbounded),
+            FixedFallbackSource::Unqualified => Ok(OrthogonalFallbackLimitOf::Unknown),
             FixedFallbackSource::Fixed(_) => {
                 if matches!(minimum, FixedFallbackSource::Unqualified) {
-                    return Ok(crate::OrthogonalFallbackLimitOf::Unknown);
+                    return Ok(OrthogonalFallbackLimitOf::Unknown);
                 }
-                Ok(crate::OrthogonalFallbackLimitOf::from_containing_bounds(
+                Ok(OrthogonalFallbackLimitOf::from_containing_bounds(
                     fixed_fallback_value(inner_fallback_source(minimum, debit)?),
                     fixed_fallback_value(inner_fallback_source(maximum, debit)?),
                 ))
@@ -896,12 +900,12 @@ pub(crate) fn containing_orthogonal_fallback_limits<S: LayoutScalar>(
 /// Fixed sources precede query suppression/measurement. Requested insets come
 /// from the real current scrollbar settlement, not provisional rectangle sizes.
 pub(crate) fn child_orthogonal_fallback<S: LayoutScalar>(
-    inherited: crate::OrthogonalFallbackOf<S>,
+    inherited: crate::value::OrthogonalFallbackOf<S>,
     definite_outer: Size<crate::sizing::resolve::FixedFallbackSource<S>>,
     minimum_outer: Size<crate::sizing::resolve::FixedFallbackSource<S>>,
     maximum_outer: Size<crate::sizing::resolve::FixedFallbackSource<S>>,
     source: crate::scroll::MeasuredLeafContentBoxInsetSourceOf<S>,
-) -> Result<crate::OrthogonalFallbackOf<S>, LengthResolutionStatus<S>> {
+) -> Result<crate::value::OrthogonalFallbackOf<S>, LengthResolutionStatus<S>> {
     use crate::sizing::resolve::FixedFallbackSource;
     let content_debit = crate::scroll::measured_leaf_content_box_inset(source).sum_axes();
     let local = containing_orthogonal_fallback_limits(minimum_outer, maximum_outer, content_debit)?;
@@ -918,34 +922,33 @@ pub(crate) fn child_orthogonal_fallback<S: LayoutScalar>(
             },
         )
         .sum_axes();
-        let axis =
-            |definite,
-             minimum,
-             maximum,
-             debit|
-             -> Result<crate::OrthogonalFallbackLimitOf<S>, LengthResolutionStatus<S>> {
-                if matches!(
-                    (definite, maximum),
-                    (
-                        FixedFallbackSource::NoFixedBound,
-                        FixedFallbackSource::NoFixedBound
-                    )
-                ) {
-                    return Ok(crate::OrthogonalFallbackLimitOf::Unbounded);
-                }
-                if matches!(definite, FixedFallbackSource::Unqualified)
-                    || matches!(maximum, FixedFallbackSource::Unqualified)
-                    || matches!(minimum, FixedFallbackSource::Unqualified)
-                {
-                    return Ok(crate::OrthogonalFallbackLimitOf::Unknown);
-                }
-                Ok(crate::OrthogonalFallbackLimitOf::from_scrollport(
-                    fixed_fallback_value(inner_fallback_source(definite, debit)?),
-                    fixed_fallback_value(inner_fallback_source(minimum, debit)?),
-                    fixed_fallback_value(inner_fallback_source(maximum, debit)?),
-                ))
-            };
-        crate::ScrollportFallbackChangeOf::Enter(Size::new(
+        let axis = |definite,
+                    minimum,
+                    maximum,
+                    debit|
+         -> Result<OrthogonalFallbackLimitOf<S>, LengthResolutionStatus<S>> {
+            if matches!(
+                (definite, maximum),
+                (
+                    FixedFallbackSource::NoFixedBound,
+                    FixedFallbackSource::NoFixedBound
+                )
+            ) {
+                return Ok(OrthogonalFallbackLimitOf::Unbounded);
+            }
+            if matches!(definite, FixedFallbackSource::Unqualified)
+                || matches!(maximum, FixedFallbackSource::Unqualified)
+                || matches!(minimum, FixedFallbackSource::Unqualified)
+            {
+                return Ok(OrthogonalFallbackLimitOf::Unknown);
+            }
+            Ok(OrthogonalFallbackLimitOf::from_scrollport(
+                fixed_fallback_value(inner_fallback_source(definite, debit)?),
+                fixed_fallback_value(inner_fallback_source(minimum, debit)?),
+                fixed_fallback_value(inner_fallback_source(maximum, debit)?),
+            ))
+        };
+        crate::value::ScrollportFallbackChangeOf::Enter(Size::new(
             axis(
                 definite_outer.width,
                 minimum_outer.width,
@@ -960,7 +963,7 @@ pub(crate) fn child_orthogonal_fallback<S: LayoutScalar>(
             )?,
         ))
     } else {
-        crate::ScrollportFallbackChangeOf::Preserve
+        crate::value::ScrollportFallbackChangeOf::Preserve
     };
     Ok(inherited.for_child(local, change))
 }
@@ -1079,7 +1082,7 @@ impl<S: LayoutScalar> OptionalSizeExt for Size<Option<S>> {
 }
 
 mod sealed {
-    use crate::{LayoutScalar, Size};
+    use crate::{geometry::Size, scalar::LayoutScalar};
 
     pub(crate) trait OptionalSizeMax {}
 
@@ -1200,18 +1203,19 @@ impl<S: LayoutScalar> MaxBeforeMinOptionalSizeClampExt for Size<Option<S>> {
 
 #[cfg(test)]
 type ResolutionOrZeroFn<S> =
-    fn(crate::LengthResolutionOf<S>) -> Result<S, crate::LengthResolutionStatus<S>>;
+    fn(crate::value::LengthResolutionOf<S>) -> Result<S, crate::value::LengthResolutionStatus<S>>;
 
 #[cfg(test)]
-type ResolutionOptionalFn<S> =
-    fn(crate::LengthResolutionOf<S>) -> Result<Option<S>, crate::LengthResolutionStatus<S>>;
+type ResolutionOptionalFn<S> = fn(
+    crate::value::LengthResolutionOf<S>,
+) -> Result<Option<S>, crate::value::LengthResolutionStatus<S>>;
 
 #[cfg(test)]
 pub(crate) fn assert_fri06_c13_t06_resolution_policy<S: LayoutScalar>(
     resolution_or_zero: ResolutionOrZeroFn<S>,
     resolution_optional: ResolutionOptionalFn<S>,
 ) {
-    use crate::{LengthResolutionOf, LengthResolutionStatus};
+    use crate::value::{LengthResolutionOf, LengthResolutionStatus};
 
     let resolved = S::from_f64(7.5);
     let negative = S::from_f64(-3.25);
@@ -1271,7 +1275,7 @@ pub(crate) fn assert_fri06_c13_t06_resolution_policy<S: LayoutScalar>(
 #[cfg(test)]
 mod tests {
     use super::{OptionalMinimumSizeFloorExt, OptionalSizeMaxExt};
-    use crate::{LayoutScalar, Size};
+    use crate::{geometry::Size, scalar::LayoutScalar};
 
     fn assert_optional_size_operations<S: LayoutScalar>() {
         let scalar = S::from_f64;

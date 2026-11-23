@@ -1,6 +1,7 @@
 //! Native family demand refuses actual control-only Prepared execution.
 //! Reuses its real empty captured source, Ahem preparation and endpoint bindings.
 use super::*;
+use crate::{geometry::FlowAxes, inline_wrapping::ChildOrderCompleteness, tree::LayoutTree};
 
 fn control_only_prepared_flow_rejects_native_family_demand<S: LayoutScalar>() {
     let f = prepare(empty_input(
@@ -25,14 +26,14 @@ fn control_only_prepared_flow_rejects_native_family_demand<S: LayoutScalar>() {
     );
     assert_eq!(scope.parent(), Some(f.processed.captured_scope(0).unwrap()));
     let mut tree = tree::<S>(&f, false);
-    let parent = crate::LayoutTree::node_input(&tree, 0);
-    let axes = crate::FlowAxes::new(parent.writing_mode, parent.direction);
+    let parent = LayoutTree::node_input(&tree, 0);
+    let axes = FlowAxes::new(parent.writing_mode, parent.direction);
     assert_eq!(
         axes,
-        crate::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr)
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr)
     );
     for node in [200, 201] {
-        let original = match crate::LayoutTree::layout_input(&tree, node) {
+        let original = match LayoutTree::layout_input(&tree, node) {
             LayoutInputViewOf::InlineBoundary(input) => input,
             _ => panic!("the maintained fixture owns exactly these two native endpoints"),
         };
@@ -55,32 +56,34 @@ fn control_only_prepared_flow_rejects_native_family_demand<S: LayoutScalar>() {
         assert_eq!(input.parent_edge_axes(), Some(axes));
         tree.insert_input(node, LayoutInputOf::inline_boundary(input));
     }
-    let actual_box = crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(scope.clone()));
-    let wrapping = crate::WrappingInput {
-        scopes: vec![crate::WrappingScopeInput::Captured {
+    let actual_box = crate::inline_wrapping::GeneratedBoxRef::Inline(
+        crate::inline_wrapping::InlineBoxRef::Scope(scope.clone()),
+    );
+    let wrapping = crate::inline_wrapping::WrappingInput {
+        scopes: vec![crate::inline_wrapping::WrappingScopeInput::Captured {
             scope: scope.clone(),
-            wrap_inside: crate::WrapInside::Auto,
-            edges: crate::WrapEdges::AUTO,
+            wrap_inside: crate::inline_wrapping::WrapInside::Auto,
+            edges: crate::inline_wrapping::WrapEdges::AUTO,
             metric_contribution: None,
         }],
         // The complete captured tree really is Block0 -> Inline1 -> no children.
         // Endpoint operations and the computed force are not generated child boxes.
         child_order: vec![
-            crate::InlineChildOrderInput {
-                parent: crate::GeneratedBoxRef::Node(0),
-                children: vec![crate::GeneratedChildBoxInput {
+            crate::inline_wrapping::InlineChildOrderInput {
+                parent: crate::inline_wrapping::GeneratedBoxRef::Node(0),
+                children: vec![crate::inline_wrapping::GeneratedChildBoxInput {
                     box_: actual_box.clone(),
-                    participation: crate::GeneratedBoxParticipation::InFlow,
+                    participation: crate::inline_wrapping::GeneratedBoxParticipation::InFlow,
                 }],
-                prefix: crate::ChildOrderCompleteness::Complete,
-                suffix: crate::ChildOrderCompleteness::Complete,
+                prefix: ChildOrderCompleteness::Complete,
+                suffix: ChildOrderCompleteness::Complete,
                 formatting_context: 0,
             },
-            crate::InlineChildOrderInput {
+            crate::inline_wrapping::InlineChildOrderInput {
                 parent: actual_box,
                 children: Vec::new(),
-                prefix: crate::ChildOrderCompleteness::Complete,
-                suffix: crate::ChildOrderCompleteness::Complete,
+                prefix: ChildOrderCompleteness::Complete,
+                suffix: ChildOrderCompleteness::Complete,
                 formatting_context: 0,
             },
         ],
@@ -99,15 +102,15 @@ fn control_only_prepared_flow_rejects_native_family_demand<S: LayoutScalar>() {
         &flow,
         0,
         request_at(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                 ),
-                crate::SizingOperation::Normal,
+                crate::value::SizingOperation::Normal,
             ),
             {
-                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((flow).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             },
         ),
     )
@@ -157,7 +160,7 @@ fn control_only_prepared_flow_rejects_native_family_demand<S: LayoutScalar>() {
     assert!(requested.gaps.is_empty());
     requested
         .native_inline_boxes
-        .push(crate::NativeInlineBoxFamilyInput { formatter: 0 });
+        .push(crate::inline_wrapping::NativeInlineBoxFamilyInput { formatter: 0 });
     assert!(
         requested.gaps.is_empty(),
         "family demand must be refused independently of native gap requests"
@@ -173,7 +176,7 @@ fn control_only_prepared_flow_rejects_native_family_demand<S: LayoutScalar>() {
         matches!(
             error.kind(),
             LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
-                crate::WrappingScopeError::UnsupportedIncidence
+                crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence
             ))
         ),
         "{error:?}"

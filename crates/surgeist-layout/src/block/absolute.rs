@@ -14,9 +14,16 @@ use crate::layout_math::{
 use crate::scroll::{ScrollContributionAccumulatorOf, ScrollOriginAxes, ScrollOriginProgression};
 use crate::sizing::resolve::{EdgesResultExt, SizeResultExt, resolve_child_preferred_size};
 use crate::{
-    AlignItems, AxisSizingRequestOf, Compute, ComputeInputOf, ContainingLayoutContext, Direction,
-    Edges, LayoutResultOf, LayoutScalar, NodeOutputOf, ParentFormattingContext, Point, Position,
-    RequestedAxis, RunMode, Size, SizingAlgorithm, SizingMode,
+    engine::contracts::Compute,
+    error::{LayoutResultOf, SizingAlgorithm},
+    geometry::{Edges, Point, Size},
+    node_input::{AlignItems, Direction, Position},
+    output::{
+        ComputeInputOf, ContainingLayoutContext, NodeOutputOf, ParentFormattingContext,
+        RequestedAxis, RunMode, SizingMode,
+    },
+    scalar::LayoutScalar,
+    value::AxisSizingRequestOf,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -133,8 +140,9 @@ impl<S: LayoutScalar> AbsoluteChildren<S> {
         let available = crate::layout_math::transpose_axis_requests_at_node(
             container_node,
             area_size.map(|value| {
-                crate::layout_math::checked_available_space(value)
-                    .map(|space| AxisSizingRequestOf::new(space, crate::SizingOperation::Normal))
+                crate::layout_math::checked_available_space(value).map(|space| {
+                    AxisSizingRequestOf::new(space, crate::value::SizingOperation::Normal)
+                })
             }),
         )?;
 
@@ -172,7 +180,8 @@ impl<S: LayoutScalar> AbsoluteChildren<S> {
             let InlineParticipantKindOf::Box(style) = projection.kind() else {
                 continue;
             };
-            if style.common.position != Position::Absolute || style.display == crate::Display::None
+            if style.common.position != Position::Absolute
+                || style.display == crate::node_input::Display::None
             {
                 continue;
             }
@@ -322,7 +331,7 @@ impl<S: LayoutScalar> AbsoluteChildren<S> {
                     .with_orthogonal_fallback(
                         constants.sizing_request.orthogonal_fallback().for_child(
                             constants.positioned_fallback_limits,
-                            crate::ScrollportFallbackChangeOf::Preserve,
+                            crate::value::ScrollportFallbackChangeOf::Preserve,
                         ),
                     ),
             )
@@ -354,7 +363,7 @@ impl<S: LayoutScalar> AbsoluteChildren<S> {
         constants: &Constants<S>,
         contributions: &mut ScrollContributionAccumulatorOf<S>,
         child: AbsoluteChild<Tree::Node, S>,
-        output: crate::ComputeOutputOf<S>,
+        output: crate::output::ComputeOutputOf<S>,
     ) -> LayoutResultOf<Tree::Node, (), S, M>
     where
         Tree: Compute<'input, M, Scalar = S>,
@@ -495,7 +504,7 @@ impl<S: LayoutScalar> AbsoluteChildren<S> {
                 .to_f64();
             state.record_absolute_baseline(child, selected);
         }
-        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+        tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
             child,
             crate::output::NormalGeometryOf::box_geometry(
                 normal_location,
@@ -503,7 +512,7 @@ impl<S: LayoutScalar> AbsoluteChildren<S> {
                 scroll_geometry.content_box(),
             ),
             NodeOutputOf::<S> {
-                source_index: crate::SourceIndex::new(source_index),
+                source_index: crate::output::SourceIndex::new(source_index),
                 location,
                 size: final_size,
                 named_baselines: output.named_baselines,

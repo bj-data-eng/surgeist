@@ -1,11 +1,5 @@
 use std::ops::ControlFlow;
 
-use super::{
-    AlignContent, AlignItems, AspectRatioOf, AxisSizingRequestOf, BaselinesOf, BoxSizing, Compute,
-    ComputeInputOf, ComputeOutputOf, ContainingLayoutContext, Direction, Edges, FlexDirection,
-    FlexWrap, LayoutResultOf, LayoutScalar, LengthOf, LengthResolutionStatus,
-    ParentFormattingContext, Point, RequestedAxis, RunMode, Size, SizingMode, Traverse,
-};
 use crate::engine::containment::{
     compute_empty_box, contained_outer_size, empty_sizing_input, size_containment,
 };
@@ -24,6 +18,22 @@ use crate::scroll::{
 use crate::sizing::resolve::{
     EdgesResultExt, SizeResultExt, resolve_maximum_optional, resolve_minimum_optional,
     resolve_preferred_optional,
+};
+use crate::{
+    engine::contracts::Compute,
+    error::LayoutResultOf,
+    geometry::{Edges, Point, Size},
+    node_input::{AlignContent, AlignItems, BoxSizing, Direction, FlexDirection, FlexWrap},
+    output::{
+        BaselinesOf, ComputeInputOf, ComputeOutputOf, ContainingLayoutContext,
+        ParentFormattingContext, RequestedAxis, RunMode, SizingMode,
+    },
+    scalar::LayoutScalar,
+    tree::Traverse,
+    value::{
+        AspectRatioOf, AvailableSpaceOf, AxisSizingRequestOf, LengthOf, LengthResolutionStatus,
+        SizingOperation,
+    },
 };
 
 mod absolute;
@@ -72,14 +82,15 @@ use scroll::{
 /// When a row owns its preferred inline size, retain any intrinsic cross
 /// preference handled by the same formatter.
 pub(crate) fn preferred_flex_axes<S: LayoutScalar>(
-    display: crate::Display,
+    display: crate::node_input::Display,
     direction: FlexDirection,
     flow_axes: FlowAxes,
-    preferred: &Size<crate::PreferredSizeOf<S>>,
+    preferred: &Size<crate::sizing::PreferredSizeOf<S>>,
 ) -> Size<bool> {
     let preferred = flow_axes.logical_size(Size::new(&preferred.width, &preferred.height));
-    let owns_inline =
-        display == crate::Display::Flex && direction.is_row() && preferred.inline.is_max_content();
+    let owns_inline = display == crate::node_input::Display::Flex
+        && direction.is_row()
+        && preferred.inline.is_max_content();
     flow_axes.physical_size(crate::geometry::LogicalSizeOf::new(
         owns_inline,
         owns_inline && preferred.block.is_max_content(),
@@ -103,10 +114,7 @@ where
 }
 
 fn preferred_intrinsic_request<S: LayoutScalar>() -> AxisSizingRequestOf<S> {
-    AxisSizingRequestOf::new(
-        crate::AvailableSpaceOf::Indefinite,
-        crate::SizingOperation::MaxContent,
-    )
+    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent)
 }
 
 /// A ContentSize probe omits the child's authored sizes. Retain the operations
@@ -121,7 +129,7 @@ fn child_preferred_probe_axes<S: LayoutScalar>(
     let mut main = axes.main_size(requests);
     let mut cross = axes.cross_size(requests);
     if axes.main_size(preferred) && axes.main_size(known).is_none() {
-        main = main.with_space(crate::AvailableSpaceOf::Indefinite);
+        main = main.with_space(AvailableSpaceOf::Indefinite);
     }
     if axes.cross_size(preferred) && axes.cross_size(known).is_none() {
         cross = preferred_intrinsic_request();
@@ -216,7 +224,7 @@ enum CollectionPhase<S: LayoutScalar> {
     Initial {
         own_ratio_cross: Option<OwnRatioCross<S>>,
         contents_run_mode: RunMode,
-        requested_inline_operation: crate::SizingOperation,
+        requested_inline_operation: SizingOperation,
         inherited_indefinite_cross: bool,
         first_run_mode: RunMode,
     },
@@ -278,7 +286,7 @@ where
 {
     let style = tree.node_input(node);
     let containment = size_containment(style);
-    let contained_size = if containment != crate::SizeContainment::None {
+    let contained_size = if containment != crate::node_input::SizeContainment::None {
         let empty = compute_empty_box(node, style, |probe| {
             let empty_input = empty_sizing_input(input);
             let mut computation = FlexComputation {
@@ -293,7 +301,7 @@ where
                 ControlFlow::Continue(_) => unreachable!("empty sizing has no children"),
             }
         })?;
-        if containment == crate::SizeContainment::BothAxes
+        if containment == crate::node_input::SizeContainment::BothAxes
             && !input.run_mode().is_perform_layout()
             && !input.requires_content_baseline()
         {
@@ -301,7 +309,7 @@ where
         }
         contained_outer_size(
             containment,
-            crate::FlowAxes::new(style.writing_mode, style.direction),
+            crate::geometry::FlowAxes::new(style.writing_mode, style.direction),
             empty.size,
         )
     } else {
@@ -567,7 +575,7 @@ where
             if input.named_baseline_demand() != crate::output::NamedBaselineDemand::None
                 && !has_eligible_items::<Tree, M>(tree, node)
             {
-                output.with_named_baselines(crate::NamedBaselinesOf::absent())
+                output.with_named_baselines(crate::output::NamedBaselinesOf::absent())
             } else {
                 output
             },
@@ -717,8 +725,8 @@ where
                 minimum.max_outer_size = axes.with_cross_size(minimum.max_outer_size, None);
                 minimum.max_inner_size = axes.with_cross_size(minimum.max_inner_size, None);
                 let cross_request = AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MinContent,
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MinContent,
                 );
                 minimum.sizing_request = minimum
                     .sizing_request
@@ -902,7 +910,7 @@ fn flex_output<Node: Copy, S: LayoutScalar, M>(
 ) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M> {
     let baselines = if is_scroll_container {
         baselines.clamped_to_border(size).map_err(
-            |crate::FiniteScalarErrorOf::NonFinite { value }| {
+            |crate::value::FiniteScalarErrorOf::NonFinite { value }| {
                 crate::error::value_resolution_error(
                     node,
                     LengthResolutionStatus::InvalidNumeric { value },
@@ -916,7 +924,7 @@ fn flex_output<Node: Copy, S: LayoutScalar, M>(
     // Inspect the original eligible collection, not the resolved lines: a
     // nonempty collection of collapsed items is not proof of named absence.
     let output = if no_eligible_items {
-        output.with_named_baselines(crate::NamedBaselinesOf::absent())
+        output.with_named_baselines(crate::output::NamedBaselinesOf::absent())
     } else {
         output
     };
@@ -1091,8 +1099,8 @@ struct Constants<S: LayoutScalar> {
     authored_justify_content: Option<AlignContent>,
     justify_content: AlignContent,
     wraps: bool,
-    sizing_request: crate::SizingRequestOf<S>,
-    positioned_fallback_limits: Size<crate::OrthogonalFallbackLimitOf<S>>,
+    sizing_request: crate::value::SizingRequestOf<S>,
+    positioned_fallback_limits: Size<crate::value::OrthogonalFallbackLimitOf<S>>,
     available_main: AxisSizingRequestOf<S>,
 }
 
@@ -1321,7 +1329,7 @@ impl<S: LayoutScalar> Constants<S> {
                 request
                     .space()
                     .definite_size()
-                    .map(crate::NonNegativeFiniteOf::get)
+                    .map(crate::value::NonNegativeFiniteOf::get)
             }))
             .or(max_size)
             .unwrap_or(unconstrained_scroll_box_size)
@@ -1433,7 +1441,7 @@ impl<S: LayoutScalar> Constants<S> {
             justify_content: style.justify_content.unwrap_or(AlignContent::FlexStart),
             wraps: matches!(
                 style.flex_wrap,
-                super::FlexWrap::Wrap | super::FlexWrap::WrapReverse
+                crate::node_input::FlexWrap::Wrap | crate::node_input::FlexWrap::WrapReverse
             ),
             sizing_request: input
                 .sizing_request()
@@ -1456,12 +1464,12 @@ impl<S: LayoutScalar> Constants<S> {
     fn complete_inline_contents(
         self,
         accepted: CanonicalScrollBoxOf<S>,
-        requested_inline_operation: crate::SizingOperation,
+        requested_inline_operation: SizingOperation,
         settle_cross: bool,
     ) -> Result<Option<Self>, LengthResolutionStatus<S>> {
         let axes = self.flow_axes;
         let mut percentage_parent = axes.logical_size(self.percentage_parent_size);
-        let normal = requested_inline_operation == crate::SizingOperation::Normal;
+        let normal = requested_inline_operation == SizingOperation::Normal;
         if !settle_cross
             && self.preferred_inline_phase != PreferredInlinePhase::Discover
             && (!normal || percentage_parent.inline.is_some())
@@ -1898,14 +1906,14 @@ impl FlexAxes {
         border_box_cross: S,
         aspect_ratio: AspectRatioOf<S>,
         sizing_box_insets: Size<S>,
-    ) -> Result<S, crate::LengthResolutionStatus<S>> {
+    ) -> Result<S, crate::value::LengthResolutionStatus<S>> {
         let cross = (border_box_cross - self.cross_size(sizing_box_insets)).max(S::ZERO);
         let main = self.main_size_from_cross_aspect(cross, aspect_ratio)
             + self.main_size(sizing_box_insets);
         if main.is_finite() {
             Ok(main)
         } else {
-            Err(crate::LengthResolutionStatus::InvalidNumeric { value: main })
+            Err(crate::value::LengthResolutionStatus::InvalidNumeric { value: main })
         }
     }
 
@@ -2136,8 +2144,10 @@ mod fri08_c07_t03_optional_math_characterization_tests {
 mod fri06_c13_t06_characterization_tests {
     use super::*;
     use crate::{
-        LayoutErrorKindOf, LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation,
-        LengthPercentageOf, NodeInputOf, ParentFormattingContext, RequestedAxis, WritingMode,
+        error::{LayoutErrorKindOf, LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation},
+        node_input::{NodeInputOf, WritingMode},
+        output::{ParentFormattingContext, RequestedAxis},
+        value::LengthPercentageOf,
     };
 
     fn input<S: LayoutScalar>(
@@ -2150,19 +2160,21 @@ mod fri06_c13_t06_characterization_tests {
             RequestedAxis::Both,
             Size::NONE,
             parent,
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 containing_flow_axes,
                 ParentFormattingContext::NoParent,
             ),
-            crate::SizingRequestOf::new(
-                Size::splat(crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
+            crate::value::SizingRequestOf::new(
+                Size::splat(crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Indefinite,
+                    crate::value::SizingOperation::Normal,
                 )),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    crate::value::NearestScrollportOf::Absent,
+                    crate::geometry::Size::splat(
+                        crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
         )
@@ -2205,7 +2217,7 @@ mod fri06_c13_t06_characterization_tests {
             S::from_f64(4.0),
         );
         let style = NodeInputOf {
-            display: crate::Display::Flex,
+            display: crate::node_input::Display::Flex,
             padding: percentage_edges(),
             border,
             ..NodeInputOf::default()
@@ -2270,7 +2282,7 @@ mod fri06_c13_t06_characterization_tests {
                 .expect("finite negative overflow coefficients"),
         );
         let failing_style = NodeInputOf {
-            display: crate::Display::Flex,
+            display: crate::node_input::Display::Flex,
             padding: Edges::new(
                 LengthOf::ZERO,
                 LengthOf::ZERO,

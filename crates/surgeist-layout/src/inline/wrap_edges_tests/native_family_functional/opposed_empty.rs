@@ -1,6 +1,9 @@
 //! Opposed parent axes and authenticated empty native box membership.
 use super::*;
-use crate::{InlineGapAffinity, InlineGapAnchor, InlineGapGroupInput};
+use crate::{
+    inline_wrapping::{InlineGapAffinity, InlineGapAnchor, InlineGapGroupInput},
+    tree::LayoutTree,
+};
 
 fn physical_edge<S: LayoutScalar>(
     f: &mut Fixture<S>,
@@ -79,13 +82,10 @@ fn opposed_parent<S: LayoutScalar>() {
         ),
     ];
     f.finish();
-    assert_eq!(
-        crate::LayoutTree::node_input(&f.tree, 0).direction,
-        Direction::Ltr
-    );
+    assert_eq!(LayoutTree::node_input(&f.tree, 0).direction, Direction::Ltr);
     for (index, node) in (10..16u32).enumerate() {
         assert_eq!(
-            crate::LayoutTree::node_input(&f.tree, node)
+            LayoutTree::node_input(&f.tree, node)
                 .atomic_inline_participation
                 .unwrap()
                 .bidi_level()
@@ -98,8 +98,8 @@ fn opposed_parent<S: LayoutScalar>() {
         &ordinary,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((ordinary).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((ordinary).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -124,8 +124,8 @@ fn opposed_parent<S: LayoutScalar>() {
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -147,8 +147,8 @@ fn opposed_parent<S: LayoutScalar>() {
         &flow,
         0,
         request(n(30.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -216,8 +216,8 @@ fn empty_zero_bp<S: LayoutScalar>() {
         &flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -264,16 +264,18 @@ fn empty_zero_bp<S: LayoutScalar>() {
         &forced_flow,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((forced_flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((forced_flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .expect_err("an unselected following neighbor cannot witness the empty box's selected gap");
     assert!(matches!(
         error.kind(),
-        crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(
-            WrappingScopeError::GapOutsideSelection
-        ))
+        crate::error::LayoutErrorKindOf::InvalidInput(
+            crate::error::LayoutInvalidInputOf::WrappingScope(
+                WrappingScopeError::GapOutsideSelection
+            )
+        )
     ));
     assert_eq!(piece.fragment().owner(), pair(20, 21));
     assert_eq!(output(&accepted, 10).location, Point::new(S::ZERO, S::ZERO));

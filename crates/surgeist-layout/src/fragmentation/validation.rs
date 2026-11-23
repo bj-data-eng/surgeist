@@ -1,5 +1,5 @@
 use super::*;
-use crate::LayoutScalar;
+use crate::scalar::LayoutScalar;
 
 pub(super) fn nonnegative<S: LayoutScalar>(value: S) -> bool {
     value.is_finite() && value >= S::ZERO

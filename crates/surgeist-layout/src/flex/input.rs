@@ -1,9 +1,18 @@
 use crate::node_projection::CommonBoxProjection;
 use crate::scroll::{ScrollBoxProjection, ScrollTargetProjection};
 use crate::{
-    AlignContent, AlignItems, Compute, Display, FlexBasisOf, FlexDirection, FlexGrowOf,
-    FlexItemCollapse, FlexShrinkOf, FlexWrap, ItemOrder, LayoutScalar, LengthOf, NodeInputOf, Size,
-    SourceIndex, Traverse, WrapEdges,
+    engine::contracts::Compute,
+    geometry::Size,
+    inline_wrapping::WrapEdges,
+    node_input::{
+        AlignContent, AlignItems, Display, FlexDirection, FlexGrowOf, FlexItemCollapse,
+        FlexShrinkOf, FlexWrap, ItemOrder, NodeInputOf,
+    },
+    output::SourceIndex,
+    scalar::LayoutScalar,
+    sizing::FlexBasisOf,
+    tree::Traverse,
+    value::LengthOf,
 };
 
 /// Flex-container facts settled at the flex algorithm entry.
@@ -128,9 +137,10 @@ pub(super) fn flex_item_order_permutation(items: &[(ItemOrder, SourceIndex)]) ->
 mod tests {
     use super::*;
     use crate::{
-        AspectRatioOf, BoxSizing, ComputedOverflow, Direction, Edges, FlowAxes, LengthAutoOf,
-        LengthPercentageOf, MaxSizeOf, MinSizeOf, Overflow, PhysicalAxis, PhysicalSide, Position,
-        PreferredSizeOf, WritingMode,
+        geometry::{Edges, FlowAxes, PhysicalAxis, PhysicalSide},
+        node_input::{BoxSizing, ComputedOverflow, Direction, Overflow, Position, WritingMode},
+        sizing::{MaxSizeOf, MinSizeOf, PreferredSizeOf},
+        value::{AspectRatioOf, LengthAutoOf, LengthPercentageOf},
     };
 
     fn scalar<S: LayoutScalar>(value: f64) -> S {

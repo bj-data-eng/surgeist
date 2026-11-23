@@ -1,5 +1,6 @@
 use super::*;
 use crate::geometry::{LogicalPointOf, LogicalSizeOf};
+use crate::value::GridSpan;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct GridArea<S: LayoutScalar = DefaultScalar> {
@@ -960,7 +961,7 @@ pub(super) fn absolute_grid_axis_area<S: LayoutScalar>(
             end_line = None;
         }
     }
-    let index = |line: crate::GridLine| {
+    let index = |line: crate::value::GridLine| {
         grid_line_to_index(line.get(), track_count, explicit_start, explicit_count)
     };
     let mut start = start_line.and_then(index);
@@ -1274,7 +1275,10 @@ pub(super) fn resolve_grid_child_areas_with_geometry<'input, Node, S: LayoutScal
             .items
             .iter()
             .enumerate()
-            .filter_map(|(index, item)| item.in_flow.then_some(crate::SourceIndex::new(index)))
+            .filter_map(|(index, item)| {
+                item.in_flow
+                    .then_some(crate::output::SourceIndex::new(index))
+            })
             .collect::<Vec<_>>();
         &source_order
     } else {
@@ -1334,7 +1338,7 @@ pub(super) enum PlacementPhase {
 
 pub(super) fn place_grid_child_area_phase<'input, Node, S: LayoutScalar>(
     placements: &GridPlacementContext<'input, Node, S>,
-    traversal: &[crate::SourceIndex],
+    traversal: &[crate::output::SourceIndex],
     areas: &mut [Option<GridArea<S>>],
     occupancy: &mut [bool],
     phase: PlacementPhase,
@@ -1467,17 +1471,17 @@ pub(super) fn resolve_grid_area<S: LayoutScalar>(
     area
 }
 
-fn placement_span_or_one(placement: super::GridPlacement) -> crate::GridSpan {
+fn placement_span_or_one(placement: super::GridPlacement) -> GridSpan {
     placement
         .span()
-        .unwrap_or_else(|| crate::GridSpan::new(1).expect("one is a valid grid span"))
+        .unwrap_or_else(|| GridSpan::new(1).expect("one is a valid grid span"))
 }
 
 pub(super) fn next_area_with_fixed_column<S: LayoutScalar>(
     search_index: usize,
     grid: &PlacementGrid<'_, S>,
     column: super::GridPlacement,
-    row_span: crate::GridSpan,
+    row_span: GridSpan,
 ) -> GridArea<S> {
     let Some((column_start, column_end)) = placement_range(
         column,
@@ -1534,7 +1538,7 @@ pub(super) fn next_area_with_fixed_row<S: LayoutScalar>(
     search_index: usize,
     grid: &PlacementGrid<'_, S>,
     row: super::GridPlacement,
-    column_span: crate::GridSpan,
+    column_span: GridSpan,
 ) -> GridArea<S> {
     let Some((row_start, row_end)) = placement_range(
         row,

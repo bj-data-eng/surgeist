@@ -1,8 +1,14 @@
 use crate::{
-    CalcSizeBehaviorBasis, DefaultScalar, FiniteScalarErrorOf, LayoutScalar, LengthPercentageOf,
-    LengthResolutionOf, LengthResolutionStatus, NonNegativeFiniteOf, NumericResolutionOf,
-    PercentageBasisOf, PhysicalAxis, SizingAlgorithm, SizingBehavior, SizingProperty,
-    UnsupportedSizingBehavior, scalar::canonical_zero,
+    error::{
+        CalcSizeBehaviorBasis, SizingAlgorithm, SizingBehavior, SizingProperty,
+        UnsupportedSizingBehavior,
+    },
+    geometry::PhysicalAxis,
+    scalar::{DefaultScalar, LayoutScalar, canonical_zero},
+    value::{
+        FiniteScalarErrorOf, LengthPercentageOf, LengthResolutionOf, LengthResolutionStatus,
+        NonNegativeFiniteOf, NumericResolutionOf, PercentageBasisOf,
+    },
 };
 use core::num::NonZeroUsize;
 
@@ -982,7 +988,7 @@ impl<S: LayoutScalar> PreferredSizeOf<S> {
     pub(crate) fn resolve_simple_with_status(
         &self,
         basis: Option<S>,
-    ) -> Result<LengthResolutionOf<S>, crate::LengthResolutionStatus<S>> {
+    ) -> Result<LengthResolutionOf<S>, crate::value::LengthResolutionStatus<S>> {
         match self.view() {
             PreferredSizeView::Zero => Ok(LengthResolutionOf::definite(S::ZERO, false)),
             PreferredSizeView::Calculation(calculation) => {
@@ -995,7 +1001,9 @@ impl<S: LayoutScalar> PreferredSizeOf<S> {
             | PreferredSizeView::FitContent
             | PreferredSizeView::Contain
             | PreferredSizeView::FitContentFunction(_)
-            | PreferredSizeView::CalcSize(_, _) => Err(crate::LengthResolutionStatus::NonNumeric),
+            | PreferredSizeView::CalcSize(_, _) => {
+                Err(crate::value::LengthResolutionStatus::NonNumeric)
+            }
         }
     }
 
@@ -1134,7 +1142,7 @@ impl<S: LayoutScalar> MinSizeOf<S> {
     pub(crate) fn resolve_simple_with_status(
         &self,
         basis: Option<S>,
-    ) -> Result<LengthResolutionOf<S>, crate::LengthResolutionStatus<S>> {
+    ) -> Result<LengthResolutionOf<S>, crate::value::LengthResolutionStatus<S>> {
         match self.view() {
             MinSizeView::Zero => Ok(LengthResolutionOf::definite(S::ZERO, false)),
             MinSizeView::Calculation(calculation) => resolve_sizing_calculation(calculation, basis),
@@ -1145,7 +1153,7 @@ impl<S: LayoutScalar> MinSizeOf<S> {
             | MinSizeView::FitContent
             | MinSizeView::Contain
             | MinSizeView::FitContentFunction(_)
-            | MinSizeView::CalcSize(_, _) => Err(crate::LengthResolutionStatus::NonNumeric),
+            | MinSizeView::CalcSize(_, _) => Err(crate::value::LengthResolutionStatus::NonNumeric),
         }
     }
 }
@@ -1277,7 +1285,7 @@ impl<S: LayoutScalar> MaxSizeOf<S> {
     pub(crate) fn resolve_simple_with_status(
         &self,
         basis: Option<S>,
-    ) -> Result<LengthResolutionOf<S>, crate::LengthResolutionStatus<S>> {
+    ) -> Result<LengthResolutionOf<S>, crate::value::LengthResolutionStatus<S>> {
         match self.view() {
             MaxSizeView::Zero => Ok(LengthResolutionOf::definite(S::ZERO, false)),
             MaxSizeView::Calculation(calculation) => resolve_sizing_calculation(calculation, basis),
@@ -1288,7 +1296,7 @@ impl<S: LayoutScalar> MaxSizeOf<S> {
             | MaxSizeView::FitContent
             | MaxSizeView::Contain
             | MaxSizeView::FitContentFunction(_)
-            | MaxSizeView::CalcSize(_, _) => Err(crate::LengthResolutionStatus::NonNumeric),
+            | MaxSizeView::CalcSize(_, _) => Err(crate::value::LengthResolutionStatus::NonNumeric),
         }
     }
 }
@@ -1427,7 +1435,7 @@ impl<S: LayoutScalar> FlexBasisOf<S> {
     pub(crate) fn resolve_simple_with_status(
         &self,
         basis: Option<S>,
-    ) -> Result<LengthResolutionOf<S>, crate::LengthResolutionStatus<S>> {
+    ) -> Result<LengthResolutionOf<S>, crate::value::LengthResolutionStatus<S>> {
         match self.view() {
             FlexBasisView::Zero => Ok(LengthResolutionOf::definite(S::ZERO, false)),
             FlexBasisView::Calculation(calculation) => {
@@ -1441,7 +1449,9 @@ impl<S: LayoutScalar> FlexBasisOf<S> {
             | FlexBasisView::FitContent
             | FlexBasisView::Contain
             | FlexBasisView::FitContentFunction(_)
-            | FlexBasisView::CalcSize(_, _) => Err(crate::LengthResolutionStatus::NonNumeric),
+            | FlexBasisView::CalcSize(_, _) => {
+                Err(crate::value::LengthResolutionStatus::NonNumeric)
+            }
         }
     }
 }
@@ -1467,14 +1477,14 @@ fn reject_any_size_reference<S: LayoutScalar>(
 fn resolve_sizing_calculation<S: LayoutScalar>(
     calculation: &SizingCalculationOf<S>,
     basis: Option<S>,
-) -> Result<LengthResolutionOf<S>, crate::LengthResolutionStatus<S>> {
+) -> Result<LengthResolutionOf<S>, crate::value::LengthResolutionStatus<S>> {
     let basis = match basis {
         None => PercentageBasisOf::MISSING,
         Some(value) => match PercentageBasisOf::definite(value) {
             Ok(basis) => basis,
             Err(
-                crate::NonNegativeFiniteScalarErrorOf::NonFinite { value }
-                | crate::NonNegativeFiniteScalarErrorOf::Negative { value },
+                crate::value::NonNegativeFiniteScalarErrorOf::NonFinite { value }
+                | crate::value::NonNegativeFiniteScalarErrorOf::Negative { value },
             ) => {
                 return Ok(LengthResolutionOf::invalid_numeric(
                     value,
@@ -1485,16 +1495,16 @@ fn resolve_sizing_calculation<S: LayoutScalar>(
     };
     let resolution = calculation.resolve_against(basis);
     Ok(match resolution.status() {
-        crate::LengthResolutionStatus::Resolved => LengthResolutionOf::definite(
+        crate::value::LengthResolutionStatus::Resolved => LengthResolutionOf::definite(
             resolution
                 .value
                 .expect("resolved sizing calculation must carry a value")
                 .max(S::ZERO),
             calculation.depends_on_basis(),
         ),
-        crate::LengthResolutionStatus::MissingBasis
-        | crate::LengthResolutionStatus::InvalidNumeric { .. } => resolution,
-        crate::LengthResolutionStatus::NonNumeric => {
+        crate::value::LengthResolutionStatus::MissingBasis
+        | crate::value::LengthResolutionStatus::InvalidNumeric { .. } => resolution,
+        crate::value::LengthResolutionStatus::NonNumeric => {
             unreachable!("validated sizing calculations are numeric programs")
         }
     })
@@ -1888,9 +1898,13 @@ mod tests {
         dispatch_preferred_size,
     };
     use crate::{
-        CalcSizeBehaviorBasis, FiniteScalarErrorOf, LayoutScalar, LengthPercentageOf,
-        LengthResolutionStatus, NonNegativeFiniteOf, PercentageBasisOf, PhysicalAxis,
-        SizingAlgorithm, SizingBehavior, SizingProperty,
+        error::{CalcSizeBehaviorBasis, SizingAlgorithm, SizingBehavior, SizingProperty},
+        geometry::PhysicalAxis,
+        scalar::LayoutScalar,
+        value::{
+            FiniteScalarErrorOf, LengthPercentageOf, LengthResolutionStatus, NonNegativeFiniteOf,
+            PercentageBasisOf,
+        },
     };
 
     fn px_f32(value: f32) -> SizingCalculationOf<f32> {

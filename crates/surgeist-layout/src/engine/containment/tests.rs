@@ -1,12 +1,24 @@
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::readback::{self, Phase};
 use crate::{
-    AlignItems, AspectRatioOf, AvailableSpaceOf, AxisSizingRequestOf, Clear,
-    CompletedLayoutBatchOf, ComputeInputOf, ContainingLayoutContext, Direction, Display, Edges,
-    Float, FlowAxes, LayoutRootRequestOf, LayoutScalar, LengthOf, NearestScrollportOf, NodeInputOf,
-    NodeOutputOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf, ParentFormattingContext, Point,
-    PreferredSizeOf, Size, SizeContainment, SizingOperation, SizingRequestOf, WritingMode,
-    compute_layout, compute_leaf,
+    engine::compute_layout,
+    geometry::{Edges, FlowAxes, Point, Size},
+    measurement::compute_leaf,
+    node_input::{
+        AlignItems, Clear, Direction, Display, FlexDirection, Float, GridPlacement, NodeInputOf,
+        SizeContainment, WritingMode,
+    },
+    output::{
+        CompletedLayoutBatchOf, ComputeInputOf, ContainingLayoutContext, LayoutRootRequestOf,
+        NodeOutputOf, ParentFormattingContext,
+    },
+    scalar::LayoutScalar,
+    sizing::{MinSizeOf, PreferredSizeOf},
+    value::{
+        AspectRatioOf, AvailableSpaceOf, AxisSizingRequestOf, LengthOf, NearestScrollportOf,
+        OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+        TrackComponentOf,
+    },
 };
 
 fn sizing_request<S: LayoutScalar>() -> SizingRequestOf<S> {
@@ -208,9 +220,9 @@ fn size_containment_preserves_flex_physical_baseline_alignment() {
 
 fn assert_contained_atomic_baseline_preview<S: LayoutScalar>() {
     let px = S::from_f64;
-    let line = crate::LineBreakInputOf::new().with_metrics(
-        crate::InlineMetricsOf::from_ascent_descent(
-            crate::InlineBaselineContext::Physical,
+    let line = crate::node_input::LineBreakInputOf::new().with_metrics(
+        crate::node_input::InlineMetricsOf::from_ascent_descent(
+            crate::node_input::InlineBaselineContext::Physical,
             px(10.0),
             px(2.0),
         )
@@ -231,7 +243,7 @@ fn assert_contained_atomic_baseline_preview<S: LayoutScalar>() {
         .style(
             2,
             NodeInputOf {
-                min_size: Size::new(crate::MinSizeOf::px(S::ZERO), crate::MinSizeOf::AUTO),
+                min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::AUTO),
                 ..box_style(100.0, None)
             },
         )
@@ -239,19 +251,21 @@ fn assert_contained_atomic_baseline_preview<S: LayoutScalar>() {
             3,
             NodeInputOf {
                 display: Display::InlineBlock,
-                atomic_inline_participation: Some(crate::AtomicInlineParticipation::new(
-                    crate::BidiLevel::try_new(0).unwrap(),
-                    crate::InlineBreakOpportunity::Allowed,
-                )),
+                atomic_inline_participation: Some(
+                    crate::node_input::AtomicInlineParticipation::new(
+                        surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
+                        crate::node_input::InlineBreakOpportunity::Allowed,
+                    ),
+                ),
                 size_containment: SizeContainment::BothAxes,
                 ..box_style(30.0, Some(40.0))
             },
         )
-        .input(4, crate::LayoutInputOf::line_break(line))
+        .input(4, crate::node_input::LayoutInputOf::line_break(line))
         .style(
             5,
             NodeInputOf {
-                flex_shrink: crate::FlexShrinkOf::try_new(S::ZERO).unwrap(),
+                flex_shrink: crate::node_input::FlexShrinkOf::try_new(S::ZERO).unwrap(),
                 ..box_style(10.0, Some(10.0))
             },
         );
@@ -280,7 +294,7 @@ fn assert_contained_grid_lanes<S: LayoutScalar>() {
                 NodeInputOf {
                     display: Display::GridLanes,
                     size_containment,
-                    grid_template_columns: vec![crate::TrackComponentOf::px(px(100.0))],
+                    grid_template_columns: vec![TrackComponentOf::px(px(100.0))],
                     ..box_style(100.0, None)
                 },
             )
@@ -515,33 +529,23 @@ fn inline_size_containment_keeps_live_flex_lines() {
     fn lane<S: LayoutScalar>() {
         let px = S::from_f64;
         for (direction, containment, expected_inline, expected_block) in [
-            (crate::FlexDirection::Row, SizeContainment::None, 40.0, 12.0),
+            (FlexDirection::Row, SizeContainment::None, 40.0, 12.0),
+            (FlexDirection::Row, SizeContainment::InlineAxis, 20.0, 20.0),
+            (FlexDirection::Column, SizeContainment::None, 30.0, 20.0),
             (
-                crate::FlexDirection::Row,
-                SizeContainment::InlineAxis,
-                20.0,
-                20.0,
-            ),
-            (
-                crate::FlexDirection::Column,
-                SizeContainment::None,
-                30.0,
-                20.0,
-            ),
-            (
-                crate::FlexDirection::Column,
+                FlexDirection::Column,
                 SizeContainment::InlineAxis,
                 20.0,
                 20.0,
             ),
         ] {
-            let item_inline = if direction == crate::FlexDirection::Row {
+            let item_inline = if direction == FlexDirection::Row {
                 20.0
             } else {
                 30.0
             };
             let item = |height| NodeInputOf {
-                flex_shrink: crate::FlexShrinkOf::try_new(S::ZERO).unwrap(),
+                flex_shrink: crate::node_input::FlexShrinkOf::try_new(S::ZERO).unwrap(),
                 ..box_style::<S>(item_inline, Some(height))
             };
             let tree = PublicLayoutTreeOf::<S>::new()
@@ -553,8 +557,8 @@ fn inline_size_containment_keeps_live_flex_lines() {
                     NodeInputOf {
                         display: Display::Flex,
                         flex_direction: direction,
-                        flex_wrap: crate::FlexWrap::Wrap,
-                        min_size: Size::new(crate::MinSizeOf::px(px(20.0)), crate::MinSizeOf::AUTO),
+                        flex_wrap: crate::node_input::FlexWrap::Wrap,
+                        min_size: Size::new(MinSizeOf::px(px(20.0)), MinSizeOf::AUTO),
                         size_containment: containment,
                         ..NodeInputOf::default()
                     },
@@ -624,7 +628,7 @@ fn inline_size_containment_measures_live_leaf_block_at_accepted_inline_size() {
 }
 
 fn width_sensitive_grid_measurement<S: LayoutScalar>(
-    input: crate::LeafMeasureInputOf<S>,
+    input: crate::measurement::LeafMeasureInputOf<S>,
 ) -> Size<S> {
     let px = S::from_f64;
     let flow = input.flow_axes();
@@ -639,10 +643,10 @@ fn width_sensitive_grid_measurement<S: LayoutScalar>(
     flow.physical_size(crate::geometry::LogicalSizeOf::new(S::ZERO, block))
 }
 
-fn inline_containment_test_columns<S: LayoutScalar>() -> Vec<crate::TrackComponentOf<S>> {
+fn inline_containment_test_columns<S: LayoutScalar>() -> Vec<TrackComponentOf<S>> {
     vec![
-        crate::TrackComponentOf::px(S::from_f64(40.0)),
-        crate::TrackComponentOf::percent(S::from_f64(0.5)),
+        TrackComponentOf::px(S::from_f64(40.0)),
+        TrackComponentOf::percent(S::from_f64(0.5)),
     ]
 }
 
@@ -650,7 +654,7 @@ fn inline_containment_grid_leaf<S: LayoutScalar>(writing_mode: WritingMode) -> N
     NodeInputOf {
         display: Display::Block,
         writing_mode,
-        grid_column: crate::GridPlacement::try_line(2).unwrap(),
+        grid_column: GridPlacement::try_line(2).unwrap(),
         ..NodeInputOf::default()
     }
 }
@@ -670,7 +674,7 @@ fn inline_size_containment_splits_grid_track_and_container_extents() {
                             display,
                             writing_mode,
                             grid_template_columns: inline_containment_test_columns(),
-                            justify_content: Some(crate::AlignContent::Start),
+                            justify_content: Some(crate::node_input::AlignContent::Start),
                             size_containment: SizeContainment::InlineAxis,
                             ..NodeInputOf::default()
                         },
@@ -701,7 +705,7 @@ fn inline_size_containment_keeps_subgrid_block_contributions_live() {
         for writing_mode in [WritingMode::HorizontalTb, WritingMode::VerticalLr] {
             let flow = FlowAxes::new(writing_mode, Direction::Ltr);
             let transposed = writing_mode == WritingMode::VerticalLr;
-            let inline_track = vec![crate::TrackComponentOf::px(px(100.0))];
+            let inline_track = vec![TrackComponentOf::px(px(100.0))];
             let (columns, rows) = if transposed {
                 (Vec::new(), inline_track)
             } else {
@@ -727,8 +731,8 @@ fn inline_size_containment_keeps_subgrid_block_contributions_live() {
                         justify_self: Some(AlignItems::Start),
                         align_self: Some(AlignItems::Start),
                         grid_template_columns: inline_containment_test_columns(),
-                        grid_template_rows: vec![crate::TrackComponentOf::Subgrid(
-                            crate::SubgridTrack {
+                        grid_template_rows: vec![TrackComponentOf::Subgrid(
+                            crate::value::SubgridTrack {
                                 name_components: Vec::new(),
                             },
                         )],
@@ -765,13 +769,13 @@ fn inline_size_containment_keeps_live_rows_when_lanes_stack_inline() {
                 1,
                 NodeInputOf {
                     display: Display::GridLanes,
-                    grid_lanes_flow: crate::GridLanesFlow::new(
-                        crate::GridAxisKind::Row,
+                    grid_lanes_flow: crate::node_input::GridLanesFlow::new(
+                        crate::grid::GridAxisKind::Row,
                         false,
                         false,
                     ),
                     size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::AUTO),
-                    grid_template_rows: vec![crate::TrackComponentOf::AUTO; 2],
+                    grid_template_rows: vec![TrackComponentOf::AUTO; 2],
                     size_containment: SizeContainment::InlineAxis,
                     ..NodeInputOf::default()
                 },
@@ -780,7 +784,7 @@ fn inline_size_containment_keeps_live_rows_when_lanes_stack_inline() {
             .style(
                 3,
                 NodeInputOf {
-                    grid_row: crate::GridPlacement::try_line(2).unwrap(),
+                    grid_row: GridPlacement::try_line(2).unwrap(),
                     ..box_style(50.0, Some(15.0))
                 },
             );
@@ -810,7 +814,7 @@ fn inline_size_containment_leaves_excluded_box_roles_unsized_by_containment() {
             ..ordinary.clone()
         },
         NodeInputOf {
-            block_generation: crate::BlockGeneration::Anonymous,
+            block_generation: crate::node_input::BlockGeneration::Anonymous,
             ..ordinary.clone()
         },
         NodeInputOf {
@@ -826,8 +830,8 @@ fn inline_size_containment_leaves_excluded_box_roles_unsized_by_containment() {
 fn inline_size_containment_supplies_the_live_inline_basis_to_row_repeat() {
     fn lane<S: LayoutScalar>() {
         let px = S::from_f64;
-        let repeated_rows = crate::TrackRepetitionOf::auto_fill_components(vec![
-            crate::TrackComponentOf::MAX_CONTENT,
+        let repeated_rows = crate::value::TrackRepetitionOf::auto_fill_components(vec![
+            TrackComponentOf::MAX_CONTENT,
         ])
         .unwrap();
         let tree = PublicLayoutTreeOf::<S>::new()
@@ -836,17 +840,20 @@ fn inline_size_containment_supplies_the_live_inline_basis_to_row_repeat() {
                 1,
                 NodeInputOf {
                     display: Display::GridLanes,
-                    grid_lanes_flow: crate::GridLanesFlow::new(
-                        crate::GridAxisKind::Row,
+                    grid_lanes_flow: crate::node_input::GridLanesFlow::new(
+                        crate::grid::GridAxisKind::Row,
                         false,
                         false,
                     ),
                     size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::AUTO),
-                    min_size: Size::new(crate::MinSizeOf::px(px(40.0)), crate::MinSizeOf::AUTO),
-                    max_size: Size::new(crate::MaxSizeOf::NONE, crate::MaxSizeOf::px(px(100.0))),
+                    min_size: Size::new(MinSizeOf::px(px(40.0)), MinSizeOf::AUTO),
+                    max_size: Size::new(
+                        crate::sizing::MaxSizeOf::NONE,
+                        crate::sizing::MaxSizeOf::px(px(100.0)),
+                    ),
                     gap: Size::new(LengthOf::ZERO, LengthOf::px(px(5.0))),
-                    grid_template_rows: vec![crate::TrackComponentOf::Repeat(repeated_rows)],
-                    align_content: Some(crate::AlignContent::Start),
+                    grid_template_rows: vec![TrackComponentOf::Repeat(repeated_rows)],
+                    align_content: Some(crate::node_input::AlignContent::Start),
                     size_containment: SizeContainment::InlineAxis,
                     ..NodeInputOf::default()
                 },
@@ -855,7 +862,7 @@ fn inline_size_containment_supplies_the_live_inline_basis_to_row_repeat() {
                 2,
                 NodeInputOf {
                     size: Size::new(PreferredSizeOf::percent(px(0.5)), PreferredSizeOf::AUTO),
-                    grid_row: crate::GridPlacement::try_line(1).unwrap(),
+                    grid_row: GridPlacement::try_line(1).unwrap(),
                     ..NodeInputOf::default()
                 },
             );

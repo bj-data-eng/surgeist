@@ -1,6 +1,11 @@
 use super::context::NativeSpan;
 use super::*;
-use crate::{Display, LayoutScalar, LayoutTree, Position, engine::validation::ValidationGraph};
+use crate::{
+    engine::validation::ValidationGraph,
+    node_input::{Display, Position},
+    scalar::LayoutScalar,
+    tree::LayoutTree,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct EdgeLocation<Node, Scope = surgeist_text::capture::CapturedScope> {
@@ -76,9 +81,9 @@ pub(super) struct NodeWrapping {
 pub(super) fn node_wrapping(
     display: Display,
     position: Position,
-    float: crate::Float,
+    float: crate::node_input::Float,
     edges: WrapEdges,
-    parent: Option<(Display, crate::FlexWrap)>,
+    parent: Option<(Display, crate::node_input::FlexWrap)>,
 ) -> NodeWrapping {
     let out = position == Position::Absolute || !float.is_none();
     let inline = display.is_inline_level()
@@ -87,7 +92,7 @@ pub(super) fn node_wrapping(
     let mode = parent.and_then(|(parent_display, flex_wrap)| {
         if parent_display.inner_display() == Display::Flex {
             Some(WrappingMode::Flex {
-                multiline: flex_wrap != crate::FlexWrap::NoWrap,
+                multiline: flex_wrap != crate::node_input::FlexWrap::NoWrap,
             })
         } else if display.is_inline_level() && parent_display.inner_display() == Display::Block {
             Some(WrappingMode::Inline)

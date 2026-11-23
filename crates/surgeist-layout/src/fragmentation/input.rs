@@ -1,5 +1,8 @@
 use super::page::{FragmentationPhysicalPageSide, PageProgression};
-use crate::{DefaultScalar, FlowAxes, LayoutScalar};
+use crate::{
+    geometry::FlowAxes,
+    scalar::{DefaultScalar, LayoutScalar},
+};
 
 /// Types crossed by a fragmentation boundary. Spread always includes Page.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

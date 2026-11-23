@@ -1,10 +1,15 @@
 //! Numeric box/control qualification of the resolved post-baseline operation.
 use super::*;
+use crate::{
+    baseline_offset::BaselineOffsetOf,
+    node_input::InlineBaselineContext,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation},
+};
 use surgeist_text::font::FontBaseline;
 
 fn input<S: LayoutScalar>(mode: WritingMode, amount: S) -> MixedInlineRunInputOf<S> {
     let axes = FlowAxes::new(mode, Direction::Ltr);
-    let reference = crate::InlineBaselineContext::Named(FontBaseline::Central);
+    let reference = InlineBaselineContext::Named(FontBaseline::Central);
     let size = axes.physical_size(crate::geometry::LogicalSizeOf::new(
         S::from_f64(5.0),
         S::from_f64(10.0),
@@ -13,22 +18,20 @@ fn input<S: LayoutScalar>(mode: WritingMode, amount: S) -> MixedInlineRunInputOf
         meter: crate::accounting::Meter::new(),
         inline_baseline_context: reference,
         groups: crate::group_alignment::Snapshot::default(),
-        text_wrap_style: crate::TextWrapStyle::Auto,
+        text_wrap_style: crate::node_input::TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
-            crate::LineBoxDirectionPolicy::Normal,
+            crate::node_input::LineBoxDirectionPolicy::Normal,
             Direction::Ltr,
         ),
         observe_tail: false,
         wrapping: None,
-        available_inline_extent: crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        available_inline_extent: AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+            SizingOperation::Normal,
         ),
         flow_axes: axes,
         text_align: TextAlign::Start,
-        text_align_last: crate::TextAlignLast::Start,
+        text_align_last: crate::node_input::TextAlignLast::Start,
         indent: crate::text_indent::ResolvedTextIndent::ZERO,
         indent_state: crate::text_indent::IndentLineState::default(),
         participants: vec![
@@ -44,12 +47,12 @@ fn input<S: LayoutScalar>(mode: WritingMode, amount: S) -> MixedInlineRunInputOf
                     scrollbar_size: Size::ZERO,
                     first_baseline: Some(S::from_f64(6.0)),
                     alignment: InlineControlAlignment::Shift(
-                        crate::BaselineOffsetOf::try_new(amount).unwrap(),
+                        BaselineOffsetOf::try_new(amount).unwrap(),
                     ),
                 },
-                participation: crate::AtomicInlineParticipation::new(
+                participation: crate::node_input::AtomicInlineParticipation::new(
                     BidiLevel::try_new(0).unwrap(),
-                    crate::InlineBreakOpportunity::Prohibited,
+                    crate::node_input::InlineBreakOpportunity::Prohibited,
                 ),
             },
             // The actual line-control contributes the unshifted8/2 strut;
@@ -59,9 +62,9 @@ fn input<S: LayoutScalar>(mode: WritingMode, amount: S) -> MixedInlineRunInputOf
                 InlineFlowOf::new(
                     mode,
                     Direction::Ltr,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::MaxContent,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
                     ),
                 ),
                 InlineMetricsOf::try_new(reference, S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
@@ -136,7 +139,7 @@ fn actual_forced_control_uses_the_same_post_match_operation_both_scalars() {
                 control.source_index(),
                 control.flow(),
                 control.metrics(),
-                InlineControlAlignment::Shift(crate::BaselineOffsetOf::try_new(n(amount)).unwrap()),
+                InlineControlAlignment::Shift(BaselineOffsetOf::try_new(n(amount)).unwrap()),
                 Clear::None,
             );
             let report = layout_mixed_inline_run(request).unwrap();
@@ -171,20 +174,12 @@ fn axes<S: LayoutScalar>() {
     ] {
         let axes = FlowAxes::new(mode, Direction::Ltr);
         for available in [
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(n(100.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(100.0)).unwrap()),
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent,
-            ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         ] {
             let mut request = input(mode, n(3.0));
             request.available_inline_extent = available;
@@ -272,17 +267,15 @@ fn raw_fallback_centering_precedes_shift_and_envelope_normalization_both_scalars
             (-3.0, 4.0, 11.0, 5.0),
         ] {
             let mut request = input(WritingMode::HorizontalTb, n(amount));
-            request.inline_baseline_context = crate::InlineBaselineContext::Physical;
-            request.available_inline_extent = crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(n(110.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            request.inline_baseline_context = InlineBaselineContext::Physical;
+            request.available_inline_extent = AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(110.0)).unwrap()),
+                SizingOperation::Normal,
             );
             let MixedInlineParticipantOf::Atomic { item, .. } = &mut request.participants[0] else {
                 unreachable!()
             };
-            item.baseline_reference = crate::InlineBaselineContext::Physical;
+            item.baseline_reference = InlineBaselineContext::Physical;
             item.first_baseline = None;
             item.size.height = n(6.0);
             item.content_size.height = n(6.0);
@@ -293,8 +286,7 @@ fn raw_fallback_centering_precedes_shift_and_envelope_normalization_both_scalars
             *control = ForcedLineBreakControlOf::new(
                 1,
                 control.flow(),
-                InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, n(4.0), n(10.0))
-                    .unwrap(),
+                InlineMetricsOf::try_new(InlineBaselineContext::Physical, n(4.0), n(10.0)).unwrap(),
                 InlineControlAlignment::Baseline,
                 Clear::None,
             );
@@ -346,21 +338,21 @@ fn actual_boundary_shift_and_zero_share_the_common_float_reference_both_scalars(
         for (alignment, common, extent, anchor, child) in [
             (InlineControlAlignment::Baseline, 8.0, 12.0, 8.0, 2.0),
             (
-                InlineControlAlignment::Shift(crate::BaselineOffsetOf::ZERO),
+                InlineControlAlignment::Shift(BaselineOffsetOf::ZERO),
                 8.0,
                 12.0,
                 8.0,
                 2.0,
             ),
             (
-                InlineControlAlignment::Shift(crate::BaselineOffsetOf::try_new(n(3.0)).unwrap()),
+                InlineControlAlignment::Shift(BaselineOffsetOf::try_new(n(3.0)).unwrap()),
                 11.0,
                 15.0,
                 8.0,
                 5.0,
             ),
             (
-                InlineControlAlignment::Shift(crate::BaselineOffsetOf::try_new(n(-3.0)).unwrap()),
+                InlineControlAlignment::Shift(BaselineOffsetOf::try_new(n(-3.0)).unwrap()),
                 6.0,
                 11.0,
                 9.0,
@@ -368,11 +360,9 @@ fn actual_boundary_shift_and_zero_share_the_common_float_reference_both_scalars(
             ),
         ] {
             let mut request = input(WritingMode::HorizontalTb, S::ZERO);
-            request.available_inline_extent = crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(n(110.0)).unwrap(),
-                ),
-                crate::SizingOperation::Normal,
+            request.available_inline_extent = AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(110.0)).unwrap()),
+                SizingOperation::Normal,
             );
             request.participants.pop();
             let MixedInlineParticipantOf::Atomic { item, .. } = &mut request.participants[0] else {
@@ -388,9 +378,9 @@ fn actual_boundary_shift_and_zero_share_the_common_float_reference_both_scalars(
                     InlineFlowOf::new(
                         WritingMode::HorizontalTb,
                         Direction::Ltr,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MaxContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
                         ),
                     ),
                     InlineMetricsOf::try_new(request.inline_baseline_context, n(8.0), n(10.0))
@@ -450,7 +440,7 @@ fn absorbed_displacement_refuses_before_band_query_both_scalars() {
             |block, _| block,
         );
         assert!(
-            matches!(result, Err(NumericWrappingError::Group(error)) if error.reason() == crate::LayoutTextNumericError::NonZeroLost)
+            matches!(result, Err(NumericWrappingError::Group(error)) if error.reason() == crate::error::LayoutTextNumericError::NonZeroLost)
         );
         assert!(!queried);
     }
@@ -484,9 +474,9 @@ fn large_real_clearance_anchor_cannot_absorb_the_shifted_line_both_scalars() {
                 InlineFlowOf::new(
                     WritingMode::HorizontalTb,
                     Direction::Ltr,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::MaxContent,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
                     ),
                 ),
                 InlineMetricsOf::try_new(request.inline_baseline_context, S::ZERO, S::ZERO)
@@ -522,7 +512,7 @@ fn large_real_clearance_anchor_cannot_absorb_the_shifted_line_both_scalars() {
             },
         );
         assert!(
-            matches!(result, Err(NumericWrappingError::Group(error)) if error.reason() == crate::LayoutTextNumericError::NonZeroLost)
+            matches!(result, Err(NumericWrappingError::Group(error)) if error.reason() == crate::error::LayoutTextNumericError::NonZeroLost)
         );
         assert!(queries.iter().all(|(start, _)| *start == S::ZERO));
     }

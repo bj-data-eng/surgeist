@@ -517,8 +517,8 @@ fn intrinsic_pair_request<S: LayoutScalar>(operation: SizingOperation) -> Layout
             )),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),

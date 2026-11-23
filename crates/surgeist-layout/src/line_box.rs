@@ -1,6 +1,6 @@
 //! Invocation-local accepted line-box direction, independent of body bidi and tabs.
 
-use crate::{Direction, LineBoxDirectionPolicy};
+use crate::node_input::{Direction, LineBoxDirectionPolicy};
 use surgeist_text::{paragraph::ParagraphBaseDirection, selection::LineBoxDirection};
 
 #[derive(Clone, Copy, Debug, PartialEq)]

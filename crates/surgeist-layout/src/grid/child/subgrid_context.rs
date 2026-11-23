@@ -1,4 +1,5 @@
 use super::*;
+use crate::node_input::GridBaselineReferences;
 
 #[derive(Clone, Copy)]
 pub(in crate::grid) struct SubgridChildParentContextInput<
@@ -8,7 +9,7 @@ pub(in crate::grid) struct SubgridChildParentContextInput<
     S: LayoutScalar = DefaultScalar,
 > {
     pub(in crate::grid) item: SubgridItemReport<Node>,
-    pub(in crate::grid) parent_baseline_references: crate::GridBaselineReferences,
+    pub(in crate::grid) parent_baseline_references: GridBaselineReferences,
     pub(in crate::grid) child_style: &'a GridItemProjection<'input, S>,
     pub(in crate::grid) child_container: Option<GridContainerInput<'input, S>>,
     pub(in crate::grid) area: GridArea<S>,
@@ -52,7 +53,7 @@ impl<'input, Node: Copy, S: LayoutScalar> SubgridChildParentContextInput<'input,
 #[derive(Clone, Debug)]
 pub(in crate::grid) struct OwnedSubgridContext<'input, Node, S: LayoutScalar> {
     item: SubgridItemReport<Node>,
-    parent_baseline_references: crate::GridBaselineReferences,
+    parent_baseline_references: GridBaselineReferences,
     child_style: GridItemProjection<'input, S>,
     container: GridContainerInput<'input, S>,
     area: GridArea<S>,
@@ -150,7 +151,7 @@ impl<'input, Node: Copy, S: LayoutScalar> OwnedSubgridContext<'input, Node, S> {
 /// copied once per placement and shared by the items' requests, so a parent
 /// with many subgrid items copies its tracks, names and geometry once.
 pub(in crate::grid) struct SubgridParentShare<Node, S: LayoutScalar> {
-    parent_baseline_references: crate::GridBaselineReferences,
+    parent_baseline_references: GridBaselineReferences,
     columns: Vec<S>,
     rows: Vec<S>,
     column_minimum_functions: Option<OwnedMinimumTrackFunctions<S>>,
@@ -613,7 +614,7 @@ fn subgrid_child_axis_context_input<'input, 'a, Node: Copy, S: LayoutScalar>(
 #[derive(Clone, Copy)]
 struct SubgridChildAxisContextInput<'input, 'a, Node, S: LayoutScalar = DefaultScalar> {
     parent_grid: Option<Node>,
-    parent_baseline_references: crate::GridBaselineReferences,
+    parent_baseline_references: GridBaselineReferences,
     current_grid: Node,
     axis: GridAxisKind,
     report: SubgridAxisReport,
@@ -997,8 +998,8 @@ fn uses_shifted_column_subgrid_layout_tracks<S: LayoutScalar>(
 
 fn grid_axis_physical_axis(flow_axes: FlowAxes, axis: GridAxisKind) -> PhysicalAxis {
     match axis.logical_axis() {
-        crate::LogicalAxis::Inline => flow_axes.inline_axis(),
-        crate::LogicalAxis::Block => flow_axes.block_axis(),
+        crate::geometry::LogicalAxis::Inline => flow_axes.inline_axis(),
+        crate::geometry::LogicalAxis::Block => flow_axes.block_axis(),
     }
 }
 
@@ -1471,7 +1472,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> SubgridBaselineRefresh<Node, S> {
 #[cfg(test)]
 mod gap_basis_tests {
     use super::*;
-    use crate::{LengthOf, LengthPercentageOf, NodeInputOf, WritingMode};
+    use crate::{
+        node_input::{NodeInputOf, WritingMode},
+        value::{LengthOf, LengthPercentageOf},
+    };
 
     fn assert_gap_bases<S: LayoutScalar>() {
         let calc = LengthOf::value(

@@ -2,7 +2,16 @@
 
 use super::TextParagraphBinding;
 use super::scope_alignment::{EntryBacking, EntryFunding, ScopeAlignmentFacts, ScopeLease};
-use crate::{LayoutScalar, NodeOutputOf, Point};
+use crate::{
+    error::{
+        LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutMissingContext, LayoutOperation,
+        LayoutResultOf,
+    },
+    geometry::Point,
+    output::{ComputeInputOf, NodeOutputOf},
+    scalar::LayoutScalar,
+    value::AxisSizingRequestOf,
+};
 use surgeist_text::placement::{PlacementCoverage, PlacementEntry, PlacementRequest};
 
 enum RunLookup<'a, Node> {
@@ -75,7 +84,7 @@ pub(crate) struct PendingParagraph<Node> {
     pub nodes: Vec<Node>,
     pub prepared: surgeist_text::prepared::PreparedText,
     pub entries: Vec<PlacementEntry>,
-    pub wrap_style: crate::TextWrapStyle,
+    pub wrap_style: crate::node_input::TextWrapStyle,
     pub program: Option<std::sync::Arc<super::fit::SelectionProgram>>,
     pub natural_advances: Vec<f64>,
     pub boxes: Vec<Option<super::boxes::BoxAssignment>>,
@@ -128,7 +137,7 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
     pub lines: Vec<LineBasis>,
     pub selections: Vec<(
         Node,
-        crate::TextWrapStyle,
+        crate::node_input::TextWrapStyle,
         Option<std::sync::Arc<super::fit::SelectionProgram>>,
     )>,
     pub absolute_baselines: Vec<(Node, f64)>,
@@ -208,7 +217,7 @@ pub(crate) struct ScopeFragmentGroup<Node, S: LayoutScalar> {
     pub container: Node,
     pub prepared: surgeist_text::prepared::PreparedText,
     pub nodes: Vec<Node>,
-    pub fragments: Vec<crate::InlineFragmentOutputEntryOf<Node, S>>,
+    pub fragments: Vec<crate::output::InlineFragmentOutputEntryOf<Node, S>>,
 }
 
 /// This invocation-local state is part of the ordinary unpublished session.
@@ -275,8 +284,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         container: Node,
         nodes: &[Node],
         segment: &surgeist_text::prepared::PreparedSourceSegment,
-        input: crate::ComputeInputOf<S>,
-        mode: crate::AxisSizingRequestOf<f64>,
+        input: ComputeInputOf<S>,
+        mode: AxisSizingRequestOf<f64>,
     ) -> surgeist_text::Result<super::formatted::FormattedTailSnapshot> {
         if let Some(state) = &self.formatted {
             state.snapshot_run(container, nodes, segment, input, mode)
@@ -295,8 +304,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         container: Node,
         nodes: &[Node],
         segment: &surgeist_text::prepared::PreparedSourceSegment,
-        input: crate::ComputeInputOf<S>,
-        mode: crate::AxisSizingRequestOf<f64>,
+        input: ComputeInputOf<S>,
+        mode: AxisSizingRequestOf<f64>,
         uses: super::formatted::FormattedTailUses,
     ) -> surgeist_text::Result<Option<super::formatted::FormattedFlowItem<Node, S>>> {
         if self.formatted.is_none() && uses.demands.is_empty() && uses.roles.is_empty() {
@@ -311,7 +320,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub(crate) fn formatted_begin_block(
         &mut self,
         node: Node,
-        input: crate::ComputeInputOf<S>,
+        input: ComputeInputOf<S>,
         anonymous: bool,
     ) -> surgeist_text::Result<bool> {
         if !self.formatted_active() {
@@ -332,7 +341,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub(crate) fn formatted_end_block(
         &mut self,
         node: Node,
-        input: crate::ComputeInputOf<S>,
+        input: ComputeInputOf<S>,
         anonymous: bool,
         success: bool,
     ) -> surgeist_text::Result<()> {
@@ -364,8 +373,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
 
     pub(crate) fn formatted_begin_flow(
         &mut self,
-        input: crate::ComputeInputOf<S>,
-        available: crate::AxisSizingRequestOf<S>,
+        input: ComputeInputOf<S>,
+        available: AxisSizingRequestOf<S>,
         publication: bool,
     ) -> surgeist_text::Result<()> {
         if self.formatted_active() {
@@ -404,7 +413,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub(crate) fn formatted_child(
         &self,
         node: Node,
-        input: crate::ComputeInputOf<S>,
+        input: ComputeInputOf<S>,
         anonymous: bool,
     ) -> surgeist_text::Result<Option<super::formatted::FormattedFlowItem<Node, S>>> {
         if !self.formatted_active() {
@@ -494,7 +503,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub(crate) fn formatted_cache_available(
         &self,
         node: Node,
-        input: &crate::ComputeInputOf<S>,
+        input: &ComputeInputOf<S>,
     ) -> surgeist_text::Result<bool> {
         if !self.formatted_cache_required(node)? {
             return Ok(true);
@@ -507,9 +516,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub(crate) fn formatted_cache_matches(
         &self,
         node: Node,
-        input: &crate::ComputeInputOf<S>,
-        context: crate::CacheKeyContext,
-        output: crate::ComputeOutputOf<S>,
+        input: &ComputeInputOf<S>,
+        context: crate::cache::CacheKeyContext,
+        output: crate::output::ComputeOutputOf<S>,
     ) -> surgeist_text::Result<bool> {
         if !self.formatted_cache_required(node)? {
             return Ok(true);
@@ -522,7 +531,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub(crate) fn formatted_restore_cache(
         &mut self,
         node: Node,
-        input: &crate::ComputeInputOf<S>,
+        input: &ComputeInputOf<S>,
     ) -> surgeist_text::Result<bool> {
         if !self.formatted_cache_required(node)? {
             return Ok(true);
@@ -757,15 +766,14 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         &self,
         container: Node,
         funding: Option<&EntryFunding<S>>,
-    ) -> crate::LayoutResultOf<Node, (Vec<super::capture::NativeRunSlot>, Option<ScopeLease>), S, M>
-    {
-        let inspect = |count| -> crate::LayoutResultOf<Node, (), S, M> {
+    ) -> LayoutResultOf<Node, (Vec<super::capture::NativeRunSlot>, Option<ScopeLease>), S, M> {
+        let inspect = |count| -> LayoutResultOf<Node, (), S, M> {
             funding
                 .map_or(Ok(()), |funding| funding.visit(count))
                 .map_err(|error| {
                     crate::error::staging_text_error(
-                        crate::LayoutErrorSiteOf::Node(container),
-                        crate::LayoutOperation::TextCapture,
+                        LayoutErrorSiteOf::Node(container),
+                        LayoutOperation::TextCapture,
                         error,
                     )
                 })
@@ -784,8 +792,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         let mut slots = if let Some(funding) = funding.filter(|_| count != 0) {
             let (slots, storage) = funding.buffer(count).map_err(|error| {
                 crate::error::staging_text_error(
-                    crate::LayoutErrorSiteOf::Node(container),
-                    crate::LayoutOperation::TextCapture,
+                    LayoutErrorSiteOf::Node(container),
+                    LayoutOperation::TextCapture,
                     error,
                 )
             })?;
@@ -794,10 +802,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         } else {
             let mut slots = Vec::new();
             slots.try_reserve_exact(count).map_err(|_| {
-                crate::LayoutErrorOf::new(
-                    crate::LayoutErrorSiteOf::Node(container),
-                    crate::LayoutOperation::TextCapture,
-                    crate::LayoutErrorKindOf::Allocation,
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(container),
+                    LayoutOperation::TextCapture,
+                    LayoutErrorKindOf::Allocation,
                 )
             })?;
             lease = None;
@@ -932,7 +940,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         container: Node,
         prepared: surgeist_text::prepared::PreparedText,
         nodes: Vec<Node>,
-        fragments: Vec<crate::InlineFragmentOutputEntryOf<Node, S>>,
+        fragments: Vec<crate::output::InlineFragmentOutputEntryOf<Node, S>>,
     ) {
         if let Some(old) = self.scope_fragments.iter_mut().find(|group| {
             group.container == container && group.nodes == nodes && group.prepared == prepared
@@ -1115,7 +1123,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
 
     pub fn finish<M>(
         &mut self,
-    ) -> crate::LayoutResultOf<Node, Vec<crate::PlacedTextOutput<Node>>, S, M> {
+    ) -> LayoutResultOf<Node, Vec<crate::output::PlacedTextOutput<Node>>, S, M> {
         let frames = &self.frames;
         let baselines = &self.absolute_baselines;
         let mut pending = core::mem::take(&mut self.pending);
@@ -1125,11 +1133,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                     .iter()
                     .find(|frame| frame.node == node)
                     .ok_or_else(|| {
-                        crate::LayoutErrorOf::new(
-                            crate::LayoutErrorSiteOf::Node(node),
-                            crate::LayoutOperation::TextPlacement,
-                            crate::LayoutErrorKindOf::MissingContext(
-                                crate::LayoutMissingContext::TextOutOfFlowGeometry,
+                        LayoutErrorOf::new(
+                            LayoutErrorSiteOf::Node(node),
+                            LayoutOperation::TextPlacement,
+                            LayoutErrorKindOf::MissingContext(
+                                LayoutMissingContext::TextOutOfFlowGeometry,
                             ),
                         )
                     })?;
@@ -1138,11 +1146,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                     .find(|(subject, _)| *subject == node)
                     .map(|(_, value)| *value)
                     .ok_or_else(|| {
-                        crate::LayoutErrorOf::new(
-                            crate::LayoutErrorSiteOf::Node(node),
-                            crate::LayoutOperation::TextPlacement,
-                            crate::LayoutErrorKindOf::MissingContext(
-                                crate::LayoutMissingContext::TextOutOfFlowGeometry,
+                        LayoutErrorOf::new(
+                            LayoutErrorSiteOf::Node(node),
+                            LayoutOperation::TextPlacement,
+                            LayoutErrorKindOf::MissingContext(
+                                LayoutMissingContext::TextOutOfFlowGeometry,
                             ),
                         )
                     })?;
@@ -1151,11 +1159,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                     .scroll_geometry
                     .map(|geometry| geometry.content_box())
                     .ok_or_else(|| {
-                        crate::LayoutErrorOf::new(
-                            crate::LayoutErrorSiteOf::Node(node),
-                            crate::LayoutOperation::TextPlacement,
-                            crate::LayoutErrorKindOf::MissingContext(
-                                crate::LayoutMissingContext::TextOutOfFlowGeometry,
+                        LayoutErrorOf::new(
+                            LayoutErrorSiteOf::Node(node),
+                            LayoutOperation::TextPlacement,
+                            LayoutErrorKindOf::MissingContext(
+                                LayoutMissingContext::TextOutOfFlowGeometry,
                             ),
                         )
                     })?;
@@ -1201,10 +1209,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             let binding = &self.paragraphs[index];
             let inline_boxes = self.associations.inline_boxes(index);
             let allocation = || {
-                crate::LayoutErrorOf::new(
-                    crate::LayoutErrorSiteOf::Node(binding.container),
-                    crate::LayoutOperation::TextPlacement,
-                    crate::LayoutErrorKindOf::Allocation,
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(binding.container),
+                    LayoutOperation::TextPlacement,
+                    LayoutErrorKindOf::Allocation,
                 )
             };
             let mut entries = Vec::new();
@@ -1218,10 +1226,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                     if paragraph.prepared != binding.prepared
                         || paragraph.inline_boxes != inline_boxes
                     {
-                        return Err(crate::LayoutErrorOf::new(
-                            crate::LayoutErrorSiteOf::Node(binding.container),
-                            crate::LayoutOperation::TextPlacement,
-                            crate::LayoutErrorKindOf::Text(super::fragmentation::foreign_family()),
+                        return Err(LayoutErrorOf::new(
+                            LayoutErrorSiteOf::Node(binding.container),
+                            LayoutOperation::TextPlacement,
+                            LayoutErrorKindOf::Text(super::fragmentation::foreign_family()),
                         ));
                     }
                     for entry in &paragraph.entries {
@@ -1231,8 +1239,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                         )
                         .map_err(|error| {
                             crate::error::staging_text_error(
-                                crate::LayoutErrorSiteOf::Node(binding.container),
-                                crate::LayoutOperation::TextPlacement,
+                                LayoutErrorSiteOf::Node(binding.container),
+                                LayoutOperation::TextPlacement,
                                 error,
                             )
                         })?;
@@ -1251,8 +1259,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             })
             .map_err(|error| {
                 crate::error::staging_text_error(
-                    crate::LayoutErrorSiteOf::Node(binding.container),
-                    crate::LayoutOperation::TextPlacement,
+                    LayoutErrorSiteOf::Node(binding.container),
+                    LayoutOperation::TextPlacement,
                     error,
                 )
             })?;
@@ -1262,7 +1270,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 .map_err(|_| allocation())?;
             nodes.extend_from_slice(&binding.nodes);
             completed.try_reserve(1).map_err(|_| allocation())?;
-            completed.push(crate::PlacedTextOutput::new(
+            completed.push(crate::output::PlacedTextOutput::new(
                 binding.container,
                 nodes,
                 layout,
@@ -1277,20 +1285,20 @@ fn placement_add<Node, S: LayoutScalar, M>(
     node: Node,
     base: f64,
     delta: f64,
-) -> crate::LayoutResultOf<Node, f64, S, M> {
+) -> LayoutResultOf<Node, f64, S, M> {
     let value = base + delta;
     let reason = if !value.is_finite() {
-        Some(crate::LayoutTextNumericError::NonFinite)
+        Some(crate::error::LayoutTextNumericError::NonFinite)
     } else if delta != 0.0 && value == base {
-        Some(crate::LayoutTextNumericError::NonZeroLost)
+        Some(crate::error::LayoutTextNumericError::NonZeroLost)
     } else {
         None
     };
     if let Some(reason) = reason {
-        return Err(crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(node),
-            crate::LayoutOperation::TextPlacement,
-            crate::LayoutErrorKindOf::TextNumeric {
+        return Err(LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::TextPlacement,
+            LayoutErrorKindOf::TextNumeric {
                 value: if value.is_finite() { delta } else { value },
                 reason,
             },

@@ -1,5 +1,8 @@
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    block_fragmentation::NodeLayoutRefOf, output::InlineFragmentOwner, value::SizingOperation,
+};
 use surgeist_text::font::FontBaseline;
 
 #[derive(Clone, Copy)]
@@ -61,17 +64,13 @@ impl<S: LayoutScalar> LayoutTree for CustodyHost<S> {
         let published = self.inner.published.as_ref()?;
         let view = published.node_layout(n)?;
         let entry = match (self.phase, view) {
-            (ReturnedCustody::Unrounded, crate::NodeLayoutRefOf::SingleBox(value)) => {
+            (ReturnedCustody::Unrounded, NodeLayoutRefOf::SingleBox(value)) => {
                 value.unrounded_entry()
             }
-            (ReturnedCustody::Final, crate::NodeLayoutRefOf::SingleBox(value)) => {
-                value.final_entry()
-            }
-            (ReturnedCustody::Unrounded, crate::NodeLayoutRefOf::NonBox(value)) => {
-                value.unrounded_entry()
-            }
-            (ReturnedCustody::Final, crate::NodeLayoutRefOf::NonBox(value)) => value.final_entry(),
-            (_, crate::NodeLayoutRefOf::Fragments(_)) => {
+            (ReturnedCustody::Final, NodeLayoutRefOf::SingleBox(value)) => value.final_entry(),
+            (ReturnedCustody::Unrounded, NodeLayoutRefOf::NonBox(value)) => value.unrounded_entry(),
+            (ReturnedCustody::Final, NodeLayoutRefOf::NonBox(value)) => value.final_entry(),
+            (_, NodeLayoutRefOf::Fragments(_)) => {
                 panic!("continuous custody fixture unexpectedly fragmented")
             }
         };
@@ -87,23 +86,32 @@ impl<S: LayoutScalar> LayoutTree for CustodyHost<S> {
     }
 }
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for CustodyHost<S> {
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+    fn publication_targets(
+        &self,
+    ) -> &crate::block_fragmentation::input::LayoutPublicationTargets<u32> {
         self.inner.publication_targets()
     }
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(
+        &mut self,
+    ) -> &mut crate::block_fragmentation::input::LayoutPublicationTargets<u32> {
         self.inner.publication_targets_mut()
     }
     type Error = &'static str;
     type Prepared = <CachedHost<S> as LayoutBatchSink<u32, S>>::Prepared;
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
+        preparation: crate::block_fragmentation::publication::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
         self.inner.prepare_layout_batch(preparation)
     }
     fn commit_layout_batch(
         &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+        commit: crate::block_fragmentation::publication::LayoutBatchCommit<
+            '_,
+            u32,
+            S,
+            Self::Prepared,
+        >,
     ) {
         self.inner.commit_layout_batch(commit)
     }
@@ -121,7 +129,7 @@ fn custody_compute<S: LayoutScalar>(
         host,
         0,
         bindings,
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -135,19 +143,19 @@ fn custody_compute<S: LayoutScalar>(
         0,
         {
             let containing_flow_axes = {
-                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
             };
             let requested_axes = Size::new(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(custody_n::<S>(50.0)).unwrap(),
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(custody_n::<S>(50.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MaxContent,
+                crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Indefinite,
+                    SizingOperation::MaxContent,
                 ),
             );
             let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
@@ -155,21 +163,21 @@ fn custody_compute<S: LayoutScalar>(
             // the explicitly requested inline contribution operation.
             logical_requests.block = logical_requests
                 .block
-                .with_operation(crate::SizingOperation::Normal);
+                .with_operation(SizingOperation::Normal);
             logical_requests.inline = logical_requests
                 .inline
-                .with_operation(crate::SizingOperation::Normal);
+                .with_operation(SizingOperation::Normal);
             let axes = containing_flow_axes.physical_size(logical_requests);
             // The old Native NoParent fixture explicitly supplied these percentage
             // bases. It supplied no independent ICB dimensions or ancestor scrollport.
             let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-            let fallback = crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            let fallback = crate::value::OrthogonalFallbackOf::new(
+                crate::geometry::Size::NONE,
+                crate::value::NearestScrollportOf::Absent,
+                crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             );
-            crate::LayoutRootRequestOf::standalone(
-                crate::SizingRequestOf::new(axes, fallback),
+            crate::output::LayoutRootRequestOf::standalone(
+                crate::value::SizingRequestOf::new(axes, fallback),
                 containing_flow_axes,
                 percentage_parent,
             )
@@ -363,7 +371,7 @@ fn custody_assert_simple<S: LayoutScalar>(
     let first = batch
         .unrounded_inline_fragments()
         .iter()
-        .find(|row| *row.owner() == crate::InlineFragmentOwner::Node(1))
+        .find(|row| *row.owner() == InlineFragmentOwner::Node(1))
         .unwrap()
         .fragment();
     assert_eq!(first.baseline().y, custody_n::<S>(10.0));
@@ -372,7 +380,7 @@ fn custody_assert_simple<S: LayoutScalar>(
         let following = batch
             .unrounded_inline_fragments()
             .iter()
-            .find(|row| *row.owner() == crate::InlineFragmentOwner::Node(3))
+            .find(|row| *row.owner() == InlineFragmentOwner::Node(3))
             .unwrap()
             .fragment();
         assert_eq!(following.rect().unwrap().origin().x, custody_n::<S>(20.0));
@@ -429,7 +437,7 @@ fn custody_same_scene<S: LayoutScalar>(
     );
     // A new operation may issue a different finalized-line owner. Compare
     // its actual prepared occurrence and ordinal/source/geometry instead.
-    let fragments = |rows: &[crate::InlineFragmentOutputEntryOf<u32, S>]| {
+    let fragments = |rows: &[crate::output::InlineFragmentOutputEntryOf<u32, S>]| {
         rows.iter()
             .map(|row| {
                 let fragment = row.fragment();
@@ -722,7 +730,7 @@ fn custody_inner_named_recompute<S: LayoutScalar>() {
         let inner_fragment = batch
             .unrounded_inline_fragments()
             .iter()
-            .find(|entry| *entry.owner() == crate::InlineFragmentOwner::Node(3))
+            .find(|entry| *entry.owner() == InlineFragmentOwner::Node(3))
             .unwrap()
             .fragment();
         let inner_line = inner_fragment.finalized_fragment().finalized_line();
@@ -823,8 +831,11 @@ fn resize_observer_uses_the_measured_text_placed_atomic_box() {
         let host = CustodyHost::<S>::new(custody_fixture(&paragraph, true, 0.32));
         let batch = custody_compute(&host, vec![paragraph.binding(0)], &[]);
         let atomic = batch.node_layout(2).unwrap().single_box().unwrap();
-        let grid =
-            crate::ResizeObserverPixelGrid::try_new(crate::Point::new(-0.5, 0.0), 1.0).unwrap();
+        let grid = crate::resize_observer::ResizeObserverPixelGrid::try_new(
+            crate::geometry::Point::new(-0.5, 0.0),
+            1.0,
+        )
+        .unwrap();
         let measurement = atomic
             .resize_observer_measurement(WritingMode::HorizontalTb, grid)
             .unwrap()

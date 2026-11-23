@@ -40,7 +40,7 @@ pub(in crate::grid) fn effective_fixed_track_maximum<S: LayoutScalar>(
     track: &TrackSizingOf<S>,
     basis: Option<S>,
 ) -> Result<Option<S>, LengthResolutionStatus<S>> {
-    let resolve = |calculation: &crate::SizingCalculationOf<S>| {
+    let resolve = |calculation: &crate::sizing::SizingCalculationOf<S>| {
         let resolution = resolve_track_calculation(calculation, basis);
         match resolution.status() {
             LengthResolutionStatus::Resolved => Ok(resolution.value),
@@ -64,7 +64,7 @@ pub(in crate::grid) fn effective_fixed_track_maximum<S: LayoutScalar>(
 // A cyclic percentage acts as Auto only when its actual calculation reports
 // the missing-basis state. Invalid calculations do not acquire that role.
 pub(in crate::grid) fn track_calculation_is_cyclic_auto<S: LayoutScalar>(
-    calculation: &crate::SizingCalculationOf<S>,
+    calculation: &crate::sizing::SizingCalculationOf<S>,
     basis: Option<S>,
 ) -> bool {
     matches!(

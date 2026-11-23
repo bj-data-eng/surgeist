@@ -2,9 +2,12 @@
 use super::*;
 use crate::test_support::readback::{self, Phase};
 use crate::{
-    CacheKeyContext, CacheOf, ComputeInputOf, ComputeOutputOf, FloatExclusionIntervalOf,
-    FloatExclusionQueryOf, LayoutBatchSink, LayoutInputViewOf, LayoutTree, LeafMeasureInputOf,
-    RunMode, Traverse,
+    block_fragmentation::{NodeLayoutRefOf, input::LayoutPublicationTargets},
+    cache::{CacheKeyContext, CacheOf},
+    measurement::LeafMeasureInputOf,
+    node_input::{Display, FloatExclusionIntervalOf, FloatExclusionQueryOf, LayoutInputViewOf},
+    output::{ComputeInputOf, ComputeOutputOf, RunMode},
+    tree::{LayoutBatchSink, LayoutTree, Traverse},
 };
 use std::{
     cell::{Cell, RefCell},
@@ -17,7 +20,7 @@ struct LeafFailure(u32);
 #[derive(Clone)]
 struct Committed<S: LayoutScalar> {
     caches: HashMap<u32, CacheOf<S>>,
-    unrounded: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
+    unrounded: HashMap<u32, crate::output::LayoutOutputEntryOf<u32, S>>,
     batch: Option<CompletedLayoutBatchOf<u32, S>>,
 }
 struct Host<S: LayoutScalar> {
@@ -29,7 +32,7 @@ struct Host<S: LayoutScalar> {
     fail: Cell<Option<u32>>,
 }
 struct Sink<S: LayoutScalar> {
-    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
+    pub(super) publication_targets: LayoutPublicationTargets<u32>,
     committed: Rc<RefCell<Committed<S>>>,
 }
 impl<S: LayoutScalar> Host<S> {
@@ -49,7 +52,7 @@ impl<S: LayoutScalar> Host<S> {
     }
     fn sink(&self) -> Sink<S> {
         Sink {
-            publication_targets: crate::LayoutPublicationTargets::new(),
+            publication_targets: LayoutPublicationTargets::new(),
             committed: Rc::clone(&self.committed),
         }
     }
@@ -112,7 +115,7 @@ impl<S: LayoutScalar> LayoutTree for Host<S> {
         }
         output
     }
-    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::output::LayoutOutputEntryOf<u32, S>> {
         self.committed.borrow().unrounded.get(&node).copied()
     }
     fn float_exclusion_interval(
@@ -149,10 +152,10 @@ impl<S: LayoutScalar> LayoutTree for Host<S> {
     }
 }
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Sink<S> {
-    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
 
@@ -160,7 +163,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Sink<S> {
     type Prepared = Committed<S>;
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
+        preparation: crate::block_fragmentation::publication::LayoutBatchPreparation<'_, u32, S>,
     ) -> std::result::Result<Self::Prepared, Self::Error> {
         let batch = preparation.batch();
         let mut next = self.committed.borrow().clone();
@@ -185,7 +188,12 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Sink<S> {
     }
     fn commit_layout_batch(
         &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+        commit: crate::block_fragmentation::publication::LayoutBatchCommit<
+            '_,
+            u32,
+            S,
+            Self::Prepared,
+        >,
     ) {
         let next = commit.into_prepared();
         *self.committed.borrow_mut() = next;
@@ -209,8 +217,8 @@ fn seed_and_observe_root<S: LayoutScalar>(host: &Host<S>, root: u32, shape: Opti
         &ordinary,
         root,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((ordinary).tree(), root);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((ordinary).tree(), root);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -259,8 +267,8 @@ fn seed_and_observe_root<S: LayoutScalar>(host: &Host<S>, root: u32, shape: Opti
         &ordinary,
         root,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((ordinary).tree(), root);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((ordinary).tree(), root);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -324,9 +332,9 @@ fn warm_native<S: LayoutScalar>(opaque_descendant: bool) {
     f.tree.insert_input(
         30,
         LayoutInputOf::box_input(NodeInputOf {
-            display: crate::Display::Block,
-            float: crate::Float::Left,
-            float_exclusion: crate::FloatExclusion::Shape,
+            display: Display::Block,
+            float: crate::node_input::Float::Left,
+            float_exclusion: crate::node_input::FloatExclusion::Shape,
             size: Size::new(PreferredSizeOf::px(n(1.0)), PreferredSizeOf::px(n(10.0))),
             ..NodeInputOf::default()
         }),
@@ -359,7 +367,7 @@ fn warm_native<S: LayoutScalar>(opaque_descendant: bool) {
         // Actual opaque InlineBlock0 owns its own formatter and real children.
         // Ancestor100 sees that atomic, never expands its six inner operands.
         let mut inner = f.tree.node_input(0).clone();
-        inner.display = crate::Display::InlineBlock;
+        inner.display = Display::InlineBlock;
         // The actual child owns a100px IFC. This excludes an unrelated
         // shrink-to-fit decision from the leading-float cache qualifier.
         inner.size.width = PreferredSizeOf::px(n(100.0));
@@ -372,7 +380,7 @@ fn warm_native<S: LayoutScalar>(opaque_descendant: bool) {
         f.tree.insert_input(
             100,
             LayoutInputOf::box_input(NodeInputOf {
-                display: crate::Display::Block,
+                display: Display::Block,
                 direction: Direction::Ltr,
                 ..NodeInputOf::default()
             }),
@@ -396,8 +404,8 @@ fn warm_native<S: LayoutScalar>(opaque_descendant: bool) {
         &good,
         root,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((good).tree(), root);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((good).tree(), root);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -410,8 +418,8 @@ fn warm_native<S: LayoutScalar>(opaque_descendant: bool) {
         &good,
         root,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((good).tree(), root);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((good).tree(), root);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -426,22 +434,25 @@ fn warm_native<S: LayoutScalar>(opaque_descendant: bool) {
     let before = host.committed.borrow().clone();
     host.fail.set(Some(14));
     host.measured.borrow_mut().clear();
-    let error = crate::compute_layout_with_flow_invalidated(
+    let error = crate::engine::compute_layout_with_flow_invalidated(
         &good,
         root,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((good).tree(), root);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((good).tree(), root);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
         &[14],
     )
     .unwrap_err();
-    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(14));
-    assert_eq!(error.operation(), crate::LayoutOperation::LeafMeasurement);
+    assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(14));
+    assert_eq!(
+        error.operation(),
+        crate::error::LayoutOperation::LeafMeasurement
+    );
     assert!(
         matches!(
             error.kind(),
-            crate::LayoutErrorKindOf::Measurement(LeafFailure(14))
+            crate::error::LayoutErrorKindOf::Measurement(LeafFailure(14))
         ),
         "{error:?}"
     );
@@ -459,9 +470,9 @@ fn warm_native<S: LayoutScalar>(opaque_descendant: bool) {
                 .unwrap()
                 .node_layouts()
                 .map(|(_, layout)| match layout {
-                    crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
-                    crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
-                    crate::NodeLayoutRefOf::Fragments(_) =>
+                    NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                    NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                    NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 })
                 .collect::<Vec<_>>()
@@ -482,12 +493,12 @@ fn warm_native<S: LayoutScalar>(opaque_descendant: bool) {
     // admitted input after recovery must retain its family and global IDs.
     host.fail.set(None);
     host.measured.borrow_mut().clear();
-    let retry = crate::compute_layout_with_flow_invalidated(
+    let retry = crate::engine::compute_layout_with_flow_invalidated(
         &good,
         root,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((good).tree(), root);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((good).tree(), root);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
         &[14],
     )
@@ -506,7 +517,7 @@ fn empty_completion<S: LayoutScalar>() {
     let tree = PublicLayoutTreeOf::<S>::new().children(0, []).style(
         0,
         NodeInputOf {
-            display: crate::Display::Block,
+            display: Display::Block,
             direction: Direction::Ltr,
             ..NodeInputOf::default()
         },
@@ -526,8 +537,8 @@ fn empty_completion<S: LayoutScalar>() {
         &demanded,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((demanded).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((demanded).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -553,8 +564,8 @@ fn empty_completion<S: LayoutScalar>() {
         &demanded,
         0,
         request(n(100.0), {
-            let root_input = crate::LayoutTree::node_input((demanded).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((demanded).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();

@@ -14,8 +14,9 @@ use std::sync::Arc;
 
 use crate::inline_wrapping::family::{NativeFormatterCompletion, NativePublication};
 use crate::{
-    CacheKeyContext, ComputeInputOf, ComputeOutputOf, InlineFragmentOutputOf, LayoutOutputEntryOf,
-    LayoutScalar,
+    cache::CacheKeyContext,
+    output::{ComputeInputOf, ComputeOutputOf, InlineFragmentOutputOf, LayoutOutputEntryOf},
+    scalar::LayoutScalar,
 };
 
 /// One write a computation staged in its session.

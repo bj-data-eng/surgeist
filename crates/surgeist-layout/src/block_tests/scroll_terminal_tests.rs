@@ -578,7 +578,7 @@ fn text_allocation_and_metric_padding<S: LayoutScalar>() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -651,7 +651,7 @@ fn text_allocation_and_metric_padding<S: LayoutScalar>() {
     let fragment = actual
         .unrounded_inline_fragments()
         .iter()
-        .find(|entry| *entry.owner() == crate::InlineFragmentOwner::Node(1))
+        .find(|entry| *entry.owner() == crate::output::InlineFragmentOwner::Node(1))
         .unwrap()
         .fragment();
     let rect = fragment.rect().unwrap();

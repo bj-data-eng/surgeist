@@ -1,7 +1,17 @@
 //! Floats retain child margins while ordinary shared blocks may collapse them.
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::readback::{Phase, single_box_output};
-use crate::*;
+use crate::{
+    engine::compute_layout,
+    geometry::{Edges, FlowAxes, Size},
+    node_input::{BlockFlowContext, Direction, Display, Float, NodeInputOf, WritingMode},
+    scalar::LayoutScalar,
+    sizing::{MinSizeOf, PreferredSizeOf},
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, LengthAutoOf, NearestScrollportOf,
+        NonNegativeFiniteOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation,
+    },
+};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct MarginGeometry<S: LayoutScalar> {

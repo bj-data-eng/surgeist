@@ -1,6 +1,23 @@
 //! Immutable consuming inventories over one captured source graph.
 use super::source::{Inventory, SourceKey, unsupported};
-use crate::*;
+use crate::{
+    error::{LayoutErrorOf, LayoutResultOf},
+    fragmentation::input::{
+        FragmentationBreakControl, FragmentationBreakInside, FragmentationOccurrence,
+        FragmentationRole,
+    },
+    geometry::FlowAxes,
+    node_input::NodeInputOf,
+    scalar::LayoutScalar,
+    tree::LayoutTree,
+};
+#[cfg(test)]
+use crate::{
+    fragmentation::input::FragmentationBreak,
+    node_input::{Direction, Display, WritingMode},
+    sizing::MaxSizeOf,
+    value::LengthPercentageOf,
+};
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

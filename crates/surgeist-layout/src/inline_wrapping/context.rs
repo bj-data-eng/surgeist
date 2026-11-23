@@ -1,5 +1,9 @@
 use super::*;
-use crate::{InlineBoundaryKind, LayoutTree, engine::validation::ValidationGraph};
+use crate::{
+    engine::validation::ValidationGraph,
+    node_input::{InlineBoundaryKind, LayoutInputViewOf},
+    tree::LayoutTree,
+};
 
 /// Canonical metadata; only requested Avoid scopes activate their full region.
 #[derive(Clone, Debug)]
@@ -121,7 +125,7 @@ pub(crate) struct ScopeRow<Node> {
     pub(crate) policy: WrapInside,
     pub(crate) edges: WrapEdges,
     pub(crate) metric_contribution: Option<InlineBoxMetricContribution>,
-    pub(super) parent_edge_axes: Option<crate::FlowAxes>,
+    pub(super) parent_edge_axes: Option<crate::geometry::FlowAxes>,
     geometry_only: bool,
     source: Option<SourceExtent>,
 }
@@ -403,7 +407,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             native_inline_boxes: demands,
             ..
         } = input;
-        let box_edges = graph.nodes.iter().any(|node| matches!(tree.layout_input(*node), crate::LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some()));
+        let box_edges = graph.nodes.iter().any(|node| matches!(tree.layout_input(*node), LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some()));
         if !box_edges
             && inputs.is_empty()
             && child_order.is_empty()
@@ -620,7 +624,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             let Some(pair) = proof.pair else {
                 continue;
             };
-            let requested = [pair.0, pair.1].iter().any(|node| matches!(tree.layout_input(*node), crate::LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some()));
+            let requested = [pair.0, pair.1].iter().any(|node| matches!(tree.layout_input(*node), LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some()));
             if !requested
                 || rows
                     .iter()
@@ -649,7 +653,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             rows.push(row);
         }
         for &node in &graph.nodes {
-            let crate::LayoutInputViewOf::InlineBoundary(input) = tree.layout_input(node) else {
+            let LayoutInputViewOf::InlineBoundary(input) = tree.layout_input(node) else {
                 continue;
             };
             let Some(parent_axes) = input.parent_edge_axes() else {
@@ -665,7 +669,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             let pair = rows[index].pair.ok_or(WrappingScopeError::MissingCapture)?;
             rows[index].parent_edge_axes = Some(parent_axes);
             for peer in [pair.0, pair.1] {
-                if !matches!(tree.layout_input(peer), crate::LayoutInputViewOf::InlineBoundary(other) if other.parent_edge_axes() == Some(parent_axes))
+                if !matches!(tree.layout_input(peer), LayoutInputViewOf::InlineBoundary(other) if other.parent_edge_axes() == Some(parent_axes))
                 {
                     return Err(WrappingScopeError::InconsistentIncidence);
                 }
@@ -703,7 +707,9 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                     .layout_input(row.flow)
                     .as_box()
                     .ok_or(WrappingScopeError::CaptureAssociation)?;
-                if parent_axes != crate::FlowAxes::new(parent.writing_mode, parent.direction) {
+                if parent_axes
+                    != crate::geometry::FlowAxes::new(parent.writing_mode, parent.direction)
+                {
                     return Err(WrappingScopeError::InconsistentIncidence);
                 }
             }

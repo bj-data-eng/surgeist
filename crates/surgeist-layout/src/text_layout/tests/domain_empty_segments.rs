@@ -245,7 +245,8 @@ fn bind<S: LayoutScalar>(
                 })
                 .collect::<Vec<_>>();
             TextParagraphBinding {
-                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+                inline_box_fragments:
+                    crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared: prepared.clone(),
                 container: if index == 0 { ROOT } else { BLOCK },
                 nodes: origins.iter().map(|origin| origin.node).collect(),
@@ -336,7 +337,7 @@ fn assert_empty<S: LayoutScalar>(empty: Empty) {
         &tree,
         ROOT,
         bindings,
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -349,8 +350,8 @@ fn assert_empty<S: LayoutScalar>(empty: Empty) {
         &flow,
         ROOT,
         request(100.0, {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), ROOT);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((flow).tree(), ROOT);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();

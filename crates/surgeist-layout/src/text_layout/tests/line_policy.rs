@@ -1,6 +1,7 @@
 //! Native normalized alignment and explicit real-U0020 expansion.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{geometry::FlowAxes, inline_wrapping::WrappingInput};
 use surgeist_text::{
     spacing::{SpacingSlotDisposition, SpacingSlotOwner},
     style::WhiteSpace,
@@ -55,7 +56,7 @@ fn batch<S: LayoutScalar>(
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -68,8 +69,8 @@ fn batch<S: LayoutScalar>(
         &capture,
         0,
         request(width, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap()
@@ -315,8 +316,8 @@ fn assert_block_alignment<S: LayoutScalar>() {
             &tree,
             0,
             request(50.0, {
-                let root_input = crate::LayoutTree::node_input(&tree, 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input(&tree, 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();
@@ -512,7 +513,7 @@ fn assert_float_amounts<S: LayoutScalar>() {
             &tree,
             0,
             vec![binding.clone()],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -525,8 +526,8 @@ fn assert_float_amounts<S: LayoutScalar>() {
             &capture,
             0,
             request(45.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();
@@ -656,7 +657,7 @@ fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -669,8 +670,8 @@ fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
         &capture,
         0,
         request(31.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();

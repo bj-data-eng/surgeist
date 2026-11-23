@@ -215,7 +215,7 @@ fn failures_without_a_deeper_cause_have_no_source() {
 
 #[test]
 fn scroll_geometry_failure_keeps_the_rejected_coordinate() {
-    let rejected = crate::ScrollCoordinateErrorOf::<f64>::NonFinitePhysicalOffset {
+    let rejected = crate::scroll::ScrollCoordinateErrorOf::<f64>::NonFinitePhysicalOffset {
         axis: PhysicalAxis::Horizontal,
         value: f64::INFINITY,
     };
@@ -241,7 +241,7 @@ fn scroll_geometry_failure_keeps_the_rejected_coordinate() {
 
 #[test]
 fn root_and_child_geometry_failures_report_their_own_operation() {
-    let rejected = crate::ScrollCoordinateErrorOf::<f64>::NonFinitePhysicalOffset {
+    let rejected = crate::scroll::ScrollCoordinateErrorOf::<f64>::NonFinitePhysicalOffset {
         axis: PhysicalAxis::Vertical,
         value: f64::NAN,
     };
@@ -272,7 +272,7 @@ fn resolved_length_on_a_failure_path_is_its_own_invariant() {
 
 #[test]
 fn rejected_scroll_rectangle_is_reported_through_source_only() {
-    let rejected = crate::ScrollRectErrorOf::<f64>::NegativeSize {
+    let rejected = crate::scroll::ScrollRectErrorOf::<f64>::NegativeSize {
         axis: PhysicalAxis::Vertical,
         value: -2.0,
     };
@@ -284,7 +284,7 @@ fn rejected_scroll_rectangle_is_reported_through_source_only() {
     assert_eq!(geometry.to_string(), "a scroll rectangle is invalid");
     let cause = geometry
         .source()
-        .and_then(|source| source.downcast_ref::<crate::ScrollRectErrorOf<f64>>())
+        .and_then(|source| source.downcast_ref::<crate::scroll::ScrollRectErrorOf<f64>>())
         .expect("the rejected rectangle is the cause");
     assert_eq!(*cause, rejected);
     assert!(cause.to_string().contains("vertical"), "{cause}");

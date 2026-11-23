@@ -1,5 +1,6 @@
 //! Consume Text's issued semantic source-window evidence at Block entry.
 use super::*;
+use crate::node_input::LayoutInputViewOf;
 use crate::text_layout::scope_alignment::{EntryFunding, SemanticWindowProof};
 use surgeist_text as text;
 
@@ -66,7 +67,7 @@ where
         inspect().map_err(error)?;
         if !matches!(
             tree.layout_input(binding.node),
-            crate::LayoutInputViewOf::InlineBoundary(_)
+            LayoutInputViewOf::InlineBoundary(_)
         ) {
             continue;
         }
@@ -123,7 +124,7 @@ where
                 }
                 let node = node.ok_or_else(|| float_context::missing(container))?;
                 let boundary = match tree.layout_input(node) {
-                    crate::LayoutInputViewOf::InlineBoundary(input) => Some(endpoints.allocate(
+                    LayoutInputViewOf::InlineBoundary(input) => Some(endpoints.allocate(
                         tree,
                         node,
                         &occurrence,
@@ -143,8 +144,7 @@ where
     }
     for binding in &run.binding.controls {
         inspect().map_err(error)?;
-        let crate::LayoutInputViewOf::InlineBoundary(input) = tree.layout_input(binding.node)
-        else {
+        let LayoutInputViewOf::InlineBoundary(input) = tree.layout_input(binding.node) else {
             continue;
         };
         let mut inside = false;

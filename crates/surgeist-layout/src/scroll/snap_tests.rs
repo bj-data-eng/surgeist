@@ -1,11 +1,22 @@
 use crate::{
-    AvailableSpaceOf, AxisSizingRequestOf, Direction, Display, FlowAxes, LayoutRootRequestOf,
-    LayoutScalar, NearestScrollportOf, NodeInputOf, OrthogonalFallbackLimitOf,
-    OrthogonalFallbackOf, PhysicalAxis, PhysicalScrollOffsetOf, PhysicalScrollRangeOf, Point,
-    PreferredSizeOf, ScrollCoordinateErrorOf, ScrollMarginOf, ScrollRectErrorOf, ScrollRectOf,
-    ScrollSnapAlign, ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapContextOf, ScrollSnapType,
-    ScrollTargetGeometryOf, Size, SizingOperation, SizingRequestOf, WritingMode, compute_layout,
+    engine::compute_layout,
+    geometry::{FlowAxes, PhysicalAxis, Point, Size},
+    node_input::{
+        Direction, Display, NodeInputOf, ScrollMarginOf, ScrollSnapAlign, ScrollSnapAlignValue,
+        ScrollSnapAxis, ScrollSnapType, WritingMode,
+    },
+    output::LayoutRootRequestOf,
+    scalar::LayoutScalar,
+    scroll::{
+        PhysicalScrollOffsetOf, PhysicalScrollRangeOf, ScrollCoordinateErrorOf, ScrollRectErrorOf,
+        ScrollRectOf, ScrollSnapContextOf, ScrollTargetGeometryOf,
+    },
+    sizing::PreferredSizeOf,
     test_support::layout_tree::PublicLayoutTreeOf,
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, OrthogonalFallbackLimitOf,
+        OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+    },
 };
 
 fn target<S: LayoutScalar>(margin: ScrollMarginOf<S>) -> ScrollTargetGeometryOf<S> {
@@ -328,7 +339,7 @@ fn horizontal_snap<S: LayoutScalar>(
     area: ScrollRectOf<S>,
     snapport: ScrollRectOf<S>,
     reachable: (f64, f64),
-) -> crate::ScrollSnapGeometryOf<S> {
+) -> crate::scroll::ScrollSnapGeometryOf<S> {
     let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let target = configured_target(
         ScrollMarginOf::default(),

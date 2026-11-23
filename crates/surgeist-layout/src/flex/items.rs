@@ -17,10 +17,17 @@ use crate::sizing::resolve::{
     resolve_flex_basis, resolve_maximum_optional, resolve_minimum_optional, select_relative_insets,
 };
 use crate::{
-    AlignItems, BoxSizing, Compute, ComputeInputOf, ComputeOutputOf, ComputedOverflow,
-    ContainingLayoutContext, Edges, FlexItemCollapse, LayoutResultOf, LayoutScalar, LengthAutoOf,
-    NodeOutputOf, ParentFormattingContext, Point, Position, RequestedAxis, RunMode, Size,
-    SizingMode, Traverse,
+    engine::contracts::Compute,
+    error::LayoutResultOf,
+    geometry::{Edges, Point, Size},
+    node_input::{AlignItems, BoxSizing, ComputedOverflow, FlexItemCollapse, Position},
+    output::{
+        ComputeInputOf, ComputeOutputOf, ContainingLayoutContext, NodeOutputOf,
+        ParentFormattingContext, RequestedAxis, RunMode, SizingMode, SourceIndex,
+    },
+    scalar::LayoutScalar,
+    tree::Traverse,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, LengthAutoOf, SizingOperation},
 };
 
 /// Intrinsic basis provenance; final normal allocation is a separate phase.
@@ -31,10 +38,10 @@ pub(super) enum IntrinsicFlexBasis {
 }
 
 impl IntrinsicFlexBasis {
-    fn operation(self) -> crate::SizingOperation {
+    fn operation(self) -> SizingOperation {
         match self {
-            Self::MinContent => crate::SizingOperation::MinContent,
-            Self::MaxContent => crate::SizingOperation::MaxContent,
+            Self::MinContent => SizingOperation::MinContent,
+            Self::MaxContent => SizingOperation::MaxContent,
         }
     }
 }
@@ -130,7 +137,7 @@ pub(super) struct ResolvedFlexItem<Node, S: LayoutScalar> {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FinalFlexItem<Node, S: LayoutScalar> {
     pub(super) _node: core::marker::PhantomData<Node>,
-    pub(super) source_index: crate::SourceIndex,
+    pub(super) source_index: SourceIndex,
     pub(super) output: ComputeOutputOf<S>,
     pub(super) margin: Edges<S>,
     pub(super) baseline_preference: Option<BaselinePort>,
@@ -180,7 +187,7 @@ impl<Node, S: LayoutScalar> From<CollectedFlexItem<Node, S>> for ResolvedFlexIte
 }
 
 fn is_eligible_item<S: LayoutScalar>(style: &FlexItemProjection<'_, S>) -> bool {
-    style.common.position != Position::Absolute && style.display != crate::Display::None
+    style.common.position != Position::Absolute && style.display != crate::node_input::Display::None
 }
 
 pub(super) fn has_eligible_items<'input, Tree, M>(
@@ -205,7 +212,7 @@ where
 pub(super) struct ItemCollection<'input, Node, S: LayoutScalar> {
     source: CollectionSource<Node>,
     items: Vec<CollectedFlexItem<Node, S>>,
-    order_entries: Vec<(crate::ItemOrder, crate::SourceIndex)>,
+    order_entries: Vec<(crate::node_input::ItemOrder, SourceIndex)>,
     pending: Option<ItemBuilder<'input, Node, S>>,
     input: Option<ComputeInputOf<S>>,
     run_mode: RunMode,
@@ -344,7 +351,7 @@ impl<'input, Node: Copy, S: LayoutScalar> ItemCollection<'input, Node, S> {
             ControlFlow::Break(item) => {
                 if matches!(self.source, CollectionSource::Children(_)) {
                     self.order_entries
-                        .push((item_order, crate::SourceIndex::new(item.source_index)));
+                        .push((item_order, SourceIndex::new(item.source_index)));
                 }
                 self.items.push(item);
             }
@@ -364,7 +371,7 @@ impl<'input, Node: Copy, S: LayoutScalar> ItemCollection<'input, Node, S> {
         let mut items_by_source = self
             .items
             .into_iter()
-            .map(|item| (crate::SourceIndex::new(item.source_index), item))
+            .map(|item| (SourceIndex::new(item.source_index), item))
             .collect::<std::collections::BTreeMap<_, _>>();
         permutation
             .into_iter()
@@ -411,8 +418,8 @@ struct ItemPreparation<'input, Node, S: LayoutScalar> {
     base_cross: Option<S>,
     child_known: Size<Option<S>>,
     child_known_for_base: Size<Option<S>>,
-    content_basis_operation: crate::SizingOperation,
-    child_available: Size<crate::AxisSizingRequestOf<S>>,
+    content_basis_operation: SizingOperation,
+    child_available: Size<AxisSizingRequestOf<S>>,
     flex_basis_uses_content: bool,
 }
 
@@ -633,7 +640,7 @@ impl<'input, Node: Copy, S: LayoutScalar> ItemBuilder<'input, Node, S> {
         .map_err(|error| sizing_resolution_error(node, error.into()))?;
         let available = constants.axes.with_cross_size(available, cross_available);
         let use_content_sizing_for_base = intrinsic_flex_basis.is_some()
-            || flex_basis_uses_content && style.display == crate::Display::Block;
+            || flex_basis_uses_content && style.display == crate::node_input::Display::Block;
         let clamp_cross = |cross: S| {
             cross
                 .clamp_max_before_min_optional(
@@ -680,11 +687,11 @@ impl<'input, Node: Copy, S: LayoutScalar> ItemBuilder<'input, Node, S> {
             .axes
             .main_size(constants.node_inner_size)
             .is_none()
-            && constants.available_main.operation() == crate::SizingOperation::MinContent
+            && constants.available_main.operation() == SizingOperation::MinContent
         {
-            crate::SizingOperation::MinContent
+            SizingOperation::MinContent
         } else {
-            crate::SizingOperation::MaxContent
+            SizingOperation::MaxContent
         };
         let operation = intrinsic_flex_basis
             .map(IntrinsicFlexBasis::operation)
@@ -1192,10 +1199,7 @@ impl<S: LayoutScalar> AutomaticMinimum<S> {
         let padding_border = padding + border;
 
         let cross = crate::layout_math::with_available_extent(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
             constants.cross_content_extent(),
         )
         .map_err(|error| sizing_resolution_error(node, error.into()))?;
@@ -1209,7 +1213,7 @@ impl<S: LayoutScalar> AutomaticMinimum<S> {
             constants
                 .axes
                 .main_size(constants.sizing_request.axes())
-                .with_operation(crate::SizingOperation::MinContent),
+                .with_operation(SizingOperation::MinContent),
             cross,
         );
         let available = super::child_preferred_probe_axes(
@@ -1306,10 +1310,13 @@ impl<Node: Copy, S: LayoutScalar> FinalItems<Node, S> {
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         for item in collected_items.iter().filter(|item| item.is_collapsed()) {
-            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+            tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
                 item.node,
-                crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
-                NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(item.source_index)),
+                crate::output::NormalGeometryOf::metadata(
+                    crate::geometry::Point::ZERO,
+                    crate::geometry::Size::ZERO,
+                ),
+                NodeOutputOf::<S>::with_source_index(SourceIndex::new(item.source_index)),
             ));
         }
 
@@ -1389,7 +1396,7 @@ impl<Node: Copy, S: LayoutScalar> FinalItems<Node, S> {
         let invalid_position = |value| {
             sizing_resolution_error(
                 item.node,
-                crate::LengthResolutionStatus::InvalidNumeric { value }.into(),
+                crate::value::LengthResolutionStatus::InvalidNumeric { value }.into(),
             )
         };
         let normal_location = constants.axes.point_from_main_cross(
@@ -1425,7 +1432,7 @@ impl<Node: Copy, S: LayoutScalar> FinalItems<Node, S> {
         )
         .map_err(|error| layout_child_geometry_error(container_node, item.node, error))?;
         output = retain_flex_scroll_geometry(output, scroll_geometry);
-        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+        tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
             item.node,
             crate::output::NormalGeometryOf::box_geometry(
                 normal_location,
@@ -1433,7 +1440,7 @@ impl<Node: Copy, S: LayoutScalar> FinalItems<Node, S> {
                 scroll_geometry.content_box(),
             ),
             NodeOutputOf::<S> {
-                source_index: crate::SourceIndex::new(item.source_index),
+                source_index: SourceIndex::new(item.source_index),
                 location,
                 size: output.size,
                 named_baselines: output.named_baselines,
@@ -1447,7 +1454,7 @@ impl<Node: Copy, S: LayoutScalar> FinalItems<Node, S> {
         ));
         self.items.push(FinalFlexItem {
             _node: core::marker::PhantomData,
-            source_index: crate::SourceIndex::new(item.source_index),
+            source_index: SourceIndex::new(item.source_index),
             output,
             margin: item.margin,
             baseline_preference: item.baseline_preference(constants.axes),
@@ -1497,7 +1504,7 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
     pub(super) fn settled_indefinite_percentage_axis(
         &self,
         axes: super::FlexAxes,
-        child_flow: crate::FlowAxes,
+        child_flow: crate::geometry::FlowAxes,
     ) -> Option<PhysicalAxis> {
         let cross_axis = axes.cross_physical_axis();
         let cross_is_fixed_by_bounds = axes
@@ -1531,17 +1538,11 @@ where
         item.node,
         Size::new(
             crate::layout_math::with_available_extent(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
                 constants.node_inner_size.width,
             ),
             crate::layout_math::with_available_extent(
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
                 constants.node_inner_size.height,
             ),
         ),

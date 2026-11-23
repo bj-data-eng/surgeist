@@ -87,7 +87,8 @@ fn lane<S: LayoutScalar>(rtl: bool, box_edges: bool) {
     let prior = compute::<S>(&fixture, rtl, width, false, box_edges);
     assert!(prior.placed_text()[0].inline_box_fragments().is_none());
 
-    fixture.binding.inline_box_fragments = crate::InlineBoxFragmentationDemand::CompleteBodies;
+    fixture.binding.inline_box_fragments =
+        crate::text_layout::InlineBoxFragmentationDemand::CompleteBodies;
     // compute uses the actual checked LayoutFlowInput constructor, the
     // NativePair22/23 inventory and the exact same maintained native tree.
     let batch = compute::<S>(&fixture, rtl, width, false, box_edges);

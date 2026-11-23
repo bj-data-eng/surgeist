@@ -1,4 +1,8 @@
-use super::super::{DefaultScalar, GridLine, GridSpan, LayoutScalar, LengthOf};
+use crate::{
+    grid::GridAxisKind,
+    scalar::{DefaultScalar, LayoutScalar},
+    value::{GridLine, GridSpan, LengthOf},
+};
 use surgeist_text::font::FontBaseline;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -18,14 +22,14 @@ pub enum GridAutoFlow {
 /// orientation from their effective controls and templates before construction.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GridLanesFlow {
-    grid_axis: crate::GridAxisKind,
+    grid_axis: GridAxisKind,
     reversed: bool,
     dense: bool,
 }
 
 impl GridLanesFlow {
     #[must_use]
-    pub const fn new(grid_axis: crate::GridAxisKind, reversed: bool, dense: bool) -> Self {
+    pub const fn new(grid_axis: GridAxisKind, reversed: bool, dense: bool) -> Self {
         Self {
             grid_axis,
             reversed,
@@ -34,15 +38,15 @@ impl GridLanesFlow {
     }
 
     #[must_use]
-    pub const fn grid_axis(self) -> crate::GridAxisKind {
+    pub const fn grid_axis(self) -> GridAxisKind {
         self.grid_axis
     }
 
     #[must_use]
-    pub const fn stacking_axis(self) -> crate::GridAxisKind {
+    pub const fn stacking_axis(self) -> GridAxisKind {
         match self.grid_axis {
-            crate::GridAxisKind::Column => crate::GridAxisKind::Row,
-            crate::GridAxisKind::Row => crate::GridAxisKind::Column,
+            GridAxisKind::Column => GridAxisKind::Row,
+            GridAxisKind::Row => GridAxisKind::Column,
         }
     }
 
@@ -59,7 +63,7 @@ impl GridLanesFlow {
 
 impl Default for GridLanesFlow {
     fn default() -> Self {
-        Self::new(crate::GridAxisKind::Column, false, false)
+        Self::new(GridAxisKind::Column, false, false)
     }
 }
 
@@ -306,8 +310,8 @@ pub struct GridBaselineReferences {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GridBaselineError {
     AxisMismatch {
-        expected: crate::PhysicalAxis,
-        actual: crate::PhysicalAxis,
+        expected: crate::geometry::PhysicalAxis,
+        actual: crate::geometry::PhysicalAxis,
     },
     UnrepresentableCoordinate,
 }

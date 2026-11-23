@@ -176,8 +176,8 @@ fn qualify<S: LayoutScalar>(work: usize) {
         &flow,
         0,
         request(100.0, {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -287,8 +287,8 @@ fn small_capture_refuses_during_compute<S: LayoutScalar>() {
         &flow,
         0,
         request(100.0, {
-            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     ) {
         Ok(_) => panic!("the independently retained small-cap witness published a complete batch"),

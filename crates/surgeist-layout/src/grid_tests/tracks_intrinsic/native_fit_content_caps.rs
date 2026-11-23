@@ -1,7 +1,10 @@
 //! Source-derived fit-content caps through real positioned-root-local layout.
 use super::*;
 use crate::test_support::readback::{self, Phase};
-use crate::{LayoutTree, Traverse};
+use crate::{
+    tree::{LayoutTree, Traverse},
+    value::NonNegativeFiniteOf,
+};
 use std::cell::RefCell;
 
 struct FitContentTree<S: LayoutScalar> {
@@ -124,18 +127,18 @@ fn source<S: LayoutScalar>(
     }
 }
 
-fn host_frame<S: LayoutScalar>() -> Size<crate::NonNegativeFiniteOf<S>> {
+fn host_frame<S: LayoutScalar>() -> Size<NonNegativeFiniteOf<S>> {
     Size::new(
-        crate::NonNegativeFiniteOf::new(S::from_f64(800.0)).unwrap(),
-        crate::NonNegativeFiniteOf::new(S::from_f64(600.0)).unwrap(),
+        NonNegativeFiniteOf::new(S::from_f64(800.0)).unwrap(),
+        NonNegativeFiniteOf::new(S::from_f64(600.0)).unwrap(),
     )
 }
 
 fn fallback<S: LayoutScalar>() -> OrthogonalFallbackOf<S> {
     OrthogonalFallbackOf::new(
         host_frame::<S>().map(Some),
-        crate::NearestScrollportOf::Absent,
-        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        crate::value::NearestScrollportOf::Absent,
+        Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
     )
 }
 
@@ -144,7 +147,7 @@ fn positioned_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
     // the source-qualified absolute-local profile: HTML/bodyLTR, hypothetical
     // Grid at inline-start0. Root/child direction remains independently varied.
     LayoutRootRequestOf::positioned_root_local(
-        crate::RootLocalPositionedContextOf::horizontal_auto_insets(
+        crate::output::RootLocalPositionedContextOf::horizontal_auto_insets(
             host_frame(),
             Direction::Ltr,
             S::ZERO,
@@ -371,7 +374,8 @@ fn complete<S: LayoutScalar>(cap: f64, overflow: Overflow, widths: [f64; 2]) {
         let tree = source::<S>(cap, overflow, direction);
         qualify_source(&tree, cap, direction);
         let request = positioned_request::<S>();
-        let crate::LayoutRootContextOf::RootLocalPositioned(context) = request.context() else {
+        let crate::output::LayoutRootContextOf::RootLocalPositioned(context) = request.context()
+        else {
             panic!("the actual root must retain its positioned local context");
         };
         assert_eq!(context.containing_size(), host_frame());
@@ -421,11 +425,7 @@ fn complete<S: LayoutScalar>(cap: f64, overflow: Overflow, widths: [f64; 2]) {
                 let axis = call.content_sizing_request().axes().width;
                 call.known_content_size().width.is_none()
                     && axis.operation() == SizingOperation::Normal
-                    && axis
-                        .space()
-                        .definite_size()
-                        .map(crate::NonNegativeFiniteOf::get)
-                        == Some(n(80.0))
+                    && axis.space().definite_size().map(NonNegativeFiniteOf::get) == Some(n(80.0))
                     && call.containing_layout_context().flow_axes()
                         == FlowAxes::new(WritingMode::HorizontalTb, direction)
                     && *size == Size::new(n(80.0), n(40.0))

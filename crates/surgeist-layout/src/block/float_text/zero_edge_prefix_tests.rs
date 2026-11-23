@@ -1,7 +1,20 @@
 //! Fitting a real captured float after an allocated, nominal-only prefix.
 use crate::test_support::inline_endpoint::Fixture;
 use crate::test_support::readback::{Phase, single_box_output};
-use crate::*;
+use crate::{
+    engine::compute_layout_with_flow,
+    geometry::{Edges, FlowAxes, Size},
+    inline_wrapping::WrappingInput,
+    node_input::{Direction, Display, InlineBoundaryEdgeOf, NodeInputOf, WritingMode},
+    output::LayoutRootRequestOf,
+    scalar::LayoutScalar,
+    sizing::{MinSizeOf, PreferredSizeOf},
+    text_layout::LayoutFlowInput,
+    value::{
+        AvailableSpaceOf, AxisSizingRequestOf, LengthAutoOf, NearestScrollportOf,
+        NonNegativeFiniteOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf, SizingOperation,
+    },
+};
 
 fn request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
     let width = NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap();

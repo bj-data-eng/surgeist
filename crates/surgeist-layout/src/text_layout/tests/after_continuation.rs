@@ -1,5 +1,6 @@
 //! Continuations participate in actual choice, intrinsic and rollback contexts.
 use super::*;
+use crate::value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation};
 
 fn style(
     hyphens: text::hyphenation::Hyphens,
@@ -113,7 +114,7 @@ fn compute<S: LayoutScalar>(
 
 fn intrinsic<S: LayoutScalar>(
     p: &PreparedParagraph,
-    available: crate::AxisSizingRequestOf<S>,
+    available: AxisSizingRequestOf<S>,
     expected: f64,
 ) {
     let tree = PublicLayoutTreeOf::<S>::new()
@@ -131,7 +132,7 @@ fn intrinsic<S: LayoutScalar>(
         &tree,
         2,
         vec![p.binding(2)],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -142,33 +143,30 @@ fn intrinsic<S: LayoutScalar>(
     .unwrap();
     let request = {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((captured).tree(), 2);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((captured).tree(), 2);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
             available,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -256,18 +254,12 @@ fn automatic_priority<S: LayoutScalar>() {
     }
     intrinsic::<S>(
         &p,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
         60.0,
     );
     intrinsic::<S>(
         &p,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         90.0,
     );
     let manual_only = PreparedParagraph::plain(
@@ -280,10 +272,7 @@ fn automatic_priority<S: LayoutScalar>() {
     );
     intrinsic::<S>(
         &manual_only,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
         80.0,
     );
 }
@@ -464,7 +453,7 @@ fn prefix_float_feedback<S: LayoutScalar>() {
         .final_inline_fragments()
         .iter()
         .find(|row| {
-            row.owner() == &crate::InlineFragmentOwner::Node(10)
+            row.owner() == &crate::output::InlineFragmentOwner::Node(10)
                 && row.fragment().line_index() == 1
                 && matches!(
                     row.fragment().finalized_fragment().view().owner(),
@@ -476,12 +465,9 @@ fn prefix_float_feedback<S: LayoutScalar>() {
         incoming.fragment().rect().unwrap().size().height,
         S::from_f64(30.0)
     );
-    assert!(
-        cold.final_inline_fragments()
-            .iter()
-            .any(|row| row.owner() == &crate::InlineFragmentOwner::Node(11)
-                && row.fragment().line_index() == 1)
-    );
+    assert!(cold.final_inline_fragments().iter().any(|row| row.owner()
+        == &crate::output::InlineFragmentOwner::Node(11)
+        && row.fragment().line_index() == 1));
     // The actual40px receiver plus8px float cannot share width40. It reserves
     // its full30px height; measuring only original CDE would wrongly allow it.
     assert_eq!(
@@ -529,9 +515,11 @@ fn prefix_float_feedback<S: LayoutScalar>() {
     host.reject_batch = true;
     assert_eq!(
         recovered.apply_to(&mut host),
-        Err(crate::LayoutBatchApplyError::Preparation(
-            "reject complete replacement"
-        ))
+        Err(
+            crate::block_fragmentation::publication::LayoutBatchApplyError::Preparation(
+                "reject complete replacement"
+            )
+        )
     );
     assert_eq!(host.caches, caches);
     super::conditional_cache::assert_same(host.published.as_ref().unwrap(), &published);

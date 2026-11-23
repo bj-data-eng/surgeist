@@ -4,9 +4,14 @@ use super::{
 };
 use crate::error::{sizing_resolution_error, value_resolution_error};
 use crate::{
-    Compute, Edges, FlowAxes, LayoutResultOf, LayoutScalar, LengthAutoOf, LengthOf,
-    LengthResolutionOf, LengthResolutionStatus, PercentageBasisOf, PhysicalAxis, Size,
-    SizingAlgorithm, Traverse, UnsupportedSizingBehavior,
+    engine::contracts::Compute,
+    error::{LayoutResultOf, SizingAlgorithm, UnsupportedSizingBehavior},
+    geometry::{Edges, FlowAxes, PhysicalAxis, Size},
+    scalar::LayoutScalar,
+    tree::Traverse,
+    value::{
+        LengthAutoOf, LengthOf, LengthResolutionOf, LengthResolutionStatus, PercentageBasisOf,
+    },
 };
 
 pub(crate) fn select_relative_insets<S: LayoutScalar>(

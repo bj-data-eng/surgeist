@@ -20,6 +20,11 @@ use super::fixtures::{
 };
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    geometry::PhysicalSide,
+    node_input::{GridBaselineReference, GridLanesFlow, LayoutInputViewOf},
+    value::{NearestScrollportOf, NonNegativeFiniteOf, OrthogonalFallbackLimitOf},
+};
 
 fn subgrid_child_parent_context_from_ancestor_groups_with_geometry<
     'input,
@@ -65,7 +70,7 @@ fn fri08_c03_containing_block_subgrid_child_receives_hybrid_context() {
             1,
             NodeInput {
                 display: Display::GridLanes,
-                grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
+                grid_lanes_flow: GridLanesFlow::new(crate::grid::GridAxisKind::Row, false, false),
                 size: Size::new(PreferredSize::px(100.0), PreferredSize::px(40.0)),
                 grid_template_rows: vec![TrackComponent::px(40.0)],
                 justify_content: Some(AlignContent::Start),
@@ -99,16 +104,19 @@ fn fri08_c03_containing_block_subgrid_child_receives_hybrid_context() {
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequest::standalone(
+        crate::output::LayoutRootRequest::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })
@@ -138,7 +146,7 @@ fn fri08_c03_containing_block_baseline_synthesis_survives_final_layout() {
             1,
             NodeInput {
                 display: Display::GridLanes,
-                grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
+                grid_lanes_flow: GridLanesFlow::new(crate::grid::GridAxisKind::Row, false, false),
                 size: Size::new(PreferredSize::px(100.0), PreferredSize::px(40.0)),
                 grid_template_rows: vec![TrackComponent::px(40.0)],
                 ..NodeInput::DEFAULT
@@ -152,7 +160,7 @@ fn fri08_c03_containing_block_baseline_synthesis_survives_final_layout() {
             },
         )
         .measure(2, child_output);
-    let output = crate::compute_grid(
+    let output = crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -178,8 +186,8 @@ fn fri08_c03_containing_block_baseline_synthesis_survives_final_layout() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -235,18 +243,18 @@ fn assert_fri08_c04_baseline_area_implicit_composition<S: LayoutScalar>() {
                     SizingOperation::MaxContent,
                 ));
                 let definite = axes.map(|axis| axis.space().definite_size());
-                crate::LayoutRootRequestOf::standalone(
+                crate::output::LayoutRootRequestOf::standalone(
                     SizingRequestOf::new(
                         axes,
                         OrthogonalFallbackOf::new(
                             definite,
-                            crate::NearestScrollportOf::Absent,
-                            Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                         ),
                     ),
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
                     definite,
                 )
@@ -502,7 +510,7 @@ fn fri08_c04_baseline_lanes_auto_fit_tree<S: LayoutScalar>(
             },
         );
     Fri08C04BaselineTree {
-        publication_targets: crate::LayoutPublicationTargets::new(),
+        publication_targets: crate::block_fragmentation::input::LayoutPublicationTargets::new(),
         tree,
         measurements: HashMap::from([
             (
@@ -529,18 +537,18 @@ fn assert_fri08_c04_baseline_lanes_auto_fit<S: LayoutScalar>() {
         let batch = compute_layout(&tree, 1, {
             let axes = root_axes_size::<S>(160.0, 100.0);
             let definite = axes.map(|axis| axis.space().definite_size());
-            crate::LayoutRootRequestOf::standalone(
+            crate::output::LayoutRootRequestOf::standalone(
                 SizingRequestOf::new(
                     axes,
                     OrthogonalFallbackOf::new(
                         definite,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
                 definite,
             )
@@ -603,15 +611,11 @@ fn assert_fri08_c04_baseline_lanes_auto_fit<S: LayoutScalar>() {
 fn root_axes_size<S: LayoutScalar>(inline: f64, block: f64) -> Size<AxisSizingRequestOf<S>> {
     Size::new(
         AxisSizingRequestOf::new(
-            AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(inline)).unwrap(),
-            ),
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(inline)).unwrap()),
             SizingOperation::Normal,
         ),
         AxisSizingRequestOf::new(
-            AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(block)).unwrap(),
-            ),
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(block)).unwrap()),
             SizingOperation::Normal,
         ),
     )
@@ -699,7 +703,7 @@ fn fri08_c02_auto_fit_inherited_baseline_crosses_collapsed_boundary_without_unif
             1_u32,
             GridAxisKind::Column,
             PhysicalAxis::Horizontal,
-            crate::GridBaselineReference::Physical,
+            GridBaselineReference::Physical,
             4,
             [owner_member],
         );
@@ -708,7 +712,7 @@ fn fri08_c02_auto_fit_inherited_baseline_crosses_collapsed_boundary_without_unif
                 1_u32,
                 GridAxisKind::Row,
                 PhysicalAxis::Vertical,
-                crate::GridBaselineReference::Physical,
+                GridBaselineReference::Physical,
                 1,
                 Vec::<AncestorBaselineMember<u32>>::new(),
             ),
@@ -783,7 +787,7 @@ fn fri08_c02_auto_fit_inherited_baseline_crosses_collapsed_boundary_without_unif
         let placement = InheritedCurrentGridBaselinePlacement::try_derive(
             &transported.group,
             InheritedCurrentGridBaselinePlacementInput {
-                reference: crate::GridBaselineReference::Physical,
+                reference: GridBaselineReference::Physical,
                 axis: GridAxisKind::Column,
                 physical_axis: PhysicalAxis::Horizontal,
                 mapping: transported.mapping.clone(),
@@ -833,7 +837,7 @@ fn fri08_c02_auto_fit_checked_decreasing_frame_uses_collapsed_boundary_gutter() 
     };
     let owner_flow = FlowAxes::new(parent_style.writing_mode, parent_style.direction);
     let owner_member = ancestor_baseline_member(AncestorBaselineMemberInput {
-        reference: crate::GridBaselineReference::Physical,
+        reference: GridBaselineReference::Physical,
         source: 91_u32,
         axis: GridAxisKind::Column,
         alignment_context_reversed: false,
@@ -861,7 +865,7 @@ fn fri08_c02_auto_fit_checked_decreasing_frame_uses_collapsed_boundary_gutter() 
         1_u32,
         GridAxisKind::Column,
         PhysicalAxis::Horizontal,
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         4,
         [owner_member],
     );
@@ -870,7 +874,7 @@ fn fri08_c02_auto_fit_checked_decreasing_frame_uses_collapsed_boundary_gutter() 
             1_u32,
             GridAxisKind::Row,
             PhysicalAxis::Vertical,
-            crate::GridBaselineReference::Physical,
+            GridBaselineReference::Physical,
             1,
             Vec::<AncestorBaselineMember<u32>>::new(),
         ),
@@ -936,7 +940,7 @@ fn fri08_c02_auto_fit_checked_decreasing_frame_uses_collapsed_boundary_gutter() 
     let placement = InheritedCurrentGridBaselinePlacement::try_derive(
         &transported.group,
         InheritedCurrentGridBaselinePlacementInput {
-            reference: crate::GridBaselineReference::Physical,
+            reference: GridBaselineReference::Physical,
             axis: GridAxisKind::Row,
             physical_axis: PhysicalAxis::Horizontal,
             mapping: transported.mapping.clone(),
@@ -1058,14 +1062,14 @@ fn assert_fri06_mr02_geometry_error_grid_child<S: LayoutScalar>(display: Display
             SizingRequestOf::new(
                 size.map(|value| {
                     AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(value).unwrap()),
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
                         SizingOperation::Normal,
                     )
                 }),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -1594,21 +1598,21 @@ where
                     Size::new(
                         AxisSizingRequestOf::new(
                             AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                                NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                             ),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
                             AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap(),
+                                NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap(),
                             ),
                             SizingOperation::Normal,
                         ),
                     ),
                     OrthogonalFallbackOf::new(
                         Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             ),
@@ -1642,8 +1646,10 @@ where
     OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let flow_axes = FlowAxes::new(WritingMode::SidewaysRl, Direction::Rtl);
-    let expected =
-        crate::ContainingLayoutContext::new(flow_axes, crate::ParentFormattingContext::Grid);
+    let expected = crate::output::ContainingLayoutContext::new(
+        flow_axes,
+        crate::output::ParentFormattingContext::Grid,
+    );
 
     for display in [Display::Grid, Display::GridLanes] {
         for run_mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
@@ -1690,7 +1696,7 @@ where
                     )),
                 );
 
-            let output = crate::compute_grid(
+            let output = crate::grid::compute_grid(
                 &mut tree.borrow_compute(),
                 0,
                 ComputeInputOf::for_child(
@@ -1699,21 +1705,21 @@ where
                     RequestedAxis::Both,
                     Size::NONE,
                     Size::new(Some(S::from_f64(300.0)), Some(S::from_f64(240.0))),
-                    crate::ContainingLayoutContext::new(
+                    crate::output::ContainingLayoutContext::new(
                         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-                        crate::ParentFormattingContext::NoParent,
+                        crate::output::ParentFormattingContext::NoParent,
                     ),
                     SizingRequestOf::new(
                         Size::splat(AxisSizingRequestOf::new(
                             AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(300.0)).unwrap(),
+                                NonNegativeFiniteOf::new(S::from_f64(300.0)).unwrap(),
                             ),
                             SizingOperation::Normal,
                         )),
                         OrthogonalFallbackOf::new(
                             Size::NONE,
-                            crate::NearestScrollportOf::Absent,
-                            Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                         ),
                     ),
                 ),
@@ -1780,7 +1786,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
+        layouts: HashMap<u32, crate::output::LayoutOutputEntryOf<u32, DefaultScalar>>,
         outputs: HashMap<u32, ComputeOutput>,
     }
 
@@ -1796,8 +1802,8 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
             }
 
             match node_input.display.inner_display() {
-                Display::Grid | Display::GridLanes => crate::compute_grid(self, node, input),
-                Display::Block => crate::compute_block(self, node, input),
+                Display::Grid | Display::GridLanes => crate::grid::compute_grid(self, node, input),
+                Display::Block => crate::block::compute_block(self, node, input),
                 Display::Flex => compute_flex(self, node, input),
                 Display::None => Ok(ComputeOutput::HIDDEN),
                 Display::InlineBlock | Display::InlineGrid | Display::InlineGridLanes => {
@@ -1832,7 +1838,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
+        layouts: &'input mut HashMap<u32, crate::output::LayoutOutputEntryOf<u32, DefaultScalar>>,
         outputs: &'input mut HashMap<u32, ComputeOutput>,
     }
 
@@ -1874,7 +1880,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
             &mut self,
             _node: Self::Node,
             _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
-        ) -> crate::LayoutResultOf<
+        ) -> crate::error::LayoutResultOf<
             Self::Node,
             crate::grid::GridOverflowObservation<Self::Scalar>,
             Self::Scalar,
@@ -1889,8 +1895,8 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
-            crate::LayoutInputViewOf::Box(self.node_input(node))
+        fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'input, Self::Scalar> {
+            LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn staged_unrounded(
@@ -1908,7 +1914,10 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
                 .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
         }
 
-        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        fn set_unrounded(
+            &mut self,
+            entry: crate::output::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+        ) {
             self.layouts.insert(entry.node(), entry);
         }
 
@@ -1916,8 +1925,11 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
             &mut self,
             node: Self::Node,
             input: ComputeInput,
-        ) -> crate::LayoutResultOf<Self::Node, crate::ComputeOutputOf<Self::Scalar>, Self::Scalar>
-        {
+        ) -> crate::error::LayoutResultOf<
+            Self::Node,
+            crate::output::ComputeOutputOf<Self::Scalar>,
+            Self::Scalar,
+        > {
             self.compute_node(node, input)
         }
     }
@@ -1938,7 +1950,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
         2,
         NodeInput {
             overflow: computed_overflow(Overflow::Scroll, Overflow::Scroll),
-            scrollbar_width: crate::ScrollbarWidthOf::try_new(10.0).unwrap(),
+            scrollbar_width: crate::node_input::ScrollbarWidthOf::try_new(10.0).unwrap(),
             ..NodeInput::default()
         },
     );
@@ -1955,12 +1967,12 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::NONE,
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(
-                        crate::WritingMode::HorizontalTb,
-                        crate::Direction::Ltr,
+                        crate::node_input::WritingMode::HorizontalTb,
+                        crate::node_input::Direction::Ltr,
                     ),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::new(
@@ -1975,8 +1987,8 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
                     ),
                     OrthogonalFallbackOf::new(
                         Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             ),
@@ -2068,29 +2080,29 @@ where
                 RequestedAxis::Both,
                 Size::NONE,
                 Size::new(Some(S::from_f64(120.0)), Some(S::from_f64(80.0))),
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     Size::new(
                         AxisSizingRequestOf::new(
                             AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(120.0)).unwrap(),
+                                NonNegativeFiniteOf::new(S::from_f64(120.0)).unwrap(),
                             ),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
                             AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap(),
+                                NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap(),
                             ),
                             SizingOperation::Normal,
                         ),
                     ),
                     OrthogonalFallbackOf::new(
                         Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             ),
@@ -2217,11 +2229,11 @@ where
                         1,
                         NodeInputOf {
                             display: Display::GridLanes,
-                            grid_lanes_flow: crate::GridLanesFlow::new(
+                            grid_lanes_flow: GridLanesFlow::new(
                                 if grid_auto_flow.is_column() {
-                                    crate::GridAxisKind::Row
+                                    crate::grid::GridAxisKind::Row
                                 } else {
-                                    crate::GridAxisKind::Column
+                                    crate::grid::GridAxisKind::Column
                                 },
                                 false,
                                 grid_auto_flow.is_dense(),
@@ -2282,7 +2294,7 @@ where
                     .measure(2, first_child)
                     .measure(3, last_child);
 
-                let output = crate::compute_grid(
+                let output = crate::grid::compute_grid(
                     &mut tree.borrow_compute(),
                     1,
                     ComputeInputOf::for_child(
@@ -2291,26 +2303,26 @@ where
                         RequestedAxis::Both,
                         Size::NONE,
                         physical_container_size.map(Some),
-                        crate::ContainingLayoutContext::new(
+                        crate::output::ContainingLayoutContext::new(
                             crate::geometry::FlowAxes::new(
                                 WritingMode::HorizontalTb,
                                 Direction::Ltr,
                             ),
-                            crate::ParentFormattingContext::NoParent,
+                            crate::output::ParentFormattingContext::NoParent,
                         ),
                         SizingRequestOf::new(
                             physical_container_size.map(|value| {
                                 AxisSizingRequestOf::new(
                                     AvailableSpaceOf::Definite(
-                                        crate::NonNegativeFiniteOf::new(value).unwrap(),
+                                        NonNegativeFiniteOf::new(value).unwrap(),
                                     ),
                                     SizingOperation::Normal,
                                 )
                             }),
                             OrthogonalFallbackOf::new(
                                 Size::NONE,
-                                crate::NearestScrollportOf::Absent,
-                                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                                NearestScrollportOf::Absent,
+                                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                             ),
                         ),
                     ),
@@ -2354,10 +2366,10 @@ where
                     // compatible vertical-lr/rl uses Left on X. Both items are
                     // at inline0 in a70-wide logical frame with inline size10.
                     let inline_baseline = scalar(match flow_axes.inline_start() {
-                        crate::PhysicalSide::Left => 0.0,
-                        crate::PhysicalSide::Right => 70.0 - 10.0,
-                        crate::PhysicalSide::Top => 10.0,
-                        crate::PhysicalSide::Bottom => 70.0,
+                        PhysicalSide::Left => 0.0,
+                        PhysicalSide::Right => 70.0 - 10.0,
+                        PhysicalSide::Top => 10.0,
+                        PhysicalSide::Bottom => 70.0,
                     });
                     match flow_axes.inline_axis() {
                         PhysicalAxis::Horizontal => {
@@ -2512,7 +2524,7 @@ where
                     .measure(2, child_outputs[0])
                     .measure(3, child_outputs[1]);
 
-                let output = crate::compute_grid(
+                let output = crate::grid::compute_grid(
                     &mut tree.borrow_compute(),
                     1,
                     ComputeInputOf::for_child(
@@ -2521,26 +2533,26 @@ where
                         RequestedAxis::Both,
                         Size::NONE,
                         physical_container_size.map(Some),
-                        crate::ContainingLayoutContext::new(
+                        crate::output::ContainingLayoutContext::new(
                             crate::geometry::FlowAxes::new(
                                 WritingMode::HorizontalTb,
                                 Direction::Ltr,
                             ),
-                            crate::ParentFormattingContext::NoParent,
+                            crate::output::ParentFormattingContext::NoParent,
                         ),
                         SizingRequestOf::new(
                             physical_container_size.map(|value| {
                                 AxisSizingRequestOf::new(
                                     AvailableSpaceOf::Definite(
-                                        crate::NonNegativeFiniteOf::new(value).unwrap(),
+                                        NonNegativeFiniteOf::new(value).unwrap(),
                                     ),
                                     SizingOperation::Normal,
                                 )
                             }),
                             OrthogonalFallbackOf::new(
                                 Size::NONE,
-                                crate::NearestScrollportOf::Absent,
-                                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                                NearestScrollportOf::Absent,
+                                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                             ),
                         ),
                     ),
@@ -2765,8 +2777,8 @@ fn both_axis_subgrid_zero_gap_auto_placement_advances_fully_auto_children() {
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
             flow,
@@ -2868,7 +2880,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
+        layouts: HashMap<u32, crate::output::LayoutOutputEntryOf<u32, DefaultScalar>>,
     }
 
     impl<'input> RecursiveTreeCompute<'input> {
@@ -2883,8 +2895,8 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
             }
 
             match node_input.display.inner_display() {
-                Display::Grid | Display::GridLanes => crate::compute_grid(self, node, input),
-                Display::Block => crate::compute_block(self, node, input),
+                Display::Grid | Display::GridLanes => crate::grid::compute_grid(self, node, input),
+                Display::Block => crate::block::compute_block(self, node, input),
                 Display::Flex => compute_flex(self, node, input),
                 Display::None => Ok(ComputeOutput::HIDDEN),
                 Display::InlineBlock | Display::InlineGrid | Display::InlineGridLanes => {
@@ -2919,7 +2931,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
+        layouts: &'input mut HashMap<u32, crate::output::LayoutOutputEntryOf<u32, DefaultScalar>>,
     }
 
     impl RecursiveTree {
@@ -2959,7 +2971,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
             &mut self,
             _node: Self::Node,
             _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
-        ) -> crate::LayoutResultOf<
+        ) -> crate::error::LayoutResultOf<
             Self::Node,
             crate::grid::GridOverflowObservation<Self::Scalar>,
             Self::Scalar,
@@ -2974,8 +2986,8 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
-            crate::LayoutInputViewOf::Box(self.node_input(node))
+        fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'input, Self::Scalar> {
+            LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn staged_unrounded(
@@ -2993,7 +3005,10 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
                 .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
         }
 
-        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        fn set_unrounded(
+            &mut self,
+            entry: crate::output::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+        ) {
             self.layouts.insert(entry.node(), entry);
         }
 
@@ -3001,8 +3016,11 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
             &mut self,
             node: Self::Node,
             input: ComputeInput,
-        ) -> crate::LayoutResultOf<Self::Node, crate::ComputeOutputOf<Self::Scalar>, Self::Scalar>
-        {
+        ) -> crate::error::LayoutResultOf<
+            Self::Node,
+            crate::output::ComputeOutputOf<Self::Scalar>,
+            Self::Scalar,
+        > {
             self.compute_node(node, input)
         }
     }
@@ -3031,7 +3049,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     );
     tree.styles.insert(3, NodeInput::default());
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -3040,12 +3058,12 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
             RequestedAxis::Both,
             Size::NONE,
             Size::NONE,
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -3060,8 +3078,8 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -3098,7 +3116,7 @@ fn grid_absolute_child_with_subgrid_tracks_does_not_participate_as_subgrid() {
     );
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(10.0, 10.0)));
 
-    let output = crate::compute_grid(
+    let output = crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -3107,12 +3125,12 @@ fn grid_absolute_child_with_subgrid_tracks_does_not_participate_as_subgrid() {
             RequestedAxis::Both,
             Size::NONE,
             Size::NONE,
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -3127,8 +3145,8 @@ fn grid_absolute_child_with_subgrid_tracks_does_not_participate_as_subgrid() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -3291,23 +3309,21 @@ where
                 RequestedAxis::Both,
                 Size::NONE,
                 root_size.map(Some),
-                crate::ContainingLayoutContext::new(
+                crate::output::ContainingLayoutContext::new(
                     flow_axes,
-                    crate::ParentFormattingContext::NoParent,
+                    crate::output::ParentFormattingContext::NoParent,
                 ),
                 SizingRequestOf::new(
                     root_size.map(|value| {
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(value).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
                             SizingOperation::Normal,
                         )
                     }),
                     OrthogonalFallbackOf::new(
                         Size::NONE,
-                        crate::NearestScrollportOf::Absent,
-                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
             ),
@@ -3950,7 +3966,7 @@ fn inherited_current_grid_baseline_placement_uses_typed_owner_and_current_identi
     let owner_direct = InheritedCurrentGridBaselinePlacement::try_derive(
         &group,
         InheritedCurrentGridBaselinePlacementInput {
-            reference: crate::GridBaselineReference::Physical,
+            reference: GridBaselineReference::Physical,
             axis: GridAxisKind::Row,
             physical_axis: PhysicalAxis::Vertical,
             mapping: CheckedOwnerToCurrentPlacementMap::identity(
@@ -4058,7 +4074,7 @@ fn inherited_current_grid_baseline_placement_repeat_is_identical_and_mutates_no_
     let mapping_before = mapping.clone();
     let witness_before = witness;
     let input = || InheritedCurrentGridBaselinePlacementInput {
-        reference: crate::GridBaselineReference::Physical,
+        reference: GridBaselineReference::Physical,
         axis: GridAxisKind::Column,
         physical_axis: PhysicalAxis::Horizontal,
         mapping: mapping.clone(),
@@ -4089,7 +4105,7 @@ fn inherited_placement_input(
         },
     );
     InheritedCurrentGridBaselinePlacementInput {
-        reference: crate::GridBaselineReference::Physical,
+        reference: GridBaselineReference::Physical,
         axis,
         physical_axis: match axis {
             GridAxisKind::Column => PhysicalAxis::Horizontal,
@@ -4422,11 +4438,11 @@ fn fri06_c12_t08_reversed_inherited_column_baselines(alignment: AlignItems) -> [
     {
         let axes = Size::new(
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(200.0).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(200.0).unwrap()),
                 SizingOperation::Normal,
             ),
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(80.0).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(80.0).unwrap()),
                 SizingOperation::Normal,
             ),
         );
@@ -4438,8 +4454,8 @@ fn fri06_c12_t08_reversed_inherited_column_baselines(alignment: AlignItems) -> [
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
             flow,
@@ -4566,8 +4582,8 @@ fn fri06_c12_t08_parent_baseline_row(
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -4636,7 +4652,7 @@ fn fri06_c12_t08_equal_parent_and_nested_last_baselines_need_no_intrinsic_shim()
 fn fri06_c12_t08_synthesized_intrinsic_cycle_is_disqualified_from_the_baseline_group() {
     let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let participation = grid_baseline_participation(
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         AlignItems::Baseline,
         false,
         true,
@@ -4766,29 +4782,29 @@ fn assert_published_baseline_group_order_keeps_compatible_axis<S: LayoutScalar>(
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(S::from_f64(120.0)), Some(S::from_f64(80.0))),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
                     AxisSizingRequestOf::new(
                         AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(120.0)).unwrap(),
+                            NonNegativeFiniteOf::new(S::from_f64(120.0)).unwrap(),
                         ),
                         SizingOperation::Normal,
                     ),
                     AxisSizingRequestOf::new(
                         AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap(),
+                            NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap(),
                         ),
                         SizingOperation::Normal,
                     ),
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -4863,7 +4879,7 @@ fn column_subgrid_baseline_alignment_does_not_grow_auto_parent_row_twice() {
         .measure(3, baseline_measure(15.0, 15.0, Some(12.0), None))
         .measure(4, baseline_measure(30.0, 30.0, Some(24.0), None));
 
-    let output = crate::compute_grid(
+    let output = crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -4872,12 +4888,12 @@ fn column_subgrid_baseline_alignment_does_not_grow_auto_parent_row_twice() {
             RequestedAxis::Both,
             Size::NONE,
             Size::NONE,
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -4892,8 +4908,8 @@ fn column_subgrid_baseline_alignment_does_not_grow_auto_parent_row_twice() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -4935,7 +4951,7 @@ fn grid_auto_places_children_into_declared_column_tracks() {
     tree.insert_style(2, NodeInput::default());
     tree.insert_style(3, NodeInput::default());
 
-    let output = crate::compute_grid(
+    let output = crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -4944,12 +4960,12 @@ fn grid_auto_places_children_into_declared_column_tracks() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -4964,8 +4980,8 @@ fn grid_auto_places_children_into_declared_column_tracks() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -5016,7 +5032,7 @@ fn grid_display_none_child_does_not_consume_auto_placement_cell() {
     );
     tree.insert_style(3, NodeInput::default());
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -5025,12 +5041,12 @@ fn grid_display_none_child_does_not_consume_auto_placement_cell() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -5045,8 +5061,8 @@ fn grid_display_none_child_does_not_consume_auto_placement_cell() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -5106,7 +5122,7 @@ fn grid_absolute_child_does_not_consume_auto_placement_cell() {
     );
     tree.insert_style(3, NodeInput::default());
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -5115,12 +5131,12 @@ fn grid_absolute_child_does_not_consume_auto_placement_cell() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -5135,8 +5151,8 @@ fn grid_absolute_child_does_not_consume_auto_placement_cell() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -5254,7 +5270,7 @@ fn vertical_grid_absolute_child_maps_rows_to_physical_x_and_columns_to_y() {
             },
         );
 
-    let output = crate::compute_grid(
+    let output = crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -5263,12 +5279,12 @@ fn vertical_grid_absolute_child_maps_rows_to_physical_x_and_columns_to_y() {
             RequestedAxis::Both,
             Size::NONE,
             Size::NONE,
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -5283,8 +5299,8 @@ fn vertical_grid_absolute_child_maps_rows_to_physical_x_and_columns_to_y() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -5321,7 +5337,7 @@ fn grid_absolute_child_without_explicit_size_uses_measured_size() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -5330,12 +5346,12 @@ fn grid_absolute_child_without_explicit_size_uses_measured_size() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -5350,8 +5366,8 @@ fn grid_absolute_child_without_explicit_size_uses_measured_size() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -5371,11 +5387,11 @@ fn grid_absolute_child_without_explicit_size_uses_measured_size() {
         tree.inputs(2)[0].sizing_request().axes(),
         Size::new(
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(120.0).unwrap()),
                 SizingOperation::Normal
             ),
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(60.0).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(60.0).unwrap()),
                 SizingOperation::Normal
             )
         )
@@ -5411,7 +5427,7 @@ fn grid_absolute_child_resolves_size_from_opposing_insets() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -5420,12 +5436,12 @@ fn grid_absolute_child_resolves_size_from_opposing_insets() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -5440,8 +5456,8 @@ fn grid_absolute_child_resolves_size_from_opposing_insets() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -5489,7 +5505,7 @@ fn grid_absolute_child_without_horizontal_insets_uses_rtl_start_alignment() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -5498,12 +5514,12 @@ fn grid_absolute_child_without_horizontal_insets_uses_rtl_start_alignment() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -5518,8 +5534,8 @@ fn grid_absolute_child_without_horizontal_insets_uses_rtl_start_alignment() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -5567,7 +5583,7 @@ fn grid_absolute_child_with_opposing_horizontal_insets_honors_rtl_end_edge() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -5576,12 +5592,12 @@ fn grid_absolute_child_with_opposing_horizontal_insets_honors_rtl_end_edge() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -5596,8 +5612,8 @@ fn grid_absolute_child_with_opposing_horizontal_insets_honors_rtl_end_edge() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -5644,7 +5660,7 @@ fn grid_static_position_resolves_horizontal_auto_margins_to_zero() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -5653,12 +5669,12 @@ fn grid_static_position_resolves_horizontal_auto_margins_to_zero() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -5673,8 +5689,8 @@ fn grid_static_position_resolves_horizontal_auto_margins_to_zero() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -5733,7 +5749,7 @@ fn grid_absolute_child_expands_vertical_auto_margins() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -5742,12 +5758,12 @@ fn grid_absolute_child_expands_vertical_auto_margins() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -5762,8 +5778,8 @@ fn grid_absolute_child_expands_vertical_auto_margins() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -5817,7 +5833,7 @@ fn grid_absolute_child_percent_size_resolves_against_grid_area() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -5826,12 +5842,12 @@ fn grid_absolute_child_percent_size_resolves_against_grid_area() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -5846,8 +5862,8 @@ fn grid_absolute_child_percent_size_resolves_against_grid_area() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -5896,7 +5912,7 @@ fn grid_absolute_child_percent_padding_resolves_against_grid_area() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -5905,12 +5921,12 @@ fn grid_absolute_child_percent_padding_resolves_against_grid_area() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -5925,8 +5941,8 @@ fn grid_absolute_child_percent_padding_resolves_against_grid_area() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -5972,7 +5988,7 @@ fn grid_absolute_child_applies_aspect_ratio_to_authored_size() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -5981,12 +5997,12 @@ fn grid_absolute_child_applies_aspect_ratio_to_authored_size() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -6001,8 +6017,8 @@ fn grid_absolute_child_applies_aspect_ratio_to_authored_size() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -6042,7 +6058,7 @@ fn grid_absolute_child_clamps_authored_size_to_min_and_max() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -6051,12 +6067,12 @@ fn grid_absolute_child_clamps_authored_size_to_min_and_max() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -6071,8 +6087,8 @@ fn grid_absolute_child_clamps_authored_size_to_min_and_max() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -6113,7 +6129,7 @@ fn grid_absolute_child_content_box_size_includes_padding_and_border() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -6122,12 +6138,12 @@ fn grid_absolute_child_content_box_size_includes_padding_and_border() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -6142,8 +6158,8 @@ fn grid_absolute_child_content_box_size_includes_padding_and_border() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -6183,7 +6199,7 @@ fn grid_absolute_child_size_cannot_shrink_below_padding_and_border() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -6192,12 +6208,12 @@ fn grid_absolute_child_size_cannot_shrink_below_padding_and_border() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -6212,8 +6228,8 @@ fn grid_absolute_child_size_cannot_shrink_below_padding_and_border() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -6257,7 +6273,7 @@ fn grid_absolute_child_applies_aspect_ratio_to_inset_derived_width() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -6266,12 +6282,12 @@ fn grid_absolute_child_applies_aspect_ratio_to_inset_derived_width() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -6286,8 +6302,8 @@ fn grid_absolute_child_applies_aspect_ratio_to_inset_derived_width() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -6330,7 +6346,7 @@ fn grid_absolute_child_available_space_excludes_non_auto_margins() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -6339,12 +6355,12 @@ fn grid_absolute_child_available_space_excludes_non_auto_margins() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -6359,8 +6375,8 @@ fn grid_absolute_child_available_space_excludes_non_auto_margins() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -6371,11 +6387,11 @@ fn grid_absolute_child_available_space_excludes_non_auto_margins() {
         tree.inputs(2)[0].sizing_request().axes(),
         Size::new(
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(90.0).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(90.0).unwrap()),
                 SizingOperation::Normal
             ),
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(70.0).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(70.0).unwrap()),
                 SizingOperation::Normal
             )
         )
@@ -6409,7 +6425,7 @@ fn grid_item_with_aspect_ratio_stretches_width_and_keeps_start_aligned_height() 
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -6418,12 +6434,12 @@ fn grid_item_with_aspect_ratio_stretches_width_and_keeps_start_aligned_height() 
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -6438,8 +6454,8 @@ fn grid_item_with_aspect_ratio_stretches_width_and_keeps_start_aligned_height() 
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -6491,7 +6507,7 @@ fn grid_item_expands_inline_auto_margins_after_child_layout() {
     );
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(20.0, 40.0)));
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -6500,12 +6516,12 @@ fn grid_item_expands_inline_auto_margins_after_child_layout() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -6520,8 +6536,8 @@ fn grid_item_expands_inline_auto_margins_after_child_layout() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -6569,7 +6585,7 @@ fn grid_auto_flow_column_places_children_down_rows_then_across_columns() {
         },
     );
 
-    let output = crate::compute_grid(
+    let output = crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -6578,12 +6594,12 @@ fn grid_auto_flow_column_places_children_down_rows_then_across_columns() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -6598,8 +6614,8 @@ fn grid_auto_flow_column_places_children_down_rows_then_across_columns() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -6651,7 +6667,7 @@ fn grid_align_content_center_offsets_tracks_inside_inner_height() {
     );
     tree.insert_style(2, NodeInput::default());
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -6660,12 +6676,12 @@ fn grid_align_content_center_offsets_tracks_inside_inner_height() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -6680,8 +6696,8 @@ fn grid_align_content_center_offsets_tracks_inside_inner_height() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -6717,7 +6733,7 @@ fn grid_align_items_center_offsets_smaller_child_within_grid_area() {
     tree.insert_style(2, NodeInput::default());
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(30.0, 10.0)));
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -6726,12 +6742,12 @@ fn grid_align_items_center_offsets_smaller_child_within_grid_area() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -6746,8 +6762,8 @@ fn grid_align_items_center_offsets_smaller_child_within_grid_area() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -6789,7 +6805,7 @@ fn grid_align_self_overrides_parent_align_items() {
     );
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(30.0, 10.0)));
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -6798,12 +6814,12 @@ fn grid_align_self_overrides_parent_align_items() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -6818,8 +6834,8 @@ fn grid_align_self_overrides_parent_align_items() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -7258,7 +7274,7 @@ fn grid_baseline_sharing_contributes_to_flexible_row() {
                 grid_template_columns: vec![TrackComponent::px(60.0), TrackComponent::px(60.0)],
                 grid_template_rows: vec![TrackComponent::minmax(
                     MinTrackSizing::px(0.0),
-                    MaxTrackSizing::flex(crate::TrackFlexFactor::try_new(1.0).unwrap()),
+                    MaxTrackSizing::flex(crate::value::TrackFlexFactor::try_new(1.0).unwrap()),
                 )],
                 align_items: Some(AlignItems::Baseline),
                 ..NodeInput::default()
@@ -7474,9 +7490,7 @@ fn grid_constrained_row_baseline_sizing_uses_layout_mode() {
                 .operations(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(60.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(60.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7489,9 +7503,7 @@ fn grid_constrained_row_baseline_sizing_uses_layout_mode() {
                 .spaces(
                     (Size::new(
                         AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(60.0).unwrap(),
-                            ),
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(60.0).unwrap()),
                             SizingOperation::Normal,
                         ),
                         AxisSizingRequestOf::new(
@@ -7523,7 +7535,7 @@ fn grid_constrained_row_baseline_sizing_uses_layout_mode() {
             input.sizing_request().axes(),
             Size::new(
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(60.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(60.0).unwrap()),
                     SizingOperation::Normal
                 ),
                 AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent)
@@ -7582,7 +7594,7 @@ fn grid_justify_items_center_offsets_smaller_child_within_grid_area() {
     tree.insert_style(2, NodeInput::default());
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(30.0, 10.0)));
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -7591,12 +7603,12 @@ fn grid_justify_items_center_offsets_smaller_child_within_grid_area() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(300.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
@@ -7611,8 +7623,8 @@ fn grid_justify_items_center_offsets_smaller_child_within_grid_area() {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -7660,7 +7672,7 @@ fn grid_child_affine_size_and_margin_resolve_against_grid_area() {
         },
     );
 
-    crate::compute_grid(
+    crate::grid::compute_grid(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
@@ -7669,28 +7681,28 @@ fn grid_child_affine_size_and_margin_resolve_against_grid_area() {
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(100.0), Some(40.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+                    crate::node_input::WritingMode::HorizontalTb,
+                    crate::node_input::Direction::Ltr,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
                     AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
                         SizingOperation::Normal,
                     ),
                     AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(40.0).unwrap()),
                         SizingOperation::Normal,
                     ),
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -7719,7 +7731,7 @@ fn horizontal_row_member_input<S: LayoutScalar>(
 ) -> AncestorBaselineMemberInput<u32, S> {
     let coordinate = Point::new(None, physical_port);
     AncestorBaselineMemberInput {
-        reference: crate::GridBaselineReference::Physical,
+        reference: GridBaselineReference::Physical,
         source,
         axis: GridAxisKind::Row,
         alignment_context_reversed: false,
@@ -7779,7 +7791,7 @@ fn grid_child_pure_helpers_accept_non_default_scalar() {
         1,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         1,
         [member, competitor],
     );
@@ -7838,7 +7850,7 @@ fn grid_child_pure_helpers_accept_non_default_scalar() {
 
 #[test]
 fn grid_child_pending_and_subgrid_inheritance_helpers_accept_non_default_scalar() {
-    let default_input = crate::NodeInputOf::default();
+    let default_input = crate::node_input::NodeInputOf::default();
     let area = GridArea::<f64> {
         column: 0,
         row: 0,
@@ -8127,7 +8139,7 @@ fn baseline_test_item<'input>(
 
 #[test]
 fn row_baselines_choose_first_baseline_for_first_group() {
-    let default_input = crate::NodeInputOf::default();
+    let default_input = crate::node_input::NodeInputOf::default();
     let items = vec![
         baseline_test_item(
             &default_input,
@@ -8165,7 +8177,7 @@ fn row_baselines_choose_first_baseline_for_first_group() {
 
 #[test]
 fn row_baselines_choose_last_baseline_for_last_group() {
-    let default_input = crate::NodeInputOf::default();
+    let default_input = crate::node_input::NodeInputOf::default();
     let items = vec![
         baseline_test_item(
             &default_input,
@@ -8203,7 +8215,7 @@ fn row_baselines_choose_last_baseline_for_last_group() {
 
 #[test]
 fn row_baselines_keep_first_groups_per_start_row() {
-    let default_input = crate::NodeInputOf::default();
+    let default_input = crate::node_input::NodeInputOf::default();
     let items = vec![
         baseline_test_item(
             &default_input,
@@ -8245,7 +8257,7 @@ fn row_baselines_keep_first_groups_per_start_row() {
 
 #[test]
 fn row_baselines_keep_last_groups_per_end_row() {
-    let default_input = crate::NodeInputOf::default();
+    let default_input = crate::node_input::NodeInputOf::default();
     let items = vec![
         baseline_test_item(
             &default_input,
@@ -8287,7 +8299,7 @@ fn row_baselines_keep_last_groups_per_end_row() {
 
 #[test]
 fn baseline_groups_columns_are_default_filled_to_grid_width() {
-    let default_input = crate::NodeInputOf::default();
+    let default_input = crate::node_input::NodeInputOf::default();
     let items = vec![baseline_test_item(
         &default_input,
         0,
@@ -8376,7 +8388,7 @@ fn ancestor_baseline_first_shim_grows_before_item() {
         1,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         1,
         [member, competitor],
     );
@@ -8413,7 +8425,7 @@ fn ancestor_baseline_last_shim_grows_after_item() {
         1,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         1,
         [member, competitor],
     );
@@ -8448,7 +8460,7 @@ fn ancestor_baseline_nonparticipant_has_no_shim() {
         1,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         1,
         [competitor],
     );
@@ -8463,7 +8475,7 @@ fn ancestor_baseline_nonparticipant_has_no_shim() {
 fn ancestor_baseline_synthesized_port_participates() {
     let input = horizontal_row_member_input(2, AncestorBaselineRole::First, 30.0_f32, None);
     let participation = grid_baseline_participation(
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         AlignItems::Baseline,
         false,
         false,
@@ -8487,7 +8499,7 @@ fn ancestor_baseline_synthesized_port_participates() {
         1,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         1,
         [member, competitor],
     );
@@ -8502,7 +8514,7 @@ fn ancestor_baseline_synthesized_port_participates() {
 
 #[test]
 fn baseline_aligned_block_offset_first_single_row_item() {
-    let default_input = crate::NodeInputOf::default();
+    let default_input = crate::node_input::NodeInputOf::default();
     let items = vec![
         baseline_test_item(
             &default_input,
@@ -8555,7 +8567,7 @@ fn baseline_aligned_block_offset_first_single_row_item() {
 
 #[test]
 fn baseline_aligned_block_offset_first_spanning_item() {
-    let default_input = crate::NodeInputOf::default();
+    let default_input = crate::node_input::NodeInputOf::default();
     let items = vec![
         baseline_test_item(
             &default_input,
@@ -8598,7 +8610,7 @@ fn baseline_aligned_block_offset_first_spanning_item() {
 
 #[test]
 fn baseline_aligned_block_offset_last_single_row_item() {
-    let default_input = crate::NodeInputOf::default();
+    let default_input = crate::node_input::NodeInputOf::default();
     let items = vec![
         baseline_test_item(
             &default_input,
@@ -8651,7 +8663,7 @@ fn baseline_aligned_block_offset_last_single_row_item() {
 
 #[test]
 fn baseline_aligned_block_offset_last_spanning_item() {
-    let default_input = crate::NodeInputOf::default();
+    let default_input = crate::node_input::NodeInputOf::default();
     let items = vec![
         baseline_test_item(
             &default_input,
@@ -8694,7 +8706,7 @@ fn baseline_aligned_block_offset_last_spanning_item() {
 
 #[test]
 fn baseline_aligned_block_offset_first_and_last_include_margins() {
-    let default_input = crate::NodeInputOf::default();
+    let default_input = crate::node_input::NodeInputOf::default();
     let mut first_items = vec![
         baseline_test_item(
             &default_input,
@@ -8780,7 +8792,7 @@ fn baseline_aligned_block_offset_first_and_last_include_margins() {
 
 #[test]
 fn baseline_aligned_block_offset_returns_none_without_group_baseline() {
-    let default_input = crate::NodeInputOf::default();
+    let default_input = crate::node_input::NodeInputOf::default();
     let items = [baseline_test_item(
         &default_input,
         0,
@@ -8813,7 +8825,7 @@ fn baseline_aligned_block_offset_returns_none_without_group_baseline() {
 #[test]
 fn baseline_participation_rejects_block_auto_margins() {
     let participation = grid_baseline_participation(
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         AlignItems::Baseline,
         true,
         false,
@@ -8837,7 +8849,7 @@ fn baseline_participation_rejects_block_auto_margins() {
 #[test]
 fn baseline_participation_accepts_synthesized_baselines() {
     let participation = grid_baseline_participation(
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         AlignItems::LastBaseline,
         false,
         false,
@@ -8930,7 +8942,7 @@ fn axis_baseline_item<'input, S: LayoutScalar>(
 }
 
 fn assert_baseline_group_axis_rejects_incompatible_application<S: LayoutScalar>() {
-    let default_input = crate::NodeInputOf::default();
+    let default_input = crate::node_input::NodeInputOf::default();
     let item = axis_baseline_item::<S>(&default_input);
     let groups = GridBaselineGroups {
         rows: vec![TrackBaselineGroup {
@@ -8968,7 +8980,7 @@ fn assert_baseline_group_axis_rejects_incompatible_application<S: LayoutScalar>(
 }
 
 fn assert_baseline_group_axis_preserves_compatible_application<S: LayoutScalar>() {
-    let default_input = crate::NodeInputOf::default();
+    let default_input = crate::node_input::NodeInputOf::default();
     let item = axis_baseline_item::<S>(&default_input);
     let groups = GridBaselineGroups {
         rows: vec![TrackBaselineGroup {
@@ -9002,7 +9014,7 @@ fn assert_baseline_group_axis_preserves_compatible_application<S: LayoutScalar>(
 
 fn assert_baseline_group_axis_rejects_incompatible_intrinsic_shim<S: LayoutScalar>() {
     let x_member = ancestor_baseline_member(AncestorBaselineMemberInput {
-        reference: crate::GridBaselineReference::Physical,
+        reference: GridBaselineReference::Physical,
         source: 2_u32,
         axis: GridAxisKind::Column,
         alignment_context_reversed: false,
@@ -9027,7 +9039,7 @@ fn assert_baseline_group_axis_rejects_incompatible_intrinsic_shim<S: LayoutScala
     .unwrap()
     .unwrap();
     let y_member = ancestor_baseline_member(AncestorBaselineMemberInput {
-        reference: crate::GridBaselineReference::Physical,
+        reference: GridBaselineReference::Physical,
         source: 3_u32,
         axis: GridAxisKind::Column,
         alignment_context_reversed: false,
@@ -9055,7 +9067,7 @@ fn assert_baseline_group_axis_rejects_incompatible_intrinsic_shim<S: LayoutScala
         1,
         GridAxisKind::Column,
         PhysicalAxis::Vertical,
-        crate::GridBaselineReference::Physical,
+        GridBaselineReference::Physical,
         1,
         [y_member],
     );
@@ -9168,29 +9180,29 @@ where
             RequestedAxis::Both,
             Size::NONE,
             Size::NONE,
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
                     AxisSizingRequestOf::new(
                         AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(110.0)).unwrap(),
+                            NonNegativeFiniteOf::new(S::from_f64(110.0)).unwrap(),
                         ),
                         SizingOperation::Normal,
                     ),
                     AxisSizingRequestOf::new(
                         AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
+                            NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
                         ),
                         SizingOperation::Normal,
                     ),
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -9311,29 +9323,29 @@ where
             RequestedAxis::Both,
             Size::NONE,
             Size::NONE,
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
                     AxisSizingRequestOf::new(
                         AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                            NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                         ),
                         SizingOperation::Normal,
                     ),
                     AxisSizingRequestOf::new(
                         AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap(),
+                            NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap(),
                         ),
                         SizingOperation::Normal,
                     ),
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -9549,25 +9561,25 @@ fn vertical_grid_child_percentage_padding_uses_unequal_physical_area_height_basi
             RequestedAxis::Both,
             Size::NONE,
             Size::new(Some(100.0), Some(200.0)),
-            crate::ContainingLayoutContext::new(
+            crate::output::ContainingLayoutContext::new(
                 crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-                crate::ParentFormattingContext::NoParent,
+                crate::output::ParentFormattingContext::NoParent,
             ),
             SizingRequestOf::new(
                 Size::new(
                     AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
                         SizingOperation::Normal,
                     ),
                     AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(200.0).unwrap()),
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(200.0).unwrap()),
                         SizingOperation::Normal,
                     ),
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -9651,18 +9663,18 @@ fn orthogonal_subgrid_grandchild_percentage_edges_use_immediate_containing_flow(
         SizingRequestOf::new(
             Size::new(
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
                     SizingOperation::Normal,
                 ),
                 AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(200.0).unwrap()),
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(200.0).unwrap()),
                     SizingOperation::Normal,
                 ),
             ),
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     );
@@ -9790,7 +9802,7 @@ fn orthogonal_subgrid_grandchild_percentage_edges_use_immediate_containing_flow(
     assert_eq!(
         prepared.sizing_request().axes().height,
         AxisSizingRequestOf::new(
-            AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(164.0).unwrap()),
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(164.0).unwrap()),
             SizingOperation::Normal
         )
     );
@@ -9953,7 +9965,7 @@ fn column_subgrid_context_preserves_checked_owner_points() {
                 40.0 - distance
             };
             ancestor_baseline_member(AncestorBaselineMemberInput {
-                reference: crate::GridBaselineReference::Physical,
+                reference: GridBaselineReference::Physical,
                 source: 91_u32 + u32::try_from(index).unwrap(),
                 axis: GridAxisKind::Column,
                 alignment_context_reversed: false,
@@ -9995,7 +10007,7 @@ fn column_subgrid_context_preserves_checked_owner_points() {
             1_u32,
             GridAxisKind::Row,
             PhysicalAxis::Vertical,
-            crate::GridBaselineReference::Physical,
+            GridBaselineReference::Physical,
             1,
             Vec::<AncestorBaselineMember<u32>>::new(),
         ),
@@ -10003,7 +10015,7 @@ fn column_subgrid_context_preserves_checked_owner_points() {
             1_u32,
             GridAxisKind::Column,
             PhysicalAxis::Horizontal,
-            crate::GridBaselineReference::Physical,
+            GridBaselineReference::Physical,
             2,
             members,
         ),
@@ -10056,7 +10068,7 @@ fn column_subgrid_context_preserves_checked_owner_points() {
         let placed = InheritedCurrentGridBaselinePlacement::try_derive(
             &transported.group,
             InheritedCurrentGridBaselinePlacementInput {
-                reference: crate::GridBaselineReference::Physical,
+                reference: GridBaselineReference::Physical,
                 axis: GridAxisKind::Column,
                 physical_axis: PhysicalAxis::Horizontal,
                 mapping: transported.mapping.clone(),

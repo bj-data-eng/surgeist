@@ -19,21 +19,29 @@ use crate::sizing::resolve::{
     resolve_preferred_sizing,
 };
 use crate::{
-    AspectRatioOf, AvailableSpaceOf, AxisSizingRequestOf, BoxSizing, CollapsibleMarginOf,
-    ComputeInputOf, ComputeOutputOf, ContentSizingRequestOf, DefaultScalar, Edges, LayoutScalar,
-    LayoutTree, LengthResolutionOf, LengthResolutionStatus, NodeInputOf, NonNegativeFiniteOf,
-    PhysicalBlockMarginCollapseOf, RunMode, Size, SizingMode, SizingOperation,
+    geometry::{Edges, Size},
+    node_input::{BoxSizing, NodeInputOf},
+    output::{
+        CollapsibleMarginOf, ComputeInputOf, ComputeOutputOf, ParentFormattingContext,
+        PhysicalBlockMarginCollapseOf, RunMode, SizingMode,
+    },
+    scalar::{DefaultScalar, LayoutScalar},
+    tree::LayoutTree,
+    value::{
+        AspectRatioOf, AvailableSpaceOf, AxisSizingRequestOf, ContentSizingRequestOf,
+        LengthResolutionOf, LengthResolutionStatus, NonNegativeFiniteOf, SizingOperation,
+    },
 };
 
 #[cfg(test)]
-use crate::SizingRequestOf;
+use crate::value::SizingRequestOf;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LeafMeasureInputOf<S: LayoutScalar = DefaultScalar> {
     known_content_size: Size<Option<S>>,
     content_sizing_request: ContentSizingRequestOf<S>,
     flow_axes: FlowAxes,
-    containing_layout_context: crate::ContainingLayoutContext,
+    containing_layout_context: crate::output::ContainingLayoutContext,
 }
 
 pub type LeafMeasureInput = LeafMeasureInputOf<DefaultScalar>;
@@ -65,7 +73,7 @@ impl<S: LayoutScalar> LeafMeasureInputOf<S> {
     /// fallback, without guessing the frame or capping every indefinite Normal
     /// request. They do not declare a general orthogonal-layout algorithm.
     #[must_use]
-    pub const fn containing_layout_context(&self) -> crate::ContainingLayoutContext {
+    pub const fn containing_layout_context(&self) -> crate::output::ContainingLayoutContext {
         self.containing_layout_context
     }
 }
@@ -118,8 +126,14 @@ struct LeafResolvedValues<S: LayoutScalar> {
 fn resolve_leaf_values<S>(
     input: ComputeInputOf<S>,
     style: &NodeInputOf<S>,
-    resolve_auto: impl Fn(crate::LengthAutoOf<S>, Option<S>) -> Result<S, LengthResolutionStatus<S>>,
-    resolve_length: impl Fn(crate::LengthOf<S>, Option<S>) -> Result<S, LengthResolutionStatus<S>>,
+    resolve_auto: impl Fn(
+        crate::value::LengthAutoOf<S>,
+        Option<S>,
+    ) -> Result<S, LengthResolutionStatus<S>>,
+    resolve_length: impl Fn(
+        crate::value::LengthOf<S>,
+        Option<S>,
+    ) -> Result<S, LengthResolutionStatus<S>>,
 ) -> Result<LeafResolvedValues<S>, SizingResolutionError<S>>
 where
     S: LayoutScalar,
@@ -253,18 +267,18 @@ where
                 )
             }
         };
-    let flex_basis_intrinsic =
-        if input.parent_formatting_context() == crate::ParentFormattingContext::Flex {
-            if style.flex_basis.is_min_content() {
-                Some(SizingOperation::MinContent)
-            } else if style.flex_basis.is_max_content() {
-                Some(SizingOperation::MaxContent)
-            } else {
-                None
-            }
+    let flex_basis_intrinsic = if input.parent_formatting_context() == ParentFormattingContext::Flex
+    {
+        if style.flex_basis.is_min_content() {
+            Some(SizingOperation::MinContent)
+        } else if style.flex_basis.is_max_content() {
+            Some(SizingOperation::MaxContent)
         } else {
             None
-        };
+        }
+    } else {
+        None
+    };
     let flex_basis_intrinsic_operation = input
         .sizing_request()
         .axes()
@@ -434,15 +448,15 @@ where
     S: LayoutScalar,
 {
     let containment = crate::engine::containment::size_containment(style);
-    if containment != crate::SizeContainment::None {
+    if containment != crate::node_input::SizeContainment::None {
         let sizing_input = crate::engine::containment::empty_sizing_input(input);
         let empty =
             compute_leaf_passes(site, sizing_input, style, resolved, intrinsic_icb, |_| {
                 Ok(Size::ZERO)
             })?;
         let needs_block_margin_preview = input.parent_formatting_context()
-            == crate::ParentFormattingContext::BlockFlow
-            && style.display == crate::Display::Block
+            == ParentFormattingContext::BlockFlow
+            && style.display == crate::node_input::Display::Block
             && !style.item_is_replaced
             && input.sizing_mode() == SizingMode::InherentSize
             && input
@@ -451,7 +465,7 @@ where
                 .inline
                 .operation()
                 == SizingOperation::Normal;
-        if containment == crate::SizeContainment::BothAxes
+        if containment == crate::node_input::SizeContainment::BothAxes
             && !input.run_mode().is_perform_layout()
             && !needs_block_margin_preview
         {
@@ -461,7 +475,7 @@ where
         // space after resolving the original request and authored bounds.
         resolved.node_size = crate::engine::containment::contained_outer_size(
             containment,
-            crate::FlowAxes::new(style.writing_mode, style.direction),
+            crate::geometry::FlowAxes::new(style.writing_mode, style.direction),
             empty.size,
         )
         .or(resolved.node_size);
@@ -509,8 +523,8 @@ where
     };
 
     let prevents_margin_collapse = input.parent_formatting_context()
-        != crate::ParentFormattingContext::BlockFlow
-        || style.display != crate::Display::Block
+        != ParentFormattingContext::BlockFlow
+        || style.display != crate::node_input::Display::Block
         || crate::block::flow_root::node_establishes_flow_root(
             style,
             input.containing_flow_axes().writing_mode(),
@@ -697,7 +711,7 @@ where
         || content_axes.height.operation() != SizingOperation::Normal)
         && let Some(icb) = intrinsic_icb
     {
-        crate::OrthogonalFallbackOf::new(
+        crate::value::OrthogonalFallbackOf::new(
             icb.map(Some),
             fallback.nearest_scrollport(),
             fallback.containing_limits(),
@@ -835,7 +849,7 @@ where
 
 fn resolve_leaf_auto<S>(
     input: ComputeInputOf<S>,
-    length: crate::LengthAutoOf<S>,
+    length: crate::value::LengthAutoOf<S>,
     basis: Option<S>,
 ) -> Result<S, LengthResolutionStatus<S>>
 where
@@ -846,7 +860,7 @@ where
 
 fn resolve_leaf_length<S>(
     input: ComputeInputOf<S>,
-    length: crate::LengthOf<S>,
+    length: crate::value::LengthOf<S>,
     basis: Option<S>,
 ) -> Result<S, LengthResolutionStatus<S>>
 where
@@ -879,16 +893,21 @@ where
 }
 
 fn content_fallback<S: LayoutScalar>(
-    fallback: crate::OrthogonalFallbackOf<S>,
+    fallback: crate::value::OrthogonalFallbackOf<S>,
     axis: PhysicalAxis,
     margin: S,
     inset: S,
-) -> Result<NonNegativeFiniteOf<S>, crate::OrthogonalFallbackErrorOf<S>> {
+) -> Result<NonNegativeFiniteOf<S>, crate::value::OrthogonalFallbackErrorOf<S>> {
     fallback.resolve(axis).and_then(|value| {
         let raw = value.get() - margin - inset;
         finite_floor_at_zero(raw)
             .and_then(|value| NonNegativeFiniteOf::new(value).map_err(|_| value))
-            .map_err(|value| crate::OrthogonalFallbackErrorOf::InvalidContentSpace { axis, value })
+            .map_err(
+                |value| crate::value::OrthogonalFallbackErrorOf::InvalidContentSpace {
+                    axis,
+                    value,
+                },
+            )
     })
 }
 
@@ -1036,12 +1055,15 @@ mod tests {
 
     fn assert_fri06_c13_t06_leaf_missing_basis_counterexample<S: LayoutScalar>() {
         let style = NodeInputOf::<S> {
-            padding: Edges::all(crate::LengthOf::percent(S::from_f64(0.5))),
+            padding: Edges::all(crate::value::LengthOf::percent(S::from_f64(0.5))),
             ..NodeInputOf::default()
         };
-        let context = crate::ContainingLayoutContext::new(
-            FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
-            crate::ParentFormattingContext::NoParent,
+        let context = crate::output::ContainingLayoutContext::new(
+            FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
+            crate::output::ParentFormattingContext::NoParent,
         );
         // This case isolates missing percentage-edge authority, not an intrinsic
         // size calculation: both direct entrypoints use Normal with
@@ -1051,10 +1073,10 @@ mod tests {
                 AvailableSpaceOf::Indefinite,
                 SizingOperation::Normal,
             )),
-            crate::OrthogonalFallbackOf::new(
+            crate::value::OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                crate::value::NearestScrollportOf::Unknown,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
             ),
         );
         let measured = Size::new(S::from_f64(12.0), S::from_f64(8.0));
@@ -1076,7 +1098,7 @@ mod tests {
         assert_eq!(error.operation(), LayoutOperation::ValueResolution);
         crate::test_support::assert_error_kind(
             error.kind(),
-            &LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis),
+            &LayoutErrorKindOf::MissingContext(crate::error::LayoutMissingContext::RequiredBasis),
         );
     }
 
@@ -1106,20 +1128,23 @@ mod leaf_body_size_authority_tests {
                 ),
                 AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
             ),
-            crate::OrthogonalFallbackOf::new(
+            crate::value::OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                crate::value::NearestScrollportOf::Unknown,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
             ),
         );
-        let context = crate::ContainingLayoutContext::new(
-            FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
-            crate::ParentFormattingContext::NoParent,
+        let context = crate::output::ContainingLayoutContext::new(
+            FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
+            crate::output::ParentFormattingContext::NoParent,
         );
         let authored = NodeInputOf::<S> {
             size: Size::new(
-                crate::PreferredSizeOf::px(px(30.0)),
-                crate::PreferredSizeOf::AUTO,
+                crate::sizing::PreferredSizeOf::px(px(30.0)),
+                crate::sizing::PreferredSizeOf::AUTO,
             ),
             ..NodeInputOf::default()
         };
@@ -1208,10 +1233,10 @@ mod leaf_fallback_projection_tests {
 
     fn qualify<S: LayoutScalar>(maximum: S) {
         let nn = |v| NonNegativeFiniteOf::new(S::from_f64(v)).unwrap();
-        let unbounded = Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded);
-        let fallback = crate::OrthogonalFallbackOf::new(
+        let unbounded = Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded);
+        let fallback = crate::value::OrthogonalFallbackOf::new(
             Size::new(Some(nn(100.0)), None),
-            crate::NearestScrollportOf::Absent,
+            crate::value::NearestScrollportOf::Absent,
             unbounded,
         );
         let request = SizingRequestOf::new(
@@ -1224,9 +1249,12 @@ mod leaf_fallback_projection_tests {
             ),
             fallback,
         );
-        let context = crate::ContainingLayoutContext::new(
-            FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
-            crate::ParentFormattingContext::NoParent,
+        let context = crate::output::ContainingLayoutContext::new(
+            FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
+            crate::output::ParentFormattingContext::NoParent,
         );
         let input = ComputeInputOf::leaf_layout(Size::NONE, Size::NONE, context, request).unwrap();
         let mut observed = None;
@@ -1244,7 +1272,7 @@ mod leaf_fallback_projection_tests {
         assert_eq!(
             final_fallback.height,
             Err(
-                crate::OrthogonalFallbackErrorOf::MissingInitialContainingBlock {
+                crate::value::OrthogonalFallbackErrorOf::MissingInitialContainingBlock {
                     axis: PhysicalAxis::Vertical
                 }
             )
@@ -1259,17 +1287,19 @@ mod leaf_fallback_projection_tests {
             ),
             Ok(NonNegativeFiniteOf::ZERO)
         );
-        let huge = crate::OrthogonalFallbackOf::new(
+        let huge = crate::value::OrthogonalFallbackOf::new(
             Size::new(Some(NonNegativeFiniteOf::new(maximum).unwrap()), None),
-            crate::NearestScrollportOf::Absent,
+            crate::value::NearestScrollportOf::Absent,
             unbounded,
         );
         assert_eq!(
             content_fallback(huge, PhysicalAxis::Horizontal, -maximum, S::ZERO),
-            Err(crate::OrthogonalFallbackErrorOf::InvalidContentSpace {
-                axis: PhysicalAxis::Horizontal,
-                value: S::INFINITY
-            })
+            Err(
+                crate::value::OrthogonalFallbackErrorOf::InvalidContentSpace {
+                    axis: PhysicalAxis::Horizontal,
+                    value: S::INFINITY
+                }
+            )
         );
     }
 
@@ -1293,7 +1323,7 @@ mod leaf_flow_context_tests {
     // fallback. This is not Text/Unicode or a general WM4 7.3.3 implementation.
     fn native_tiles<S: LayoutScalar>(
         packet: LeafMeasureInputOf<S>,
-    ) -> Result<Size<S>, crate::OrthogonalFallbackErrorOf<S>> {
+    ) -> Result<Size<S>, crate::value::OrthogonalFallbackErrorOf<S>> {
         let flow = packet.flow_axes();
         let axis = flow.inline_axis();
         let request = physical_axis(packet.content_sizing_request().axes(), axis);
@@ -1327,25 +1357,28 @@ mod leaf_flow_context_tests {
 
     fn qualify<S: LayoutScalar>() {
         let nn = |value| NonNegativeFiniteOf::new(S::from_f64(value)).unwrap();
-        let unbounded = Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded);
-        let fallback = crate::OrthogonalFallbackOf::new(
+        let unbounded = Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded);
+        let fallback = crate::value::OrthogonalFallbackOf::new(
             Size::splat(Some(nn(20.0))),
-            crate::NearestScrollportOf::Absent,
+            crate::value::NearestScrollportOf::Absent,
             unbounded,
         );
-        let missing_height = crate::OrthogonalFallbackOf::new(
+        let missing_height = crate::value::OrthogonalFallbackOf::new(
             Size::new(Some(nn(20.0)), None),
-            crate::NearestScrollportOf::Absent,
+            crate::value::NearestScrollportOf::Absent,
             unbounded,
         );
-        let missing_width = crate::OrthogonalFallbackOf::new(
+        let missing_width = crate::value::OrthogonalFallbackOf::new(
             Size::new(None, Some(nn(20.0))),
-            crate::NearestScrollportOf::Absent,
+            crate::value::NearestScrollportOf::Absent,
             unbounded,
         );
-        let containing = crate::ContainingLayoutContext::new(
-            FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Rtl),
-            crate::ParentFormattingContext::BlockFlow,
+        let containing = crate::output::ContainingLayoutContext::new(
+            FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Rtl,
+            ),
+            crate::output::ParentFormattingContext::BlockFlow,
         );
         let request = |fallback| {
             SizingRequestOf::new(
@@ -1357,11 +1390,11 @@ mod leaf_flow_context_tests {
             )
         };
         let parallel = NodeInputOf::<S> {
-            display: crate::Display::Block,
+            display: crate::node_input::Display::Block,
             ..NodeInputOf::default()
         };
         let orthogonal = NodeInputOf::<S> {
-            writing_mode: crate::WritingMode::VerticalRl,
+            writing_mode: crate::node_input::WritingMode::VerticalRl,
             ..parallel.clone()
         };
         let run = |input, style: &NodeInputOf<S>| {
@@ -1383,7 +1416,10 @@ mod leaf_flow_context_tests {
         let ordinary_packet = ordinary_packet.unwrap();
         assert_eq!(
             ordinary_packet.flow_axes(),
-            FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr)
+            FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr
+            )
         );
         assert_eq!(ordinary_packet.containing_layout_context(), containing);
         assert_eq!(
@@ -1398,7 +1434,10 @@ mod leaf_flow_context_tests {
         let orthogonal_packet = orthogonal_packet.unwrap();
         assert_eq!(
             orthogonal_packet.flow_axes(),
-            FlowAxes::new(crate::WritingMode::VerticalRl, crate::Direction::Ltr)
+            FlowAxes::new(
+                crate::node_input::WritingMode::VerticalRl,
+                crate::node_input::Direction::Ltr
+            )
         );
         assert_eq!(orthogonal_packet.containing_layout_context(), containing);
         assert_eq!(
@@ -1429,7 +1468,7 @@ mod leaf_flow_context_tests {
         assert!(matches!(
             required.kind(),
             LayoutErrorKindOf::Measurement(
-                crate::OrthogonalFallbackErrorOf::MissingInitialContainingBlock {
+                crate::value::OrthogonalFallbackErrorOf::MissingInitialContainingBlock {
                     axis: PhysicalAxis::Vertical
                 }
             )
@@ -1459,8 +1498,8 @@ mod leaf_flow_context_tests {
         // provider; it does not require the missing external fallback.
         let authored = NodeInputOf::<S> {
             size: Size::new(
-                crate::PreferredSizeOf::AUTO,
-                crate::PreferredSizeOf::px(S::from_f64(30.0)),
+                crate::sizing::PreferredSizeOf::AUTO,
+                crate::sizing::PreferredSizeOf::px(S::from_f64(30.0)),
             ),
             ..orthogonal
         };

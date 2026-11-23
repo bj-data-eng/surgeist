@@ -10,8 +10,12 @@ use super::*;
 use crate::accounting::{SubgridWork, TestHost};
 use crate::grid::subgrid_work::with_subgrid_reuse_disabled;
 use crate::{
-    ChildOrderCompleteness, GeneratedBoxRef, GridPlacement, InlineChildOrderInput,
-    NativeInlineBoxFamilyInput, SubgridTrack, TextGroupAlign, TrackComponentOf,
+    inline_wrapping::{
+        ChildOrderCompleteness, GeneratedBoxRef, InlineChildOrderInput, NativeInlineBoxFamilyInput,
+        WrappingInput,
+    },
+    node_input::{GridPlacement, TextGroupAlign},
+    value::{SubgridTrack, TrackComponentOf},
 };
 
 /// What the innermost subgrid holds.
@@ -47,8 +51,8 @@ impl Content {
 }
 
 /// The wrapping input that registers each of `formatters` as a native inline-box family.
-fn native_formatters(formatters: &[u32]) -> crate::WrappingInput<u32> {
-    crate::WrappingInput {
+fn native_formatters(formatters: &[u32]) -> WrappingInput<u32> {
+    WrappingInput {
         native_inline_boxes: formatters
             .iter()
             .map(|&formatter| NativeInlineBoxFamilyInput { formatter })
@@ -179,7 +183,7 @@ fn lay_out<S: LayoutScalar>(
     }
     let wrapping = match content {
         Content::Formatter => native_formatters(&[depth + 1, depth + 2]),
-        _ => crate::WrappingInput::default(),
+        _ => WrappingInput::default(),
     };
     complete_flow(&tree, bindings, wrapping, width, host)
 }
@@ -202,7 +206,7 @@ fn lay_out_levels<S: LayoutScalar>(
 type Document<S> = (
     PublicLayoutTreeOf<S>,
     Vec<TextParagraphBinding<u32>>,
-    crate::WrappingInput<u32>,
+    WrappingInput<u32>,
 );
 
 fn levels_document<S: LayoutScalar>(depth: u32, content: Content, width: f64) -> Document<S> {
@@ -264,7 +268,7 @@ fn levels_document<S: LayoutScalar>(depth: u32, content: Content, width: f64) ->
                     grid_column: GridPlacement::try_line(1).unwrap(),
                     grid_row: GridPlacement::try_line(2).unwrap(),
                     align_self: matches!(content, Content::BaselineText)
-                        .then_some(crate::AlignItems::Baseline),
+                        .then_some(crate::node_input::AlignItems::Baseline),
                     ..NodeInputOf::default()
                 },
             );
@@ -286,7 +290,7 @@ fn levels_document<S: LayoutScalar>(depth: u32, content: Content, width: f64) ->
     }
     let wrapping = match content {
         Content::Formatter => native_formatters(&(depth + 1..=2 * depth).collect::<Vec<_>>()),
-        _ => crate::WrappingInput::default(),
+        _ => WrappingInput::default(),
     };
     (tree, bindings, wrapping)
 }
@@ -294,7 +298,7 @@ fn levels_document<S: LayoutScalar>(depth: u32, content: Content, width: f64) ->
 fn complete_flow<S: LayoutScalar>(
     tree: &PublicLayoutTreeOf<S>,
     bindings: Vec<TextParagraphBinding<u32>>,
-    wrapping: crate::WrappingInput<u32>,
+    wrapping: WrappingInput<u32>,
     width: f64,
     host: Option<&TestHost>,
 ) -> String {
@@ -307,10 +311,10 @@ fn complete_flow<S: LayoutScalar>(
 fn compute_flow<Tree, S>(
     tree: &Tree,
     bindings: Vec<TextParagraphBinding<u32>>,
-    wrapping: crate::WrappingInput<u32>,
+    wrapping: WrappingInput<u32>,
     width: f64,
     host: Option<&TestHost>,
-) -> Result<CompletedLayoutBatchOf<u32, S>, crate::LayoutErrorOf<u32, S, Tree::MeasureError>>
+) -> Result<CompletedLayoutBatchOf<u32, S>, crate::error::LayoutErrorOf<u32, S, Tree::MeasureError>>
 where
     S: LayoutScalar,
     Tree: LayoutTree<Node = u32, Scalar = S>,
@@ -321,8 +325,8 @@ where
         &capture,
         0,
         request(width, {
-            let root_input = crate::LayoutTree::node_input(capture.tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input(capture.tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
         &[],
         host.map(TestHost::scope).as_ref(),
@@ -332,7 +336,7 @@ where
 /// A host whose cache holds what an earlier layout stored.
 struct CachedHost<S: LayoutScalar> {
     tree: PublicLayoutTreeOf<S>,
-    cache: std::cell::RefCell<Vec<crate::LayoutCacheStoreEntryOf<u32, S>>>,
+    cache: std::cell::RefCell<Vec<crate::output::LayoutCacheStoreEntryOf<u32, S>>>,
     lookups: std::cell::Cell<usize>,
 }
 
@@ -414,13 +418,13 @@ fn lay_out_levels_on_a_warm_host<S: LayoutScalar>(
     // A flow layout leaves the host cache unconsulted, so a document without text or native
     // formatters lays out as a plain tree, which does consult it.
     let compute = |host: &CachedHost<S>| {
-        if bindings.is_empty() && wrapping == crate::WrappingInput::default() {
+        if bindings.is_empty() && wrapping == WrappingInput::default() {
             compute_layout(
                 host,
                 0,
                 request(width, {
-                    let root_input = crate::LayoutTree::node_input(host, 0);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = crate::tree::LayoutTree::node_input(host, 0);
+                    crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
                 }),
             )
             .unwrap()

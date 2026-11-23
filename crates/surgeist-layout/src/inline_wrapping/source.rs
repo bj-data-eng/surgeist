@@ -7,9 +7,14 @@ use super::{
     *,
 };
 use crate::{
-    Display, Float, InlineBoundaryInputOf, InlineBoundaryKind, LayoutOperation, LayoutResultOf,
-    LayoutTree, LineBreakInputOf, NodeInputOf, Position, Traverse,
     engine::validation::{ValidationGraph, discover_graph},
+    error::{LayoutOperation, LayoutResultOf},
+    node_input::{
+        Direction, Display, Float, InlineBoundaryInputOf, InlineBoundaryKind, LineBreakInputOf,
+        NodeInputOf, Position, WritingMode,
+    },
+    scalar::LayoutScalar,
+    tree::{LayoutTree, Traverse},
 };
 use surgeist_text::{
     capture::{
@@ -22,7 +27,7 @@ use surgeist_text::{
 };
 
 /// A borrow of the actual host inventory before Text preparation exists.
-pub enum WrapEdgeSourceNodeView<'a, S: crate::LayoutScalar> {
+pub enum WrapEdgeSourceNodeView<'a, S: LayoutScalar> {
     Box(&'a NodeInputOf<S>),
     Boundary(InlineBoundaryInputOf<S>),
     LineBreak(LineBreakInputOf<S>),
@@ -102,17 +107,13 @@ enum NodeSemantics {
         position: Position,
         float: Float,
         edges: WrapEdges,
-        flex_wrap: crate::FlexWrap,
-        order: crate::ItemOrder,
-        direction: crate::Direction,
-        writing_mode: crate::WritingMode,
+        flex_wrap: crate::node_input::FlexWrap,
+        order: crate::node_input::ItemOrder,
+        direction: Direction,
+        writing_mode: WritingMode,
     },
-    Boundary(InlineBoundaryKind, crate::Direction, crate::WritingMode),
-    LineBreak(
-        crate::LineBreakDisplay,
-        crate::Direction,
-        crate::WritingMode,
-    ),
+    Boundary(InlineBoundaryKind, Direction, WritingMode),
+    LineBreak(crate::node_input::LineBreakDisplay, Direction, WritingMode),
     Origin(usize),
     Control(usize),
 }
@@ -141,10 +142,10 @@ enum CapturedBoxIndex {
     Atomic(usize),
 }
 
-fn error<Node, S: crate::LayoutScalar, M>(
+fn error<Node, S: LayoutScalar, M>(
     node: Node,
     reason: WrappingScopeError,
-) -> crate::LayoutErrorOf<Node, S, M> {
+) -> crate::error::LayoutErrorOf<Node, S, M> {
     super::wrapping_error(node, reason)
 }
 
@@ -226,8 +227,8 @@ pub fn process_wrapping_source<Source: WrapEdgeSource>(
     let requests = input.computed_line_boundaries.clone();
     let processed = surgeist_text::capture::process_contextual_source(input).map_err(|cause| {
         crate::error::staging_text_error(
-            crate::LayoutErrorSiteOf::Node(root),
-            crate::LayoutOperation::TextCapture,
+            crate::error::LayoutErrorSiteOf::Node(root),
+            crate::error::LayoutOperation::TextCapture,
             cause,
         )
     })?;
@@ -294,7 +295,7 @@ pub fn process_wrapping_source<Source: WrapEdgeSource>(
     Ok(ProcessedWrappingSource { processed, receipt })
 }
 
-fn semantics<S: crate::LayoutScalar>(view: WrapEdgeSourceNodeView<'_, S>) -> NodeSemantics {
+fn semantics<S: LayoutScalar>(view: WrapEdgeSourceNodeView<'_, S>) -> NodeSemantics {
     match view {
         WrapEdgeSourceNodeView::Box(input) => NodeSemantics::Box {
             display: input.display,
@@ -1065,7 +1066,7 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
         &self,
         tree: &Tree,
         root: Node,
-        paragraphs: &[crate::TextParagraphBinding<Node>],
+        paragraphs: &[crate::text_layout::TextParagraphBinding<Node>],
         wrapping: &WrappingInput<Node>,
     ) -> LayoutResultOf<Node, ValidationGraph<Node>, Tree::Scalar, Tree::MeasureError> {
         let graph = discover_graph(tree, root, LayoutOperation::CacheInvalidation)?;

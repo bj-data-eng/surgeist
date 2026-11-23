@@ -1,6 +1,9 @@
 //! Typed readback for existing continuous layout fixtures.
 use crate::{
-    CompletedLayoutBatchOf, LayoutOutputEntryOf, LayoutScalar, NodeLayoutRefOf, NodeOutputOf,
+    block_fragmentation::NodeLayoutRefOf,
+    geometry::Edges,
+    output::{CompletedLayoutBatchOf, LayoutOutputEntryOf, NodeOutputOf},
+    scalar::LayoutScalar,
 };
 
 #[derive(Clone, Copy)]
@@ -59,7 +62,7 @@ pub(crate) fn continuous_custody<Node: Copy + Eq, S: LayoutScalar>(
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Kind {
     SingleBox,
-    NonBox(crate::NonBoxKind),
+    NonBox(crate::block_fragmentation::NonBoxKind),
 }
 
 /// Numeric observation of one explicitly classified fixture participant.
@@ -68,15 +71,15 @@ pub(crate) enum Kind {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Observation<S: LayoutScalar> {
     pub kind: Kind,
-    pub named_baselines: crate::NamedBaselinesOf<S>,
-    pub source_index: crate::SourceIndex,
-    pub location: crate::Point<S>,
-    pub size: crate::Size<S>,
-    pub content_size: crate::Size<S>,
-    pub scroll_geometry: Option<crate::ScrollGeometryOf<S>>,
-    pub border: crate::Edges<S>,
-    pub padding: crate::Edges<S>,
-    pub margin: crate::Edges<S>,
+    pub named_baselines: crate::output::NamedBaselinesOf<S>,
+    pub source_index: crate::output::SourceIndex,
+    pub location: crate::geometry::Point<S>,
+    pub size: crate::geometry::Size<S>,
+    pub content_size: crate::geometry::Size<S>,
+    pub scroll_geometry: Option<crate::scroll::ScrollGeometryOf<S>>,
+    pub border: Edges<S>,
+    pub padding: Edges<S>,
+    pub margin: Edges<S>,
 }
 
 pub(crate) fn observe<Node: Copy + Eq, S: LayoutScalar>(

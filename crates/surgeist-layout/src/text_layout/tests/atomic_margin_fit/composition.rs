@@ -3,6 +3,7 @@
 use super::super::zone_composition::RecessedShape;
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation};
 
 fn source_then_atomic(
     source: &str,
@@ -36,11 +37,11 @@ fn source_then_atomic(
 
 fn tree<S: LayoutScalar>(
     paragraph: &PreparedParagraph,
-    available: crate::AxisSizingRequestOf<S>,
+    available: AxisSizingRequestOf<S>,
     end_margin: f64,
 ) -> PublicLayoutTreeOf<S> {
     let width = match available.space() {
-        crate::AvailableSpaceOf::Definite(value) => PreferredSizeOf::px(value.get()),
+        AvailableSpaceOf::Definite(value) => PreferredSizeOf::px(value.get()),
         _ => PreferredSizeOf::AUTO,
     };
     PublicLayoutTreeOf::<S>::new()
@@ -79,7 +80,7 @@ fn tree<S: LayoutScalar>(
 
 fn ordinary_batch<S: LayoutScalar>(
     paragraph: &PreparedParagraph,
-    available: crate::AxisSizingRequestOf<S>,
+    available: AxisSizingRequestOf<S>,
     end_margin: f64,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let host = tree(paragraph, available, end_margin);
@@ -87,7 +88,7 @@ fn ordinary_batch<S: LayoutScalar>(
         &host,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -98,33 +99,30 @@ fn ordinary_batch<S: LayoutScalar>(
     .unwrap();
     compute_layout_with_flow(&capture, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
             available,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -239,11 +237,11 @@ fn ahem_source_packet(
 fn changed_float_band<S: LayoutScalar>() {
     let paragraph = paragraph();
     actual_source_premises(&paragraph);
-    let available = crate::AxisSizingRequestOf::new(
-        crate::AvailableSpaceOf::Definite(
-            crate::NonNegativeFiniteOf::new(S::from_f64(55.0)).unwrap(),
+    let available = AxisSizingRequestOf::new(
+        AvailableSpaceOf::Definite(
+            crate::value::NonNegativeFiniteOf::new(S::from_f64(55.0)).unwrap(),
         ),
-        crate::SizingOperation::Normal,
+        SizingOperation::Normal,
     );
     let host = RecessedShape {
         tree: tree(&paragraph, available, -5.0)
@@ -287,7 +285,7 @@ fn changed_float_band<S: LayoutScalar>() {
         &host,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -298,33 +296,30 @@ fn changed_float_band<S: LayoutScalar>() {
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
             available,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -418,18 +413,12 @@ fn intrinsic_paragraph<S: LayoutScalar>() {
     // max=5+6=11, while the max-content border occupancy still extends to15.
     let minimum = ordinary_batch::<S>(
         &paragraph,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
         -4.0,
     );
     let maximum = ordinary_batch::<S>(
         &paragraph,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         -4.0,
     );
     for (batch, expected) in [(&minimum, 6.0), (&maximum, 11.0)] {
@@ -491,11 +480,11 @@ fn conditional_then_css_fit<S: LayoutScalar>() {
     assert_eq!(ordinary.boundary().view().source_before().get(), 2);
     let batch = ordinary_batch::<S>(
         &paragraph,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(16.0)).unwrap(),
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(S::from_f64(16.0)).unwrap(),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
         -4.0,
     );

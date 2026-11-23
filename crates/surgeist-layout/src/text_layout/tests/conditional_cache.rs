@@ -170,9 +170,11 @@ fn cached<S: LayoutScalar>() {
     host.reject_batch = true;
     assert_eq!(
         replacement.apply_to(&mut host),
-        Err(crate::LayoutBatchApplyError::Preparation(
-            "reject complete replacement"
-        ))
+        Err(
+            crate::block_fragmentation::publication::LayoutBatchApplyError::Preparation(
+                "reject complete replacement"
+            )
+        )
     );
     assert_eq!(host.caches, prior_cache);
     assert_same(host.published.as_ref().unwrap(), &prior);
@@ -255,7 +257,7 @@ fn signed<S: LayoutScalar>(adjustment: f64) {
         &tree,
         2,
         vec![binding],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -268,8 +270,8 @@ fn signed<S: LayoutScalar>(adjustment: f64) {
         &capture,
         2,
         request(15.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 2);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -341,7 +343,7 @@ fn future<S: LayoutScalar>() {
         &tree,
         2,
         vec![binding],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -354,8 +356,8 @@ fn future<S: LayoutScalar>() {
         &capture,
         2,
         request(20.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 2);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();

@@ -16,8 +16,16 @@ use crate::inline::{
 };
 use crate::inline::{InlineControlSourceOf, InlineParticipantLayoutKind};
 use crate::{
-    AxisSizingRequestOf, Direction, FlowAxes, InlineFragmentOutputOf, LayoutScalar,
-    LayoutTextNumericError, Point, ScrollRectOf, Size, TextAlign, TextAlignLast, TextJustification,
+    error::LayoutTextNumericError,
+    geometry::{Edges, FlowAxes, Point, Size},
+    inline_wrapping::{GeneratedBoxRef, InlineBoxRef},
+    node_input::{
+        Direction, InlineBaselineContext, TextAlign, TextAlignLast, TextJustification, WritingMode,
+    },
+    output::{BaselineFactOf, InlineFragmentOutputOf, InlineFragmentOwner},
+    scalar::LayoutScalar,
+    scroll::ScrollRectOf,
+    value::{AxisSizingRequestOf, SizingOperation},
 };
 use surgeist_text::font::FontBaseline;
 use surgeist_text::{
@@ -45,7 +53,7 @@ pub(crate) struct WrappingProjection<Node> {
     boxes: Vec<(
         usize,
         crate::inline_wrapping::ScopeRow<Node>,
-        Result<ScopeIncidence, crate::WrappingScopeError>,
+        Result<ScopeIncidence, crate::inline_wrapping::WrappingScopeError>,
     )>,
     incoming: Option<super::boxes::BoxFrontier>,
     physical_controls: Vec<(Node, surgeist_text::prepared::PreparedControl)>,
@@ -64,7 +72,7 @@ pub(crate) struct WrappingProjection<Node> {
 
 struct PhysicalPosition<Node> {
     node: Node,
-    gaps: Result<(usize, usize), crate::WrappingScopeError>,
+    gaps: Result<(usize, usize), crate::inline_wrapping::WrappingScopeError>,
 }
 
 enum EdgeIncidence {
@@ -265,7 +273,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
         };
         let edges=context.edge_locations(binding.container).filter(|(_,edge)|edge.effect.avoided).map(|(id,edge)| {
             let incidence=match &edge.box_ {
-                crate::GeneratedBoxRef::Node(node)=> {
+                GeneratedBoxRef::Node(node)=> {
                     if let Some(atomic)=binding.atomics.iter().find(|a|a.node==*node) {
                         participants.iter().position(|p|matches!(p,surgeist_text::prepared::PreparedParticipant::Atomic(a)if a==&atomic.occurrence))
                             .map(|offset|EdgeIncidence::Offset(offset+usize::from(edge.side==surgeist_text::capture::SourceBoxSide::After)))
@@ -275,12 +283,12 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                         ScopeEndpoint::Local(_)=>Err(WrappingScopeError::UnsupportedIncidence),
                     })}
                 }
-                crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(scope))=>match associations.captured_scope_relation(&binding.prepared,scope){
+                GeneratedBoxRef::Inline(InlineBoxRef::Scope(scope))=>match associations.captured_scope_relation(&binding.prepared,scope){
                     CapturedScopeRelation::Outside=>Ok(EdgeIncidence::Outside),
                     CapturedScopeRelation::Local|CapturedScopeRelation::Unavailable=>context.scope_pair(scope)
                         .ok_or(WrappingScopeError::UnsupportedIncidence).and_then(|pair|physical_edge(pair,edge.side)),
                 },
-                crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::NativePair{start,end})=>physical_edge((*start,*end),edge.side),
+                GeneratedBoxRef::Inline(InlineBoxRef::NativePair{start,end})=>physical_edge((*start,*end),edge.side),
             }; (id,incidence)
         }).collect::<Vec<_>>();
         let mut unlisted = Vec::new();
@@ -398,7 +406,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                 }
             }
             if let Some(own) = own
-                && let Some(crate::InlineBoxMetricContribution::Strut(strut)) =
+                && let Some(crate::inline_wrapping::InlineBoxMetricContribution::Strut(strut)) =
                     &mut row.metric_contribution
             {
                 strut.alignment =
@@ -443,9 +451,11 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                 EdgeIncidence::Offset(offset) => end.view().participant_offset() == *offset,
                 EdgeIncidence::Control { control, after } => {
                     if !prepared.control_is_boundary_exact(control)? {
-                        return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+                        return Err(
+                            crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence.into(),
+                        );
                     }
-                    let at=prepared.participants().position(|p|matches!(p,surgeist_text::prepared::PreparedParticipant::Control(c)if &c==control)).ok_or(crate::WrappingScopeError::UnsupportedIncidence)?;
+                    let at=prepared.participants().position(|p|matches!(p,surgeist_text::prepared::PreparedParticipant::Control(c)if &c==control)).ok_or(crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence)?;
                     end.view().participant_offset() == at + usize::from(*after)
                 }
             };
@@ -496,7 +506,7 @@ pub(crate) enum Frame<S: LayoutScalar> {
 pub(crate) struct CanonicalLineFrame<S: LayoutScalar> {
     pub origin: Point<f64>,
     pub size: Size<S>,
-    pub content_insets: crate::Edges<S>,
+    pub content_insets: Edges<S>,
 }
 
 pub(crate) struct Context<Node, S: LayoutScalar> {
@@ -505,26 +515,26 @@ pub(crate) struct Context<Node, S: LayoutScalar> {
     pub scope_alignments: super::scope_alignment::ScopeAlignmentResources<S>,
     pub entry_funding: Option<super::scope_alignment::EntryFunding<S>>,
     pub orientation: LineOrientation,
-    pub inline_baseline_context: crate::InlineBaselineContext,
+    pub inline_baseline_context: InlineBaselineContext,
     pub groups: crate::group_alignment::Snapshot,
     pub wrapping: Option<WrappingProjection<Node>>,
     pub formatted: super::formatted::FormattedTailSnapshot,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub frame: Frame<S>,
     pub containing_size: Size<S>,
-    pub content_insets: crate::Edges<S>,
+    pub content_insets: Edges<S>,
     pub cursor_block: S,
     pub adjoining_displacement: S,
     pub axes: FlowAxes,
     pub available: AxisSizingRequestOf<S>,
     pub alignment: TextAlign,
-    pub wrap_style: crate::TextWrapStyle,
+    pub wrap_style: crate::node_input::TextWrapStyle,
     pub last_alignment: TextAlignLast,
     pub justification: TextJustification,
     pub indent: crate::text_indent::ResolvedTextIndent<S>,
     pub indent_state: crate::text_indent::IndentLineState,
     pub hyphenation_state: crate::hyphenation::LineHyphenationState,
-    pub hyphenate_limit_zone: crate::LengthPercentageOf<S>,
+    pub hyphenate_limit_zone: crate::value::LengthPercentageOf<S>,
     pub tail: fit::TailContext,
 }
 
@@ -571,13 +581,13 @@ impl<Node, S: LayoutScalar> Context<Node, S> {
 /// Other preparation pairings retain their expected basis so Text preserves its
 /// existing context validation and diagnostic phase.
 pub(crate) fn text_orientation(
-    mode: crate::WritingMode,
+    mode: WritingMode,
     prepared: &surgeist_text::prepared::PreparedText,
 ) -> Result<LineOrientation, FitError> {
     match mode {
-        crate::WritingMode::HorizontalTb => Ok(LineOrientation::Horizontal),
-        crate::WritingMode::SidewaysRl => Ok(LineOrientation::SidewaysClockwise),
-        crate::WritingMode::VerticalRl | crate::WritingMode::VerticalLr
+        WritingMode::HorizontalTb => Ok(LineOrientation::Horizontal),
+        WritingMode::SidewaysRl => Ok(LineOrientation::SidewaysClockwise),
+        WritingMode::VerticalRl | WritingMode::VerticalLr
             if prepared.orientation() == LineOrientation::SidewaysClockwise
                 && matches!(
                     prepared.analyzed_source().typography(),
@@ -586,10 +596,8 @@ pub(crate) fn text_orientation(
         {
             Ok(LineOrientation::SidewaysClockwise)
         }
-        crate::WritingMode::VerticalRl | crate::WritingMode::VerticalLr => {
-            Ok(LineOrientation::Vertical)
-        }
-        crate::WritingMode::SidewaysLr => Err(FitError::TextWritingMode(mode)),
+        WritingMode::VerticalRl | WritingMode::VerticalLr => Ok(LineOrientation::Vertical),
+        WritingMode::SidewaysLr => Err(FitError::TextWritingMode(mode)),
     }
 }
 
@@ -598,16 +606,16 @@ pub(crate) fn text_orientation(
 pub(crate) fn named_baseline(
     prepared: &surgeist_text::prepared::PreparedText,
     axes: FlowAxes,
-    context: crate::InlineBaselineContext,
+    context: InlineBaselineContext,
 ) -> bool {
     match (context, prepared.baseline_reference()) {
         (
-            crate::InlineBaselineContext::Named(FontBaseline::Central),
+            InlineBaselineContext::Named(FontBaseline::Central),
             Some(surgeist_text::font::FontBaseline::Central),
         ) => {
             matches!(
                 axes.writing_mode(),
-                crate::WritingMode::VerticalRl | crate::WritingMode::VerticalLr
+                WritingMode::VerticalRl | WritingMode::VerticalLr
             ) && prepared.orientation() == LineOrientation::Vertical
                 && matches!(
                     prepared.analyzed_source().typography(),
@@ -616,7 +624,7 @@ pub(crate) fn named_baseline(
                 )
         }
         (
-            crate::InlineBaselineContext::Named(FontBaseline::Alphabetic),
+            InlineBaselineContext::Named(FontBaseline::Alphabetic),
             Some(surgeist_text::font::FontBaseline::Alphabetic),
         ) => {
             matches!(
@@ -642,7 +650,7 @@ struct LineFrame {
     orientation: LineOrientation,
     origin: Point<f64>,
     size: Size<f64>,
-    insets: crate::Edges<f64>,
+    insets: Edges<f64>,
     cursor_block: f64,
 }
 
@@ -656,7 +664,7 @@ impl LineFrame {
     }
 
     fn decreasing_block(self) -> bool {
-        self.axes.block_start() == crate::PhysicalSide::Right
+        self.axes.block_start() == crate::geometry::PhysicalSide::Right
     }
 
     fn inline_origin(self, start: f64, available: f64) -> Result<f64, FitError> {
@@ -1115,7 +1123,7 @@ pub(crate) struct LineBounds<S: LayoutScalar> {
 }
 
 pub(crate) struct SourceFragment<Node, S: LayoutScalar> {
-    pub owner: crate::InlineFragmentOwner<Node>,
+    pub owner: InlineFragmentOwner<Node>,
     pub normal_rect: Option<ScrollRectOf<S>>,
     pub fragment: InlineFragmentOutputOf<S>,
 }
@@ -1311,7 +1319,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             indent_state: context.indent_state,
             hyphenation_state: context.hyphenation_state,
             tail: context.tail,
-            hyphenate_limit_zone: crate::LengthPercentageOf::from_coefficients(
+            hyphenate_limit_zone: crate::value::LengthPercentageOf::from_coefficients(
                 context.hyphenate_limit_zone.absolute_px().to_f64(),
                 context.hyphenate_limit_zone.percent_fraction().to_f64(),
             )
@@ -2026,24 +2034,20 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         report.line_box_context = line.line_box_end;
         let feedback = line.finalized.feedback();
         let contribution = match context.available.operation() {
-            crate::SizingOperation::MinContent => {
-                line.finalized.measurements().min_content_contribution()
-            }
-            crate::SizingOperation::MaxContent => {
-                line.finalized.measurements().max_content_contribution()
-            }
-            crate::SizingOperation::Normal => line.finalized.measurements().fit(),
+            SizingOperation::MinContent => line.finalized.measurements().min_content_contribution(),
+            SizingOperation::MaxContent => line.finalized.measurements().max_content_contribution(),
+            SizingOperation::Normal => line.finalized.measurements().fit(),
         };
         let admission = match context.available.operation() {
-            crate::SizingOperation::MinContent => line
+            SizingOperation::MinContent => line
                 .finalized
                 .measurements()
                 .margin_edge_min_content_contribution(),
-            crate::SizingOperation::MaxContent => line
+            SizingOperation::MaxContent => line
                 .finalized
                 .measurements()
                 .margin_edge_max_content_contribution(),
-            crate::SizingOperation::Normal => line.finalized.measurements().margin_edge_fit(),
+            SizingOperation::Normal => line.finalized.measurements().margin_edge_fit(),
         };
         let indent = line.finalized.selected_line().request().context.indent;
         let css_width = fit::css_margin_edge_width(admission, indent)?;
@@ -2556,7 +2560,7 @@ fn fragment_owner<Node: Copy + Eq>(
     binding: &TextParagraphBinding<Node>,
     associations: &super::capture::ScopeAssociations<Node>,
     owner: surgeist_text::finalized::FinalizedFragmentOwner,
-) -> crate::InlineFragmentOwner<Node> {
+) -> InlineFragmentOwner<Node> {
     let node = match owner {
         surgeist_text::finalized::FinalizedFragmentOwner::Origin(origin) => {
             binding
@@ -2614,14 +2618,14 @@ fn fragment_owner<Node: Copy + Eq>(
         }
         surgeist_text::finalized::FinalizedFragmentOwner::VirtualSeparator(occurrence) => {
             let scope = occurrence.view().scope();
-            return crate::InlineFragmentOwner::Scope(
+            return InlineFragmentOwner::Scope(
                 associations
                     .binding(&scope)
                     .expect("capture resolved the exact contributing scope"),
             );
         }
     };
-    crate::InlineFragmentOwner::Node(node)
+    InlineFragmentOwner::Node(node)
 }
 
 fn raw_box<Node, S: LayoutScalar>(
@@ -2658,20 +2662,20 @@ fn alignment<S: LayoutScalar>(
 /// Express the actual established named facts in the converter's canonical
 /// visual border frame. Rounding still owns their one final readback snap.
 pub(crate) fn pending_visual_named_baselines<S: LayoutScalar>(
-    facts: crate::NamedBaselinesOf<S>,
+    facts: crate::output::NamedBaselinesOf<S>,
     offset: Point<f64>,
-) -> Result<crate::NamedBaselinesOf<S>, FitError> {
-    let project = |fact: crate::BaselineFactOf<S>| match fact {
-        crate::BaselineFactOf::Available(coordinate) => {
+) -> Result<crate::output::NamedBaselinesOf<S>, FitError> {
+    let project = |fact: BaselineFactOf<S>| match fact {
+        BaselineFactOf::Available(coordinate) => {
             let delta = match coordinate.axis() {
-                crate::PhysicalAxis::Horizontal => offset.x,
-                crate::PhysicalAxis::Vertical => offset.y,
+                crate::geometry::PhysicalAxis::Horizontal => offset.x,
+                crate::geometry::PhysicalAxis::Vertical => offset.y,
             };
-            crate::BaselineCoordinateOf::try_new(
+            crate::output::BaselineCoordinateOf::try_new(
                 coordinate.axis(),
                 number(add(coordinate.offset().to_f64(), delta)?)?,
             )
-            .map(crate::BaselineFactOf::Available)
+            .map(BaselineFactOf::Available)
             .map_err(|_| FitError::InvalidGeometry)
         }
         other => Ok(other),
@@ -2681,7 +2685,7 @@ pub(crate) fn pending_visual_named_baselines<S: LayoutScalar>(
         let pair = facts.get(name);
         result = result.with(
             name,
-            crate::BaselinePairOf::new(project(pair.first())?, project(pair.last())?),
+            crate::output::BaselinePairOf::new(project(pair.first())?, project(pair.last())?),
         );
     }
     Ok(result)
@@ -2691,11 +2695,11 @@ fn canonical_edges<S: LayoutScalar>(
     x: f64,
     y: f64,
     size: Size<S>,
-    edges: crate::Edges<S>,
-) -> Result<crate::Edges<S>, FitError> {
+    edges: Edges<S>,
+) -> Result<Edges<S>, FitError> {
     let right = add(x, size.width.to_f64())?;
     let bottom = add(y, size.height.to_f64())?;
-    Ok(crate::Edges::new(
+    Ok(Edges::new(
         number(round(add(y, edges.top.to_f64())?)? - round(y)?)?,
         number(round(right)? - round(add(right, -edges.right.to_f64())?)?)?,
         number(round(bottom)? - round(add(bottom, -edges.bottom.to_f64())?)?)?,
@@ -2793,7 +2797,10 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                     }
                     Ok(ScopeIncidence::Captured(_)) | Err(_) => {
                         if row.metric_contribution.is_some() {
-                            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+                            return Err(
+                                crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence
+                                    .into(),
+                            );
                         }
                         None
                     }
@@ -2809,13 +2816,18 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                             .find(|(actual, _)| *actual == node)
                             && !prepared.control_is_boundary_exact(occurrence)?
                         {
-                            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+                            return Err(
+                                crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence
+                                    .into(),
+                            );
                         }
                         let position = self
                             .physical_positions
                             .iter()
                             .find(|actual| actual.node == node)
-                            .ok_or(crate::WrappingScopeError::UnsupportedIncidence)?;
+                            .ok_or(
+                                crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence,
+                            )?;
                         let (before, after) = position
                             .gaps
                             .as_ref()
@@ -2852,13 +2864,18 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                             .find(|(actual, _)| *actual == node)
                             && !prepared.control_is_boundary_exact(occurrence)?
                         {
-                            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+                            return Err(
+                                crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence
+                                    .into(),
+                            );
                         }
                         let position = self
                             .physical_positions
                             .iter()
                             .find(|actual| actual.node == node)
-                            .ok_or(crate::WrappingScopeError::UnsupportedIncidence)?;
+                            .ok_or(
+                                crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence,
+                            )?;
                         let (before, after) = position
                             .gaps
                             .as_ref()
@@ -2922,7 +2939,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
             return Ok(true);
         };
         let Some(paragraph_exit) = segment.exit_position() else {
-            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+            return Err(crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence.into());
         };
         for scope in self
             .boxes
@@ -3019,7 +3036,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
         let end = choice.end;
         let controls = choice.controls;
         let ending = choice.ending;
-        use crate::InlineBoxMetricContribution as M;
+        use crate::inline_wrapping::InlineBoxMetricContribution as M;
         use surgeist_text::observation::CapturedScopeIncidence as R;
         // The receiver's Text progress boundary keeps its own spelling. The
         // original frontier stays with its issuer across administrative runs.
@@ -3029,7 +3046,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                 .incoming
                 .is_some_and(|entry| entry.frontier().segment != source_segment)
         {
-            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+            return Err(crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence.into());
         }
         // A preceding native run's receipt retains its issuer. A new structural
         // segment establishes its own entry incidence, even at an equal
@@ -3065,7 +3082,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
         };
         let boundary_ends = self.cuts(end)?;
         if starts.is_empty() {
-            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+            return Err(crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence.into());
         }
         let mut choices = Vec::new();
         for incoming in starts {
@@ -3106,7 +3123,9 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                 }
             }
             if ends.is_empty() {
-                return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+                return Err(
+                    crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence.into(),
+                );
             }
             for outgoing in &ends {
                 let mut contributions = Vec::new();
@@ -3143,7 +3162,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                     let allocation = match &row.metric_contribution {
                         Some(M::NoContribution) => {
                             if !owned.is_empty() {
-                                return Err(crate::WrappingScopeError::ConflictingBoxMetrics.into());
+                                return Err(crate::inline_wrapping::WrappingScopeError::ConflictingBoxMetrics.into());
                             }
                             None
                         }
@@ -3153,7 +3172,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                                     || actual.line_extent != strut.metrics.line_extent
                                     || actual.alignment != strut.alignment
                             }) {
-                                return Err(crate::WrappingScopeError::ConflictingBoxMetrics.into());
+                                return Err(crate::inline_wrapping::WrappingScopeError::ConflictingBoxMetrics.into());
                             }
                             let mut strut = strut.clone();
                             if owned.is_empty() || strut.scope.is_some() {
@@ -3187,7 +3206,10 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                         }
                         None => {
                             if owned.is_empty() {
-                                return Err(crate::WrappingScopeError::MissingBoxMetrics.into());
+                                return Err(
+                                    crate::inline_wrapping::WrappingScopeError::MissingBoxMetrics
+                                        .into(),
+                                );
                             }
                             None
                         }
@@ -3205,10 +3227,10 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                 for scope in &self.unlisted {
                     let end_relation = outgoing
                         .scope_relation(scope)?
-                        .ok_or(crate::WrappingScopeError::UnsupportedIncidence)?;
+                        .ok_or(crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence)?;
                     let start_relation = incoming
                         .scope_relation(scope)?
-                        .ok_or(crate::WrappingScopeError::UnsupportedIncidence)?;
+                        .ok_or(crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence)?;
                     if !matches!(start_relation, R::AtAfter | R::After)
                         && matches!(end_relation, R::Inside | R::AtAfter | R::After)
                     {
@@ -3223,7 +3245,10 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                                     })
                         });
                         if !same_box_control {
-                            return Err(crate::WrappingScopeError::MissingBoxMetrics.into());
+                            return Err(
+                                crate::inline_wrapping::WrappingScopeError::MissingBoxMetrics
+                                    .into(),
+                            );
                         }
                     }
                 }
@@ -3237,7 +3262,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
             }
         }
         if choices.is_empty() {
-            return Err(crate::WrappingScopeError::InconsistentIncidence.into());
+            return Err(crate::inline_wrapping::WrappingScopeError::InconsistentIncidence.into());
         }
         Ok(choices)
     }
@@ -3261,7 +3286,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                 .iter()
                 .find(|(_, actual, _)| actual == row)
                 .map(|(id, _, _)| *id)
-                .ok_or(crate::WrappingScopeError::InconsistentIncidence)?;
+                .ok_or(crate::inline_wrapping::WrappingScopeError::InconsistentIncidence)?;
             Ok(cut.relation(id) == Some(R::Inside))
         })?;
         for (id, edge) in self
@@ -3270,14 +3295,13 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
             .filter(|(_, edge)| edge.effect.avoided)
         {
             let scope = match &edge.box_ {
-                crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(scope)) => Some(scope),
-                crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::NativePair { start, end }) => {
-                    self.boxes
-                        .iter()
-                        .find(|(_, row, _)| row.pair == Some((*start, *end)))
-                        .and_then(|(_, row, _)| row.capture.as_ref())
-                }
-                crate::GeneratedBoxRef::Node(_) => None,
+                GeneratedBoxRef::Inline(InlineBoxRef::Scope(scope)) => Some(scope),
+                GeneratedBoxRef::Inline(InlineBoxRef::NativePair { start, end }) => self
+                    .boxes
+                    .iter()
+                    .find(|(_, row, _)| row.pair == Some((*start, *end)))
+                    .and_then(|(_, row, _)| row.capture.as_ref()),
+                GeneratedBoxRef::Node(_) => None,
             };
             let matches = if let Some(scope) = scope {
                 let relation = issuer.incidence_scope_relation(incidence, scope)?;
@@ -3292,7 +3316,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                     .edges
                     .iter()
                     .find(|(actual, _)| *actual == id)
-                    .ok_or(crate::WrappingScopeError::InconsistentIncidence)?;
+                    .ok_or(crate::inline_wrapping::WrappingScopeError::InconsistentIncidence)?;
                 match projected
                     .as_ref()
                     .map_err(|error| FitError::Wrapping(*error))?
@@ -3303,9 +3327,12 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                     }
                     EdgeIncidence::Control { control, after } => {
                         if !issuer.control_is_boundary_exact(control)? {
-                            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+                            return Err(
+                                crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence
+                                    .into(),
+                            );
                         }
-                        let at = issuer.participants().position(|participant| matches!(participant, surgeist_text::prepared::PreparedParticipant::Control(actual) if actual == *control)).ok_or(crate::WrappingScopeError::UnsupportedIncidence)?;
+                        let at = issuer.participants().position(|participant| matches!(participant, surgeist_text::prepared::PreparedParticipant::Control(actual) if actual == *control)).ok_or(crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence)?;
                         cut.boundary.view().participant_offset() == at + usize::from(*after)
                     }
                 }

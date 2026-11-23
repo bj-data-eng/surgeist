@@ -1,6 +1,12 @@
 //! Literal Ahem geometry and the captured block grid, through the real adapter.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    geometry::Edges,
+    inline_wrapping::WrappingInput,
+    tree::LayoutTree,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation},
+};
 use surgeist_text::{
     style::WhiteSpace,
     tabs::{TabContext, TabSize},
@@ -72,7 +78,7 @@ fn batch<S: LayoutScalar>(
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -85,8 +91,8 @@ fn batch<S: LayoutScalar>(
         &capture,
         0,
         request(100.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap()
@@ -239,7 +245,7 @@ fn css_tab_capture_rejects_a_different_actual_container_direction() {
         &tree,
         0,
         vec![prepared.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -260,7 +266,7 @@ fn css_tab_capture_rejects_a_different_actual_container_direction() {
 fn intrinsic(
     prepared: &PreparedParagraph,
     block_rtl: bool,
-    available: crate::AxisSizingRequestOf<f64>,
+    available: AxisSizingRequestOf<f64>,
     width: f64,
 ) -> Result<super::super::run::Output<u32, f64>, super::super::fit::FitError> {
     intrinsic_with_indent(
@@ -275,7 +281,7 @@ fn intrinsic(
 fn intrinsic_with_indent(
     prepared: &PreparedParagraph,
     block_rtl: bool,
-    available: crate::AxisSizingRequestOf<f64>,
+    available: AxisSizingRequestOf<f64>,
     width: f64,
     indent: crate::text_indent::ResolvedTextIndent<f64>,
 ) -> Result<super::super::run::Output<u32, f64>, super::super::fit::FitError> {
@@ -290,9 +296,9 @@ fn intrinsic_with_indent(
             } else {
                 Direction::Ltr
             },
-            line_box_direction_policy: crate::LineBoxDirectionPolicy::Normal,
-            text_indent: crate::TextIndentOf {
-                amount: crate::LengthPercentageOf::px(indent.amount).unwrap(),
+            line_box_direction_policy: crate::node_input::LineBoxDirectionPolicy::Normal,
+            text_indent: crate::node_input::TextIndentOf {
+                amount: crate::value::LengthPercentageOf::px(indent.amount).unwrap(),
                 each_line: indent.each_line,
                 hanging: indent.hanging,
             },
@@ -303,7 +309,7 @@ fn intrinsic_with_indent(
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -334,13 +340,13 @@ fn intrinsic_with_indent(
                 &binding.prepared,
             )
             .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),
-            inline_baseline_context: crate::InlineBaselineContext::Physical,
+            inline_baseline_context: crate::node_input::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
-            wrap_style: crate::TextWrapStyle::Auto,
+            wrap_style: crate::node_input::TextWrapStyle::Auto,
             wrapping: None,
             formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
-                crate::LineBoxDirectionPolicy::Normal,
+                crate::node_input::LineBoxDirectionPolicy::Normal,
                 if block_rtl {
                     Direction::Rtl
                 } else {
@@ -351,16 +357,16 @@ fn intrinsic_with_indent(
                 normal: crate::text_layout::run::CanonicalLineFrame {
                     origin: Point::ZERO,
                     size: Size::new(width, 10.0),
-                    content_insets: crate::Edges::ZERO,
+                    content_insets: Edges::ZERO,
                 },
                 visual: crate::text_layout::run::CanonicalLineFrame {
                     origin: Point::ZERO,
                     size: Size::new(width, 10.0),
-                    content_insets: crate::Edges::ZERO,
+                    content_insets: Edges::ZERO,
                 },
             },
             containing_size: Size::new(width, 10.0),
-            content_insets: crate::Edges::ZERO,
+            content_insets: Edges::ZERO,
             cursor_block: 0.0,
             adjoining_displacement: 0.0,
             axes: FlowAxes::new(
@@ -378,7 +384,7 @@ fn intrinsic_with_indent(
             indent,
             indent_state: crate::text_indent::IndentLineState::default(),
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
-            hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+            hyphenate_limit_zone: crate::value::LengthPercentageOf::ZERO,
             tail: crate::text_layout::fit::TailContext::Unrestricted,
         },
         &[],
@@ -409,14 +415,8 @@ fn intrinsic_css_tabs_use_the_logical_grid_across_block_directions() {
 
 fn check_intrinsic_block_directions(width: f64) {
     for available in [
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MaxContent,
-        ),
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Indefinite,
-            crate::SizingOperation::MinContent,
-        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
     ] {
         for rtl in [false, true] {
             let prepared = paragraph("A\tB", rtl, rtl, false);
@@ -429,9 +429,9 @@ fn check_intrinsic_block_directions(width: f64) {
             // and B separately (40 and10); max-content measures the whole50.
             // Zero changes those advances to10+10 without erasing the break.
             let expected = if available
-                == crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MinContent,
+                == AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MinContent,
                 ) {
                 (vec![40.0, 10.0], vec![10.0, 10.0])
             } else {
@@ -483,9 +483,9 @@ fn check_intrinsic_block_directions(width: f64) {
             // A Soft-ending preserved TAB keeps its raw30px but hangs out of
             // intrinsic contributions. Raw line width is not min-content size.
             let contribution = if available
-                == crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MinContent,
+                == AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MinContent,
                 ) {
                 10.0
             } else {
@@ -494,9 +494,9 @@ fn check_intrinsic_block_directions(width: f64) {
             assert_eq!(output.report.inline_extent, contribution);
             assert_eq!(opposite_output.report.inline_extent, contribution);
             if available
-                == crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MinContent,
+                == AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MinContent,
                 )
             {
                 assert_eq!(
@@ -548,7 +548,7 @@ fn auto_root_intrinsic_sizing_refinalizes_tabs_against_the_real_used_width() {
             &tree,
             0,
             vec![p.binding(0)],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -559,30 +559,24 @@ fn auto_root_intrinsic_sizing_refinalizes_tabs_against_the_real_used_width() {
         .unwrap();
         for (available, expected_width) in [
             (
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MaxContent,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
                 50.0,
             ),
             (
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MinContent,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
                 10.0,
             ),
         ] {
             let actual = compute_layout_with_flow(&capture, 0, {
                 let containing_flow_axes = {
-                    let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = LayoutTree::node_input((capture).tree(), 0);
+                    crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
                 };
                 let requested_axes = Size::new(
                     available,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::MaxContent,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
                     ),
                 );
                 let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
@@ -590,18 +584,20 @@ fn auto_root_intrinsic_sizing_refinalizes_tabs_against_the_real_used_width() {
                 // the explicitly requested inline contribution operation.
                 logical_requests.block = logical_requests
                     .block
-                    .with_operation(crate::SizingOperation::Normal);
+                    .with_operation(SizingOperation::Normal);
                 let axes = containing_flow_axes.physical_size(logical_requests);
                 // The old Native NoParent fixture explicitly supplied these percentage
                 // bases. It supplied no independent ICB dimensions or ancestor scrollport.
                 let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-                let fallback = crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                let fallback = crate::value::OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    crate::value::NearestScrollportOf::Absent,
+                    crate::geometry::Size::splat(
+                        crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 );
-                crate::LayoutRootRequestOf::standalone(
-                    crate::SizingRequestOf::new(axes, fallback),
+                crate::output::LayoutRootRequestOf::standalone(
+                    crate::value::SizingRequestOf::new(axes, fallback),
                     containing_flow_axes,
                     percentage_parent,
                 )
@@ -647,8 +643,8 @@ fn auto_root_intrinsic_sizing_refinalizes_tabs_against_the_real_used_width() {
             &capture,
             0,
             request(100.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((capture).tree(), 0);
+                crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();
@@ -677,10 +673,7 @@ fn intrinsic_lines_reset_the_tab_pen_with_the_applicable_indent() {
             let output = intrinsic_with_indent(
                 &p,
                 !rtl,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MaxContent,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
                 120.0,
                 crate::text_indent::ResolvedTextIndent {
                     amount: 10.0,
@@ -717,10 +710,7 @@ fn intrinsic_lines_reset_the_tab_pen_with_the_applicable_indent() {
         let output = intrinsic_with_indent(
             &p,
             !rtl,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
             120.0,
             crate::text_indent::ResolvedTextIndent {
                 amount: 10.0,

@@ -501,7 +501,7 @@ mod tests {
 
     fn fit_groups(
         groups: &[String],
-        wrap_style: crate::TextWrapStyle,
+        wrap_style: crate::node_input::TextWrapStyle,
         meter: &crate::accounting::Meter,
     ) -> (PreparedParagraph, Vec<FittedLine>) {
         let mut style = ahem_style(10.0, 10.0);
@@ -533,17 +533,17 @@ mod tests {
                 wrapping: None,
                 formatted: &FormattedTailSnapshot::default(),
                 line_box_context: crate::line_box::LineBoxContext::new(
-                    crate::LineBoxDirectionPolicy::Normal,
-                    crate::Direction::Ltr,
+                    crate::node_input::LineBoxDirectionPolicy::Normal,
+                    crate::node_input::Direction::Ltr,
                 ),
                 prepared: &paragraph.prepared,
                 segment: paragraph.prepared.source_segments().next().unwrap(),
                 scope_alignments: &scope_alignments,
-                available: crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(60.0).unwrap(),
+                available: crate::value::AxisSizingRequestOf::new(
+                    crate::value::AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(60.0).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    crate::value::SizingOperation::Normal,
                 ),
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 block_direction: ParagraphBaseDirection::LeftToRight,
@@ -554,7 +554,7 @@ mod tests {
                 indent: crate::text_indent::ResolvedTextIndent::ZERO,
                 indent_state: crate::text_indent::IndentLineState::default(),
                 hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
-                hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+                hyphenate_limit_zone: crate::value::LengthPercentageOf::ZERO,
                 tail: TailContext::Unrestricted,
                 orientation: LineOrientation::Horizontal,
                 atomics: &[],
@@ -603,7 +603,8 @@ mod tests {
         groups.push(long);
         groups.extend(vec![short.to_owned(); 8]);
         let meter = crate::accounting::Meter::for_test();
-        let (paragraph, lines) = fit_groups(&groups, crate::TextWrapStyle::Balance, &meter);
+        let (paragraph, lines) =
+            fit_groups(&groups, crate::node_input::TextWrapStyle::Balance, &meter);
         let mut actual = Vec::new();
         let mut widths = Vec::new();
         for line in &lines {
@@ -654,8 +655,11 @@ mod tests {
         groups.push("A ".repeat(80) + "A");
         groups.extend(vec!["AAA BB C".to_owned(); 8]);
         let meter = crate::accounting::Meter::for_test();
-        let (paragraph, lines) =
-            fit_groups(&groups, crate::TextWrapStyle::AvoidShortLastLine, &meter);
+        let (paragraph, lines) = fit_groups(
+            &groups,
+            crate::node_input::TextWrapStyle::AvoidShortLastLine,
+            &meter,
+        );
         let mut actual = Vec::new();
         let mut widths = Vec::new();
         for line in &lines {
@@ -710,7 +714,8 @@ mod tests {
         groups.push("A ".repeat(80) + "A");
         groups.extend(vec!["AAA BB C".to_owned(); 8]);
         let meter = crate::accounting::Meter::for_test();
-        let (paragraph, lines) = fit_groups(&groups, crate::TextWrapStyle::Pretty, &meter);
+        let (paragraph, lines) =
+            fit_groups(&groups, crate::node_input::TextWrapStyle::Pretty, &meter);
         assert!(
             lines
                 .iter()

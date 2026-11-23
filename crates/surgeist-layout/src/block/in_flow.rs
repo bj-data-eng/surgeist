@@ -6,8 +6,12 @@ use super::inline_run::{
 use super::scroll::BlockScrollContributions;
 use super::sizing::{maximum_size, minimum_size, preferred_size};
 use super::*;
-use crate::AxisSizingRequestOf;
 use crate::layout_math::resolve_length_or_zero;
+use crate::{
+    geometry::PhysicalAxis,
+    node_input::Display,
+    value::{AxisSizingRequestOf, SizingOperation},
+};
 
 mod child_compute;
 mod placement;
@@ -50,13 +54,13 @@ where
                 return input.metrics().line_extent() > Tree::Scalar::ZERO;
             }
         };
-        if style.display == crate::Display::None || style.common.position == Position::Absolute {
+        if style.display == Display::None || style.common.position == Position::Absolute {
             return false;
         }
         !style.float.is_none()
             || style.display.is_inline_level()
-            || style.display.inner_display() == crate::Display::Block
-            || tree.child_count(child) > 0 && style.display.inner_display() == crate::Display::Flex
+            || style.display.inner_display() == Display::Block
+            || tree.child_count(child) > 0 && style.display.inner_display() == Display::Flex
     })
 }
 
@@ -138,7 +142,7 @@ impl<Node, S: LayoutScalar> InFlowResult<Node, S> {
 }
 
 pub(super) struct InFlowPassContext<'a, S: LayoutScalar, Node> {
-    pub(super) inline_operation: crate::SizingOperation,
+    pub(super) inline_operation: SizingOperation,
     pub(super) inner_inline: Option<S>,
     pub(super) set_layout: bool,
     pub(super) inherited: Option<&'a InheritedFloatExclusions<S, Node>>,
@@ -185,7 +189,7 @@ where
     if !captured_start {
         match projection.kind() {
             InlineParticipantKindOf::Box(style) => {
-                if style.display == crate::Display::None {
+                if style.display == Display::None {
                     return Ok(InFlowChildStart::Hidden {
                         child,
                         compute_box: true,
@@ -260,7 +264,7 @@ where
 pub(super) fn child_margin_can_collapse_with_parent<S: LayoutScalar>(
     style: &BlockChildProjection<'_, S>,
 ) -> bool {
-    style.display == crate::Display::Block && style.common.position == Position::Relative
+    style.display == Display::Block && style.common.position == Position::Relative
 }
 
 pub(super) struct PreparedChild<S: LayoutScalar> {
@@ -275,7 +279,7 @@ pub(super) struct PreparedChild<S: LayoutScalar> {
 
 pub(super) struct ChildSizingContext<'flow, S: LayoutScalar> {
     pub(super) inner_size: Size<Option<S>>,
-    pub(super) request: crate::SizingRequestOf<S>,
+    pub(super) request: crate::value::SizingRequestOf<S>,
     pub(super) run_mode: RunMode,
     pub(super) axis: RequestedAxis,
     pub(super) first_in_flow: &'flow mut bool,
@@ -350,7 +354,7 @@ where
             .inline
             .space()
             .definite_size()
-            .map(crate::NonNegativeFiniteOf::get))
+            .map(crate::value::NonNegativeFiniteOf::get))
         .map(|inline| {
             crate::layout_math::remaining_available_extent(
                 inline,
@@ -366,7 +370,7 @@ where
         child_padding + child_border,
         child_flow_axes,
         child_logical_node_inner_size,
-        (child_logical_available.inline.operation() == crate::SizingOperation::Normal)
+        (child_logical_available.inline.operation() == SizingOperation::Normal)
             .then_some(available_child_inline)
             .flatten(),
     )?;
@@ -421,8 +425,8 @@ where
 {
     let parent = child_flow_axes.physical_size(parent);
     let inline_size = match child_flow_axes.inline_axis() {
-        crate::PhysicalAxis::Horizontal => &style.common.size.width,
-        crate::PhysicalAxis::Vertical => &style.common.size.height,
+        PhysicalAxis::Horizontal => &style.common.size.width,
+        PhysicalAxis::Vertical => &style.common.size.height,
     };
     let measured = tree.has_leaf_measurement(child);
     let ratio = if !measured && style.flex_owns_preferred_inline {
@@ -500,8 +504,8 @@ where
 pub(super) fn in_flow_child_block_request<S: LayoutScalar>(
     inherited: AxisSizingRequestOf<S>,
 ) -> AxisSizingRequestOf<S> {
-    if inherited.operation() == crate::SizingOperation::Normal {
-        inherited.with_space(crate::AvailableSpaceOf::Indefinite)
+    if inherited.operation() == SizingOperation::Normal {
+        inherited.with_space(crate::value::AvailableSpaceOf::Indefinite)
     } else {
         inherited
     }
@@ -513,15 +517,15 @@ pub(super) fn in_flow_child_inline_request<S: LayoutScalar>(
     child_flow_axes: crate::geometry::FlowAxes,
     available_inline: Option<S>,
     inherited: AxisSizingRequestOf<S>,
-) -> Result<AxisSizingRequestOf<S>, crate::LengthResolutionStatus<S>> {
+) -> Result<AxisSizingRequestOf<S>, crate::value::LengthResolutionStatus<S>> {
     let inline_size = match child_flow_axes.inline_axis() {
-        crate::PhysicalAxis::Horizontal => &style.common.size.width,
-        crate::PhysicalAxis::Vertical => &style.common.size.height,
+        PhysicalAxis::Horizontal => &style.common.size.width,
+        PhysicalAxis::Vertical => &style.common.size.height,
     };
     let request = if inline_size.is_min_content() {
-        inherited.with_operation(crate::SizingOperation::MinContent)
+        inherited.with_operation(SizingOperation::MinContent)
     } else if inline_size.is_max_content() && (measured || !style.flex_owns_preferred_inline) {
-        inherited.with_operation(crate::SizingOperation::MaxContent)
+        inherited.with_operation(SizingOperation::MaxContent)
     } else {
         inherited
     };
@@ -634,7 +638,7 @@ pub(super) fn in_flow_child_inline_offset<S: LayoutScalar>(
             TextAlign::LegacyLeft
                 if constants
                     .flow_axes
-                    .logical_axis_progression(crate::LogicalAxis::Inline)
+                    .logical_axis_progression(crate::geometry::LogicalAxis::Inline)
                     .is_decreasing() =>
             {
                 inline = inline + free_space;
@@ -642,7 +646,7 @@ pub(super) fn in_flow_child_inline_offset<S: LayoutScalar>(
             TextAlign::LegacyRight
                 if !constants
                     .flow_axes
-                    .logical_axis_progression(crate::LogicalAxis::Inline)
+                    .logical_axis_progression(crate::geometry::LogicalAxis::Inline)
                     .is_decreasing() =>
             {
                 inline = inline + free_space;

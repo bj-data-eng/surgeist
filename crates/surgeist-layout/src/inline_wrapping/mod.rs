@@ -1,5 +1,8 @@
 //! Layout-owned inline scope proof and ancestry-prefix break preference.
 
+use crate::error::{
+    LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation,
+};
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
@@ -212,10 +215,10 @@ pub(crate) struct NativePairProjection<Node> {
 pub(crate) enum NumericWrappingError {
     Geometry {
         value: f64,
-        reason: crate::LayoutTextNumericError,
+        reason: crate::error::LayoutTextNumericError,
     },
     Allocation,
-    Baseline(crate::InlineBaselineError),
+    Baseline(crate::node_input::InlineBaselineError),
     Group(crate::group_alignment::NumericError),
     Scope(WrappingScopeError),
     FeedbackCycle,
@@ -234,61 +237,59 @@ impl From<WrappingScopeError> for NumericWrappingError {
         Self::Scope(error)
     }
 }
-pub(crate) fn numeric_wrapping_error<Node, S: crate::LayoutScalar, M>(
+pub(crate) fn numeric_wrapping_error<Node, S: crate::scalar::LayoutScalar, M>(
     node: Node,
     error: NumericWrappingError,
-) -> crate::LayoutErrorOf<Node, S, M> {
+) -> LayoutErrorOf<Node, S, M> {
     match error {
-        NumericWrappingError::Geometry { value, reason } => crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(node),
-            crate::LayoutOperation::ChildLayout,
-            crate::LayoutErrorKindOf::TextNumeric { value, reason },
+        NumericWrappingError::Geometry { value, reason } => LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::ChildLayout,
+            LayoutErrorKindOf::TextNumeric { value, reason },
         ),
-        NumericWrappingError::Allocation => crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(node),
-            crate::LayoutOperation::InlineWrapping,
-            crate::LayoutErrorKindOf::Allocation,
+        NumericWrappingError::Allocation => LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::InlineWrapping,
+            LayoutErrorKindOf::Allocation,
         ),
-        NumericWrappingError::Baseline(error) => crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(node),
-            crate::LayoutOperation::ChildLayout,
-            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::InlineBaseline(
+        NumericWrappingError::Baseline(error) => LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::ChildLayout,
+            LayoutErrorKindOf::InvalidInput(crate::error::LayoutInvalidInputOf::InlineBaseline(
                 error,
             )),
         ),
         NumericWrappingError::Group(error) => error.layout(node),
         NumericWrappingError::Scope(error) => wrapping_error(node, error),
-        NumericWrappingError::FeedbackCycle => crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(node),
-            crate::LayoutOperation::InlineWrapping,
-            crate::LayoutErrorKindOf::InlineFeedbackCycle,
+        NumericWrappingError::FeedbackCycle => LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::InlineWrapping,
+            LayoutErrorKindOf::InlineFeedbackCycle,
         ),
-        NumericWrappingError::InvalidBalanceBasis => crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(node),
-            crate::LayoutOperation::InlineWrapping,
-            crate::LayoutErrorKindOf::InternalInvariant(
-                crate::LayoutInternalInvariant::InvalidInlineBalance,
+        NumericWrappingError::InvalidBalanceBasis => LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::InlineWrapping,
+            LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::InvalidInlineBalance),
+        ),
+        NumericWrappingError::InvalidTailBasis => LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::InlineWrapping,
+            LayoutErrorKindOf::InternalInvariant(
+                LayoutInternalInvariant::InvalidInlineTailSelection,
             ),
         ),
-        NumericWrappingError::InvalidTailBasis => crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(node),
-            crate::LayoutOperation::InlineWrapping,
-            crate::LayoutErrorKindOf::InternalInvariant(
-                crate::LayoutInternalInvariant::InvalidInlineTailSelection,
+        NumericWrappingError::InvalidPrettyBasis => LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::InlineWrapping,
+            LayoutErrorKindOf::InternalInvariant(
+                LayoutInternalInvariant::InvalidInlinePrettySelection,
             ),
         ),
-        NumericWrappingError::InvalidPrettyBasis => crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(node),
-            crate::LayoutOperation::InlineWrapping,
-            crate::LayoutErrorKindOf::InternalInvariant(
-                crate::LayoutInternalInvariant::InvalidInlinePrettySelection,
-            ),
-        ),
-        NumericWrappingError::InvalidAtomicReceiverBasis => crate::LayoutErrorOf::new(
-            crate::LayoutErrorSiteOf::Node(node),
-            crate::LayoutOperation::InlineWrapping,
-            crate::LayoutErrorKindOf::InternalInvariant(
-                crate::LayoutInternalInvariant::InvalidAtomicReceiverBasis,
+        NumericWrappingError::InvalidAtomicReceiverBasis => LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::InlineWrapping,
+            LayoutErrorKindOf::InternalInvariant(
+                LayoutInternalInvariant::InvalidAtomicReceiverBasis,
             ),
         ),
     }

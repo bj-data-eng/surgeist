@@ -2,7 +2,10 @@
 // Ordinary Grid shortage exposes the actual minimum contribution via the
 // following fixed track, without treating opaque content as a minimum.
 use super::*;
-use crate::LayoutTree;
+use crate::{
+    tree::LayoutTree,
+    value::{NearestScrollportOf, NonNegativeFiniteOf, OrthogonalFallbackLimitOf},
+};
 
 #[derive(Clone, Copy, Debug)]
 enum Case {
@@ -147,8 +150,8 @@ fn qualify_leaf<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>, case: Case) {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -173,25 +176,28 @@ fn minimum_survives<S: LayoutScalar>(case: Case, overflow: Overflow) {
     let batch = compute_layout(&tree, 0, {
         let axes = Size::new(
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(s(5.0)).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(s(5.0)).unwrap()),
                 SizingOperation::Normal,
             ),
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(s(30.0)).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(s(30.0)).unwrap()),
                 SizingOperation::Normal,
             ),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })
@@ -397,8 +403,8 @@ fn qualify_row_leaf<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) {
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
         ),
@@ -418,25 +424,28 @@ fn row_minimum_survives<S: LayoutScalar>(overflow: Overflow) {
     let batch = compute_layout(&tree, 0, {
         let axes = Size::new(
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(s(30.0)).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(s(30.0)).unwrap()),
                 SizingOperation::Normal,
             ),
             AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(s(5.0)).unwrap()),
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(s(5.0)).unwrap()),
                 SizingOperation::Normal,
             ),
         );
         let definite = axes.map(|axis| axis.space().definite_size());
-        crate::LayoutRootRequestOf::standalone(
+        crate::output::LayoutRootRequestOf::standalone(
             SizingRequestOf::new(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
-            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             definite,
         )
     })

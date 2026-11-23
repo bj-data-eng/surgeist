@@ -1,18 +1,22 @@
 use super::*;
 use crate::{
-    AtomicInlineParticipation, InlineBaselineContext, InlineBreakOpportunity, LayoutErrorKindOf,
-    LayoutErrorSiteOf, LayoutMissingContext, LayoutOperation, MinSizeOf, PreferredSizeOf,
-    VerticalAlignOf,
+    error::{LayoutErrorKindOf, LayoutErrorSiteOf, LayoutMissingContext, LayoutOperation},
+    node_input::{
+        AtomicInlineParticipation, InlineBaselineContext, InlineBreakOpportunity, TextWrapStyle,
+        VerticalAlignOf,
+    },
+    output::{BaselineFactOf, SourceIndex},
+    sizing::{MinSizeOf, PreferredSizeOf},
 };
 use surgeist_text::font::FontBaseline;
 
 fn named_receiver_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
-    named_receiver_chain_with_wrap_style(depth, crate::TextWrapStyle::Auto)
+    named_receiver_chain_with_wrap_style(depth, TextWrapStyle::Auto)
 }
 
 fn named_receiver_chain_with_wrap_style<S: LayoutScalar>(
     depth: u32,
-    wrap_style: crate::TextWrapStyle,
+    wrap_style: TextWrapStyle,
 ) -> PublicLayoutTreeOf<S> {
     let preferred = |value| PreferredSizeOf::px(S::from_f64(value));
     let named = InlineBaselineContext::Named(FontBaseline::Alphabetic);
@@ -67,7 +71,7 @@ fn named_receiver_chain_with_wrap_style<S: LayoutScalar>(
                         display: Display::Grid,
                         size: Size::new(preferred(13.0), PreferredSizeOf::AUTO),
                         min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
-                        align_items: Some(crate::AlignItems::Start),
+                        align_items: Some(crate::node_input::AlignItems::Start),
                         ..NodeInputOf::default()
                     },
                 )
@@ -104,20 +108,17 @@ fn assert_terminal_receiver<S: LayoutScalar>() {
         );
         assert_eq!(
             output.location,
-            crate::Point::new(S::ZERO, S::from_f64(top))
+            crate::geometry::Point::new(S::ZERO, S::from_f64(top))
         );
-        assert_eq!(output.source_index, crate::SourceIndex::new(source));
+        assert_eq!(output.source_index, SourceIndex::new(source));
     }
 }
 
 fn assert_named_refusal<S: LayoutScalar>(depth: u32) {
-    assert_named_refusal_with_wrap_style::<S>(depth, crate::TextWrapStyle::Auto);
+    assert_named_refusal_with_wrap_style::<S>(depth, TextWrapStyle::Auto);
 }
 
-fn assert_named_refusal_with_wrap_style<S: LayoutScalar>(
-    depth: u32,
-    wrap_style: crate::TextWrapStyle,
-) {
+fn assert_named_refusal_with_wrap_style<S: LayoutScalar>(depth: u32, wrap_style: TextWrapStyle) {
     let tree = named_receiver_chain_with_wrap_style::<S>(depth, wrap_style);
     let error =
         compute_layout(&tree, 0, standalone()).expect_err("Grid supplies no named baseline");
@@ -162,12 +163,12 @@ fn deep_named_receiver_returns_typed_refusal_f64() {
 }
 
 fn assert_named_receiver_geometry<S: LayoutScalar>(depth: u32) -> usize {
-    assert_named_receiver_geometry_with_wrap_style::<S>(depth, crate::TextWrapStyle::Auto)
+    assert_named_receiver_geometry_with_wrap_style::<S>(depth, TextWrapStyle::Auto)
 }
 
 fn assert_named_receiver_geometry_with_wrap_style<S: LayoutScalar>(
     depth: u32,
-    wrap_style: crate::TextWrapStyle,
+    wrap_style: TextWrapStyle,
 ) -> usize {
     let first_sibling = 3 * depth;
     let first_control = first_sibling + depth;
@@ -176,13 +177,14 @@ fn assert_named_receiver_geometry_with_wrap_style<S: LayoutScalar>(
     for layer in 0..depth - 1 {
         let child = 3 * layer + 1;
         let control = first_control + layer;
-        tree =
-            tree.children(child, [child + 1, control]).input(
-                control,
-                crate::LayoutInputOf::line_break(crate::LineBreakInputOf::new().with_metrics(
-                    crate::InlineMetricsOf::try_new(named, S::ZERO, S::ZERO).unwrap(),
-                )),
-            );
+        tree = tree.children(child, [child + 1, control]).input(
+            control,
+            crate::node_input::LayoutInputOf::line_break(
+                crate::node_input::LineBreakInputOf::new().with_metrics(
+                    crate::node_input::InlineMetricsOf::try_new(named, S::ZERO, S::ZERO).unwrap(),
+                ),
+            ),
+        );
     }
     tree.reset_measurement_queries();
     let batch =
@@ -205,12 +207,9 @@ fn assert_named_receiver_geometry_with_wrap_style<S: LayoutScalar>(
         );
         assert_eq!(
             output.location,
-            crate::Point::new(S::ZERO, S::from_f64(if sibling { 7.0 } else { 0.0 }))
+            crate::geometry::Point::new(S::ZERO, S::from_f64(if sibling { 7.0 } else { 0.0 }))
         );
-        assert_eq!(
-            output.source_index,
-            crate::SourceIndex::new(usize::from(sibling))
-        );
+        assert_eq!(output.source_index, SourceIndex::new(usize::from(sibling)));
     }
     for node in core::iter::once(0).chain((0..depth - 1).map(|layer| 3 * layer + 3)) {
         let output = batch
@@ -220,13 +219,13 @@ fn assert_named_receiver_geometry_with_wrap_style<S: LayoutScalar>(
             .unwrap()
             .final_output();
         let pair = output.named_baselines.get(FontBaseline::Alphabetic);
-        assert_eq!(pair.first(), crate::BaselineFactOf::Unknown);
+        assert_eq!(pair.first(), BaselineFactOf::Unknown);
         // Two 7-unit lines put the receiving line's Alphabetic baseline at14.
         assert_eq!(
             pair.last(),
-            crate::BaselineFactOf::Available(
-                crate::BaselineCoordinateOf::try_new(
-                    crate::PhysicalAxis::Vertical,
+            BaselineFactOf::Available(
+                crate::output::BaselineCoordinateOf::try_new(
+                    crate::geometry::PhysicalAxis::Vertical,
                     S::from_f64(14.0)
                 )
                 .unwrap()
@@ -240,8 +239,8 @@ fn assert_named_receiver_geometry_with_wrap_style<S: LayoutScalar>(
         .unwrap()
         .final_output();
     let pair = terminal.named_baselines.get(FontBaseline::Alphabetic);
-    assert_eq!(pair.first(), crate::BaselineFactOf::Absent);
-    assert_eq!(pair.last(), crate::BaselineFactOf::Absent);
+    assert_eq!(pair.first(), BaselineFactOf::Absent);
+    assert_eq!(pair.last(), BaselineFactOf::Absent);
     for layer in 0..depth - 1 {
         let child = 3 * layer + 1;
         let output = batch
@@ -254,9 +253,9 @@ fn assert_named_receiver_geometry_with_wrap_style<S: LayoutScalar>(
         // the atom's last Alphabetic baseline at 7, without adding box height.
         assert_eq!(
             output.named_baselines.get(FontBaseline::Alphabetic).last(),
-            crate::BaselineFactOf::Available(
-                crate::BaselineCoordinateOf::try_new(
-                    crate::PhysicalAxis::Vertical,
+            BaselineFactOf::Available(
+                crate::output::BaselineCoordinateOf::try_new(
+                    crate::geometry::PhysicalAxis::Vertical,
                     S::from_f64(7.0)
                 )
                 .unwrap()
@@ -267,7 +266,7 @@ fn assert_named_receiver_geometry_with_wrap_style<S: LayoutScalar>(
             .unwrap()
             .non_box()
             .unwrap();
-        assert_eq!(control.source_index(), crate::SourceIndex::new(1));
+        assert_eq!(control.source_index(), SourceIndex::new(1));
     }
     tree.measurement_queries()
 }
@@ -344,10 +343,10 @@ fn shallow_balanced_named_receiver_preserves_geometry_and_refusal() {
     on_bounded_stack(
         "engine::depth_tests::named_inline::shallow_balanced_named_receiver_preserves_geometry_and_refusal",
         || {
-            assert_named_receiver_geometry_with_wrap_style::<f32>(2, crate::TextWrapStyle::Balance);
-            assert_named_receiver_geometry_with_wrap_style::<f64>(2, crate::TextWrapStyle::Balance);
-            assert_named_refusal_with_wrap_style::<f32>(2, crate::TextWrapStyle::Balance);
-            assert_named_refusal_with_wrap_style::<f64>(2, crate::TextWrapStyle::Balance);
+            assert_named_receiver_geometry_with_wrap_style::<f32>(2, TextWrapStyle::Balance);
+            assert_named_receiver_geometry_with_wrap_style::<f64>(2, TextWrapStyle::Balance);
+            assert_named_refusal_with_wrap_style::<f32>(2, TextWrapStyle::Balance);
+            assert_named_refusal_with_wrap_style::<f64>(2, TextWrapStyle::Balance);
         },
     );
 }
@@ -357,10 +356,7 @@ fn deep_balanced_named_receiver_publishes_actual_named_lines_f32() {
     on_bounded_stack(
         "engine::depth_tests::named_inline::deep_balanced_named_receiver_publishes_actual_named_lines_f32",
         || {
-            assert_named_receiver_geometry_with_wrap_style::<f32>(
-                24,
-                crate::TextWrapStyle::Balance,
-            );
+            assert_named_receiver_geometry_with_wrap_style::<f32>(24, TextWrapStyle::Balance);
         },
     );
 }
@@ -370,10 +366,7 @@ fn deep_balanced_named_receiver_publishes_actual_named_lines_f64() {
     on_bounded_stack(
         "engine::depth_tests::named_inline::deep_balanced_named_receiver_publishes_actual_named_lines_f64",
         || {
-            assert_named_receiver_geometry_with_wrap_style::<f64>(
-                24,
-                crate::TextWrapStyle::Balance,
-            );
+            assert_named_receiver_geometry_with_wrap_style::<f64>(24, TextWrapStyle::Balance);
         },
     );
 }
@@ -382,7 +375,7 @@ fn deep_balanced_named_receiver_publishes_actual_named_lines_f64() {
 fn deep_balanced_named_receiver_returns_typed_refusal_f32() {
     on_bounded_stack(
         "engine::depth_tests::named_inline::deep_balanced_named_receiver_returns_typed_refusal_f32",
-        || assert_named_refusal_with_wrap_style::<f32>(24, crate::TextWrapStyle::Balance),
+        || assert_named_refusal_with_wrap_style::<f32>(24, TextWrapStyle::Balance),
     );
 }
 
@@ -390,7 +383,7 @@ fn deep_balanced_named_receiver_returns_typed_refusal_f32() {
 fn deep_balanced_named_receiver_returns_typed_refusal_f64() {
     on_bounded_stack(
         "engine::depth_tests::named_inline::deep_balanced_named_receiver_returns_typed_refusal_f64",
-        || assert_named_refusal_with_wrap_style::<f64>(24, crate::TextWrapStyle::Balance),
+        || assert_named_refusal_with_wrap_style::<f64>(24, TextWrapStyle::Balance),
     );
 }
 
@@ -404,20 +397,14 @@ fn shallow_tail_named_receiver_preserves_geometry_and_refusal() {
         || {
             assert_named_receiver_geometry_with_wrap_style::<f32>(
                 2,
-                crate::TextWrapStyle::AvoidShortLastLine,
+                TextWrapStyle::AvoidShortLastLine,
             );
             assert_named_receiver_geometry_with_wrap_style::<f64>(
                 2,
-                crate::TextWrapStyle::AvoidShortLastLine,
+                TextWrapStyle::AvoidShortLastLine,
             );
-            assert_named_refusal_with_wrap_style::<f32>(
-                2,
-                crate::TextWrapStyle::AvoidShortLastLine,
-            );
-            assert_named_refusal_with_wrap_style::<f64>(
-                2,
-                crate::TextWrapStyle::AvoidShortLastLine,
-            );
+            assert_named_refusal_with_wrap_style::<f32>(2, TextWrapStyle::AvoidShortLastLine);
+            assert_named_refusal_with_wrap_style::<f64>(2, TextWrapStyle::AvoidShortLastLine);
         },
     );
 }
@@ -429,7 +416,7 @@ fn deep_tail_named_receiver_publishes_actual_named_lines_f32() {
         || {
             assert_named_receiver_geometry_with_wrap_style::<f32>(
                 24,
-                crate::TextWrapStyle::AvoidShortLastLine,
+                TextWrapStyle::AvoidShortLastLine,
             );
         },
     );
@@ -442,7 +429,7 @@ fn deep_tail_named_receiver_publishes_actual_named_lines_f64() {
         || {
             assert_named_receiver_geometry_with_wrap_style::<f64>(
                 24,
-                crate::TextWrapStyle::AvoidShortLastLine,
+                TextWrapStyle::AvoidShortLastLine,
             );
         },
     );
@@ -452,12 +439,7 @@ fn deep_tail_named_receiver_publishes_actual_named_lines_f64() {
 fn deep_tail_named_receiver_returns_typed_refusal_f32() {
     on_bounded_stack(
         "engine::depth_tests::named_inline::deep_tail_named_receiver_returns_typed_refusal_f32",
-        || {
-            assert_named_refusal_with_wrap_style::<f32>(
-                24,
-                crate::TextWrapStyle::AvoidShortLastLine,
-            )
-        },
+        || assert_named_refusal_with_wrap_style::<f32>(24, TextWrapStyle::AvoidShortLastLine),
     );
 }
 
@@ -465,12 +447,7 @@ fn deep_tail_named_receiver_returns_typed_refusal_f32() {
 fn deep_tail_named_receiver_returns_typed_refusal_f64() {
     on_bounded_stack(
         "engine::depth_tests::named_inline::deep_tail_named_receiver_returns_typed_refusal_f64",
-        || {
-            assert_named_refusal_with_wrap_style::<f64>(
-                24,
-                crate::TextWrapStyle::AvoidShortLastLine,
-            )
-        },
+        || assert_named_refusal_with_wrap_style::<f64>(24, TextWrapStyle::AvoidShortLastLine),
     );
 }
 
@@ -482,10 +459,10 @@ fn shallow_pretty_named_receiver_preserves_geometry_and_refusal() {
     on_bounded_stack(
         "engine::depth_tests::named_inline::shallow_pretty_named_receiver_preserves_geometry_and_refusal",
         || {
-            assert_named_receiver_geometry_with_wrap_style::<f32>(2, crate::TextWrapStyle::Pretty);
-            assert_named_receiver_geometry_with_wrap_style::<f64>(2, crate::TextWrapStyle::Pretty);
-            assert_named_refusal_with_wrap_style::<f32>(2, crate::TextWrapStyle::Pretty);
-            assert_named_refusal_with_wrap_style::<f64>(2, crate::TextWrapStyle::Pretty);
+            assert_named_receiver_geometry_with_wrap_style::<f32>(2, TextWrapStyle::Pretty);
+            assert_named_receiver_geometry_with_wrap_style::<f64>(2, TextWrapStyle::Pretty);
+            assert_named_refusal_with_wrap_style::<f32>(2, TextWrapStyle::Pretty);
+            assert_named_refusal_with_wrap_style::<f64>(2, TextWrapStyle::Pretty);
         },
     );
 }
@@ -495,7 +472,7 @@ fn deep_pretty_named_receiver_publishes_actual_named_lines_f32() {
     on_bounded_stack(
         "engine::depth_tests::named_inline::deep_pretty_named_receiver_publishes_actual_named_lines_f32",
         || {
-            assert_named_receiver_geometry_with_wrap_style::<f32>(24, crate::TextWrapStyle::Pretty);
+            assert_named_receiver_geometry_with_wrap_style::<f32>(24, TextWrapStyle::Pretty);
         },
     );
 }
@@ -505,7 +482,7 @@ fn deep_pretty_named_receiver_publishes_actual_named_lines_f64() {
     on_bounded_stack(
         "engine::depth_tests::named_inline::deep_pretty_named_receiver_publishes_actual_named_lines_f64",
         || {
-            assert_named_receiver_geometry_with_wrap_style::<f64>(24, crate::TextWrapStyle::Pretty);
+            assert_named_receiver_geometry_with_wrap_style::<f64>(24, TextWrapStyle::Pretty);
         },
     );
 }
@@ -514,7 +491,7 @@ fn deep_pretty_named_receiver_publishes_actual_named_lines_f64() {
 fn deep_pretty_named_receiver_returns_typed_refusal_f32() {
     on_bounded_stack(
         "engine::depth_tests::named_inline::deep_pretty_named_receiver_returns_typed_refusal_f32",
-        || assert_named_refusal_with_wrap_style::<f32>(24, crate::TextWrapStyle::Pretty),
+        || assert_named_refusal_with_wrap_style::<f32>(24, TextWrapStyle::Pretty),
     );
 }
 
@@ -522,6 +499,6 @@ fn deep_pretty_named_receiver_returns_typed_refusal_f32() {
 fn deep_pretty_named_receiver_returns_typed_refusal_f64() {
     on_bounded_stack(
         "engine::depth_tests::named_inline::deep_pretty_named_receiver_returns_typed_refusal_f64",
-        || assert_named_refusal_with_wrap_style::<f64>(24, crate::TextWrapStyle::Pretty),
+        || assert_named_refusal_with_wrap_style::<f64>(24, TextWrapStyle::Pretty),
     );
 }

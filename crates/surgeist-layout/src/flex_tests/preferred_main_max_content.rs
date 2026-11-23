@@ -1129,7 +1129,7 @@ fn nested_ratio_flex<S: LayoutScalar>(
                 align_items: Some(AlignItems::Start),
                 aspect_ratio: AspectRatioOf::new(n(ratio)),
                 min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
-                flex_grow: crate::FlexGrowOf::try_new(n(1.0)).unwrap(),
+                flex_grow: crate::node_input::FlexGrowOf::try_new(n(1.0)).unwrap(),
                 ..NodeInputOf::default()
             },
         )

@@ -1,8 +1,17 @@
 use crate::{
-    Display, FlowAxes, FragmentationBreakControl, FragmentationBreakInside, FragmentationRole,
-    LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutOperation, LayoutResultOf,
-    LayoutScalar, LayoutTree, LayoutUnsupportedCapability, LengthAutoOf, LengthOf, NodeInputOf,
-    Position, SourceIndex,
+    error::{
+        LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutOperation, LayoutResultOf,
+        LayoutUnsupportedCapability,
+    },
+    fragmentation::input::{
+        FragmentationBreakControl, FragmentationBreakInside, FragmentationRole,
+    },
+    geometry::{Edges, FlowAxes, PhysicalSide},
+    node_input::{Display, NodeInputOf, Position},
+    output::SourceIndex,
+    scalar::LayoutScalar,
+    tree::LayoutTree,
+    value::{LengthAutoOf, LengthOf},
 };
 
 pub(super) struct SourceNode<Node> {
@@ -10,7 +19,7 @@ pub(super) struct SourceNode<Node> {
     pub(super) parent: Option<usize>,
     pub(super) children: Vec<usize>,
     pub(super) source_index: SourceIndex,
-    pub(super) role: crate::BlockGeneration,
+    pub(super) role: crate::node_input::BlockGeneration,
     pub(super) first: usize,
     pub(super) end: usize,
     pub(super) atomic_owner: Option<usize>,
@@ -82,12 +91,12 @@ impl<Node: Copy + Eq> Inventory<Node> {
                     // Both-axis size containment is monolithic. Inline-only
                     // containment retains ordinary block-axis fragmentation.
                     || crate::engine::containment::size_containment(style)
-                        == crate::SizeContainment::BothAxes)
+                        == crate::node_input::SizeContainment::BothAxes)
                     .then_some(index)
             });
             if index == 0
-                && (style.margin != crate::Edges::all(LengthAutoOf::ZERO)
-                    || style.inset != crate::Edges::all(LengthAutoOf::AUTO)
+                && (style.margin != Edges::all(LengthAutoOf::ZERO)
+                    || style.inset != Edges::all(LengthAutoOf::AUTO)
                     || hidden
                     || own_axes != axes
                     || !axes.logical_size(style.size.clone()).block.is_auto())
@@ -209,30 +218,27 @@ impl<Node: Copy + Eq> Inventory<Node> {
 /// An immutable fragment-window projection of the actual source. Only the
 /// selected source interval and Slice edge/margin rules differ; Block still
 /// owns sizing, margin collapse, leaf invocation, placement and baseline facts.
-pub(super) fn clear_edge<S: LayoutScalar>(
-    edges: &mut crate::Edges<LengthOf<S>>,
-    side: crate::PhysicalSide,
-) {
+pub(super) fn clear_edge<S: LayoutScalar>(edges: &mut Edges<LengthOf<S>>, side: PhysicalSide) {
     match side {
-        crate::PhysicalSide::Left => edges.left = LengthOf::ZERO,
-        crate::PhysicalSide::Right => edges.right = LengthOf::ZERO,
-        crate::PhysicalSide::Top => edges.top = LengthOf::ZERO,
-        crate::PhysicalSide::Bottom => edges.bottom = LengthOf::ZERO,
+        PhysicalSide::Left => edges.left = LengthOf::ZERO,
+        PhysicalSide::Right => edges.right = LengthOf::ZERO,
+        PhysicalSide::Top => edges.top = LengthOf::ZERO,
+        PhysicalSide::Bottom => edges.bottom = LengthOf::ZERO,
     }
 }
 pub(super) fn clear_margin<S: LayoutScalar>(
-    edges: &mut crate::Edges<LengthAutoOf<S>>,
-    side: crate::PhysicalSide,
+    edges: &mut Edges<LengthAutoOf<S>>,
+    side: PhysicalSide,
 ) {
     match side {
-        crate::PhysicalSide::Left => edges.left = LengthAutoOf::ZERO,
-        crate::PhysicalSide::Right => edges.right = LengthAutoOf::ZERO,
-        crate::PhysicalSide::Top => edges.top = LengthAutoOf::ZERO,
-        crate::PhysicalSide::Bottom => edges.bottom = LengthAutoOf::ZERO,
+        PhysicalSide::Left => edges.left = LengthAutoOf::ZERO,
+        PhysicalSide::Right => edges.right = LengthAutoOf::ZERO,
+        PhysicalSide::Top => edges.top = LengthAutoOf::ZERO,
+        PhysicalSide::Bottom => edges.bottom = LengthAutoOf::ZERO,
     }
 }
 
-fn preferred_intrinsic<S: LayoutScalar>(value: &crate::PreferredSizeOf<S>) -> bool {
+fn preferred_intrinsic<S: LayoutScalar>(value: &crate::sizing::PreferredSizeOf<S>) -> bool {
     use crate::sizing::{PreferredSizeCalcBasis as B, PreferredSizeView as V};
     match value.view() {
         V::MinContent | V::MaxContent | V::FitContent | V::FitContentFunction(_) | V::Contain => {
@@ -248,7 +254,7 @@ fn preferred_intrinsic<S: LayoutScalar>(value: &crate::PreferredSizeOf<S>) -> bo
         _ => false,
     }
 }
-fn minimum_intrinsic<S: LayoutScalar>(value: &crate::MinSizeOf<S>) -> bool {
+fn minimum_intrinsic<S: LayoutScalar>(value: &crate::sizing::MinSizeOf<S>) -> bool {
     use crate::sizing::{MinSizeCalcBasis as B, MinSizeView as V};
     match value.view() {
         V::MinContent | V::MaxContent | V::FitContent | V::FitContentFunction(_) | V::Contain => {
@@ -264,7 +270,7 @@ fn minimum_intrinsic<S: LayoutScalar>(value: &crate::MinSizeOf<S>) -> bool {
         _ => false,
     }
 }
-fn maximum_intrinsic<S: LayoutScalar>(value: &crate::MaxSizeOf<S>) -> bool {
+fn maximum_intrinsic<S: LayoutScalar>(value: &crate::sizing::MaxSizeOf<S>) -> bool {
     use crate::sizing::{MaxSizeCalcBasis as B, MaxSizeView as V};
     match value.view() {
         V::MinContent | V::MaxContent | V::FitContent | V::FitContentFunction(_) | V::Contain => {
@@ -298,11 +304,11 @@ pub(super) fn unsupported_continuation<S: LayoutScalar>(
     let minimum = own_axes.logical_size(style.min_size.clone()).block;
     let maximum = own_axes.logical_size(style.max_size.clone()).block;
     let maximum_supported = match profile {
-        ContinuationProfile::Minimum => maximum == crate::MaxSizeOf::NONE,
+        ContinuationProfile::Minimum => maximum == crate::sizing::MaxSizeOf::NONE,
         ContinuationProfile::Maximum => matches!(
             crate::sizing::resolve::fixed_fallback_maximum(
                 &maximum,
-                crate::SizingAlgorithm::Block,
+                crate::error::SizingAlgorithm::Block,
                 own_axes.block_axis(),
                 None,
             )?,
@@ -327,8 +333,8 @@ pub(super) fn unsupported_continuation<S: LayoutScalar>(
                 .is_max_content())
         || minimum_intrinsic(&own_axes.logical_size(style.min_size.clone()).inline)
         || maximum_intrinsic(&own_axes.logical_size(style.max_size.clone()).inline)
-        || style.overflow.x() != crate::Overflow::Visible
-        || style.overflow.y() != crate::Overflow::Visible
+        || style.overflow.x() != crate::node_input::Overflow::Visible
+        || style.overflow.y() != crate::node_input::Overflow::Visible
         || (own_axes.block_axis() == axes.block_axis()
             && own_axes.block_start() != axes.block_start()))
 }

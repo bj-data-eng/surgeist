@@ -1,7 +1,9 @@
 //! Explicit host facts for unit-test roots. No old availability-tag conversion.
 use crate::{
-    AxisSizingRequestOf, FlowAxes, LayoutRootRequestOf, LayoutScalar, NonNegativeFiniteOf,
-    OrthogonalFallbackOf, Size, SizingRequestOf,
+    geometry::{FlowAxes, Size},
+    output::LayoutRootRequestOf,
+    scalar::LayoutScalar,
+    value::{AxisSizingRequestOf, NonNegativeFiniteOf, OrthogonalFallbackOf, SizingRequestOf},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]

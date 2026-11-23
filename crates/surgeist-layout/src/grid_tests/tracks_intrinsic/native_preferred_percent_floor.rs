@@ -2,6 +2,7 @@
 use super::*;
 use crate::engine::contracts::Compute;
 use crate::test_support::readback::{self, Phase};
+use crate::value::{NearestScrollportOf, OrthogonalFallbackLimitOf, TrackFlexFactorOf};
 
 fn percent_subject<S: LayoutScalar>(preferred: PreferredSizeOf<S>) -> DistinctLeaf<S> {
     let mut tree = source::<S>(100.0, GrowthCap::MaxContent, Overflow::Clip);
@@ -26,7 +27,7 @@ fn intrinsic_preference_owns_percent_basis<S: LayoutScalar>(
     let available = Size::new(
         AxisSizingRequestOf::new(
             AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
             ),
             SizingOperation::Normal,
         ),
@@ -46,8 +47,8 @@ fn intrinsic_preference_owns_percent_basis<S: LayoutScalar>(
             available,
             OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     );
@@ -75,8 +76,8 @@ fn intrinsic_preference_owns_percent_basis<S: LayoutScalar>(
                 axes,
                 OrthogonalFallbackOf::new(
                     definite,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
                 ),
             ),
             crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
@@ -148,7 +149,7 @@ fn cyclic_percent_root_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
     let px = S::from_f64;
     let axes = Size::new(200.0, 100.0).map(|value| {
         AxisSizingRequestOf::new(
-            AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(px(value)).unwrap()),
+            AvailableSpaceOf::Definite(crate::value::NonNegativeFiniteOf::new(px(value)).unwrap()),
             SizingOperation::Normal,
         )
     });
@@ -158,8 +159,8 @@ fn cyclic_percent_root_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
             axes,
             OrthogonalFallbackOf::new(
                 definite,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
@@ -169,8 +170,7 @@ fn cyclic_percent_root_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
 
 fn assert_intrinsic_grid_percent_with_flex_sibling<S: LayoutScalar>() {
     let px = S::from_f64;
-    let fraction =
-        |value| TrackComponentOf::flex(crate::TrackFlexFactorOf::try_new(px(value)).unwrap());
+    let fraction = |value| TrackComponentOf::flex(TrackFlexFactorOf::try_new(px(value)).unwrap());
     let request = cyclic_percent_root_request::<S>();
     let mut differences = Vec::new();
     for (display, preferred, trailing, width, marker) in [
@@ -274,7 +274,7 @@ fn assert_intrinsic_grid_row_percent_with_flex_sibling<S: LayoutScalar>() {
     for (preferred, trailing, height, marker) in [
         (
             PreferredSizeOf::AUTO,
-            TrackComponentOf::flex(crate::TrackFlexFactorOf::try_new(S::ONE).unwrap()),
+            TrackComponentOf::flex(TrackFlexFactorOf::try_new(S::ONE).unwrap()),
             40.0,
             20.0,
         ),
@@ -286,7 +286,7 @@ fn assert_intrinsic_grid_row_percent_with_flex_sibling<S: LayoutScalar>() {
         ),
         (
             PreferredSizeOf::px(px(100.0)),
-            TrackComponentOf::flex(crate::TrackFlexFactorOf::try_new(S::ONE).unwrap()),
+            TrackComponentOf::flex(TrackFlexFactorOf::try_new(S::ONE).unwrap()),
             100.0,
             50.0,
         ),

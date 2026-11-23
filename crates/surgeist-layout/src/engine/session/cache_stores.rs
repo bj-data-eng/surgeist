@@ -1,6 +1,6 @@
 use std::collections::{HashMap, TryReserveError};
 
-use crate::{LayoutCacheStoreEntryOf, LayoutScalar};
+use crate::{output::LayoutCacheStoreEntryOf, scalar::LayoutScalar};
 
 struct Store<Node, S: LayoutScalar> {
     order: usize,

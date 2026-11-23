@@ -1,4 +1,10 @@
-use crate::{LayoutErrorOf, LayoutResultOf, LayoutScalar};
+use crate::{
+    block_fragmentation::input::LayoutTargetBasis,
+    error::{LayoutErrorOf, LayoutResultOf},
+    output::LayoutOutputEntryOf,
+    scalar::LayoutScalar,
+    tree::LayoutTree,
+};
 
 /// Identifies an owned request held by the current scope driver.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -81,7 +87,7 @@ mod tests;
 pub(crate) struct Dispatch<Node, S: LayoutScalar> {
     pub(crate) scope: ReceiptId,
     pub(crate) view: SourceViewId,
-    pub(crate) target: crate::LayoutTargetBasis,
+    pub(crate) target: LayoutTargetBasis,
     pub(crate) owners: std::sync::Arc<[Node]>,
     pub(crate) paths: std::sync::Arc<[Node]>,
     pub(crate) ready: std::rc::Rc<std::cell::RefCell<Vec<Ready<Node, S>>>>,
@@ -92,7 +98,7 @@ pub(crate) struct Dispatch<Node, S: LayoutScalar> {
 /// They are discarded after placement is resolved, not retained per descendant.
 pub(crate) struct Frame<Node, S: LayoutScalar> {
     pub(crate) node: Node,
-    pub(crate) input: crate::ComputeInputOf<S>,
+    pub(crate) input: crate::output::ComputeInputOf<S>,
     pub(crate) entry: Option<crate::block::scope::Pending<Node, S>>,
 }
 pub(crate) struct Request<Node, S: LayoutScalar> {
@@ -124,7 +130,7 @@ pub(crate) struct Ready<Node, S: LayoutScalar> {
     pub(crate) view: SourceViewId,
     pub(crate) projection: Option<ProductionId>,
     pub(crate) entry: crate::block::scope::Pending<Node, S>,
-    pub(crate) output: crate::ComputeOutputOf<S>,
+    pub(crate) output: crate::output::ComputeOutputOf<S>,
 }
 
 /// A completed producer call, retaining boundary values that influence Block
@@ -132,32 +138,32 @@ pub(crate) struct Ready<Node, S: LayoutScalar> {
 #[derive(Clone, Copy)]
 pub(crate) struct Body<Node, S: LayoutScalar> {
     pub(crate) node: Node,
-    pub(crate) input: crate::ComputeInputOf<S>,
-    pub(crate) output: crate::ComputeOutputOf<S>,
+    pub(crate) input: crate::output::ComputeInputOf<S>,
+    pub(crate) output: crate::output::ComputeOutputOf<S>,
 }
 
 /// Unpublished source-local production, without an invented principal box or
 /// a premature rounding phase. Child scopes remain references by receipt ID.
 pub(crate) struct Packet<Node, S: LayoutScalar> {
-    pub(crate) target: crate::LayoutTargetBasis,
-    pub(crate) entries: Vec<crate::LayoutOutputEntryOf<Node, S>>,
+    pub(crate) target: LayoutTargetBasis,
+    pub(crate) entries: Vec<LayoutOutputEntryOf<Node, S>>,
     pub(crate) margins: crate::block::fragment_margins::State<Node, S>,
     pub(crate) bodies: Vec<Body<Node, S>>,
     pub(crate) projections: Vec<(Node, ProductionId)>,
     pub(crate) receipts: Vec<ReceiptId>,
-    pub(crate) clears: Vec<crate::LayoutCacheClearEntry<Node>>,
+    pub(crate) clears: Vec<crate::output::LayoutCacheClearEntry<Node>>,
 }
 
 pub(crate) struct FinalPacket<Node, S: LayoutScalar> {
-    pub(crate) target: crate::LayoutTargetBasis,
-    pub(crate) entries: Vec<crate::BoxGeometryPairOf<Node, S>>,
+    pub(crate) target: LayoutTargetBasis,
+    pub(crate) entries: Vec<crate::block_fragmentation::BoxGeometryPairOf<Node, S>>,
     pub(crate) anchors: Vec<(Node, super::FragmentAnchor<S>)>,
     pub(crate) receipts: Vec<ReceiptId>,
-    pub(crate) clears: Vec<crate::LayoutCacheClearEntry<Node>>,
+    pub(crate) clears: Vec<crate::output::LayoutCacheClearEntry<Node>>,
 }
 
 impl<Node: Copy + Eq, S: LayoutScalar> Packet<Node, S> {
-    pub(crate) fn round<Tree: crate::LayoutTree<Node = Node, Scalar = S>>(
+    pub(crate) fn round<Tree: LayoutTree<Node = Node, Scalar = S>>(
         self,
         tree: &Tree,
         roots: &[(Node, super::FragmentAnchor<S>)],
@@ -184,16 +190,18 @@ impl<Node: Copy + Eq, S: LayoutScalar> Packet<Node, S> {
                     .iter()
                     .find(|entry| entry.node() == unrounded.node())
                     .copied()
-                    .map(|final_entry| crate::BoxGeometryPairOf {
-                        unrounded,
-                        final_entry,
-                    })
+                    .map(
+                        |final_entry| crate::block_fragmentation::BoxGeometryPairOf {
+                            unrounded,
+                            final_entry,
+                        },
+                    )
                     .ok_or_else(|| {
-                        crate::LayoutErrorOf::new(
-                            crate::LayoutErrorSiteOf::Node(unrounded.node()),
-                            crate::LayoutOperation::RoundingFinalization,
-                            crate::LayoutErrorKindOf::InternalInvariant(
-                                crate::LayoutInternalInvariant::MissingStagedUnroundedOutput,
+                        crate::error::LayoutErrorOf::new(
+                            crate::error::LayoutErrorSiteOf::Node(unrounded.node()),
+                            crate::error::LayoutOperation::RoundingFinalization,
+                            crate::error::LayoutErrorKindOf::InternalInvariant(
+                                crate::error::LayoutInternalInvariant::MissingStagedUnroundedOutput,
                             ),
                         )
                     })
@@ -209,13 +217,13 @@ impl<Node: Copy + Eq, S: LayoutScalar> Packet<Node, S> {
     }
 }
 
-struct PacketRound<'a, Tree: crate::LayoutTree> {
+struct PacketRound<'a, Tree: LayoutTree> {
     tree: &'a Tree,
-    entries: &'a [crate::LayoutOutputEntryOf<Tree::Node, Tree::Scalar>],
-    final_entries: Vec<crate::LayoutOutputEntryOf<Tree::Node, Tree::Scalar>>,
+    entries: &'a [LayoutOutputEntryOf<Tree::Node, Tree::Scalar>],
+    final_entries: Vec<LayoutOutputEntryOf<Tree::Node, Tree::Scalar>>,
     anchors: Vec<(Tree::Node, super::FragmentAnchor<Tree::Scalar>)>,
 }
-impl<Tree: crate::LayoutTree> crate::Traverse for PacketRound<'_, Tree> {
+impl<Tree: LayoutTree> crate::tree::Traverse for PacketRound<'_, Tree> {
     type Node = Tree::Node;
     type Scalar = Tree::Scalar;
     type Children<'a>
@@ -238,15 +246,13 @@ impl<Tree: crate::LayoutTree> crate::Traverse for PacketRound<'_, Tree> {
             .expect("local packet child exists")
     }
 }
-impl<Tree: crate::LayoutTree> super::contracts::Round<Tree::MeasureError>
-    for PacketRound<'_, Tree>
-{
+impl<Tree: LayoutTree> super::contracts::Round<Tree::MeasureError> for PacketRound<'_, Tree> {
     fn unrounded(
         &self,
         node: Self::Node,
     ) -> LayoutResultOf<
         Self::Node,
-        crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+        LayoutOutputEntryOf<Self::Node, Self::Scalar>,
         Self::Scalar,
         Tree::MeasureError,
     > {
@@ -255,16 +261,16 @@ impl<Tree: crate::LayoutTree> super::contracts::Round<Tree::MeasureError>
             .find(|entry| entry.node() == node)
             .copied()
             .ok_or_else(|| {
-                crate::LayoutErrorOf::new(
-                    crate::LayoutErrorSiteOf::Node(node),
-                    crate::LayoutOperation::RoundingFinalization,
-                    crate::LayoutErrorKindOf::InternalInvariant(
-                        crate::LayoutInternalInvariant::MissingStagedUnroundedOutput,
+                crate::error::LayoutErrorOf::new(
+                    crate::error::LayoutErrorSiteOf::Node(node),
+                    crate::error::LayoutOperation::RoundingFinalization,
+                    crate::error::LayoutErrorKindOf::InternalInvariant(
+                        crate::error::LayoutInternalInvariant::MissingStagedUnroundedOutput,
                     ),
                 )
             })
     }
-    fn set_final(&mut self, mut entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+    fn set_final(&mut self, mut entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
         let hidden = match entry.geometry_state() {
             crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } => {
                 measured_normal.is_hidden()
@@ -273,7 +279,7 @@ impl<Tree: crate::LayoutTree> super::contracts::Round<Tree::MeasureError>
             | crate::output::GeometryStateOf::CanonicalAtomic { normal, .. } => normal.is_hidden(),
         };
         if hidden {
-            entry.non_box = Some(crate::NonBoxKind::Hidden);
+            entry.non_box = Some(crate::block_fragmentation::NonBoxKind::Hidden);
         }
         self.final_entries.push(entry);
     }

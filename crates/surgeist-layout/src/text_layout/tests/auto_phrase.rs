@@ -1,6 +1,10 @@
 //! Source-qualified phrase preference through the real staged Layout fitter.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    inline_wrapping::WrappingInput,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation},
+};
 use surgeist_text as text;
 
 const PHRASE_FONT: &[u8] =
@@ -45,7 +49,7 @@ fn paragraph(source: &str, style: text::style::Style, rtl: bool, font: &[u8]) ->
 
 fn compute<S: LayoutScalar>(
     p: &PreparedParagraph,
-    width: crate::AxisSizingRequestOf<S>,
+    width: AxisSizingRequestOf<S>,
     rtl: bool,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let binding = p.binding(0);
@@ -66,7 +70,7 @@ fn compute<S: LayoutScalar>(
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -77,33 +81,30 @@ fn compute<S: LayoutScalar>(
     .unwrap();
     compute_layout_with_flow(&capture, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
             width,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -255,7 +256,7 @@ fn line(start: usize, end: usize, raw: f64, ending: Ending) -> Fact {
 
 fn intrinsic<S: LayoutScalar>(
     p: &PreparedParagraph,
-    available: crate::AxisSizingRequestOf<S>,
+    available: AxisSizingRequestOf<S>,
     rtl: bool,
 ) -> super::super::run::Output<u32, S> {
     let binding = p.binding(0);
@@ -266,7 +267,7 @@ fn intrinsic<S: LayoutScalar>(
             display: Display::Block,
             writing_mode: WritingMode::HorizontalTb,
             direction: if rtl { Direction::Rtl } else { Direction::Ltr },
-            line_box_direction_policy: crate::LineBoxDirectionPolicy::Normal,
+            line_box_direction_policy: crate::node_input::LineBoxDirectionPolicy::Normal,
             ..NodeInputOf::default()
         },
     );
@@ -274,7 +275,7 @@ fn intrinsic<S: LayoutScalar>(
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -305,18 +306,18 @@ fn intrinsic<S: LayoutScalar>(
                 &binding.prepared,
             )
             .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),
-            inline_baseline_context: crate::InlineBaselineContext::Physical,
+            inline_baseline_context: crate::node_input::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
-            wrap_style: crate::TextWrapStyle::Auto,
+            wrap_style: crate::node_input::TextWrapStyle::Auto,
             wrapping: None,
             formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
-                crate::LineBoxDirectionPolicy::Normal,
+                crate::node_input::LineBoxDirectionPolicy::Normal,
                 if rtl { Direction::Rtl } else { Direction::Ltr },
             ),
             frame: super::super::run::Frame::Measurement,
             containing_size: size,
-            content_insets: crate::Edges::ZERO,
+            content_insets: crate::geometry::Edges::ZERO,
             cursor_block: S::ZERO,
             adjoining_displacement: S::ZERO,
             axes: FlowAxes::new(
@@ -330,7 +331,7 @@ fn intrinsic<S: LayoutScalar>(
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: Default::default(),
             hyphenation_state: Default::default(),
-            hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+            hyphenate_limit_zone: crate::value::LengthPercentageOf::ZERO,
             tail: super::super::fit::TailContext::Unrestricted,
         },
         &[],
@@ -404,11 +405,11 @@ fn real_whole_phrase_overflow_restores_normal_before_arbitrary_and_requeries_rem
             ] {
                 let actual = compute::<S>(
                     &p,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     rtl,
                 );
@@ -453,11 +454,11 @@ fn earlier_fitting_prefix_wraps_a_phrase_intact_instead_of_relaxing_into_the_suf
             );
             let actual = compute::<S>(
                 &p,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 rtl,
             );
@@ -513,19 +514,19 @@ fn intrinsic_anywhere_is_independent_of_finite_phrase_restoration_and_query_orde
                     );
                     let before = compute::<S>(
                         &p,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
                         rtl,
                     );
                     let minimum = compute::<S>(
                         &p,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MinContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
                         ),
                         rtl,
                     );
@@ -541,9 +542,9 @@ fn intrinsic_anywhere_is_independent_of_finite_phrase_restoration_and_query_orde
                     if overflow == text::style::OverflowWrap::Anywhere {
                         let measured = intrinsic::<S>(
                             &p,
-                            crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Indefinite,
-                                crate::SizingOperation::MinContent,
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Indefinite,
+                                SizingOperation::MinContent,
                             ),
                             rtl,
                         );
@@ -584,9 +585,9 @@ fn intrinsic_anywhere_is_independent_of_finite_phrase_restoration_and_query_orde
                     }
                     let maximum = compute::<S>(
                         &p,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MaxContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
                         ),
                         rtl,
                     );
@@ -604,11 +605,11 @@ fn intrinsic_anywhere_is_independent_of_finite_phrase_restoration_and_query_orde
                     );
                     let after = compute::<S>(
                         &p,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
                         rtl,
                     );
@@ -646,11 +647,11 @@ fn unsupported_phrase_language_restores_real_owner_automatic_hyphen_before_arbit
                 assert_eq!(p.prepared.alternative_views().count(), 0);
                 let actual = compute::<S>(
                     &p,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     rtl,
                 );
@@ -756,11 +757,11 @@ fn restored_after_and_both_indications_keep_receiving_authority_across_finite_fr
             ] {
                 let actual = compute::<S>(
                     &p,
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
                     false,
                 );
@@ -791,7 +792,7 @@ struct ShapeTree<S: LayoutScalar> {
     inner: PublicLayoutTreeOf<S>,
     queries: std::cell::RefCell<Vec<(f64, f64)>>,
     caches: std::collections::HashMap<u32, CacheOf<S>>,
-    committed: std::collections::HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
+    committed: std::collections::HashMap<u32, crate::output::LayoutOutputEntryOf<u32, S>>,
     hits: std::cell::Cell<usize>,
 }
 impl<S: LayoutScalar> Traverse for ShapeTree<S> {
@@ -833,7 +834,7 @@ impl<S: LayoutScalar> LayoutTree for ShapeTree<S> {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::output::LayoutOutputEntryOf<u32, S>> {
         self.committed.get(&node).copied()
     }
     fn float_exclusion_interval(
@@ -947,7 +948,7 @@ fn phantom_prefix_shape_replay_allows_each_restored_candidate_its_own_height_ban
                 tree,
                 0,
                 vec![binding.clone()],
-                crate::WrappingInput {
+                WrappingInput {
                     native_inline_boxes: Vec::new(),
                     gaps: Vec::new(),
                     scopes: Vec::new(),
@@ -958,19 +959,19 @@ fn phantom_prefix_shape_replay_allows_each_restored_candidate_its_own_height_ban
             .unwrap();
             compute_layout_with_flow(&capture, 0, {
                 let containing_flow_axes = {
-                    let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+                    crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
                 };
                 let requested_axes = Size::new(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::MaxContent,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
                     ),
                 );
                 let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
@@ -978,21 +979,23 @@ fn phantom_prefix_shape_replay_allows_each_restored_candidate_its_own_height_ban
                 // the explicitly requested inline contribution operation.
                 logical_requests.block = logical_requests
                     .block
-                    .with_operation(crate::SizingOperation::Normal);
+                    .with_operation(SizingOperation::Normal);
                 logical_requests.inline = logical_requests
                     .inline
-                    .with_operation(crate::SizingOperation::Normal);
+                    .with_operation(SizingOperation::Normal);
                 let axes = containing_flow_axes.physical_size(logical_requests);
                 // The old Native NoParent fixture explicitly supplied these percentage
                 // bases. It supplied no independent ICB dimensions or ancestor scrollport.
                 let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-                let fallback = crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                let fallback = crate::value::OrthogonalFallbackOf::new(
+                    crate::geometry::Size::NONE,
+                    crate::value::NearestScrollportOf::Absent,
+                    crate::geometry::Size::splat(
+                        crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 );
-                crate::LayoutRootRequestOf::standalone(
-                    crate::SizingRequestOf::new(axes, fallback),
+                crate::output::LayoutRootRequestOf::standalone(
+                    crate::value::SizingRequestOf::new(axes, fallback),
                     containing_flow_axes,
                     percentage_parent,
                 )

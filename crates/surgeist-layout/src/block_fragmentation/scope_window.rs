@@ -1230,7 +1230,7 @@ mod provider_tests {
             LayoutSourceBasis::fresh(),
             root,
             FragmentationKind::Page {
-                progression: crate::PageProgression::LeftToRight,
+                progression: crate::fragmentation::page::PageProgression::LeftToRight,
             },
             axes,
             frames.to_vec(),
@@ -1253,7 +1253,7 @@ mod provider_tests {
             frames: &frames,
             axes,
             kind: FragmentationKind::Page {
-                progression: crate::PageProgression::LeftToRight,
+                progression: crate::fragmentation::page::PageProgression::LeftToRight,
             },
             target: bound.target_basis(),
             template: root,

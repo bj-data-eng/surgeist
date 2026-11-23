@@ -1,5 +1,12 @@
 //! The concrete immutable Text capture and its Layout-owned consuming adapter.
 
+use crate::{
+    block_fragmentation::LayoutBoundRequestOf,
+    error::LayoutResultOf,
+    inline_wrapping::WrappingInput,
+    node_input::{Display, LayoutInputViewOf, Position},
+};
+
 pub(crate) mod boxes;
 pub(crate) mod capture;
 pub(crate) mod edge_components;
@@ -253,9 +260,9 @@ impl std::error::Error for TextBindingError {}
 /// the input is being consumed. Text paragraphs retain their exact preparation.
 /// Wrapping scopes describe actual normalized inline boxes; numeric-only flow
 /// needs no Text preparation.
-pub struct LayoutFlowInput<'tree, Tree: crate::LayoutTree> {
+pub struct LayoutFlowInput<'tree, Tree: crate::tree::LayoutTree> {
     pub(crate) tree: &'tree Tree,
-    pub(crate) bound: Option<crate::LayoutBoundRequestOf<Tree::Scalar>>,
+    pub(crate) bound: Option<LayoutBoundRequestOf<Tree::Scalar>>,
     pub(crate) root: Tree::Node,
     pub(crate) paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
     pub(crate) invalidated: Vec<Tree::Node>,
@@ -266,26 +273,26 @@ pub struct LayoutFlowInput<'tree, Tree: crate::LayoutTree> {
         std::sync::Arc<scope_alignment::ScopeAlignmentSnapshot<Tree::Scalar>>,
 }
 
-impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
+impl<'tree, Tree: crate::tree::LayoutTree> LayoutFlowInput<'tree, Tree> {
     /// Binds actual immutable source and a host-authorized request to one computation.
     pub fn try_new_bound(
         tree: &'tree Tree,
         root: Tree::Node,
-        request: crate::LayoutBoundRequestOf<Tree::Scalar>,
+        request: LayoutBoundRequestOf<Tree::Scalar>,
         paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
-        wrapping: crate::WrappingInput<Tree::Node>,
+        wrapping: WrappingInput<Tree::Node>,
         alignments: Vec<TextScopeAlignmentInputOf<Tree::Scalar>>,
-    ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
+    ) -> LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
         let mut input = Self::try_new(tree, root, paragraphs, wrapping, alignments)?;
         input.bound = Some(request);
         Ok(input)
     }
 
     #[must_use]
-    pub fn publication_basis(&self) -> Option<crate::LayoutTargetBasis> {
-        self.bound
-            .as_ref()
-            .map(crate::LayoutBoundRequestOf::target_basis)
+    pub fn publication_basis(
+        &self,
+    ) -> Option<crate::block_fragmentation::input::LayoutTargetBasis> {
+        self.bound.as_ref().map(LayoutBoundRequestOf::target_basis)
     }
 
     /// Validates paragraph participation and declared wrapping scopes at this root.
@@ -298,9 +305,9 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         tree: &'tree Tree,
         root: Tree::Node,
         paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
-        wrapping_input: crate::WrappingInput<Tree::Node>,
+        wrapping_input: WrappingInput<Tree::Node>,
         scope_alignments: Vec<TextScopeAlignmentInputOf<Tree::Scalar>>,
-    ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
+    ) -> LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
         Self::validate_run_nodes(&paragraphs)?;
         Self::try_new_inner(
             tree,
@@ -318,12 +325,12 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         tree: &'tree Tree,
         root: Tree::Node,
         paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
-        wrapping_input: crate::WrappingInput<Tree::Node>,
+        wrapping_input: WrappingInput<Tree::Node>,
         scope_alignments: Vec<TextScopeAlignmentInputOf<Tree::Scalar>>,
-        receipt: &crate::ResolvedWrapEdges<Tree::Node>,
-    ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError>
+        receipt: &crate::inline_wrapping::ResolvedWrapEdges<Tree::Node>,
+    ) -> LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError>
     where
-        Tree: crate::WrapEdgeSource,
+        Tree: crate::inline_wrapping::WrapEdgeSource,
     {
         Self::validate_run_nodes(&paragraphs)?;
         let graph = receipt.validate_final(tree, root, &paragraphs, &wrapping_input)?;
@@ -341,7 +348,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
     /// capture receipt, native tree observation and run-window projection.
     fn validate_run_nodes(
         paragraphs: &[TextParagraphBinding<Tree::Node>],
-    ) -> crate::LayoutResultOf<Tree::Node, (), Tree::Scalar, Tree::MeasureError> {
+    ) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, Tree::MeasureError> {
         for paragraph in paragraphs {
             for (index, node) in paragraph.nodes.iter().enumerate() {
                 if paragraph.nodes[..index].contains(node) {
@@ -359,10 +366,10 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         tree: &'tree Tree,
         root: Tree::Node,
         paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
-        wrapping_input: crate::WrappingInput<Tree::Node>,
+        wrapping_input: WrappingInput<Tree::Node>,
         scope_alignments: Vec<TextScopeAlignmentInputOf<Tree::Scalar>>,
         source_graph: Option<crate::engine::validation::ValidationGraph<Tree::Node>>,
-    ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
+    ) -> LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
         let mut influencing = Vec::new();
         let mut inline_boxes_requested = false;
         let mut occupied = Vec::new();
@@ -389,10 +396,10 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                     tree.layout_input(paragraph.container)
                         .as_box()
                         .map(|input| match input.direction {
-                            crate::Direction::Ltr => {
+                            crate::node_input::Direction::Ltr => {
                                 surgeist_text::paragraph::ParagraphBaseDirection::LeftToRight
                             }
-                            crate::Direction::Rtl => {
+                            crate::node_input::Direction::Rtl => {
                                 surgeist_text::paragraph::ParagraphBaseDirection::RightToLeft
                             }
                         });
@@ -415,14 +422,14 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
             let transparent_float = |node| {
                 tree.layout_input(node).as_box().is_some_and(|input| {
                     !input.float.is_none()
-                        && input.position != crate::Position::Absolute
-                        && input.display != crate::Display::None
+                        && input.position != Position::Absolute
+                        && input.display != Display::None
                 })
             };
             let structural_block = |node| {
                 tree.layout_input(node).as_box().is_some_and(|input| {
-                    input.display != crate::Display::None
-                        && input.position != crate::Position::Absolute
+                    input.display != Display::None
+                        && input.position != Position::Absolute
                         && input.float.is_none()
                         && !input.display.is_inline_level()
                 })
@@ -502,8 +509,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 // The normalized occurrence and paragraph inventory must retain
                 // the same issued handle, not merely equal source characters.
                 match tree.layout_input(binding.node) {
-                    crate::LayoutInputViewOf::InlineText(input)
-                        if input.origin() == &binding.origin => {}
+                    LayoutInputViewOf::InlineText(input) if input.origin() == &binding.origin => {}
                     _ => return Err(error(TextBindingError::ParticipantRole)),
                 }
             }
@@ -540,12 +546,11 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 let applicable = match binding.occurrence.view().original_box().kind() {
                     surgeist_text::source::InlineBoxKind::InFlow => {
                         input.display.is_inline_level()
-                            && input.position != crate::Position::Absolute
+                            && input.position != Position::Absolute
                             && input.float.is_none()
                     }
                     surgeist_text::source::InlineBoxKind::OutOfFlow => {
-                        input.position == crate::Position::Absolute
-                            && input.display != crate::Display::None
+                        input.position == Position::Absolute && input.display != Display::None
                     }
                 };
                 if !paragraph.nodes.contains(&binding.node) || !applicable {
@@ -573,17 +578,17 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 let occurrence = binding.occurrence.view();
                 let kind = occurrence.kind();
                 let applicable = match tree.layout_input(binding.node) {
-                    crate::LayoutInputViewOf::TextControl(input) => {
+                    LayoutInputViewOf::TextControl(input) => {
                         input.occurrence() == &binding.occurrence
                     }
-                    crate::LayoutInputViewOf::LineBreak(input) => {
+                    LayoutInputViewOf::LineBreak(input) => {
                         !input.display().is_none()
                             && kind == &surgeist_text::paragraph::ParagraphControlKind::ForcedBreak
                     }
-                    crate::LayoutInputViewOf::InlineBoundary(input) => match input.kind() {
-                        crate::InlineBoundaryKind::Start => kind
+                    LayoutInputViewOf::InlineBoundary(input) => match input.kind() {
+                        crate::node_input::InlineBoundaryKind::Start => kind
                             == &surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryStart,
-                        crate::InlineBoundaryKind::End => kind
+                        crate::node_input::InlineBoundaryKind::End => kind
                             == &surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryEnd,
                     },
                     _ => false,
@@ -700,7 +705,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
             }
             for node in &paragraph.nodes {
                 match tree.layout_input(*node) {
-                    crate::LayoutInputViewOf::InlineText(input) => {
+                    LayoutInputViewOf::InlineText(input) => {
                         if paragraph
                             .origins
                             .iter()
@@ -713,7 +718,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                             return Err(error(TextBindingError::OriginCoverage));
                         }
                     }
-                    crate::LayoutInputViewOf::TextControl(input) => {
+                    LayoutInputViewOf::TextControl(input) => {
                         if paragraph
                             .controls
                             .iter()
@@ -726,7 +731,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                             return Err(error(TextBindingError::ControlCoverage));
                         }
                     }
-                    crate::LayoutInputViewOf::LineBreak(input) if !input.display().is_none() => {
+                    LayoutInputViewOf::LineBreak(input) if !input.display().is_none() => {
                         if paragraph
                             .controls
                             .iter()
@@ -737,7 +742,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                             return Err(error(TextBindingError::ControlCoverage));
                         }
                     }
-                    crate::LayoutInputViewOf::InlineBoundary(_) => {
+                    LayoutInputViewOf::InlineBoundary(_) => {
                         if paragraph
                             .controls
                             .iter()
@@ -748,10 +753,10 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                             return Err(error(TextBindingError::ControlCoverage));
                         }
                     }
-                    crate::LayoutInputViewOf::Box(input)
+                    LayoutInputViewOf::Box(input)
                         if input.display.is_inline_level()
                             && input.float.is_none()
-                            && input.position != crate::Position::Absolute
+                            && input.position != Position::Absolute
                             && paragraph
                                 .atomics
                                 .iter()
@@ -805,7 +810,10 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 std::iter::once(&order.parent).chain(order.children.iter().map(|child| &child.box_))
             })
             .filter_map(|box_| {
-                let crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(scope)) = box_ else {
+                let crate::inline_wrapping::GeneratedBoxRef::Inline(
+                    crate::inline_wrapping::InlineBoxRef::Scope(scope),
+                ) = box_
+                else {
                     return None;
                 };
                 seen_scopes.insert(scope.clone()).then(|| scope.clone())
@@ -818,8 +826,8 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         )
         .map_err(|error| {
             crate::error::staging_text_error(
-                crate::LayoutErrorSiteOf::Node(root),
-                crate::LayoutOperation::TextCapture,
+                crate::error::LayoutErrorSiteOf::Node(root),
+                crate::error::LayoutOperation::TextCapture,
                 error,
             )
         })?;
@@ -850,12 +858,15 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         {
             return Err(crate::inline_wrapping::wrapping_error(
                 root,
-                crate::WrappingScopeError::SourceProcessingRequired,
+                crate::inline_wrapping::WrappingScopeError::SourceProcessingRequired,
             ));
         }
         let dependencies = wrapping.dependencies();
         influencing.try_reserve(dependencies.len()).map_err(|_| {
-            crate::inline_wrapping::wrapping_error(root, crate::WrappingScopeError::Allocation)
+            crate::inline_wrapping::wrapping_error(
+                root,
+                crate::inline_wrapping::WrappingScopeError::Allocation,
+            )
         })?;
         influencing.extend_from_slice(dependencies);
         let mut influence_census = scope_alignment::ScopeCensus::default();
@@ -932,13 +943,15 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
     }
 }
 
-fn binding_error<Node: Copy, S: crate::LayoutScalar, M>(
+fn binding_error<Node: Copy, S: crate::scalar::LayoutScalar, M>(
     node: Node,
     reason: TextBindingError,
-) -> crate::LayoutErrorOf<Node, S, M> {
-    crate::LayoutErrorOf::new(
-        crate::LayoutErrorSiteOf::Node(node),
-        crate::LayoutOperation::TextCapture,
-        crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::TextBinding(reason)),
+) -> crate::error::LayoutErrorOf<Node, S, M> {
+    crate::error::LayoutErrorOf::new(
+        crate::error::LayoutErrorSiteOf::Node(node),
+        crate::error::LayoutOperation::TextCapture,
+        crate::error::LayoutErrorKindOf::InvalidInput(
+            crate::error::LayoutInvalidInputOf::TextBinding(reason),
+        ),
     )
 }

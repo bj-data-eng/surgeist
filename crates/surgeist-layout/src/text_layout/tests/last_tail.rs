@@ -1,6 +1,12 @@
 //! Real candidate ordering and branch-local terminal reselection.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    geometry::FlowAxes,
+    inline_wrapping::WrappingInput,
+    tree::LayoutTree,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation},
+};
 use surgeist_text::{
     hyphenation::{HyphenateCharacter, Hyphens},
     source::{Range, Text},
@@ -22,11 +28,11 @@ fn lines<S: LayoutScalar>(
 ) -> Vec<(Range, f64, bool)> {
     let batch = batch::<S>(
         p,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(
+                crate::value::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
             ),
-            crate::SizingOperation::Normal,
+            SizingOperation::Normal,
         ),
         policy,
     );
@@ -116,14 +122,14 @@ fn manual_later_ceiling_and_anti_permanent_ban_are_real_selected_sequences() {
 
 fn batch<S: LayoutScalar>(
     p: &PreparedParagraph,
-    width: crate::AxisSizingRequestOf<S>,
+    width: AxisSizingRequestOf<S>,
     policy: HyphenateLimitLast,
 ) -> CompletedLayoutBatchOf<u32, S> {
     batch_with_style(p, width, policy, TextWrapStyle::Auto)
 }
 fn batch_with_style<S: LayoutScalar>(
     p: &PreparedParagraph,
-    width: crate::AxisSizingRequestOf<S>,
+    width: AxisSizingRequestOf<S>,
     policy: HyphenateLimitLast,
     wrap_style: TextWrapStyle,
 ) -> CompletedLayoutBatchOf<u32, S> {
@@ -174,7 +180,7 @@ fn batch_with_style<S: LayoutScalar>(
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -185,33 +191,30 @@ fn batch_with_style<S: LayoutScalar>(
     .unwrap();
     compute_layout_with_flow(&capture, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
             width,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -312,11 +315,11 @@ fn real_zero_atomic_and_out_of_flow_tails_do_not_share_content_authority() {
             );
             let batch = batch::<S>(
                 &p,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                     ),
-                    crate::SizingOperation::Normal,
+                    SizingOperation::Normal,
                 ),
                 HyphenateLimitLast::Always,
             );
@@ -417,16 +420,16 @@ fn intrinsic_contributions_do_not_construct_a_virtual_terminal_tail() {
         ] {
             for (width, expected) in [
                 (
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::MinContent,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MinContent,
                     ),
                     50.0,
                 ),
                 (
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::MaxContent,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
                     ),
                     140.0,
                 ),
@@ -497,7 +500,7 @@ fn a_flow_box_does_not_invent_a_forced_barrier_for_missing_parent_continuation()
             &tree,
             0,
             vec![first.binding(0), tail.binding(0)],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -510,8 +513,8 @@ fn a_flow_box_does_not_invent_a_forced_barrier_for_missing_parent_continuation()
             &capture,
             0,
             request(80.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((capture).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap_err();
@@ -584,7 +587,7 @@ fn source_forced_segment_and_ordinary_cross_run_results_need_no_missing_tail_pro
                 &tree,
                 0,
                 vec![first.binding(0), tail.binding(0)],
-                crate::WrappingInput {
+                WrappingInput {
                     native_inline_boxes: Vec::new(),
                     gaps: Vec::new(),
                     scopes: Vec::new(),
@@ -597,8 +600,8 @@ fn source_forced_segment_and_ordinary_cross_run_results_need_no_missing_tail_pro
                 &capture,
                 0,
                 request(if forced { 30.0 } else { 80.0 }, {
-                    let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = LayoutTree::node_input((capture).tree(), 0);
+                    FlowAxes::new(root_input.writing_mode, root_input.direction)
                 }),
             )
             .unwrap();
@@ -611,7 +614,7 @@ fn source_forced_segment_and_ordinary_cross_run_results_need_no_missing_tail_pro
                 .final_inline_fragments()
                 .iter()
                 .find(|row| {
-                    row.owner() == &crate::InlineFragmentOwner::Node(1)
+                    row.owner() == &crate::output::InlineFragmentOwner::Node(1)
                         && row.fragment().line_index() == 0
                 })
                 .unwrap()
@@ -681,7 +684,7 @@ fn a_later_one_line_forced_segment_stays_independent_before_a_child_block_tail()
             &tree,
             0,
             vec![p.binding(0)],
-            crate::WrappingInput {
+            WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -694,8 +697,8 @@ fn a_later_one_line_forced_segment_stays_independent_before_a_child_block_tail()
             &capture,
             0,
             request(70.0, {
-                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((capture).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();
@@ -923,10 +926,7 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
         for policy in [HyphenateLimitLast::None, HyphenateLimitLast::Always] {
             let b = batch::<S>(
                 &p,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MinContent,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
                 policy,
             );
             assert_eq!(

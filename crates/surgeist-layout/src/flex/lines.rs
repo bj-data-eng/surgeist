@@ -2,6 +2,7 @@ use super::distribution_number::DistributionNumber;
 use super::items::CollectedFlexItem;
 use super::{Constants, LayoutScalar};
 use crate::inline_wrapping::{AvoidClass, EdgePreferences, WrappingScopeError};
+use crate::value::SizingOperation;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FlexLine<S: LayoutScalar> {
@@ -93,12 +94,12 @@ where
     let container_main_size = match flex_line_collection_size(constants) {
         Some(size) => size,
         None => match constants.available_main.operation() {
-            crate::SizingOperation::MinContent => {
+            SizingOperation::MinContent => {
                 return Ok((0..items.len())
                     .map(|index| FlexLine::new(index, index + 1))
                     .collect());
             }
-            crate::SizingOperation::Normal | crate::SizingOperation::MaxContent => {
+            SizingOperation::Normal | SizingOperation::MaxContent => {
                 let mut lines = Vec::new();
                 let mut start = 0;
                 for cut in 1..items.len() {
@@ -113,7 +114,7 @@ where
         },
     };
 
-    let has_avoid = constants.available_main.operation() != crate::SizingOperation::MinContent
+    let has_avoid = constants.available_main.operation() != SizingOperation::MinContent
         && items
             .windows(2)
             .any(|pair| pair[0].wrap_after.avoided || pair[1].wrap_before.avoided);
@@ -219,7 +220,7 @@ pub(super) fn flex_line_collection_size<S: LayoutScalar>(constants: &Constants<S
         .main_size(constants.node_inner_size)
         .or_else(|| {
             if constants.preferred_inline_phase == super::PreferredInlinePhase::Discover
-                || constants.available_main.operation() == crate::SizingOperation::MinContent
+                || constants.available_main.operation() == SizingOperation::MinContent
             {
                 // A maximum bounds the intrinsic result without supplying its constraint.
                 return None;

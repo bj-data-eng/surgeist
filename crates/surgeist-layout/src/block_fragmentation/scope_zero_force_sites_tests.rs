@@ -68,7 +68,7 @@ fn raw_before_and_inside_force<S: LayoutScalar>(capped: bool) {
         LayoutSourceBasis::fresh(),
         request,
         FragmentationKind::Page {
-            progression: crate::PageProgression::LeftToRight,
+            progression: crate::fragmentation::page::PageProgression::LeftToRight,
         },
         axes,
         frames.clone(),
@@ -95,7 +95,7 @@ fn raw_before_and_inside_force<S: LayoutScalar>(capped: bool) {
         frames: &frames,
         axes,
         kind: FragmentationKind::Page {
-            progression: crate::PageProgression::LeftToRight,
+            progression: crate::fragmentation::page::PageProgression::LeftToRight,
         },
         target: bound.target_basis(),
         template: request,

@@ -1,6 +1,6 @@
 use super::*;
 
-fn ten<S: LayoutScalar>(_: crate::LeafMeasureInputOf<S>) -> Size<S> {
+fn ten<S: LayoutScalar>(_: crate::measurement::LeafMeasureInputOf<S>) -> Size<S> {
     leaf(10.0)
 }
 
@@ -13,11 +13,11 @@ fn growing_source<S: LayoutScalar>() {
             .style(0, block(0.0, 0.0, None))
             .style(
                 1,
-                crate::NodeInputOf {
-                    float: crate::Float::Left,
+                crate::node_input::NodeInputOf {
+                    float: crate::node_input::Float::Left,
                     size: Size::new(
-                        crate::PreferredSizeOf::px(S::from_f64(20.0)),
-                        crate::PreferredSizeOf::px(S::from_f64(20.0)),
+                        crate::sizing::PreferredSizeOf::px(S::from_f64(20.0)),
+                        crate::sizing::PreferredSizeOf::px(S::from_f64(20.0)),
                     ),
                     ..block(0.0, 0.0, None)
                 },
@@ -28,8 +28,8 @@ fn growing_source<S: LayoutScalar>() {
         for node in 3..terminal {
             tree = tree.style(
                 node,
-                crate::NodeInputOf {
-                    clear: crate::Clear::Left,
+                crate::node_input::NodeInputOf {
+                    clear: crate::node_input::Clear::Left,
                     ..block(0.0, 0.0, None)
                 },
             );
@@ -129,27 +129,27 @@ fn growing_source<S: LayoutScalar>() {
         }
         drop(owner);
 
-        let width = crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap();
+        let width = crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap();
         let request = crate::test_support::requests::NativeRootFrameOf::new(
             axes,
             Size::new(Some(width), None),
-            crate::OrthogonalFallbackOf::new(
+            crate::value::OrthogonalFallbackOf::new(
                 Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                crate::value::NearestScrollportOf::Absent,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
             ),
         )
         .request(Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(width),
-                crate::SizingOperation::Normal,
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(width),
+                crate::value::SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::Normal,
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Indefinite,
+                crate::value::SizingOperation::Normal,
             ),
         ));
-        let batch = crate::compute_layout(&tree, 0, request).unwrap();
+        let batch = crate::engine::compute_layout(&tree, 0, request).unwrap();
         let output = |node| {
             batch
                 .node_layout(node)

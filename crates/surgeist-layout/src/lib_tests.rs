@@ -1,14 +1,32 @@
 use crate::test_support::readback::{self, Phase};
-use crate::{AvailableSpace, AxisSizingRequest, NonNegativeFiniteOf, SizingOperation};
 use crate::{
-    Baselines, CollapsibleMarginOf, ComputeOutput, DefaultScalar, Direction, Display, Edges,
-    FlexItemCollapse, FloatExclusionInterval, FloatExclusionIntervalError,
-    FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQuery,
-    FloatExclusionQueryOf, FlowAxes, LayoutOperation, LayoutScalar, Length, LengthAuto,
-    LengthPercentageOf, LengthResolutionStatus, MaxTrackSizing, MinTrackSizing, PhysicalAxis,
-    PhysicalBlockMarginCollapse, PhysicalBlockMarginCollapseOf, PhysicalSide, Point, PreferredSize,
-    Size, SizingCalculation, TrackComponent, TrackComponentList, TrackFlexFactor, TrackRepeatCount,
-    TrackSizing, WritingMode,
+    error::CalcSizeBehaviorBasis,
+    node_input::{
+        NodeInputOf, Overflow, OverflowClipMarginOf, ScrollMarginOf, ScrollPaddingOf,
+        ScrollPaddingValueOf, ScrollbarWidthOf,
+    },
+    scroll::{ScrollCoordinateErrorOf, ScrollRectOf},
+    value::{AspectRatio, AvailableSpace, AxisSizingRequest, NonNegativeFiniteOf, SizingOperation},
+};
+use crate::{
+    error::LayoutOperation,
+    geometry::{Edges, FlowAxes, PhysicalAxis, PhysicalSide, Point, Size},
+    node_input::{
+        Direction, Display, FlexItemCollapse, FloatExclusionInterval, FloatExclusionIntervalError,
+        FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQuery,
+        FloatExclusionQueryOf, WritingMode,
+    },
+    output::{
+        Baselines, CollapsibleMarginOf, ComputeOutput, PhysicalBlockMarginCollapse,
+        PhysicalBlockMarginCollapseOf,
+    },
+    scalar::{DefaultScalar, LayoutScalar},
+    sizing::{PreferredSize, SizingCalculation},
+    value::{
+        Length, LengthAuto, LengthPercentageOf, LengthResolutionStatus, MaxTrackSizing,
+        MinTrackSizing, TrackComponent, TrackComponentList, TrackFlexFactor, TrackRepeatCount,
+        TrackSizing,
+    },
 };
 
 #[test]
@@ -31,28 +49,28 @@ fn fri07_c02_model_public_type_is_two_state_and_has_exact_required_traits() {
 
 #[test]
 fn fri07_c02_model_all_node_input_construction_paths_are_normal() {
-    fn collapse_of<S: LayoutScalar>(input: &crate::NodeInputOf<S>) -> FlexItemCollapse {
+    fn collapse_of<S: LayoutScalar>(input: &NodeInputOf<S>) -> FlexItemCollapse {
         input.flex_item_collapse
     }
 
     assert_eq!(
-        collapse_of(&crate::NodeInput::DEFAULT),
+        collapse_of(&crate::node_input::NodeInput::DEFAULT),
         FlexItemCollapse::Normal
     );
     assert_eq!(
-        collapse_of(&crate::NodeInputOf::<f32>::default()),
+        collapse_of(&NodeInputOf::<f32>::default()),
         FlexItemCollapse::Normal
     );
     assert_eq!(
-        collapse_of(&crate::NodeInputOf::<f64>::default()),
+        collapse_of(&NodeInputOf::<f64>::default()),
         FlexItemCollapse::Normal
     );
     assert_eq!(
-        collapse_of(&crate::NodeInputOf::<f32>::non_box()),
+        collapse_of(&NodeInputOf::<f32>::non_box()),
         FlexItemCollapse::Normal
     );
     assert_eq!(
-        collapse_of(&crate::NodeInputOf::<f64>::non_box()),
+        collapse_of(&NodeInputOf::<f64>::non_box()),
         FlexItemCollapse::Normal
     );
 }
@@ -61,8 +79,11 @@ fn fri07_c02_model_all_node_input_construction_paths_are_normal() {
 fn fri07_c02_model_collapsed_is_inert_outside_in_flow_flex_participation() {
     use crate::test_support::layout_tree::PublicLayoutTreeOf;
     use crate::{
-        CompletedLayoutBatchOf, GridPlacement, NodeInputOf, NodeOutputOf, Position,
-        PreferredSizeOf, SubgridTrack, TrackComponentOf, compute_layout,
+        engine::compute_layout,
+        node_input::{GridPlacement, NodeInputOf, Position},
+        output::{CompletedLayoutBatchOf, NodeOutputOf},
+        sizing::PreferredSizeOf,
+        value::{SubgridTrack, TrackComponentOf},
     };
 
     fn sized<S: LayoutScalar>(display: Display, width: f64, height: f64) -> NodeInputOf<S> {
@@ -177,37 +198,37 @@ fn fri07_c02_model_collapsed_is_inert_outside_in_flow_flex_participation() {
         Build: Fn(FlexItemCollapse) -> PublicLayoutTreeOf<S>,
     {
         let available = Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(180.0))
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(
+                    NonNegativeFiniteOf::new(S::from_f64(180.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                crate::value::SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(120.0))
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(
+                    NonNegativeFiniteOf::new(S::from_f64(120.0))
                         .expect("fixture physical extent is finite and nonnegative"),
                 ),
-                crate::SizingOperation::Normal,
+                crate::value::SizingOperation::Normal,
             ),
         );
         let request = crate::test_support::requests::NativeRootFrameOf::new(
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             Size::new(
                 Some(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(180.0))
+                    NonNegativeFiniteOf::new(S::from_f64(180.0))
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
                 Some(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(120.0))
+                    NonNegativeFiniteOf::new(S::from_f64(120.0))
                         .expect("declared fixture extent is finite and nonnegative"),
                 ),
             ),
-            crate::OrthogonalFallbackOf::new(
-                crate::Size::NONE,
-                crate::NearestScrollportOf::Unknown,
-                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            crate::value::OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::value::NearestScrollportOf::Unknown,
+                Size::splat(crate::value::OrthogonalFallbackLimitOf::Unknown),
             ),
         )
         .request(available);
@@ -385,7 +406,7 @@ fn fri06_c01_contract_float_exclusion_public_aliases_and_operations_are_exact() 
 
 #[test]
 fn fri05_c01_computed_overflow_public_reexports_compose() {
-    use crate::{ComputedOverflow, ComputedOverflowError, Overflow};
+    use crate::node_input::{ComputedOverflow, ComputedOverflowError, Overflow};
 
     let pair: ComputedOverflow = ComputedOverflow::try_new(Overflow::Auto, Overflow::Hidden)
         .expect("canonical public pair constructs");
@@ -405,9 +426,12 @@ fn fri05_c01_computed_overflow_public_reexports_compose() {
 #[test]
 fn fri05_c01_scroll_input_public_aliases_and_reexports_compose() {
     use crate::{
-        LengthPercentageOf, OverflowClipBox, OverflowClipMargin, ScrollMargin, ScrollMarginError,
-        ScrollPadding, ScrollPaddingValue, ScrollSnapAlign, ScrollSnapAlignValue, ScrollSnapAxis,
-        ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType, ScrollbarGutter,
+        node_input::{
+            OverflowClipBox, OverflowClipMargin, ScrollMargin, ScrollMarginError, ScrollPadding,
+            ScrollPaddingValue, ScrollSnapAlign, ScrollSnapAlignValue, ScrollSnapAxis,
+            ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType, ScrollbarGutter,
+        },
+        value::LengthPercentageOf,
     };
 
     let clip_margin: OverflowClipMargin =
@@ -441,10 +465,10 @@ fn fri05_c01_scroll_input_public_aliases_and_reexports_compose() {
     assert_eq!(alignment.block(), ScrollSnapAlignValue::Center);
     let _ = ScrollSnapStop::Always;
 
-    let generic_clip = crate::OverflowClipMarginOf::<f64>::try_new(OverflowClipBox::BorderBox, 5.0)
+    let generic_clip = OverflowClipMarginOf::<f64>::try_new(OverflowClipBox::BorderBox, 5.0)
         .expect("generic clip margin");
-    let generic_padding = crate::ScrollPaddingOf::<f64>::default();
-    let generic_margin = crate::ScrollMarginOf::<f64>::default();
+    let generic_padding = ScrollPaddingOf::<f64>::default();
+    let generic_margin = ScrollMarginOf::<f64>::default();
     assert_eq!(generic_clip.margin(), 5.0);
     assert!(generic_padding.top().is_auto());
     assert_eq!(generic_margin.left(), 0.0);
@@ -452,7 +476,7 @@ fn fri05_c01_scroll_input_public_aliases_and_reexports_compose() {
 
 #[test]
 fn fri05_c02_carrier_public_aliases_reexports_and_rect_error_compose() {
-    use crate::{
+    use crate::scroll::{
         OverflowClip, OverflowClipOf, PhysicalClipAxis, PhysicalClipAxisOf, ScrollRect,
         ScrollRectError, ScrollRectErrorOf, ScrollTargetGeometry, ScrollTargetGeometryOf,
     };
@@ -487,7 +511,7 @@ fn fri05_c02_carrier_public_aliases_reexports_and_rect_error_compose() {
     );
 
     let generic_error: ScrollRectErrorOf<f64> =
-        crate::ScrollRectOf::try_new(Point::new(0.0, f64::MAX), Size::new(0.0, f64::MAX))
+        ScrollRectOf::try_new(Point::new(0.0, f64::MAX), Size::new(0.0, f64::MAX))
             .expect_err("generic rectangle error reexport");
     assert_eq!(
         generic_error,
@@ -502,53 +526,53 @@ fn fri05_c02_carrier_public_aliases_reexports_and_rect_error_compose() {
 
 #[test]
 fn fri05_c07_public_surface_default_and_f64_input_error_output_contracts_compose() {
-    fn checked_input<S: crate::LayoutScalar>() -> crate::NodeInputOf<S> {
+    fn checked_input<S: LayoutScalar>() -> NodeInputOf<S> {
         let overflow =
-            crate::ComputedOverflow::try_new(crate::Overflow::Auto, crate::Overflow::Scroll)
+            crate::node_input::ComputedOverflow::try_new(Overflow::Auto, Overflow::Scroll)
                 .expect("canonical computed overflow pair");
         let clip_margin: Result<
-            crate::OverflowClipMarginOf<S>,
-            crate::NonNegativeFiniteScalarErrorOf<S>,
-        > = crate::OverflowClipMarginOf::try_new(crate::OverflowClipBox::PaddingBox, S::ZERO);
+            OverflowClipMarginOf<S>,
+            crate::value::NonNegativeFiniteScalarErrorOf<S>,
+        > = OverflowClipMarginOf::try_new(crate::node_input::OverflowClipBox::PaddingBox, S::ZERO);
         let scrollbar_width: Result<
-            crate::ScrollbarWidthOf<S>,
-            crate::NonNegativeFiniteScalarErrorOf<S>,
-        > = crate::ScrollbarWidthOf::try_new(S::ZERO);
-        let scroll_margin: Result<crate::ScrollMarginOf<S>, crate::ScrollMarginErrorOf<S>> =
-            crate::ScrollMarginOf::try_new(S::ZERO, S::ZERO, S::ZERO, S::ZERO);
-        let scroll_padding = crate::ScrollPaddingOf::new(
-            crate::ScrollPaddingValueOf::AUTO,
-            crate::ScrollPaddingValueOf::auto(),
-            crate::ScrollPaddingValueOf::default(),
-            crate::ScrollPaddingValueOf::value(crate::LengthPercentageOf::ZERO),
+            ScrollbarWidthOf<S>,
+            crate::value::NonNegativeFiniteScalarErrorOf<S>,
+        > = ScrollbarWidthOf::try_new(S::ZERO);
+        let scroll_margin: Result<ScrollMarginOf<S>, crate::node_input::ScrollMarginErrorOf<S>> =
+            ScrollMarginOf::try_new(S::ZERO, S::ZERO, S::ZERO, S::ZERO);
+        let scroll_padding = ScrollPaddingOf::new(
+            ScrollPaddingValueOf::AUTO,
+            ScrollPaddingValueOf::auto(),
+            ScrollPaddingValueOf::default(),
+            ScrollPaddingValueOf::value(crate::value::LengthPercentageOf::ZERO),
         );
-        crate::NodeInputOf::<S> {
+        NodeInputOf::<S> {
             overflow,
             overflow_clip_margin: clip_margin.expect("finite clip margin"),
-            scrollbar_gutter: crate::ScrollbarGutter::StableBothEdges,
+            scrollbar_gutter: crate::node_input::ScrollbarGutter::StableBothEdges,
             scrollbar_width: scrollbar_width.expect("finite scrollbar width"),
             scroll_padding,
             scroll_margin: scroll_margin.expect("finite scroll margin"),
-            scroll_snap_type: crate::ScrollSnapType::Enabled {
-                axis: crate::ScrollSnapAxis::Block,
-                strictness: crate::ScrollSnapStrictness::Proximity,
+            scroll_snap_type: crate::node_input::ScrollSnapType::Enabled {
+                axis: crate::node_input::ScrollSnapAxis::Block,
+                strictness: crate::node_input::ScrollSnapStrictness::Proximity,
             },
-            scroll_snap_align: crate::ScrollSnapAlign::new(
-                crate::ScrollSnapAlignValue::Start,
-                crate::ScrollSnapAlignValue::Center,
+            scroll_snap_align: crate::node_input::ScrollSnapAlign::new(
+                crate::node_input::ScrollSnapAlignValue::Start,
+                crate::node_input::ScrollSnapAlignValue::Center,
             ),
-            scroll_snap_stop: crate::ScrollSnapStop::Always,
-            ..crate::NodeInputOf::<S>::default()
+            scroll_snap_stop: crate::node_input::ScrollSnapStop::Always,
+            ..NodeInputOf::<S>::default()
         }
     }
 
-    fn inspect_read_only_output<S: crate::LayoutScalar>(
-        output: crate::NodeOutputOf<S>,
-        geometry: Option<crate::ScrollGeometryOf<S>>,
-        clip_axis: Option<crate::PhysicalClipAxisOf<S>>,
-        clip: Option<crate::OverflowClipOf<S>>,
-        gutters: Option<crate::ScrollbarGutterRectsOf<S>>,
-        target: Option<crate::ScrollTargetGeometryOf<S>>,
+    fn inspect_read_only_output<S: LayoutScalar>(
+        output: crate::output::NodeOutputOf<S>,
+        geometry: Option<crate::scroll::ScrollGeometryOf<S>>,
+        clip_axis: Option<crate::scroll::PhysicalClipAxisOf<S>>,
+        clip: Option<crate::scroll::OverflowClipOf<S>>,
+        gutters: Option<crate::scroll::ScrollbarGutterRectsOf<S>>,
+        target: Option<crate::scroll::ScrollTargetGeometryOf<S>>,
     ) {
         let _ = (output.content_box_size(), output.scrollbar_size());
         if let Some(axis) = clip_axis {
@@ -600,25 +624,25 @@ fn fri05_c07_public_surface_default_and_f64_input_error_output_contracts_compose
         }
     }
 
-    fn checked_coordinates<S: crate::LayoutScalar>() {
+    fn checked_coordinates<S: LayoutScalar>() {
         let physical_offset: Result<
-            crate::PhysicalScrollOffsetOf<S>,
-            crate::ScrollCoordinateErrorOf<S>,
-        > = crate::PhysicalScrollOffsetOf::try_new(S::ZERO, S::ZERO);
+            crate::scroll::PhysicalScrollOffsetOf<S>,
+            ScrollCoordinateErrorOf<S>,
+        > = crate::scroll::PhysicalScrollOffsetOf::try_new(S::ZERO, S::ZERO);
         let flow_offset: Result<
-            crate::FlowRelativeScrollOffsetOf<S>,
-            crate::ScrollCoordinateErrorOf<S>,
-        > = crate::FlowRelativeScrollOffsetOf::try_new(S::ZERO, S::ZERO);
+            crate::scroll::FlowRelativeScrollOffsetOf<S>,
+            ScrollCoordinateErrorOf<S>,
+        > = crate::scroll::FlowRelativeScrollOffsetOf::try_new(S::ZERO, S::ZERO);
         let physical_range: Result<
-            crate::PhysicalScrollRangeOf<S>,
-            crate::ScrollCoordinateErrorOf<S>,
-        > = crate::PhysicalScrollRangeOf::try_new(S::ZERO, S::ZERO, S::ZERO, S::ZERO);
+            crate::scroll::PhysicalScrollRangeOf<S>,
+            ScrollCoordinateErrorOf<S>,
+        > = crate::scroll::PhysicalScrollRangeOf::try_new(S::ZERO, S::ZERO, S::ZERO, S::ZERO);
         let flow_range: Result<
-            crate::FlowRelativeScrollRangeOf<S>,
-            crate::ScrollCoordinateErrorOf<S>,
-        > = crate::FlowRelativeScrollRangeOf::try_new(S::ZERO, S::ZERO, S::ZERO, S::ZERO);
-        let rect: Result<crate::ScrollRectOf<S>, crate::ScrollRectErrorOf<S>> =
-            crate::ScrollRectOf::try_new(crate::Point::ZERO, crate::Size::ZERO);
+            crate::scroll::FlowRelativeScrollRangeOf<S>,
+            ScrollCoordinateErrorOf<S>,
+        > = crate::scroll::FlowRelativeScrollRangeOf::try_new(S::ZERO, S::ZERO, S::ZERO, S::ZERO);
+        let rect: Result<ScrollRectOf<S>, crate::scroll::ScrollRectErrorOf<S>> =
+            ScrollRectOf::try_new(crate::geometry::Point::ZERO, Size::ZERO);
 
         let physical_offset = physical_offset.expect("finite physical offset");
         let flow_offset = flow_offset.expect("finite flow-relative offset");
@@ -626,60 +650,69 @@ fn fri05_c07_public_surface_default_and_f64_input_error_output_contracts_compose
         let flow_range = flow_range.expect("finite ordered flow-relative range");
         assert_eq!(physical_range.clamp(physical_offset), physical_offset);
         assert_eq!(flow_range.clamp(flow_offset), flow_offset);
-        assert_eq!(rect.expect("finite rectangle").size(), crate::Size::ZERO);
+        assert_eq!(rect.expect("finite rectangle").size(), Size::ZERO);
 
-        let _: Option<crate::PhysicalScrollAxisRangeOf<S>> = Some(physical_range.x());
-        let _: Option<crate::FlowRelativeScrollAxisRangeOf<S>> = Some(flow_range.inline());
+        let _: Option<crate::scroll::PhysicalScrollAxisRangeOf<S>> = Some(physical_range.x());
+        let _: Option<crate::scroll::FlowRelativeScrollAxisRangeOf<S>> = Some(flow_range.inline());
     }
 
     let default = checked_input::<f32>();
     let generic = checked_input::<f64>();
-    assert_eq!(default.overflow.x(), crate::Overflow::Auto);
-    assert_eq!(generic.overflow.y(), crate::Overflow::Scroll);
-    let _: crate::OverflowClipMargin = default.overflow_clip_margin;
-    let _: crate::ScrollbarGutter = default.scrollbar_gutter;
-    let _: crate::ScrollbarWidth = default.scrollbar_width;
-    let _: crate::ScrollPadding = default.scroll_padding;
-    let _: crate::ScrollPaddingValue = default.scroll_padding.top();
-    let _: crate::ScrollMargin = default.scroll_margin;
-    let _: crate::ScrollSnapType = default.scroll_snap_type;
-    let _: crate::ScrollSnapAlign = default.scroll_snap_align;
-    let _: crate::ScrollSnapStop = default.scroll_snap_stop;
-    let _: crate::OverflowClipMarginOf<f64> = generic.overflow_clip_margin;
-    let _: crate::ScrollbarWidthOf<f64> = generic.scrollbar_width;
-    let _: crate::ScrollPaddingOf<f64> = generic.scroll_padding;
-    let _: crate::ScrollPaddingValueOf<f64> = generic.scroll_padding.top();
-    let _: crate::ScrollMarginOf<f64> = generic.scroll_margin;
+    assert_eq!(default.overflow.x(), Overflow::Auto);
+    assert_eq!(generic.overflow.y(), Overflow::Scroll);
+    let _: crate::node_input::OverflowClipMargin = default.overflow_clip_margin;
+    let _: crate::node_input::ScrollbarGutter = default.scrollbar_gutter;
+    let _: crate::node_input::ScrollbarWidth = default.scrollbar_width;
+    let _: crate::node_input::ScrollPadding = default.scroll_padding;
+    let _: crate::node_input::ScrollPaddingValue = default.scroll_padding.top();
+    let _: crate::node_input::ScrollMargin = default.scroll_margin;
+    let _: crate::node_input::ScrollSnapType = default.scroll_snap_type;
+    let _: crate::node_input::ScrollSnapAlign = default.scroll_snap_align;
+    let _: crate::node_input::ScrollSnapStop = default.scroll_snap_stop;
+    let _: OverflowClipMarginOf<f64> = generic.overflow_clip_margin;
+    let _: ScrollbarWidthOf<f64> = generic.scrollbar_width;
+    let _: ScrollPaddingOf<f64> = generic.scroll_padding;
+    let _: ScrollPaddingValueOf<f64> = generic.scroll_padding.top();
+    let _: ScrollMarginOf<f64> = generic.scroll_margin;
     checked_coordinates::<f32>();
     checked_coordinates::<f64>();
 
-    let _: crate::NodeInput = default;
-    let _: crate::ComputedOverflowError =
-        crate::ComputedOverflow::try_new(crate::Overflow::Visible, crate::Overflow::Auto)
+    let _: crate::node_input::NodeInput = default;
+    let _: crate::node_input::ComputedOverflowError =
+        crate::node_input::ComputedOverflow::try_new(Overflow::Visible, Overflow::Auto)
             .expect_err("noncanonical pair");
-    let _: crate::ScrollMarginError =
-        crate::ScrollMargin::try_new(f32::NAN, 0.0, 0.0, 0.0).expect_err("non-finite margin");
-    let _: crate::ScrollRectError =
-        crate::ScrollRect::try_new(crate::Point::new(f32::NAN, 0.0), crate::Size::ZERO)
+    let _: crate::node_input::ScrollMarginError =
+        crate::node_input::ScrollMargin::try_new(f32::NAN, 0.0, 0.0, 0.0)
+            .expect_err("non-finite margin");
+    let _: crate::scroll::ScrollRectError =
+        crate::scroll::ScrollRect::try_new(crate::geometry::Point::new(f32::NAN, 0.0), Size::ZERO)
             .expect_err("non-finite rectangle");
-    let _: crate::ScrollCoordinateError =
-        crate::PhysicalScrollRange::try_new(1.0, 0.0, 0.0, 0.0).expect_err("inverted range");
+    let _: crate::scroll::ScrollCoordinateError =
+        crate::scroll::PhysicalScrollRange::try_new(1.0, 0.0, 0.0, 0.0)
+            .expect_err("inverted range");
 
-    let _: Option<crate::PhysicalScrollOffset> = None;
-    let _: Option<crate::FlowRelativeScrollOffset> = None;
-    let _: Option<crate::PhysicalScrollAxisRange> = None;
-    let _: Option<crate::FlowRelativeScrollAxisRange> = None;
-    let _: Option<crate::PhysicalScrollRange> = None;
-    let _: Option<crate::FlowRelativeScrollRange> = None;
-    let _: Option<crate::ScrollRect> = None;
-    let _: Option<crate::PhysicalClipAxis> = None;
-    let _: Option<crate::OverflowClip> = None;
-    let _: Option<crate::ScrollbarGutterRects> = None;
-    let _: Option<crate::ScrollTargetGeometry> = None;
-    let _: Option<crate::ScrollGeometry> = None;
-    inspect_read_only_output(crate::NodeOutput::default(), None, None, None, None, None);
+    let _: Option<crate::scroll::PhysicalScrollOffset> = None;
+    let _: Option<crate::scroll::FlowRelativeScrollOffset> = None;
+    let _: Option<crate::scroll::PhysicalScrollAxisRange> = None;
+    let _: Option<crate::scroll::FlowRelativeScrollAxisRange> = None;
+    let _: Option<crate::scroll::PhysicalScrollRange> = None;
+    let _: Option<crate::scroll::FlowRelativeScrollRange> = None;
+    let _: Option<crate::scroll::ScrollRect> = None;
+    let _: Option<crate::scroll::PhysicalClipAxis> = None;
+    let _: Option<crate::scroll::OverflowClip> = None;
+    let _: Option<crate::scroll::ScrollbarGutterRects> = None;
+    let _: Option<crate::scroll::ScrollTargetGeometry> = None;
+    let _: Option<crate::scroll::ScrollGeometry> = None;
     inspect_read_only_output(
-        crate::NodeOutputOf::<f64>::default(),
+        crate::output::NodeOutput::default(),
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+    inspect_read_only_output(
+        crate::output::NodeOutputOf::<f64>::default(),
         None,
         None,
         None,
@@ -692,29 +725,33 @@ fn fri05_c07_public_surface_default_and_f64_input_error_output_contracts_compose
 fn fri04_c04_dispatch_public_descriptor_front_door_has_closed_copy_hash_contract() {
     fn assert_closed<T: Clone + Copy + core::fmt::Debug + Eq + core::hash::Hash + PartialEq>() {}
 
-    assert_closed::<crate::SizingProperty>();
-    assert_closed::<crate::SizingAlgorithm>();
-    assert_closed::<crate::CalcSizeBehaviorBasis>();
-    assert_closed::<crate::SizingBehavior>();
-    assert_closed::<crate::UnsupportedSizingBehavior>();
-    assert_closed::<crate::LayoutUnsupportedCapability>();
+    assert_closed::<crate::error::SizingProperty>();
+    assert_closed::<crate::error::SizingAlgorithm>();
+    assert_closed::<CalcSizeBehaviorBasis>();
+    assert_closed::<crate::error::SizingBehavior>();
+    assert_closed::<crate::error::UnsupportedSizingBehavior>();
+    assert_closed::<crate::error::LayoutUnsupportedCapability>();
 
-    let _ = crate::SizingProperty::Preferred;
-    let _ = crate::SizingAlgorithm::Positioned;
-    let _ = crate::CalcSizeBehaviorBasis::Content;
-    let _ = crate::SizingBehavior::CalcSize(crate::CalcSizeBehaviorBasis::None);
+    let _ = crate::error::SizingProperty::Preferred;
+    let _ = crate::error::SizingAlgorithm::Positioned;
+    let _ = CalcSizeBehaviorBasis::Content;
+    let _ = crate::error::SizingBehavior::CalcSize(CalcSizeBehaviorBasis::None);
 }
 
 #[test]
 fn fri04_c06_public_surface_default_and_f64_checked_reexports_compose() {
     use crate::{
-        CalcSizeBehaviorBasis, CalcSizeCalculation, CalcSizeCalculationErrorOf,
-        CalcSizeCalculationOf, CalcSizeConstructionError, FlexBasis, FlexBasisCalcBasis,
-        FlexBasisOf, LayoutUnsupportedCapability, MaxSize, MaxSizeCalcBasis, MaxSizeOf,
-        MaxTrackSizingOf, MinSize, MinSizeCalcBasis, MinSizeOf, MinTrackSizingOf,
-        PreferredSizeCalcBasis, PreferredSizeOf, SizingAlgorithm, SizingBehavior,
-        SizingCalculationError, SizingCalculationOf, SizingProperty, TrackFlexFactorOf,
-        TrackSizingOf, UnsupportedSizingBehavior,
+        error::{
+            CalcSizeBehaviorBasis, LayoutUnsupportedCapability, SizingAlgorithm, SizingBehavior,
+            SizingProperty, UnsupportedSizingBehavior,
+        },
+        sizing::{
+            CalcSizeCalculation, CalcSizeCalculationErrorOf, CalcSizeCalculationOf,
+            CalcSizeConstructionError, FlexBasis, FlexBasisCalcBasis, FlexBasisOf, MaxSize,
+            MaxSizeCalcBasis, MaxSizeOf, MinSize, MinSizeCalcBasis, MinSizeOf,
+            PreferredSizeCalcBasis, PreferredSizeOf, SizingCalculationError, SizingCalculationOf,
+        },
+        value::{MaxTrackSizingOf, MinTrackSizingOf, TrackFlexFactorOf, TrackSizingOf},
     };
 
     fn affine<S: LayoutScalar>(absolute_px: f64, percent_fraction: f64) -> LengthPercentageOf<S> {
@@ -1133,11 +1170,11 @@ fn non_numeric_values_report_non_numeric_status() {
 
 #[test]
 fn aspect_ratio_rejects_non_positive_or_non_finite_values() {
-    assert!(super::AspectRatio::new(1.5).is_some());
-    assert_eq!(super::AspectRatio::new(0.0), None);
-    assert_eq!(super::AspectRatio::new(-1.0), None);
-    assert_eq!(super::AspectRatio::new(DefaultScalar::NAN), None);
-    assert_eq!(super::AspectRatio::new(DefaultScalar::INFINITY), None);
+    assert!(AspectRatio::new(1.5).is_some());
+    assert_eq!(AspectRatio::new(0.0), None);
+    assert_eq!(AspectRatio::new(-1.0), None);
+    assert_eq!(AspectRatio::new(DefaultScalar::NAN), None);
+    assert_eq!(AspectRatio::new(DefaultScalar::INFINITY), None);
 }
 
 #[test]
@@ -1149,7 +1186,7 @@ fn track_repetition_rejects_zero_count_and_empty_components() {
 
 #[test]
 fn track_sizing_components_empty_slice_uses_default_scalar_api() {
-    assert!(super::track_sizing_components(&[]).is_empty());
+    assert!(crate::value::track_sizing_components(&[]).is_empty());
 }
 
 #[test]

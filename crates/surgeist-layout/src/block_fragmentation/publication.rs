@@ -1,5 +1,5 @@
 use super::LayoutTargetBasis;
-use crate::{CompletedLayoutBatchOf, LayoutScalar};
+use crate::{output::CompletedLayoutBatchOf, scalar::LayoutScalar};
 
 /// Call-scoped preparation authority issued only by CompletedLayoutBatch::apply_to.
 /// The actual local target borrow prevents retention as replay authority.

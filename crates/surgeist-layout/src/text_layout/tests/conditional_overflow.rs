@@ -6,6 +6,12 @@
 //! adopted Surgeist ordering, not a universal browser-coordinate oracle.
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::{
+    geometry::FlowAxes,
+    inline_wrapping::WrappingInput,
+    tree::LayoutTree,
+    value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation},
+};
 use surgeist_text::{
     finalized::FinalizedLine,
     selection::LineEnd,
@@ -121,7 +127,7 @@ fn paragraph<S: LayoutScalar>(
     source: &str,
     overflow: OverflowWrap,
     wrap: Wrap,
-    available: crate::AxisSizingRequestOf<S>,
+    available: AxisSizingRequestOf<S>,
 ) -> (f64, Vec<LineFact>) {
     let mut style = ahem_style(10.0, 10.0);
     style.overflow_wrap = overflow;
@@ -132,7 +138,7 @@ fn paragraph<S: LayoutScalar>(
         style,
     );
     let width = match available.space() {
-        crate::AvailableSpaceOf::Definite(value) => PreferredSizeOf::px(value.get()),
+        AvailableSpaceOf::Definite(value) => PreferredSizeOf::px(value.get()),
         _ => PreferredSizeOf::AUTO,
     };
     let tree = PublicLayoutTreeOf::<S>::new()
@@ -151,7 +157,7 @@ fn paragraph<S: LayoutScalar>(
         &tree,
         0,
         vec![paragraph.binding(0)],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -162,33 +168,30 @@ fn paragraph<S: LayoutScalar>(
     .unwrap();
     let request = {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
             available,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -216,18 +219,18 @@ fn native_anywhere_wraps_the_actual_aaaa_into_two_fitting_lines() {
             "AAAA",
             OverflowWrap::Anywhere,
             Wrap::Word,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(20.0).unwrap()),
+                SizingOperation::Normal,
             ),
         ),
         paragraph::<f64>(
             "AAAA",
             OverflowWrap::Anywhere,
             Wrap::Word,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(20.0).unwrap()),
+                SizingOperation::Normal,
             ),
         ),
     );
@@ -240,18 +243,18 @@ fn native_break_word_wraps_the_actual_aaaa_into_two_fitting_lines() {
             "AAAA",
             OverflowWrap::BreakWord,
             Wrap::Word,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(20.0).unwrap()),
+                SizingOperation::Normal,
             ),
         ),
         paragraph::<f64>(
             "AAAA",
             OverflowWrap::BreakWord,
             Wrap::Word,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
-                crate::SizingOperation::Normal,
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(20.0).unwrap()),
+                SizingOperation::Normal,
             ),
         ),
     );
@@ -273,44 +276,36 @@ fn native_fitting_ordinary_endpoints_win_over_possible_conditional_cuts() {
                 "AA AA",
                 overflow,
                 Wrap::Word,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(40.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(40.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
             ),
             paragraph::<f64>(
                 "AA AA",
                 overflow,
                 Wrap::Word,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(40.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(40.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
             ),
             paragraph::<f32>(
                 "AA AA",
                 overflow,
                 Wrap::Word,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(50.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(50.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
             ),
             paragraph::<f64>(
                 "AA AA",
                 overflow,
                 Wrap::Word,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(50.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(50.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
             ),
         ];
@@ -330,19 +325,13 @@ fn native_anywhere_min_content_uses_actual_ten_pixel_pieces() {
             "AAAA",
             OverflowWrap::Anywhere,
             Wrap::Word,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
         ),
         paragraph::<f64>(
             "AAAA",
             OverflowWrap::Anywhere,
             Wrap::Word,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
         ),
     );
     assert_eq!(actual, (expected.clone(), expected));
@@ -355,19 +344,13 @@ fn native_break_word_min_content_retains_the_ordinary_forty_pixel_word() {
             "AAAA",
             OverflowWrap::BreakWord,
             Wrap::Word,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
         ),
         paragraph::<f64>(
             "AAAA",
             OverflowWrap::BreakWord,
             Wrap::Word,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
         ),
     );
     assert_eq!(actual, (expected.clone(), expected));
@@ -424,7 +407,7 @@ fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinction
                     &tree,
                     0,
                     vec![paragraph.binding(0)],
-                    crate::WrappingInput {
+                    WrappingInput {
                         native_inline_boxes: Vec::new(),
                         gaps: Vec::new(),
                         scopes: Vec::new(),
@@ -438,30 +421,30 @@ fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinction
                 // the 10px emergency pieces into min-content.
                 for (available, expected) in [
                     (
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MinContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
                         ),
                         minimum,
                     ),
                     (
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            crate::SizingOperation::MaxContent,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
                         ),
                         50.0,
                     ),
                 ] {
                     let request = {
                         let containing_flow_axes = {
-                            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-                            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                            let root_input = LayoutTree::node_input((capture).tree(), 0);
+                            FlowAxes::new(root_input.writing_mode, root_input.direction)
                         };
                         let requested_axes = Size::new(
                             available,
-                            crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Indefinite,
-                                crate::SizingOperation::MaxContent,
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Indefinite,
+                                SizingOperation::MaxContent,
                             ),
                         );
                         let mut logical_requests =
@@ -470,19 +453,21 @@ fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinction
                         // the explicitly requested inline contribution operation.
                         logical_requests.block = logical_requests
                             .block
-                            .with_operation(crate::SizingOperation::Normal);
+                            .with_operation(SizingOperation::Normal);
                         let axes = containing_flow_axes.physical_size(logical_requests);
                         // The old Native NoParent fixture explicitly supplied these percentage
                         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
                         let percentage_parent =
                             requested_axes.map(|axis| axis.space().definite_size());
-                        let fallback = crate::OrthogonalFallbackOf::new(
-                            crate::Size::NONE,
-                            crate::NearestScrollportOf::Absent,
-                            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        let fallback = crate::value::OrthogonalFallbackOf::new(
+                            crate::geometry::Size::NONE,
+                            crate::value::NearestScrollportOf::Absent,
+                            crate::geometry::Size::splat(
+                                crate::value::OrthogonalFallbackLimitOf::Unbounded,
+                            ),
                         );
-                        crate::LayoutRootRequestOf::standalone(
-                            crate::SizingRequestOf::new(axes, fallback),
+                        crate::output::LayoutRootRequestOf::standalone(
+                            crate::value::SizingRequestOf::new(axes, fallback),
                             containing_flow_axes,
                             percentage_parent,
                         )
@@ -513,19 +498,13 @@ fn native_max_content_keeps_both_overflow_wrap_modes_unbroken() {
                 "AAAA",
                 overflow,
                 Wrap::Word,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MaxContent,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             ),
             paragraph::<f64>(
                 "AAAA",
                 overflow,
                 Wrap::Word,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MaxContent,
-                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             ),
         );
         assert_eq!(actual, (expected.clone(), expected.clone()));
@@ -540,22 +519,18 @@ fn native_nowrap_does_not_acquire_conditional_permission() {
                 "AAAA",
                 overflow,
                 Wrap::None,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(20.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(20.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
             ),
             paragraph::<f64>(
                 "AAAA",
                 overflow,
                 Wrap::None,
-                crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Definite(
-                        crate::NonNegativeFiniteOf::new(20.0).unwrap(),
-                    ),
-                    crate::SizingOperation::Normal,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(20.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
             ),
         );
@@ -613,7 +588,7 @@ fn interleaved<S: LayoutScalar>(
         &tree,
         0,
         vec![binding],
-        crate::WrappingInput {
+        WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -626,8 +601,8 @@ fn interleaved<S: LayoutScalar>(
         &capture,
         0,
         request(20.0, {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((capture).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();

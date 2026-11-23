@@ -6,7 +6,7 @@ use crate::text_layout::scope_alignment::{
 const LIMITS: surgeist_text::scope_alignment::ScopeAlignmentLimits =
     surgeist_text::scope_alignment::ScopeAlignmentLimits::new(100_000, 100, 1_000_000, 16 << 20);
 
-fn owner(binding: &crate::TextParagraphBinding<u32>) -> ScopeAlignmentResources<f64> {
+fn owner(binding: &crate::text_layout::TextParagraphBinding<u32>) -> ScopeAlignmentResources<f64> {
     ScopeAlignmentResources::new(
         ScopeAlignmentSnapshot::admit(vec![], std::slice::from_ref(binding), false)
             .unwrap()
@@ -25,7 +25,7 @@ fn pending(node: u32) -> PendingFloat<u32, f64> {
         block_start: 0.0,
         size: Size::splat(10.0),
         content_size: Size::splat(10.0),
-        named_baselines: crate::NamedBaselinesOf::absent(),
+        named_baselines: crate::output::NamedBaselinesOf::absent(),
         border: Edges::ZERO,
         padding: Edges::ZERO,
         margin: Edges::ZERO,
@@ -56,7 +56,10 @@ fn funded_ledger_growth_replay_and_drop_keep_cumulative_work() {
     let initial = spent.retention();
     let spent_remaining = {
         let mut ledger = FloatExclusions::new(
-            crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::geometry::FlowAxes::new(
+                crate::node_input::WritingMode::HorizontalTb,
+                crate::node_input::Direction::Ltr,
+            ),
             Size::splat(40.0),
             40.0,
             LogicalEdgesOf::new(0.0, 0.0, 0.0, 0.0),

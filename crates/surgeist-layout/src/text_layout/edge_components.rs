@@ -1,5 +1,5 @@
 //! Private consuming bridge for the two sealed Layout scalar lanes.
-use crate::{InlineBoundaryEdgeOf, LayoutScalar};
+use crate::{node_input::InlineBoundaryEdgeOf, scalar::LayoutScalar};
 use surgeist_text::inline_box::InlineBoxEdgeComponents;
 
 pub(crate) fn from_native<S: LayoutScalar>(

@@ -1,6 +1,7 @@
 //! Captured scope facts reach real Layout geometry. Ahem's retained tables and
 //! CSS2 10.8.1 aligned subtrees supply the independent metric/edge expectations.
 use crate::test_support::readback::{self, Phase};
+use crate::{geometry::FlowAxes, tree::LayoutTree};
 use surgeist_text::font::FontBaseline;
 #[path = "scope_alignment/census_failure_usage.rs"]
 mod census_failure_usage;
@@ -446,7 +447,7 @@ impl Case {
             crate::test_support::text::in_flat_wrapping_context(analyzed, text::style::Wrap::Word);
         let prepared = prepare(&analyzed, scale);
         let binding = TextParagraphBinding {
-            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+            inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
             origins: prepared
                 .origin_views()
                 .zip(&runs)
@@ -519,7 +520,8 @@ impl Case {
             let prepared = prepare(&child, 1.0);
             let origin = prepared.origin_views().next().unwrap().handle();
             Some(TextParagraphBinding {
-                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+                inline_box_fragments:
+                    crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 origins: vec![TextOriginBinding { origin, node: 91 }],
                 prepared,
                 container: 90,
@@ -683,8 +685,8 @@ fn solve<S: LayoutScalar>(
         &input,
         0,
         request(width, {
-            let root_input = crate::LayoutTree::node_input((input).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((input).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
 }
@@ -814,8 +816,8 @@ fn normalized_alignment_admission_rejects_missing_foreign_duplicate_and_class_mi
         &admitted,
         0,
         request(100.0, {
-            let root_input = crate::LayoutTree::node_input((admitted).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((admitted).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
     .unwrap();
@@ -833,8 +835,8 @@ fn normalized_alignment_admission_rejects_missing_foreign_duplicate_and_class_mi
         &missing,
         0,
         request(100.0, {
-            let root_input = crate::LayoutTree::node_input((missing).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = LayoutTree::node_input((missing).tree(), 0);
+            FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     ) {
         Ok(_) => panic!("missing demanded scope fact published a completed batch"),
@@ -1481,8 +1483,8 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
             &input,
             0,
             request(100.0, {
-                let root_input = crate::LayoutTree::node_input((input).tree(), 0);
-                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                let root_input = LayoutTree::node_input((input).tree(), 0);
+                FlowAxes::new(root_input.writing_mode, root_input.direction)
             }),
         )
         .unwrap();
@@ -1602,8 +1604,8 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
                     &admitted,
                     0,
                     super::request(100.0, {
-                        let root_input = crate::LayoutTree::node_input((admitted).tree(), 0);
-                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                        let root_input = LayoutTree::node_input((admitted).tree(), 0);
+                        FlowAxes::new(root_input.writing_mode, root_input.direction)
                     }),
                 ) {
                     Ok(_) => panic!("unproven source owner published a completed batch"),

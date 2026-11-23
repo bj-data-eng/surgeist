@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use crate::value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation};
 use std::sync::Arc;
 use surgeist_text as text;
 
@@ -297,7 +298,7 @@ fn capture(
         })
         .collect();
     TextParagraphBinding {
-        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+        inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes,
@@ -341,7 +342,7 @@ fn tree<S: LayoutScalar>(
                 InlineBoundaryInputOf::contribution(
                     kind,
                     InlineMetricsOf::try_new(
-                        crate::InlineBaselineContext::Physical,
+                        crate::node_input::InlineBaselineContext::Physical,
                         S::from_f64(8.0),
                         S::from_f64(10.0),
                     )
@@ -362,14 +363,14 @@ fn tree<S: LayoutScalar>(
 fn compute<S: LayoutScalar>(
     p: &TextParagraphBinding<u32>,
     rtl: bool,
-    width: crate::AxisSizingRequestOf<S>,
+    width: AxisSizingRequestOf<S>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let tree = tree::<S>(p, rtl, &[]);
     let capture = LayoutFlowInput::try_new(
         &tree,
         0,
         vec![p.clone()],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -380,33 +381,30 @@ fn compute<S: LayoutScalar>(
     .unwrap();
     compute_layout_with_flow(&capture, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
             width,
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
         // These fixtures perform ordinary block-size layout independently of
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -579,11 +577,9 @@ fn assert_pair<S: LayoutScalar>(
     let actual = compute::<S>(
         p,
         rtl,
-        crate::AxisSizingRequestOf::new(
-            crate::AvailableSpaceOf::Definite(
-                crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
-            ),
-            crate::SizingOperation::Normal,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap()),
+            SizingOperation::Normal,
         ),
     );
     let lines = qualify(&actual, p, font, source, &ranges, glyphs);
@@ -607,17 +603,11 @@ fn assert_pair<S: LayoutScalar>(
     }
     for (width, expected) in [
         (
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MinContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
             if cut.is_some() { 10.0 } else { 20.0 },
         ),
         (
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Indefinite,
-                crate::SizingOperation::MaxContent,
-            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             20.0,
         ),
     ] {
@@ -772,7 +762,7 @@ fn either_side_anywhere_obeys_actual_common_ancestor_and_rejects_stale_bindings(
                     &tree,
                     0,
                     vec![fresh],
-                    crate::WrappingInput {
+                    crate::inline_wrapping::WrappingInput {
                         native_inline_boxes: Vec::new(),
                         gaps: Vec::new(),
                         scopes: Vec::new(),
@@ -938,11 +928,11 @@ fn emergency_seam_uses_the_logical_before_box_for_fit_and_intrinsic_width() {
                     let finite = compute::<S>(
                         &p,
                         rtl,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
                     );
                     let layout = finite.placed_text()[0].layout();
@@ -994,16 +984,13 @@ fn emergency_seam_uses_the_logical_before_box_for_fit_and_intrinsic_width() {
                     }
                 }
                 for (operation, expected) in [
-                    (crate::SizingOperation::MinContent, minimum),
-                    (crate::SizingOperation::MaxContent, 40.0),
+                    (SizingOperation::MinContent, minimum),
+                    (SizingOperation::MaxContent, 40.0),
                 ] {
                     let intrinsic = compute::<S>(
                         &p,
                         rtl,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Indefinite,
-                            operation,
-                        ),
+                        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, operation),
                     );
                     let root = readback::single_box_output(&intrinsic, 0, Phase::Unrounded);
                     assert_eq!(
@@ -1063,11 +1050,11 @@ fn disappearing_space_uses_its_own_box_for_soft_fit_and_plaintext() {
                     let finite = compute::<S>(
                         &paragraph,
                         rtl,
-                        crate::AxisSizingRequestOf::new(
-                            crate::AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
                             ),
-                            crate::SizingOperation::Normal,
+                            SizingOperation::Normal,
                         ),
                     );
                     let layout = finite.placed_text()[0].layout();
@@ -1100,16 +1087,13 @@ fn disappearing_space_uses_its_own_box_for_soft_fit_and_plaintext() {
                         );
                     }
                     for (operation, expected) in [
-                        (crate::SizingOperation::MinContent, minimum),
-                        (crate::SizingOperation::MaxContent, 30.0),
+                        (SizingOperation::MinContent, minimum),
+                        (SizingOperation::MaxContent, 30.0),
                     ] {
                         let intrinsic = compute::<S>(
                             &paragraph,
                             rtl,
-                            crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Indefinite,
-                                operation,
-                            ),
+                            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, operation),
                         );
                         let root = readback::single_box_output(&intrinsic, 0, Phase::Unrounded);
                         assert_eq!(

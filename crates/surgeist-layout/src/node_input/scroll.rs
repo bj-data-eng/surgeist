@@ -1,8 +1,12 @@
-use super::super::{
-    DefaultScalar, FiniteScalarErrorOf, LayoutScalar, LengthPercentageOf,
-    NonNegativeFiniteScalarErrorOf, NumericResolutionOf, PercentageBasisOf, PhysicalSide,
-};
 use super::validate_numeric_property;
+use crate::{
+    geometry::PhysicalSide,
+    scalar::{DefaultScalar, LayoutScalar},
+    value::{
+        FiniteScalarErrorOf, LengthPercentageOf, NonNegativeFiniteScalarErrorOf,
+        NumericResolutionOf, PercentageBasisOf,
+    },
+};
 
 /// A computed overflow keyword for one physical axis.
 ///

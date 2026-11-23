@@ -8,9 +8,13 @@ use crate::scroll::{
     UsedOverflowGutter, canonical_scroll_geometry_from_source,
 };
 use crate::{
-    ComputedOverflow, Direction, Edges, FlowAxes, LayoutScalar, LogicalAxis, Overflow,
-    PhysicalAxis, Point, ScrollGeometryOf, ScrollMarginOf, ScrollRect, ScrollSnapAlign,
-    ScrollSnapStop, ScrollSnapType, ScrollbarGutter, ScrollbarWidthOf, Size, WritingMode,
+    geometry::{Edges, FlowAxes, LogicalAxis, PhysicalAxis, Point, Size},
+    node_input::{
+        ComputedOverflow, Direction, Overflow, ScrollMarginOf, ScrollSnapAlign, ScrollSnapStop,
+        ScrollSnapType, ScrollbarGutter, ScrollbarWidthOf, WritingMode,
+    },
+    scalar::LayoutScalar,
+    scroll::{ScrollGeometryOf, ScrollRect},
 };
 
 fn computed_overflow(x: Overflow, y: Overflow) -> ComputedOverflow {
@@ -264,7 +268,7 @@ fn scroll_projection_expectations_reject_duplicates_and_cover_all_flow_mappings(
     ));
 }
 
-fn assert_scroll_projection_for_all_mappings<S: crate::LayoutScalar>() {
+fn assert_scroll_projection_for_all_mappings<S: LayoutScalar>() {
     let flow_offset =
         FlowRelativeScrollOffsetOf::try_new(S::from_f64(3.0), S::from_f64(7.0)).unwrap();
     let flow_range = FlowRelativeScrollRangeOf::try_new(
@@ -445,7 +449,7 @@ fn scroll_projection_canonicalizes_range_signed_zero_after_reversal_in_both_scal
     assert_reversed_range_projection_canonicalizes_signed_zero!(f64);
 }
 
-fn assert_scroll_conversion_clamp_laws_for_all_mappings<S: crate::LayoutScalar>() {
+fn assert_scroll_conversion_clamp_laws_for_all_mappings<S: LayoutScalar>() {
     let flow_range = FlowRelativeScrollRangeOf::try_new(
         S::from_f64(-10.0),
         S::from_f64(20.0),
@@ -1270,7 +1274,7 @@ fn source_rounding_rounds_rects_with_cumulative_origin() {
 
 #[test]
 fn scroll_geometry_projects_signed_ranges_for_all_flow_mappings_before_and_after_rounding() {
-    fn assert_scalar<S: crate::LayoutScalar>() {
+    fn assert_scalar<S: LayoutScalar>() {
         let cases = [
             (
                 WritingMode::HorizontalTb,

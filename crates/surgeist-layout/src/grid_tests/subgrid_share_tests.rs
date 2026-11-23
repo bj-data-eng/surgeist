@@ -3,7 +3,10 @@ use super::fixtures::{
     with_projected_subgrid_child_input,
 };
 use super::*;
-use crate::{MaxTrackSizingOf, MinTrackSizingOf, SizingCalculationOf};
+use crate::{
+    sizing::SizingCalculationOf,
+    value::{MaxTrackSizingOf, MinTrackSizingOf},
+};
 
 // A parent's third column has a minimum function that overflows the scalar
 // against the definite 100px basis. CSS Grid Level 2, section 9: a subgrid
@@ -24,7 +27,8 @@ fn assert_share_reads_only_the_spanned_tracks<S: LayoutScalar>() {
         TrackSizingOf::px(scalar(40.0)),
         TrackSizingOf::minmax(
             MinTrackSizingOf::Calculation(SizingCalculationOf::value(
-                crate::LengthPercentageOf::from_coefficients(S::ZERO, scalar(largest)).unwrap(),
+                crate::value::LengthPercentageOf::from_coefficients(S::ZERO, scalar(largest))
+                    .unwrap(),
             )),
             MaxTrackSizingOf::Auto,
         ),

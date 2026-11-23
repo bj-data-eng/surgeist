@@ -5,6 +5,12 @@ use crate::test_support::text::{PreparedParagraph, ahem_style};
 use crate::text_layout::fit::balance::completion_tests::{
     fit_with_allocation, fit_with_terminal_context,
 };
+use crate::{
+    geometry::Size,
+    node_input::{NodeInputOf, TextWrapStyle},
+    sizing::PreferredSizeOf,
+    value::SizingOperation,
+};
 use surgeist_text as text;
 
 fn reset() {
@@ -80,7 +86,7 @@ fn successful_pretty_keeps_actual_after_uses_discarded_by_internal_always_backtr
     let paragraph = after_paragraph("XXXX as\u{ad}sociate");
     let lines = fit_with_terminal_context(
         &paragraph,
-        crate::TextWrapStyle::Pretty,
+        TextWrapStyle::Pretty,
         100.0,
         TailContext::CompleteBlock,
     );
@@ -104,7 +110,7 @@ fn terminal_closure_discards_improved_groups_once_but_keeps_dependencies_and_cha
     let mut after = 0;
     let lines = fit_with_allocation(
         &paragraph,
-        crate::TextWrapStyle::Pretty,
+        TextWrapStyle::Pretty,
         100.0,
         TailContext::CompleteBlock,
         |_, _, _, struts| {
@@ -164,7 +170,7 @@ fn actual_provider_and_feedback_failures_never_become_ordinary_success() {
         let mut calls = 0;
         let result = fit_with_allocation(
             &paragraph,
-            crate::TextWrapStyle::Pretty,
+            TextWrapStyle::Pretty,
             60.0,
             TailContext::Unrestricted,
             |_, _, _, _| {
@@ -193,7 +199,7 @@ fn the_actual_ordinary_fallback_failure_preserves_its_owner_error() {
     let mut ordinary_calls = 0;
     let result = fit_with_allocation(
         &paragraph,
-        crate::TextWrapStyle::Pretty,
+        TextWrapStyle::Pretty,
         100.0,
         TailContext::CompleteBlock,
         |_, _, _, struts| {
@@ -218,7 +224,7 @@ fn the_actual_ordinary_fallback_failure_preserves_its_owner_error() {
 fn pretty_ordinary_closure_replays_the_real_float_journal_and_agrees_with_a_fresh_run() {
     use crate::test_support::layout_tree::PublicLayoutTreeOf;
 
-    fn lane<S: crate::LayoutScalar>() {
+    fn lane<S: crate::scalar::LayoutScalar>() {
         let raw = "AAAAA BBBB C CCCCCCCCC\nXXXX as\u{ad}sociate\n";
         let paragraph = after_paragraph(raw);
         // Native floats are transparent run nodes, not Text atomic
@@ -231,54 +237,54 @@ fn pretty_ordinary_closure_replays_the_real_float_journal_and_agrees_with_a_fres
             .children(2, [])
             .style(
                 0,
-                crate::NodeInputOf {
-                    display: crate::Display::Block,
-                    text_wrap_style: crate::TextWrapStyle::Pretty,
-                    hyphenate_limit_last: crate::HyphenateLimitLast::Always,
-                    size: crate::Size::new(
-                        crate::PreferredSizeOf::px(S::from_f64(120.0)),
-                        crate::PreferredSizeOf::AUTO,
+                NodeInputOf {
+                    display: crate::node_input::Display::Block,
+                    text_wrap_style: TextWrapStyle::Pretty,
+                    hyphenate_limit_last: crate::hyphenation::HyphenateLimitLast::Always,
+                    size: Size::new(
+                        PreferredSizeOf::px(S::from_f64(120.0)),
+                        PreferredSizeOf::AUTO,
                     ),
-                    ..crate::NodeInputOf::default()
+                    ..NodeInputOf::default()
                 },
             )
             .input(1, paragraph.text_input(1))
             .style(
                 2,
-                crate::NodeInputOf {
-                    display: crate::Display::Block,
-                    float: crate::Float::Left,
-                    size: crate::Size::new(
-                        crate::PreferredSizeOf::px(S::from_f64(20.0)),
-                        crate::PreferredSizeOf::px(S::from_f64(100.0)),
+                NodeInputOf {
+                    display: crate::node_input::Display::Block,
+                    float: crate::node_input::Float::Left,
+                    size: Size::new(
+                        PreferredSizeOf::px(S::from_f64(20.0)),
+                        PreferredSizeOf::px(S::from_f64(100.0)),
                     ),
-                    ..crate::NodeInputOf::default()
+                    ..NodeInputOf::default()
                 },
             );
-        let flow = crate::LayoutFlowInput::try_new(
+        let flow = crate::text_layout::LayoutFlowInput::try_new(
             &tree,
             0,
             vec![paragraph.binding(0)],
-            crate::WrappingInput::default(),
+            crate::inline_wrapping::WrappingInput::default(),
             Vec::new(),
         )
         .unwrap();
         let compute = || {
-            crate::compute_layout_with_flow(&flow, 0, {
+            crate::engine::compute_layout_with_flow(&flow, 0, {
                 let containing_flow_axes = {
-                    let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
-                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    let root_input = crate::tree::LayoutTree::node_input((flow).tree(), 0);
+                    crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
                 };
-                let requested_axes = crate::Size::new(
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Definite(
-                            crate::NonNegativeFiniteOf::new(S::from_f64(120.0)).unwrap(),
+                let requested_axes = Size::new(
+                    crate::value::AxisSizingRequestOf::new(
+                        crate::value::AvailableSpaceOf::Definite(
+                            crate::value::NonNegativeFiniteOf::new(S::from_f64(120.0)).unwrap(),
                         ),
-                        crate::SizingOperation::Normal,
+                        SizingOperation::Normal,
                     ),
-                    crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::MaxContent,
+                    crate::value::AxisSizingRequestOf::new(
+                        crate::value::AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
                     ),
                 );
                 let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
@@ -286,21 +292,21 @@ fn pretty_ordinary_closure_replays_the_real_float_journal_and_agrees_with_a_fres
                 // the explicitly requested inline contribution operation.
                 logical_requests.block = logical_requests
                     .block
-                    .with_operation(crate::SizingOperation::Normal);
+                    .with_operation(SizingOperation::Normal);
                 logical_requests.inline = logical_requests
                     .inline
-                    .with_operation(crate::SizingOperation::Normal);
+                    .with_operation(SizingOperation::Normal);
                 let axes = containing_flow_axes.physical_size(logical_requests);
                 // The old Native NoParent fixture explicitly supplied these percentage
                 // bases. It supplied no independent ICB dimensions or ancestor scrollport.
                 let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-                let fallback = crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                let fallback = crate::value::OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::value::NearestScrollportOf::Absent,
+                    Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
                 );
-                crate::LayoutRootRequestOf::standalone(
-                    crate::SizingRequestOf::new(axes, fallback),
+                crate::output::LayoutRootRequestOf::standalone(
+                    crate::value::SizingRequestOf::new(axes, fallback),
                     containing_flow_axes,
                     percentage_parent,
                 )
@@ -319,10 +325,10 @@ fn pretty_ordinary_closure_replays_the_real_float_journal_and_agrees_with_a_fres
                 .filter(|entry| entry.node() == 2)
                 .collect::<Vec<_>>();
             assert_eq!(floats.len(), 1);
-            assert_eq!(floats[0].output().location, crate::Point::ZERO);
+            assert_eq!(floats[0].output().location, crate::geometry::Point::ZERO);
             assert_eq!(
                 floats[0].output().size,
-                crate::Size::new(S::from_f64(20.0), S::from_f64(100.0))
+                Size::new(S::from_f64(20.0), S::from_f64(100.0))
             );
             let placed = batch.placed_text()[0].layout();
             assert_eq!(

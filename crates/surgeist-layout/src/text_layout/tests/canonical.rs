@@ -5,7 +5,16 @@ use crate::test_support::readback::{self, Phase};
 pub(super) mod fonts;
 
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
-use crate::*;
+use crate::{
+    engine::compute_layout_with_flow,
+    geometry::{Edges, Point, Size},
+    node_input::{AlignItems, Display, FlexDirection, LayoutInputOf, NodeInputOf},
+    output::{CompletedLayoutBatchOf, NodeOutputOf},
+    scalar::LayoutScalar,
+    sizing::PreferredSizeOf,
+    text_layout::{LayoutFlowInput, TextOriginBinding, TextParagraphBinding, TextParticipation},
+    value::{LengthAutoOf, SizingOperation},
+};
 use surgeist_text as text;
 
 pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding<u32> {
@@ -86,7 +95,7 @@ pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding
         })
         .collect::<Vec<_>>();
     TextParagraphBinding {
-        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
+        inline_box_fragments: crate::text_layout::InlineBoxFragmentationDemand::NotRequested,
         nodes: origins.iter().map(|origin| origin.node).collect(),
         prepared,
         container: 2,
@@ -152,7 +161,7 @@ fn nested_batch<S: LayoutScalar>(
         &tree,
         0,
         vec![binding.clone()],
-        crate::WrappingInput {
+        crate::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -163,21 +172,21 @@ fn nested_batch<S: LayoutScalar>(
     .unwrap();
     compute_layout_with_flow(&capture, 0, {
         let containing_flow_axes = {
-            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
-            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            let root_input = crate::tree::LayoutTree::node_input((capture).tree(), 0);
+            crate::geometry::FlowAxes::new(root_input.writing_mode, root_input.direction)
         };
         let requested_axes = Size::new(
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
-            crate::AxisSizingRequestOf::new(
-                crate::AvailableSpaceOf::Definite(
-                    crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+            crate::value::AxisSizingRequestOf::new(
+                crate::value::AvailableSpaceOf::Definite(
+                    crate::value::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
                 ),
-                crate::SizingOperation::Normal,
+                SizingOperation::Normal,
             ),
         );
         let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
@@ -185,21 +194,21 @@ fn nested_batch<S: LayoutScalar>(
         // the explicitly requested inline contribution operation.
         logical_requests.block = logical_requests
             .block
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         logical_requests.inline = logical_requests
             .inline
-            .with_operation(crate::SizingOperation::Normal);
+            .with_operation(SizingOperation::Normal);
         let axes = containing_flow_axes.physical_size(logical_requests);
         // The old Native NoParent fixture explicitly supplied these percentage
         // bases. It supplied no independent ICB dimensions or ancestor scrollport.
         let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
-        let fallback = crate::OrthogonalFallbackOf::new(
-            crate::Size::NONE,
-            crate::NearestScrollportOf::Absent,
-            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        let fallback = crate::value::OrthogonalFallbackOf::new(
+            crate::geometry::Size::NONE,
+            crate::value::NearestScrollportOf::Absent,
+            crate::geometry::Size::splat(crate::value::OrthogonalFallbackLimitOf::Unbounded),
         );
-        crate::LayoutRootRequestOf::standalone(
-            crate::SizingRequestOf::new(axes, fallback),
+        crate::output::LayoutRootRequestOf::standalone(
+            crate::value::SizingRequestOf::new(axes, fallback),
             containing_flow_axes,
             percentage_parent,
         )
@@ -415,7 +424,7 @@ fn assert_placement<S: LayoutScalar>(
     }
     let mut covered_ranges = Vec::new();
     for entry in batch.final_inline_fragments() {
-        let crate::InlineFragmentOwner::Node(node) = entry.owner() else {
+        let crate::output::InlineFragmentOwner::Node(node) = entry.owner() else {
             panic!("source fragment owner")
         };
         let origin = binding

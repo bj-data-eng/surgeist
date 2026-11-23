@@ -7,6 +7,7 @@ use crate::layout_math::{
     AbsoluteInsetStartOf, OptionalSizeExt, PositionedSizeDeclarations, PositionedUsedSize,
     absolute_inset_alignment_offsets,
 };
+use crate::scroll::ScrollRectOf;
 use crate::sizing::resolve::{
     SizeResultExt, resolve_child_preferred_size, resolve_maximum_optional, resolve_minimum_optional,
 };
@@ -37,7 +38,7 @@ pub(in crate::grid) struct PositionedGridItems<'input, Node, S: LayoutScalar> {
     container: GridContainerProjection<'input, S>,
     constants: Constants<S>,
     containing_size: Size<S>,
-    auto_area: crate::ScrollRectOf<S>,
+    auto_area: ScrollRectOf<S>,
     column_geometry: UsedGridAxisGeometryOf<S>,
     row_geometry: UsedGridAxisGeometryOf<S>,
     lines: GridLines,
@@ -166,7 +167,7 @@ pub(in crate::grid) struct AbsoluteGridContextInput<'a, S: LayoutScalar> {
     pub(in crate::grid) constants: &'a Constants<S>,
     pub(in crate::grid) containing_size: Size<S>,
     /// Frozen from qualified in-flow geometry before any direct absolute child.
-    pub(in crate::grid) auto_area: crate::ScrollRectOf<S>,
+    pub(in crate::grid) auto_area: ScrollRectOf<S>,
     pub(in crate::grid) column: super::GridPlacement,
     pub(in crate::grid) row: super::GridPlacement,
     pub(in crate::grid) column_geometry: &'a UsedGridAxisGeometryOf<S>,
@@ -208,7 +209,7 @@ impl<'a, S: LayoutScalar> AbsoluteGridContext<'a, S> {
 pub(in crate::grid) struct AbsoluteGridAreaInput<'a, S: LayoutScalar> {
     pub(in crate::grid) column: super::GridPlacement,
     pub(in crate::grid) row: super::GridPlacement,
-    pub(in crate::grid) auto_area: crate::ScrollRectOf<S>,
+    pub(in crate::grid) auto_area: ScrollRectOf<S>,
     pub(in crate::grid) columns: AbsoluteGridAxisLines<'a, S>,
     pub(in crate::grid) rows: AbsoluteGridAxisLines<'a, S>,
     pub(in crate::grid) containing_size: Size<S>,
@@ -424,9 +425,10 @@ where
         (constants.border + constants.scrollbar_gutter).sum_axes(),
     )
     .map_err(|status| crate::error::value_resolution_error(child, status))?;
-    let orthogonal_fallback = constants
-        .child_orthogonal_fallback
-        .for_child(fallback_limits, crate::ScrollportFallbackChangeOf::Preserve);
+    let orthogonal_fallback = constants.child_orthogonal_fallback.for_child(
+        fallback_limits,
+        crate::value::ScrollportFallbackChangeOf::Preserve,
+    );
     let available = crate::layout_math::transpose_axis_requests_at_node(
         child,
         available_size.map(|value| {
@@ -449,9 +451,9 @@ where
         RequestedAxis::Both,
         known,
         area_parent,
-        crate::ContainingLayoutContext::new(
+        crate::output::ContainingLayoutContext::new(
             crate::geometry::FlowAxes::new(container_style.writing_mode, container_style.direction),
-            crate::ParentFormattingContext::Grid,
+            crate::output::ParentFormattingContext::Grid,
         ),
         SizingRequestOf::new(available, orthogonal_fallback),
     )
@@ -594,7 +596,7 @@ impl<Node: Copy, S: LayoutScalar> PositionedGridChild<'_, Node, S> {
             output.scroll_geometry,
         )
         .map_err(|error| layout_child_geometry_error(child, child, error))?;
-        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+        tree.set_unrounded(crate::output::LayoutOutputEntryOf::ordinary_unrounded(
             child,
             crate::output::NormalGeometryOf::box_geometry(
                 location,
@@ -602,7 +604,7 @@ impl<Node: Copy, S: LayoutScalar> PositionedGridChild<'_, Node, S> {
                 scroll_geometry.content_box(),
             ),
             NodeOutputOf {
-                source_index: crate::SourceIndex::new(source_index),
+                source_index: crate::output::SourceIndex::new(source_index),
                 location,
                 size: final_size,
                 named_baselines: output.named_baselines,
@@ -615,7 +617,7 @@ impl<Node: Copy, S: LayoutScalar> PositionedGridChild<'_, Node, S> {
         ));
 
         Ok(GridChildContribution {
-            source_index: crate::SourceIndex::new(source_index),
+            source_index: crate::output::SourceIndex::new(source_index),
             location,
             margin,
             geometry: scroll_geometry,
