@@ -119,6 +119,8 @@ mod form_associated_custom_elements;
 mod form_attributes;
 #[path = "document_scripting/frame_attributes.rs"]
 mod frame_attributes;
+#[path = "document_scripting/frame_content.rs"]
+mod frame_content;
 #[path = "document_scripting/frameset_reflections.rs"]
 mod frameset_reflections;
 #[path = "document_scripting/get_element_by_id.rs"]
@@ -2579,6 +2581,8 @@ fn main() {
             "class-list" => class_list::class_list_observes_and_edits_the_canonical_attribute(),
             "class-list-realm" => class_list::class_list_keeps_its_element_creation_realm(),
             "class-list-reactions" => class_list::class_list_uses_native_attribute_reactions_once(),
+            "frame-content" => frame_content::frame_content_follows_native_child_edges_and_identity(),
+            "iframe-content-opaque" => frame_content::sandboxed_iframe_content_distinguishes_null_from_unavailable_proxy(),
             "document-default-view" => document_default_view::default_view_follows_the_native_document_context(),
             "document-create-range-realm" => document_create_range::borrowed_range_factory_uses_the_receiving_document_realm(),
             "document-metadata" => document_metadata::metadata_comes_from_the_canonical_document_receiver(),
@@ -2789,6 +2793,8 @@ fn main() {
     document_create_range::document_range_keeps_canonical_live_boundaries();
     document_create_range::borrowed_range_factory_uses_the_receiving_document_realm();
     document_default_view::default_view_follows_the_native_document_context();
+    frame_content::frame_content_follows_native_child_edges_and_identity();
+    frame_content::sandboxed_iframe_content_distinguishes_null_from_unavailable_proxy();
     class_list::class_list_observes_and_edits_the_canonical_attribute();
     class_list::class_list_uses_native_attribute_reactions_once();
     class_list::class_list_keeps_its_element_creation_realm();
