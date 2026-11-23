@@ -1,9 +1,4 @@
-// Copy to tests/document_scripting/frame_attributes.rs. Register this module
-// alongside frameset_reflections. Add "frame-attributes" and
-// "frame-attribute-source-refusal" selectors and the corresponding aggregate calls.
-//
-// Pinned HTML #htmlframeelement defines all six local members. URL members
-// belong to #3257. The readonly content getters need the child producers.
+//! Local Frame reflection across native ownership and original realms.
 
 use super::{window_length::observe, *};
 
@@ -193,10 +188,12 @@ pub(super) fn frame_attributes_follow_native_identity_and_source() {
                 frame.marginHeight !== 'auto 12' || !frame.noResize)
                 return 'native edits and adoption must preserve Frame identity';
             const child = window[0];
-            const other = child.document.createElement('frame');
+            const otherOwner = child.document.implementation.createHTMLDocument();
+            const other = otherOwner.createElement('frame');
             const local = Object.getOwnPropertyDescriptor(HTMLFrameElement.prototype, 'marginWidth');
             const borrowed = Object.getOwnPropertyDescriptor(child.HTMLFrameElement.prototype, 'marginWidth');
-            if (Object.getPrototypeOf(other) !== child.HTMLFrameElement.prototype ||
+            if (other.ownerDocument !== otherOwner || otherOwner.defaultView !== null ||
+                Object.getPrototypeOf(other) !== child.HTMLFrameElement.prototype ||
                 borrowed.set === local.set || Object.getPrototypeOf(borrowed.set) !== child.Function.prototype)
                 return 'actual child-realm Frame accessors';
             local.set.call(other, 'child');
