@@ -76,6 +76,23 @@ where
     }
 }
 
+/// `assert_messages` for an enum that is not `#[non_exhaustive]`: the row
+/// function is an exhaustive match, so a variant added without a row fails to
+/// compile, and every variant has exactly one row.
+fn assert_rows<E>(table: &[(E, &str)], row: fn(&E) -> usize)
+where
+    E: Error + core::fmt::Debug,
+{
+    assert_messages(table, table.len());
+    let mut seen = vec![false; table.len()];
+    for (value, _) in table {
+        let index = row(value);
+        assert!(index < table.len(), "{value:?} has no row of its own");
+        assert!(!seen[index], "two rows for {value:?}");
+        seen[index] = true;
+    }
+}
+
 #[derive(Debug, PartialEq)]
 struct HostFailure;
 
@@ -581,7 +598,11 @@ fn inline_baseline_error_names_the_rejected_fact() {
             "an inline baseline reference differs from the reference the request expects",
         ),
     ];
-    assert_messages(&table, 3);
+    assert_rows(&table, |error| match error {
+        E::UnrepresentableCoordinate => 0,
+        E::AxisMismatch { .. } => 1,
+        E::ReferenceMismatch { .. } => 2,
+    });
     for (error, _) in &table {
         assert!(error.source().is_none());
     }
@@ -605,7 +626,10 @@ fn grid_baseline_error_names_the_rejected_fact() {
             "a grid baseline coordinate cannot be represented in its output frame",
         ),
     ];
-    assert_messages(&table, 2);
+    assert_rows(&table, |error| match error {
+        E::AxisMismatch { .. } => 0,
+        E::UnrepresentableCoordinate => 1,
+    });
     for (error, _) in &table {
         assert!(error.source().is_none());
     }
@@ -916,7 +940,19 @@ fn named_grid_error_names_the_rejected_line_name_template_or_placement() {
             "grid line -4 lies before the first line of the row axis",
         ),
     ];
-    assert_messages(&table, 11);
+    assert_rows(&table, |error| match error {
+        E::ReservedLineName { .. } => 0,
+        E::UnresolvedAutoRepeatNames { .. } => 1,
+        E::EmptyTemplateAreas => 2,
+        E::TemplateAreaRowLengthMismatch { .. } => 3,
+        E::NonRectangularTemplateArea { .. } => 4,
+        E::ZeroRepeat { .. } => 5,
+        E::MultipleAutoFillRepeats { .. } => 6,
+        E::ZeroLine => 7,
+        E::ZeroSpan => 8,
+        E::AutoWithoutCursor => 9,
+        E::LineBeforeFirst { .. } => 10,
+    });
     for (error, _) in &table {
         assert!(error.source().is_none());
     }
@@ -940,7 +976,11 @@ fn layout_handle_error_prints_its_message_and_has_no_source() {
             "the result has no fragmentainer for the handle",
         ),
     ];
-    assert_messages(&table, 3);
+    assert_rows(&table, |error| match error {
+        E::WrongResult => 0,
+        E::MissingFragment => 1,
+        E::MissingFragmentainer => 2,
+    });
     for (error, _) in &table {
         assert!(error.source().is_none());
     }
@@ -984,7 +1024,19 @@ fn fragmentation_input_error_prints_its_message_and_has_no_source() {
         (E::InvalidWindow, "a fragmentation window is invalid"),
         (E::InvalidSlice, "a fragmentation slice is invalid"),
     ];
-    assert_messages(&table, 11);
+    assert_rows(&table, |error| match error {
+        E::ContextReference => 0,
+        E::ContextCycle => 1,
+        E::DuplicateOccurrence => 2,
+        E::InvalidPosition => 3,
+        E::InvalidGeometry => 4,
+        E::InvalidLineCounts => 5,
+        E::InvalidContentGap => 6,
+        E::InvalidBoundary => 7,
+        E::InvalidParentFragmentainer => 8,
+        E::InvalidWindow => 9,
+        E::InvalidSlice => 10,
+    });
     for (error, _) in &table {
         assert!(error.source().is_none());
     }
@@ -1036,7 +1088,18 @@ fn root_context_mismatch_prints_its_message_and_has_no_source() {
             "the root context's alignment differs from the node's input",
         ),
     ];
-    assert_messages(&table, 10);
+    assert_rows(&table, |error| match error {
+        E::Position => 0,
+        E::WritingMode => 1,
+        E::Display => 2,
+        E::BoxEdges => 3,
+        E::Insets => 4,
+        E::AspectRatio => 5,
+        E::Replaced => 6,
+        E::Float => 7,
+        E::Clearance => 8,
+        E::Alignment => 9,
+    });
     for (error, _) in &table {
         assert!(error.source().is_none());
     }
@@ -1068,7 +1131,13 @@ fn block_fragmentation_failure_names_the_fragmentainer_or_the_inconsistent_input
             "the fragmentation source is inconsistent with the tree or the request",
         ),
     ];
-    assert_messages(&table, 5);
+    assert_rows(&table, |error| match error {
+        E::MissingFragmentainer { .. } => 0,
+        E::MissingPageSide { .. } => 1,
+        E::NoProgress { .. } => 2,
+        E::InvalidGeometry => 3,
+        E::InvalidSource => 4,
+    });
     for (error, _) in &table {
         assert!(error.source().is_none());
     }
@@ -1108,7 +1177,15 @@ fn layout_batch_apply_error_names_the_refusal_and_sources_the_preparation_error(
             "layout could not allocate the storage to apply the batch",
         ),
     ];
-    assert_messages(&table, 7);
+    assert_rows(&table, |error| match error {
+        E::MissingTarget => 0,
+        E::TrackedRootRequiresBoundRequest => 1,
+        E::StaleSource => 2,
+        E::StaleConstraints => 3,
+        E::Preparation(..) => 4,
+        E::OverlappingRoot => 5,
+        E::Allocation => 6,
+    });
     for (error, _) in &table {
         match error {
             E::Preparation(_) => assert_eq!(
@@ -1319,7 +1396,11 @@ fn layout_text_numeric_error_prints_its_message_and_has_no_source() {
             "a nonzero contribution was lost to rounding or arithmetic",
         ),
     ];
-    assert_messages(&table, 3);
+    assert_rows(&table, |error| match error {
+        E::NonFinite => 0,
+        E::OutOfRange => 1,
+        E::NonZeroLost => 2,
+    });
     for (error, _) in &table {
         assert!(error.source().is_none());
     }
@@ -1343,7 +1424,11 @@ fn atomic_inline_participation_role_error_prints_its_message_and_has_no_source()
             "a prepared atomic inline carries atomic inline participation facts that text already supplies",
         ),
     ];
-    assert_messages(&table, 3);
+    assert_rows(&table, |error| match error {
+        E::MissingForAtomicInline => 0,
+        E::UnexpectedForNonAtomic => 1,
+        E::UnexpectedForPreparedAtomic => 2,
+    });
     for (error, _) in &table {
         assert!(error.source().is_none());
     }
@@ -1364,7 +1449,11 @@ fn non_box_node_role_error_prints_its_message_and_has_no_source() {
             "a non-box node has a leaf measurement",
         ),
     ];
-    assert_messages(&table, 3);
+    assert_rows(&table, |error| match error {
+        E::NonCanonicalNodeInput => 0,
+        E::HasChildren => 1,
+        E::HasLeafMeasurement => 2,
+    });
     for (error, _) in &table {
         assert!(error.source().is_none());
     }
@@ -1385,7 +1474,11 @@ fn float_exclusion_role_error_prints_its_message_and_has_no_source() {
             "an absolutely positioned node cannot supply a float exclusion",
         ),
     ];
-    assert_messages(&table, 3);
+    assert_rows(&table, |error| match error {
+        E::Hidden => 0,
+        E::NonFloating => 1,
+        E::Absolute => 2,
+    });
     for (error, _) in &table {
         assert!(error.source().is_none());
     }
@@ -1595,11 +1688,12 @@ fn compute_layout_reports_a_cycle_in_the_tree() {
         ],
     };
     let error = l::compute_layout(&tree, 0, root_request()).expect_err("the tree has a cycle");
-    let levels = chain(&error);
-    assert_eq!(levels[1], "the tree contains a cycle");
-    assert!(
-        levels[0].ends_with(": layout input is invalid"),
-        "{levels:?}"
+    assert_eq!(
+        chain(&error),
+        [
+            "cache invalidation failed at subject 0 in container 1: layout input is invalid",
+            "the tree contains a cycle"
+        ]
     );
 }
 
@@ -1682,7 +1776,14 @@ fn scroll_anchor_selection_error_names_the_unavailable_anchor() {
         ),
         (E::Cycle(6), "scroll anchor traversal repeats ancestor 6"),
     ];
-    assert_messages(&table, 6);
+    assert_rows(&table, |error| match error {
+        E::FocusUnavailable => 0,
+        E::FindMatchUnavailable => 1,
+        E::MissingNode(..) => 2,
+        E::InconsistentDomChild { .. } => 3,
+        E::InconsistentPositionedChild { .. } => 4,
+        E::Cycle(..) => 5,
+    });
     for (error, _) in &table {
         assert!(error.source().is_none());
     }
@@ -1815,7 +1916,6 @@ fn layout_invalid_input_names_the_rejected_input_and_sources_the_detail() {
             Some("gap anchors form a cycle"),
         ),
     ];
-    let rows: Vec<(&E<f32>, &str)> = table.iter().map(|(e, m, _)| (e, *m)).collect();
     let mut seen = std::collections::BTreeSet::new();
     assert_eq!(table.len(), 21, "one row per variant but MeasurementOutput");
     for (error, message, source) in &table {
@@ -1824,7 +1924,6 @@ fn layout_invalid_input_names_the_rejected_input_and_sources_the_detail() {
         assert!(seen.insert(*message));
         assert_eq!(error.source().map(|s| s.to_string()).as_deref(), *source);
     }
-    assert_eq!(rows.len(), 21);
 }
 
 #[test]
@@ -1867,60 +1966,337 @@ fn layout_unsupported_capability_names_the_missing_capability() {
 }
 
 #[test]
-fn existing_complete_errors_keep_their_messages_and_report_no_unwanted_source() {
+fn baseline_offset_scalar_and_track_errors_keep_their_messages() {
+    use l::BaselineOffsetResolutionError as B;
     let baseline = [
         (
-            l::BaselineOffsetResolutionError::MissingOwnLineHeight,
+            B::MissingOwnLineHeight,
             "baseline offset requires the child's own used line height",
         ),
         (
-            l::BaselineOffsetResolutionError::NonFinite,
+            B::NonFinite,
             "baseline offset arithmetic must remain finite",
         ),
         (
-            l::BaselineOffsetResolutionError::NonZeroLost,
+            B::NonZeroLost,
             "baseline offset arithmetic lost a nonzero contribution",
         ),
     ];
-    assert_messages(&baseline, 3);
+    assert_rows(&baseline, |error| match error {
+        B::MissingOwnLineHeight => 0,
+        B::NonFinite => 1,
+        B::NonZeroLost => 2,
+    });
+    use l::TrackRepetitionError as T;
     let track = [
+        (T::ZeroCount, "track repeat count must be greater than zero"),
         (
-            l::TrackRepetitionError::ZeroCount,
-            "track repeat count must be greater than zero",
-        ),
-        (
-            l::TrackRepetitionError::EmptyComponents,
+            T::EmptyComponents,
             "track repeat components must not be empty",
         ),
     ];
-    assert_messages(&track, 2);
-    let scalar = [
+    assert_rows(&track, |error| match error {
+        T::ZeroCount => 0,
+        T::EmptyComponents => 1,
+    });
+    use l::NonNegativeFiniteScalarErrorOf as N;
+    let non_negative = [
         (
-            l::NonNegativeFiniteScalarErrorOf::<f32>::NonFinite { value: f32::NAN },
+            N::<f32>::NonFinite { value: f32::NAN },
             "scalar must be finite",
         ),
         (
-            l::NonNegativeFiniteScalarErrorOf::<f32>::Negative { value: -1.0 },
+            N::<f32>::Negative { value: -1.0 },
             "scalar must be non-negative",
         ),
     ];
-    assert_messages(&scalar, 2);
+    assert_rows(&non_negative, |error| match error {
+        N::NonFinite { .. } => 0,
+        N::Negative { .. } => 1,
+    });
+    use l::FiniteScalarErrorOf as F;
     let finite = [(
-        l::FiniteScalarErrorOf::<f32>::NonFinite { value: f32::NAN },
+        F::<f32>::NonFinite { value: f32::NAN },
         "scalar must be finite",
     )];
-    assert_messages(&finite, 1);
+    assert_rows(&finite, |error| match error {
+        F::NonFinite { .. } => 0,
+    });
     is_error::<l::BaselineOffsetResolutionError>();
+    is_error::<l::TrackRepetitionError>();
+    is_error::<l::FiniteScalarErrorOf<f32>>();
+    is_error::<l::NonNegativeFiniteScalarErrorOf<f32>>();
+}
+
+#[test]
+fn orthogonal_fallback_error_names_the_missing_authority() {
+    use l::OrthogonalFallbackErrorOf as E;
+    let axis = l::PhysicalAxis::Horizontal;
+    let table = [
+        (
+            E::<f32>::MissingInitialContainingBlock { axis },
+            "orthogonal fallback needs initial containing-block authority",
+        ),
+        (
+            E::MissingContainingBounds { axis },
+            "orthogonal fallback needs containing-block bound authority",
+        ),
+        (
+            E::MissingNearestScrollport { axis },
+            "orthogonal fallback needs nearest-scrollport authority",
+        ),
+        (
+            E::MissingScrollportLimit { axis },
+            "orthogonal fallback needs the nearest scrollport's axis limit",
+        ),
+        (
+            E::InvalidContentSpace {
+                axis,
+                value: f32::NAN,
+            },
+            "orthogonal fallback content-space arithmetic is invalid",
+        ),
+    ];
+    assert_rows(&table, |error| match error {
+        E::MissingInitialContainingBlock { .. } => 0,
+        E::MissingContainingBounds { .. } => 1,
+        E::MissingNearestScrollport { .. } => 2,
+        E::MissingScrollportLimit { .. } => 3,
+        E::InvalidContentSpace { .. } => 4,
+    });
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+    is_error::<E<f32>>();
+}
+
+#[test]
+fn sizing_calc_size_and_overflow_construction_errors_keep_their_messages() {
+    let empty =
+        l::SizingCalculationOf::<f32>::min(vec![]).expect_err("a minimum of nothing is rejected");
+    assert_eq!(
+        empty.to_string(),
+        "sizing calculation arguments must not be empty"
+    );
+    assert!(empty.source().is_none());
+    let any_with_size = l::PreferredSizeOf::<f32>::calc_size(
+        l::PreferredSizeCalcBasis::Any,
+        l::CalcSizeCalculationOf::size(),
+    )
+    .expect_err("an Any basis cannot reference the size");
+    assert_eq!(
+        any_with_size.to_string(),
+        "an Any calc-size basis cannot be combined with a size reference"
+    );
+    assert!(any_with_size.source().is_none());
+    let pair = l::ComputedOverflow::try_new(l::Overflow::Visible, l::Overflow::Hidden)
+        .expect_err("a mixed pair is rejected");
+    assert_eq!(
+        pair.to_string(),
+        "computed overflow axes must both be visible/clip or both be hidden/scroll/auto"
+    );
+    assert!(pair.source().is_none());
+    is_error::<l::SizingCalculationError>();
     is_error::<l::CalcSizeConstructionError>();
     is_error::<l::ComputedOverflowError>();
-    is_error::<l::FiniteScalarErrorOf<f32>>();
-    is_error::<l::FloatExclusionIntervalErrorOf<f32>>();
-    is_error::<l::NonNegativeFiniteScalarErrorOf<f32>>();
-    is_error::<l::OrthogonalFallbackErrorOf<f32>>();
-    is_error::<l::ScrollRectErrorOf<f32>>();
-    is_error::<l::SizingCalculationError>();
-    is_error::<l::TrackRepetitionError>();
+}
+
+#[test]
+fn scroll_rect_error_names_the_rejected_extent() {
+    use l::ScrollRectErrorOf as E;
+    let origin = |x, y| l::Point::new(x, y);
+    let size = |w, h| l::Size::new(w, h);
+    let rejected = |origin, size| {
+        l::ScrollRectOf::<f32>::try_new(origin, size).expect_err("the rectangle is rejected")
+    };
+    let table = [
+        (
+            rejected(origin(f32::NAN, 0.0), size(1.0, 1.0)),
+            "scroll rectangle horizontal origin must be finite",
+        ),
+        (
+            rejected(origin(0.0, 0.0), size(1.0, f32::INFINITY)),
+            "scroll rectangle vertical size must be finite",
+        ),
+        (
+            rejected(origin(0.0, 0.0), size(-1.0, 1.0)),
+            "scroll rectangle horizontal size must be non-negative",
+        ),
+        (
+            rejected(origin(f32::MAX, 0.0), size(f32::MAX, 1.0)),
+            "scroll rectangle horizontal end must be finite",
+        ),
+    ];
+    assert_rows(&table, |error| match error {
+        E::NonFiniteOrigin { .. } => 0,
+        E::NonFiniteSize { .. } => 1,
+        E::NegativeSize { .. } => 2,
+        E::NonFiniteEnd { .. } => 3,
+    });
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+    is_error::<E<f32>>();
+}
+
+#[test]
+fn scroll_margin_error_names_the_rejected_edge_and_sources_the_scalar_error() {
     is_error::<l::ScrollMarginErrorOf<f32>>();
+    let nan = f32::NAN;
+    let rejected = |top, right, bottom, left| {
+        l::ScrollMarginOf::<f32>::try_new(top, right, bottom, left)
+            .expect_err("a non-finite edge is rejected")
+    };
+    for (error, edge) in [
+        (rejected(nan, 0.0, 0.0, 0.0), "top"),
+        (rejected(0.0, nan, 0.0, 0.0), "right"),
+        (rejected(0.0, 0.0, nan, 0.0), "bottom"),
+        (rejected(0.0, 0.0, 0.0, nan), "left"),
+    ] {
+        assert_eq!(
+            chain(&error),
+            [
+                format!("scroll margin {edge} edge is invalid"),
+                "scalar must be finite".to_string()
+            ]
+        );
+    }
+}
+
+#[test]
+fn float_exclusion_interval_error_names_the_rejected_band_or_interval() {
+    use l::FloatExclusionIntervalErrorOf as E;
+    let flow = l::FlowAxes::new(l::WritingMode::HorizontalTb, l::Direction::Ltr);
+    let margin_box = l::ScrollRect::try_new(l::Point::new(0.0, 0.0), l::Size::new(10.0, 10.0))
+        .expect("a finite rectangle");
+    let query = |minimum, maximum| {
+        l::FloatExclusionQueryOf::<f32>::try_new(margin_box, flow, minimum, maximum)
+    };
+    let band = query(0.0, 5.0).expect("a valid band");
+    let other = query(1.0, 6.0).expect("a valid band");
+    let table = [
+        (
+            query(f32::NAN, 1.0).expect_err("a non-finite minimum"),
+            "band minimum must be finite",
+        ),
+        (
+            query(0.0, f32::NAN).expect_err("a non-finite maximum"),
+            "band maximum must be finite",
+        ),
+        (
+            query(2.0, 1.0).expect_err("an inverted band"),
+            "band minimum must not exceed its maximum",
+        ),
+        (
+            l::FloatExclusionIntervalOf::try_new(band, f32::NAN, 1.0)
+                .expect_err("a non-finite interval minimum"),
+            "interval minimum must be finite",
+        ),
+        (
+            l::FloatExclusionIntervalOf::try_new(band, 0.0, f32::NAN)
+                .expect_err("a non-finite interval maximum"),
+            "interval maximum must be finite",
+        ),
+        (
+            l::FloatExclusionIntervalOf::try_new(band, 2.0, 1.0).expect_err("an inverted interval"),
+            "interval minimum must not exceed its maximum",
+        ),
+        (
+            E::QueryMismatch {
+                expected: band,
+                actual: other,
+            },
+            "provider interval query must match the requested query",
+        ),
+    ];
+    assert_rows(&table, |error| match error {
+        E::NonFiniteBandMinimum { .. } => 0,
+        E::NonFiniteBandMaximum { .. } => 1,
+        E::InvertedBand { .. } => 2,
+        E::NonFiniteIntervalMinimum { .. } => 3,
+        E::NonFiniteIntervalMaximum { .. } => 4,
+        E::InvertedInterval { .. } => 5,
+        E::QueryMismatch { .. } => 6,
+    });
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+    is_error::<E<f32>>();
+}
+
+#[test]
+fn layout_operation_names_every_operation() {
+    use l::LayoutOperation as O;
+    let table = [
+        (O::RootLayout, "root layout"),
+        (O::ChildLayout, "child layout"),
+        (O::HiddenLayout, "hidden layout"),
+        (O::LeafMeasurement, "leaf measurement"),
+        (O::ValueResolution, "value resolution"),
+        (O::CacheAccess, "cache access"),
+        (O::CacheInvalidation, "cache invalidation"),
+        (O::FloatExclusionQuery, "float exclusion query"),
+        (O::RoundingFinalization, "rounding finalization"),
+        (O::GridLanePlacement, "grid lane placement"),
+        (O::TextCapture, "text capture"),
+        (O::InlineWrapping, "inline wrapping"),
+        (O::TextSelection, "text selection"),
+        (O::TextPlacement, "text placement"),
+    ];
+    let mut seen = [false; 14];
+    for (operation, expected) in table {
+        assert_eq!(operation.to_string(), expected);
+        let index = match operation {
+            O::RootLayout => 0,
+            O::ChildLayout => 1,
+            O::HiddenLayout => 2,
+            O::LeafMeasurement => 3,
+            O::ValueResolution => 4,
+            O::CacheAccess => 5,
+            O::CacheInvalidation => 6,
+            O::FloatExclusionQuery => 7,
+            O::RoundingFinalization => 8,
+            O::GridLanePlacement => 9,
+            O::TextCapture => 10,
+            O::InlineWrapping => 11,
+            O::TextSelection => 12,
+            O::TextPlacement => 13,
+        };
+        assert!(!seen[index]);
+        seen[index] = true;
+    }
+    assert!(seen.iter().all(|&covered| covered));
+}
+
+#[test]
+fn compute_layout_reports_a_reserved_grid_line_name() {
+    let columns = vec![
+        l::TrackComponent::line_names(["span"]),
+        l::TrackComponent::flex(l::TrackFlexFactor::try_new(1.0).expect("a flex factor")),
+    ];
+    let rows = vec![l::TrackComponent::flex(
+        l::TrackFlexFactor::try_new(1.0).expect("a flex factor"),
+    )];
+    let root = l::NodeInput {
+        display: l::Display::Grid,
+        size: l::Size::new(px(100.0), px(40.0)),
+        grid_template_columns: columns,
+        grid_template_rows: rows,
+        ..l::NodeInput::default()
+    };
+    let tree = Tree {
+        nodes: vec![(root, vec![])],
+    };
+    let error =
+        l::compute_layout(&tree, 0, root_request()).expect_err("span is not a valid line name");
+    assert_eq!(
+        chain(&error),
+        [
+            "child layout failed at node 0: layout input is invalid",
+            "the grid container's named lines or template areas are invalid",
+            "the grid line name \"span\" is reserved"
+        ]
+    );
 }
 
 struct FailingSink {
