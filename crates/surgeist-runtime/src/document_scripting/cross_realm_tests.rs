@@ -202,6 +202,7 @@ fn scripting_session(dom: Dom, source_jobs: usize) -> DomSession {
 
 #[test]
 fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
+    super::guest::tests::video_read_admission::video_dimensions_admit_each_native_read();
     super::guest::tests::image_request_admission::image_getters_keep_the_child_creation_realm_and_refuse_retired_identity();
     super::guest::tests::image_request_admission::image_complete_admits_exact_native_read_work();
     let cancel = Arc::new(AtomicBool::new(false));
