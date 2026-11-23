@@ -2923,6 +2923,11 @@ pub fn html_element_outer_text_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY
 }
 
+/// Selected setter conversion for `HTMLImageElement.obsolete.border`.
+pub fn html_image_element_obsolete_border_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
 /// Selected setter conversion for `HTMLTitleElement.text`.
 pub fn html_title_element_text_setter() -> Type<DomString> {
     types::DOM_STRING

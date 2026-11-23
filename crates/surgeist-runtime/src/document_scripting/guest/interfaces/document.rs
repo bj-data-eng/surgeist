@@ -49,6 +49,7 @@ mod fragment;
 mod frameset;
 mod html_document;
 mod iframe;
+mod image;
 mod input;
 mod interface_constants;
 mod label;

@@ -918,6 +918,7 @@ fn install_html_members<'scope>(
             super::link_style_attributes::install_style(scope, prototype, capture)?
         }
         "HTMLIFrameElement" => super::iframe::install(scope, prototype, capture)?,
+        "HTMLImageElement" => super::image::install(scope, prototype, capture)?,
         "HTMLBodyElement" => super::body::install(scope, prototype, capture)?,
         "HTMLButtonElement" => super::button::install(scope, prototype, capture)?,
         "HTMLBRElement" => super::break_elements::install_br(scope, prototype, capture)?,

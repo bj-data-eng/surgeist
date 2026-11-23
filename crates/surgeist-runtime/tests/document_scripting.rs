@@ -129,6 +129,8 @@ mod html_prototype_order;
 mod html_token_lists;
 #[path = "document_scripting/iframe_local_reflections.rs"]
 mod iframe_local_reflections;
+#[path = "document_scripting/image_current_src.rs"]
+mod image_current_src;
 #[path = "document_scripting/input_attributes.rs"]
 mod input_attributes;
 #[path = "document_scripting/input_list.rs"]
@@ -2633,6 +2635,7 @@ fn main() {
             "area-attributes" => area_attributes::area_attributes_follow_canonical_source_and_receivers(),
             "iframe-local-reflections" => iframe_local_reflections::local_reflections_follow_the_original_iframe_and_attributes(),
             "iframe-loading-source-refusal" => iframe_local_reflections::loading_setter_preserves_the_original_source_refusal(),
+            "image-current-src" => image_current_src::inactive_image_current_src_reads_its_native_request(),
             "link-local-reflections" => link_style_reflections::never_hosted_link_reflects_live_native_attributes(),
             "link-local-refusal" => link_style_reflections::hosted_link_reflection_preserves_original_source_refusal(),
             "style-local-reflections" => link_style_reflections::active_style_media_updates_the_original_native_sheet(),
@@ -2813,6 +2816,7 @@ fn main() {
     area_attributes::area_attributes_follow_canonical_source_and_receivers();
     iframe_local_reflections::local_reflections_follow_the_original_iframe_and_attributes();
     iframe_local_reflections::loading_setter_preserves_the_original_source_refusal();
+    image_current_src::inactive_image_current_src_reads_its_native_request();
     link_style_reflections::never_hosted_link_reflects_live_native_attributes();
     link_style_reflections::hosted_link_reflection_preserves_original_source_refusal();
     link_style_reflections::active_style_media_updates_the_original_native_sheet();

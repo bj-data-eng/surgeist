@@ -557,6 +557,30 @@
       "entries": ["HTMLDataListElement"]
     },
     {
+      "id": "HTMLImageElement.source",
+      "path": "references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md",
+      "anchor": "htmlimageelement",
+      "block": 0,
+      "sha256": "4d86dbaf6db20717abd866297ed9bb732f45e70ff3558665e13988a560055d5f",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-img-element",
+      "entries": [
+        "HTMLImageElement"
+      ]
+    },
+    {
+      "id": "HTMLImageElement.obsolete.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "HTMLImageElement&#45;partial",
+      "block": 0,
+      "sha256": "aecdaf6354e1026e1366befbd453368ad811a3b89b2b58158778d124a6f371c9",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLImageElement-partial",
+      "entries": [
+        "HTMLImageElement.obsolete"
+      ]
+    },
+    {
       "id": "HTMLHeadElement.source",
       "path": "references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md",
       "anchor": "the&#45;head&#45;element",
@@ -6848,6 +6872,492 @@
         {"attributes": [{"name": "SameObject"}], "kind": "attribute", "type": {"kind": "named", "name": "HTMLCollection"}, "name": "options", "readonly": true, "id": "HTMLDataListElement.options"}
       ],
       "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLImageElement",
+      "kind": "interface",
+      "name": "HTMLImageElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        },
+        {
+          "name": "LegacyFactoryFunction",
+          "value": {
+            "name": "Image",
+            "arguments": [
+              {
+                "name": "width",
+                "type": {
+                  "kind": "named",
+                  "name": "unsigned long"
+                },
+                "presence": "optional"
+              },
+              {
+                "name": "height",
+                "type": {
+                  "kind": "named",
+                  "name": "unsigned long"
+                },
+                "presence": "optional"
+              }
+            ]
+          }
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLImageElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "alt",
+          "readonly": false,
+          "id": "HTMLImageElement.alt"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectURL"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "src",
+          "readonly": false,
+          "id": "HTMLImageElement.src"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "srcset",
+          "readonly": false,
+          "id": "HTMLImageElement.srcset"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "sizes",
+          "readonly": false,
+          "id": "HTMLImageElement.sizes"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "DOMString"
+            }
+          },
+          "name": "crossOrigin",
+          "readonly": false,
+          "id": "HTMLImageElement.crossOrigin"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "useMap",
+          "readonly": false,
+          "id": "HTMLImageElement.useMap"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "isMap",
+          "readonly": false,
+          "id": "HTMLImageElement.isMap"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "controls",
+          "readonly": false,
+          "id": "HTMLImageElement.controls"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectSetter"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "width",
+          "readonly": false,
+          "id": "HTMLImageElement.width"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectSetter"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "height",
+          "readonly": false,
+          "id": "HTMLImageElement.height"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "naturalWidth",
+          "readonly": true,
+          "id": "HTMLImageElement.naturalWidth"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "naturalHeight",
+          "readonly": true,
+          "id": "HTMLImageElement.naturalHeight"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "complete",
+          "readonly": true,
+          "id": "HTMLImageElement.complete"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "currentSrc",
+          "readonly": true,
+          "id": "HTMLImageElement.currentSrc"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "referrerPolicy",
+          "readonly": false,
+          "id": "HTMLImageElement.referrerPolicy"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "decoding",
+          "readonly": false,
+          "id": "HTMLImageElement.decoding"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "loading",
+          "readonly": false,
+          "id": "HTMLImageElement.loading"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "fetchPriority",
+          "readonly": false,
+          "id": "HTMLImageElement.fetchPriority"
+        },
+        {
+          "attributes": [],
+          "kind": "operation",
+          "name": "decode",
+          "type": {
+            "kind": "promise",
+            "inner": {
+              "kind": "named",
+              "name": "undefined"
+            }
+          },
+          "arguments": [],
+          "id": "HTMLImageElement.decode:0"
+        }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLImageElement.obsolete",
+      "kind": "interface",
+      "name": "HTMLImageElement",
+      "attributes": [],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "name",
+          "readonly": false,
+          "id": "HTMLImageElement.obsolete.name"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectURL"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "lowsrc",
+          "readonly": false,
+          "id": "HTMLImageElement.obsolete.lowsrc"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "align",
+          "readonly": false,
+          "id": "HTMLImageElement.obsolete.align"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "hspace",
+          "readonly": false,
+          "id": "HTMLImageElement.obsolete.hspace"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "vspace",
+          "readonly": false,
+          "id": "HTMLImageElement.obsolete.vspace"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectURL"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "longDesc",
+          "readonly": false,
+          "id": "HTMLImageElement.obsolete.longDesc"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "border",
+          "readonly": false,
+          "id": "HTMLImageElement.obsolete.border"
+        }
+      ],
+      "partial": true
     },
     {
       "id": "HTMLHeadElement",
@@ -20679,6 +21189,509 @@
         "issue": 3240
       },
       "result_view": "value"
+    },
+    "HTMLImageElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlimageelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-dom",
+          "contract": "Admit actual active hosted Image construction when reached.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-img-element",
+          "issue": 3130
+        }
+      ]
+    },
+    "HTMLImageElement.Image/factory": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Provide the native Window Image factory with qualified creation.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-image",
+        "issue": 3128
+      }
+    },
+    "HTMLImageElement.decode:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Drive actual image decode and lifetime through the admitted resource and task owners.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-decode",
+        "issue": 3274
+      }
+    },
+    "HTMLImageElement.alt/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.alt/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.src/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Qualify the paired live URL reflection and the original native Source effect.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-src",
+        "issue": 3257
+      }
+    },
+    "HTMLImageElement.src/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Qualify the paired live URL reflection and the original native Source effect.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-src",
+        "issue": 3257
+      }
+    },
+    "HTMLImageElement.srcset/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.srcset/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.sizes/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.sizes/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.crossOrigin/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.crossOrigin/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.useMap/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.useMap/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.isMap/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.isMap/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.controls/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.controls/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.width/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Use current rendered or selected image dimension facts and the original reflected width or height write.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-width",
+        "issue": 3273
+      }
+    },
+    "HTMLImageElement.width/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Use current rendered or selected image dimension facts and the original reflected width or height write.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-width",
+        "issue": 3273
+      }
+    },
+    "HTMLImageElement.height/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Use current rendered or selected image dimension facts and the original reflected width or height write.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-height",
+        "issue": 3273
+      }
+    },
+    "HTMLImageElement.height/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Use current rendered or selected image dimension facts and the original reflected width or height write.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-height",
+        "issue": 3273
+      }
+    },
+    "HTMLImageElement.naturalWidth/get": {
+      "kind": "native",
+      "adapter": "htmlimageelement.naturalwidth.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/image.rs",
+          "symbol": "image_request"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/image.rs",
+          "symbol": "state"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/image.rs",
+          "symbol": "natural_dimensions"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLImageElement.naturalHeight/get": {
+      "kind": "native",
+      "adapter": "htmlimageelement.naturalheight.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/image.rs",
+          "symbol": "image_request"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/image.rs",
+          "symbol": "state"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/image.rs",
+          "symbol": "natural_dimensions"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLImageElement.complete/get": {
+      "kind": "native",
+      "adapter": "htmlimageelement.complete.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/image.rs",
+          "symbol": "image_request"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/image.rs",
+          "symbol": "state"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/image.rs",
+          "symbol": "complete_with_attributes"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLImageElement.currentSrc/get": {
+      "kind": "native",
+      "adapter": "htmlimageelement.currentsrc.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/image.rs",
+          "symbol": "image_request"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/image.rs",
+          "symbol": "state"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/image.rs",
+          "symbol": "current_url"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLImageElement.referrerPolicy/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.referrerPolicy/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.decoding/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.decoding/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.loading/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.loading/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.fetchPriority/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.fetchPriority/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.obsolete.name/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.obsolete.name/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.obsolete.lowsrc/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Qualify the paired live URL reflection and the original native Source effect.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-lowsrc",
+        "issue": 3257
+      }
+    },
+    "HTMLImageElement.obsolete.lowsrc/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Qualify the paired live URL reflection and the original native Source effect.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-lowsrc",
+        "issue": 3257
+      }
+    },
+    "HTMLImageElement.obsolete.align/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.obsolete.align/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.obsolete.hspace/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.obsolete.hspace/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.obsolete.vspace/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.obsolete.vspace/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.obsolete.longDesc/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Qualify the paired live URL reflection and the original native Source effect.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-longdesc",
+        "issue": 3257
+      }
+    },
+    "HTMLImageElement.obsolete.longDesc/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Qualify the paired live URL reflection and the original native Source effect.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-img-longdesc",
+        "issue": 3257
+      }
+    },
+    "HTMLImageElement.obsolete.border/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
+    },
+    "HTMLImageElement.obsolete.border/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the pinned local content reflection on the admitted native Image.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlimageelement",
+        "issue": 3264
+      }
     },
     "HTMLMapElement.areas/get": {
       "kind": "native",

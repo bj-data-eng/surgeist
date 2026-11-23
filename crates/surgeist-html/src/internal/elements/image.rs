@@ -33,6 +33,11 @@ impl HtmlImgUnavailableRequest {
     pub fn current_url(&self) -> &DocumentString {
         &self.url
     }
+
+    /// The natural width and height in CSS pixels for an unavailable request.
+    pub const fn natural_dimensions(&self) -> [u32; 2] {
+        [0, 0]
+    }
     /// The request's current pixel density, always 1 for a fresh request (HTML877d
     /// #current-pixel-density).
     pub const fn current_pixel_density(&self) -> u32 {
@@ -74,6 +79,13 @@ impl HtmlImgFreshState {
     /// The current request (HTML877d #current-request), which is `Unavailable` with the empty URL.
     pub fn current_request(&self) -> &HtmlImgUnavailableRequest {
         &self.current
+    }
+
+    /// Evaluate the `complete` IDL read for the current unavailable request.
+    /// Supply the current null-namespace `src` value and `srcset` presence from
+    /// the same native Image. A present empty `srcset` is distinct from absence.
+    pub fn complete_with_attributes(&self, src: Option<&[u16]>, has_srcset: bool) -> bool {
+        !has_srcset && src.is_none_or(<[u16]>::is_empty)
     }
     /// Whether the pending request (HTML877d #pending-request) is null, which is always true when
     /// fresh.
