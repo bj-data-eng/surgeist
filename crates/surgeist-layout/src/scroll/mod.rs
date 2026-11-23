@@ -7,7 +7,7 @@ use super::{
 use crate::geometry::LogicalEdgesOf;
 pub(crate) use construction::include_scope_overflow;
 
-mod anchor_selection;
+pub(crate) mod anchor_selection;
 mod box_geometry;
 mod construction;
 mod contribution;

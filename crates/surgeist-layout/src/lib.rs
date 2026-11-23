@@ -308,12 +308,6 @@ mod sizing;
 mod tree;
 mod value;
 
-/// Default scalar precision used by the non-generic public layout aliases.
-///
-/// This is intentionally `f32`, matching the crate's browser-parity fixture
-/// boundary and the default Surgeist layout coordinate contract.
-pub type DefaultScalar = f32;
-
 #[cfg(test)]
 pub(crate) use block::compute_block;
 pub use cache::{Cache, CacheKeyContext, CacheOf, ClearState};
@@ -385,6 +379,7 @@ pub use resize_observer::{
     ResizeObserverBoxSize, ResizeObserverContentRectOf, ResizeObserverMeasurementError,
     ResizeObserverMeasurementOf, ResizeObserverPixelGrid,
 };
+pub use scalar::DefaultScalar;
 /// Supported scalar contract for generic layout APIs.
 pub use scalar::LayoutScalar;
 pub use scroll::{

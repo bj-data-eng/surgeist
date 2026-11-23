@@ -2,6 +2,12 @@ use core::fmt::Debug;
 use core::ops::{Add, Div, Mul, Neg, Sub};
 use surgeist_text::inline_box::InlineBoxEdgeComponents;
 
+/// Default scalar precision used by the non-generic public layout aliases.
+///
+/// This is intentionally `f32`, matching the crate's browser-parity fixture
+/// boundary and the default Surgeist layout coordinate contract.
+pub type DefaultScalar = f32;
+
 /// Numeric precision contract for one layout computation.
 pub trait LayoutScalar:
     private::Sealed
