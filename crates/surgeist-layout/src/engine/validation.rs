@@ -92,7 +92,9 @@ pub(crate) fn validate_layout_request_with_graph<Tree: LayoutTree>(
         return Err(LayoutErrorOf::new(
             LayoutErrorSiteOf::Node(root),
             LayoutOperation::RootLayout,
-            LayoutErrorKindOf::UnsupportedCapability(LayoutUnsupportedCapability::LaterFriBehavior),
+            LayoutErrorKindOf::UnsupportedCapability(
+                LayoutUnsupportedCapability::NonBoxNodeOutsideInlineFlow,
+            ),
         ));
     }
     Ok((graph, invalidated))
@@ -160,7 +162,7 @@ where
         node: Tree::Node,
         is_root: bool,
         parent_accepts_inline_text: bool,
-        later_behavior: &mut bool,
+        text_outside_inline_flow: &mut bool,
         paragraphs: &[crate::TextParagraphBinding<Tree::Node>],
     ) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, Tree::MeasureError>
     where
@@ -251,7 +253,7 @@ where
                     ));
                 }
                 if !parent_accepts_inline_text {
-                    *later_behavior = true;
+                    *text_outside_inline_flow = true;
                 }
                 Ok(())
             }
@@ -267,13 +269,13 @@ where
         }
     }
 
-    let mut later_behavior = false;
+    let mut text_outside_inline_flow = false;
     visit(
         tree,
         graph.nodes[0],
         true,
         false,
-        &mut later_behavior,
+        &mut text_outside_inline_flow,
         paragraphs,
     )?;
     for (parent, children) in graph.children.iter().enumerate() {
@@ -291,12 +293,12 @@ where
                 graph.nodes[child],
                 false,
                 accepts,
-                &mut later_behavior,
+                &mut text_outside_inline_flow,
                 paragraphs,
             )?;
         }
     }
-    Ok(later_behavior)
+    Ok(text_outside_inline_flow)
 }
 
 fn non_box_node_role_error<Tree>(tree: &Tree, node: Tree::Node) -> Option<NonBoxNodeRoleError>
@@ -412,12 +414,10 @@ mod tests {
         };
         assert!(matches!(
             error.kind(),
-            LayoutErrorKindOf::UnsupportedCapability(LayoutUnsupportedCapability::LaterFriBehavior)
+            LayoutErrorKindOf::UnsupportedCapability(
+                LayoutUnsupportedCapability::NonBoxNodeOutsideInlineFlow
+            )
         ));
-        assert_eq!(
-            format!("{:?}", error.kind()),
-            "UnsupportedCapability(NonBoxNodeOutsideInlineFlow)"
-        );
         let valid = tree.style(
             2,
             crate::NodeInputOf {

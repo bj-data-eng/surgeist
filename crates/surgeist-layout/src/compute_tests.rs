@@ -556,12 +556,7 @@ fn value_resolution_diagnostics_classify_represented_non_numeric_values_as_unsup
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
     crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::UnsupportedCapability(LayoutUnsupportedCapability::LaterFriBehavior),
-    );
-    // A keyword length where a number is required is one named condition.
-    assert_eq!(
-        format!("{:?}", error.kind()),
-        "UnsupportedCapability(NonNumericLength)"
+        &LayoutErrorKind::UnsupportedCapability(LayoutUnsupportedCapability::NonNumericLength),
     );
 }
 

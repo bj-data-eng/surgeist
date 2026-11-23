@@ -502,12 +502,9 @@ fn assert_fri06_c01_non_box<S: LayoutScalar>() {
     assert_eq!(error.operation(), LayoutOperation::RootLayout);
     crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKindOf::UnsupportedCapability(LayoutUnsupportedCapability::LaterFriBehavior),
-    );
-    // A text node outside a parent that accepts inline text is one named condition.
-    assert_eq!(
-        format!("{:?}", error.kind()),
-        "UnsupportedCapability(NonBoxNodeOutsideInlineFlow)"
+        &LayoutErrorKindOf::UnsupportedCapability(
+            LayoutUnsupportedCapability::NonBoxNodeOutsideInlineFlow,
+        ),
     );
     assert_eq!(valid.cache_reads.get(), 0);
 

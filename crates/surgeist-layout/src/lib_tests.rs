@@ -900,14 +900,14 @@ fn fri04_c06_public_surface_default_and_f64_checked_reexports_compose() {
     let property = SizingProperty::FlexBasis;
     let algorithm = SizingAlgorithm::GridLanes;
     let behavior = SizingBehavior::CalcSize(CalcSizeBehaviorBasis::Content);
-    let capability = LayoutUnsupportedCapability::LaterFriBehavior;
+    let capability = LayoutUnsupportedCapability::NonNumericLength;
     assert_eq!(property, SizingProperty::FlexBasis);
     assert_eq!(algorithm, SizingAlgorithm::GridLanes);
     assert_eq!(
         behavior,
         SizingBehavior::CalcSize(CalcSizeBehaviorBasis::Content)
     );
-    assert_eq!(capability, LayoutUnsupportedCapability::LaterFriBehavior);
+    assert_eq!(capability, LayoutUnsupportedCapability::NonNumericLength);
 }
 
 fn assert_physical_block_margin_collapse_maps_all_flow_axes<S: LayoutScalar>() {
