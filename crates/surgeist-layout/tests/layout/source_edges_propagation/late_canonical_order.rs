@@ -27,8 +27,8 @@ fn prepare_direct(processed: &Arc<t::processing::ProcessedSource>) -> t::prepare
         .unwrap()
 }
 
-fn assert_late_geometry<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+fn assert_late_geometry<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     controls: &[t::prepared::PreparedControl],
     empty: &t::capture::CapturedScope,
 ) {
@@ -64,7 +64,7 @@ fn assert_late_geometry<S: l::LayoutScalar>(
         .final_output();
     assert_eq!(
         root.size,
-        l::Size::new(S::from_f64(100.0), S::from_f64(20.0))
+        l::geometry::Size::new(S::from_f64(100.0), S::from_f64(20.0))
     );
     let mut lines = vec![None, None];
     for entry in batch.final_inline_fragments() {
@@ -158,7 +158,7 @@ fn assert_late_geometry<S: l::LayoutScalar>(
     );
 }
 
-fn exercise<S: l::LayoutScalar>(false_order: bool) {
+fn exercise<S: l::scalar::LayoutScalar>(false_order: bool) {
     let mut input = source(Case::EmptyBefore);
     // A lower Text cause, not a claim that Layout Line declarations or
     // the early adapter ran. There is no ResolvedWrapEdges or early-source call.
@@ -222,7 +222,7 @@ fn exercise<S: l::LayoutScalar>(false_order: bool) {
     // All actual normalized Layout declarations are neutral. Only Text's
     // independent computed mandatory capability is being consumed here.
     for declaration in &mut host.declarations {
-        declaration.edges = l::WrapEdges::AUTO;
+        declaration.edges = l::inline_wrapping::WrapEdges::AUTO;
     }
     let binding = host.install(&processed, &prepared);
     let controls = binding
@@ -233,8 +233,10 @@ fn exercise<S: l::LayoutScalar>(false_order: bool) {
     let mut wrapping = host.final_wrapping(&processed);
     for scope in &mut wrapping.scopes {
         match scope {
-            l::WrappingScopeInput::Captured { edges, .. }
-            | l::WrappingScopeInput::NativePair { edges, .. } => *edges = l::WrapEdges::AUTO,
+            l::inline_wrapping::WrappingScopeInput::Captured { edges, .. }
+            | l::inline_wrapping::WrappingScopeInput::NativePair { edges, .. } => {
+                *edges = l::inline_wrapping::WrapEdges::AUTO
+            }
         }
     }
     let siblings = wrapping
@@ -242,23 +244,31 @@ fn exercise<S: l::LayoutScalar>(false_order: bool) {
         .iter_mut()
         .find(|row| {
             row.parent
-                == l::GeneratedBoxRef::Inline(l::InlineBoxRef::NativePair { start: 2, end: 6 })
+                == l::inline_wrapping::GeneratedBoxRef::Inline(
+                    l::inline_wrapping::InlineBoxRef::NativePair { start: 2, end: 6 },
+                )
         })
         .unwrap();
     assert_eq!(siblings.children.len(), 2);
     assert_eq!(
         siblings.children[0].box_,
-        l::GeneratedBoxRef::Inline(l::InlineBoxRef::Scope(empty.clone()))
+        l::inline_wrapping::GeneratedBoxRef::Inline(l::inline_wrapping::InlineBoxRef::Scope(
+            empty.clone()
+        ))
     );
     assert_eq!(
         siblings.children[1].box_,
-        l::GeneratedBoxRef::Inline(l::InlineBoxRef::NativePair { start: 3, end: 5 })
+        l::inline_wrapping::GeneratedBoxRef::Inline(l::inline_wrapping::InlineBoxRef::NativePair {
+            start: 3,
+            end: 5
+        })
     );
     if false_order {
         siblings.children.swap(0, 1);
     }
     let tree = Final(&host);
-    let result = l::LayoutFlowInput::try_new(&tree, 0, vec![binding], wrapping, Vec::new());
+    let result =
+        l::text_layout::LayoutFlowInput::try_new(&tree, 0, vec![binding], wrapping, Vec::new());
     if false_order {
         let error = result
             .err()
@@ -266,9 +276,11 @@ fn exercise<S: l::LayoutScalar>(false_order: bool) {
         assert!(
             matches!(
                 error.kind(),
-                l::LayoutErrorKindOf::InvalidInput(l::LayoutInvalidInputOf::WrappingScope(
-                    l::WrappingScopeError::ChildOrder
-                ))
+                l::error::LayoutErrorKindOf::InvalidInput(
+                    l::error::LayoutInvalidInputOf::WrappingScope(
+                        l::inline_wrapping::WrappingScopeError::ChildOrder
+                    )
+                )
             ),
             "{error:?}"
         );
@@ -277,17 +289,17 @@ fn exercise<S: l::LayoutScalar>(false_order: bool) {
             result.expect("complete [E,T] must admit canonical empty scope with native sibling");
         let request = {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(100.0)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(S::from_f64(100.0)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::WritingMode::HorizontalTb,
-                    surgeist_layout::Direction::Ltr,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::geometry::WritingMode::HorizontalTb,
+                    surgeist_layout::geometry::Direction::Ltr,
                 ),
                 sizing_request
                     .orthogonal_fallback()

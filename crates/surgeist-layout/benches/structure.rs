@@ -24,9 +24,18 @@ use std::hint::black_box;
 use harness::{Document, Family};
 use host::{Host, boxed, flow_axes, px, root_request};
 use surgeist_layout::{
-    BlockFragmentainerOf, Display, FlexWrap, FragmentationBreakKinds, FragmentationKind,
-    LayoutBoundRequestOf, LayoutFlowInput, LayoutSourceBasis, PageProgression, Point, Size,
-    TrackComponent, WrappingInput, compute_layout, compute_layout_with_flow,
+    batch::LayoutSourceBasis,
+    box_model::Display,
+    compute_layout, compute_layout_with_flow,
+    flex::FlexWrap,
+    fragmentation::{
+        BlockFragmentainerOf, FragmentationBreakKinds, FragmentationKind, LayoutBoundRequestOf,
+        PageProgression,
+    },
+    geometry::{Point, Size},
+    grid::TrackComponent,
+    inline_wrapping::WrappingInput,
+    text_layout::LayoutFlowInput,
 };
 
 const GRID_COLUMNS: usize = 100;
@@ -43,7 +52,7 @@ fn plain(host: Host, width: f32) -> Document {
     }
 }
 
-fn container(display: Display) -> surgeist_layout::NodeInput {
+fn container(display: Display) -> surgeist_layout::node::NodeInput {
     let mut input = boxed(display, None, None);
     if display == Display::Grid {
         input.grid_template_columns = vec![TrackComponent::AUTO];

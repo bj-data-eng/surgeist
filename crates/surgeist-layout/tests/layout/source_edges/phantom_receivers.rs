@@ -27,12 +27,12 @@ impl ReceiverKind {
         }
     }
 }
-struct ReceiverTree<S: layout::LayoutScalar> {
-    inputs: Vec<layout::LayoutInputOf<S>>,
-    non_box: layout::NodeInputOf<S>,
+struct ReceiverTree<S: layout::scalar::LayoutScalar> {
+    inputs: Vec<layout::node::LayoutInputOf<S>>,
+    non_box: layout::node::NodeInputOf<S>,
     children: Vec<u32>,
 }
-impl<S: layout::LayoutScalar> layout::Traverse for ReceiverTree<S> {
+impl<S: layout::scalar::LayoutScalar> layout::tree::Traverse for ReceiverTree<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -51,12 +51,12 @@ impl<S: layout::LayoutScalar> layout::Traverse for ReceiverTree<S> {
         self.children[index]
     }
 }
-impl<S: layout::LayoutScalar> layout::LayoutTree for ReceiverTree<S> {
+impl<S: layout::scalar::LayoutScalar> layout::tree::LayoutTree for ReceiverTree<S> {
     type MeasureError = Infallible;
-    fn node_input(&self, node: u32) -> &layout::NodeInputOf<S> {
+    fn node_input(&self, node: u32) -> &layout::node::NodeInputOf<S> {
         self.inputs[node as usize].as_box().unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, node: u32) -> layout::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: u32) -> layout::node::LayoutInputViewOf<'_, S> {
         self.inputs[node as usize].as_view()
     }
 }
@@ -73,7 +73,7 @@ fn receiver_metric() -> text::allocation::LineBoxStrut {
 }
 fn receiver_input(
     kind: ReceiverKind,
-    direction: layout::Direction,
+    direction: layout::geometry::Direction,
 ) -> text::capture::ContextualSourceInput {
     use text::capture::SourceProcessingEvent as E;
     let mut raw = source(true, direction);
@@ -153,23 +153,26 @@ fn receiver_input(
         .extend([E::ExitScope(1), E::ExitParagraph(0), E::ExitScope(0)]);
     raw
 }
-fn signed_atomic_margin<S: layout::LayoutScalar>(
-    direction: layout::Direction,
+fn signed_atomic_margin<S: layout::scalar::LayoutScalar>(
+    direction: layout::geometry::Direction,
     cancel: bool,
-) -> layout::Edges<S> {
+) -> layout::geometry::Edges<S> {
     if !cancel {
-        return layout::Edges::ZERO;
+        return layout::geometry::Edges::ZERO;
     }
     match direction {
-        layout::Direction::Ltr => {
-            layout::Edges::new(S::ZERO, S::from_f64(-5.0), S::ZERO, S::from_f64(5.0))
+        layout::geometry::Direction::Ltr => {
+            layout::geometry::Edges::new(S::ZERO, S::from_f64(-5.0), S::ZERO, S::from_f64(5.0))
         }
-        layout::Direction::Rtl => {
-            layout::Edges::new(S::ZERO, S::from_f64(5.0), S::ZERO, S::from_f64(-5.0))
+        layout::geometry::Direction::Rtl => {
+            layout::geometry::Edges::new(S::ZERO, S::from_f64(5.0), S::ZERO, S::from_f64(-5.0))
         }
     }
 }
-fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: layout::Direction) {
+fn nonphantom_receiver<S: layout::scalar::LayoutScalar>(
+    kind: ReceiverKind,
+    direction: layout::geometry::Direction,
+) {
     let processed = Arc::new(
         text::capture::process_contextual_source(receiver_input(kind, direction)).unwrap(),
     );
@@ -201,14 +204,19 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
         )
         .unwrap();
     assert!(!pin.is_empty());
-    let px =
-        |v| layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(S::from_f64(v)).unwrap());
-    let mut inputs = vec![layout::LayoutInputOf::box_input(layout::NodeInputOf {
-        display: layout::Display::Block,
-        direction,
-        size: layout::Size::new(px(40.0), layout::PreferredSizeOf::AUTO),
-        ..layout::NodeInputOf::default()
-    })];
+    let px = |v| {
+        layout::sizing::PreferredSizeOf::value(
+            layout::length::LengthPercentageOf::px(S::from_f64(v)).unwrap(),
+        )
+    };
+    let mut inputs = vec![layout::node::LayoutInputOf::box_input(
+        layout::node::NodeInputOf {
+            display: layout::box_model::Display::Block,
+            direction,
+            size: layout::geometry::Size::new(px(40.0), layout::sizing::PreferredSizeOf::AUTO),
+            ..layout::node::NodeInputOf::default()
+        },
+    )];
     let origins = prepared
         .origin_views()
         .enumerate()
@@ -218,10 +226,10 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
                 Some(text::source::Id::from_u64(656001 + i as u64))
             );
             assert_eq!(view.aggregate_range(), text::source::Range::new(i, i + 1));
-            inputs.push(layout::LayoutInputOf::inline_text(
-                layout::TextParticipation::new(view.handle()),
+            inputs.push(layout::node::LayoutInputOf::inline_text(
+                layout::text_layout::TextParticipation::new(view.handle()),
             ));
-            layout::TextOriginBinding {
+            layout::text_layout::TextOriginBinding {
                 origin: view.handle(),
                 node: i as u32 + 1,
             }
@@ -238,16 +246,20 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
                 text::geometry::Size::new(0.0, 0.0)
             );
             assert_eq!(view.capture_position(), processed.captured_atomic(0));
-            inputs.push(layout::LayoutInputOf::box_input(layout::NodeInputOf {
-                display: layout::Display::InlineBlock,
-                direction,
-                size: layout::Size::new(px(0.0), px(0.0)),
-                margin: signed_atomic_margin::<S>(direction, cancel_margins).map(|value| {
-                    layout::LengthAutoOf::value(layout::LengthPercentageOf::px(value).unwrap())
-                }),
-                ..layout::NodeInputOf::default()
-            }));
-            atomics.push(layout::TextAtomicBinding {
+            inputs.push(layout::node::LayoutInputOf::box_input(
+                layout::node::NodeInputOf {
+                    display: layout::box_model::Display::InlineBlock,
+                    direction,
+                    size: layout::geometry::Size::new(px(0.0), px(0.0)),
+                    margin: signed_atomic_margin::<S>(direction, cancel_margins).map(|value| {
+                        layout::length::LengthAutoOf::value(
+                            layout::length::LengthPercentageOf::px(value).unwrap(),
+                        )
+                    }),
+                    ..layout::node::NodeInputOf::default()
+                },
+            ));
+            atomics.push(layout::text_layout::TextAtomicBinding {
                 occurrence: view.handle(),
                 node: 3,
             });
@@ -258,20 +270,20 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
                 let handle = view.handle();
                 assert_eq!(handle.captured_control(), processed.captured_control(i));
                 let (kind, edge) = if i == 0 {
-                    (layout::InlineBoundaryKind::Start, before)
+                    (layout::inline::InlineBoundaryKind::Start, before)
                 } else {
-                    (layout::InlineBoundaryKind::End, after)
+                    (layout::inline::InlineBoundaryKind::End, after)
                 };
-                inputs.push(layout::LayoutInputOf::inline_boundary(
-                    layout::InlineBoundaryInputOf::contribution(
+                inputs.push(layout::node::LayoutInputOf::inline_boundary(
+                    layout::inline::InlineBoundaryInputOf::contribution(
                         kind,
-                        layout::InlineMetricsOf::try_new(
-                            surgeist_layout::InlineBaselineContext::Physical,
+                        layout::inline::InlineMetricsOf::try_new(
+                            surgeist_layout::baseline::InlineBaselineContext::Physical,
                             S::from_f64(16.0),
                             S::from_f64(20.0),
                         )
                         .unwrap(),
-                        layout::InlineBoundaryEdgeOf::try_new(
+                        layout::inline::InlineBoundaryEdgeOf::try_new(
                             S::ZERO,
                             S::from_f64(edge.0),
                             S::from_f64(edge.1),
@@ -281,7 +293,7 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
                     .unwrap()
                     .with_direction(direction),
                 ));
-                controls.push(layout::TextControlBinding {
+                controls.push(layout::text_layout::TextControlBinding {
                     occurrence: handle,
                     node: 3 + i as u32,
                 });
@@ -289,8 +301,9 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
         }
     }
     let nodes = (1..inputs.len() as u32).collect::<Vec<_>>();
-    let binding = layout::TextParagraphBinding {
-        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+    let binding = layout::text_layout::TextParagraphBinding {
+        inline_box_fragments:
+            surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared.clone(),
         container: 0,
         nodes: nodes.clone(),
@@ -301,57 +314,65 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
     };
     let tree = ReceiverTree {
         inputs,
-        non_box: layout::NodeInputOf::non_box(),
+        non_box: layout::node::NodeInputOf::non_box(),
         children: nodes,
     };
-    let child = |box_| layout::GeneratedChildBoxInput {
+    let child = |box_| layout::inline_wrapping::GeneratedChildBoxInput {
         box_,
-        participation: layout::GeneratedBoxParticipation::InFlow,
+        participation: layout::inline_wrapping::GeneratedBoxParticipation::InFlow,
     };
-    let inline = layout::GeneratedBoxRef::Inline(layout::InlineBoxRef::Scope(scope));
-    let wrapping = layout::WrappingInput {
+    let inline = layout::inline_wrapping::GeneratedBoxRef::Inline(
+        layout::inline_wrapping::InlineBoxRef::Scope(scope),
+    );
+    let wrapping = layout::inline_wrapping::WrappingInput {
         native_inline_boxes: Vec::new(),
         gaps: Vec::new(),
-        scopes: vec![layout::WrappingScopeInput::Captured {
+        scopes: vec![layout::inline_wrapping::WrappingScopeInput::Captured {
             scope: processed.captured_scope(1).unwrap(),
-            wrap_inside: layout::WrapInside::Auto,
-            edges: layout::WrapEdges::AUTO,
-            metric_contribution: Some(
-                layout::InlineBoxMetricContribution::Strut(receiver_metric()),
-            ),
+            wrap_inside: layout::inline_wrapping::WrapInside::Auto,
+            edges: layout::inline_wrapping::WrapEdges::AUTO,
+            metric_contribution: Some(layout::inline_wrapping::InlineBoxMetricContribution::Strut(
+                receiver_metric(),
+            )),
         }],
         child_order: vec![
-            layout::InlineChildOrderInput {
-                parent: layout::GeneratedBoxRef::Node(0),
+            layout::inline_wrapping::InlineChildOrderInput {
+                parent: layout::inline_wrapping::GeneratedBoxRef::Node(0),
                 children: vec![
-                    child(layout::GeneratedBoxRef::Node(1)),
-                    child(layout::GeneratedBoxRef::Node(2)),
+                    child(layout::inline_wrapping::GeneratedBoxRef::Node(1)),
+                    child(layout::inline_wrapping::GeneratedBoxRef::Node(2)),
                     child(inline.clone()),
                 ],
-                prefix: layout::ChildOrderCompleteness::Complete,
-                suffix: layout::ChildOrderCompleteness::Complete,
+                prefix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
+                suffix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
                 formatting_context: 0,
             },
-            layout::InlineChildOrderInput {
+            layout::inline_wrapping::InlineChildOrderInput {
                 parent: inline,
                 children: if matches!(kind, ReceiverKind::Atomic { .. }) {
-                    vec![child(layout::GeneratedBoxRef::Node(3))]
+                    vec![child(layout::inline_wrapping::GeneratedBoxRef::Node(3))]
                 } else {
                     vec![]
                 },
-                prefix: layout::ChildOrderCompleteness::Complete,
-                suffix: layout::ChildOrderCompleteness::Complete,
+                prefix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
+                suffix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
                 formatting_context: 0,
             },
         ],
     };
-    let flow =
-        layout::LayoutFlowInput::try_new(&tree, 0, vec![binding], wrapping, Vec::new()).unwrap();
+    let flow = layout::text_layout::LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        wrapping,
+        Vec::new(),
+    )
+    .unwrap();
     let batch = layout::compute_layout_with_flow(
         &flow,
         0,
-        request(layout::FlowAxes::new(
-            layout::WritingMode::HorizontalTb,
+        request(layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
             direction,
         )),
     )
@@ -406,7 +427,7 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
         .final_output();
     assert_eq!(
         root.size,
-        layout::Size::new(S::from_f64(40.0), S::from_f64(total))
+        layout::geometry::Size::new(S::from_f64(40.0), S::from_f64(total))
     );
     let glyphs = placed
         .run_views()
@@ -423,7 +444,7 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    let x = if direction == layout::Direction::Ltr {
+    let x = if direction == layout::geometry::Direction::Ltr {
         0.0
     } else {
         20.0
@@ -447,7 +468,7 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
                     .single_box()
                     .expect("fixture node produces one box")
                     .final_output();
-                assert_eq!(atomic.size, layout::Size::new(S::ZERO, S::ZERO));
+                assert_eq!(atomic.size, layout::geometry::Size::new(S::ZERO, S::ZERO));
                 assert_eq!(
                     atomic.margin,
                     signed_atomic_margin::<S>(direction, cancel_margins)
@@ -487,7 +508,10 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
 }
 #[test]
 fn zero_size_inflow_atomic_keeps_a_zero_advance_paragraph_receiver_real() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         for cancel_margins in [false, true] {
             nonphantom_receiver::<f32>(ReceiverKind::Atomic { cancel_margins }, direction);
             nonphantom_receiver::<f64>(ReceiverKind::Atomic { cancel_margins }, direction);
@@ -496,7 +520,10 @@ fn zero_size_inflow_atomic_keeps_a_zero_advance_paragraph_receiver_real() {
 }
 #[test]
 fn each_individual_nonzero_inline_border_or_padding_prevents_phantom_completion() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         for (before, after) in [
             ((5.0, 0.0), (0.0, 0.0)),
             ((0.0, 5.0), (0.0, 0.0)),
@@ -511,7 +538,10 @@ fn each_individual_nonzero_inline_border_or_padding_prevents_phantom_completion(
 
 #[test]
 fn zero_inline_edges_with_only_vertical_struts_leave_receiver_phantom() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         let kind = ReceiverKind::Endpoints {
             before: (0.0, 0.0),
             after: (0.0, 0.0),
@@ -523,36 +553,40 @@ fn zero_inline_edges_with_only_vertical_struts_leave_receiver_phantom() {
 
 // Missing public controls: actual selected source text and consecutive mandatory
 // endings, using the same real capture/normal preparation/Layout front door.
-struct SemanticReceiverFixture<S: layout::LayoutScalar> {
+struct SemanticReceiverFixture<S: layout::scalar::LayoutScalar> {
     processed: Arc<text::processing::ProcessedSource>,
     prepared: text::prepared::PreparedText,
     tree: ReceiverTree<S>,
-    binding: layout::TextParagraphBinding<u32>,
-    wrapping: layout::WrappingInput<u32>,
+    binding: layout::text_layout::TextParagraphBinding<u32>,
+    wrapping: layout::inline_wrapping::WrappingInput<u32>,
 }
-fn semantic_receiver_fixture<S: layout::LayoutScalar>(
+fn semantic_receiver_fixture<S: layout::scalar::LayoutScalar>(
     input: text::capture::ContextualSourceInput,
-    direction: layout::Direction,
+    direction: layout::geometry::Direction,
 ) -> SemanticReceiverFixture<S> {
     let processed = Arc::new(text::capture::process_contextual_source(input).unwrap());
     let prepared = normal_prepare(&processed);
     let px = |value| {
-        layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(S::from_f64(value)).unwrap())
+        layout::sizing::PreferredSizeOf::value(
+            layout::length::LengthPercentageOf::px(S::from_f64(value)).unwrap(),
+        )
     };
-    let mut inputs = vec![layout::LayoutInputOf::box_input(layout::NodeInputOf {
-        display: layout::Display::Block,
-        direction,
-        size: layout::Size::new(px(40.0), layout::PreferredSizeOf::AUTO),
-        ..layout::NodeInputOf::default()
-    })];
+    let mut inputs = vec![layout::node::LayoutInputOf::box_input(
+        layout::node::NodeInputOf {
+            display: layout::box_model::Display::Block,
+            direction,
+            size: layout::geometry::Size::new(px(40.0), layout::sizing::PreferredSizeOf::AUTO),
+            ..layout::node::NodeInputOf::default()
+        },
+    )];
     let origins = prepared
         .origin_views()
         .map(|view| {
             let node = inputs.len() as u32;
-            inputs.push(layout::LayoutInputOf::inline_text(
-                layout::TextParticipation::new(view.handle()),
+            inputs.push(layout::node::LayoutInputOf::inline_text(
+                layout::text_layout::TextParticipation::new(view.handle()),
             ));
-            layout::TextOriginBinding {
+            layout::text_layout::TextOriginBinding {
                 origin: view.handle(),
                 node,
             }
@@ -569,36 +603,37 @@ fn semantic_receiver_fixture<S: layout::LayoutScalar>(
             );
             let kind = match view.kind() {
                 text::paragraph::ParagraphControlKind::InlineBoundaryStart => {
-                    layout::InlineBoundaryKind::Start
+                    layout::inline::InlineBoundaryKind::Start
                 }
                 text::paragraph::ParagraphControlKind::InlineBoundaryEnd => {
-                    layout::InlineBoundaryKind::End
+                    layout::inline::InlineBoundaryKind::End
                 }
                 _ => panic!("this actual fixture supplies only its inline endpoints"),
             };
-            inputs.push(layout::LayoutInputOf::inline_boundary(
-                layout::InlineBoundaryInputOf::contribution(
+            inputs.push(layout::node::LayoutInputOf::inline_boundary(
+                layout::inline::InlineBoundaryInputOf::contribution(
                     kind,
-                    layout::InlineMetricsOf::try_new(
-                        surgeist_layout::InlineBaselineContext::Physical,
+                    layout::inline::InlineMetricsOf::try_new(
+                        surgeist_layout::baseline::InlineBaselineContext::Physical,
                         S::from_f64(16.0),
                         S::from_f64(20.0),
                     )
                     .unwrap(),
-                    layout::InlineBoundaryEdgeOf::ZERO,
+                    layout::inline::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap()
                 .with_direction(direction),
             ));
-            layout::TextControlBinding {
+            layout::text_layout::TextControlBinding {
                 occurrence: view.handle(),
                 node,
             }
         })
         .collect::<Vec<_>>();
     let nodes = (1..inputs.len() as u32).collect::<Vec<_>>();
-    let binding = layout::TextParagraphBinding {
-        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+    let binding = layout::text_layout::TextParagraphBinding {
+        inline_box_fragments:
+            surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared.clone(),
         container: 0,
         nodes: nodes.clone(),
@@ -608,35 +643,37 @@ fn semantic_receiver_fixture<S: layout::LayoutScalar>(
         line_strut: None,
     };
     let scope = processed.captured_scope(1).unwrap();
-    let inline = layout::GeneratedBoxRef::Inline(layout::InlineBoxRef::Scope(scope.clone()));
-    let child = |box_| layout::GeneratedChildBoxInput {
+    let inline = layout::inline_wrapping::GeneratedBoxRef::Inline(
+        layout::inline_wrapping::InlineBoxRef::Scope(scope.clone()),
+    );
+    let child = |box_| layout::inline_wrapping::GeneratedChildBoxInput {
         box_,
-        participation: layout::GeneratedBoxParticipation::InFlow,
+        participation: layout::inline_wrapping::GeneratedBoxParticipation::InFlow,
     };
-    let row = |parent, children| layout::InlineChildOrderInput {
+    let row = |parent, children| layout::inline_wrapping::InlineChildOrderInput {
         parent,
         children,
-        prefix: layout::ChildOrderCompleteness::Complete,
-        suffix: layout::ChildOrderCompleteness::Complete,
+        prefix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
+        suffix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
         formatting_context: 0,
     };
-    let wrapping = layout::WrappingInput {
+    let wrapping = layout::inline_wrapping::WrappingInput {
         native_inline_boxes: Vec::new(),
         gaps: Vec::new(),
-        scopes: vec![layout::WrappingScopeInput::Captured {
+        scopes: vec![layout::inline_wrapping::WrappingScopeInput::Captured {
             scope,
-            wrap_inside: layout::WrapInside::Auto,
-            edges: layout::WrapEdges::AUTO,
-            metric_contribution: Some(
-                layout::InlineBoxMetricContribution::Strut(receiver_metric()),
-            ),
+            wrap_inside: layout::inline_wrapping::WrapInside::Auto,
+            edges: layout::inline_wrapping::WrapEdges::AUTO,
+            metric_contribution: Some(layout::inline_wrapping::InlineBoxMetricContribution::Strut(
+                receiver_metric(),
+            )),
         }],
         child_order: vec![
             row(
-                layout::GeneratedBoxRef::Node(0),
+                layout::inline_wrapping::GeneratedBoxRef::Node(0),
                 vec![
-                    child(layout::GeneratedBoxRef::Node(1)),
-                    child(layout::GeneratedBoxRef::Node(2)),
+                    child(layout::inline_wrapping::GeneratedBoxRef::Node(1)),
+                    child(layout::inline_wrapping::GeneratedBoxRef::Node(2)),
                     child(inline.clone()),
                 ],
             ),
@@ -646,7 +683,9 @@ fn semantic_receiver_fixture<S: layout::LayoutScalar>(
                     .origins
                     .iter()
                     .skip(2)
-                    .map(|origin| child(layout::GeneratedBoxRef::Node(origin.node)))
+                    .map(|origin| {
+                        child(layout::inline_wrapping::GeneratedBoxRef::Node(origin.node))
+                    })
                     .collect(),
             ),
         ],
@@ -658,7 +697,7 @@ fn semantic_receiver_fixture<S: layout::LayoutScalar>(
         wrapping,
         tree: ReceiverTree {
             inputs,
-            non_box: layout::NodeInputOf::non_box(),
+            non_box: layout::node::NodeInputOf::non_box(),
             children: nodes,
         },
     }
@@ -666,7 +705,7 @@ fn semantic_receiver_fixture<S: layout::LayoutScalar>(
 
 fn retained_receiver_input(
     space: bool,
-    direction: layout::Direction,
+    direction: layout::geometry::Direction,
 ) -> text::capture::ContextualSourceInput {
     use text::capture::SourceProcessingEvent as E;
     let mut raw = source(true, direction);
@@ -744,7 +783,10 @@ fn retained_receiver_input(
     ];
     raw
 }
-fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layout::Direction) {
+fn retained_text_receiver<S: layout::scalar::LayoutScalar>(
+    space: bool,
+    direction: layout::geometry::Direction,
+) {
     let f = semantic_receiver_fixture::<S>(retained_receiver_input(space, direction), direction);
     let tail_len = if space { 1 } else { 2 };
     assert_eq!(
@@ -788,7 +830,7 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
             &offers[0].view().boundary(),
         )
         .unwrap();
-    let flow = layout::LayoutFlowInput::try_new(
+    let flow = layout::text_layout::LayoutFlowInput::try_new(
         &f.tree,
         0,
         vec![f.binding.clone()],
@@ -799,8 +841,8 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
     let batch = layout::compute_layout_with_flow(
         &flow,
         0,
-        request(layout::FlowAxes::new(
-            layout::WritingMode::HorizontalTb,
+        request(layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
             direction,
         )),
     )
@@ -839,7 +881,7 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
         .final_output();
     assert_eq!(
         root.size,
-        layout::Size::new(S::from_f64(40.0), S::from_f64(30.0))
+        layout::geometry::Size::new(S::from_f64(40.0), S::from_f64(30.0))
     );
     let fragment = batch
         .final_inline_fragments()
@@ -874,7 +916,7 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
         for entry in fragments {
             assert_eq!(
                 entry.owner(),
-                &layout::InlineFragmentOwner::Node(f.binding.origins[2].node)
+                &layout::text_layout::InlineFragmentOwner::Node(f.binding.origins[2].node)
             );
             let fragment = entry.fragment();
             assert_eq!(fragment.line_index(), 1);
@@ -968,20 +1010,28 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
 }
 #[test]
 fn actual_retained_text_with_cancelled_advance_keeps_paragraph_receiver_real() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         retained_text_receiver::<f32>(false, direction);
         retained_text_receiver::<f64>(false, direction);
     }
 }
 #[test]
 fn preserved_space_keeps_paragraph_receiver_real_at_the_line_edge() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         retained_text_receiver::<f32>(true, direction);
         retained_text_receiver::<f64>(true, direction);
     }
 }
 
-fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direction) {
+fn successive_forced_receivers<S: layout::scalar::LayoutScalar>(
+    direction: layout::geometry::Direction,
+) {
     let mut input = receiver_input(
         ReceiverKind::Endpoints {
             before: (0.0, 0.0),
@@ -1056,7 +1106,7 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
             expected
         );
     }
-    let flow = layout::LayoutFlowInput::try_new(
+    let flow = layout::text_layout::LayoutFlowInput::try_new(
         &f.tree,
         0,
         vec![f.binding.clone()],
@@ -1067,8 +1117,8 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
     let batch = layout::compute_layout_with_flow(
         &flow,
         0,
-        request(layout::FlowAxes::new(
-            layout::WritingMode::HorizontalTb,
+        request(layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
             direction,
         )),
     )
@@ -1094,7 +1144,7 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
         .final_output();
     assert_eq!(
         root.size,
-        layout::Size::new(S::from_f64(40.0), S::from_f64(30.0))
+        layout::geometry::Size::new(S::from_f64(40.0), S::from_f64(30.0))
     );
     let fragment = batch
         .final_inline_fragments()
@@ -1149,7 +1199,10 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
 }
 #[test]
 fn consecutive_forces_at_one_source_offset_each_keep_a_real_line() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         successive_forced_receivers::<f32>(direction);
         successive_forced_receivers::<f64>(direction);
     }

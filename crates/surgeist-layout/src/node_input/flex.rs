@@ -18,13 +18,19 @@ pub enum FlexWrap {
 /// by the crate-private flex algorithm.
 ///
 /// ```compile_fail
-/// use surgeist_layout::{FlexDirection, PhysicalAxis};
+/// use surgeist_layout::{flex::FlexDirection, geometry::PhysicalAxis};
 /// let _: PhysicalAxis = FlexDirection::Row.main_axis();
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::{FlexDirection, PhysicalAxis};
+/// use surgeist_layout::{flex::FlexDirection, geometry::PhysicalAxis};
 /// let _: PhysicalAxis = FlexDirection::Column.cross_axis();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::{flex::FlexDirection, geometry::PhysicalAxis};
 /// ```
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum FlexDirection {

@@ -18,7 +18,7 @@ use crate::radial_gradient::{RadialGradientCase, RadialGradientGeometry};
 use core::cmp::Ordering;
 use core::error::Error;
 use std::{fmt, mem::take};
-use surgeist_layout::Point;
+use surgeist_layout::geometry::Point;
 use surgeist_ledger::{Change, Scope};
 
 /// Refusal to produce a qualified affine stop list for a zero circle.

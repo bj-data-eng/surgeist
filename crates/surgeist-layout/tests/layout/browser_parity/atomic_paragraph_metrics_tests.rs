@@ -46,7 +46,7 @@ fn named_atomic_certificate_binds_actual_paragraph_and_br_inputs() {
             .as_box()
             .unwrap()
             .inline_baseline_context,
-        layout::InlineBaselineContext::Physical
+        layout::baseline::InlineBaselineContext::Physical
     );
     assert_eq!(
         physical.nodes[2]
@@ -55,7 +55,7 @@ fn named_atomic_certificate_binds_actual_paragraph_and_br_inputs() {
             .unwrap()
             .metrics()
             .reference(),
-        layout::InlineBaselineContext::Physical
+        layout::baseline::InlineBaselineContext::Physical
     );
 }
 #[test]
@@ -94,9 +94,10 @@ fn named_atomic_reader_rejects_real_child_and_reference_mismatches() {
 }
 #[test]
 fn checked_zero_central_metrics_work_in_both_scalar_lanes() {
-    fn lane<S: layout::LayoutScalar>() {
-        let reference = layout::InlineBaselineContext::Named(FontBaseline::Central);
-        let metrics = layout::InlineMetricsOf::<S>::try_new(reference, S::ZERO, S::ZERO).unwrap();
+    fn lane<S: layout::scalar::LayoutScalar>() {
+        let reference = layout::baseline::InlineBaselineContext::Named(FontBaseline::Central);
+        let metrics =
+            layout::inline::InlineMetricsOf::<S>::try_new(reference, S::ZERO, S::ZERO).unwrap();
         assert_eq!(metrics.reference(), reference);
         assert_eq!(metrics.after_baseline(), S::ZERO);
     }

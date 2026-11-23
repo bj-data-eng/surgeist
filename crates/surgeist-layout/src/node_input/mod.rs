@@ -227,7 +227,7 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
 /// Property sizing fields use distinct public domains.
 ///
 /// ```compile_fail
-/// use surgeist_layout::{MaxSize, NodeInput, PreferredSize, Size};
+/// use surgeist_layout::{geometry::Size, node::NodeInput, sizing::{MaxSize, PreferredSize}};
 /// let _ = NodeInput {
 ///     size: Size::splat(MaxSize::NONE),
 ///     ..NodeInput::DEFAULT
@@ -246,6 +246,12 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
 /// use surgeist_layout::DimensionOf;
 /// type Legacy = DimensionOf<f64>;
 /// let _: Legacy = Legacy::AUTO;
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::{geometry::Size, node::NodeInput, sizing::{MaxSize, PreferredSize}};
 /// ```
 const _: () = ();
 
@@ -548,7 +554,7 @@ pub enum LayoutInputOf<S: LayoutScalar = DefaultScalar> {
 /// A view cannot survive its owned backing:
 ///
 /// ```compile_fail,E0505
-/// use surgeist_layout::{LayoutInput, NodeInput};
+/// use surgeist_layout::node::{LayoutInput, NodeInput};
 /// let input = LayoutInput::box_input(NodeInput::default());
 /// let view = input.as_view();
 /// drop(input);
@@ -558,13 +564,19 @@ pub enum LayoutInputOf<S: LayoutScalar = DefaultScalar> {
 /// Its backing also cannot be mutated while the view remains in use:
 ///
 /// ```compile_fail,E0502
-/// use surgeist_layout::{LayoutInput, NodeInput};
+/// use surgeist_layout::node::{LayoutInput, NodeInput};
 /// let mut input = LayoutInput::box_input(NodeInput::default());
 /// let view = input.as_view();
 /// if let LayoutInput::Box(box_input) = &mut input {
 ///     box_input.grid_auto_columns.clear();
 /// }
 /// assert!(view.as_box().is_some());
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::node::{LayoutInput, NodeInput};
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LayoutInputViewOf<'input, S: LayoutScalar = DefaultScalar> {

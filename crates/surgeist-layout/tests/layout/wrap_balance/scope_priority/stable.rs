@@ -1,10 +1,10 @@
 //! An earlier outside cut dominates Stable's later fitting inside-scope cut.
 use super::*;
 
-fn assert_hull<S: l::LayoutScalar>(
-    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+fn assert_hull<S: l::scalar::LayoutScalar>(
+    entries: (&l::batch::CompletedLayoutBatchOf<u32, S>, bool),
     ids: &[u32],
-    direction: l::Direction,
+    direction: l::geometry::Direction,
     width: f64,
 ) {
     let actual = ids.iter().map(|&id| node(entries, id)).collect::<Vec<_>>();
@@ -21,7 +21,7 @@ fn assert_hull<S: l::LayoutScalar>(
     let used = actual
         .iter()
         .fold(S::ZERO, |sum, item| sum + item.size.width);
-    let start = if direction == l::Direction::Ltr {
+    let start = if direction == l::geometry::Direction::Ltr {
         0.0
     } else {
         60.0 - width
@@ -31,8 +31,11 @@ fn assert_hull<S: l::LayoutScalar>(
     assert_eq!(right, S::from_f64(start + width));
 }
 
-fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
-    for style in [l::TextWrapStyle::Auto, l::TextWrapStyle::Stable] {
+fn earlier_outside_cut_dominates<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
+    for style in [
+        l::text_flow::TextWrapStyle::Auto,
+        l::text_flow::TextWrapStyle::Stable,
+    ] {
         let mut tree = fixture::<S>(direction, style);
         // Real source order A30, Start, B20, C10, End, D10 puts the late
         // ABC60 cut INSIDE NativePair(1,4). The earlier A30 cut is outside.
@@ -40,8 +43,11 @@ fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
         // ordinary scope permission, Stable takes ABC / D = 60/10.
         tree.children[0] = vec![2, 1, 3, 5, 4, 6];
         assert_eq!(tree.inputs[0].as_box().unwrap().text_wrap_style, style);
-        for inside in [l::WrapInside::Auto, l::WrapInside::Avoid] {
-            let avoided = inside == l::WrapInside::Avoid;
+        for inside in [
+            l::inline_wrapping::WrapInside::Auto,
+            l::inline_wrapping::WrapInside::Avoid,
+        ] {
+            let avoided = inside == l::inline_wrapping::WrapInside::Avoid;
             let batch = compute(&tree, inside);
             let prior = batch.clone();
             for entries in [
@@ -51,28 +57,28 @@ fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
                 assert_eq!(entries.0.node_layouts().len(), 7);
                 let root = node(entries, 0);
                 assert_eq!(root.size.width, S::from_f64(60.0));
-                assert_eq!(root.source_index, l::SourceIndex::new(0));
+                assert_eq!(root.source_index, l::node::SourceIndex::new(0));
                 for (id, source) in [(2, 0), (1, 1), (3, 2), (5, 3), (4, 4), (6, 5)] {
                     assert_eq!(
                         node_of_kind(
                             entries,
                             id,
                             crate::layout::observation::expected_kind(
-                                l::LayoutTree::layout_input(&tree, id),
+                                l::tree::LayoutTree::layout_input(&tree, id),
                                 false
                             )
                         )
                         .source_index,
-                        l::SourceIndex::new(source)
+                        l::node::SourceIndex::new(source)
                     );
                 }
                 let receiving_y = node(entries, 6).location.y;
                 assert!(receiving_y > S::ZERO);
                 let expected_x = match (direction, avoided) {
-                    (l::Direction::Ltr, false) => [0.0, 30.0, 50.0, 0.0],
-                    (l::Direction::Ltr, true) => [0.0, 0.0, 20.0, 30.0],
-                    (l::Direction::Rtl, false) => [30.0, 10.0, 0.0, 50.0],
-                    (l::Direction::Rtl, true) => [30.0, 40.0, 30.0, 20.0],
+                    (l::geometry::Direction::Ltr, false) => [0.0, 30.0, 50.0, 0.0],
+                    (l::geometry::Direction::Ltr, true) => [0.0, 0.0, 20.0, 30.0],
+                    (l::geometry::Direction::Rtl, false) => [30.0, 10.0, 0.0, 50.0],
+                    (l::geometry::Direction::Rtl, true) => [30.0, 40.0, 30.0, 20.0],
                 };
                 for (index, (id, width)) in [(2, 30.0), (3, 20.0), (5, 10.0), (6, 10.0)]
                     .into_iter()
@@ -82,13 +88,13 @@ fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
                         entries,
                         id,
                         crate::layout::observation::expected_kind(
-                            l::LayoutTree::layout_input(&tree, id),
+                            l::tree::LayoutTree::layout_input(&tree, id),
                             false,
                         ),
                     );
                     assert_eq!(
                         actual.size,
-                        l::Size::new(S::from_f64(width), S::from_f64(10.0))
+                        l::geometry::Size::new(S::from_f64(width), S::from_f64(10.0))
                     );
                     assert_eq!(actual.location.x, S::from_f64(expected_x[index]));
                     let receiving = id == 6 || (avoided && id != 2);
@@ -110,15 +116,19 @@ fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
                 let start = node_of_kind(
                     entries,
                     1,
-                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                    crate::layout::observation::Kind::NonBox(
+                        l::fragmentation::NonBoxKind::InlineBoundary,
+                    ),
                 );
                 let end = node_of_kind(
                     entries,
                     4,
-                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                    crate::layout::observation::Kind::NonBox(
+                        l::fragmentation::NonBoxKind::InlineBoundary,
+                    ),
                 );
-                assert_eq!(start.size, l::Size::ZERO);
-                assert_eq!(end.size, l::Size::ZERO);
+                assert_eq!(start.size, l::geometry::Size::ZERO);
+                assert_eq!(end.size, l::geometry::Size::ZERO);
                 // Preserve the selected half-open source prefix. Without
                 // Avoid the cut after C precedes End, so End starts D's row;
                 // with Avoid, Start/B/C/End/D all follow the cut after A.
@@ -137,8 +147,8 @@ fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
                 assert_eq!(
                     end.location.x,
                     S::from_f64(match (direction, avoided) {
-                        (l::Direction::Ltr, false) => 0.0,
-                        (l::Direction::Rtl, false) => 60.0,
+                        (l::geometry::Direction::Ltr, false) => 0.0,
+                        (l::geometry::Direction::Rtl, false) => 60.0,
                         (_, true) => 30.0,
                     })
                 );
@@ -153,11 +163,11 @@ fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
                                 view.unrounded_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
                                 view.unrounded_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -167,11 +177,11 @@ fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
                                 view.unrounded_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
                                 view.unrounded_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -183,9 +193,11 @@ fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -195,9 +207,11 @@ fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -209,11 +223,11 @@ fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
                                 view.unrounded_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
                                 view.unrounded_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -223,11 +237,11 @@ fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
                                 view.unrounded_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
                                 view.unrounded_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -239,9 +253,11 @@ fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -251,9 +267,11 @@ fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -265,7 +283,7 @@ fn earlier_outside_cut_dominates<S: l::LayoutScalar>(direction: l::Direction) {
 
 #[test]
 fn stable_scope_avoidance_prefers_an_earlier_outside_cut_to_the_late_inside_cut() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         earlier_outside_cut_dominates::<f32>(direction);
         earlier_outside_cut_dominates::<f64>(direction);
     }

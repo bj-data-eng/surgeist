@@ -2,19 +2,19 @@ use super::*;
 use std::cell::Cell;
 
 #[derive(Clone)]
-struct Published<S: l::LayoutScalar> {
-    caches: Vec<l::CacheOf<S>>,
-    unrounded: Vec<Option<l::LayoutOutputEntryOf<u32, S>>>,
+struct Published<S: l::scalar::LayoutScalar> {
+    caches: Vec<l::cache::CacheOf<S>>,
+    unrounded: Vec<Option<l::batch::LayoutOutputEntryOf<u32, S>>>,
     final_output: Vec<Option<crate::layout::observation::Observation<S>>>,
-    batch: Option<l::CompletedLayoutBatchOf<u32, S>>,
+    batch: Option<l::batch::CompletedLayoutBatchOf<u32, S>>,
 }
-struct Host<S: l::LayoutScalar> {
+struct Host<S: l::scalar::LayoutScalar> {
     tree: Tree<S>,
     published: Published<S>,
-    publication_targets: l::LayoutPublicationTargets<u32>,
+    publication_targets: l::batch::LayoutPublicationTargets<u32>,
     hits: Vec<Cell<usize>>,
 }
-impl<S: l::LayoutScalar> l::Traverse for Host<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for Host<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -22,51 +22,51 @@ impl<S: l::LayoutScalar> l::Traverse for Host<S> {
     where
         Self: 'a;
     fn children(&self, node: u32) -> Self::Children<'_> {
-        l::Traverse::children(&self.tree, node)
+        l::tree::Traverse::children(&self.tree, node)
     }
     fn child_count(&self, node: u32) -> usize {
-        l::Traverse::child_count(&self.tree, node)
+        l::tree::Traverse::child_count(&self.tree, node)
     }
     fn child(&self, node: u32, index: usize) -> u32 {
-        l::Traverse::child(&self.tree, node, index)
+        l::tree::Traverse::child(&self.tree, node, index)
     }
 }
-impl<S: l::LayoutScalar> l::LayoutTree for Host<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for Host<S> {
     type MeasureError = Infallible;
-    fn node_input(&self, node: u32) -> &l::NodeInputOf<S> {
-        l::LayoutTree::node_input(&self.tree, node)
+    fn node_input(&self, node: u32) -> &l::node::NodeInputOf<S> {
+        l::tree::LayoutTree::node_input(&self.tree, node)
     }
-    fn layout_input(&self, node: u32) -> l::LayoutInputViewOf<'_, S> {
-        l::LayoutTree::layout_input(&self.tree, node)
+    fn layout_input(&self, node: u32) -> l::node::LayoutInputViewOf<'_, S> {
+        l::tree::LayoutTree::layout_input(&self.tree, node)
     }
     fn cache_get(
         &self,
         node: u32,
-        input: &l::ComputeInputOf<S>,
-        context: l::CacheKeyContext,
-    ) -> Option<l::ComputeOutputOf<S>> {
+        input: &l::cache::ComputeInputOf<S>,
+        context: l::cache::CacheKeyContext,
+    ) -> Option<l::cache::ComputeOutputOf<S>> {
         let answer = self.published.caches[node as usize].get_with_context(input, context);
         if answer.is_some() {
             self.hits[node as usize].set(self.hits[node as usize].get() + 1);
         }
         answer
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<l::batch::LayoutOutputEntryOf<u32, S>> {
         self.published.unrounded[node as usize]
     }
 }
-impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutBatchSink<u32, S> for Host<S> {
     type Error = Infallible;
     type Prepared = Published<S>;
-    fn publication_targets(&self) -> &l::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &l::batch::LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut l::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut l::batch::LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
     fn prepare_layout_batch<'call>(
         &self,
-        preparation: l::LayoutBatchPreparation<'call, u32, S>,
+        preparation: l::batch::LayoutBatchPreparation<'call, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
         let batch = preparation.batch();
         let mut next = self.published.clone();
@@ -89,9 +89,9 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
         }
         for (node, view) in batch.node_layouts() {
             let entry = match view {
-                l::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
-                l::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
-                l::NodeLayoutRefOf::Fragments(_) => {
+                l::fragmentation::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
+                l::fragmentation::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
+                l::fragmentation::NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             };
@@ -102,7 +102,7 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
                 (batch, true),
                 node,
                 crate::layout::observation::expected_kind(
-                    l::LayoutTree::layout_input(&self.tree, node),
+                    l::tree::LayoutTree::layout_input(&self.tree, node),
                     false,
                 ),
             ));
@@ -119,32 +119,32 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
     }
     fn commit_layout_batch<'call>(
         &mut self,
-        commit: l::LayoutBatchCommit<'call, u32, S, Self::Prepared>,
+        commit: l::batch::LayoutBatchCommit<'call, u32, S, Self::Prepared>,
     ) {
         let prepared = commit.into_prepared();
         self.published = prepared;
     }
 }
-impl<S: l::LayoutScalar> Host<S> {
-    fn new(direction: l::Direction) -> Self {
-        let mode = l::WritingMode::HorizontalTb;
+impl<S: l::scalar::LayoutScalar> Host<S> {
+    fn new(direction: l::geometry::Direction) -> Self {
+        let mode = l::geometry::WritingMode::HorizontalTb;
         let mut root = block(mode, direction, 100.0);
-        root.text_group_align = l::TextGroupAlign::Center;
+        root.text_group_align = l::text_flow::TextGroupAlign::Center;
         let tree = Tree::new(
             vec![
-                l::LayoutInputOf::box_input(root),
-                l::LayoutInputOf::box_input(block(mode, direction, 100.0)),
+                l::node::LayoutInputOf::box_input(root),
+                l::node::LayoutInputOf::box_input(block(mode, direction, 100.0)),
                 atomic(mode, direction, 60.0),
-                l::LayoutInputOf::box_input(block(mode, direction, 100.0)),
+                l::node::LayoutInputOf::box_input(block(mode, direction, 100.0)),
                 atomic(mode, direction, 40.0),
             ],
             &[(0, &[1, 3]), (1, &[2]), (3, &[4])],
         );
         Self {
             tree,
-            publication_targets: l::LayoutPublicationTargets::new(),
+            publication_targets: l::batch::LayoutPublicationTargets::new(),
             published: Published {
-                caches: vec![l::CacheOf::new(); 5],
+                caches: vec![l::cache::CacheOf::new(); 5],
                 unrounded: vec![None; 5],
                 final_output: vec![None; 5],
                 batch: None,
@@ -152,20 +152,20 @@ impl<S: l::LayoutScalar> Host<S> {
             hits: (0..5).map(|_| Cell::new(0)).collect(),
         }
     }
-    fn compute(&self, changed: &[u32]) -> l::CompletedLayoutBatchOf<u32, S> {
+    fn compute(&self, changed: &[u32]) -> l::batch::CompletedLayoutBatchOf<u32, S> {
         let request = {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(n(100.0)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(n(100.0)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
-                    surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::tree::LayoutTree::node_input(self, 0).writing_mode,
+                    surgeist_layout::tree::LayoutTree::node_input(self, 0).direction,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -180,8 +180,8 @@ impl<S: l::LayoutScalar> Host<S> {
         self.hits[2].get() + self.hits[4].get()
     }
 }
-fn phase<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+fn phase<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     width: f64,
     starts: [f64; 2],
 ) {
@@ -189,27 +189,39 @@ fn phase<S: l::LayoutScalar>(
         crate::layout::observation::phase(batch, false),
         crate::layout::observation::phase(batch, true),
     ] {
-        assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(20.0)));
-        assert_eq!(node(entries, 1).location, l::Point::ZERO);
-        assert_eq!(node(entries, 3).location, l::Point::new(S::ZERO, n(10.0)));
+        assert_eq!(
+            node(entries, 0).size,
+            l::geometry::Size::new(n(100.0), n(20.0))
+        );
+        assert_eq!(node(entries, 1).location, l::geometry::Point::ZERO);
+        assert_eq!(
+            node(entries, 3).location,
+            l::geometry::Point::new(S::ZERO, n(10.0))
+        );
         assert_eq!(
             node(entries, 2).location,
-            l::Point::new(n(starts[0]), S::ZERO)
+            l::geometry::Point::new(n(starts[0]), S::ZERO)
         );
         assert_eq!(
             node(entries, 4).location,
-            l::Point::new(n(starts[1]), S::ZERO)
+            l::geometry::Point::new(n(starts[1]), S::ZERO)
         );
-        assert_eq!(node(entries, 2).size, l::Size::new(n(width), n(10.0)));
-        assert_eq!(node(entries, 4).size, l::Size::new(n(40.0), n(10.0)));
-        assert_eq!(node(entries, 2).source_index, l::SourceIndex::new(0));
-        assert_eq!(node(entries, 4).source_index, l::SourceIndex::new(0));
-        assert_eq!(node(entries, 3).source_index, l::SourceIndex::new(1));
+        assert_eq!(
+            node(entries, 2).size,
+            l::geometry::Size::new(n(width), n(10.0))
+        );
+        assert_eq!(
+            node(entries, 4).size,
+            l::geometry::Size::new(n(40.0), n(10.0))
+        );
+        assert_eq!(node(entries, 2).source_index, l::node::SourceIndex::new(0));
+        assert_eq!(node(entries, 4).source_index, l::node::SourceIndex::new(0));
+        assert_eq!(node(entries, 3).source_index, l::node::SourceIndex::new(1));
     }
 }
-fn same<S: l::LayoutScalar>(
-    a: &l::CompletedLayoutBatchOf<u32, S>,
-    b: &l::CompletedLayoutBatchOf<u32, S>,
+fn same<S: l::scalar::LayoutScalar>(
+    a: &l::batch::CompletedLayoutBatchOf<u32, S>,
+    b: &l::batch::CompletedLayoutBatchOf<u32, S>,
 ) {
     for (left, right) in [
         (
@@ -226,9 +238,9 @@ fn same<S: l::LayoutScalar>(
         }
     }
 }
-fn cache_lane<S: l::LayoutScalar>(direction: l::Direction) {
+fn cache_lane<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     let mut host = Host::<S>::new(direction);
-    let rtl = direction == l::Direction::Rtl;
+    let rtl = direction == l::geometry::Direction::Rtl;
     let old_starts = if rtl { [20.0, 40.0] } else { [20.0, 20.0] };
     let new_starts = if rtl { [10.0, 50.0] } else { [10.0, 10.0] };
     let cold = host.compute(&[]);
@@ -258,7 +270,9 @@ fn cache_lane<S: l::LayoutScalar>(direction: l::Direction) {
     }
     phase(&changed, 80.0, new_starts);
     phase(host.published.batch.as_ref().unwrap(), 60.0, old_starts);
-    let fresh = host.tree.compute(l::WritingMode::HorizontalTb, &[]);
+    let fresh = host
+        .tree
+        .compute(l::geometry::WritingMode::HorizontalTb, &[]);
     phase(&fresh, 80.0, new_starts);
     same(&changed, &fresh);
     changed.apply_to(&mut host).unwrap();
@@ -267,18 +281,21 @@ fn cache_lane<S: l::LayoutScalar>(direction: l::Direction) {
     assert!(host.leaf_hits() > before);
     same(&fresh, &changed_warm);
     changed_warm.apply_to(&mut host).unwrap();
-    host.tree
-        .update(0, |root| root.text_group_align = l::TextGroupAlign::None);
+    host.tree.update(0, |root| {
+        root.text_group_align = l::text_flow::TextGroupAlign::None
+    });
     let none = host.compute(&[0]);
     phase(&none, 80.0, if rtl { [20.0, 60.0] } else { [0.0, 0.0] });
     none.apply_to(&mut host).unwrap();
-    host.tree
-        .update(0, |root| root.text_group_align = l::TextGroupAlign::Right);
+    host.tree.update(0, |root| {
+        root.text_group_align = l::text_flow::TextGroupAlign::Right
+    });
     let right = host.compute(&[0]);
     phase(&right, 80.0, if rtl { [20.0, 60.0] } else { [20.0, 20.0] });
     right.apply_to(&mut host).unwrap();
-    host.tree
-        .update(0, |root| root.text_group_align = l::TextGroupAlign::Center);
+    host.tree.update(0, |root| {
+        root.text_group_align = l::text_flow::TextGroupAlign::Center
+    });
     let restored = host.compute(&[0]);
     phase(&restored, 80.0, new_starts);
     same(&changed, &restored);
@@ -290,7 +307,7 @@ fn cache_lane<S: l::LayoutScalar>(direction: l::Direction) {
 }
 #[test]
 fn changed_limiting_sibling_repositions_warm_peers_without_mutating_old_batches() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         cache_lane::<f32>(direction);
         cache_lane::<f64>(direction);
     }

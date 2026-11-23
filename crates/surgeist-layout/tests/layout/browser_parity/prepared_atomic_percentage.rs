@@ -19,8 +19,8 @@ fn invalid(detail: impl std::fmt::Display) -> Error {
 
 #[derive(Clone, Copy)]
 pub(super) struct Variant {
-    box_sizing: layout::BoxSizing,
-    direction: layout::Direction,
+    box_sizing: layout::box_model::BoxSizing,
+    direction: layout::geometry::Direction,
 }
 
 pub(super) fn admit(capture: Capture<'_>, name: &str, xml: &str) -> Result<Variant, Error> {
@@ -83,8 +83,8 @@ pub(super) fn admit(capture: Capture<'_>, name: &str, xml: &str) -> Result<Varia
         return Err(invalid("capture source or output binding changed"));
     }
     use layout::{
-        BoxSizing::{BorderBox, ContentBox},
-        Direction::{Ltr, Rtl},
+        box_model::BoxSizing::{BorderBox, ContentBox},
+        geometry::Direction::{Ltr, Rtl},
     };
     let (box_sizing, direction) = match artifact.variant.as_str() {
         "border_box_ltr" => (BorderBox, Ltr),
@@ -103,8 +103,8 @@ pub(super) fn validate_frame(context: &RootContext) -> Result<(), Error> {
     use super::root_context::QualifiedRootContext;
     let RootContext::Qualified(QualifiedRootContext::AbsoluteRootLocal {
         containing_size,
-        containing_direction: layout::Direction::Ltr,
-        hypothetical_direction: layout::Direction::Ltr,
+        containing_direction: layout::geometry::Direction::Ltr,
+        hypothetical_direction: layout::geometry::Direction::Ltr,
         hypothetical_display,
         hypothetical_inline_offset: 0.0,
         ..
@@ -158,11 +158,11 @@ const CHILDREN: [usize; 3] = [1, ATOMIC, 3];
 // The source occurrences retain their actual child identities. They have no
 // Layout input until Text is prepared. The size-only query reads two boxes.
 struct BoxProjection {
-    container: layout::NodeInput,
-    atomic: layout::NodeInput,
+    container: layout::node::NodeInput,
+    atomic: layout::node::NodeInput,
 }
 
-impl layout::Traverse for BoxProjection {
+impl layout::tree::Traverse for BoxProjection {
     type Node = usize;
     type Scalar = Scalar;
     type Children<'a> = std::iter::Copied<std::slice::Iter<'a, usize>>;
@@ -185,10 +185,10 @@ impl layout::Traverse for BoxProjection {
     }
 }
 
-impl layout::LayoutTree for BoxProjection {
+impl layout::tree::LayoutTree for BoxProjection {
     type MeasureError = std::convert::Infallible;
 
-    fn node_input(&self, node: usize) -> &layout::NodeInput {
+    fn node_input(&self, node: usize) -> &layout::node::NodeInput {
         match node {
             ROOT => &self.container,
             ATOMIC => &self.atomic,
@@ -196,8 +196,8 @@ impl layout::LayoutTree for BoxProjection {
         }
     }
 
-    fn layout_input(&self, node: usize) -> layout::LayoutInputView<'_> {
-        layout::LayoutInputView::Box(self.node_input(node))
+    fn layout_input(&self, node: usize) -> layout::node::LayoutInputView<'_> {
+        layout::node::LayoutInputView::Box(self.node_input(node))
     }
 }
 
@@ -229,7 +229,7 @@ pub(super) fn measure(
     let container = super::to_node_input(root)?;
     let atomic = super::to_node_input_in_flow(
         &atomic.style,
-        Some(layout::FlowAxes::new(
+        Some(layout::geometry::FlowAxes::new(
             container.writing_mode,
             container.direction,
         )),
@@ -244,12 +244,12 @@ pub(super) fn measure(
         ));
     }
     if container.size
-        != layout::Size::new(
+        != layout::geometry::Size::new(
             super::parse_preferred_size("180px")?,
             super::parse_preferred_size("80px")?,
         )
         || atomic.size
-            != layout::Size::new(
+            != layout::geometry::Size::new(
                 super::parse_preferred_size(width)?,
                 super::parse_preferred_size(height)?,
             )
@@ -258,7 +258,7 @@ pub(super) fn measure(
             "actual authored box sizing differs from the source",
         ));
     }
-    let size = layout::measure_definite_inline_atomic_size(
+    let size = layout::tree::measure_definite_inline_atomic_size(
         &BoxProjection { container, atomic },
         ROOT,
         ATOMIC,
@@ -354,7 +354,7 @@ fn validate_observations(golden: &Golden) -> Result<(), Error> {
 
 fn verify_native<'batch>(
     tree: &super::TestTree,
-    batch: &'batch layout::CompletedLayoutBatch<usize>,
+    batch: &'batch layout::batch::CompletedLayoutBatch<usize>,
 ) -> Result<&'batch super::ObservedPlacement, Error> {
     let [binding] = tree.paragraphs.as_slice() else {
         return Err(invalid("expected one actual prepared paragraph"));
@@ -386,7 +386,7 @@ fn verify_native<'batch>(
             .run_views()
             .any(|run| run.face().bytes() != pinned_font::BYTES || run.face().index() != 0)
         || !native.unrounded_present
-        || native.unrounded.size != layout::Size::new(20.0, 40.0)
+        || native.unrounded.size != layout::geometry::Size::new(20.0, 40.0)
     {
         return Err(invalid(
             "prepared, allocated and actual atomic or font custody changed",

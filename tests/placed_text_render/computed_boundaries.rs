@@ -6,11 +6,11 @@ use std::sync::Arc;
 const AHEM: &[u8] = include_bytes!("../../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
 struct ComputedTree {
-    inputs: [layout::LayoutInput; 3],
-    non_box: layout::NodeInput,
+    inputs: [layout::node::LayoutInput; 3],
+    non_box: layout::node::NodeInput,
 }
 
-impl layout::Traverse for ComputedTree {
+impl layout::tree::Traverse for ComputedTree {
     type Node = usize;
     type Scalar = f32;
     type Children<'a> = std::ops::Range<usize>;
@@ -26,16 +26,16 @@ impl layout::Traverse for ComputedTree {
     }
 }
 
-impl layout::LayoutTree for ComputedTree {
+impl layout::tree::LayoutTree for ComputedTree {
     type MeasureError = Infallible;
 
-    fn node_input(&self, node: usize) -> &layout::NodeInput {
+    fn node_input(&self, node: usize) -> &layout::node::NodeInput {
         self.inputs[node]
             .as_view()
             .as_box()
             .unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, node: usize) -> layout::LayoutInputView<'_> {
+    fn layout_input(&self, node: usize) -> layout::node::LayoutInputView<'_> {
         self.inputs[node].as_view()
     }
 }
@@ -81,18 +81,24 @@ fn glyph_rows(
 
 #[test]
 fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() {
-    assert_computed_scope_before(layout::InlineBoxFragmentationDemand::NotRequested, None);
+    assert_computed_scope_before(
+        layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
+        None,
+    );
 }
 
 #[test]
 fn demanded_box_fragment_survives_computed_break_placement_and_retained_paint() {
-    assert_computed_scope_before(layout::InlineBoxFragmentationDemand::CompleteBodies, None);
+    assert_computed_scope_before(
+        layout::text_layout::InlineBoxFragmentationDemand::CompleteBodies,
+        None,
+    );
 }
 
 #[test]
 fn demanded_family_counts_borrowed_backing_and_respects_capture_limits() {
     assert_computed_scope_before(
-        layout::InlineBoxFragmentationDemand::CompleteBodies,
+        layout::text_layout::InlineBoxFragmentationDemand::CompleteBodies,
         Some(text::scope_alignment::ScopeAlignmentLimits::new(
             100_000,
             64,
@@ -103,7 +109,7 @@ fn demanded_family_counts_borrowed_backing_and_respects_capture_limits() {
 }
 
 fn assert_computed_scope_before(
-    demand: layout::InlineBoxFragmentationDemand,
+    demand: layout::text_layout::InlineBoxFragmentationDemand,
     limits: Option<text::scope_alignment::ScopeAlignmentLimits>,
 ) {
     use text::capture::SourceProcessingEvent as E;
@@ -339,23 +345,29 @@ fn assert_computed_scope_before(
     }
     let tree = ComputedTree {
         inputs: [
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
-                size: layout::Size::new(
-                    layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(40.0).unwrap()),
-                    layout::PreferredSize::AUTO,
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                size: layout::geometry::Size::new(
+                    layout::sizing::PreferredSizeOf::value(
+                        layout::length::LengthPercentageOf::px(40.0).unwrap(),
+                    ),
+                    layout::sizing::PreferredSize::AUTO,
                 ),
-                ..layout::NodeInput::DEFAULT
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(origins[0].clone())),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(origins[1].clone())),
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
+                origins[0].clone(),
+            )),
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
+                origins[1].clone(),
+            )),
         ],
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let flow = layout::LayoutFlowInput::try_new(
+    let flow = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
-        vec![layout::TextParagraphBinding {
+        vec![layout::text_layout::TextParagraphBinding {
             inline_box_fragments: demand,
             prepared: prepared.clone(),
             container: 0,
@@ -363,7 +375,7 @@ fn assert_computed_scope_before(
             origins: origins
                 .iter()
                 .enumerate()
-                .map(|(index, origin)| layout::TextOriginBinding {
+                .map(|(index, origin)| layout::text_layout::TextOriginBinding {
                     origin: origin.clone(),
                     node: index + 1,
                 })
@@ -372,7 +384,7 @@ fn assert_computed_scope_before(
             controls: vec![],
             line_strut: None,
         }],
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
@@ -385,12 +397,15 @@ fn assert_computed_scope_before(
         &flow,
         0,
         NativeViewport::new(
-            layout::Size::new(Some(40.0), None),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::geometry::Size::new(Some(40.0), None),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
         )
-        .request(layout::Size::new(
-            layout::SizingOperation::Normal,
-            layout::SizingOperation::Normal,
+        .request(layout::geometry::Size::new(
+            layout::constraint::SizingOperation::Normal,
+            layout::constraint::SizingOperation::Normal,
         )),
     )
     .unwrap();
@@ -398,10 +413,10 @@ fn assert_computed_scope_before(
     assert_eq!(batch.placed_text()[0].nodes(), &[1, 2]);
     let placed_output = &batch.placed_text()[0];
     match demand {
-        layout::InlineBoxFragmentationDemand::NotRequested => {
+        layout::text_layout::InlineBoxFragmentationDemand::NotRequested => {
             assert!(placed_output.inline_box_fragments().is_none());
         }
-        layout::InlineBoxFragmentationDemand::CompleteBodies => {
+        layout::text_layout::InlineBoxFragmentationDemand::CompleteBodies => {
             let fragments = placed_output.inline_box_fragments().unwrap();
             assert_eq!(fragments.family().prepared_text(), prepared);
             assert_eq!(

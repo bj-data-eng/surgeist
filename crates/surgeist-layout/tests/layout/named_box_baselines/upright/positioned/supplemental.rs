@@ -3,19 +3,19 @@ use super::*;
 use surgeist_text::font::FontBaseline;
 mod late;
 
-fn length<S: l::LayoutScalar>(value: f64) -> l::LengthOf<S> {
-    l::LengthOf::value(l::LengthPercentageOf::px(n(value)).unwrap())
+fn length<S: l::scalar::LayoutScalar>(value: f64) -> l::length::LengthOf<S> {
+    l::length::LengthOf::value(l::length::LengthPercentageOf::px(n(value)).unwrap())
 }
-fn margin<S: l::LayoutScalar>(value: f64) -> l::LengthAutoOf<S> {
-    l::LengthAutoOf::value(l::LengthPercentageOf::px(n(value)).unwrap())
+fn margin<S: l::scalar::LayoutScalar>(value: f64) -> l::length::LengthAutoOf<S> {
+    l::length::LengthAutoOf::value(l::length::LengthPercentageOf::px(n(value)).unwrap())
 }
 
-fn attach<S: l::LayoutScalar>(
+fn attach<S: l::scalar::LayoutScalar>(
     host: &mut Host<S>,
     container: u32,
     parent: &Parent,
     child: &Fixture,
-) -> Vec<l::TextParagraphBinding<u32>> {
+) -> Vec<l::text_layout::TextParagraphBinding<u32>> {
     let origins = parent
         .prepared
         .origin_views()
@@ -26,26 +26,30 @@ fn attach<S: l::LayoutScalar>(
     if let Some(origin) = origins.first() {
         let node = host.push(
             Some(container),
-            l::LayoutInputOf::inline_text(l::TextParticipation::new(origin.clone())),
+            l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+                origin.clone(),
+            )),
         );
         nodes.push(node);
-        bound.push(l::TextOriginBinding {
+        bound.push(l::text_layout::TextOriginBinding {
             origin: origin.clone(),
             node,
         });
     }
     let atomic = host.push(
         Some(container),
-        l::LayoutInputOf::box_input(absolute_input()),
+        l::node::LayoutInputOf::box_input(absolute_input()),
     );
     nodes.push(atomic);
     if let Some(origin) = origins.get(1) {
         let node = host.push(
             Some(container),
-            l::LayoutInputOf::inline_text(l::TextParticipation::new(origin.clone())),
+            l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+                origin.clone(),
+            )),
         );
         nodes.push(node);
-        bound.push(l::TextOriginBinding {
+        bound.push(l::text_layout::TextOriginBinding {
             origin: origin.clone(),
             node,
         });
@@ -57,18 +61,19 @@ fn attach<S: l::LayoutScalar>(
     );
     let text = host.push(
         Some(atomic),
-        l::LayoutInputOf::inline_text(l::TextParticipation::new(
+        l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
             child.prepared.origin_views().next().unwrap().handle(),
         )),
     );
     vec![
-        l::TextParagraphBinding {
-            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+        l::text_layout::TextParagraphBinding {
+            inline_box_fragments:
+                surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: parent.prepared.clone(),
             container,
             nodes,
             origins: bound,
-            atomics: vec![l::TextAtomicBinding {
+            atomics: vec![l::text_layout::TextAtomicBinding {
                 occurrence,
                 node: atomic,
             }],
@@ -79,25 +84,30 @@ fn attach<S: l::LayoutScalar>(
     ]
 }
 
-fn compute_space<S: l::LayoutScalar>(
+fn compute_space<S: l::scalar::LayoutScalar>(
     host: &Host<S>,
-    bindings: Vec<l::TextParagraphBinding<u32>>,
+    bindings: Vec<l::text_layout::TextParagraphBinding<u32>>,
     changed: &[u32],
-    space: surgeist_layout::SizingRequestOf<S>,
-) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-    let flow =
-        l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default(), Vec::new())
-            .unwrap();
+    space: surgeist_layout::constraint::SizingRequestOf<S>,
+) -> Result<l::batch::CompletedLayoutBatchOf<u32, S>, l::error::LayoutErrorOf<u32, S>> {
+    let flow = l::text_layout::LayoutFlowInput::try_new(
+        host,
+        0,
+        bindings,
+        l::inline_wrapping::WrappingInput::default(),
+        Vec::new(),
+    )
+    .unwrap();
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,
         {
             let sizing_request = space;
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
-                    surgeist_layout::LayoutTree::node_input(host, 0).direction,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::tree::LayoutTree::node_input(host, 0).writing_mode,
+                    surgeist_layout::tree::LayoutTree::node_input(host, 0).direction,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -108,14 +118,14 @@ fn compute_space<S: l::LayoutScalar>(
     )
 }
 
-fn receipt<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+fn receipt<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     source: u32,
 ) -> t::finalized::FinalizedLine {
     batch
         .unrounded_inline_fragments()
         .iter()
-        .find(|row| matches!(row.owner(), l::InlineFragmentOwner::Node(node) if *node == source))
+        .find(|row| matches!(row.owner(), l::text_layout::InlineFragmentOwner::Node(node) if *node == source))
         .unwrap()
         .fragment()
         .finalized_fragment()
@@ -123,7 +133,7 @@ fn receipt<S: l::LayoutScalar>(
         .clone()
 }
 
-fn nonformatted<S: l::LayoutScalar>() {
+fn nonformatted<S: l::scalar::LayoutScalar>() {
     let child = fixture();
     qualify_child::<S>(&child);
     let parent = captured_parent(
@@ -157,11 +167,11 @@ fn nonformatted<S: l::LayoutScalar>() {
     assert!(standalone.lines().is_empty());
     assert_eq!(standalone.positions().count(), 0);
     for (mode, static_x, child_x, b) in [
-        (l::WritingMode::VerticalRl, 40.0, 34.0, 36.0),
-        (l::WritingMode::VerticalLr, 0.0, 0.0, 2.0),
+        (l::geometry::WritingMode::VerticalRl, 40.0, 34.0, 36.0),
+        (l::geometry::WritingMode::VerticalLr, 0.0, 0.0, 2.0),
     ] {
-        let mut input = root(mode, l::Direction::Ltr, central());
-        input.size = l::Size::new(px(40.0), px(22.0));
+        let mut input = root(mode, l::geometry::Direction::Ltr, central());
+        input.size = l::geometry::Size::new(px(40.0), px(22.0));
         let mut host = Host::<S>::new(input);
         let bindings = attach(&mut host, 0, &parent, &child);
         let batch = compute(&host, bindings, &[]).unwrap();
@@ -187,24 +197,33 @@ fn nonformatted<S: l::LayoutScalar>() {
             crate::layout::observation::phase(&batch, false),
             crate::layout::observation::phase(&batch, true),
         ] {
-            assert_eq!(node(entries, 1).location, l::Point::new(n(child_x), n(0.0)));
+            assert_eq!(
+                node(entries, 1).location,
+                l::geometry::Point::new(n(child_x), n(0.0))
+            );
             let pair = node(entries, 0).named_baselines.get(FontBaseline::Central);
             assert_eq!(
                 (pair.first(), pair.last()),
-                (l::BaselineFactOf::Absent, l::BaselineFactOf::Absent)
+                (
+                    l::baseline::BaselineFactOf::Absent,
+                    l::baseline::BaselineFactOf::Absent
+                )
             );
         }
         assert!(
             batch
                 .unrounded_inline_fragments()
                 .iter()
-                .all(|row| !matches!(row.owner(), l::InlineFragmentOwner::Node(0 | 1)))
+                .all(|row| !matches!(
+                    row.owner(),
+                    l::text_layout::InlineFragmentOwner::Node(0 | 1)
+                ))
         );
         assert_eq!(placed(&batch, 1).lines()[0].baseline(), b);
     }
 }
 
-fn inset_precedence<S: l::LayoutScalar>() {
+fn inset_precedence<S: l::scalar::LayoutScalar>() {
     let child = fixture();
     qualify_child::<S>(&child);
     let parent = captured_parent(
@@ -215,8 +234,8 @@ fn inset_precedence<S: l::LayoutScalar>() {
     );
     qualify_parent(&parent);
     for (mode, c) in [
-        (l::WritingMode::VerticalRl, 32.0),
-        (l::WritingMode::VerticalLr, 2.0),
+        (l::geometry::WritingMode::VerticalRl, 32.0),
+        (l::geometry::WritingMode::VerticalLr, 2.0),
     ] {
         for end_only in [false, true] {
             let (mut host, bindings) = scene::<S>(&parent, &child, mode);
@@ -234,8 +253,14 @@ fn inset_precedence<S: l::LayoutScalar>() {
                 crate::layout::observation::phase(&batch, false),
                 crate::layout::observation::phase(&batch, true),
             ] {
-                assert_eq!(node(entries, 2).location, l::Point::new(n(x), n(y)));
-                assert_eq!(node(entries, 2).size, l::Size::new(n(6.0), n(14.0)));
+                assert_eq!(
+                    node(entries, 2).location,
+                    l::geometry::Point::new(n(x), n(y))
+                );
+                assert_eq!(
+                    node(entries, 2).size,
+                    l::geometry::Size::new(n(6.0), n(14.0))
+                );
             }
             let border = t::geometry::Rect::new(x, y, 6.0, 14.0);
             let expected = explicit_parent(&parent, receipt(&batch, 1), c, border, border, x + 2.0);
@@ -246,7 +271,7 @@ fn inset_precedence<S: l::LayoutScalar>() {
     }
 }
 
-fn physical_content<S: l::LayoutScalar>() {
+fn physical_content<S: l::scalar::LayoutScalar>() {
     let child = fixture();
     qualify_child::<S>(&child);
     let parent = captured_parent(
@@ -257,33 +282,36 @@ fn physical_content<S: l::LayoutScalar>() {
     );
     qualify_parent(&parent);
     for (mode, c, raw_x, x, b) in [
-        (l::WritingMode::VerticalRl, 32.0, 31.5, 32.0, 36.0),
-        (l::WritingMode::VerticalLr, 2.0, -1.5, -1.0, 3.0),
+        (l::geometry::WritingMode::VerticalRl, 32.0, 31.5, 32.0, 36.0),
+        (l::geometry::WritingMode::VerticalLr, 2.0, -1.5, -1.0, 3.0),
     ] {
         let (mut host, bindings) = scene::<S>(&parent, &child, mode);
         host.change(2, |input| {
-            input.box_sizing = l::BoxSizing::BorderBox;
+            input.box_sizing = l::box_model::BoxSizing::BorderBox;
             input.margin.left = margin(-1.5);
             input.margin.right = margin(2.5);
             input.margin.top = margin(-0.5);
             input.margin.bottom = margin(1.5);
-            input.border = l::Edges::all(length(1.0));
-            input.padding = l::Edges {
+            input.border = l::geometry::Edges::all(length(1.0));
+            input.padding = l::geometry::Edges {
                 left: length(1.0),
                 right: length(0.0),
                 top: length(2.0),
                 bottom: length(1.0),
             };
-            input.overflow =
-                l::ComputedOverflow::try_new(l::Overflow::Auto, l::Overflow::Auto).unwrap();
+            input.overflow = l::overflow::ComputedOverflow::try_new(
+                l::overflow::Overflow::Auto,
+                l::overflow::Overflow::Auto,
+            )
+            .unwrap();
         });
         let batch = compute(&host, bindings, &[]).unwrap();
         let output = node(crate::layout::observation::phase(&batch, false), 2);
-        assert_eq!(output.location, l::Point::new(n(raw_x), n(3.5)));
-        assert_eq!(output.size, l::Size::new(n(6.0), n(14.0)));
+        assert_eq!(output.location, l::geometry::Point::new(n(raw_x), n(3.5)));
+        assert_eq!(output.size, l::geometry::Size::new(n(6.0), n(14.0)));
         assert_eq!(
             output.margin,
-            l::Edges {
+            l::geometry::Edges {
                 left: n(-1.5),
                 right: n(2.5),
                 top: n(-0.5),
@@ -293,9 +321,12 @@ fn physical_content<S: l::LayoutScalar>() {
         let geometry = output.scroll_geometry.unwrap();
         assert_eq!(
             geometry.content_box().origin(),
-            l::Point::new(n(2.0), n(3.0))
+            l::geometry::Point::new(n(2.0), n(3.0))
         );
-        assert_eq!(geometry.content_box().size(), l::Size::new(n(3.0), n(9.0)));
+        assert_eq!(
+            geometry.content_box().size(),
+            l::geometry::Size::new(n(3.0), n(9.0))
+        );
         assert_eq!(geometry.physical_range().x().maximum(), n(1.0));
         let border = t::geometry::Rect::new(x, 4.0, 6.0, 14.0);
         let content = t::geometry::Rect::new(x + 2.0, 7.0, 3.0, 9.0);
@@ -306,24 +337,28 @@ fn physical_content<S: l::LayoutScalar>() {
     }
 }
 
-fn wrapped<S: l::LayoutScalar>(
+fn wrapped<S: l::scalar::LayoutScalar>(
     parent: &Parent,
     child: &Fixture,
-    mode: l::WritingMode,
-) -> (Host<S>, Vec<l::TextParagraphBinding<u32>>) {
-    let mut input = root(l::WritingMode::VerticalLr, l::Direction::Ltr, central());
-    input.size = l::Size::new(px(100.0), px(100.0));
+    mode: l::geometry::WritingMode,
+) -> (Host<S>, Vec<l::text_layout::TextParagraphBinding<u32>>) {
+    let mut input = root(
+        l::geometry::WritingMode::VerticalLr,
+        l::geometry::Direction::Ltr,
+        central(),
+    );
+    input.size = l::geometry::Size::new(px(100.0), px(100.0));
     input.padding.left = length(7.25);
     input.padding.top = length(9.5);
     let mut host = Host::new(input);
-    let mut paragraph = root(mode, l::Direction::Ltr, central());
-    paragraph.size = l::Size::new(px(40.0), px(22.0));
-    let container = host.push(Some(0), l::LayoutInputOf::box_input(paragraph));
+    let mut paragraph = root(mode, l::geometry::Direction::Ltr, central());
+    paragraph.size = l::geometry::Size::new(px(40.0), px(22.0));
+    let container = host.push(Some(0), l::node::LayoutInputOf::box_input(paragraph));
     let bindings = attach(&mut host, container, parent, child);
     (host, bindings)
 }
 
-fn fractional_replay<S: l::LayoutScalar>() {
+fn fractional_replay<S: l::scalar::LayoutScalar>() {
     let child = fixture();
     qualify_child::<S>(&child);
     let parent = captured_parent(
@@ -334,14 +369,14 @@ fn fractional_replay<S: l::LayoutScalar>() {
     );
     qualify_parent(&parent);
     for (mode, c, x, b) in [
-        (l::WritingMode::VerticalRl, 39.0, 41.0, 43.0),
-        (l::WritingMode::VerticalLr, 9.0, 7.0, 9.0),
+        (l::geometry::WritingMode::VerticalRl, 39.0, 41.0, 43.0),
+        (l::geometry::WritingMode::VerticalLr, 9.0, 7.0, 9.0),
     ] {
         let (mut host, bindings) = wrapped::<S>(&parent, &child, mode);
         let cold = compute_space(&host, bindings.clone(), &[], available(100.0, 100.0)).unwrap();
         assert_eq!(
             node(crate::layout::observation::phase(&cold, false), 1).location,
-            l::Point::new(n(7.25), n(9.5))
+            l::geometry::Point::new(n(7.25), n(9.5))
         );
         let border = t::geometry::Rect::new(x, 14.0, 6.0, 14.0);
         let line = receipt(&cold, 2);
@@ -384,9 +419,11 @@ fn fractional_replay<S: l::LayoutScalar>() {
                 .map(|(node, view)| (
                     node,
                     match view {
-                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -396,9 +433,11 @@ fn fractional_replay<S: l::LayoutScalar>() {
                 .map(|(node, view)| (
                     node,
                     match view {
-                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -417,7 +456,7 @@ fn fractional_replay<S: l::LayoutScalar>() {
     }
 }
 
-fn sizing<S: l::LayoutScalar>() {
+fn sizing<S: l::scalar::LayoutScalar>() {
     let child = fixture();
     qualify_child::<S>(&child);
     let parent = captured_parent(
@@ -427,7 +466,10 @@ fn sizing<S: l::LayoutScalar>() {
         t::source::Id::from_u64(2),
     );
     qualify_parent(&parent);
-    for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
+    for mode in [
+        l::geometry::WritingMode::VerticalRl,
+        l::geometry::WritingMode::VerticalLr,
+    ] {
         for (capacity, columns) in [(4.0, 2), (8.0, 1)] {
             let (mut host, bindings) = scene::<S>(&parent, &child, mode);
             host.change(0, |input| input.size.height = px(capacity));
@@ -439,26 +481,42 @@ fn sizing<S: l::LayoutScalar>() {
             );
         }
         for (inline, width, height, columns) in [
-            (surgeist_layout::SizingOperation::MinContent, 20.0, 4.0, 2),
-            (surgeist_layout::SizingOperation::MaxContent, 10.0, 8.0, 1),
+            (
+                surgeist_layout::constraint::SizingOperation::MinContent,
+                20.0,
+                4.0,
+                2,
+            ),
+            (
+                surgeist_layout::constraint::SizingOperation::MaxContent,
+                10.0,
+                8.0,
+                1,
+            ),
         ] {
             let (mut host, bindings) = scene::<S>(&parent, &child, mode);
             host.change(0, |input| {
-                input.size = l::Size::new(l::PreferredSizeOf::AUTO, l::PreferredSizeOf::AUTO)
+                input.size = l::geometry::Size::new(
+                    l::sizing::PreferredSizeOf::AUTO,
+                    l::sizing::PreferredSizeOf::AUTO,
+                )
             });
             let batch = compute_space(
                 &host,
                 bindings,
                 &[],
                 crate::layout::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(surgeist_layout::SizingOperation::Normal, inline),
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::Normal,
+                        inline,
+                    ),
                 ),
             )
             .unwrap();
             assert_eq!(
                 node(crate::layout::observation::phase(&batch, false), 0).size,
-                l::Size::new(n(width), n(height))
+                l::geometry::Size::new(n(width), n(height))
             );
             assert_eq!(placed(&batch, 0).lines().len(), columns);
             assert_eq!(
@@ -478,7 +536,7 @@ fn sizing<S: l::LayoutScalar>() {
             ),
             (8.0, 2.0, 4.0)
         );
-        let (c, x, b) = if mode == l::WritingMode::VerticalRl {
+        let (c, x, b) = if mode == l::geometry::WritingMode::VerticalRl {
             (38.0, 34.0, 36.0)
         } else {
             (2.0, 0.0, 2.0)

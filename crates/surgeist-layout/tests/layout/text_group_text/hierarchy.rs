@@ -1,16 +1,26 @@
 use super::*;
 
-fn x_ranges<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+fn x_ranges<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     paragraph: &Paragraph,
 ) -> Vec<(f64, f64)> {
     glyph_extents(placed(batch, paragraph))
 }
-fn descendant_and_nested<S: l::LayoutScalar>() {
-    for child_group in [l::TextGroupAlign::None, l::TextGroupAlign::End] {
-        let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Center);
-        let outside = host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
-        let inside = host.child_block(0, l::Direction::Ltr, child_group);
+fn descendant_and_nested<S: l::scalar::LayoutScalar>() {
+    for child_group in [
+        l::text_flow::TextGroupAlign::None,
+        l::text_flow::TextGroupAlign::End,
+    ] {
+        let mut host = Host::<S>::new(
+            l::geometry::Direction::Ltr,
+            l::text_flow::TextGroupAlign::Center,
+        );
+        let outside = host.child_block(
+            0,
+            l::geometry::Direction::Ltr,
+            l::text_flow::TextGroupAlign::None,
+        );
+        let inside = host.child_block(0, l::geometry::Direction::Ltr, child_group);
         let wide = Paragraph::new(
             &mut host,
             outside,
@@ -20,7 +30,7 @@ fn descendant_and_nested<S: l::LayoutScalar>() {
             false,
         );
         let pair = Paragraph::pair(&mut host, inside);
-        let expected = if child_group == l::TextGroupAlign::None {
+        let expected = if child_group == l::text_flow::TextGroupAlign::None {
             10.0
         } else {
             30.0
@@ -41,7 +51,7 @@ fn descendant_and_nested<S: l::LayoutScalar>() {
                 let inset = line.selected_line().request().context.alignment_insets;
                 assert_eq!(
                     (inset.line_left(), inset.line_right()),
-                    if child_group == l::TextGroupAlign::None {
+                    if child_group == l::text_flow::TextGroupAlign::None {
                         (10.0, 10.0)
                     } else {
                         (30.0, 10.0)
@@ -52,10 +62,25 @@ fn descendant_and_nested<S: l::LayoutScalar>() {
     }
     // The child's subset contains the parent's actual80-unit limiter. It has
     // no residual padding left after the ancestor's10/10 operation.
-    let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Center);
-    let child = host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::End);
-    let wide_container = host.child_block(child, l::Direction::Ltr, l::TextGroupAlign::None);
-    let small_container = host.child_block(child, l::Direction::Ltr, l::TextGroupAlign::None);
+    let mut host = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::Center,
+    );
+    let child = host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::End,
+    );
+    let wide_container = host.child_block(
+        child,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
+    let small_container = host.child_block(
+        child,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     let wide = Paragraph::new(
         &mut host,
         wide_container,
@@ -75,12 +100,23 @@ fn ancestor_group_includes_real_descendant_none_and_nested_end_spends_only_resid
     descendant_and_nested::<f64>();
 }
 
-fn independent<S: l::LayoutScalar>() {
-    let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Center);
-    let normal = host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
-    let independent = host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
+fn independent<S: l::scalar::LayoutScalar>() {
+    let mut host = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::Center,
+    );
+    let normal = host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
+    let independent = host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     host.box_change(independent, |node| {
-        node.block_flow_context = l::BlockFlowContext::Independent
+        node.block_flow_context = l::box_model::BlockFlowContext::Independent
     });
     let pair = Paragraph::pair(&mut host, normal);
     let excluded = Paragraph::new(
@@ -109,10 +145,21 @@ fn source_independent_block_interior_does_not_limit_or_receive_its_ancestor_text
     independent::<f64>();
 }
 
-fn member_directions<S: l::LayoutScalar>() {
-    let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Start);
-    let left = host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
-    let right = host.child_block(0, l::Direction::Rtl, l::TextGroupAlign::None);
+fn member_directions<S: l::scalar::LayoutScalar>() {
+    let mut host = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::Start,
+    );
+    let left = host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
+    let right = host.child_block(
+        0,
+        l::geometry::Direction::Rtl,
+        l::text_flow::TextGroupAlign::None,
+    );
     let a = Paragraph::new(
         &mut host,
         left,
@@ -181,15 +228,15 @@ fn member_directions<S: l::LayoutScalar>() {
         (40.0, 0.0)
     );
 }
-fn plaintext_fallback<S: l::LayoutScalar>(rtl_strong: bool) {
+fn plaintext_fallback<S: l::scalar::LayoutScalar>(rtl_strong: bool) {
     let containing = if rtl_strong {
-        l::Direction::Ltr
+        l::geometry::Direction::Ltr
     } else {
-        l::Direction::Rtl
+        l::geometry::Direction::Rtl
     };
-    let mut host = Host::<S>::new(containing, l::TextGroupAlign::Start);
+    let mut host = Host::<S>::new(containing, l::text_flow::TextGroupAlign::Start);
     host.box_change(0, |root| {
-        root.line_box_direction_policy = l::LineBoxDirectionPolicy::Plaintext
+        root.line_box_direction_policy = l::text_flow::LineBoxDirectionPolicy::Plaintext
     });
     // RLM is strong semantic text with zero advance; no dummy glyph or
     // borrowed numeric level supplies direction. Empty Force and12 have no
@@ -263,15 +310,31 @@ fn logical_group_sides_use_each_real_member_direction_and_plaintext_accepted_fal
     }
 }
 
-fn changed_limiter<S: l::LayoutScalar>() {
-    let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Center);
-    let member = host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
-    let limiter = host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
-    let cache_leaf = host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
+fn changed_limiter<S: l::scalar::LayoutScalar>() {
+    let mut host = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::Center,
+    );
+    let member = host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
+    let limiter = host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
+    let cache_leaf = host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     host.box_change(cache_leaf, |node| {
-        node.block_flow_context = l::BlockFlowContext::Independent;
-        node.size.height =
-            l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(5.0)).unwrap());
+        node.block_flow_context = l::box_model::BlockFlowContext::Independent;
+        node.size.height = l::sizing::PreferredSizeOf::value(
+            l::length::LengthPercentageOf::px(S::from_f64(5.0)).unwrap(),
+        );
     });
     let pair = Paragraph::pair(&mut host, member);
     let old_limiter = Paragraph::new(
@@ -343,14 +406,30 @@ fn changed_limiter<S: l::LayoutScalar>() {
     );
     assert_ne!(placed(&old, &pair).key(), placed(&changed, &pair).key());
 
-    let mut cold_host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Center);
-    let a = cold_host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
-    let b = cold_host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
-    let leaf = cold_host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
+    let mut cold_host = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::Center,
+    );
+    let a = cold_host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
+    let b = cold_host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
+    let leaf = cold_host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     cold_host.box_change(leaf, |node| {
-        node.block_flow_context = l::BlockFlowContext::Independent;
-        node.size.height =
-            l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(5.0)).unwrap());
+        node.block_flow_context = l::box_model::BlockFlowContext::Independent;
+        node.size.height = l::sizing::PreferredSizeOf::value(
+            l::length::LengthPercentageOf::px(S::from_f64(5.0)).unwrap(),
+        );
     });
     let cold_pair = Paragraph::pair(&mut cold_host, a);
     let cold_limiter = Paragraph::new(
@@ -371,7 +450,7 @@ fn changed_limiter<S: l::LayoutScalar>() {
                     (&cold, true),
                     node,
                     crate::layout::observation::expected_kind(
-                        l::LayoutTree::layout_input(&cold_host, node),
+                        l::tree::LayoutTree::layout_input(&cold_host, node),
                         false
                     )
                 )
@@ -385,7 +464,7 @@ fn changed_limiter<S: l::LayoutScalar>() {
                     (&changed, true),
                     node,
                     crate::layout::observation::expected_kind(
-                        l::LayoutTree::layout_input(&host, node),
+                        l::tree::LayoutTree::layout_input(&host, node),
                         false
                     )
                 )

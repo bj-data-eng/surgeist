@@ -236,10 +236,12 @@ pub(super) fn parse(
     Ok(Some(Table { rows }))
 }
 
-fn supported_overflow(overflow: layout::Overflow) -> bool {
+fn supported_overflow(overflow: layout::overflow::Overflow) -> bool {
     matches!(
         overflow,
-        layout::Overflow::Visible | layout::Overflow::Clip | layout::Overflow::Hidden
+        layout::overflow::Overflow::Visible
+            | layout::overflow::Overflow::Clip
+            | layout::overflow::Overflow::Hidden
     )
 }
 
@@ -259,19 +261,22 @@ fn projected(path: &str, field: ElementScrollSizeField, value: Scalar) -> Result
     Ok(rounded as u32)
 }
 
-fn project_box_input<'a>(path: &str, node: &'a TestNode) -> Result<&'a layout::NodeInput, Error> {
+fn project_box_input<'a>(
+    path: &str,
+    node: &'a TestNode,
+) -> Result<&'a layout::node::NodeInput, Error> {
     let input = node
         .layout_input
         .as_box()
         .ok_or_else(|| invalid(path, "requires a Native box"))?;
-    if input.display == layout::Display::None
+    if input.display == layout::box_model::Display::None
         || input.display.is_inline_level()
         || input.item_is_table
         || input.item_is_replaced
-        || input.writing_mode != layout::WritingMode::HorizontalTb
-        || input.padding != layout::Edges::all(layout::Length::ZERO)
-        || input.border != layout::Edges::all(layout::Length::ZERO)
-        || input.scrollbar_gutter != layout::ScrollbarGutter::Auto
+        || input.writing_mode != layout::geometry::WritingMode::HorizontalTb
+        || input.padding != layout::geometry::Edges::all(layout::length::Length::ZERO)
+        || input.border != layout::geometry::Edges::all(layout::length::Length::ZERO)
+        || input.scrollbar_gutter != layout::overflow::ScrollbarGutter::Auto
         || !supported_overflow(input.overflow.x())
         || !supported_overflow(input.overflow.y())
     {
@@ -315,11 +320,14 @@ fn project(path: &str, node: &TestNode) -> Result<Sizes, Error> {
         && gutters.left().is_none_or(|rect| rect.size().width == 0.0)
         && gutters.right().is_none_or(|rect| rect.size().width == 0.0);
     if geometry.flow_axes()
-        != layout::FlowAxes::new(layout::WritingMode::HorizontalTb, input.direction)
+        != layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
+            input.direction,
+        )
         || !supported_overflow(geometry.used_overflow_x())
         || !supported_overflow(geometry.used_overflow_y())
         || !no_gutters
-        || geometry.scrollbar_size() != layout::Size::ZERO
+        || geometry.scrollbar_size() != layout::geometry::Size::ZERO
     {
         return Err(invalid(
             path,
@@ -350,8 +358,8 @@ fn project(path: &str, node: &TestNode) -> Result<Sizes, Error> {
         return Err(invalid(path, "nonfinite canonical edge arithmetic"));
     }
     let width = match input.direction {
-        layout::Direction::Ltr => right.max(overflow_right) - left,
-        layout::Direction::Rtl => right - left.min(overflow.origin().x),
+        layout::geometry::Direction::Ltr => right.max(overflow_right) - left,
+        layout::geometry::Direction::Rtl => right - left.min(overflow.origin().x),
     };
     Sizes {
         client_width: projected(path, ElementScrollSizeField::ClientWidth, port.size().width)?,
@@ -419,31 +427,30 @@ impl Table {
                     "Native traversal lost source box correspondence",
                 )
             })?;
-        let actual =
-            if collapsed_flex {
-                let input = project_box_input(path, node)?;
-                if input.display != layout::Display::Flex
-                    || input.flex_item_collapse != layout::FlexItemCollapse::Collapsed
-                    || node.unrounded.kind
-                        != super::observation::Kind::NonBox(layout::NonBoxKind::Hidden)
-                    || !node.unrounded.matches_numeric_fields(
-                        &layout::NodeOutput::with_source_index(node.unrounded.source_index),
-                    )
-                {
-                    return Err(invalid(
-                        path,
-                        "requires the validated collapsed Flex source packet",
-                    ));
-                }
-                Sizes {
-                    client_width: 0,
-                    client_height: 0,
-                    scroll_width: 0,
-                    scroll_height: 0,
-                }
-            } else {
-                project(path, node)?
-            };
+        let actual = if collapsed_flex {
+            let input = project_box_input(path, node)?;
+            if input.display != layout::box_model::Display::Flex
+                || input.flex_item_collapse != layout::flex::FlexItemCollapse::Collapsed
+                || node.unrounded.kind
+                    != super::observation::Kind::NonBox(layout::fragmentation::NonBoxKind::Hidden)
+                || !node.unrounded.matches_numeric_fields(
+                    &layout::node::NodeOutput::with_source_index(node.unrounded.source_index),
+                )
+            {
+                return Err(invalid(
+                    path,
+                    "requires the validated collapsed Flex source packet",
+                ));
+            }
+            Sizes {
+                client_width: 0,
+                client_height: 0,
+                scroll_width: 0,
+                scroll_height: 0,
+            }
+        } else {
+            project(path, node)?
+        };
         for ((field, native), (_, browser)) in actual.fields().into_iter().zip(row.sizes.fields()) {
             if let NumericComparisonSink::CollectAll { root, fields } = sink {
                 let source = super::exact_differences::source_path_from_diagnostic(root, path)?;

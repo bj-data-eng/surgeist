@@ -1,12 +1,12 @@
 //! Real host cache seeded by an ordinary completed layout before Text attachment.
 use super::*;
 
-struct WarmRoot<'a, S: l::LayoutScalar> {
+struct WarmRoot<'a, S: l::scalar::LayoutScalar> {
     actual: &'a Root<S>,
-    cache: l::CacheOf<S>,
-    unrounded: Option<l::LayoutOutputEntryOf<u32, S>>,
+    cache: l::cache::CacheOf<S>,
+    unrounded: Option<l::batch::LayoutOutputEntryOf<u32, S>>,
 }
-impl<S: l::LayoutScalar> l::Traverse for WarmRoot<'_, S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for WarmRoot<'_, S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -14,52 +14,52 @@ impl<S: l::LayoutScalar> l::Traverse for WarmRoot<'_, S> {
     where
         Self: 'a;
     fn children(&self, node: u32) -> Self::Children<'_> {
-        l::Traverse::children(self.actual, node)
+        l::tree::Traverse::children(self.actual, node)
     }
     fn child_count(&self, node: u32) -> usize {
-        l::Traverse::child_count(self.actual, node)
+        l::tree::Traverse::child_count(self.actual, node)
     }
     fn child(&self, node: u32, index: usize) -> u32 {
-        l::Traverse::child(self.actual, node, index)
+        l::tree::Traverse::child(self.actual, node, index)
     }
 }
-impl<S: l::LayoutScalar> l::LayoutTree for WarmRoot<'_, S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for WarmRoot<'_, S> {
     type MeasureError = Infallible;
-    fn node_input(&self, node: u32) -> &l::NodeInputOf<S> {
-        l::LayoutTree::node_input(self.actual, node)
+    fn node_input(&self, node: u32) -> &l::node::NodeInputOf<S> {
+        l::tree::LayoutTree::node_input(self.actual, node)
     }
-    fn layout_input(&self, node: u32) -> l::LayoutInputViewOf<'_, S> {
-        l::LayoutTree::layout_input(self.actual, node)
+    fn layout_input(&self, node: u32) -> l::node::LayoutInputViewOf<'_, S> {
+        l::tree::LayoutTree::layout_input(self.actual, node)
     }
     fn cache_get(
         &self,
         node: u32,
-        input: &l::ComputeInputOf<S>,
-        context: l::CacheKeyContext,
-    ) -> Option<l::ComputeOutputOf<S>> {
+        input: &l::cache::ComputeInputOf<S>,
+        context: l::cache::CacheKeyContext,
+    ) -> Option<l::cache::ComputeOutputOf<S>> {
         assert_eq!(node, 0);
         self.cache.get_with_context(input, context)
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<l::batch::LayoutOutputEntryOf<u32, S>> {
         assert_eq!(node, 0);
         self.unrounded
     }
 }
-impl<S: l::LayoutScalar> WarmRoot<'_, S> {
-    fn request(&self) -> l::LayoutRootRequestOf<S> {
+impl<S: l::scalar::LayoutScalar> WarmRoot<'_, S> {
+    fn request(&self) -> l::request::LayoutRootRequestOf<S> {
         {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(30.0)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(S::from_f64(30.0)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
-                    surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::tree::LayoutTree::node_input(self, 0).writing_mode,
+                    surgeist_layout::tree::LayoutTree::node_input(self, 0).direction,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -70,17 +70,22 @@ impl<S: l::LayoutScalar> WarmRoot<'_, S> {
     fn attach(
         &self,
         f: &Fixture<S>,
-        inventory: l::WrappingInput<u32>,
-    ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-        let capture =
-            l::LayoutFlowInput::try_new(self, 0, vec![f.binding()], inventory, Vec::new())?;
+        inventory: l::inline_wrapping::WrappingInput<u32>,
+    ) -> Result<l::batch::CompletedLayoutBatchOf<u32, S>, l::error::LayoutErrorOf<u32, S>> {
+        let capture = l::text_layout::LayoutFlowInput::try_new(
+            self,
+            0,
+            vec![f.binding()],
+            inventory,
+            Vec::new(),
+        )?;
         l::compute_layout_with_flow(&capture, 0, self.request())
     }
 }
 
-fn root_output<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
-) -> l::NodeOutputOf<S> {
+fn root_output<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
+) -> l::node::NodeOutputOf<S> {
     batch
         .node_layout(0)
         .unwrap()
@@ -88,12 +93,12 @@ fn root_output<S: l::LayoutScalar>(
         .expect("fixture node produces one box")
         .final_output()
 }
-fn warm_semantic_custody<S: l::LayoutScalar>(direction: l::Direction) {
+fn warm_semantic_custody<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     let f = Fixture::<S>::new(direction, true);
     let pin = f.inventory_facts(true);
     let mut host = WarmRoot {
         actual: &f.tree,
-        cache: l::CacheOf::new(),
+        cache: l::cache::CacheOf::new(),
         unrounded: None,
     };
     // This is an actual previous publication using the same unchanged native
@@ -101,7 +106,7 @@ fn warm_semantic_custody<S: l::LayoutScalar>(direction: l::Direction) {
     let native = l::compute_layout(&host, 0, host.request()).unwrap();
     assert_eq!(
         root_output(&native).size,
-        l::Size::new(S::from_f64(30.0), S::ZERO)
+        l::geometry::Size::new(S::from_f64(30.0), S::ZERO)
     );
     assert!(native.placed_text().is_empty());
     assert!(!native.cache_store_entries().is_empty());
@@ -145,20 +150,22 @@ fn warm_semantic_custody<S: l::LayoutScalar>(direction: l::Direction) {
     // the nominal receiver is max(24,12)+max(40-24,30-12)=42, still phantom.
     let mut changed_input = f.inventory();
     match &mut changed_input.scopes[0] {
-        l::WrappingScopeInput::Captured {
+        l::inline_wrapping::WrappingScopeInput::Captured {
             scope,
             metric_contribution,
             ..
         } => {
             assert_eq!(&*scope, &f.scopes[0]);
-            *metric_contribution = Some(l::InlineBoxMetricContribution::Strut(metric(24.0, 40.0)));
+            *metric_contribution = Some(l::inline_wrapping::InlineBoxMetricContribution::Strut(
+                metric(24.0, 40.0),
+            ));
         }
         _ => panic!("the actual S metric owner is required"),
     }
     let changed = host.attach(&f, changed_input).unwrap();
     assert_eq!(
         root_output(&changed).size,
-        l::Size::new(S::from_f64(30.0), S::from_f64(40.0))
+        l::geometry::Size::new(S::from_f64(30.0), S::from_f64(40.0))
     );
     let layout = changed.placed_text()[0].layout();
     assert_eq!(layout.source(), f.prepared.analyzed_source().source());
@@ -195,7 +202,7 @@ fn warm_semantic_custody<S: l::LayoutScalar>(direction: l::Direction) {
 
     let mut missing = f.inventory();
     match &mut missing.scopes[1] {
-        l::WrappingScopeInput::Captured {
+        l::inline_wrapping::WrappingScopeInput::Captured {
             metric_contribution,
             ..
         } => *metric_contribution = None,
@@ -204,8 +211,8 @@ fn warm_semantic_custody<S: l::LayoutScalar>(direction: l::Direction) {
     let refused = host.attach(&f, missing).unwrap_err();
     assert!(matches!(
         refused.kind(),
-        l::LayoutErrorKindOf::InvalidInput(l::LayoutInvalidInputOf::WrappingScope(
-            l::WrappingScopeError::MissingBoxMetrics
+        l::error::LayoutErrorKindOf::InvalidInput(l::error::LayoutInvalidInputOf::WrappingScope(
+            l::inline_wrapping::WrappingScopeError::MissingBoxMetrics
         ))
     ));
     assert_eq!(host.cache, cache_before);
@@ -215,7 +222,7 @@ fn warm_semantic_custody<S: l::LayoutScalar>(direction: l::Direction) {
 }
 #[test]
 fn real_warm_native_cache_cannot_hide_node_free_text_or_metric_changes() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         warm_semantic_custody::<f32>(direction);
         warm_semantic_custody::<f64>(direction);
     }

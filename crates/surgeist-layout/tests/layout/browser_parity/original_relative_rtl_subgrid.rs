@@ -63,7 +63,7 @@ fn validate(golden: &Golden) -> Result<()> {
         || !matches!(
             golden.viewport.root_context,
             RootContext::Qualified(QualifiedRootContext::BlockFlowAuto {
-                parent_direction: layout::Direction::Ltr,
+                parent_direction: layout::geometry::Direction::Ltr,
                 ..
             })
         )

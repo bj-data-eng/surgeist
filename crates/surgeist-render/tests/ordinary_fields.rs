@@ -553,7 +553,7 @@ mod paint {
 
     fn line(length: f64) -> LinearGradientLine {
         resolve_linear_gradient(
-            layout::Size::new(length, 16.0),
+            layout::geometry::Size::new(length, 16.0),
             LinearGradientDirection::Right,
             options(),
         )
@@ -563,9 +563,9 @@ mod paint {
 
     fn ellipse(x: f64, y: f64) -> RadialGradientGeometry {
         resolve_radial_gradient(
-            layout::Size::new(32.0, 16.0),
-            Some(layout::Point::new(16.0, 8.0)),
-            RadialGradientSize::EllipseRadii(layout::Size::new(position(x), position(y))),
+            layout::geometry::Size::new(32.0, 16.0),
+            Some(layout::geometry::Point::new(16.0, 8.0)),
+            RadialGradientSize::EllipseRadii(layout::geometry::Size::new(position(x), position(y))),
             options(),
         )
         .result

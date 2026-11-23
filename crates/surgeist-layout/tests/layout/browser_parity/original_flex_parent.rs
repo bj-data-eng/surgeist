@@ -13,8 +13,8 @@ pub(crate) fn verify_historical(current: &Golden, historical: &Golden) -> Result
     if !matches!(
         &current.viewport.root_context,
         RootContext::Qualified(QualifiedRootContext::AbsoluteRootLocal {
-            containing_direction: layout::Direction::Ltr,
-            hypothetical_direction: layout::Direction::Ltr,
+            containing_direction: layout::geometry::Direction::Ltr,
+            hypothetical_direction: layout::geometry::Direction::Ltr,
             hypothetical_display,
             hypothetical_inline_offset: 0.0,
             hypothetical_block_offset: None,
@@ -209,7 +209,7 @@ fn compare_unrounded_subtree(
     let (x, y, width, height) = rectangle(expected)?;
     let unrounded = actual.unrounded;
     let location = if node == 0 {
-        layout::Point::new(0.0, 0.0)
+        layout::geometry::Point::new(0.0, 0.0)
     } else {
         unrounded.location
     };

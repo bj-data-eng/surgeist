@@ -4,11 +4,11 @@ use surgeist_text::font::FontBaseline;
 mod geometry;
 mod late;
 
-fn length<S: l::LayoutScalar>(value: f64) -> l::LengthOf<S> {
-    l::LengthOf::value(l::LengthPercentageOf::px(n(value)).unwrap())
+fn length<S: l::scalar::LayoutScalar>(value: f64) -> l::length::LengthOf<S> {
+    l::length::LengthOf::value(l::length::LengthPercentageOf::px(n(value)).unwrap())
 }
-fn margin<S: l::LayoutScalar>(value: f64) -> l::LengthAutoOf<S> {
-    l::LengthAutoOf::value(l::LengthPercentageOf::px(n(value)).unwrap())
+fn margin<S: l::scalar::LayoutScalar>(value: f64) -> l::length::LengthAutoOf<S> {
+    l::length::LengthAutoOf::value(l::length::LengthPercentageOf::px(n(value)).unwrap())
 }
 fn checksum(bytes: &[u8]) -> u32 {
     bytes.chunks(4).fold(0_u32, |sum, chunk| {
@@ -79,11 +79,11 @@ pub(super) fn rtl_font() -> Vec<u8> {
     bytes
 }
 
-fn profile_line<S: l::LayoutScalar>(
+fn profile_line<S: l::scalar::LayoutScalar>(
     parent: &Captured,
     kind: t::source::InlineBoxKind,
-    align: l::VerticalAlignOf<S>,
-    containing: l::Direction,
+    align: l::inline::VerticalAlignOf<S>,
+    containing: l::geometry::Direction,
     text_align: t::options::Alignment,
 ) -> t::finalized::FinalizedLine {
     let p = &parent.prepared;
@@ -96,10 +96,10 @@ fn profile_line<S: l::LayoutScalar>(
     let mut atomic = allocation(parent, kind);
     if let t::allocation::AtomicLineAllocation::InFlow { alignment, .. } = &mut atomic.allocation {
         *alignment = match align {
-            l::VerticalAlignOf::Baseline => t::allocation::LineBoxAlignment::Baseline,
-            l::VerticalAlignOf::Top => t::allocation::LineBoxAlignment::Top,
-            l::VerticalAlignOf::Bottom => t::allocation::LineBoxAlignment::Bottom,
-            l::VerticalAlignOf::Shift(offset) => t::allocation::LineBoxAlignment::Shift(
+            l::inline::VerticalAlignOf::Baseline => t::allocation::LineBoxAlignment::Baseline,
+            l::inline::VerticalAlignOf::Top => t::allocation::LineBoxAlignment::Top,
+            l::inline::VerticalAlignOf::Bottom => t::allocation::LineBoxAlignment::Bottom,
+            l::inline::VerticalAlignOf::Shift(offset) => t::allocation::LineBoxAlignment::Shift(
                 t::source::BaselineShift::try_new(offset.get().to_f64())
                     .expect("a finite Layout shift widens to finite Text units"),
             ),
@@ -127,7 +127,7 @@ fn profile_line<S: l::LayoutScalar>(
             } else {
                 t::paragraph::ParagraphBaseDirection::LeftToRight
             },
-            line_box_direction: if containing == l::Direction::Ltr {
+            line_box_direction: if containing == l::geometry::Direction::Ltr {
                 t::selection::LineBoxDirection::LeftToRight
             } else {
                 t::selection::LineBoxDirection::RightToLeft
@@ -150,7 +150,7 @@ fn profile_line<S: l::LayoutScalar>(
     .unwrap()
 }
 
-fn matrix<S: l::LayoutScalar>() {
+fn matrix<S: l::scalar::LayoutScalar>() {
     let bytes = rtl_font();
     let child = capture(
         AHEM,
@@ -198,20 +198,20 @@ fn matrix<S: l::LayoutScalar>() {
                     .unit_views()
                     .all(|unit| unit.level().get() == level)
             );
-            for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+            for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
                 // An all-auto positioned box anchors its inline-start margin
                 // edge. In RTL that is the bottom edge, not the physical top.
                 let positioned_extent = if kind == t::source::InlineBoxKind::OutOfFlow
-                    && direction == l::Direction::Rtl
+                    && direction == l::geometry::Direction::Rtl
                 {
                     14.0
                 } else {
                     0.0
                 };
                 for (align, in_flow_x) in [
-                    (l::VerticalAlignOf::Baseline, 32.0),
-                    (l::VerticalAlignOf::Top, 34.0),
-                    (l::VerticalAlignOf::Bottom, 30.0),
+                    (l::inline::VerticalAlignOf::Baseline, 32.0),
+                    (l::inline::VerticalAlignOf::Top, 34.0),
+                    (l::inline::VerticalAlignOf::Bottom, 30.0),
                 ] {
                     let qualified = profile_line::<S>(
                         &parent,
@@ -231,7 +231,7 @@ fn matrix<S: l::LayoutScalar>() {
                     let (mut host, bindings) = scene::<S>(&parent, &child, kind, direction, 40.0);
                     host.change(2, |input| input.vertical_align = align);
                     let batch = run(&host, bindings, &[], available(40.0, 40.0)).unwrap();
-                    let shift = if direction == l::Direction::Ltr {
+                    let shift = if direction == l::geometry::Direction::Ltr {
                         0.0
                     } else {
                         40.0 - advance
@@ -288,10 +288,10 @@ fn matrix<S: l::LayoutScalar>() {
                     );
                 }
                 for (alignment, residual) in [
-                    (l::TextAlign::Center, (40.0 - advance) / 2.0),
+                    (l::text_flow::TextAlign::Center, (40.0 - advance) / 2.0),
                     (
-                        l::TextAlign::End,
-                        if direction == l::Direction::Ltr {
+                        l::text_flow::TextAlign::End,
+                        if direction == l::geometry::Direction::Ltr {
                             40.0 - advance
                         } else {
                             0.0
@@ -303,7 +303,7 @@ fn matrix<S: l::LayoutScalar>() {
                         input.text_align = alignment;
                         // The shared baseline fixture pins the last line to
                         // Start; this case requests ordinary Auto inheritance.
-                        input.text_align_last = l::TextAlignLast::Auto;
+                        input.text_align_last = l::text_flow::TextAlignLast::Auto;
                     });
                     let batch = run(&host, bindings, &[], available(40.0, 40.0)).unwrap();
                     let x = if kind == t::source::InlineBoxKind::InFlow {
@@ -321,7 +321,7 @@ fn matrix<S: l::LayoutScalar>() {
     }
 }
 
-fn guards<S: l::LayoutScalar>() {
+fn guards<S: l::scalar::LayoutScalar>() {
     let child = capture(
         AHEM,
         "A",
@@ -345,43 +345,51 @@ fn guards<S: l::LayoutScalar>() {
         );
         qualify_parent(&parent, kind);
         for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
-            let (mut host, bindings) = scene::<S>(&parent, &child, kind, l::Direction::Ltr, 40.0);
+            let (mut host, bindings) =
+                scene::<S>(&parent, &child, kind, l::geometry::Direction::Ltr, 40.0);
             host.change(0, |input| {
-                input.inline_baseline_context = l::InlineBaselineContext::Named(name)
+                input.inline_baseline_context = l::baseline::InlineBaselineContext::Named(name)
             });
             let error = run(&host, bindings, &[], available(40.0, 40.0)).unwrap_err();
             assert!(matches!(
                 error.kind(),
-                l::LayoutErrorKindOf::MissingContext(l::LayoutMissingContext::NamedInlineBaseline)
+                l::error::LayoutErrorKindOf::MissingContext(
+                    l::error::LayoutMissingContext::NamedInlineBaseline
+                )
             ));
         }
-        let (mut host, bindings) = scene::<S>(&parent, &child, kind, l::Direction::Ltr, 40.0);
-        host.change(0, |input| input.writing_mode = l::WritingMode::SidewaysLr);
+        let (mut host, bindings) =
+            scene::<S>(&parent, &child, kind, l::geometry::Direction::Ltr, 40.0);
+        host.change(0, |input| {
+            input.writing_mode = l::geometry::WritingMode::SidewaysLr
+        });
         let error = run(&host, bindings, &[], available(40.0, 40.0)).unwrap_err();
         assert!(matches!(
             error.kind(),
-            l::LayoutErrorKindOf::UnsupportedCapability(
-                l::LayoutUnsupportedCapability::TextWritingMode(l::WritingMode::SidewaysLr)
+            l::error::LayoutErrorKindOf::UnsupportedCapability(
+                l::error::LayoutUnsupportedCapability::TextWritingMode(
+                    l::geometry::WritingMode::SidewaysLr
+                )
             )
         ));
     }
     let mut box_root = root(
-        l::WritingMode::SidewaysLr,
-        l::Direction::Ltr,
-        l::InlineBaselineContext::Physical,
+        l::geometry::WritingMode::SidewaysLr,
+        l::geometry::Direction::Ltr,
+        l::baseline::InlineBaselineContext::Physical,
     );
-    box_root.size = l::Size::new(px(40.0), px(40.0));
+    box_root.size = l::geometry::Size::new(px(40.0), px(40.0));
     let mut host = Host::<S>::new(box_root);
     let mut input = child_input(t::source::InlineBoxKind::InFlow);
-    input.display = l::Display::Block;
-    host.push(Some(0), l::LayoutInputOf::box_input(input));
+    input.display = l::box_model::Display::Block;
+    host.push(Some(0), l::node::LayoutInputOf::box_input(input));
     l::compute_layout(&host, 0, {
         let sizing_request = available(40.0, 40.0);
-        l::LayoutRootRequestOf::standalone(
+        l::request::LayoutRootRequestOf::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::LayoutTree::node_input(&host, 0).writing_mode,
-                surgeist_layout::LayoutTree::node_input(&host, 0).direction,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::tree::LayoutTree::node_input(&host, 0).writing_mode,
+                surgeist_layout::tree::LayoutTree::node_input(&host, 0).direction,
             ),
             sizing_request
                 .orthogonal_fallback()

@@ -15,7 +15,7 @@ use crate::accounting::{
 };
 use crate::algorithm::{PreparedCore, SortBuffers};
 use crate::stacking::{BoxId, ChildOrder, Participation, Position};
-use surgeist_layout::SourceIndex;
+use surgeist_layout::node::SourceIndex;
 use surgeist_ledger::Scope;
 
 #[derive(Clone, Copy)]

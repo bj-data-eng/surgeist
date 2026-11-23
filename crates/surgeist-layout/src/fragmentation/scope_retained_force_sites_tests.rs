@@ -1,5 +1,15 @@
 //! A before-owner force cannot consume an interior retained receipt.
 use super::*;
+use crate::fragmentation::{
+    input::{
+        FragmentainerOf, FragmentationBreak, FragmentationBreakControl, FragmentationBreakKinds,
+        FragmentationCutOf, FragmentationFallback, FragmentationFlowOf, FragmentationInputOf,
+        FragmentationMeasuredHeadOf, FragmentationOccurrence, FragmentationOpportunityKindOf,
+        FragmentationOpportunityOf, FragmentationProvider, FragmentationQueryOf,
+        FragmentationReplyOf, FragmentationRole, FragmentationWindowEnd, FragmentationWindowOf,
+    },
+    output::{FragmentationBreakReason, FragmentationError},
+};
 struct RawSites<S: LayoutScalar> {
     ready: bool,
     query: Cell<Option<FragmentationQueryOf<S>>>,

@@ -1,5 +1,13 @@
 //! A raw force before Owner precedes a speculative retained child Deferred.
 use super::*;
+use crate::fragmentation::{
+    input::{
+        FragmentainerOf, FragmentationBreak, FragmentationBreakControl, FragmentationBreakKinds,
+        FragmentationCutOf, FragmentationOccurrence, FragmentationProvider, FragmentationQueryOf,
+        FragmentationReplyOf, FragmentationRole, FragmentationStage,
+    },
+    output::{FragmentationBreakReason, FragmentationError},
+};
 struct ForcedPrefix<S: LayoutScalar>(PrefixParent<S>);
 impl<S: LayoutScalar> FragmentationProvider<S> for ForcedPrefix<S> {
     type Error = &'static str;

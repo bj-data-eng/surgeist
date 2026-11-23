@@ -96,31 +96,37 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
     let origin = prepared.origin_views().next().unwrap().handle();
     let tree = Tree {
         inputs: [
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
-                writing_mode: layout::WritingMode::SidewaysRl,
-                direction: layout::Direction::Ltr,
-                text_align: layout::TextAlign::Start,
-                inline_baseline_context: layout::InlineBaselineContext::Physical,
-                size: layout::Size::new(
-                    layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(40.0).unwrap()),
-                    layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(15.0).unwrap()),
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                writing_mode: layout::geometry::WritingMode::SidewaysRl,
+                direction: layout::geometry::Direction::Ltr,
+                text_align: layout::text_flow::TextAlign::Start,
+                inline_baseline_context: layout::baseline::InlineBaselineContext::Physical,
+                size: layout::geometry::Size::new(
+                    layout::sizing::PreferredSizeOf::value(
+                        layout::length::LengthPercentageOf::px(40.0).unwrap(),
+                    ),
+                    layout::sizing::PreferredSizeOf::value(
+                        layout::length::LengthPercentageOf::px(15.0).unwrap(),
+                    ),
                 ),
-                ..layout::NodeInput::DEFAULT
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(origin.clone())),
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
+                origin.clone(),
+            )),
         ],
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let flow = layout::LayoutFlowInput::try_new(
+    let flow = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
-        vec![layout::TextParagraphBinding {
-            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+        vec![layout::text_layout::TextParagraphBinding {
+            inline_box_fragments: layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 0,
             nodes: vec![1],
-            origins: vec![layout::TextOriginBinding {
+            origins: vec![layout::text_layout::TextOriginBinding {
                 origin: origin.clone(),
                 node: 1,
             }],
@@ -128,7 +134,7 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
             controls: vec![],
             line_strut: None,
         }],
-        layout::WrappingInput::default(),
+        layout::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
@@ -136,12 +142,15 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
         &flow,
         0,
         NativeViewport::new(
-            layout::Size::new(Some(40.0), Some(15.0)),
-            layout::FlowAxes::new(layout::WritingMode::SidewaysRl, layout::Direction::Ltr),
+            layout::geometry::Size::new(Some(40.0), Some(15.0)),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::SidewaysRl,
+                layout::geometry::Direction::Ltr,
+            ),
         )
-        .request(layout::Size::new(
-            layout::SizingOperation::Normal,
-            layout::SizingOperation::Normal,
+        .request(layout::geometry::Size::new(
+            layout::constraint::SizingOperation::Normal,
+            layout::constraint::SizingOperation::Normal,
         )),
     )
     .unwrap();

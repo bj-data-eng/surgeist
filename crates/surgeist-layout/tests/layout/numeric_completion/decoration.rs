@@ -1,18 +1,18 @@
 //! Numeric line existence follows retained content and actual endings.
 use super::*;
 
-fn allocated_endpoint<S: l::LayoutScalar>(
-    direction: l::Direction,
-    kind: l::InlineBoundaryKind,
+fn allocated_endpoint<S: l::scalar::LayoutScalar>(
+    direction: l::geometry::Direction,
+    kind: l::inline::InlineBoundaryKind,
     baseline: f64,
     extent: f64,
-    edge: l::InlineBoundaryEdgeOf<S>,
-) -> l::LayoutInputOf<S> {
-    l::LayoutInputOf::inline_boundary(
-        l::InlineBoundaryInputOf::contribution(
+    edge: l::inline::InlineBoundaryEdgeOf<S>,
+) -> l::node::LayoutInputOf<S> {
+    l::node::LayoutInputOf::inline_boundary(
+        l::inline::InlineBoundaryInputOf::contribution(
             kind,
-            l::InlineMetricsOf::try_new(
-                surgeist_layout::InlineBaselineContext::Physical,
+            l::inline::InlineMetricsOf::try_new(
+                surgeist_layout::baseline::InlineBaselineContext::Physical,
                 S::from_f64(baseline),
                 S::from_f64(extent),
             )
@@ -23,56 +23,64 @@ fn allocated_endpoint<S: l::LayoutScalar>(
         .with_direction(direction),
     )
 }
-fn pair_with_one_positive_side<S: l::LayoutScalar>(
-    direction: l::Direction,
-    decorated: l::InlineBoundaryKind,
+fn pair_with_one_positive_side<S: l::scalar::LayoutScalar>(
+    direction: l::geometry::Direction,
+    decorated: l::inline::InlineBoundaryKind,
     border: bool,
     baseline: f64,
     extent: f64,
-) -> Vec<l::LayoutInputOf<S>> {
+) -> Vec<l::node::LayoutInputOf<S>> {
     let positive = if border {
-        l::InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::ZERO).unwrap()
+        l::inline::InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::ZERO).unwrap()
     } else {
-        l::InlineBoundaryEdgeOf::try_new(S::ZERO, S::ZERO, S::from_f64(3.0)).unwrap()
+        l::inline::InlineBoundaryEdgeOf::try_new(S::ZERO, S::ZERO, S::from_f64(3.0)).unwrap()
     };
-    [l::InlineBoundaryKind::Start, l::InlineBoundaryKind::End]
-        .into_iter()
-        .map(|kind| {
-            allocated_endpoint(
-                direction,
-                kind,
-                baseline,
-                extent,
-                if kind == decorated {
-                    positive
-                } else {
-                    l::InlineBoundaryEdgeOf::ZERO
-                },
-            )
-        })
-        .collect()
+    [
+        l::inline::InlineBoundaryKind::Start,
+        l::inline::InlineBoundaryKind::End,
+    ]
+    .into_iter()
+    .map(|kind| {
+        allocated_endpoint(
+            direction,
+            kind,
+            baseline,
+            extent,
+            if kind == decorated {
+                positive
+            } else {
+                l::inline::InlineBoundaryEdgeOf::ZERO
+            },
+        )
+    })
+    .collect()
 }
-fn assert_own_edge<S: l::LayoutScalar>(
+fn assert_own_edge<S: l::scalar::LayoutScalar>(
     actual: crate::layout::observation::Observation<S>,
-    direction: l::Direction,
-    kind: l::InlineBoundaryKind,
+    direction: l::geometry::Direction,
+    kind: l::inline::InlineBoundaryKind,
     border: bool,
 ) {
     let on_left = matches!(
         (direction, kind),
-        (l::Direction::Ltr, l::InlineBoundaryKind::Start)
-            | (l::Direction::Rtl, l::InlineBoundaryKind::End)
+        (
+            l::geometry::Direction::Ltr,
+            l::inline::InlineBoundaryKind::Start
+        ) | (
+            l::geometry::Direction::Rtl,
+            l::inline::InlineBoundaryKind::End
+        )
     );
     let components = |value| {
         if on_left {
-            l::Edges {
+            l::geometry::Edges {
                 left: value,
-                ..l::Edges::all(S::ZERO)
+                ..l::geometry::Edges::all(S::ZERO)
             }
         } else {
-            l::Edges {
+            l::geometry::Edges {
                 right: value,
-                ..l::Edges::all(S::ZERO)
+                ..l::geometry::Edges::all(S::ZERO)
             }
         }
     };
@@ -86,11 +94,14 @@ fn assert_own_edge<S: l::LayoutScalar>(
     );
     assert_eq!(
         actual.size,
-        l::Size::new(S::from_f64(if border { 2.0 } else { 3.0 }), S::ZERO)
+        l::geometry::Size::new(S::from_f64(if border { 2.0 } else { 3.0 }), S::ZERO)
     );
 }
-fn positive_endpoint<S: l::LayoutScalar>(direction: l::Direction) {
-    for decorated in [l::InlineBoundaryKind::Start, l::InlineBoundaryKind::End] {
+fn positive_endpoint<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
+    for decorated in [
+        l::inline::InlineBoundaryKind::Start,
+        l::inline::InlineBoundaryKind::End,
+    ] {
         for border in [false, true] {
             // This new actual native box owns8/10 at BOTH endpoints. Each
             // case authors exactly one positive component, never a cancelling sum.
@@ -106,9 +117,9 @@ fn positive_endpoint<S: l::LayoutScalar>(direction: l::Direction) {
             ] {
                 assert_eq!(
                     node(entries, 0).size,
-                    l::Size::new(S::from_f64(60.0), S::from_f64(10.0))
+                    l::geometry::Size::new(S::from_f64(60.0), S::from_f64(10.0))
                 );
-                let id = if decorated == l::InlineBoundaryKind::Start {
+                let id = if decorated == l::inline::InlineBoundaryKind::Start {
                     1
                 } else {
                     2
@@ -116,19 +127,26 @@ fn positive_endpoint<S: l::LayoutScalar>(direction: l::Direction) {
                 let actual = node_of_kind(
                     entries,
                     id,
-                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                    crate::layout::observation::Kind::NonBox(
+                        l::fragmentation::NonBoxKind::InlineBoundary,
+                    ),
                 );
-                assert_eq!(actual.source_index, l::SourceIndex::new((id - 1) as usize));
+                assert_eq!(
+                    actual.source_index,
+                    l::node::SourceIndex::new((id - 1) as usize)
+                );
                 assert_eq!(actual.location.y, S::from_f64(8.0));
                 assert_own_edge(actual, direction, decorated, border);
                 let other = node_of_kind(
                     entries,
                     if id == 1 { 2 } else { 1 },
-                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                    crate::layout::observation::Kind::NonBox(
+                        l::fragmentation::NonBoxKind::InlineBoundary,
+                    ),
                 );
-                assert_eq!(other.border, l::Edges::all(S::ZERO));
-                assert_eq!(other.padding, l::Edges::all(S::ZERO));
-                assert_eq!(other.size, l::Size::ZERO);
+                assert_eq!(other.border, l::geometry::Edges::all(S::ZERO));
+                assert_eq!(other.padding, l::geometry::Edges::all(S::ZERO));
+                assert_eq!(other.size, l::geometry::Size::ZERO);
                 assert_eq!(other.location.y, S::from_f64(8.0));
             }
         }
@@ -136,56 +154,69 @@ fn positive_endpoint<S: l::LayoutScalar>(direction: l::Direction) {
 }
 #[test]
 fn each_positive_start_or_end_border_or_padding_keeps_numeric_line_real() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         positive_endpoint::<f32>(direction);
         positive_endpoint::<f64>(direction);
     }
 }
-fn adjoining_blocks<S: l::LayoutScalar>(
-    direction: l::Direction,
-) -> (l::LayoutInputOf<S>, l::LayoutInputOf<S>) {
+fn adjoining_blocks<S: l::scalar::LayoutScalar>(
+    direction: l::geometry::Direction,
+) -> (l::node::LayoutInputOf<S>, l::node::LayoutInputOf<S>) {
     let block = |height, top, bottom| {
-        l::LayoutInputOf::box_input(l::NodeInputOf {
-            display: l::Display::Block,
+        l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+            display: l::box_model::Display::Block,
             direction,
-            size: l::Size::new(
-                l::PreferredSizeOf::AUTO,
-                l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(height)).unwrap()),
-            ),
-            margin: l::Edges {
-                top: l::LengthAutoOf::value(l::LengthPercentageOf::px(S::from_f64(top)).unwrap()),
-                bottom: l::LengthAutoOf::value(
-                    l::LengthPercentageOf::px(S::from_f64(bottom)).unwrap(),
+            size: l::geometry::Size::new(
+                l::sizing::PreferredSizeOf::AUTO,
+                l::sizing::PreferredSizeOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(height)).unwrap(),
                 ),
-                ..l::Edges::all(l::LengthAutoOf::ZERO)
+            ),
+            margin: l::geometry::Edges {
+                top: l::length::LengthAutoOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(top)).unwrap(),
+                ),
+                bottom: l::length::LengthAutoOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(bottom)).unwrap(),
+                ),
+                ..l::geometry::Edges::all(l::length::LengthAutoOf::ZERO)
             },
-            ..l::NodeInputOf::default()
+            ..l::node::NodeInputOf::default()
         })
     };
     (block(5.0, 0.0, 10.0), block(7.0, 20.0, 0.0))
 }
-fn assert_separated_blocks<S: l::LayoutScalar>(
-    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+fn assert_separated_blocks<S: l::scalar::LayoutScalar>(
+    entries: (&l::batch::CompletedLayoutBatchOf<u32, S>, bool),
     b_id: u32,
     line_height: f64,
 ) {
     assert_eq!(
         node(entries, 0).size,
-        l::Size::new(S::from_f64(60.0), S::from_f64(42.0 + line_height))
+        l::geometry::Size::new(S::from_f64(60.0), S::from_f64(42.0 + line_height))
     );
     let a = node(entries, 1);
     let b = node(entries, b_id);
-    assert_eq!(a.location, l::Point::ZERO);
-    assert_eq!(a.size, l::Size::new(S::from_f64(60.0), S::from_f64(5.0)));
+    assert_eq!(a.location, l::geometry::Point::ZERO);
+    assert_eq!(
+        a.size,
+        l::geometry::Size::new(S::from_f64(60.0), S::from_f64(5.0))
+    );
     assert_eq!(
         b.location,
-        l::Point::new(S::ZERO, S::from_f64(35.0 + line_height))
+        l::geometry::Point::new(S::ZERO, S::from_f64(35.0 + line_height))
     );
-    assert_eq!(b.size, l::Size::new(S::from_f64(60.0), S::from_f64(7.0)));
-    assert_eq!(a.source_index, l::SourceIndex::new(0));
-    assert_eq!(b.source_index, l::SourceIndex::new((b_id - 1) as usize));
+    assert_eq!(
+        b.size,
+        l::geometry::Size::new(S::from_f64(60.0), S::from_f64(7.0))
+    );
+    assert_eq!(a.source_index, l::node::SourceIndex::new(0));
+    assert_eq!(
+        b.source_index,
+        l::node::SourceIndex::new((b_id - 1) as usize)
+    );
 }
-fn zero_atomic_barrier<S: l::LayoutScalar>(direction: l::Direction) {
+fn zero_atomic_barrier<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     let (a, b) = adjoining_blocks::<S>(direction);
     // No endpoint/default strut is present: this actual zero-size in-flow
     // atomic's true numerical baseline and line extent are both0.
@@ -198,12 +229,12 @@ fn zero_atomic_barrier<S: l::LayoutScalar>(direction: l::Direction) {
     ] {
         assert_separated_blocks(entries, 3, 0.0);
         let actual = node(entries, 2);
-        assert_eq!(actual.size, l::Size::ZERO);
-        assert_eq!(actual.source_index, l::SourceIndex::new(1));
+        assert_eq!(actual.size, l::geometry::Size::ZERO);
+        assert_eq!(actual.source_index, l::node::SourceIndex::new(1));
         assert_eq!(
             actual.location,
-            l::Point::new(
-                S::from_f64(if direction == l::Direction::Ltr {
+            l::geometry::Point::new(
+                S::from_f64(if direction == l::geometry::Direction::Ltr {
                     0.0
                 } else {
                     60.0
@@ -215,13 +246,16 @@ fn zero_atomic_barrier<S: l::LayoutScalar>(direction: l::Direction) {
 }
 #[test]
 fn true_zero_height_in_flow_atomic_line_stops_block_margin_collapse() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         zero_atomic_barrier::<f32>(direction);
         zero_atomic_barrier::<f64>(direction);
     }
 }
-fn zero_metric_decoration_barrier<S: l::LayoutScalar>(direction: l::Direction) {
-    for decorated in [l::InlineBoundaryKind::Start, l::InlineBoundaryKind::End] {
+fn zero_metric_decoration_barrier<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
+    for decorated in [
+        l::inline::InlineBoundaryKind::Start,
+        l::inline::InlineBoundaryKind::End,
+    ] {
         for border in [false, true] {
             let (a, b) = adjoining_blocks::<S>(direction);
             // This separate box owns0/0 metrics, not an erased
@@ -239,7 +273,7 @@ fn zero_metric_decoration_barrier<S: l::LayoutScalar>(direction: l::Direction) {
                 crate::layout::observation::phase(&batch, true),
             ] {
                 assert_separated_blocks(entries, 4, 0.0);
-                let id = if decorated == l::InlineBoundaryKind::Start {
+                let id = if decorated == l::inline::InlineBoundaryKind::Start {
                     2
                 } else {
                     3
@@ -247,9 +281,14 @@ fn zero_metric_decoration_barrier<S: l::LayoutScalar>(direction: l::Direction) {
                 let actual = node_of_kind(
                     entries,
                     id,
-                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                    crate::layout::observation::Kind::NonBox(
+                        l::fragmentation::NonBoxKind::InlineBoundary,
+                    ),
                 );
-                assert_eq!(actual.source_index, l::SourceIndex::new((id - 1) as usize));
+                assert_eq!(
+                    actual.source_index,
+                    l::node::SourceIndex::new((id - 1) as usize)
+                );
                 assert_eq!(actual.location.y, S::from_f64(15.0));
                 assert_own_edge(actual, direction, decorated, border);
             }
@@ -258,12 +297,12 @@ fn zero_metric_decoration_barrier<S: l::LayoutScalar>(direction: l::Direction) {
 }
 #[test]
 fn positive_individual_bp_with_true_zero_metrics_stops_block_margin_collapse() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         zero_metric_decoration_barrier::<f32>(direction);
         zero_metric_decoration_barrier::<f64>(direction);
     }
 }
-fn forced_margin_barrier<S: l::LayoutScalar>(direction: l::Direction) {
+fn forced_margin_barrier<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     let (a, b) = adjoining_blocks::<S>(direction);
     let tree = NumericTree::<S>::new(direction, vec![a, forced(direction), b]);
     let batch = tree.compute();
@@ -278,30 +317,30 @@ fn forced_margin_barrier<S: l::LayoutScalar>(direction: l::Direction) {
         let actual = node_of_kind(
             entries,
             2,
-            crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak),
+            crate::layout::observation::Kind::NonBox(l::fragmentation::NonBoxKind::LineBreak),
         );
-        assert_eq!(actual.source_index, l::SourceIndex::new(1));
+        assert_eq!(actual.source_index, l::node::SourceIndex::new(1));
         assert_eq!(actual.location.y, S::from_f64(31.0));
     }
 }
 #[test]
 fn actual_forced_line_stops_collapsing_margins_without_terminal_phantom_extent() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         forced_margin_barrier::<f32>(direction);
         forced_margin_barrier::<f64>(direction);
     }
 }
 
-fn zero_forced_margin_barrier<S: l::LayoutScalar>(direction: l::Direction) {
+fn zero_forced_margin_barrier<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     let (a, b) = adjoining_blocks::<S>(direction);
     // These are the actual supplied0/0 metrics of a Forced control;
     // ending semantics, not positive extent, make this a real zero-height line.
-    let control = l::LayoutInputOf::line_break(
-        l::LineBreakInputOf::new()
+    let control = l::node::LayoutInputOf::line_break(
+        l::text_flow::LineBreakInputOf::new()
             .with_direction(direction)
             .with_metrics(
-                l::InlineMetricsOf::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
+                l::inline::InlineMetricsOf::try_new(
+                    surgeist_layout::baseline::InlineBaselineContext::Physical,
                     S::ZERO,
                     S::ZERO,
                 )
@@ -319,15 +358,15 @@ fn zero_forced_margin_barrier<S: l::LayoutScalar>(direction: l::Direction) {
         let actual = node_of_kind(
             entries,
             2,
-            crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak),
+            crate::layout::observation::Kind::NonBox(l::fragmentation::NonBoxKind::LineBreak),
         );
-        assert_eq!(actual.source_index, l::SourceIndex::new(1));
+        assert_eq!(actual.source_index, l::node::SourceIndex::new(1));
         assert_eq!(actual.location.y, S::from_f64(15.0));
     }
 }
 #[test]
 fn actual_zero_metric_forced_control_still_stops_block_margin_collapse() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         zero_forced_margin_barrier::<f32>(direction);
         zero_forced_margin_barrier::<f64>(direction);
     }

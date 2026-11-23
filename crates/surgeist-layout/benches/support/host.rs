@@ -3,9 +3,14 @@
 use std::convert::Infallible;
 
 use surgeist_layout::{
-    Direction, Display, FlowAxes, LayoutInput, LayoutInputView, LayoutRootRequest, LayoutTree,
-    LeafMeasureInput, LengthPercentageOf, NodeInput, NonNegativeFiniteOf, PreferredSize, Size,
-    SizingOperation, Traverse, WritingMode,
+    box_model::Display,
+    constraint::SizingOperation,
+    geometry::{Direction, FlowAxes, Size, WritingMode},
+    length::{LengthPercentageOf, NonNegativeFiniteOf},
+    node::{LayoutInput, LayoutInputView, NodeInput},
+    request::LayoutRootRequest,
+    sizing::PreferredSize,
+    tree::{LayoutTree, LeafMeasureInput, Traverse},
 };
 
 #[path = "../../tests/support/native_request.rs"]
@@ -113,8 +118,9 @@ impl LayoutTree for Host {
     fn float_exclusion_interval(
         &self,
         _node: u32,
-        query: surgeist_layout::FloatExclusionQuery,
-    ) -> Option<Result<Option<surgeist_layout::FloatExclusionInterval>, Infallible>> {
+        query: surgeist_layout::box_model::FloatExclusionQuery,
+    ) -> Option<Result<Option<surgeist_layout::box_model::FloatExclusionInterval>, Infallible>>
+    {
         if !self.shape_floats {
             return None;
         }
@@ -128,12 +134,14 @@ impl LayoutTree for Host {
         let offset = ((nearest - centre) / radius).abs().min(1.0);
         let half = size.width / 2.0 * (1.0 - offset * offset).sqrt();
         let across = origin.x + size.width / 2.0;
-        Some(Ok(surgeist_layout::FloatExclusionInterval::try_new(
-            query,
-            across - half,
-            across + half,
-        )
-        .expect("the ellipse chord is finite and ordered")))
+        Some(Ok(
+            surgeist_layout::box_model::FloatExclusionInterval::try_new(
+                query,
+                across - half,
+                across + half,
+            )
+            .expect("the ellipse chord is finite and ordered"),
+        ))
     }
 }
 

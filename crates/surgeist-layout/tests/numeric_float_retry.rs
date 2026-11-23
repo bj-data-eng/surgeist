@@ -6,42 +6,42 @@ mod native_request;
 
 use surgeist_layout as l;
 
-fn px(value: f32) -> l::PreferredSize {
-    l::PreferredSize::value(l::LengthPercentageOf::px(value).unwrap())
+fn px(value: f32) -> l::sizing::PreferredSize {
+    l::sizing::PreferredSize::value(l::length::LengthPercentageOf::px(value).unwrap())
 }
 
 struct Tree {
-    inputs: [l::NodeInput; 3],
+    inputs: [l::node::NodeInput; 3],
 }
 impl Tree {
     fn new() -> Self {
         Self {
             inputs: [
-                l::NodeInput {
-                    display: l::Display::Block,
-                    size: l::Size::new(px(40.0), l::PreferredSize::AUTO),
-                    ..l::NodeInput::default()
+                l::node::NodeInput {
+                    display: l::box_model::Display::Block,
+                    size: l::geometry::Size::new(px(40.0), l::sizing::PreferredSize::AUTO),
+                    ..l::node::NodeInput::default()
                 },
-                l::NodeInput {
-                    display: l::Display::Block,
-                    float: l::Float::Left,
-                    size: l::Size::new(px(25.0), px(20.0)),
-                    ..l::NodeInput::default()
+                l::node::NodeInput {
+                    display: l::box_model::Display::Block,
+                    float: l::box_model::Float::Left,
+                    size: l::geometry::Size::new(px(25.0), px(20.0)),
+                    ..l::node::NodeInput::default()
                 },
-                l::NodeInput {
-                    display: l::Display::InlineBlock,
-                    atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
+                l::node::NodeInput {
+                    display: l::box_model::Display::InlineBlock,
+                    atomic_inline_participation: Some(l::inline::AtomicInlineParticipation::new(
                         surgeist_text::supplied_line::BidiLevel::try_new(0).unwrap(),
-                        l::InlineBreakOpportunity::Prohibited,
+                        l::text_flow::InlineBreakOpportunity::Prohibited,
                     )),
-                    size: l::Size::new(px(28.0), px(10.0)),
-                    ..l::NodeInput::default()
+                    size: l::geometry::Size::new(px(28.0), px(10.0)),
+                    ..l::node::NodeInput::default()
                 },
             ],
         }
     }
 }
-impl l::Traverse for Tree {
+impl l::tree::Traverse for Tree {
     type Node = usize;
     type Scalar = f32;
     type Children<'a> = std::iter::Copied<std::slice::Iter<'a, usize>>;
@@ -62,13 +62,13 @@ impl l::Traverse for Tree {
         [1, 2][index]
     }
 }
-impl l::LayoutTree for Tree {
+impl l::tree::LayoutTree for Tree {
     type MeasureError = core::convert::Infallible;
-    fn node_input(&self, node: usize) -> &l::NodeInput {
+    fn node_input(&self, node: usize) -> &l::node::NodeInput {
         &self.inputs[node]
     }
-    fn layout_input(&self, node: usize) -> l::LayoutInputView<'_> {
-        l::LayoutInputView::Box(&self.inputs[node])
+    fn layout_input(&self, node: usize) -> l::node::LayoutInputView<'_> {
+        l::node::LayoutInputView::Box(&self.inputs[node])
     }
 }
 
@@ -77,17 +77,17 @@ fn indivisible_numeric_inline_box_waits_for_the_real_wider_band_below_an_earlier
     let tree = Tree::new();
     let request = {
         let sizing_request = crate::native_request::sizing(
-            surgeist_layout::Size::new(Some(40.0), None),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(40.0), None),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         );
-        l::LayoutRootRequest::standalone(
+        l::request::LayoutRootRequest::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::WritingMode::HorizontalTb,
-                surgeist_layout::Direction::Ltr,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::geometry::WritingMode::HorizontalTb,
+                surgeist_layout::geometry::Direction::Ltr,
             ),
             sizing_request
                 .orthogonal_fallback()
@@ -103,10 +103,10 @@ fn indivisible_numeric_inline_box_waits_for_the_real_wider_band_below_an_earlier
             .expect("fixture node produces one box")
             .unrounded_output()
     };
-    assert_eq!(actual(1).location, l::Point::new(0.0, 0.0));
-    assert_eq!(actual(1).size, l::Size::new(25.0, 20.0));
-    assert_eq!(actual(2).size, l::Size::new(28.0, 10.0));
+    assert_eq!(actual(1).location, l::geometry::Point::new(0.0, 0.0));
+    assert_eq!(actual(1).size, l::geometry::Size::new(25.0, 20.0));
+    assert_eq!(actual(2).size, l::geometry::Size::new(28.0, 10.0));
     // The preceding float leaves15px at y0; the indivisible28px box fits
     // the 40px band beginning at y20 without overlapping the float.
-    assert_eq!(actual(2).location, l::Point::new(0.0, 20.0));
+    assert_eq!(actual(2).location, l::geometry::Point::new(0.0, 20.0));
 }

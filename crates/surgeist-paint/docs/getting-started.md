@@ -32,7 +32,7 @@ A box ID is a slot in one immutable fact slice. Supply parentage, source sibling
 indices and resolved CSS facts; input slice order is not painting order.
 
 ```rust
-use surgeist_layout::SourceIndex;
+use surgeist_layout::node::SourceIndex;
 use surgeist_ledger::ProfileMode;
 use surgeist_paint::accounting::{PaintLimits, PaintOptions, ResourceKind, WorkKind};
 use surgeist_paint::stacking::{

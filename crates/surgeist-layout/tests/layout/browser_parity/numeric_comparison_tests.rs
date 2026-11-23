@@ -577,12 +577,15 @@ fn captured_flex_baselines_use_original_prepared_text() {
 
 fn assert_original_flex_packets(
     tree: &TestTree,
-    batch: &layout::CompletedLayoutBatch<usize>,
+    batch: &layout::batch::CompletedLayoutBatch<usize>,
     rtl: bool,
 ) {
-    use layout::{Direction, Point, Size, SourceIndex};
-    let flow = layout::FlowAxes::new(
-        layout::WritingMode::HorizontalTb,
+    use layout::{
+        geometry::{Direction, Point, Size},
+        node::SourceIndex,
+    };
+    let flow = layout::geometry::FlowAxes::new(
+        layout::geometry::WritingMode::HorizontalTb,
         if rtl { Direction::Rtl } else { Direction::Ltr },
     );
     let children = &tree.nodes[0].children;
@@ -610,10 +613,12 @@ fn assert_original_flex_packets(
                 (2, true) => (120.0, 25.0),
                 _ => {
                     assert!(packet(source).matches_numeric_fields(
-                        &layout::NodeOutput::with_source_index(SourceIndex::new(index))
+                        &layout::node::NodeOutput::with_source_index(SourceIndex::new(index))
                     ));
                     for node in [wrapper, text] {
-                        assert!(packet(node).matches_numeric_fields(&layout::NodeOutput::new()));
+                        assert!(
+                            packet(node).matches_numeric_fields(&layout::node::NodeOutput::new())
+                        );
                     }
                     continue;
                 }
@@ -639,11 +644,13 @@ fn assert_original_flex_packets(
                 40.0,
                 flow,
             );
-            assert!(packet(text).matches_numeric_fields(&layout::NodeOutput {
-                size: Size::new(40.0, 10.0),
-                content_size: Size::new(40.0, 10.0),
-                ..layout::NodeOutput::new()
-            }));
+            assert!(
+                packet(text).matches_numeric_fields(&layout::node::NodeOutput {
+                    size: Size::new(40.0, 10.0),
+                    content_size: Size::new(40.0, 10.0),
+                    ..layout::node::NodeOutput::new()
+                })
+            );
         }
     }
 
@@ -668,7 +675,9 @@ fn assert_original_flex_packets(
             assert_eq!(fragments.len(), 8);
             let mut fragments = fragments
                 .iter()
-                .filter(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(text))
+                .filter(|entry| {
+                    entry.owner() == &layout::text_layout::InlineFragmentOwner::Node(text)
+                })
                 .map(|entry| {
                     let fragment = entry.fragment();
                     let range = fragment.finalized_fragment().view().local_range().unwrap();
@@ -686,7 +695,7 @@ fn assert_original_flex_packets(
                 assert_eq!(
                     fragment.rect(),
                     Some(
-                        layout::ScrollRect::try_new(
+                        layout::scroll::ScrollRect::try_new(
                             Point::new(index as Scalar * 10.0, 0.0),
                             Size::new(10.0, 10.0),
                         )
@@ -702,13 +711,13 @@ fn assert_original_flex_box(
     output: super::observation::Observation<Scalar>,
     source_index: usize,
     x: Scalar,
-    size: layout::Size<Scalar>,
+    size: layout::geometry::Size<Scalar>,
     overflow_x: Scalar,
     overflow_width: Scalar,
-    flow: layout::FlowAxes,
+    flow: layout::geometry::FlowAxes,
 ) {
-    use layout::{Edges, Point, Size};
-    let layout::NodeOutput {
+    use layout::geometry::{Edges, Point, Size};
+    let layout::node::NodeOutput {
         named_baselines,
         source_index: actual_index,
         location,
@@ -721,8 +730,11 @@ fn assert_original_flex_box(
     } = output
         .box_output
         .expect("original flex item produces one box");
-    assert_eq!(named_baselines, layout::NamedBaselinesOf::unknown());
-    assert_eq!(actual_index, layout::SourceIndex::new(source_index));
+    assert_eq!(
+        named_baselines,
+        layout::baseline::NamedBaselinesOf::unknown()
+    );
+    assert_eq!(actual_index, layout::node::SourceIndex::new(source_index));
     assert_eq!(location, Point::new(x, 0.0));
     assert_eq!(actual_size, size);
     let overflow_size = Size::new(overflow_width, size.height);
@@ -730,7 +742,7 @@ fn assert_original_flex_box(
     assert_eq!([border, padding, margin], [Edges::ZERO; 3]);
 
     let scroll = scroll_geometry.expect("visible boxes publish performed scroll geometry");
-    let box_rect = layout::ScrollRect::try_new(Point::ZERO, size).unwrap();
+    let box_rect = layout::scroll::ScrollRect::try_new(Point::ZERO, size).unwrap();
     for rect in [
         scroll.border_box(),
         scroll.padding_box(),
@@ -743,12 +755,18 @@ fn assert_original_flex_box(
     }
     assert_eq!(
         scroll.scrollable_overflow(),
-        layout::ScrollRect::try_new(Point::new(overflow_x, 0.0), overflow_size).unwrap()
+        layout::scroll::ScrollRect::try_new(Point::new(overflow_x, 0.0), overflow_size).unwrap()
     );
     assert_eq!(scroll.flow_axes(), flow);
     assert_eq!(scroll.target().flow_axes(), flow);
-    assert_eq!(scroll.used_overflow_x(), layout::Overflow::Visible);
-    assert_eq!(scroll.used_overflow_y(), layout::Overflow::Visible);
+    assert_eq!(
+        scroll.used_overflow_x(),
+        layout::overflow::Overflow::Visible
+    );
+    assert_eq!(
+        scroll.used_overflow_y(),
+        layout::overflow::Overflow::Visible
+    );
     assert_eq!(scroll.overflow_clip().x(), None);
     assert_eq!(scroll.overflow_clip().y(), None);
     for interval in [scroll.physical_range().x(), scroll.physical_range().y()] {
@@ -766,15 +784,21 @@ fn assert_original_flex_box(
     );
     assert_eq!(scroll.scrollbar_size(), Size::ZERO);
     assert_eq!(scroll.resolved_scroll_padding(), Edges::ZERO);
-    assert_eq!(scroll.scroll_snap_type(), layout::ScrollSnapType::None);
+    assert_eq!(
+        scroll.scroll_snap_type(),
+        layout::overflow::ScrollSnapType::None
+    );
     let target = scroll.target();
     let margin = target.scroll_margin();
     assert_eq!(
         [margin.top(), margin.right(), margin.bottom(), margin.left()],
         [0.0; 4]
     );
-    assert_eq!(target.snap_align(), layout::ScrollSnapAlign::default());
-    assert_eq!(target.snap_stop(), layout::ScrollSnapStop::Normal);
+    assert_eq!(
+        target.snap_align(),
+        layout::overflow::ScrollSnapAlign::default()
+    );
+    assert_eq!(target.snap_stop(), layout::overflow::ScrollSnapStop::Normal);
 }
 
 fn assert_original_flex_observations(observed: &[exact_differences::ComparedField], rtl: bool) {

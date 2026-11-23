@@ -3,8 +3,8 @@ pub(crate) mod observation;
 use observation::{Observation, observe};
 use surgeist_text::font::FontBaseline;
 /// Compare the complete old numeric packet expectation after classification.
-impl<S: layout::LayoutScalar> Observation<S> {
-    pub fn matches_numeric_fields(&self, expected: &layout::NodeOutputOf<S>) -> bool {
+impl<S: layout::scalar::LayoutScalar> Observation<S> {
+    pub fn matches_numeric_fields(&self, expected: &layout::node::NodeOutputOf<S>) -> bool {
         self.named_baselines == expected.named_baselines
             && self.source_index == expected.source_index
             && self.location == expected.location
@@ -25,9 +25,9 @@ use surgeist_layout as layout;
 #[path = "prepared_source.rs"]
 mod prepared_source;
 use crate::{atomic_paragraph_metrics, grid_alignment_reference};
-use surgeist_layout::{ComputeInput, ComputeOutput};
+use surgeist_layout::cache::{ComputeInput, ComputeOutput};
 #[cfg(test)]
-use surgeist_layout::{GridSpan, LayoutTree as _};
+use surgeist_layout::{grid::GridSpan, tree::LayoutTree as _};
 #[path = "root_context.rs"]
 mod root_context;
 pub use root_context::RootContext;
@@ -75,8 +75,8 @@ mod wrapped_subgrid_text;
 pub use element_scroll_sizes::ElementScrollSizeMismatch;
 use prepared_range_qualification::{Comparisons as PreparedRangeComparisons, RangePieceKey};
 
-type Scalar = layout::DefaultScalar;
-pub(super) type ObservedPlacement = layout::PlacedTextOutput<usize>;
+type Scalar = layout::scalar::DefaultScalar;
+pub(super) type ObservedPlacement = layout::text_layout::PlacedTextOutput<usize>;
 
 #[derive(Clone, Copy, Debug)]
 struct ComparisonTolerance {
@@ -425,15 +425,15 @@ pub fn assert_grid_alignment_reference_inputs(
         seen: &mut Vec<String>,
     ) -> Result<(), Error> {
         if let Some(input) = tree.nodes[node].layout_input.as_box()
-            && input.display == layout::Display::Grid
+            && input.display == layout::box_model::Display::Grid
         {
             let reference = if expected.contains(&path) {
                 seen.push(path.clone());
-                layout::GridBaselineReference::Named(FontBaseline::Central)
+                layout::baseline::GridBaselineReference::Named(FontBaseline::Central)
             } else {
-                layout::GridBaselineReference::Physical
+                layout::baseline::GridBaselineReference::Physical
             };
-            let references = layout::GridBaselineReferences {
+            let references = layout::baseline::GridBaselineReferences {
                 columns: reference,
                 rows: reference,
             };
@@ -487,7 +487,7 @@ fn compare_captured_expectations(
 fn compare_captured_with_batch(
     golden: &Golden,
     numeric: &mut NumericComparisonSink,
-    inspect: impl FnOnce(&TestTree, &layout::CompletedLayoutBatch<usize>) -> Result<(), Error>,
+    inspect: impl FnOnce(&TestTree, &layout::batch::CompletedLayoutBatch<usize>) -> Result<(), Error>,
 ) -> Result<ComparisonResult, Error> {
     compare_captured_with_projection(golden, numeric, None, inspect)
 }
@@ -496,7 +496,7 @@ fn compare_captured_with_projection(
     golden: &Golden,
     numeric: &mut NumericComparisonSink,
     br_font_band: Option<BrFontBandProfile>,
-    inspect: impl FnOnce(&TestTree, &layout::CompletedLayoutBatch<usize>) -> Result<(), Error>,
+    inspect: impl FnOnce(&TestTree, &layout::batch::CompletedLayoutBatch<usize>) -> Result<(), Error>,
 ) -> Result<ComparisonResult, Error> {
     if let Some(basis) = &golden.prepared_atomic_basis {
         basis.validate(golden)?;
@@ -569,7 +569,7 @@ fn compare_captured_with_projection(
 pub(super) fn assert_named_atomic_paragraph_inputs(root: &Node) -> Result<(), Error> {
     let tree = TestTree::from_golden(root, None)?;
     assert_eq!(tree.nodes.len(), 4);
-    let expected = layout::InlineBaselineContext::Named(FontBaseline::Central);
+    let expected = layout::baseline::InlineBaselineContext::Named(FontBaseline::Central);
     assert_eq!(
         tree.nodes[0]
             .layout_input
@@ -595,7 +595,7 @@ pub(super) fn assert_named_atomic_paragraph_inputs(root: &Node) -> Result<(), Er
 #[cfg(test)]
 pub(super) fn assert_native_input_matches(
     golden: &Golden,
-    request: layout::LayoutRootRequest,
+    request: layout::request::LayoutRootRequest,
 ) -> Result<(), Error> {
     assert_native_input_matches_with_projection(golden, request, None)
 }
@@ -603,7 +603,7 @@ pub(super) fn assert_native_input_matches(
 #[cfg(test)]
 fn assert_native_input_matches_with_projection(
     golden: &Golden,
-    request: layout::LayoutRootRequest,
+    request: layout::request::LayoutRootRequest,
     br_font_band: Option<BrFontBandProfile>,
 ) -> Result<(), Error> {
     if let Some(table) = &golden.element_scroll_sizes {
@@ -635,16 +635,16 @@ fn assert_native_input_matches_with_projection(
 fn compute_actual_batch(
     tree: &TestTree,
     name: &str,
-    request: layout::LayoutRootRequest,
-) -> Result<layout::CompletedLayoutBatch<usize>, Error> {
+    request: layout::request::LayoutRootRequest,
+) -> Result<layout::batch::CompletedLayoutBatch<usize>, Error> {
     if tree.paragraphs.is_empty() {
         layout::compute_layout(tree, 0, request)
     } else {
-        let capture = layout::LayoutFlowInput::try_new(
+        let capture = layout::text_layout::LayoutFlowInput::try_new(
             tree,
             0,
             tree.paragraphs.clone(),
-            surgeist_layout::WrappingInput {
+            surgeist_layout::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -663,13 +663,22 @@ fn validate_capture_analytic_profile(tree: &TestTree, context: &RootContext) -> 
         RootContext::Qualified(root_context::QualifiedRootContext::BlockFlowAuto {
             parent_direction,
             ..
-        }) => layout::FlowAxes::new(layout::WritingMode::HorizontalTb, *parent_direction),
+        }) => layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
+            *parent_direction,
+        ),
         RootContext::Qualified(root_context::QualifiedRootContext::AbsoluteRootLocal {
             containing_direction,
             ..
-        }) => layout::FlowAxes::new(layout::WritingMode::HorizontalTb, *containing_direction),
+        }) => layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
+            *containing_direction,
+        ),
         RootContext::Qualified(root_context::QualifiedRootContext::InlineGrid { .. }) => {
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr)
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            )
         }
         RootContext::UnqualifiedCapture { .. } => {
             return Err(Error::new("MissingRootContextAuthority"));
@@ -695,7 +704,7 @@ fn validate_capture_analytic_profile(tree: &TestTree, context: &RootContext) -> 
             Some(parent) if parent < node => {
                 let input = tree.box_node_input(parent);
                 (
-                    layout::FlowAxes::new(input.writing_mode, input.direction),
+                    layout::geometry::FlowAxes::new(input.writing_mode, input.direction),
                     flags[parent] & 2 != 0,
                 )
             }
@@ -703,7 +712,7 @@ fn validate_capture_analytic_profile(tree: &TestTree, context: &RootContext) -> 
             _ => return Err(Error::new("inconsistent capture parent chronology")),
         };
         let own_axes = match row.layout_input.as_box() {
-            Some(input) => layout::FlowAxes::new(input.writing_mode, input.direction),
+            Some(input) => layout::geometry::FlowAxes::new(input.writing_mode, input.direction),
             None => containing_axes,
         };
         let orthogonal = inherited || own_axes.inline_axis() != containing_axes.inline_axis();
@@ -721,7 +730,7 @@ fn validate_capture_analytic_profile(tree: &TestTree, context: &RootContext) -> 
             || row
                 .layout_input
                 .as_box()
-                .is_some_and(|input| input.display == layout::Display::None);
+                .is_some_and(|input| input.display == layout::box_model::Display::None);
         if hidden {
             flags[node] |= 4;
             continue;
@@ -736,27 +745,29 @@ fn validate_capture_analytic_profile(tree: &TestTree, context: &RootContext) -> 
         let Some(container) = tree.nodes[parent].layout_input.as_box() else {
             continue;
         };
-        if container.display != layout::Display::Flex
-            || input.position == layout::Position::Absolute
-            || input
-                .align_self
-                .unwrap_or(container.align_items.unwrap_or(layout::AlignItems::Stretch))
-                != layout::AlignItems::Baseline
+        if container.display != layout::box_model::Display::Flex
+            || input.position == layout::box_model::Position::Absolute
+            || input.align_self.unwrap_or(
+                container
+                    .align_items
+                    .unwrap_or(layout::box_model::AlignItems::Stretch),
+            ) != layout::box_model::AlignItems::Baseline
         {
             continue;
         }
-        let container_axes = layout::FlowAxes::new(container.writing_mode, container.direction);
+        let container_axes =
+            layout::geometry::FlowAxes::new(container.writing_mode, container.direction);
         let cross_axis = if container.flex_direction.is_row() {
             container_axes.block_axis()
         } else {
             container_axes.inline_axis()
         };
-        let own_axes = layout::FlowAxes::new(input.writing_mode, input.direction);
+        let own_axes = layout::geometry::FlowAxes::new(input.writing_mode, input.direction);
         let auto_cross_margin = match cross_axis {
-            layout::PhysicalAxis::Horizontal => {
+            layout::geometry::PhysicalAxis::Horizontal => {
                 input.margin.left.is_auto() || input.margin.right.is_auto()
             }
-            layout::PhysicalAxis::Vertical => {
+            layout::geometry::PhysicalAxis::Vertical => {
                 input.margin.top.is_auto() || input.margin.bottom.is_auto()
             }
         };
@@ -769,7 +780,7 @@ fn validate_capture_analytic_profile(tree: &TestTree, context: &RootContext) -> 
     Ok(())
 }
 
-fn root_request(root_context: &RootContext) -> Result<layout::LayoutRootRequest, Error> {
+fn root_request(root_context: &RootContext) -> Result<layout::request::LayoutRootRequest, Error> {
     root_context.request()
 }
 
@@ -790,10 +801,10 @@ pub struct Node {
     prepared_origin: Option<surgeist_text::prepared::PreparedOrigin>,
     prepared_control: Option<surgeist_text::prepared::PreparedControl>,
     prepared: Option<prepared_source::Capture>,
-    atomic_inline_participation: Option<layout::AtomicInlineParticipation>,
+    atomic_inline_participation: Option<layout::inline::AtomicInlineParticipation>,
     shape_bands: Option<Vec<FixtureShapeBand>>,
-    inline_boundary: Option<layout::InlineBoundaryKind>,
-    atomic_line_strut: Option<layout::InlineMetrics>,
+    inline_boundary: Option<layout::inline::InlineBoundaryKind>,
+    atomic_line_strut: Option<layout::inline::InlineMetrics>,
     anonymous_grid_text_wrapper: bool,
     layout_ready_inline_root: bool,
     atomic_paragraph_metrics: Option<atomic_paragraph_metrics::Capture>,
@@ -808,7 +819,7 @@ struct MeasuredInlineText {
 struct MeasuredSegment {
     id: u64,
     extent: Scalar,
-    metrics: layout::InlineMetrics,
+    metrics: layout::inline::InlineMetrics,
     level: surgeist_text::supplied_line::BidiLevel,
     edge: surgeist_text::supplied_line::InlineWhitespaceEdge,
     following: MeasuredBreak,
@@ -1408,7 +1419,8 @@ fn validate_grid_alignment_profile(root: &Node, required: bool) -> Result<(), Er
                 && matches!(node.style.get("display"), Some("grid" | "inline-grid"))
                 && matches!(
                     parse_writing_mode(node.style.get("writing-mode"))?,
-                    layout::WritingMode::VerticalLr | layout::WritingMode::VerticalRl
+                    layout::geometry::WritingMode::VerticalLr
+                        | layout::geometry::WritingMode::VerticalRl
                 );
             if node.grid_alignment_reference.is_some() != needs_reference {
                 return Err(Error::new(format!(
@@ -1499,7 +1511,7 @@ fn parse_atomic_paragraph_metrics(
                         Some(atomic.bidi_level())
                             == surgeist_text::supplied_line::BidiLevel::try_new(*bidi_level).ok()
                             && atomic.following_break()
-                                == layout::InlineBreakOpportunity::Prohibited
+                                == layout::text_flow::InlineBreakOpportunity::Prohibited
                     })
             }
             atomic_paragraph_metrics::Occurrence::Break { .. } => {
@@ -1518,8 +1530,8 @@ fn parse_atomic_paragraph_metrics(
             ));
         }
     }
-    let metrics = layout::InlineMetrics::try_new(
-        layout::InlineBaselineContext::Named(FontBaseline::Central),
+    let metrics = layout::inline::InlineMetrics::try_new(
+        layout::baseline::InlineBaselineContext::Named(FontBaseline::Central),
         0.0,
         0.0,
     )
@@ -1541,8 +1553,8 @@ fn parse_inline_boundary_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Erro
     }
     validate_inline_payload(xml)?;
     let kind = match required_attr(xml, "kind")? {
-        "start" => layout::InlineBoundaryKind::Start,
-        "end" => layout::InlineBoundaryKind::End,
+        "start" => layout::inline::InlineBoundaryKind::Start,
+        "end" => layout::inline::InlineBoundaryKind::End,
         raw => return Err(Error::new(format!("invalid inline boundary kind `{raw}`"))),
     };
     let baseline = xml.attribute("inline-baseline");
@@ -1555,7 +1567,7 @@ fn parse_inline_boundary_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Erro
             ));
         }
         (Some(baseline), Some(line_height)) => {
-            if kind != layout::InlineBoundaryKind::Start {
+            if kind != layout::inline::InlineBoundaryKind::Start {
                 return Err(Error::new("only a start inline boundary may carry metrics"));
             }
             let baseline = parse_number(baseline)?;
@@ -1566,8 +1578,8 @@ fn parse_inline_boundary_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Erro
                 ));
             }
             Some(
-                layout::InlineMetrics::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
+                layout::inline::InlineMetrics::try_new(
+                    surgeist_layout::baseline::InlineBaselineContext::Physical,
                     baseline,
                     line_height,
                 )
@@ -1623,14 +1635,14 @@ fn validate_native_control_topology(node: &Node) -> Result<(), Error> {
         }
         match control.view().kind() {
             ParagraphControlKind::InlineBoundaryStart
-                if child.inline_boundary == Some(layout::InlineBoundaryKind::Start) =>
+                if child.inline_boundary == Some(layout::inline::InlineBoundaryKind::Start) =>
             {
                 depth = depth
                     .checked_add(1)
                     .ok_or_else(|| Error::new("native boundary depth overflow"))?;
             }
             ParagraphControlKind::InlineBoundaryEnd
-                if child.inline_boundary == Some(layout::InlineBoundaryKind::End) =>
+                if child.inline_boundary == Some(layout::inline::InlineBoundaryKind::End) =>
             {
                 depth = depth
                     .checked_sub(1)
@@ -1710,7 +1722,7 @@ fn validate_fri06_c08r_explicit_input(node: &Node, is_root: bool) -> Result<bool
         };
         explicit = true;
         match (kind, child.atomic_line_strut) {
-            (layout::InlineBoundaryKind::Start, Some(_)) => {
+            (layout::inline::InlineBoundaryKind::Start, Some(_)) => {
                 let target = node.children.get(index + 1).ok_or_else(|| {
                     Error::new("metric start inline boundary requires a following atomic child")
                 })?;
@@ -1724,7 +1736,7 @@ fn validate_fri06_c08r_explicit_input(node: &Node, is_root: bool) -> Result<bool
                 }
                 index += 1;
             }
-            (layout::InlineBoundaryKind::Start, None) => {
+            (layout::inline::InlineBoundaryKind::Start, None) => {
                 let text = node.children.get(index + 1).ok_or_else(|| {
                     Error::new(
                         "start inline boundary requires a typed-text payload and end boundary",
@@ -1738,7 +1750,7 @@ fn validate_fri06_c08r_explicit_input(node: &Node, is_root: bool) -> Result<bool
                 if (text.inline_text.is_none() && text.prepared_occurrence.is_none())
                     || text.inline_boundary.is_some()
                     || !text.children.is_empty()
-                    || end.inline_boundary != Some(layout::InlineBoundaryKind::End)
+                    || end.inline_boundary != Some(layout::inline::InlineBoundaryKind::End)
                     || end.atomic_line_strut.is_some()
                 {
                     return Err(Error::new(
@@ -1747,7 +1759,7 @@ fn validate_fri06_c08r_explicit_input(node: &Node, is_root: bool) -> Result<bool
                 }
                 index += 2;
             }
-            (layout::InlineBoundaryKind::End, _) => {
+            (layout::inline::InlineBoundaryKind::End, _) => {
                 return Err(Error::new("misplaced end inline boundary"));
             }
         }
@@ -1849,7 +1861,7 @@ fn parse_inline_segment(xml: roxmltree::Node<'_, '_>) -> Result<MeasuredSegment,
     let inline_extent = parse_inline_nonnegative_number(xml, "inline-extent")?;
     let baseline = parse_inline_nonnegative_number(xml, "inline-baseline")?;
     let line_height = parse_inline_nonnegative_number(xml, "inline-line-height")?;
-    let metrics = layout::InlineMetrics::try_new(surgeist_layout::InlineBaselineContext::Physical, baseline, line_height).map_err(|_| {
+    let metrics = layout::inline::InlineMetrics::try_new(surgeist_layout::baseline::InlineBaselineContext::Physical, baseline, line_height).map_err(|_| {
         Error::new(format!(
             "invalid inline metrics on `<segment>`: baseline `{baseline}`, line height `{line_height}`"
         ))
@@ -1890,7 +1902,7 @@ fn parse_inline_segment(xml: roxmltree::Node<'_, '_>) -> Result<MeasuredSegment,
 
 fn parse_atomic_placeholder(
     xml: roxmltree::Node<'_, '_>,
-) -> Result<(usize, layout::AtomicInlineParticipation), Error> {
+) -> Result<(usize, layout::inline::AtomicInlineParticipation), Error> {
     const ATTRIBUTES: &[&str] = &[
         "child-index",
         "bidi-level",
@@ -1911,16 +1923,16 @@ fn parse_atomic_placeholder(
     let bidi_level = parse_bidi_level(xml, "atomic-placeholder")?;
     let following_break = parse_inline_break(xml, "atomic-placeholder")?;
     let following = match following_break {
-        MeasuredBreak::Prohibited => layout::InlineBreakOpportunity::Prohibited,
-        MeasuredBreak::Allowed => layout::InlineBreakOpportunity::Allowed,
-        MeasuredBreak::Mandatory => layout::InlineBreakOpportunity::Mandatory,
+        MeasuredBreak::Prohibited => layout::text_flow::InlineBreakOpportunity::Prohibited,
+        MeasuredBreak::Allowed => layout::text_flow::InlineBreakOpportunity::Allowed,
+        MeasuredBreak::Mandatory => layout::text_flow::InlineBreakOpportunity::Mandatory,
         MeasuredBreak::Replacement(_) => {
             return Err(Error::new(
                 "atomic placeholder break replacement is not allowed",
             ));
         }
     };
-    let participation = layout::AtomicInlineParticipation::new(bidi_level, following);
+    let participation = layout::inline::AtomicInlineParticipation::new(bidi_level, following);
     Ok((child_index, participation))
 }
 
@@ -2072,12 +2084,17 @@ fn parse_shape_band(xml: roxmltree::Node<'_, '_>) -> Result<FixtureShapeBand, Er
 
     let band_minimum = parse_number(required_attr(xml, "band-minimum")?)?;
     let band_maximum = parse_number(required_attr(xml, "band-maximum")?)?;
-    let validation_margin_box =
-        layout::ScrollRect::try_new(layout::Point::ZERO, layout::Size::ZERO)
-            .expect("zero validation margin box is valid");
-    let query = layout::FloatExclusionQuery::try_new(
+    let validation_margin_box = layout::scroll::ScrollRect::try_new(
+        layout::geometry::Point::ZERO,
+        layout::geometry::Size::ZERO,
+    )
+    .expect("zero validation margin box is valid");
+    let query = layout::box_model::FloatExclusionQuery::try_new(
         validation_margin_box,
-        layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
+            layout::geometry::Direction::Ltr,
+        ),
         band_minimum,
         band_maximum,
     )
@@ -2100,7 +2117,7 @@ fn parse_shape_band(xml: roxmltree::Node<'_, '_>) -> Result<FixtureShapeBand, Er
         (Some(minimum), Some(maximum)) => {
             let minimum = parse_number(minimum)?;
             let maximum = parse_number(maximum)?;
-            layout::FloatExclusionQuery::try_new(
+            layout::box_model::FloatExclusionQuery::try_new(
                 validation_margin_box,
                 query.flow_axes(),
                 minimum,
@@ -2135,9 +2152,10 @@ fn parse_shape_band(xml: roxmltree::Node<'_, '_>) -> Result<FixtureShapeBand, Er
         }
         None => match interval {
             Some((minimum, maximum)) => {
-                layout::FloatExclusionInterval::try_new(query, minimum, maximum).map_err(
-                    |error| Error::new(format!("invalid shape exclusion interval: {error:?}")),
-                )?;
+                layout::box_model::FloatExclusionInterval::try_new(query, minimum, maximum)
+                    .map_err(|error| {
+                        Error::new(format!("invalid shape exclusion interval: {error:?}"))
+                    })?;
                 FixtureShapeResponse::Interval {
                     minimum,
                     maximum,
@@ -2673,7 +2691,7 @@ fn parse_fragment_number(
     Ok(value)
 }
 
-fn parse_item_order(raw: &str) -> Result<layout::ItemOrder, Error> {
+fn parse_item_order(raw: &str) -> Result<layout::node::ItemOrder, Error> {
     let bytes = raw.as_bytes();
     let digits = match bytes {
         [b'0'] => &bytes[1..],
@@ -2686,7 +2704,7 @@ fn parse_item_order(raw: &str) -> Result<layout::ItemOrder, Error> {
     }
 
     raw.parse::<i32>()
-        .map(layout::ItemOrder::new)
+        .map(layout::node::ItemOrder::new)
         .map_err(|_| Error::new(format!("invalid item order `{raw}`")))
 }
 
@@ -2701,7 +2719,7 @@ fn parse_bool(raw: &str) -> Result<bool, Error> {
 fn parse_number(raw: &str) -> Result<Scalar, Error> {
     // Browser parity XML is a default-precision fixture boundary. The layout
     // engine has generic scalar APIs, but checked-in browser fixtures parse
-    // through layout::Scalar/layout::DefaultScalar so legacy XML remains stable.
+    // through layout::scalar::DefaultScalar so legacy XML remains stable.
     raw.parse()
         .map_err(|_| Error::new(format!("invalid number `{raw}`")))
 }
@@ -2763,8 +2781,8 @@ fn expect_tag(node: roxmltree::Node<'_, '_>, tag: &str) -> Result<(), Error> {
 
 #[derive(Clone, Debug)]
 struct TestNode {
-    non_box_input: layout::NodeInput,
-    layout_input: layout::LayoutInput,
+    non_box_input: layout::node::NodeInput,
+    layout_input: layout::node::LayoutInput,
     is_br_source: bool,
     font_family: FontFamily,
     font_size: Scalar,
@@ -2777,14 +2795,14 @@ struct TestNode {
     explicit_range_root: bool,
     preserve_fractional_min_content: bool,
     use_tighter_monospace_wrap: bool,
-    cache: layout::Cache,
+    cache: layout::cache::Cache,
     unrounded: Observation<Scalar>,
     unrounded_present: bool,
-    unrounded_entry: Option<layout::LayoutOutputEntry<usize>>,
+    unrounded_entry: Option<layout::batch::LayoutOutputEntry<usize>>,
     final_layout: Observation<Scalar>,
     final_layout_present: bool,
-    unrounded_inline_fragments: Option<Vec<layout::InlineFragmentOutput>>,
-    final_inline_fragments: Option<Vec<layout::InlineFragmentOutput>>,
+    unrounded_inline_fragments: Option<Vec<layout::text_layout::InlineFragmentOutput>>,
+    final_inline_fragments: Option<Vec<layout::text_layout::InlineFragmentOutput>>,
     shape_bands: Option<Vec<FixtureShapeBand>>,
 }
 
@@ -2796,15 +2814,15 @@ impl TestNode {
 
 #[derive(Clone, Debug, Default)]
 struct TestTree {
-    publication_targets: layout::LayoutPublicationTargets<usize>,
+    publication_targets: layout::batch::LayoutPublicationTargets<usize>,
     nodes: Vec<TestNode>,
-    paragraphs: Vec<layout::TextParagraphBinding<usize>>,
-    placed_text: Vec<layout::PlacedTextOutput<usize>>,
+    paragraphs: Vec<layout::text_layout::TextParagraphBinding<usize>>,
+    placed_text: Vec<layout::text_layout::PlacedTextOutput<usize>>,
     flex_text: Vec<flex_content_text::LoweredOccurrence>,
     flex_projection: Option<flex_text_projection::ValidatedProjection>,
     wrapped_subgrid_text: Option<std::rc::Rc<std::cell::RefCell<wrapped_subgrid_text::Measurer>>>,
     grid_lanes_text: std::collections::BTreeMap<usize, crate::fri08_grid_lanes_text_profile::Sizes>,
-    replaced_image: Option<(usize, layout::Size)>,
+    replaced_image: Option<(usize, layout::geometry::Size)>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2814,7 +2832,7 @@ struct InheritedTextContext {
     line_height: LineHeightState,
     grid_lanes_text: bool,
     inline_level_text: bool,
-    containing_flow: Option<layout::FlowAxes>,
+    containing_flow: Option<layout::geometry::FlowAxes>,
     parent: Option<usize>,
     range_root: Option<usize>,
 }
@@ -2826,13 +2844,15 @@ impl TestTree {
         while let Some(id) = cursor {
             let state = &self.nodes[id];
             if let Some(input) = state.layout_input.as_box() {
-                suppressed |= input.display == layout::Display::None;
-                suppressed |= input.flex_item_collapse == layout::FlexItemCollapse::Collapsed
+                suppressed |= input.display == layout::box_model::Display::None;
+                suppressed |= input.flex_item_collapse == layout::flex::FlexItemCollapse::Collapsed
                     && state.parent.is_some_and(|parent| {
                         self.nodes[parent]
                             .layout_input
                             .as_box()
-                            .is_some_and(|parent| parent.display == layout::Display::Flex)
+                            .is_some_and(|parent| {
+                                parent.display == layout::box_model::Display::Flex
+                            })
                     });
             }
             cursor = state.parent;
@@ -2840,7 +2860,10 @@ impl TestTree {
         observation::expected_kind(self.nodes[node].layout_input.as_view(), suppressed)
     }
     #[cfg(test)]
-    fn unrounded_inline_fragments(&self, node: usize) -> Option<&[layout::InlineFragmentOutput]> {
+    fn unrounded_inline_fragments(
+        &self,
+        node: usize,
+    ) -> Option<&[layout::text_layout::InlineFragmentOutput]> {
         self.nodes[node].unrounded_inline_fragments.as_deref()
     }
 
@@ -2915,7 +2938,9 @@ impl TestTree {
         };
         let resolved_line_height = line_height.resolve(font_size);
         let mut layout_input = if let Some(origin) = &node.prepared_origin {
-            layout::LayoutInput::inline_text(layout::TextParticipation::new(origin.clone()))
+            layout::node::LayoutInput::inline_text(layout::text_layout::TextParticipation::new(
+                origin.clone(),
+            ))
         } else if let Some(control) = &node.prepared_control {
             if let Some(kind) = node.inline_boundary {
                 let flow = inherited.containing_flow.ok_or_else(|| {
@@ -2924,17 +2949,17 @@ impl TestTree {
                 // Native fixture validation forbids an authored strut here,
                 // and the boundary schema admits no decoration properties.
                 // These are zero contributions, not absent Style facts.
-                let metrics = layout::InlineMetrics::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
+                let metrics = layout::inline::InlineMetrics::try_new(
+                    surgeist_layout::baseline::InlineBaselineContext::Physical,
                     0.0,
                     0.0,
                 )
                 .map_err(|error| Error::new(format!("invalid neutral metrics: {error:?}")))?;
-                layout::LayoutInput::inline_boundary(
-                    layout::InlineBoundaryInput::contribution(
+                layout::node::LayoutInput::inline_boundary(
+                    layout::inline::InlineBoundaryInput::contribution(
                         kind,
                         metrics,
-                        layout::InlineBoundaryEdge::ZERO,
+                        layout::inline::InlineBoundaryEdge::ZERO,
                     )
                     .unwrap()
                     .with_direction(flow.direction())
@@ -2944,9 +2969,9 @@ impl TestTree {
                 control.view().kind(),
                 surgeist_text::paragraph::ParagraphControlKind::ForcedBreak
             ) {
-                layout::LayoutInput::text_control(layout::TextControlParticipation::new(
-                    control.clone(),
-                ))
+                layout::node::LayoutInput::text_control(
+                    layout::text_layout::TextControlParticipation::new(control.clone()),
+                )
             } else {
                 return Err(Error::new("unsupported captured semantic control role"));
             }
@@ -2959,11 +2984,11 @@ impl TestTree {
                     let metrics = node.atomic_line_strut.map(Ok).unwrap_or_else(|| {
                         fixture_inline_metrics(font_size, resolved_line_height)
                     })?;
-                    layout::LayoutInput::inline_boundary(
-                        layout::InlineBoundaryInput::contribution(
+                    layout::node::LayoutInput::inline_boundary(
+                        layout::inline::InlineBoundaryInput::contribution(
                             kind,
                             metrics,
-                            layout::InlineBoundaryEdgeOf::ZERO,
+                            layout::inline::InlineBoundaryEdgeOf::ZERO,
                         )
                         .unwrap()
                         .with_direction(flow.direction())
@@ -2993,14 +3018,14 @@ impl TestTree {
                 .clone();
             let reference = match capture.reference {
                 grid_alignment_reference::Reference::Central => {
-                    layout::GridBaselineReference::Named(FontBaseline::Central)
+                    layout::baseline::GridBaselineReference::Named(FontBaseline::Central)
                 }
             };
-            input.grid_baseline_references = layout::GridBaselineReferences {
+            input.grid_baseline_references = layout::baseline::GridBaselineReferences {
                 columns: reference,
                 rows: reference,
             };
-            layout_input = layout::LayoutInput::box_input(input);
+            layout_input = layout::node::LayoutInput::box_input(input);
         }
         if node.atomic_paragraph_metrics.is_some() {
             let mut input = layout_input
@@ -3008,8 +3033,8 @@ impl TestTree {
                 .ok_or_else(|| Error::new("named atomic paragraph requires an actual box"))?
                 .clone();
             input.inline_baseline_context =
-                layout::InlineBaselineContext::Named(FontBaseline::Central);
-            layout_input = layout::LayoutInput::box_input(input);
+                layout::baseline::InlineBaselineContext::Named(FontBaseline::Central);
+            layout_input = layout::node::LayoutInput::box_input(input);
         }
         if node.style.get("source-tag") == Some("br")
             && let Some(metrics) = node.atomic_line_strut
@@ -3017,7 +3042,7 @@ impl TestTree {
             let control = layout_input
                 .as_line_break()
                 .ok_or_else(|| Error::new("certified BR metric requires an actual control"))?;
-            layout_input = layout::LayoutInput::line_break(control.with_metrics(metrics));
+            layout_input = layout::node::LayoutInput::line_break(control.with_metrics(metrics));
         }
         if let Some(capture) = &node.prepared
             && capture.prepared.orientation() == surgeist_text::selection::LineOrientation::Vertical
@@ -3040,8 +3065,8 @@ impl TestTree {
                 .ok_or_else(|| Error::new("prepared paragraph requires its actual box container"))?
                 .clone();
             input.inline_baseline_context =
-                layout::InlineBaselineContext::Named(FontBaseline::Central);
-            layout_input = layout::LayoutInput::box_input(input);
+                layout::baseline::InlineBaselineContext::Named(FontBaseline::Central);
+            layout_input = layout::node::LayoutInput::box_input(input);
         }
         if let Some(participation) = node.atomic_inline_participation {
             let Some(input) = layout_input.as_box() else {
@@ -3049,14 +3074,17 @@ impl TestTree {
             };
             let mut input = input.clone();
             input.atomic_inline_participation = Some(participation);
-            layout_input = layout::LayoutInput::box_input(input);
+            layout_input = layout::node::LayoutInput::box_input(input);
         }
         if node.shape_bands.is_some()
             && !layout_input.as_box().is_some_and(|input| {
-                input.float_exclusion == layout::FloatExclusion::Shape
-                    && input.display != layout::Display::None
-                    && input.position != layout::Position::Absolute
-                    && matches!(input.float, layout::Float::Left | layout::Float::Right)
+                input.float_exclusion == layout::box_model::FloatExclusion::Shape
+                    && input.display != layout::box_model::Display::None
+                    && input.position != layout::box_model::Position::Absolute
+                    && matches!(
+                        input.float,
+                        layout::box_model::Float::Left | layout::box_model::Float::Right
+                    )
             })
         {
             return Err(Error::new(
@@ -3066,13 +3094,14 @@ impl TestTree {
         let box_display = layout_input.as_box().map(|input| input.display);
         let containing_flow = layout_input
             .as_box()
-            .map(|input| layout::FlowAxes::new(input.writing_mode, input.direction));
+            .map(|input| layout::geometry::FlowAxes::new(input.writing_mode, input.direction));
         let grid_lanes_text = inherited.grid_lanes_text
-            || box_display.is_some_and(layout::Display::establishes_grid_lanes_formatting_context);
+            || box_display
+                .is_some_and(layout::box_model::Display::establishes_grid_lanes_formatting_context);
         let inline_level_text = inherited.inline_level_text
-            || box_display.is_some_and(layout::Display::is_inline_level);
+            || box_display.is_some_and(layout::box_model::Display::is_inline_level);
         self.nodes.push(TestNode {
-            non_box_input: layout::NodeInput::non_box(),
+            non_box_input: layout::node::NodeInput::non_box(),
             layout_input,
             is_br_source: node.style.get("source-tag") == Some("br")
                 && matches!(node.style.get("display"), Some("inline" | "none")),
@@ -3087,11 +3116,11 @@ impl TestTree {
             explicit_range_root: node.layout_ready_inline_root,
             preserve_fractional_min_content: inherited.grid_lanes_text,
             use_tighter_monospace_wrap: !inherited.inline_level_text,
-            cache: layout::Cache::new(),
-            unrounded: layout::NodeOutput::new().into(),
+            cache: layout::cache::Cache::new(),
+            unrounded: layout::node::NodeOutput::new().into(),
             unrounded_present: false,
             unrounded_entry: None,
-            final_layout: layout::NodeOutput::new().into(),
+            final_layout: layout::node::NodeOutput::new().into(),
             final_layout_present: false,
             unrounded_inline_fragments: None,
             final_inline_fragments: None,
@@ -3123,7 +3152,7 @@ impl TestTree {
                 || children.iter().any(|child| {
                     !matches!(
                         self.nodes[*child].layout_input,
-                        layout::LayoutInput::InlineText(_)
+                        layout::node::LayoutInput::InlineText(_)
                     )
                 })
             {
@@ -3182,15 +3211,15 @@ impl TestTree {
             .containing_flow
             .expect("wrapper caller validates its containing flow");
         let line_height = inherited.line_height.resolve(inherited.font_size);
-        let node_input = layout::NodeInput {
-            display: layout::Display::Block,
+        let node_input = layout::node::NodeInput {
+            display: layout::box_model::Display::Block,
             writing_mode: flow.writing_mode(),
             direction: flow.direction(),
-            ..layout::NodeInput::default()
+            ..layout::node::NodeInput::default()
         };
         self.nodes.push(TestNode {
-            non_box_input: layout::NodeInput::non_box(),
-            layout_input: layout::LayoutInput::box_input(node_input),
+            non_box_input: layout::node::NodeInput::non_box(),
+            layout_input: layout::node::LayoutInput::box_input(node_input),
             is_br_source: false,
             font_family: inherited.font_family,
             font_size: inherited.font_size,
@@ -3203,11 +3232,11 @@ impl TestTree {
             explicit_range_root: false,
             preserve_fractional_min_content: false,
             use_tighter_monospace_wrap: false,
-            cache: layout::Cache::new(),
-            unrounded: layout::NodeOutput::new().into(),
+            cache: layout::cache::Cache::new(),
+            unrounded: layout::node::NodeOutput::new().into(),
             unrounded_present: false,
             unrounded_entry: None,
-            final_layout: layout::NodeOutput::new().into(),
+            final_layout: layout::node::NodeOutput::new().into(),
             final_layout_present: false,
             unrounded_inline_fragments: None,
             final_inline_fragments: None,
@@ -3229,8 +3258,8 @@ impl TestTree {
         let id = self.nodes.len();
         let line_height = inherited.line_height.resolve(inherited.font_size);
         self.nodes.push(TestNode {
-            non_box_input: layout::NodeInput::non_box(),
-            layout_input: layout::LayoutInput::box_input(layout::NodeInput::default()),
+            non_box_input: layout::node::NodeInput::non_box(),
+            layout_input: layout::node::LayoutInput::box_input(layout::node::NodeInput::default()),
             is_br_source: false,
             font_family: inherited.font_family,
             font_size: inherited.font_size,
@@ -3243,11 +3272,11 @@ impl TestTree {
             explicit_range_root: false,
             preserve_fractional_min_content: inherited.grid_lanes_text,
             use_tighter_monospace_wrap: !inherited.inline_level_text,
-            cache: layout::Cache::new(),
-            unrounded: layout::NodeOutput::new().into(),
+            cache: layout::cache::Cache::new(),
+            unrounded: layout::node::NodeOutput::new().into(),
             unrounded_present: false,
             unrounded_entry: None,
-            final_layout: layout::NodeOutput::new().into(),
+            final_layout: layout::node::NodeOutput::new().into(),
             final_layout_present: false,
             unrounded_inline_fragments: None,
             final_inline_fragments: None,
@@ -3259,9 +3288,9 @@ impl TestTree {
     fn measure(
         &self,
         node: usize,
-        input: layout::LeafMeasureInput,
+        input: layout::tree::LeafMeasureInput,
         text: &str,
-    ) -> Result<layout::Size, Error> {
+    ) -> Result<layout::geometry::Size, Error> {
         if let Some(sizes) = self.grid_lanes_text.get(&node) {
             return grid_lanes_text::measure(*sizes, input);
         }
@@ -3273,12 +3302,12 @@ impl TestTree {
         let flow = input.flow_axes();
         let containing = input.containing_layout_context().flow_axes();
         let (inline_known, inline_request) = match flow.inline_axis() {
-            layout::PhysicalAxis::Horizontal => (known.width, requests.width),
-            layout::PhysicalAxis::Vertical => (known.height, requests.height),
+            layout::geometry::PhysicalAxis::Horizontal => (known.width, requests.width),
+            layout::geometry::PhysicalAxis::Vertical => (known.height, requests.height),
         };
         if inline_known.is_none()
-            && inline_request.operation() == layout::SizingOperation::Normal
-            && inline_request.space() == layout::AvailableSpace::Indefinite
+            && inline_request.operation() == layout::constraint::SizingOperation::Normal
+            && inline_request.space() == layout::constraint::AvailableSpace::Indefinite
             && flow.inline_axis() != containing.inline_axis()
         {
             return Err(Error::new("UnsupportedAnalyticOrthogonalTextProfile"));
@@ -3295,25 +3324,25 @@ impl TestTree {
             let height = known
                 .height
                 .unwrap_or_else(|| match requests.height.operation() {
-                    layout::SizingOperation::MinContent => text.min_content_width(),
-                    layout::SizingOperation::MaxContent => text.max_content_width(),
-                    layout::SizingOperation::Normal => {
+                    layout::constraint::SizingOperation::MinContent => text.min_content_width(),
+                    layout::constraint::SizingOperation::MaxContent => text.max_content_width(),
+                    layout::constraint::SizingOperation::Normal => {
                         requests.height.space().definite_size().map_or_else(
                             || text.max_content_width(),
-                            layout::NonNegativeFiniteOf::get,
+                            layout::length::NonNegativeFiniteOf::get,
                         )
                     }
                 });
             let width = known.width.unwrap_or_else(|| text.width_for_height(height));
-            return Ok(layout::Size::new(width, height));
+            return Ok(layout::geometry::Size::new(width, height));
         }
 
         let width = known
             .width
             .unwrap_or_else(|| match requests.width.operation() {
-                layout::SizingOperation::MinContent => text.min_content_width(),
-                layout::SizingOperation::MaxContent => text.max_content_width(),
-                layout::SizingOperation::Normal => {
+                layout::constraint::SizingOperation::MinContent => text.min_content_width(),
+                layout::constraint::SizingOperation::MaxContent => text.max_content_width(),
+                layout::constraint::SizingOperation::Normal => {
                     requests.width.space().definite_size().map_or_else(
                         || text.max_content_width(),
                         |width| {
@@ -3325,16 +3354,16 @@ impl TestTree {
                 }
             });
         let height = known.height.unwrap_or_else(|| text.height_for_width(width));
-        Ok(layout::Size::new(width, height))
+        Ok(layout::geometry::Size::new(width, height))
     }
 
-    fn apply_completed_batch(&mut self, batch: &layout::CompletedLayoutBatch<usize>) {
+    fn apply_completed_batch(&mut self, batch: &layout::batch::CompletedLayoutBatch<usize>) {
         batch
             .apply_to(self)
             .expect("fixture publication accepts its completed batch");
     }
 
-    fn box_node_input(&self, node: usize) -> &layout::NodeInput {
+    fn box_node_input(&self, node: usize) -> &layout::node::NodeInput {
         self.nodes[node]
             .layout_input
             .as_box()
@@ -3345,24 +3374,24 @@ impl TestTree {
 fn fixture_inline_metrics(
     font_size: Scalar,
     line_height: Scalar,
-) -> Result<layout::InlineMetrics, Error> {
+) -> Result<layout::inline::InlineMetrics, Error> {
     let leading = (line_height - font_size).max(0.0);
     let baseline = (leading / 2.0 + font_size * 0.8).min(line_height);
-    layout::InlineMetrics::try_new(
-        surgeist_layout::InlineBaselineContext::Physical,
+    layout::inline::InlineMetrics::try_new(
+        surgeist_layout::baseline::InlineBaselineContext::Physical,
         baseline,
         line_height,
     )
     .map_err(|error| Error::new(format!("invalid finite fixture inline metrics: {error:?}")))
 }
 
-fn grid_text_container_needs_anonymous_child(display: layout::Display) -> bool {
+fn grid_text_container_needs_anonymous_child(display: layout::box_model::Display) -> bool {
     matches!(
         display,
-        layout::Display::Grid
-            | layout::Display::InlineGrid
-            | layout::Display::GridLanes
-            | layout::Display::InlineGridLanes
+        layout::box_model::Display::Grid
+            | layout::box_model::Display::InlineGrid
+            | layout::box_model::Display::GridLanes
+            | layout::box_model::Display::InlineGridLanes
     )
 }
 
@@ -3540,7 +3569,7 @@ impl FontFamily {
     }
 }
 
-impl layout::Traverse for TestTree {
+impl layout::tree::Traverse for TestTree {
     type Node = usize;
 
     type Scalar = Scalar;
@@ -3559,14 +3588,14 @@ impl layout::Traverse for TestTree {
     }
 }
 
-impl layout::LayoutTree for TestTree {
+impl layout::tree::LayoutTree for TestTree {
     type MeasureError = Error;
 
-    fn node_input(&self, node: Self::Node) -> &layout::NodeInput {
+    fn node_input(&self, node: Self::Node) -> &layout::node::NodeInput {
         self.box_node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> layout::LayoutInputView<'_> {
+    fn layout_input(&self, node: Self::Node) -> layout::node::LayoutInputView<'_> {
         self.nodes[node].layout_input.as_view()
     }
 
@@ -3574,12 +3603,15 @@ impl layout::LayoutTree for TestTree {
         &self,
         node: Self::Node,
         input: &ComputeInput,
-        context: layout::CacheKeyContext,
+        context: layout::cache::CacheKeyContext,
     ) -> Option<ComputeOutput> {
         self.nodes[node].cache.get_with_context(input, context)
     }
 
-    fn unrounded_layout(&self, node: Self::Node) -> Option<layout::LayoutOutputEntry<usize>> {
+    fn unrounded_layout(
+        &self,
+        node: Self::Node,
+    ) -> Option<layout::batch::LayoutOutputEntry<usize>> {
         if self.nodes[node].unrounded_present {
             self.nodes[node].unrounded_entry
         } else {
@@ -3590,8 +3622,8 @@ impl layout::LayoutTree for TestTree {
     fn float_exclusion_interval(
         &self,
         node: Self::Node,
-        query: layout::FloatExclusionQuery,
-    ) -> Option<Result<Option<layout::FloatExclusionInterval>, Self::MeasureError>> {
+        query: layout::box_model::FloatExclusionQuery,
+    ) -> Option<Result<Option<layout::box_model::FloatExclusionInterval>, Self::MeasureError>> {
         let table = self.nodes[node].shape_bands.as_ref()?;
         let Some(band) = table.iter().find(|band| {
             band.band_minimum == query.band_minimum() && band.band_maximum == query.band_maximum()
@@ -3617,7 +3649,7 @@ impl layout::LayoutTree for TestTree {
             } => {
                 let originating_query = match originating_band {
                     Some((band_minimum, band_maximum)) => {
-                        match layout::FloatExclusionQuery::try_new(
+                        match layout::box_model::FloatExclusionQuery::try_new(
                             query.margin_box(),
                             query.flow_axes(),
                             band_minimum,
@@ -3634,10 +3666,14 @@ impl layout::LayoutTree for TestTree {
                     None => query,
                 };
                 Some(
-                    layout::FloatExclusionInterval::try_new(originating_query, minimum, maximum)
-                        .map_err(|error| {
-                            Error::new(format!("invalid fixture shape response: {error:?}"))
-                        }),
+                    layout::box_model::FloatExclusionInterval::try_new(
+                        originating_query,
+                        minimum,
+                        maximum,
+                    )
+                    .map_err(|error| {
+                        Error::new(format!("invalid fixture shape response: {error:?}"))
+                    }),
                 )
             }
         }
@@ -3653,8 +3689,8 @@ impl layout::LayoutTree for TestTree {
     fn measure_leaf(
         &self,
         node: Self::Node,
-        input: layout::LeafMeasureInput,
-    ) -> Option<Result<layout::Size, Self::MeasureError>> {
+        input: layout::tree::LeafMeasureInput,
+    ) -> Option<Result<layout::geometry::Size, Self::MeasureError>> {
         if let Some((image, natural)) = self.replaced_image
             && image == node
         {
@@ -3668,19 +3704,22 @@ impl layout::LayoutTree for TestTree {
     }
 }
 
-impl layout::LayoutBatchSink<usize, Scalar> for TestTree {
+impl layout::tree::LayoutBatchSink<usize, Scalar> for TestTree {
     type Error = std::convert::Infallible;
-    type Prepared = (Vec<TestNode>, Vec<layout::PlacedTextOutput<usize>>);
+    type Prepared = (
+        Vec<TestNode>,
+        Vec<layout::text_layout::PlacedTextOutput<usize>>,
+    );
 
-    fn publication_targets(&self) -> &layout::LayoutPublicationTargets<usize> {
+    fn publication_targets(&self) -> &layout::batch::LayoutPublicationTargets<usize> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut layout::LayoutPublicationTargets<usize> {
+    fn publication_targets_mut(&mut self) -> &mut layout::batch::LayoutPublicationTargets<usize> {
         &mut self.publication_targets
     }
     fn prepare_layout_batch<'call>(
         &self,
-        preparation: layout::LayoutBatchPreparation<'call, usize, Scalar>,
+        preparation: layout::batch::LayoutBatchPreparation<'call, usize, Scalar>,
     ) -> Result<Self::Prepared, Self::Error> {
         let batch = preparation.batch();
         let mut prepared = self.nodes.clone();
@@ -3722,21 +3761,21 @@ impl layout::LayoutBatchSink<usize, Scalar> for TestTree {
                 self.expected_publication_kind(node),
             );
             state.unrounded_entry = Some(match view {
-                layout::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
-                layout::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
-                layout::NodeLayoutRefOf::Fragments(_) => {
+                layout::fragmentation::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
+                layout::fragmentation::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
+                layout::fragmentation::NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             });
             state.unrounded_present = true;
             state.final_layout_present = true;
-            if matches!(state.layout_input, layout::LayoutInput::InlineText(_)) {
+            if matches!(state.layout_input, layout::node::LayoutInput::InlineText(_)) {
                 state.unrounded_inline_fragments = Some(Vec::new());
                 state.final_inline_fragments = Some(Vec::new());
             }
         }
         for entry in batch.unrounded_inline_fragments() {
-            let layout::InlineFragmentOwner::Node(node) = entry.owner() else {
+            let layout::text_layout::InlineFragmentOwner::Node(node) = entry.owner() else {
                 panic!("fixture contains node fragments")
             };
             prepared[*node]
@@ -3745,7 +3784,7 @@ impl layout::LayoutBatchSink<usize, Scalar> for TestTree {
                 .push(entry.fragment().clone());
         }
         for entry in batch.final_inline_fragments() {
-            let layout::InlineFragmentOwner::Node(node) = entry.owner() else {
+            let layout::text_layout::InlineFragmentOwner::Node(node) = entry.owner() else {
                 panic!("fixture contains node fragments")
             };
             prepared[*node]
@@ -3765,7 +3804,7 @@ impl layout::LayoutBatchSink<usize, Scalar> for TestTree {
 
     fn commit_layout_batch<'call>(
         &mut self,
-        commit: layout::LayoutBatchCommit<'call, usize, Scalar, Self::Prepared>,
+        commit: layout::batch::LayoutBatchCommit<'call, usize, Scalar, Self::Prepared>,
     ) {
         (self.nodes, self.placed_text) = commit.into_prepared();
     }
@@ -3778,8 +3817,8 @@ fn compare_expectation(
     expected: &Expectation,
     path: &str,
     use_rounding: bool,
-    unrounded_inline_fragments: &[layout::InlineFragmentOutputEntry<usize>],
-    final_inline_fragments: &[layout::InlineFragmentOutputEntry<usize>],
+    unrounded_inline_fragments: &[layout::batch::InlineFragmentOutputEntry<usize>],
+    final_inline_fragments: &[layout::batch::InlineFragmentOutputEntry<usize>],
 ) -> Result<(), Error> {
     compare_expectation_with_endpoint_accounting(
         tree,
@@ -3900,7 +3939,7 @@ fn compare_expectation_with_endpoint_accounting(
 }
 
 struct FragmentCursor<'a> {
-    entries: &'a [layout::InlineFragmentOutputEntry<usize>],
+    entries: &'a [layout::batch::InlineFragmentOutputEntry<usize>],
     next: usize,
 }
 
@@ -3911,8 +3950,8 @@ struct FragmentCursors<'a> {
 
 impl<'a> FragmentCursors<'a> {
     fn new(
-        unrounded: &'a [layout::InlineFragmentOutputEntry<usize>],
-        final_output: &'a [layout::InlineFragmentOutputEntry<usize>],
+        unrounded: &'a [layout::batch::InlineFragmentOutputEntry<usize>],
+        final_output: &'a [layout::batch::InlineFragmentOutputEntry<usize>],
     ) -> Self {
         Self {
             unrounded: FragmentCursor {
@@ -4072,20 +4111,21 @@ struct ComparisonState<'a> {
     element_scroll_next: usize,
     element_source_path: Option<String>,
     numeric: &'a mut NumericComparisonSink,
-    root_border_origin: Option<(usize, layout::Point)>,
+    root_border_origin: Option<(usize, layout::geometry::Point)>,
     fragment_cursors: FragmentCursors<'a>,
     strict_geometry_nodes: BTreeSet<usize>,
     pending_browser_controls: Vec<PendingBrowserControl>,
 }
 
 impl<'a> FragmentCursor<'a> {
-    fn take_for_node(&mut self, node: usize) -> &'a [layout::InlineFragmentOutputEntry<usize>] {
+    fn take_for_node(
+        &mut self,
+        node: usize,
+    ) -> &'a [layout::batch::InlineFragmentOutputEntry<usize>] {
         let start = self.next;
-        while self
-            .entries
-            .get(self.next)
-            .is_some_and(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(node))
-        {
+        while self.entries.get(self.next).is_some_and(|entry| {
+            entry.owner() == &layout::text_layout::InlineFragmentOwner::Node(node)
+        }) {
             self.next += 1;
         }
         &self.entries[start..self.next]
@@ -4162,13 +4202,13 @@ fn compare_expectation_in_source_order(
     };
     let browser_control_in_flex = expected.browser_control.is_some()
         && browser_control_context.is_some_and(|context| {
-            tree.box_node_input(context.parent).display == layout::Display::Flex
+            tree.box_node_input(context.parent).display == layout::box_model::Display::Flex
         });
     if !selected_output_is_present
         && !browser_control_in_flex
         && matches!(
             tree.nodes[node].layout_input,
-            layout::LayoutInput::LineBreak(_) | layout::LayoutInput::InlineBoundary(_)
+            layout::node::LayoutInput::LineBreak(_) | layout::node::LayoutInput::InlineBoundary(_)
         )
     {
         let phase = if use_rounding { "final" } else { "unrounded" };
@@ -4184,7 +4224,7 @@ fn compare_expectation_in_source_order(
     };
     let observation_location = match comparison_state.root_border_origin {
         Some((root, origin)) if node == root => {
-            layout::Point::new(actual.location.x - origin.x, actual.location.y - origin.y)
+            layout::geometry::Point::new(actual.location.x - origin.x, actual.location.y - origin.y)
         }
         _ => actual.location,
     };
@@ -4338,10 +4378,10 @@ fn compare_expectation_in_source_order(
     Ok(())
 }
 
-fn unobserved_inline_boundary(input: &layout::LayoutInput) -> bool {
+fn unobserved_inline_boundary(input: &layout::node::LayoutInput) -> bool {
     match input {
-        layout::LayoutInput::InlineBoundary(_) => true,
-        layout::LayoutInput::TextControl(control) => matches!(
+        layout::node::LayoutInput::InlineBoundary(_) => true,
+        layout::node::LayoutInput::TextControl(control) => matches!(
             control.occurrence().view().kind(),
             surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryStart
                 | surgeist_text::paragraph::ParagraphControlKind::InlineBoundaryEnd
@@ -4364,7 +4404,7 @@ fn consume_unobserved_boundary(
         .flat_map(|paragraph| &paragraph.controls)
         .find(|row| row.node == node)
     {
-        let actual_control = |entry: &layout::InlineFragmentOutputEntry<usize>| {
+        let actual_control = |entry: &layout::batch::InlineFragmentOutputEntry<usize>| {
             matches!(entry.fragment().finalized_fragment().view().owner(),
                 surgeist_text::finalized::FinalizedFragmentOwner::Control(owner)
                     if owner == control.occurrence)
@@ -4441,7 +4481,7 @@ fn comparison_expected_children<'a>(
 
 /// Fixture identity is the actual origin's ordinal in its retained preparation;
 /// observed rectangles and numeric IDs cannot mint that association.
-fn fragment_source_id(fragment: &layout::InlineFragmentOutput) -> Result<u64, Error> {
+fn fragment_source_id(fragment: &layout::text_layout::InlineFragmentOutput) -> Result<u64, Error> {
     let issued = fragment.finalized_fragment();
     let origin = issued
         .view()
@@ -4457,7 +4497,7 @@ fn fragment_source_id(fragment: &layout::InlineFragmentOutput) -> Result<u64, Er
 
 fn compare_fragment_expectations(
     path: &str,
-    actual: &[layout::InlineFragmentOutputEntry<usize>],
+    actual: &[layout::batch::InlineFragmentOutputEntry<usize>],
     expected: &[InlineFragmentExpectation],
 ) -> Result<(), Error> {
     if expected
@@ -4541,7 +4581,7 @@ fn compare_range_rectangle_expectations(
     tree: &TestTree,
     owner: usize,
     path: &str,
-    actual: &[layout::InlineFragmentOutputEntry<usize>],
+    actual: &[layout::batch::InlineFragmentOutputEntry<usize>],
     expected: &[InlineRangeRectangleExpectation],
     numeric: &mut NumericComparisonSink,
 ) -> Result<(), Error> {
@@ -4600,18 +4640,18 @@ struct NativeRangeRectangle {
     pieces: Vec<RangePieceKey>,
     source_segment_id: u64,
     line_index: usize,
-    rect: layout::ScrollRect,
+    rect: layout::scroll::ScrollRect,
 }
 
 struct NativeRangeOrigin<'a> {
     origin: surgeist_text::prepared::PreparedOrigin,
-    entries: Vec<&'a layout::InlineFragmentOutputEntry<usize>>,
+    entries: Vec<&'a layout::batch::InlineFragmentOutputEntry<usize>>,
 }
 
 fn prepared_range_piece_key(
     path: &str,
     origin: &surgeist_text::prepared::PreparedOrigin,
-    entries: &[&layout::InlineFragmentOutputEntry<usize>],
+    entries: &[&layout::batch::InlineFragmentOutputEntry<usize>],
     unit: surgeist_text::range_fragments::SourceRangeUnit<'_>,
     ordinal: usize,
 ) -> Result<RangePieceKey, Error> {
@@ -4663,7 +4703,7 @@ fn prepared_range_piece_key(
 
 fn native_range_rectangles(
     path: &str,
-    actual: &[layout::InlineFragmentOutputEntry<usize>],
+    actual: &[layout::batch::InlineFragmentOutputEntry<usize>],
     placed: &surgeist_text::layout::Layout,
     row_pieces: Option<&[&[RangePieceKey]]>,
 ) -> Result<Vec<NativeRangeRectangle>, Error> {
@@ -4773,9 +4813,12 @@ fn native_range_rectangles(
             };
             for piece in unit.pieces() {
                 let rect = piece.rect();
-                let rect = layout::ScrollRect::try_new(
-                    layout::Point::new(rect.origin.x as Scalar, rect.origin.y as Scalar),
-                    layout::Size::new(rect.size.width as Scalar, rect.size.height as Scalar),
+                let rect = layout::scroll::ScrollRect::try_new(
+                    layout::geometry::Point::new(rect.origin.x as Scalar, rect.origin.y as Scalar),
+                    layout::geometry::Size::new(
+                        rect.size.width as Scalar,
+                        rect.size.height as Scalar,
+                    ),
                 )
                 .map_err(|_| Error::new("placed Range rectangle is not finite"))?;
                 let next = NativeRangeRectangle {
@@ -4850,9 +4893,9 @@ fn merge_native_range_rectangles(
     {
         return Ok(false);
     }
-    previous.rect = layout::ScrollRect::try_new(
-        layout::Point::new(a.origin().x.min(b.origin().x), a.origin().y),
-        layout::Size::new(a.size().width + b.size().width, a.size().height),
+    previous.rect = layout::scroll::ScrollRect::try_new(
+        layout::geometry::Point::new(a.origin().x.min(b.origin().x), a.origin().y),
+        layout::geometry::Size::new(a.size().width + b.size().width, a.size().height),
     )
     .map_err(|_| Error::new("coalesced Range rectangle is not finite"))?;
     previous.source.end = next.source.end;
@@ -4860,7 +4903,10 @@ fn merge_native_range_rectangles(
     Ok(true)
 }
 
-fn range_rectangle_values(rect: layout::ScrollRect, edge: PhysicalStartEdge) -> (Scalar, Scalar) {
+fn range_rectangle_values(
+    rect: layout::scroll::ScrollRect,
+    edge: PhysicalStartEdge,
+) -> (Scalar, Scalar) {
     match edge {
         PhysicalStartEdge::Left => (rect.origin().x, rect.size().width),
         PhysicalStartEdge::Right => (rect.origin().x + rect.size().width, rect.size().width),
@@ -4872,7 +4918,7 @@ fn range_rectangle_values(rect: layout::ScrollRect, edge: PhysicalStartEdge) -> 
 #[cfg(test)]
 fn compare_range_rectangle_expectations_with_translation(
     path: &str,
-    actual: &[layout::InlineFragmentOutputEntry<usize>],
+    actual: &[layout::batch::InlineFragmentOutputEntry<usize>],
     placed: &surgeist_text::layout::Layout,
     expected: &[InlineRangeRectangleExpectation],
     translation: impl FnMut(PhysicalStartEdge) -> Result<Scalar, Error>,
@@ -4897,7 +4943,7 @@ struct RangeRectanglePair {
 
 fn visit_range_rectangle_pairs(
     path: &str,
-    actual: &[layout::InlineFragmentOutputEntry<usize>],
+    actual: &[layout::batch::InlineFragmentOutputEntry<usize>],
     placed: &surgeist_text::layout::Layout,
     expected: &[InlineRangeRectangleExpectation],
     row_pieces: Option<&[&[RangePieceKey]]>,
@@ -5111,7 +5157,7 @@ fn project_prepared_browser_br_font_band(
     profile: BrFontBandProfile,
 ) -> Result<Option<BrowserBrFontBand>, Error> {
     let input = &tree.nodes[node];
-    let layout::LayoutInput::TextControl(control) = &input.layout_input else {
+    let layout::node::LayoutInput::TextControl(control) = &input.layout_input else {
         return Ok(None);
     };
     let writing_mode = tree.box_node_input(parent).writing_mode;
@@ -5121,13 +5167,13 @@ fn project_prepared_browser_br_font_band(
     let vertical = match (profile, writing_mode) {
         (
             BrFontBandProfile::Horizontal | BrFontBandProfile::EmptyLine,
-            layout::WritingMode::HorizontalTb,
+            layout::geometry::WritingMode::HorizontalTb,
         ) => false,
         (
             BrFontBandProfile::Vertical,
-            layout::WritingMode::VerticalLr | layout::WritingMode::VerticalRl,
+            layout::geometry::WritingMode::VerticalLr | layout::geometry::WritingMode::VerticalRl,
         )
-        | (BrFontBandProfile::EmptyLine, layout::WritingMode::VerticalRl) => true,
+        | (BrFontBandProfile::EmptyLine, layout::geometry::WritingMode::VerticalRl) => true,
         _ => return Ok(None),
     };
     let font = match profile {
@@ -5254,13 +5300,13 @@ fn validate_browser_br_band_source(
         ))
     })?;
     let parent = tree.box_node_input(context.parent);
-    let axes = layout::FlowAxes::new(parent.writing_mode, parent.direction);
+    let axes = layout::geometry::FlowAxes::new(parent.writing_mode, parent.direction);
     let actual = match &tree.nodes[node].layout_input {
-        layout::LayoutInput::LineBreak(input) => {
-            input.display() == layout::LineBreakDisplay::Break
-                && layout::FlowAxes::new(input.writing_mode(), input.direction()) == axes
+        layout::node::LayoutInput::LineBreak(input) => {
+            input.display() == layout::text_flow::LineBreakDisplay::Break
+                && layout::geometry::FlowAxes::new(input.writing_mode(), input.direction()) == axes
         }
-        layout::LayoutInput::TextControl(_) => semantic_br_flow(tree, node) == Some(axes),
+        layout::node::LayoutInput::TextControl(_) => semantic_br_flow(tree, node) == Some(axes),
         _ => false,
     };
     if !tree.nodes[node].is_br_source
@@ -5274,9 +5320,9 @@ fn validate_browser_br_band_source(
     Ok(context.parent)
 }
 
-fn semantic_br_flow(tree: &TestTree, node: usize) -> Option<layout::FlowAxes> {
+fn semantic_br_flow(tree: &TestTree, node: usize) -> Option<layout::geometry::FlowAxes> {
     let native = tree.nodes.get(node)?;
-    let layout::LayoutInput::TextControl(input) = &native.layout_input else {
+    let layout::node::LayoutInput::TextControl(input) = &native.layout_input else {
         return None;
     };
     let parent = native.parent?;
@@ -5295,7 +5341,10 @@ fn semantic_br_flow(tree: &TestTree, node: usize) -> Option<layout::FlowAxes> {
         return None;
     }
     let parent = tree.box_node_input(parent);
-    Some(layout::FlowAxes::new(parent.writing_mode, parent.direction))
+    Some(layout::geometry::FlowAxes::new(
+        parent.writing_mode,
+        parent.direction,
+    ))
 }
 
 fn compare_browser_control_expectation(
@@ -5318,8 +5367,8 @@ fn compare_browser_control_expectation(
         expected.source_index,
     )?;
     let parent_input = tree.box_node_input(context.parent);
-    if parent_input.display == layout::Display::Flex {
-        if parent_input.flex_wrap != layout::FlexWrap::NoWrap {
+    if parent_input.display == layout::box_model::Display::Flex {
+        if parent_input.flex_wrap != layout::flex::FlexWrap::NoWrap {
             return Err(Error::new(format!(
                 "{path}: wrapped flex browser control observations are unsupported"
             )));
@@ -5368,14 +5417,16 @@ fn compare_browser_control_expectation(
     }
 
     let flow = match &tree.nodes[node].layout_input {
-        layout::LayoutInput::LineBreak(line_break) => {
-            layout::FlowAxes::new(line_break.writing_mode(), line_break.direction())
+        layout::node::LayoutInput::LineBreak(line_break) => {
+            layout::geometry::FlowAxes::new(line_break.writing_mode(), line_break.direction())
         }
-        layout::LayoutInput::TextControl(_) => semantic_br_flow(tree, node).ok_or_else(|| {
-            Error::new(format!(
-                "{path}: browser control source mismatch, expected an issued forced-break BR"
-            ))
-        })?,
+        layout::node::LayoutInput::TextControl(_) => {
+            semantic_br_flow(tree, node).ok_or_else(|| {
+                Error::new(format!(
+                    "{path}: browser control source mismatch, expected an issued forced-break BR"
+                ))
+            })?
+        }
         _ => {
             return Err(Error::new(format!(
                 "{path}: browser control source mismatch, expected a line break"
@@ -5395,7 +5446,7 @@ fn compare_browser_control_expectation(
         .take_while(|sibling| {
             !matches!(
                 tree.nodes[**sibling].layout_input,
-                layout::LayoutInput::LineBreak(_)
+                layout::node::LayoutInput::LineBreak(_)
             ) && semantic_br_flow(tree, **sibling).is_none()
         })
         .filter(|sibling| {
@@ -5473,7 +5524,7 @@ struct EndpointObservability<'a> {
     actual_previous: BrowserNeighborLine,
     actual_next: BrowserNeighborLine,
     control_interval: (Scalar, Scalar),
-    flow: layout::FlowAxes,
+    flow: layout::geometry::FlowAxes,
     strict_geometry_nodes: &'a BTreeSet<usize>,
 }
 
@@ -5494,14 +5545,14 @@ fn endpoint_is_unobservable(observation: EndpointObservability<'_>) -> bool {
         return false;
     };
     let visible_break = match &tree.nodes[node].layout_input {
-        layout::LayoutInput::LineBreak(line_break) => {
-            line_break.display() == layout::LineBreakDisplay::Break
+        layout::node::LayoutInput::LineBreak(line_break) => {
+            line_break.display() == layout::text_flow::LineBreakDisplay::Break
         }
-        layout::LayoutInput::TextControl(_) => semantic_br_flow(tree, node).is_some(),
+        layout::node::LayoutInput::TextControl(_) => semantic_br_flow(tree, node).is_some(),
         _ => false,
     };
     if !visible_break
-        || tree.nodes[node].unrounded.size != layout::Size::ZERO
+        || tree.nodes[node].unrounded.size != layout::geometry::Size::ZERO
         || !tree.nodes[previous].unrounded_present
         || !tree.nodes[next].unrounded_present
         || !strict_geometry_nodes.contains(&previous)
@@ -5517,12 +5568,12 @@ fn endpoint_is_unobservable(observation: EndpointObservability<'_>) -> bool {
     let previous_interval = output_block_interval(tree.nodes[previous].unrounded, flow);
     let next_interval = output_block_interval(tree.nodes[next].unrounded, flow);
     let shared_endpoint = match flow.block_start() {
-        layout::PhysicalSide::Top | layout::PhysicalSide::Left
+        layout::geometry::PhysicalSide::Top | layout::geometry::PhysicalSide::Left
             if previous_interval.1 == next_interval.0 =>
         {
             previous_interval.1
         }
-        layout::PhysicalSide::Right | layout::PhysicalSide::Bottom
+        layout::geometry::PhysicalSide::Right | layout::geometry::PhysicalSide::Bottom
             if previous_interval.0 == next_interval.1 =>
         {
             previous_interval.0
@@ -5537,7 +5588,7 @@ fn browser_neighbor_relation(
     tree: &TestTree,
     neighbor: Option<usize>,
     control_interval: (Scalar, Scalar),
-    flow: layout::FlowAxes,
+    flow: layout::geometry::FlowAxes,
     path: &str,
 ) -> Result<BrowserNeighborLine, Error> {
     let Some(neighbor) = neighbor else {
@@ -5555,12 +5606,15 @@ fn browser_neighbor_relation(
     ))
 }
 
-fn output_block_interval(output: Observation<Scalar>, flow: layout::FlowAxes) -> (Scalar, Scalar) {
+fn output_block_interval(
+    output: Observation<Scalar>,
+    flow: layout::geometry::FlowAxes,
+) -> (Scalar, Scalar) {
     match flow.block_axis() {
-        layout::PhysicalAxis::Horizontal => {
+        layout::geometry::PhysicalAxis::Horizontal => {
             (output.location.x, output.location.x + output.size.width)
         }
-        layout::PhysicalAxis::Vertical => {
+        layout::geometry::PhysicalAxis::Vertical => {
             (output.location.y, output.location.y + output.size.height)
         }
     }
@@ -5569,7 +5623,7 @@ fn output_block_interval(output: Observation<Scalar>, flow: layout::FlowAxes) ->
 fn block_relation(
     control: (Scalar, Scalar),
     neighbor: (Scalar, Scalar),
-    flow: layout::FlowAxes,
+    flow: layout::geometry::FlowAxes,
 ) -> BrowserNeighborLine {
     let tolerance = ComparisonTolerance::browser_parity().value;
     if neighbor.1 + tolerance >= control.0 && control.1 + tolerance >= neighbor.0 {
@@ -5578,8 +5632,10 @@ fn block_relation(
     let control_center = control.0 + (control.1 - control.0) / 2.0;
     let neighbor_center = neighbor.0 + (neighbor.1 - neighbor.0) / 2.0;
     let neighbor_is_earlier = match flow.block_start() {
-        layout::PhysicalSide::Top | layout::PhysicalSide::Left => neighbor_center < control_center,
-        layout::PhysicalSide::Right | layout::PhysicalSide::Bottom => {
+        layout::geometry::PhysicalSide::Top | layout::geometry::PhysicalSide::Left => {
+            neighbor_center < control_center
+        }
+        layout::geometry::PhysicalSide::Right | layout::geometry::PhysicalSide::Bottom => {
             neighbor_center > control_center
         }
     };
@@ -5661,14 +5717,14 @@ fn compare_number(path: &str, field: &str, actual: Scalar, expected: Scalar) -> 
 }
 
 #[cfg(test)]
-fn to_layout_input(attrs: &StyleAttrs) -> Result<layout::LayoutInput, Error> {
+fn to_layout_input(attrs: &StyleAttrs) -> Result<layout::node::LayoutInput, Error> {
     to_layout_input_in_flow(attrs, None)
 }
 
 fn to_layout_input_in_flow(
     attrs: &StyleAttrs,
-    containing_flow: Option<layout::FlowAxes>,
-) -> Result<layout::LayoutInput, Error> {
+    containing_flow: Option<layout::geometry::FlowAxes>,
+) -> Result<layout::node::LayoutInput, Error> {
     let input = to_node_input_in_flow(attrs, containing_flow)?;
     let br_is_inline_control = attrs.get("source-tag") == Some("br")
         && matches!(attrs.get("display"), Some("inline" | "none"));
@@ -5680,33 +5736,34 @@ fn to_layout_input_in_flow(
         )));
     }
     if br_is_inline_control {
-        let flow = containing_flow
-            .unwrap_or_else(|| layout::FlowAxes::new(input.writing_mode, input.direction));
-        let mut br = layout::LineBreakInput::new()
+        let flow = containing_flow.unwrap_or_else(|| {
+            layout::geometry::FlowAxes::new(input.writing_mode, input.direction)
+        });
+        let mut br = layout::text_flow::LineBreakInput::new()
             .with_direction(flow.direction())
             .with_writing_mode(flow.writing_mode())
             .with_vertical_align(input.vertical_align)
             .with_clear(input.clear);
-        if input.display == layout::Display::None {
+        if input.display == layout::box_model::Display::None {
             br = br.hidden();
         }
         if let Some(metrics) = inline_metrics(attrs)? {
             br = br.with_metrics(metrics);
         }
-        Ok(layout::LayoutInput::line_break(br))
+        Ok(layout::node::LayoutInput::line_break(br))
     } else {
-        Ok(layout::LayoutInput::box_input(input))
+        Ok(layout::node::LayoutInput::box_input(input))
     }
 }
 
-fn to_node_input(attrs: &StyleAttrs) -> Result<layout::NodeInput, Error> {
+fn to_node_input(attrs: &StyleAttrs) -> Result<layout::node::NodeInput, Error> {
     to_node_input_in_flow(attrs, None)
 }
 
 fn to_node_input_in_flow(
     attrs: &StyleAttrs,
-    containing_flow: Option<layout::FlowAxes>,
-) -> Result<layout::NodeInput, Error> {
+    containing_flow: Option<layout::geometry::FlowAxes>,
+) -> Result<layout::node::NodeInput, Error> {
     for name in [
         "overflow",
         "scroll-padding",
@@ -5720,16 +5777,16 @@ fn to_node_input_in_flow(
             )));
         }
     }
-    let mut input = layout::NodeInput {
+    let mut input = layout::node::NodeInput {
         overflow: parse_computed_overflow(attrs)?,
-        ..layout::NodeInput::default()
+        ..layout::node::NodeInput::default()
     };
     let source_tag = attrs.get("source-tag");
     input.display = match attrs.get("display") {
-        Some("inline") if source_tag == Some("br") => layout::Display::Block,
+        Some("inline") if source_tag == Some("br") => layout::box_model::Display::Block,
         Some(value) => parse_display(value)?,
         None => match source_tag {
-            Some("div") => layout::Display::Block,
+            Some("div") => layout::box_model::Display::Block,
             _ => input.display,
         },
     };
@@ -5738,7 +5795,7 @@ fn to_node_input_in_flow(
     }
     if let Some(value) = attrs.get("flex-item-collapse") {
         input.flex_item_collapse = match value {
-            "collapsed" => layout::FlexItemCollapse::Collapsed,
+            "collapsed" => layout::flex::FlexItemCollapse::Collapsed,
             _ => {
                 return Err(Error::new(format!(
                     "unsupported normalized flex-item collapse `{value}`"
@@ -5757,7 +5814,7 @@ fn to_node_input_in_flow(
     }
     if let Some(value) = attrs.get("float-exclusion") {
         input.float_exclusion = match value {
-            "shape" => layout::FloatExclusion::Shape,
+            "shape" => layout::box_model::FloatExclusion::Shape,
             _ => {
                 return Err(Error::new(format!(
                     "unsupported fixture float exclusion `{value}`"
@@ -5766,7 +5823,7 @@ fn to_node_input_in_flow(
         };
     }
     if let Some(value) = attrs.get("scrollbar-width") {
-        input.scrollbar_width = layout::ScrollbarWidth::try_new(parse_number(value)?)
+        input.scrollbar_width = layout::overflow::ScrollbarWidth::try_new(parse_number(value)?)
             .map_err(|source| Error::new(source.to_string()))?;
     }
     if let Some(value) = attrs.get("overflow-clip-margin") {
@@ -5775,13 +5832,13 @@ fn to_node_input_in_flow(
     if let Some(value) = attrs.get("scrollbar-gutter") {
         input.scrollbar_gutter = parse_scrollbar_gutter(value)?;
     }
-    input.scroll_padding = layout::ScrollPadding::new(
+    input.scroll_padding = layout::overflow::ScrollPadding::new(
         parse_scroll_padding(attrs.get("scroll-padding-top"))?,
         parse_scroll_padding(attrs.get("scroll-padding-right"))?,
         parse_scroll_padding(attrs.get("scroll-padding-bottom"))?,
         parse_scroll_padding(attrs.get("scroll-padding-left"))?,
     );
-    input.scroll_margin = layout::ScrollMargin::try_new(
+    input.scroll_margin = layout::overflow::ScrollMargin::try_new(
         parse_scroll_margin(attrs.get("scroll-margin-top"))?,
         parse_scroll_margin(attrs.get("scroll-margin-right"))?,
         parse_scroll_margin(attrs.get("scroll-margin-bottom"))?,
@@ -5805,7 +5862,7 @@ fn to_node_input_in_flow(
     }
     input.writing_mode = parse_writing_mode(attrs.get("writing-mode"))?;
     let containing_flow = containing_flow
-        .unwrap_or_else(|| layout::FlowAxes::new(input.writing_mode, input.direction));
+        .unwrap_or_else(|| layout::geometry::FlowAxes::new(input.writing_mode, input.direction));
     if let Some(value) = attrs.get("float") {
         input.float = parse_float(value, containing_flow)?;
     }
@@ -5819,11 +5876,11 @@ fn to_node_input_in_flow(
         input.flex_wrap = parse_flex_wrap(value)?;
     }
     if let Some(value) = attrs.get("flex-grow") {
-        input.flex_grow = layout::FlexGrow::try_new(parse_number(value)?)
+        input.flex_grow = layout::flex::FlexGrow::try_new(parse_number(value)?)
             .map_err(|source| Error::new(source.to_string()))?;
     }
     if let Some(value) = attrs.get("flex-shrink") {
-        input.flex_shrink = layout::FlexShrink::try_new(parse_number(value)?)
+        input.flex_shrink = layout::flex::FlexShrink::try_new(parse_number(value)?)
             .map_err(|source| Error::new(source.to_string()))?;
     }
     if let Some(value) = attrs.get("flex-basis") {
@@ -5849,15 +5906,15 @@ fn to_node_input_in_flow(
     }
     if let Some(value) = attrs.get("aspect-ratio") {
         let value = parse_number(value)?;
-        input.aspect_ratio = layout::AspectRatio::new(value);
+        input.aspect_ratio = layout::length::AspectRatio::new(value);
         if input.aspect_ratio.is_none() {
             return Err(Error::new(format!("invalid aspect-ratio `{value}`")));
         }
     }
-    let flow_axes = layout::FlowAxes::new(input.writing_mode, input.direction);
+    let flow_axes = layout::geometry::FlowAxes::new(input.writing_mode, input.direction);
     let (default_inline_gap, default_block_gap) = match flow_axes.inline_axis() {
-        layout::PhysicalAxis::Horizontal => (input.gap.width, input.gap.height),
-        layout::PhysicalAxis::Vertical => (input.gap.height, input.gap.width),
+        layout::geometry::PhysicalAxis::Horizontal => (input.gap.width, input.gap.height),
+        layout::geometry::PhysicalAxis::Vertical => (input.gap.height, input.gap.width),
     };
     let inline_gap = match attrs.get("column-gap") {
         Some(value) => parse_length_with_calc(value)?,
@@ -5868,8 +5925,12 @@ fn to_node_input_in_flow(
         None => default_block_gap,
     };
     input.gap = match flow_axes.inline_axis() {
-        layout::PhysicalAxis::Horizontal => layout::Size::new(inline_gap, block_gap),
-        layout::PhysicalAxis::Vertical => layout::Size::new(block_gap, inline_gap),
+        layout::geometry::PhysicalAxis::Horizontal => {
+            layout::geometry::Size::new(inline_gap, block_gap)
+        }
+        layout::geometry::PhysicalAxis::Vertical => {
+            layout::geometry::Size::new(block_gap, inline_gap)
+        }
     };
 
     apply_edges_auto(
@@ -5881,7 +5942,7 @@ fn to_node_input_in_flow(
             ("margin-bottom", 2),
             ("margin-left", 3),
         ],
-        layout::LengthAuto::ZERO,
+        layout::length::LengthAuto::ZERO,
     )?;
     apply_edges(
         &mut input.padding,
@@ -5892,7 +5953,7 @@ fn to_node_input_in_flow(
             ("padding-bottom", 2),
             ("padding-left", 3),
         ],
-        layout::Length::ZERO,
+        layout::length::Length::ZERO,
     )?;
     apply_edges(
         &mut input.border,
@@ -5903,13 +5964,13 @@ fn to_node_input_in_flow(
             ("border-bottom", 2),
             ("border-left", 3),
         ],
-        layout::Length::ZERO,
+        layout::length::Length::ZERO,
     )?;
     apply_edges_auto(
         &mut input.inset,
         attrs,
         [("top", 0), ("right", 1), ("bottom", 2), ("left", 3)],
-        layout::LengthAuto::AUTO,
+        layout::length::LengthAuto::AUTO,
     )?;
 
     if let Some(value) = attrs.get("align-items") {
@@ -5959,7 +6020,7 @@ fn to_node_input_in_flow(
 
     if matches!(
         input.display,
-        layout::Display::GridLanes | layout::Display::InlineGridLanes
+        layout::box_model::Display::GridLanes | layout::box_model::Display::InlineGridLanes
     ) {
         input.grid_lanes_flow = parse_grid_lanes_flow(attrs, &input)?;
     }
@@ -5968,10 +6029,10 @@ fn to_node_input_in_flow(
 }
 
 fn apply_edges(
-    edges: &mut layout::Edges<layout::Length>,
+    edges: &mut layout::geometry::Edges<layout::length::Length>,
     attrs: &StyleAttrs,
     names: [(&str, usize); 4],
-    default: layout::Length,
+    default: layout::length::Length,
 ) -> Result<(), Error> {
     for (name, side) in names {
         if let Some(value) = attrs.get(name) {
@@ -5984,10 +6045,10 @@ fn apply_edges(
 }
 
 fn apply_edges_auto(
-    edges: &mut layout::Edges<layout::LengthAuto>,
+    edges: &mut layout::geometry::Edges<layout::length::LengthAuto>,
     attrs: &StyleAttrs,
     names: [(&str, usize); 4],
-    default: layout::LengthAuto,
+    default: layout::length::LengthAuto,
 ) -> Result<(), Error> {
     for (name, side) in names {
         if let Some(value) = attrs.get(name) {
@@ -5999,7 +6060,7 @@ fn apply_edges_auto(
     Ok(())
 }
 
-fn set_edge<T>(edges: &mut layout::Edges<T>, side: usize, value: T) {
+fn set_edge<T>(edges: &mut layout::geometry::Edges<T>, side: usize, value: T) {
     match side {
         0 => edges.top = value,
         1 => edges.right = value,
@@ -6023,15 +6084,15 @@ fn line_height(attrs: &StyleAttrs) -> Result<Option<Scalar>, Error> {
     }
 }
 
-fn inline_metrics(attrs: &StyleAttrs) -> Result<Option<layout::InlineMetrics>, Error> {
+fn inline_metrics(attrs: &StyleAttrs) -> Result<Option<layout::inline::InlineMetrics>, Error> {
     match (
         attrs.get("inline-baseline"),
         attrs.get("inline-line-height"),
     ) {
         (None, None) => Ok(None),
         (Some(baseline), Some(line_height)) => {
-            layout::InlineMetrics::from_line_height_and_baseline(
-                surgeist_layout::InlineBaselineContext::Physical,
+            layout::inline::InlineMetrics::from_line_height_and_baseline(
+                surgeist_layout::baseline::InlineBaselineContext::Physical,
                 parse_px_dimension(line_height, "inline-line-height")?,
                 parse_px_dimension(baseline, "inline-baseline")?,
             )
@@ -6062,23 +6123,23 @@ fn parse_px_dimension(raw: &str, name: &str) -> Result<Scalar, Error> {
     parse_number(value)
 }
 
-fn parse_raw_grid_line(raw: &str) -> Result<layout::RawGridLine, Error> {
+fn parse_raw_grid_line(raw: &str) -> Result<layout::grid::RawGridLine, Error> {
     let tokens = split_top_level_whitespace(raw);
     match tokens.as_slice() {
-        [token] if token == "auto" => Ok(layout::RawGridLine::Auto),
+        [token] if token == "auto" => Ok(layout::grid::RawGridLine::Auto),
         [token] if token == "span" => Err(Error::new("invalid grid span `span`")),
         [token] => match parse_style_line_index(token) {
             Ok(0) => Err(Error::new(format!("grid line cannot be zero in `{raw}`"))),
-            Ok(line) => Ok(layout::RawGridLine::Line(line.into())),
-            Err(_) => Ok(layout::RawGridLine::BareIdent(
+            Ok(line) => Ok(layout::grid::RawGridLine::Line(line.into())),
+            Err(_) => Ok(layout::grid::RawGridLine::BareIdent(
                 parse_custom_ident(token)?.to_owned(),
             )),
         },
         [span, token] if span == "span" => {
             if let Ok(index) = parse_style_span_index(token) {
-                Ok(layout::RawGridLine::Span(index.into()))
+                Ok(layout::grid::RawGridLine::Span(index.into()))
             } else {
-                Ok(layout::RawGridLine::NamedSpan {
+                Ok(layout::grid::RawGridLine::NamedSpan {
                     name: parse_custom_ident(token)?.to_owned(),
                     index: 1,
                 })
@@ -6088,12 +6149,12 @@ fn parse_raw_grid_line(raw: &str) -> Result<layout::RawGridLine, Error> {
         [index, name] if parse_style_line_index(index).is_ok() => named_raw_line(name, index, raw),
         [span, first, second] if span == "span" => {
             if let Ok(index) = parse_style_span_index(first) {
-                Ok(layout::RawGridLine::NamedSpan {
+                Ok(layout::grid::RawGridLine::NamedSpan {
                     name: parse_custom_ident(second)?.to_owned(),
                     index: index.into(),
                 })
             } else {
-                Ok(layout::RawGridLine::NamedSpan {
+                Ok(layout::grid::RawGridLine::NamedSpan {
                     name: parse_custom_ident(first)?.to_owned(),
                     index: parse_style_span_index(second)?.into(),
                 })
@@ -6106,28 +6167,29 @@ fn parse_raw_grid_line(raw: &str) -> Result<layout::RawGridLine, Error> {
 fn parse_grid_placement(
     start: Option<&str>,
     end: Option<&str>,
-) -> Result<(layout::GridPlacement, layout::RawGridPlacement), Error> {
+) -> Result<(layout::grid::GridPlacement, layout::grid::RawGridPlacement), Error> {
     let start = start.unwrap_or("auto");
     let end = end.unwrap_or("auto");
     let mut span = None;
     let legacy_start = parse_grid_line_or_span(start, &mut span).unwrap_or(None);
     let legacy_end = parse_grid_line_or_span(end, &mut span).unwrap_or(None);
     let legacy = match (legacy_start, legacy_end, span) {
-        (Some(start), Some(end), None) => layout::GridPlacement::try_lines(start, end),
-        (Some(start), None, Some(span)) => layout::GridPlacement::try_line_span(start, span),
-        (None, Some(end), Some(span)) => layout::GridPlacement::try_span_line(span, end),
-        (Some(start), None, None) => layout::GridPlacement::try_line(start),
-        (None, Some(end), None) => layout::GridPlacement::try_end_line(end),
-        (None, None, Some(span)) => layout::GridPlacement::try_span(span),
-        (None, None, None) => Some(layout::GridPlacement::AUTO),
+        (Some(start), Some(end), None) => layout::grid::GridPlacement::try_lines(start, end),
+        (Some(start), None, Some(span)) => layout::grid::GridPlacement::try_line_span(start, span),
+        (None, Some(end), Some(span)) => layout::grid::GridPlacement::try_span_line(span, end),
+        (Some(start), None, None) => layout::grid::GridPlacement::try_line(start),
+        (None, Some(end), None) => layout::grid::GridPlacement::try_end_line(end),
+        (None, None, Some(span)) => layout::grid::GridPlacement::try_span(span),
+        (None, None, None) => Some(layout::grid::GridPlacement::AUTO),
         (Some(_), Some(_), Some(_)) => None,
     }
-    .unwrap_or(layout::GridPlacement::AUTO);
-    let raw = layout::RawGridPlacement::new(parse_raw_grid_line(start)?, parse_raw_grid_line(end)?);
+    .unwrap_or(layout::grid::GridPlacement::AUTO);
+    let raw =
+        layout::grid::RawGridPlacement::new(parse_raw_grid_line(start)?, parse_raw_grid_line(end)?);
     Ok((legacy, raw))
 }
 
-fn parse_grid_template_areas(raw: &str) -> Result<layout::GridTemplateAreas, Error> {
+fn parse_grid_template_areas(raw: &str) -> Result<layout::grid::GridTemplateAreas, Error> {
     if raw.trim().is_empty() || raw.trim() == "none" {
         return Err(Error::new(format!(
             "unsupported explicit grid template areas `{raw}`"
@@ -6149,10 +6211,10 @@ fn parse_grid_template_areas(raw: &str) -> Result<layout::GridTemplateAreas, Err
         ));
     }
     validate_grid_template_area_rectangles(&rows)?;
-    Ok(layout::GridTemplateAreas { rows })
+    Ok(layout::grid::GridTemplateAreas { rows })
 }
 
-fn parse_grid_template_area_row(raw: &str) -> Result<layout::GridTemplateAreaRow, Error> {
+fn parse_grid_template_area_row(raw: &str) -> Result<layout::grid::GridTemplateAreaRow, Error> {
     if raw.is_empty() {
         return Err(Error::new("grid template area rows must not be empty"));
     }
@@ -6166,7 +6228,7 @@ fn parse_grid_template_area_row(raw: &str) -> Result<layout::GridTemplateAreaRow
             }
         })
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(layout::GridTemplateAreaRow { cells })
+    Ok(layout::grid::GridTemplateAreaRow { cells })
 }
 
 fn parse_grid_template_area_ident(raw: &str) -> Result<&str, Error> {
@@ -6207,7 +6269,7 @@ fn parse_grid_template_area_ident(raw: &str) -> Result<&str, Error> {
 }
 
 fn validate_grid_template_area_rectangles(
-    rows: &[layout::GridTemplateAreaRow],
+    rows: &[layout::grid::GridTemplateAreaRow],
 ) -> Result<(), Error> {
     let mut areas = BTreeMap::<&str, (usize, usize, usize, usize, usize)>::new();
     for (row_index, row) in rows.iter().enumerate() {
@@ -6241,14 +6303,14 @@ fn is_grid_template_area_null_cell(cell: &str) -> bool {
     !cell.is_empty() && cell.bytes().all(|byte| byte == b'.')
 }
 
-fn named_raw_line(name: &str, index: &str, raw: &str) -> Result<layout::RawGridLine, Error> {
+fn named_raw_line(name: &str, index: &str, raw: &str) -> Result<layout::grid::RawGridLine, Error> {
     let index = parse_style_line_index(index)?;
     if index == 0 {
         return Err(Error::new(format!(
             "named grid line occurrence cannot be zero in `{raw}`"
         )));
     }
-    Ok(layout::RawGridLine::NamedLine {
+    Ok(layout::grid::RawGridLine::NamedLine {
         name: parse_custom_ident(name)?.to_owned(),
         index: index.into(),
     })
@@ -6276,98 +6338,104 @@ fn parse_custom_ident(raw: &str) -> Result<&str, Error> {
     Ok(raw)
 }
 
-fn parse_display(raw: &str) -> Result<layout::Display, Error> {
+fn parse_display(raw: &str) -> Result<layout::box_model::Display, Error> {
     match raw {
-        "block" => Ok(layout::Display::Block),
-        "inline-block" => Ok(layout::Display::InlineBlock),
-        "flex" => Ok(layout::Display::Flex),
-        "grid" => Ok(layout::Display::Grid),
-        "inline-grid" => Ok(layout::Display::InlineGrid),
-        "grid-lanes" => Ok(layout::Display::GridLanes),
-        "inline-grid-lanes" => Ok(layout::Display::InlineGridLanes),
-        "none" => Ok(layout::Display::None),
+        "block" => Ok(layout::box_model::Display::Block),
+        "inline-block" => Ok(layout::box_model::Display::InlineBlock),
+        "flex" => Ok(layout::box_model::Display::Flex),
+        "grid" => Ok(layout::box_model::Display::Grid),
+        "inline-grid" => Ok(layout::box_model::Display::InlineGrid),
+        "grid-lanes" => Ok(layout::box_model::Display::GridLanes),
+        "inline-grid-lanes" => Ok(layout::box_model::Display::InlineGridLanes),
+        "none" => Ok(layout::box_model::Display::None),
         _ => Err(Error::new(format!("unsupported display `{raw}`"))),
     }
 }
 
-fn parse_box_sizing(raw: &str) -> Result<layout::BoxSizing, Error> {
+fn parse_box_sizing(raw: &str) -> Result<layout::box_model::BoxSizing, Error> {
     match raw {
-        "border-box" => Ok(layout::BoxSizing::BorderBox),
-        "content-box" => Ok(layout::BoxSizing::ContentBox),
+        "border-box" => Ok(layout::box_model::BoxSizing::BorderBox),
+        "content-box" => Ok(layout::box_model::BoxSizing::ContentBox),
         _ => Err(Error::new(format!("unsupported box-sizing `{raw}`"))),
     }
 }
 
-fn parse_direction(raw: &str) -> Result<layout::Direction, Error> {
+fn parse_direction(raw: &str) -> Result<layout::geometry::Direction, Error> {
     match raw {
-        "ltr" => Ok(layout::Direction::Ltr),
-        "rtl" => Ok(layout::Direction::Rtl),
+        "ltr" => Ok(layout::geometry::Direction::Ltr),
+        "rtl" => Ok(layout::geometry::Direction::Rtl),
         _ => Err(Error::new(format!("unsupported direction `{raw}`"))),
     }
 }
 
-fn parse_position(raw: &str) -> Result<layout::Position, Error> {
+fn parse_position(raw: &str) -> Result<layout::box_model::Position, Error> {
     match raw {
-        "relative" => Ok(layout::Position::Relative),
-        "absolute" => Ok(layout::Position::Absolute),
+        "relative" => Ok(layout::box_model::Position::Relative),
+        "absolute" => Ok(layout::box_model::Position::Absolute),
         _ => Err(Error::new(format!("unsupported position `{raw}`"))),
     }
 }
 
-fn parse_float(raw: &str, containing_flow: layout::FlowAxes) -> Result<layout::Float, Error> {
+fn parse_float(
+    raw: &str,
+    containing_flow: layout::geometry::FlowAxes,
+) -> Result<layout::box_model::Float, Error> {
     match raw {
-        "none" => Ok(layout::Float::None),
-        "inline-start" => Ok(layout::Float::Left),
-        "inline-end" => Ok(layout::Float::Right),
+        "none" => Ok(layout::box_model::Float::None),
+        "inline-start" => Ok(layout::box_model::Float::Left),
+        "inline-end" => Ok(layout::box_model::Float::Right),
         "left" => lower_physical_fixture_side(
-            layout::PhysicalSide::Left,
+            layout::geometry::PhysicalSide::Left,
             containing_flow,
             "float",
             raw,
-            layout::Float::Left,
-            layout::Float::Right,
+            layout::box_model::Float::Left,
+            layout::box_model::Float::Right,
         ),
         "right" => lower_physical_fixture_side(
-            layout::PhysicalSide::Right,
+            layout::geometry::PhysicalSide::Right,
             containing_flow,
             "float",
             raw,
-            layout::Float::Left,
-            layout::Float::Right,
+            layout::box_model::Float::Left,
+            layout::box_model::Float::Right,
         ),
         _ => Err(Error::new(format!("unsupported float `{raw}`"))),
     }
 }
 
-fn parse_clear(raw: &str, containing_flow: layout::FlowAxes) -> Result<layout::Clear, Error> {
+fn parse_clear(
+    raw: &str,
+    containing_flow: layout::geometry::FlowAxes,
+) -> Result<layout::box_model::Clear, Error> {
     match raw {
-        "none" => Ok(layout::Clear::None),
-        "inline-start" => Ok(layout::Clear::Left),
-        "inline-end" => Ok(layout::Clear::Right),
+        "none" => Ok(layout::box_model::Clear::None),
+        "inline-start" => Ok(layout::box_model::Clear::Left),
+        "inline-end" => Ok(layout::box_model::Clear::Right),
         "left" => lower_physical_fixture_side(
-            layout::PhysicalSide::Left,
+            layout::geometry::PhysicalSide::Left,
             containing_flow,
             "clear",
             raw,
-            layout::Clear::Left,
-            layout::Clear::Right,
+            layout::box_model::Clear::Left,
+            layout::box_model::Clear::Right,
         ),
         "right" => lower_physical_fixture_side(
-            layout::PhysicalSide::Right,
+            layout::geometry::PhysicalSide::Right,
             containing_flow,
             "clear",
             raw,
-            layout::Clear::Left,
-            layout::Clear::Right,
+            layout::box_model::Clear::Left,
+            layout::box_model::Clear::Right,
         ),
-        "both" => Ok(layout::Clear::Both),
+        "both" => Ok(layout::box_model::Clear::Both),
         _ => Err(Error::new(format!("unsupported clear `{raw}`"))),
     }
 }
 
 fn lower_physical_fixture_side<T>(
-    physical_side: layout::PhysicalSide,
-    containing_flow: layout::FlowAxes,
+    physical_side: layout::geometry::PhysicalSide,
+    containing_flow: layout::geometry::FlowAxes,
     property: &str,
     raw: &str,
     line_start: T,
@@ -6386,47 +6454,49 @@ fn lower_physical_fixture_side<T>(
     }
 }
 
-fn parse_overflow(raw: &str) -> Result<layout::Overflow, Error> {
+fn parse_overflow(raw: &str) -> Result<layout::overflow::Overflow, Error> {
     match raw {
-        "visible" => Ok(layout::Overflow::Visible),
-        "clip" => Ok(layout::Overflow::Clip),
-        "hidden" => Ok(layout::Overflow::Hidden),
-        "scroll" => Ok(layout::Overflow::Scroll),
-        "auto" => Ok(layout::Overflow::Auto),
+        "visible" => Ok(layout::overflow::Overflow::Visible),
+        "clip" => Ok(layout::overflow::Overflow::Clip),
+        "hidden" => Ok(layout::overflow::Overflow::Hidden),
+        "scroll" => Ok(layout::overflow::Overflow::Scroll),
+        "auto" => Ok(layout::overflow::Overflow::Auto),
         _ => Err(Error::new(format!("unsupported overflow `{raw}`"))),
     }
 }
 
-fn parse_computed_overflow(attrs: &StyleAttrs) -> Result<layout::ComputedOverflow, Error> {
+fn parse_computed_overflow(
+    attrs: &StyleAttrs,
+) -> Result<layout::overflow::ComputedOverflow, Error> {
     let x = attrs
         .get("overflow-x")
         .map(parse_overflow)
         .transpose()?
-        .unwrap_or(layout::Overflow::Visible);
+        .unwrap_or(layout::overflow::Overflow::Visible);
     let y = attrs
         .get("overflow-y")
         .map(parse_overflow)
         .transpose()?
-        .unwrap_or(layout::Overflow::Visible);
+        .unwrap_or(layout::overflow::Overflow::Visible);
 
-    layout::ComputedOverflow::try_new(x, y)
+    layout::overflow::ComputedOverflow::try_new(x, y)
         .map_err(|error| Error::new(format!("invalid computed overflow pair: {error}")))
 }
 
-fn parse_overflow_clip_margin(raw: &str) -> Result<layout::OverflowClipMargin, Error> {
+fn parse_overflow_clip_margin(raw: &str) -> Result<layout::overflow::OverflowClipMargin, Error> {
     let parts = raw.split_whitespace().collect::<Vec<_>>();
     let (clip_box, length) = match parts.as_slice() {
         [length] => match *length {
-            "content-box" => (layout::OverflowClipBox::ContentBox, "0px"),
-            "padding-box" => (layout::OverflowClipBox::PaddingBox, "0px"),
-            "border-box" => (layout::OverflowClipBox::BorderBox, "0px"),
-            length => (layout::OverflowClipBox::PaddingBox, length),
+            "content-box" => (layout::overflow::OverflowClipBox::ContentBox, "0px"),
+            "padding-box" => (layout::overflow::OverflowClipBox::PaddingBox, "0px"),
+            "border-box" => (layout::overflow::OverflowClipBox::BorderBox, "0px"),
+            length => (layout::overflow::OverflowClipBox::PaddingBox, length),
         },
         [clip_box, length] => {
             let clip_box = match *clip_box {
-                "content-box" => layout::OverflowClipBox::ContentBox,
-                "padding-box" => layout::OverflowClipBox::PaddingBox,
-                "border-box" => layout::OverflowClipBox::BorderBox,
+                "content-box" => layout::overflow::OverflowClipBox::ContentBox,
+                "padding-box" => layout::overflow::OverflowClipBox::PaddingBox,
+                "border-box" => layout::overflow::OverflowClipBox::BorderBox,
                 _ => {
                     return Err(Error::new(format!(
                         "unsupported overflow clip box `{clip_box}`"
@@ -6442,25 +6512,25 @@ fn parse_overflow_clip_margin(raw: &str) -> Result<layout::OverflowClipMargin, E
         }
     };
     let margin = parse_px(length, "overflow clip margin")?;
-    layout::OverflowClipMargin::try_new(clip_box, margin)
+    layout::overflow::OverflowClipMargin::try_new(clip_box, margin)
         .map_err(|source| Error::new(source.to_string()))
 }
 
-fn parse_scrollbar_gutter(raw: &str) -> Result<layout::ScrollbarGutter, Error> {
+fn parse_scrollbar_gutter(raw: &str) -> Result<layout::overflow::ScrollbarGutter, Error> {
     match raw {
-        "auto" => Ok(layout::ScrollbarGutter::Auto),
-        "stable" => Ok(layout::ScrollbarGutter::Stable),
-        "stable both-edges" => Ok(layout::ScrollbarGutter::StableBothEdges),
+        "auto" => Ok(layout::overflow::ScrollbarGutter::Auto),
+        "stable" => Ok(layout::overflow::ScrollbarGutter::Stable),
+        "stable both-edges" => Ok(layout::overflow::ScrollbarGutter::StableBothEdges),
         _ => Err(Error::new(format!("unsupported scrollbar gutter `{raw}`"))),
     }
 }
 
-fn parse_scroll_padding(raw: Option<&str>) -> Result<layout::ScrollPaddingValue, Error> {
+fn parse_scroll_padding(raw: Option<&str>) -> Result<layout::overflow::ScrollPaddingValue, Error> {
     let Some(raw) = raw else {
-        return Ok(layout::ScrollPaddingValue::AUTO);
+        return Ok(layout::overflow::ScrollPaddingValue::AUTO);
     };
     if raw == "auto" {
-        return Ok(layout::ScrollPaddingValue::AUTO);
+        return Ok(layout::overflow::ScrollPaddingValue::AUTO);
     }
     let value = if raw.starts_with("calc(") {
         parse_calc_expression(raw)?
@@ -6471,7 +6541,7 @@ fn parse_scroll_padding(raw: Option<&str>) -> Result<layout::ScrollPaddingValue,
     } else {
         return Err(Error::new(format!("unsupported scroll padding `{raw}`")));
     };
-    Ok(layout::ScrollPaddingValue::value(value))
+    Ok(layout::overflow::ScrollPaddingValue::value(value))
 }
 
 fn parse_scroll_margin(raw: Option<&str>) -> Result<Scalar, Error> {
@@ -6484,157 +6554,157 @@ fn parse_px(raw: &str, property: &str) -> Result<Scalar, Error> {
         .and_then(parse_number)
 }
 
-fn parse_scroll_snap_type(raw: &str) -> Result<layout::ScrollSnapType, Error> {
+fn parse_scroll_snap_type(raw: &str) -> Result<layout::overflow::ScrollSnapType, Error> {
     if raw == "none" {
-        return Ok(layout::ScrollSnapType::None);
+        return Ok(layout::overflow::ScrollSnapType::None);
     }
     let parts = raw.split_whitespace().collect::<Vec<_>>();
     let [axis, strictness] = parts.as_slice() else {
         return Err(Error::new(format!("unsupported scroll snap type `{raw}`")));
     };
     let axis = match *axis {
-        "x" => layout::ScrollSnapAxis::X,
-        "y" => layout::ScrollSnapAxis::Y,
-        "block" => layout::ScrollSnapAxis::Block,
-        "inline" => layout::ScrollSnapAxis::Inline,
-        "both" => layout::ScrollSnapAxis::Both,
+        "x" => layout::overflow::ScrollSnapAxis::X,
+        "y" => layout::overflow::ScrollSnapAxis::Y,
+        "block" => layout::overflow::ScrollSnapAxis::Block,
+        "inline" => layout::overflow::ScrollSnapAxis::Inline,
+        "both" => layout::overflow::ScrollSnapAxis::Both,
         _ => return Err(Error::new(format!("unsupported scroll snap axis `{axis}`"))),
     };
     let strictness = match *strictness {
-        "proximity" => layout::ScrollSnapStrictness::Proximity,
-        "mandatory" => layout::ScrollSnapStrictness::Mandatory,
+        "proximity" => layout::overflow::ScrollSnapStrictness::Proximity,
+        "mandatory" => layout::overflow::ScrollSnapStrictness::Mandatory,
         _ => {
             return Err(Error::new(format!(
                 "unsupported scroll snap strictness `{strictness}`"
             )));
         }
     };
-    Ok(layout::ScrollSnapType::Enabled { axis, strictness })
+    Ok(layout::overflow::ScrollSnapType::Enabled { axis, strictness })
 }
 
-fn parse_scroll_snap_align(raw: &str) -> Result<layout::ScrollSnapAlign, Error> {
+fn parse_scroll_snap_align(raw: &str) -> Result<layout::overflow::ScrollSnapAlign, Error> {
     let parts = raw.split_whitespace().collect::<Vec<_>>();
     let [block, inline] = parts.as_slice() else {
         return Err(Error::new(format!("unsupported scroll snap align `{raw}`")));
     };
     let parse_value = |value| match value {
-        "none" => Ok(layout::ScrollSnapAlignValue::None),
-        "start" => Ok(layout::ScrollSnapAlignValue::Start),
-        "end" => Ok(layout::ScrollSnapAlignValue::End),
-        "center" => Ok(layout::ScrollSnapAlignValue::Center),
+        "none" => Ok(layout::overflow::ScrollSnapAlignValue::None),
+        "start" => Ok(layout::overflow::ScrollSnapAlignValue::Start),
+        "end" => Ok(layout::overflow::ScrollSnapAlignValue::End),
+        "center" => Ok(layout::overflow::ScrollSnapAlignValue::Center),
         _ => Err(Error::new(format!(
             "unsupported scroll snap alignment `{value}`"
         ))),
     };
-    Ok(layout::ScrollSnapAlign::new(
+    Ok(layout::overflow::ScrollSnapAlign::new(
         parse_value(block)?,
         parse_value(inline)?,
     ))
 }
 
-fn parse_scroll_snap_stop(raw: &str) -> Result<layout::ScrollSnapStop, Error> {
+fn parse_scroll_snap_stop(raw: &str) -> Result<layout::overflow::ScrollSnapStop, Error> {
     match raw {
-        "normal" => Ok(layout::ScrollSnapStop::Normal),
-        "always" => Ok(layout::ScrollSnapStop::Always),
+        "normal" => Ok(layout::overflow::ScrollSnapStop::Normal),
+        "always" => Ok(layout::overflow::ScrollSnapStop::Always),
         _ => Err(Error::new(format!("unsupported scroll snap stop `{raw}`"))),
     }
 }
 
-fn parse_text_align(raw: &str) -> Result<layout::TextAlign, Error> {
+fn parse_text_align(raw: &str) -> Result<layout::text_flow::TextAlign, Error> {
     match raw {
-        "left" | "-webkit-left" => Ok(layout::TextAlign::LegacyLeft),
-        "right" | "-webkit-right" => Ok(layout::TextAlign::LegacyRight),
-        "center" | "-webkit-center" => Ok(layout::TextAlign::LegacyCenter),
+        "left" | "-webkit-left" => Ok(layout::text_flow::TextAlign::LegacyLeft),
+        "right" | "-webkit-right" => Ok(layout::text_flow::TextAlign::LegacyRight),
+        "center" | "-webkit-center" => Ok(layout::text_flow::TextAlign::LegacyCenter),
         _ => Err(Error::new(format!("unsupported text-align `{raw}`"))),
     }
 }
 
-fn parse_vertical_align(raw: &str) -> Result<layout::VerticalAlign, Error> {
+fn parse_vertical_align(raw: &str) -> Result<layout::inline::VerticalAlign, Error> {
     match raw {
-        "baseline" => Ok(layout::VerticalAlign::Baseline),
-        "top" => Ok(layout::VerticalAlign::Top),
-        "bottom" => Ok(layout::VerticalAlign::Bottom),
+        "baseline" => Ok(layout::inline::VerticalAlign::Baseline),
+        "top" => Ok(layout::inline::VerticalAlign::Top),
+        "bottom" => Ok(layout::inline::VerticalAlign::Bottom),
         _ => Err(Error::new(format!(
             "unsupported parity fixture vertical-align `{raw}`"
         ))),
     }
 }
 
-fn parse_writing_mode(raw: Option<&str>) -> Result<layout::WritingMode, Error> {
+fn parse_writing_mode(raw: Option<&str>) -> Result<layout::geometry::WritingMode, Error> {
     match raw {
-        None | Some("horizontal-tb") => Ok(layout::WritingMode::HorizontalTb),
-        Some("vertical-lr") => Ok(layout::WritingMode::VerticalLr),
-        Some("vertical-rl") => Ok(layout::WritingMode::VerticalRl),
-        Some("sideways-rl") => Ok(layout::WritingMode::SidewaysRl),
-        Some("sideways-lr") => Ok(layout::WritingMode::SidewaysLr),
+        None | Some("horizontal-tb") => Ok(layout::geometry::WritingMode::HorizontalTb),
+        Some("vertical-lr") => Ok(layout::geometry::WritingMode::VerticalLr),
+        Some("vertical-rl") => Ok(layout::geometry::WritingMode::VerticalRl),
+        Some("sideways-rl") => Ok(layout::geometry::WritingMode::SidewaysRl),
+        Some("sideways-lr") => Ok(layout::geometry::WritingMode::SidewaysLr),
         Some(value) => Err(Error::new(format!("unsupported writing-mode `{value}`"))),
     }
 }
 
-fn parse_flex_direction(raw: &str) -> Result<layout::FlexDirection, Error> {
+fn parse_flex_direction(raw: &str) -> Result<layout::flex::FlexDirection, Error> {
     match raw {
-        "row" => Ok(layout::FlexDirection::Row),
-        "column" => Ok(layout::FlexDirection::Column),
-        "row-reverse" => Ok(layout::FlexDirection::RowReverse),
-        "column-reverse" => Ok(layout::FlexDirection::ColumnReverse),
+        "row" => Ok(layout::flex::FlexDirection::Row),
+        "column" => Ok(layout::flex::FlexDirection::Column),
+        "row-reverse" => Ok(layout::flex::FlexDirection::RowReverse),
+        "column-reverse" => Ok(layout::flex::FlexDirection::ColumnReverse),
         _ => Err(Error::new(format!("unsupported flex-direction `{raw}`"))),
     }
 }
 
-fn parse_flex_wrap(raw: &str) -> Result<layout::FlexWrap, Error> {
+fn parse_flex_wrap(raw: &str) -> Result<layout::flex::FlexWrap, Error> {
     match raw {
-        "nowrap" => Ok(layout::FlexWrap::NoWrap),
-        "wrap" => Ok(layout::FlexWrap::Wrap),
-        "wrap-reverse" => Ok(layout::FlexWrap::WrapReverse),
+        "nowrap" => Ok(layout::flex::FlexWrap::NoWrap),
+        "wrap" => Ok(layout::flex::FlexWrap::Wrap),
+        "wrap-reverse" => Ok(layout::flex::FlexWrap::WrapReverse),
         _ => Err(Error::new(format!("unsupported flex-wrap `{raw}`"))),
     }
 }
 
-fn parse_align_items(raw: &str) -> Result<layout::AlignItems, Error> {
+fn parse_align_items(raw: &str) -> Result<layout::box_model::AlignItems, Error> {
     let safe = raw.starts_with("safe ");
     let unsafe_mode = raw.starts_with("unsafe ");
     let raw = alignment_keyword(raw);
     let position = match raw {
-        "start" => Some(layout::ItemAlignmentPosition::Start),
-        "end" => Some(layout::ItemAlignmentPosition::End),
-        "flex-start" => Some(layout::ItemAlignmentPosition::FlexStart),
-        "flex-end" => Some(layout::ItemAlignmentPosition::FlexEnd),
-        "center" => Some(layout::ItemAlignmentPosition::Center),
+        "start" => Some(layout::box_model::ItemAlignmentPosition::Start),
+        "end" => Some(layout::box_model::ItemAlignmentPosition::End),
+        "flex-start" => Some(layout::box_model::ItemAlignmentPosition::FlexStart),
+        "flex-end" => Some(layout::box_model::ItemAlignmentPosition::FlexEnd),
+        "center" => Some(layout::box_model::ItemAlignmentPosition::Center),
         _ => None,
     };
     if let Some(position) = position {
         return Ok(if safe {
-            layout::AlignItems::Safe(position)
+            layout::box_model::AlignItems::Safe(position)
         } else if unsafe_mode {
-            layout::AlignItems::Unsafe(position)
+            layout::box_model::AlignItems::Unsafe(position)
         } else {
             position.into()
         });
     }
     match (safe || unsafe_mode, raw) {
-        (false, "baseline" | "first baseline") => Ok(layout::AlignItems::Baseline),
-        (false, "last baseline") => Ok(layout::AlignItems::LastBaseline),
-        (_, "stretch") => Ok(layout::AlignItems::Stretch),
+        (false, "baseline" | "first baseline") => Ok(layout::box_model::AlignItems::Baseline),
+        (false, "last baseline") => Ok(layout::box_model::AlignItems::LastBaseline),
+        (_, "stretch") => Ok(layout::box_model::AlignItems::Stretch),
         _ => Err(Error::new(format!("unsupported alignment `{raw}`"))),
     }
 }
 
-fn parse_align_content(raw: &str) -> Result<layout::AlignContent, Error> {
+fn parse_align_content(raw: &str) -> Result<layout::box_model::AlignContent, Error> {
     let safe = raw.starts_with("safe ");
     let raw = alignment_keyword(raw);
     match (safe, raw) {
-        (true, "end") => Ok(layout::AlignContent::SafeEnd),
-        (true, "flex-end") => Ok(layout::AlignContent::SafeFlexEnd),
-        (true, "center") => Ok(layout::AlignContent::SafeCenter),
-        (_, "start") => Ok(layout::AlignContent::Start),
-        (_, "end") => Ok(layout::AlignContent::End),
-        (_, "flex-start") => Ok(layout::AlignContent::FlexStart),
-        (_, "flex-end") => Ok(layout::AlignContent::FlexEnd),
-        (_, "center") => Ok(layout::AlignContent::Center),
-        (_, "stretch") => Ok(layout::AlignContent::Stretch),
-        (_, "space-between") => Ok(layout::AlignContent::SpaceBetween),
-        (_, "space-evenly") => Ok(layout::AlignContent::SpaceEvenly),
-        (_, "space-around") => Ok(layout::AlignContent::SpaceAround),
+        (true, "end") => Ok(layout::box_model::AlignContent::SafeEnd),
+        (true, "flex-end") => Ok(layout::box_model::AlignContent::SafeFlexEnd),
+        (true, "center") => Ok(layout::box_model::AlignContent::SafeCenter),
+        (_, "start") => Ok(layout::box_model::AlignContent::Start),
+        (_, "end") => Ok(layout::box_model::AlignContent::End),
+        (_, "flex-start") => Ok(layout::box_model::AlignContent::FlexStart),
+        (_, "flex-end") => Ok(layout::box_model::AlignContent::FlexEnd),
+        (_, "center") => Ok(layout::box_model::AlignContent::Center),
+        (_, "stretch") => Ok(layout::box_model::AlignContent::Stretch),
+        (_, "space-between") => Ok(layout::box_model::AlignContent::SpaceBetween),
+        (_, "space-evenly") => Ok(layout::box_model::AlignContent::SpaceEvenly),
+        (_, "space-around") => Ok(layout::box_model::AlignContent::SpaceAround),
         _ => Err(Error::new(format!("unsupported content alignment `{raw}`"))),
     }
 }
@@ -6645,31 +6715,31 @@ fn alignment_keyword(raw: &str) -> &str {
         .unwrap_or(raw)
 }
 
-fn parse_grid_auto_flow(raw: &str) -> Result<layout::GridAutoFlow, Error> {
+fn parse_grid_auto_flow(raw: &str) -> Result<layout::grid::GridAutoFlow, Error> {
     match raw {
-        "normal" | "row" => Ok(layout::GridAutoFlow::Row),
-        "column" => Ok(layout::GridAutoFlow::Column),
-        "dense" | "row dense" => Ok(layout::GridAutoFlow::RowDense),
-        "column dense" => Ok(layout::GridAutoFlow::ColumnDense),
+        "normal" | "row" => Ok(layout::grid::GridAutoFlow::Row),
+        "column" => Ok(layout::grid::GridAutoFlow::Column),
+        "dense" | "row dense" => Ok(layout::grid::GridAutoFlow::RowDense),
+        "column dense" => Ok(layout::grid::GridAutoFlow::ColumnDense),
         _ => Err(Error::new(format!("unsupported grid-auto-flow `{raw}`"))),
     }
 }
 
 fn parse_grid_lanes_flow(
     attrs: &StyleAttrs,
-    input: &layout::NodeInput,
-) -> Result<layout::GridLanesFlow, Error> {
+    input: &layout::node::NodeInput,
+) -> Result<layout::grid::GridLanesFlow, Error> {
     let raw_flow = attrs.get("grid-auto-flow").unwrap_or("normal");
     let auto_axis = match raw_flow {
         "normal" | "dense" => {
             if input.grid_template_columns.is_empty() && !input.grid_template_rows.is_empty() {
-                layout::GridAxisKind::Row
+                layout::grid::GridAxisKind::Row
             } else {
-                layout::GridAxisKind::Column
+                layout::grid::GridAxisKind::Column
             }
         }
-        "row" | "row dense" => layout::GridAxisKind::Column,
-        "column" | "column dense" => layout::GridAxisKind::Row,
+        "row" | "row dense" => layout::grid::GridAxisKind::Column,
+        "column" | "column dense" => layout::grid::GridAxisKind::Row,
         _ => {
             return Err(Error::new(format!(
                 "unsupported grid-auto-flow `{raw_flow}`"
@@ -6678,20 +6748,20 @@ fn parse_grid_lanes_flow(
     };
     let (grid_axis, reversed) = match attrs.get("item-direction").unwrap_or("auto") {
         "auto" => (auto_axis, false),
-        "row" => (layout::GridAxisKind::Column, false),
-        "row-reverse" => (layout::GridAxisKind::Column, true),
-        "column" => (layout::GridAxisKind::Row, false),
-        "column-reverse" => (layout::GridAxisKind::Row, true),
+        "row" => (layout::grid::GridAxisKind::Column, false),
+        "row-reverse" => (layout::grid::GridAxisKind::Column, true),
+        "column" => (layout::grid::GridAxisKind::Row, false),
+        "column-reverse" => (layout::grid::GridAxisKind::Row, true),
         value => return Err(Error::new(format!("unsupported item-direction `{value}`"))),
     };
-    Ok(layout::GridLanesFlow::new(
+    Ok(layout::grid::GridLanesFlow::new(
         grid_axis,
         reversed,
         parse_grid_auto_flow(raw_flow)?.is_dense(),
     ))
 }
 
-fn parse_calc_expression(raw: &str) -> Result<layout::LengthPercentageOf, Error> {
+fn parse_calc_expression(raw: &str) -> Result<layout::length::LengthPercentageOf, Error> {
     let body = raw
         .strip_prefix("calc(")
         .and_then(|value| value.strip_suffix(')'))
@@ -6699,7 +6769,7 @@ fn parse_calc_expression(raw: &str) -> Result<layout::LengthPercentageOf, Error>
     parse_calc_sum(body.trim(), raw)
 }
 
-fn parse_calc_sum(body: &str, raw: &str) -> Result<layout::LengthPercentageOf, Error> {
+fn parse_calc_sum(body: &str, raw: &str) -> Result<layout::length::LengthPercentageOf, Error> {
     let parts = body.split_whitespace().collect::<Vec<_>>();
     let [first, operator, second] = parts.as_slice() else {
         return Err(Error::new(format!("unsupported calc expression `{raw}`")));
@@ -6712,14 +6782,14 @@ fn parse_calc_sum(body: &str, raw: &str) -> Result<layout::LengthPercentageOf, E
         _ => return Err(Error::new(format!("unsupported calc expression `{raw}`"))),
     };
 
-    layout::LengthPercentageOf::from_coefficients(
+    layout::length::LengthPercentageOf::from_coefficients(
         left.absolute_px() + right.absolute_px(),
         left.percent_fraction() + right.percent_fraction(),
     )
     .map_err(|error| Error::new(format!("invalid calc expression `{raw}`: {error}")))
 }
 
-fn parse_calc_term(raw: &str, sign: Scalar) -> Result<layout::LengthPercentageOf, Error> {
+fn parse_calc_term(raw: &str, sign: Scalar) -> Result<layout::length::LengthPercentageOf, Error> {
     if let Some(px) = raw.strip_suffix("px") {
         return length_percentage_px(parse_number(px)? * sign, raw);
     }
@@ -6731,130 +6801,130 @@ fn parse_calc_term(raw: &str, sign: Scalar) -> Result<layout::LengthPercentageOf
     )))
 }
 
-fn parse_length_with_calc(raw: &str) -> Result<layout::Length, Error> {
+fn parse_length_with_calc(raw: &str) -> Result<layout::length::Length, Error> {
     if raw.trim_start().starts_with("calc(") {
-        return Ok(layout::Length::value(parse_calc_expression(raw)?));
+        return Ok(layout::length::Length::value(parse_calc_expression(raw)?));
     }
     parse_length(raw)
 }
 
-fn parse_length_auto_with_calc(raw: &str) -> Result<layout::LengthAuto, Error> {
+fn parse_length_auto_with_calc(raw: &str) -> Result<layout::length::LengthAuto, Error> {
     if raw == "auto" {
-        return Ok(layout::LengthAuto::AUTO);
+        return Ok(layout::length::LengthAuto::AUTO);
     }
     Ok(parse_length_with_calc(raw)?.into())
 }
 
-fn parse_preferred_size(raw: &str) -> Result<layout::PreferredSize, Error> {
+fn parse_preferred_size(raw: &str) -> Result<layout::sizing::PreferredSize, Error> {
     let raw = checked_sizing_fixture(raw)?;
     match raw {
-        "auto" => Ok(layout::PreferredSize::AUTO),
-        "min-content" => Ok(layout::PreferredSize::MIN_CONTENT),
-        "max-content" => Ok(layout::PreferredSize::MAX_CONTENT),
-        "stretch" => Ok(layout::PreferredSize::STRETCH),
-        "fit-content" => Ok(layout::PreferredSize::FIT_CONTENT),
-        "contain" => Ok(layout::PreferredSize::CONTAIN),
+        "auto" => Ok(layout::sizing::PreferredSize::AUTO),
+        "min-content" => Ok(layout::sizing::PreferredSize::MIN_CONTENT),
+        "max-content" => Ok(layout::sizing::PreferredSize::MAX_CONTENT),
+        "stretch" => Ok(layout::sizing::PreferredSize::STRETCH),
+        "fit-content" => Ok(layout::sizing::PreferredSize::FIT_CONTENT),
+        "contain" => Ok(layout::sizing::PreferredSize::CONTAIN),
         _ => match parse_sizing_function(raw)? {
-            Some(("fit-content", body)) => Ok(layout::PreferredSize::fit_content_function(
+            Some(("fit-content", body)) => Ok(layout::sizing::PreferredSize::fit_content_function(
                 parse_fit_content_argument(body, raw)?,
             )),
             Some(("calc-size", body)) => {
                 let (basis, calculation) = parse_calc_size_arguments(body, raw)?;
                 let basis = parse_preferred_calc_size_basis(basis, raw)?;
-                layout::PreferredSize::calc_size(basis, calculation).map_err(|error| {
+                layout::sizing::PreferredSize::calc_size(basis, calculation).map_err(|error| {
                     Error::new(format!("invalid preferred-size fixture `{raw}`: {error}"))
                 })
             }
-            _ => Ok(layout::PreferredSize::calculation(
+            _ => Ok(layout::sizing::PreferredSize::calculation(
                 parse_fixture_sizing_expression(raw)?.lower_sizing_calculation()?,
             )),
         },
     }
 }
 
-fn parse_min_size(raw: &str) -> Result<layout::MinSize, Error> {
+fn parse_min_size(raw: &str) -> Result<layout::sizing::MinSize, Error> {
     let raw = checked_sizing_fixture(raw)?;
     match raw {
-        "auto" => Ok(layout::MinSize::AUTO),
-        "min-content" => Ok(layout::MinSize::MIN_CONTENT),
-        "max-content" => Ok(layout::MinSize::MAX_CONTENT),
-        "stretch" => Ok(layout::MinSize::STRETCH),
-        "fit-content" => Ok(layout::MinSize::FIT_CONTENT),
-        "contain" => Ok(layout::MinSize::CONTAIN),
+        "auto" => Ok(layout::sizing::MinSize::AUTO),
+        "min-content" => Ok(layout::sizing::MinSize::MIN_CONTENT),
+        "max-content" => Ok(layout::sizing::MinSize::MAX_CONTENT),
+        "stretch" => Ok(layout::sizing::MinSize::STRETCH),
+        "fit-content" => Ok(layout::sizing::MinSize::FIT_CONTENT),
+        "contain" => Ok(layout::sizing::MinSize::CONTAIN),
         _ => match parse_sizing_function(raw)? {
-            Some(("fit-content", body)) => Ok(layout::MinSize::fit_content_function(
+            Some(("fit-content", body)) => Ok(layout::sizing::MinSize::fit_content_function(
                 parse_fit_content_argument(body, raw)?,
             )),
             Some(("calc-size", body)) => {
                 let (basis, calculation) = parse_calc_size_arguments(body, raw)?;
                 let basis = parse_min_calc_size_basis(basis, raw)?;
-                layout::MinSize::calc_size(basis, calculation).map_err(|error| {
+                layout::sizing::MinSize::calc_size(basis, calculation).map_err(|error| {
                     Error::new(format!("invalid minimum-size fixture `{raw}`: {error}"))
                 })
             }
-            _ => Ok(layout::MinSize::calculation(
+            _ => Ok(layout::sizing::MinSize::calculation(
                 parse_fixture_sizing_expression(raw)?.lower_sizing_calculation()?,
             )),
         },
     }
 }
 
-fn parse_max_size(raw: &str) -> Result<layout::MaxSize, Error> {
+fn parse_max_size(raw: &str) -> Result<layout::sizing::MaxSize, Error> {
     let raw = checked_sizing_fixture(raw)?;
     match raw {
-        "none" => Ok(layout::MaxSize::NONE),
-        "min-content" => Ok(layout::MaxSize::MIN_CONTENT),
-        "max-content" => Ok(layout::MaxSize::MAX_CONTENT),
-        "stretch" => Ok(layout::MaxSize::STRETCH),
-        "fit-content" => Ok(layout::MaxSize::FIT_CONTENT),
-        "contain" => Ok(layout::MaxSize::CONTAIN),
+        "none" => Ok(layout::sizing::MaxSize::NONE),
+        "min-content" => Ok(layout::sizing::MaxSize::MIN_CONTENT),
+        "max-content" => Ok(layout::sizing::MaxSize::MAX_CONTENT),
+        "stretch" => Ok(layout::sizing::MaxSize::STRETCH),
+        "fit-content" => Ok(layout::sizing::MaxSize::FIT_CONTENT),
+        "contain" => Ok(layout::sizing::MaxSize::CONTAIN),
         _ => match parse_sizing_function(raw)? {
-            Some(("fit-content", body)) => Ok(layout::MaxSize::fit_content_function(
+            Some(("fit-content", body)) => Ok(layout::sizing::MaxSize::fit_content_function(
                 parse_fit_content_argument(body, raw)?,
             )),
             Some(("calc-size", body)) => {
                 let (basis, calculation) = parse_calc_size_arguments(body, raw)?;
                 let basis = parse_max_calc_size_basis(basis, raw)?;
-                layout::MaxSize::calc_size(basis, calculation).map_err(|error| {
+                layout::sizing::MaxSize::calc_size(basis, calculation).map_err(|error| {
                     Error::new(format!("invalid maximum-size fixture `{raw}`: {error}"))
                 })
             }
-            _ => Ok(layout::MaxSize::calculation(
+            _ => Ok(layout::sizing::MaxSize::calculation(
                 parse_fixture_sizing_expression(raw)?.lower_sizing_calculation()?,
             )),
         },
     }
 }
 
-fn parse_flex_basis(raw: &str) -> Result<layout::FlexBasis, Error> {
+fn parse_flex_basis(raw: &str) -> Result<layout::sizing::FlexBasis, Error> {
     let raw = checked_sizing_fixture(raw)?;
     match raw {
-        "auto" => Ok(layout::FlexBasis::AUTO),
-        "content" => Ok(layout::FlexBasis::CONTENT),
-        "min-content" => Ok(layout::FlexBasis::MIN_CONTENT),
-        "max-content" => Ok(layout::FlexBasis::MAX_CONTENT),
-        "stretch" => Ok(layout::FlexBasis::STRETCH),
-        "fit-content" => Ok(layout::FlexBasis::FIT_CONTENT),
-        "contain" => Ok(layout::FlexBasis::CONTAIN),
+        "auto" => Ok(layout::sizing::FlexBasis::AUTO),
+        "content" => Ok(layout::sizing::FlexBasis::CONTENT),
+        "min-content" => Ok(layout::sizing::FlexBasis::MIN_CONTENT),
+        "max-content" => Ok(layout::sizing::FlexBasis::MAX_CONTENT),
+        "stretch" => Ok(layout::sizing::FlexBasis::STRETCH),
+        "fit-content" => Ok(layout::sizing::FlexBasis::FIT_CONTENT),
+        "contain" => Ok(layout::sizing::FlexBasis::CONTAIN),
         _ => match parse_sizing_function(raw)? {
-            Some(("fit-content", body)) => Ok(layout::FlexBasis::fit_content_function(
+            Some(("fit-content", body)) => Ok(layout::sizing::FlexBasis::fit_content_function(
                 parse_fit_content_argument(body, raw)?,
             )),
             Some(("calc-size", body)) => {
                 let (basis, calculation) = parse_calc_size_arguments(body, raw)?;
                 let basis = parse_flex_calc_size_basis(basis, raw)?;
-                layout::FlexBasis::calc_size(basis, calculation).map_err(|error| {
+                layout::sizing::FlexBasis::calc_size(basis, calculation).map_err(|error| {
                     Error::new(format!("invalid flex-basis fixture `{raw}`: {error}"))
                 })
             }
-            _ => Ok(layout::FlexBasis::calculation(
+            _ => Ok(layout::sizing::FlexBasis::calculation(
                 parse_fixture_sizing_expression(raw)?.lower_sizing_calculation()?,
             )),
         },
     }
 }
 
-fn parse_length(raw: &str) -> Result<layout::Length, Error> {
+fn parse_length(raw: &str) -> Result<layout::length::Length, Error> {
     if let Some(px) = raw.strip_suffix("px") {
         return length_px(parse_number(px)?, raw);
     }
@@ -7004,7 +7074,10 @@ fn split_sizing_arguments<'a>(body: &'a str, raw: &str) -> Result<Vec<&'a str>, 
     Ok(arguments)
 }
 
-fn parse_fit_content_argument(body: &str, raw: &str) -> Result<layout::SizingCalculation, Error> {
+fn parse_fit_content_argument(
+    body: &str,
+    raw: &str,
+) -> Result<layout::sizing::SizingCalculation, Error> {
     let arguments = split_sizing_arguments(body, raw)?;
     let [argument] = arguments.as_slice() else {
         return Err(Error::new(format!(
@@ -7017,7 +7090,7 @@ fn parse_fit_content_argument(body: &str, raw: &str) -> Result<layout::SizingCal
 fn parse_calc_size_arguments<'a>(
     body: &'a str,
     raw: &str,
-) -> Result<(&'a str, layout::CalcSizeCalculation), Error> {
+) -> Result<(&'a str, layout::sizing::CalcSizeCalculation), Error> {
     let arguments = split_sizing_arguments(body, raw)?;
     let [basis, calculation] = arguments.as_slice() else {
         return Err(Error::new(format!(
@@ -7033,65 +7106,74 @@ fn parse_calc_size_arguments<'a>(
 fn parse_preferred_calc_size_basis(
     basis: &str,
     raw: &str,
-) -> Result<layout::PreferredSizeCalcBasis, Error> {
+) -> Result<layout::sizing::PreferredSizeCalcBasis, Error> {
     match basis {
-        "any" => Ok(layout::PreferredSizeCalcBasis::Any),
-        "100%" => Ok(layout::PreferredSizeCalcBasis::FullPercentage),
-        "auto" => Ok(layout::PreferredSizeCalcBasis::Auto),
-        "min-content" => Ok(layout::PreferredSizeCalcBasis::MinContent),
-        "max-content" => Ok(layout::PreferredSizeCalcBasis::MaxContent),
-        "stretch" => Ok(layout::PreferredSizeCalcBasis::Stretch),
-        "fit-content" => Ok(layout::PreferredSizeCalcBasis::FitContent),
-        "contain" => Ok(layout::PreferredSizeCalcBasis::Contain),
+        "any" => Ok(layout::sizing::PreferredSizeCalcBasis::Any),
+        "100%" => Ok(layout::sizing::PreferredSizeCalcBasis::FullPercentage),
+        "auto" => Ok(layout::sizing::PreferredSizeCalcBasis::Auto),
+        "min-content" => Ok(layout::sizing::PreferredSizeCalcBasis::MinContent),
+        "max-content" => Ok(layout::sizing::PreferredSizeCalcBasis::MaxContent),
+        "stretch" => Ok(layout::sizing::PreferredSizeCalcBasis::Stretch),
+        "fit-content" => Ok(layout::sizing::PreferredSizeCalcBasis::FitContent),
+        "contain" => Ok(layout::sizing::PreferredSizeCalcBasis::Contain),
         _ => Err(Error::new(format!(
             "invalid preferred-size calc-size basis `{basis}` in `{raw}`"
         ))),
     }
 }
 
-fn parse_min_calc_size_basis(basis: &str, raw: &str) -> Result<layout::MinSizeCalcBasis, Error> {
+fn parse_min_calc_size_basis(
+    basis: &str,
+    raw: &str,
+) -> Result<layout::sizing::MinSizeCalcBasis, Error> {
     match basis {
-        "any" => Ok(layout::MinSizeCalcBasis::Any),
-        "100%" => Ok(layout::MinSizeCalcBasis::FullPercentage),
-        "auto" => Ok(layout::MinSizeCalcBasis::Auto),
-        "min-content" => Ok(layout::MinSizeCalcBasis::MinContent),
-        "max-content" => Ok(layout::MinSizeCalcBasis::MaxContent),
-        "stretch" => Ok(layout::MinSizeCalcBasis::Stretch),
-        "fit-content" => Ok(layout::MinSizeCalcBasis::FitContent),
-        "contain" => Ok(layout::MinSizeCalcBasis::Contain),
+        "any" => Ok(layout::sizing::MinSizeCalcBasis::Any),
+        "100%" => Ok(layout::sizing::MinSizeCalcBasis::FullPercentage),
+        "auto" => Ok(layout::sizing::MinSizeCalcBasis::Auto),
+        "min-content" => Ok(layout::sizing::MinSizeCalcBasis::MinContent),
+        "max-content" => Ok(layout::sizing::MinSizeCalcBasis::MaxContent),
+        "stretch" => Ok(layout::sizing::MinSizeCalcBasis::Stretch),
+        "fit-content" => Ok(layout::sizing::MinSizeCalcBasis::FitContent),
+        "contain" => Ok(layout::sizing::MinSizeCalcBasis::Contain),
         _ => Err(Error::new(format!(
             "invalid minimum-size calc-size basis `{basis}` in `{raw}`"
         ))),
     }
 }
 
-fn parse_max_calc_size_basis(basis: &str, raw: &str) -> Result<layout::MaxSizeCalcBasis, Error> {
+fn parse_max_calc_size_basis(
+    basis: &str,
+    raw: &str,
+) -> Result<layout::sizing::MaxSizeCalcBasis, Error> {
     match basis {
-        "any" => Ok(layout::MaxSizeCalcBasis::Any),
-        "100%" => Ok(layout::MaxSizeCalcBasis::FullPercentage),
-        "none" => Ok(layout::MaxSizeCalcBasis::None),
-        "min-content" => Ok(layout::MaxSizeCalcBasis::MinContent),
-        "max-content" => Ok(layout::MaxSizeCalcBasis::MaxContent),
-        "stretch" => Ok(layout::MaxSizeCalcBasis::Stretch),
-        "fit-content" => Ok(layout::MaxSizeCalcBasis::FitContent),
-        "contain" => Ok(layout::MaxSizeCalcBasis::Contain),
+        "any" => Ok(layout::sizing::MaxSizeCalcBasis::Any),
+        "100%" => Ok(layout::sizing::MaxSizeCalcBasis::FullPercentage),
+        "none" => Ok(layout::sizing::MaxSizeCalcBasis::None),
+        "min-content" => Ok(layout::sizing::MaxSizeCalcBasis::MinContent),
+        "max-content" => Ok(layout::sizing::MaxSizeCalcBasis::MaxContent),
+        "stretch" => Ok(layout::sizing::MaxSizeCalcBasis::Stretch),
+        "fit-content" => Ok(layout::sizing::MaxSizeCalcBasis::FitContent),
+        "contain" => Ok(layout::sizing::MaxSizeCalcBasis::Contain),
         _ => Err(Error::new(format!(
             "invalid maximum-size calc-size basis `{basis}` in `{raw}`"
         ))),
     }
 }
 
-fn parse_flex_calc_size_basis(basis: &str, raw: &str) -> Result<layout::FlexBasisCalcBasis, Error> {
+fn parse_flex_calc_size_basis(
+    basis: &str,
+    raw: &str,
+) -> Result<layout::sizing::FlexBasisCalcBasis, Error> {
     match basis {
-        "any" => Ok(layout::FlexBasisCalcBasis::Any),
-        "100%" => Ok(layout::FlexBasisCalcBasis::FullPercentage),
-        "auto" => Ok(layout::FlexBasisCalcBasis::Auto),
-        "content" => Ok(layout::FlexBasisCalcBasis::Content),
-        "min-content" => Ok(layout::FlexBasisCalcBasis::MinContent),
-        "max-content" => Ok(layout::FlexBasisCalcBasis::MaxContent),
-        "stretch" => Ok(layout::FlexBasisCalcBasis::Stretch),
-        "fit-content" => Ok(layout::FlexBasisCalcBasis::FitContent),
-        "contain" => Ok(layout::FlexBasisCalcBasis::Contain),
+        "any" => Ok(layout::sizing::FlexBasisCalcBasis::Any),
+        "100%" => Ok(layout::sizing::FlexBasisCalcBasis::FullPercentage),
+        "auto" => Ok(layout::sizing::FlexBasisCalcBasis::Auto),
+        "content" => Ok(layout::sizing::FlexBasisCalcBasis::Content),
+        "min-content" => Ok(layout::sizing::FlexBasisCalcBasis::MinContent),
+        "max-content" => Ok(layout::sizing::FlexBasisCalcBasis::MaxContent),
+        "stretch" => Ok(layout::sizing::FlexBasisCalcBasis::Stretch),
+        "fit-content" => Ok(layout::sizing::FlexBasisCalcBasis::FitContent),
+        "contain" => Ok(layout::sizing::FlexBasisCalcBasis::Contain),
         _ => Err(Error::new(format!(
             "invalid flex-basis calc-size basis `{basis}` in `{raw}`"
         ))),
@@ -7164,12 +7246,12 @@ fn parse_fixture_sizing_expression(raw: &str) -> Result<FixtureSizingExpression<
 }
 
 impl FixtureSizingExpression<'_> {
-    fn lower_sizing_calculation(self) -> Result<layout::SizingCalculation, Error> {
+    fn lower_sizing_calculation(self) -> Result<layout::sizing::SizingCalculation, Error> {
         match self {
-            Self::Leaf(raw) => Ok(layout::SizingCalculation::value(parse_sizing_leaf_value(
-                raw,
-            )?)),
-            Self::Calc { body, .. } => Ok(layout::SizingCalculation::value(
+            Self::Leaf(raw) => Ok(layout::sizing::SizingCalculation::value(
+                parse_sizing_leaf_value(raw)?,
+            )),
+            Self::Calc { body, .. } => Ok(layout::sizing::SizingCalculation::value(
                 parse_sizing_affine_value(body, false)?,
             )),
             Self::Min { raw, arguments } => {
@@ -7179,7 +7261,7 @@ impl FixtureSizingExpression<'_> {
                         parse_fixture_sizing_expression(argument)?.lower_sizing_calculation()
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                layout::SizingCalculation::min(calculations).map_err(|error| {
+                layout::sizing::SizingCalculation::min(calculations).map_err(|error| {
                     Error::new(format!("invalid sizing fixture function `{raw}`: {error}"))
                 })
             }
@@ -7190,7 +7272,7 @@ impl FixtureSizingExpression<'_> {
                         parse_fixture_sizing_expression(argument)?.lower_sizing_calculation()
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                layout::SizingCalculation::max(calculations).map_err(|error| {
+                layout::sizing::SizingCalculation::max(calculations).map_err(|error| {
                     Error::new(format!("invalid sizing fixture function `{raw}`: {error}"))
                 })
             }
@@ -7198,7 +7280,7 @@ impl FixtureSizingExpression<'_> {
                 minimum,
                 preferred,
                 maximum,
-            } => Ok(layout::SizingCalculation::clamp(
+            } => Ok(layout::sizing::SizingCalculation::clamp(
                 minimum
                     .map(|value| parse_fixture_sizing_expression(value)?.lower_sizing_calculation())
                     .transpose()?,
@@ -7213,7 +7295,7 @@ impl FixtureSizingExpression<'_> {
         }
     }
 
-    fn lower_calc_size_calculation(self) -> Result<layout::CalcSizeCalculation, Error> {
+    fn lower_calc_size_calculation(self) -> Result<layout::sizing::CalcSizeCalculation, Error> {
         match self {
             Self::Leaf(raw) => calc_size_calculation_from_coefficients(
                 parse_fixture_affine_coefficients(raw, true, true)?,
@@ -7230,7 +7312,7 @@ impl FixtureSizingExpression<'_> {
                         parse_fixture_sizing_expression(argument)?.lower_calc_size_calculation()
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                layout::CalcSizeCalculation::min(calculations).map_err(|error| {
+                layout::sizing::CalcSizeCalculation::min(calculations).map_err(|error| {
                     Error::new(format!(
                         "invalid calc-size fixture function `{raw}`: {error}"
                     ))
@@ -7243,7 +7325,7 @@ impl FixtureSizingExpression<'_> {
                         parse_fixture_sizing_expression(argument)?.lower_calc_size_calculation()
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                layout::CalcSizeCalculation::max(calculations).map_err(|error| {
+                layout::sizing::CalcSizeCalculation::max(calculations).map_err(|error| {
                     Error::new(format!(
                         "invalid calc-size fixture function `{raw}`: {error}"
                     ))
@@ -7253,7 +7335,7 @@ impl FixtureSizingExpression<'_> {
                 minimum,
                 preferred,
                 maximum,
-            } => Ok(layout::CalcSizeCalculation::clamp(
+            } => Ok(layout::sizing::CalcSizeCalculation::clamp(
                 minimum
                     .map(|value| {
                         parse_fixture_sizing_expression(value)?.lower_calc_size_calculation()
@@ -7273,7 +7355,7 @@ impl FixtureSizingExpression<'_> {
     }
 }
 
-fn parse_sizing_leaf_value(raw: &str) -> Result<layout::LengthPercentageOf, Error> {
+fn parse_sizing_leaf_value(raw: &str) -> Result<layout::length::LengthPercentageOf, Error> {
     let tokens = raw.split_whitespace().collect::<Vec<_>>();
     let [atom] = tokens.as_slice() else {
         return Err(Error::new(format!(
@@ -7281,7 +7363,7 @@ fn parse_sizing_leaf_value(raw: &str) -> Result<layout::LengthPercentageOf, Erro
         )));
     };
     let coefficients = parse_fixture_affine_atom(atom, false, true, raw)?;
-    layout::LengthPercentageOf::from_coefficients(
+    layout::length::LengthPercentageOf::from_coefficients(
         coefficients.absolute_px,
         coefficients.percent_fraction,
     )
@@ -7291,9 +7373,9 @@ fn parse_sizing_leaf_value(raw: &str) -> Result<layout::LengthPercentageOf, Erro
 fn parse_sizing_affine_value(
     raw: &str,
     allow_unitless: bool,
-) -> Result<layout::LengthPercentageOf, Error> {
+) -> Result<layout::length::LengthPercentageOf, Error> {
     let coefficients = parse_fixture_affine_coefficients(raw, false, allow_unitless)?;
-    layout::LengthPercentageOf::from_coefficients(
+    layout::length::LengthPercentageOf::from_coefficients(
         coefficients.absolute_px,
         coefficients.percent_fraction,
     )
@@ -7303,8 +7385,8 @@ fn parse_sizing_affine_value(
 fn calc_size_calculation_from_coefficients(
     coefficients: FixtureSizingCoefficients,
     raw: &str,
-) -> Result<layout::CalcSizeCalculation, Error> {
-    layout::CalcSizeCalculation::from_coefficients(
+) -> Result<layout::sizing::CalcSizeCalculation, Error> {
+    layout::sizing::CalcSizeCalculation::from_coefficients(
         coefficients.absolute_px,
         coefficients.percent_fraction,
         coefficients.size_fraction,
@@ -7426,68 +7508,75 @@ fn parse_fixture_affine_atom(
     )))
 }
 
-fn length_percentage_px(value: Scalar, raw: &str) -> Result<layout::LengthPercentageOf, Error> {
-    layout::LengthPercentageOf::px(value)
+fn length_percentage_px(
+    value: Scalar,
+    raw: &str,
+) -> Result<layout::length::LengthPercentageOf, Error> {
+    layout::length::LengthPercentageOf::px(value)
         .map_err(|error| Error::new(format!("invalid length `{raw}`: {error}")))
 }
 
 fn length_percentage_percent(
     value: Scalar,
     raw: &str,
-) -> Result<layout::LengthPercentageOf, Error> {
-    layout::LengthPercentageOf::from_percent_fraction(value)
+) -> Result<layout::length::LengthPercentageOf, Error> {
+    layout::length::LengthPercentageOf::from_percent_fraction(value)
         .map_err(|error| Error::new(format!("invalid length `{raw}`: {error}")))
 }
 
-fn length_px(value: Scalar, raw: &str) -> Result<layout::Length, Error> {
-    Ok(layout::Length::value(length_percentage_px(value, raw)?))
+fn length_px(value: Scalar, raw: &str) -> Result<layout::length::Length, Error> {
+    Ok(layout::length::Length::value(length_percentage_px(
+        value, raw,
+    )?))
 }
 
-fn length_percent(value: Scalar, raw: &str) -> Result<layout::Length, Error> {
-    Ok(layout::Length::value(length_percentage_percent(
+fn length_percent(value: Scalar, raw: &str) -> Result<layout::length::Length, Error> {
+    Ok(layout::length::Length::value(length_percentage_percent(
         value, raw,
     )?))
 }
 
 #[cfg(test)]
-fn preferred_size_px(value: Scalar) -> layout::PreferredSize {
-    layout::PreferredSize::value(
-        layout::LengthPercentageOf::px(value).expect("finite test dimension px"),
+fn preferred_size_px(value: Scalar) -> layout::sizing::PreferredSize {
+    layout::sizing::PreferredSize::value(
+        layout::length::LengthPercentageOf::px(value).expect("finite test dimension px"),
     )
 }
 
 #[cfg(test)]
-fn min_track_px(value: Scalar) -> layout::MinTrackSizing {
-    layout::LengthPercentageOf::px(value)
+fn min_track_px(value: Scalar) -> layout::grid::MinTrackSizing {
+    layout::length::LengthPercentageOf::px(value)
         .expect("finite test min track px")
         .into()
 }
 
 #[cfg(test)]
-fn max_track_px(value: Scalar) -> layout::MaxTrackSizing {
-    layout::LengthPercentageOf::px(value)
+fn max_track_px(value: Scalar) -> layout::grid::MaxTrackSizing {
+    layout::length::LengthPercentageOf::px(value)
         .expect("finite test max track px")
         .into()
 }
 
 #[cfg(test)]
-fn track_px(value: Scalar) -> layout::TrackSizing {
-    layout::LengthPercentageOf::px(value)
+fn track_px(value: Scalar) -> layout::grid::TrackSizing {
+    layout::length::LengthPercentageOf::px(value)
         .expect("finite test track px")
         .into()
 }
 
 #[cfg(test)]
-fn track_component_px(value: Scalar) -> layout::TrackComponent {
-    layout::TrackComponent::Track(track_px(value))
+fn track_component_px(value: Scalar) -> layout::grid::TrackComponent {
+    layout::grid::TrackComponent::Track(track_px(value))
 }
 
 #[cfg(test)]
-fn parse_track_component_list(raw: &str) -> Result<Vec<layout::TrackComponent>, Error> {
+fn parse_track_component_list(raw: &str) -> Result<Vec<layout::grid::TrackComponent>, Error> {
     parse_track_component_list_with_calc(raw)
 }
 
-fn parse_track_component_list_with_calc(raw: &str) -> Result<Vec<layout::TrackComponent>, Error> {
+fn parse_track_component_list_with_calc(
+    raw: &str,
+) -> Result<Vec<layout::grid::TrackComponent>, Error> {
     if raw.trim_start().starts_with("subgrid") {
         return Ok(vec![parse_subgrid_track_component(raw)?]);
     }
@@ -7498,21 +7587,21 @@ fn parse_track_component_list_with_calc(raw: &str) -> Result<Vec<layout::TrackCo
 }
 
 #[cfg(test)]
-fn parse_track_component(raw: &str) -> Result<layout::TrackComponent, Error> {
+fn parse_track_component(raw: &str) -> Result<layout::grid::TrackComponent, Error> {
     parse_track_component_with_calc(raw)
 }
 
-fn parse_track_component_with_calc(raw: &str) -> Result<layout::TrackComponent, Error> {
+fn parse_track_component_with_calc(raw: &str) -> Result<layout::grid::TrackComponent, Error> {
     if let Some(body) = function_body(raw, "repeat") {
         let (count, tracks) = split_once_top_level_comma(body)?;
         let repeat = match count.trim() {
-            "auto-fill" => layout::TrackRepetition::auto_fill_components(
+            "auto-fill" => layout::grid::TrackRepetition::auto_fill_components(
                 parse_track_component_list_with_calc(tracks)?,
             ),
-            "auto-fit" => layout::TrackRepetition::auto_fit_components(
+            "auto-fit" => layout::grid::TrackRepetition::auto_fit_components(
                 parse_track_component_list_with_calc(tracks)?,
             ),
-            raw => layout::TrackRepetition::count_components(
+            raw => layout::grid::TrackRepetition::count_components(
                 raw.parse()
                     .map_err(|_| Error::new(format!("invalid repeat count `{raw}`")))?,
                 parse_track_component_list_with_calc(tracks)?,
@@ -7520,19 +7609,19 @@ fn parse_track_component_with_calc(raw: &str) -> Result<layout::TrackComponent, 
         };
         let repeat =
             repeat.map_err(|error| Error::new(format!("invalid track repeat: {error}")))?;
-        return Ok(layout::TrackComponent::Repeat(repeat));
+        return Ok(layout::grid::TrackComponent::Repeat(repeat));
     }
     if raw.starts_with('[') {
-        return Ok(layout::TrackComponent::LineNames(parse_subgrid_line_names(
-            raw,
-        )?));
+        return Ok(layout::grid::TrackComponent::LineNames(
+            parse_subgrid_line_names(raw)?,
+        ));
     }
-    Ok(layout::TrackComponent::Track(parse_track_sizing_with_calc(
-        raw,
-    )?))
+    Ok(layout::grid::TrackComponent::Track(
+        parse_track_sizing_with_calc(raw)?,
+    ))
 }
 
-fn parse_subgrid_track_component(raw: &str) -> Result<layout::TrackComponent, Error> {
+fn parse_subgrid_track_component(raw: &str) -> Result<layout::grid::TrackComponent, Error> {
     let mut parts = split_top_level_whitespace(raw);
     if parts.first().map(String::as_str) != Some("subgrid") {
         return Err(Error::new(format!("invalid subgrid track list `{raw}`")));
@@ -7541,12 +7630,14 @@ fn parse_subgrid_track_component(raw: &str) -> Result<layout::TrackComponent, Er
         .drain(1..)
         .map(|part| parse_subgrid_line_name_component(&part))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(layout::TrackComponent::Subgrid(layout::SubgridTrack {
-        name_components,
-    }))
+    Ok(layout::grid::TrackComponent::Subgrid(
+        layout::grid::SubgridTrack { name_components },
+    ))
 }
 
-fn parse_subgrid_line_name_component(raw: &str) -> Result<layout::SubgridLineNameComponent, Error> {
+fn parse_subgrid_line_name_component(
+    raw: &str,
+) -> Result<layout::grid::SubgridLineNameComponent, Error> {
     if let Some(body) = function_body(raw, "repeat") {
         let (count, names) = split_once_top_level_comma(body)?;
         let line_name_sets = split_top_level_whitespace(names)
@@ -7554,18 +7645,18 @@ fn parse_subgrid_line_name_component(raw: &str) -> Result<layout::SubgridLineNam
             .map(|part| parse_subgrid_line_names(&part))
             .collect::<Result<Vec<_>, _>>()?;
         let count = match count.trim() {
-            "auto-fill" => layout::SubgridLineNameRepeatCount::AutoFill,
-            raw => layout::SubgridLineNameRepeatCount::Count(
+            "auto-fill" => layout::grid::SubgridLineNameRepeatCount::AutoFill,
+            raw => layout::grid::SubgridLineNameRepeatCount::Count(
                 raw.parse()
                     .map_err(|_| Error::new(format!("invalid repeat count `{raw}`")))?,
             ),
         };
-        return Ok(layout::SubgridLineNameComponent::Repeat {
+        return Ok(layout::grid::SubgridLineNameComponent::Repeat {
             count,
             line_name_sets,
         });
     }
-    Ok(layout::SubgridLineNameComponent::LineNames(
+    Ok(layout::grid::SubgridLineNameComponent::LineNames(
         parse_subgrid_line_names(raw)?,
     ))
 }
@@ -7580,7 +7671,7 @@ fn parse_subgrid_line_names(raw: &str) -> Result<Vec<String>, Error> {
         .collect::<Result<Vec<_>, _>>()
 }
 
-fn parse_track_sizing_with_calc(raw: &str) -> Result<layout::TrackSizing, Error> {
+fn parse_track_sizing_with_calc(raw: &str) -> Result<layout::grid::TrackSizing, Error> {
     let raw = checked_sizing_fixture(raw)?;
     if let Some(("minmax", body)) = parse_sizing_function(raw)? {
         let arguments = split_sizing_arguments(body, raw)?;
@@ -7589,72 +7680,72 @@ fn parse_track_sizing_with_calc(raw: &str) -> Result<layout::TrackSizing, Error>
                 "minmax() requires exactly two arguments in `{raw}`"
             )));
         };
-        return Ok(layout::TrackSizing::minmax(
+        return Ok(layout::grid::TrackSizing::minmax(
             parse_min_track_sizing_inner(min)?,
             parse_max_track_sizing_inner(max)?,
         ));
     }
     if let Some(("fit-content", body)) = parse_sizing_function(raw)? {
-        return Ok(layout::TrackSizing::fit_content(
+        return Ok(layout::grid::TrackSizing::fit_content(
             parse_fit_content_argument(body, raw)?,
         ));
     }
     match raw {
-        "auto" => Ok(layout::TrackSizing::AUTO),
-        "min-content" => Ok(layout::TrackSizing::MIN_CONTENT),
-        "max-content" => Ok(layout::TrackSizing::MAX_CONTENT),
-        _ if raw.ends_with("fr") => Ok(layout::TrackSizing::flex(parse_track_flex(raw)?)),
-        _ => Ok(layout::TrackSizing::calculation(
+        "auto" => Ok(layout::grid::TrackSizing::AUTO),
+        "min-content" => Ok(layout::grid::TrackSizing::MIN_CONTENT),
+        "max-content" => Ok(layout::grid::TrackSizing::MAX_CONTENT),
+        _ if raw.ends_with("fr") => Ok(layout::grid::TrackSizing::flex(parse_track_flex(raw)?)),
+        _ => Ok(layout::grid::TrackSizing::calculation(
             parse_fixture_sizing_expression(raw)?.lower_sizing_calculation()?,
         )),
     }
 }
 
 #[cfg(test)]
-fn parse_min_track_sizing_with_calc(raw: &str) -> Result<layout::MinTrackSizing, Error> {
+fn parse_min_track_sizing_with_calc(raw: &str) -> Result<layout::grid::MinTrackSizing, Error> {
     let raw = checked_sizing_fixture(raw)?;
     parse_min_track_sizing_inner(raw)
 }
 
-fn parse_min_track_sizing_inner(raw: &str) -> Result<layout::MinTrackSizing, Error> {
+fn parse_min_track_sizing_inner(raw: &str) -> Result<layout::grid::MinTrackSizing, Error> {
     match raw {
-        "auto" => Ok(layout::MinTrackSizing::AUTO),
-        "min-content" => Ok(layout::MinTrackSizing::MIN_CONTENT),
-        "max-content" => Ok(layout::MinTrackSizing::MAX_CONTENT),
-        _ => Ok(layout::MinTrackSizing::Calculation(
+        "auto" => Ok(layout::grid::MinTrackSizing::AUTO),
+        "min-content" => Ok(layout::grid::MinTrackSizing::MIN_CONTENT),
+        "max-content" => Ok(layout::grid::MinTrackSizing::MAX_CONTENT),
+        _ => Ok(layout::grid::MinTrackSizing::Calculation(
             parse_fixture_sizing_expression(raw)?.lower_sizing_calculation()?,
         )),
     }
 }
 
 #[cfg(test)]
-fn parse_max_track_sizing_with_calc(raw: &str) -> Result<layout::MaxTrackSizing, Error> {
+fn parse_max_track_sizing_with_calc(raw: &str) -> Result<layout::grid::MaxTrackSizing, Error> {
     let raw = checked_sizing_fixture(raw)?;
     parse_max_track_sizing_inner(raw)
 }
 
-fn parse_max_track_sizing_inner(raw: &str) -> Result<layout::MaxTrackSizing, Error> {
+fn parse_max_track_sizing_inner(raw: &str) -> Result<layout::grid::MaxTrackSizing, Error> {
     if let Some(("fit-content", body)) = parse_sizing_function(raw)? {
-        return Ok(layout::MaxTrackSizing::fit_content(
+        return Ok(layout::grid::MaxTrackSizing::fit_content(
             parse_fit_content_argument(body, raw)?,
         ));
     }
     match raw {
-        "auto" => Ok(layout::MaxTrackSizing::AUTO),
-        "min-content" => Ok(layout::MaxTrackSizing::MIN_CONTENT),
-        "max-content" => Ok(layout::MaxTrackSizing::MAX_CONTENT),
-        _ if raw.ends_with("fr") => Ok(layout::MaxTrackSizing::flex(parse_track_flex(raw)?)),
-        _ => Ok(layout::MaxTrackSizing::Calculation(
+        "auto" => Ok(layout::grid::MaxTrackSizing::AUTO),
+        "min-content" => Ok(layout::grid::MaxTrackSizing::MIN_CONTENT),
+        "max-content" => Ok(layout::grid::MaxTrackSizing::MAX_CONTENT),
+        _ if raw.ends_with("fr") => Ok(layout::grid::MaxTrackSizing::flex(parse_track_flex(raw)?)),
+        _ => Ok(layout::grid::MaxTrackSizing::Calculation(
             parse_fixture_sizing_expression(raw)?.lower_sizing_calculation()?,
         )),
     }
 }
 
-fn parse_track_flex(raw: &str) -> Result<layout::TrackFlexFactor, Error> {
+fn parse_track_flex(raw: &str) -> Result<layout::grid::TrackFlexFactor, Error> {
     let value = raw
         .strip_suffix("fr")
         .ok_or_else(|| Error::new(format!("invalid track flex `{raw}`")))?;
-    layout::TrackFlexFactor::try_new(parse_number(value)?)
+    layout::grid::TrackFlexFactor::try_new(parse_number(value)?)
         .map_err(|error| Error::new(format!("invalid track flex `{raw}`: {error}")))
 }
 
@@ -7833,7 +7924,7 @@ mod tests {
         assert!(captured.origins.is_empty());
         assert_eq!(captured.controls.len(), 2);
         let mut wrong_role = golden.root.clone();
-        wrong_role.children[0].inline_boundary = Some(layout::InlineBoundaryKind::End);
+        wrong_role.children[0].inline_boundary = Some(layout::inline::InlineBoundaryKind::End);
         assert_eq!(
             validate_fri06_c08r_explicit_input(&wrong_role, true)
                 .unwrap_err()
@@ -7894,60 +7985,72 @@ mod tests {
 
     // These are explicitly authored Native operations. Historical source IR and
     // observations supply no root-context authority and are never converted here.
-    fn formal_max_content_native_request() -> layout::LayoutRootRequest {
-        let axis = layout::AxisSizingRequest::new(
-            layout::AvailableSpace::Indefinite,
-            layout::SizingOperation::MaxContent,
+    fn formal_max_content_native_request() -> layout::request::LayoutRootRequest {
+        let axis = layout::constraint::AxisSizingRequest::new(
+            layout::constraint::AvailableSpace::Indefinite,
+            layout::constraint::SizingOperation::MaxContent,
         );
-        layout::LayoutRootRequest::standalone(
-            layout::SizingRequest::new(
-                layout::Size::splat(axis),
-                layout::OrthogonalFallbackOf::new(
-                    layout::Size::splat(None),
-                    layout::NearestScrollportOf::Absent,
-                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+        layout::request::LayoutRootRequest::standalone(
+            layout::constraint::SizingRequest::new(
+                layout::geometry::Size::splat(axis),
+                layout::constraint::OrthogonalFallbackOf::new(
+                    layout::geometry::Size::splat(None),
+                    layout::constraint::NearestScrollportOf::Absent,
+                    layout::geometry::Size::splat(
+                        layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-            layout::Size::splat(None),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
+            layout::geometry::Size::splat(None),
         )
     }
 
-    fn normal_inline_intrinsic_block_native_request(width: Scalar) -> layout::LayoutRootRequest {
-        let width = layout::NonNegativeFiniteOf::new(width).unwrap();
-        layout::LayoutRootRequest::standalone(
-            layout::SizingRequest::new(
-                layout::Size::new(
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Definite(width),
-                        layout::SizingOperation::Normal,
+    fn normal_inline_intrinsic_block_native_request(
+        width: Scalar,
+    ) -> layout::request::LayoutRootRequest {
+        let width = layout::length::NonNegativeFiniteOf::new(width).unwrap();
+        layout::request::LayoutRootRequest::standalone(
+            layout::constraint::SizingRequest::new(
+                layout::geometry::Size::new(
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Definite(width),
+                        layout::constraint::SizingOperation::Normal,
                     ),
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Indefinite,
-                        layout::SizingOperation::MaxContent,
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Indefinite,
+                        layout::constraint::SizingOperation::MaxContent,
                     ),
                 ),
-                layout::OrthogonalFallbackOf::new(
-                    layout::Size::splat(None),
-                    layout::NearestScrollportOf::Absent,
-                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                layout::constraint::OrthogonalFallbackOf::new(
+                    layout::geometry::Size::splat(None),
+                    layout::constraint::NearestScrollportOf::Absent,
+                    layout::geometry::Size::splat(
+                        layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-            layout::Size::new(Some(width), None),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
+            layout::geometry::Size::new(Some(width), None),
         )
     }
 
     fn assert_native_test_matches(
         golden: &Golden,
-        request: layout::LayoutRootRequest,
+        request: layout::request::LayoutRootRequest,
     ) -> Result<(), Error> {
         assert_native_test_matches_with_endpoint_accounting(golden, request).map(|_| ())
     }
 
     fn assert_native_test_matches_with_endpoint_accounting(
         golden: &Golden,
-        request: layout::LayoutRootRequest,
+        request: layout::request::LayoutRootRequest,
     ) -> Result<ComparisonResult, Error> {
         if let Some(table) = &golden.element_scroll_sizes {
             table.validate_source(&golden.root, &golden.viewport.root_context)?;
@@ -7976,8 +8079,8 @@ mod tests {
 
     fn generated_native_batch(
         golden: &Golden,
-        request: layout::LayoutRootRequest,
-    ) -> (TestTree, layout::CompletedLayoutBatch<usize>) {
+        request: layout::request::LayoutRootRequest,
+    ) -> (TestTree, layout::batch::CompletedLayoutBatch<usize>) {
         let tree = TestTree::from_golden(&golden.root, None).unwrap();
         let batch = native_tree_compute(&tree, request);
         (tree, batch)
@@ -8009,12 +8112,12 @@ mod tests {
         );
         for (node, control) in controls {
             let input = tree.nodes[node].layout_input.as_inline_boundary().unwrap();
-            assert_eq!(input.edge(), layout::InlineBoundaryEdge::ZERO);
+            assert_eq!(input.edge(), layout::inline::InlineBoundaryEdge::ZERO);
             assert_eq!(input.metrics().baseline(), 0.0);
             assert_eq!(input.metrics().line_extent(), 0.0);
             assert!(
                 batch.unrounded_inline_fragments().iter().any(|entry| {
-                    entry.owner() == &layout::InlineFragmentOwner::Node(node)
+                    entry.owner() == &layout::text_layout::InlineFragmentOwner::Node(node)
                         && matches!(entry.fragment().finalized_fragment().view().owner(),
                     surgeist_text::finalized::FinalizedFragmentOwner::Control(actual) if actual == *control)
                 }),
@@ -8381,7 +8484,7 @@ mod tests {
             .to_string()
             .contains("source coverage")
         );
-        let one = |entry: &layout::InlineFragmentOutputEntry<usize>| NativeRangeRectangle {
+        let one = |entry: &layout::batch::InlineFragmentOutputEntry<usize>| NativeRangeRectangle {
             origin: origin.clone(),
             line: entry.fragment().finalized_fragment().finalized_line(),
             source: entry
@@ -8771,13 +8874,13 @@ mod tests {
 
     fn native_tree_compute(
         tree: &TestTree,
-        request: layout::LayoutRootRequest,
-    ) -> layout::CompletedLayoutBatch<usize> {
-        let capture = layout::LayoutFlowInput::try_new(
+        request: layout::request::LayoutRootRequest,
+    ) -> layout::batch::CompletedLayoutBatch<usize> {
+        let capture = layout::text_layout::LayoutFlowInput::try_new(
             tree,
             0,
             tree.paragraphs.clone(),
-            surgeist_layout::WrappingInput {
+            surgeist_layout::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -8790,7 +8893,7 @@ mod tests {
     }
     use super::*;
 
-    fn test_node_input(attrs: StyleAttrs) -> Result<layout::NodeInput, Error> {
+    fn test_node_input(attrs: StyleAttrs) -> Result<layout::node::NodeInput, Error> {
         to_node_input(&attrs)
     }
 
@@ -8805,7 +8908,9 @@ mod tests {
         StyleAttrs { attrs }
     }
 
-    fn observed_overflow_axes(input: &layout::NodeInput) -> (layout::Overflow, layout::Overflow) {
+    fn observed_overflow_axes(
+        input: &layout::node::NodeInput,
+    ) -> (layout::overflow::Overflow, layout::overflow::Overflow) {
         (input.overflow.x(), input.overflow.y())
     }
 
@@ -8818,7 +8923,9 @@ mod tests {
         }
     }
 
-    fn fixture_overflow_clip_margin(value: &str) -> Result<layout::OverflowClipMargin, Error> {
+    fn fixture_overflow_clip_margin(
+        value: &str,
+    ) -> Result<layout::overflow::OverflowClipMargin, Error> {
         let raw = format!(
             concat!(
                 "<test name=\"overflow-clip-margin\">",
@@ -8838,9 +8945,9 @@ mod tests {
     fn fri07_c04_overflow_clip_margin_parser_lowers_one_token_clip_boxes_with_zero_margin() {
         let mut rejected = Vec::new();
         for (value, expected_box) in [
-            ("content-box", layout::OverflowClipBox::ContentBox),
-            ("padding-box", layout::OverflowClipBox::PaddingBox),
-            ("border-box", layout::OverflowClipBox::BorderBox),
+            ("content-box", layout::overflow::OverflowClipBox::ContentBox),
+            ("padding-box", layout::overflow::OverflowClipBox::PaddingBox),
+            ("border-box", layout::overflow::OverflowClipBox::BorderBox),
         ] {
             let Ok(actual) = fixture_overflow_clip_margin(value) else {
                 rejected.push(value);
@@ -8859,10 +8966,10 @@ mod tests {
     #[test]
     fn fri07_c04_overflow_clip_margin_parser_preserves_length_forms_and_invalid_tokens() {
         for (value, expected_box, expected_margin) in [
-            ("6px", layout::OverflowClipBox::PaddingBox, 6.0),
+            ("6px", layout::overflow::OverflowClipBox::PaddingBox, 6.0),
             (
                 "content-box 3.5px",
-                layout::OverflowClipBox::ContentBox,
+                layout::overflow::OverflowClipBox::ContentBox,
                 3.5,
             ),
         ] {
@@ -8893,12 +9000,15 @@ mod tests {
             .expect("normalized collapsed fixture fact should parse");
         assert_eq!(
             collapsed.flex_item_collapse,
-            layout::FlexItemCollapse::Collapsed
+            layout::flex::FlexItemCollapse::Collapsed
         );
 
         let normal = test_node_input(fri05_c06_attrs(&[]))
             .expect("absent collapse fixture fact should use the public default");
-        assert_eq!(normal.flex_item_collapse, layout::FlexItemCollapse::Normal);
+        assert_eq!(
+            normal.flex_item_collapse,
+            layout::flex::FlexItemCollapse::Normal
+        );
     }
 
     #[test]
@@ -8943,7 +9053,7 @@ mod tests {
 
     #[test]
     fn fri07_c04_collapse_parser_ignores_fixture_name_and_expected_geometry() {
-        fn parsed_input(name: &str, width: &str) -> layout::NodeInput {
+        fn parsed_input(name: &str, width: &str) -> layout::node::NodeInput {
             let raw = format!(
                 concat!(
                     "<test name=\"{}\">",
@@ -8990,16 +9100,19 @@ mod tests {
 
         assert_eq!(
             observed_overflow_axes(&input),
-            (layout::Overflow::Hidden, layout::Overflow::Auto)
+            (
+                layout::overflow::Overflow::Hidden,
+                layout::overflow::Overflow::Auto
+            )
         );
         assert_eq!(
             input.overflow_clip_margin.clip_box(),
-            layout::OverflowClipBox::ContentBox
+            layout::overflow::OverflowClipBox::ContentBox
         );
         assert_eq!(input.overflow_clip_margin.margin(), 3.5);
         assert_eq!(
             input.scrollbar_gutter,
-            layout::ScrollbarGutter::StableBothEdges
+            layout::overflow::ScrollbarGutter::StableBothEdges
         );
         assert!(input.scroll_padding.top().is_auto());
         for (actual, px, percent) in [
@@ -9007,7 +9120,7 @@ mod tests {
             (input.scroll_padding.bottom(), 0.0, 0.25),
             (input.scroll_padding.left(), 4.0, 0.1),
         ] {
-            let layout::ScrollPaddingValue::Value(actual) = actual else {
+            let layout::overflow::ScrollPaddingValue::Value(actual) = actual else {
                 panic!("expected numeric scroll padding, got {actual:?}");
             };
             assert_eq!(
@@ -9026,19 +9139,22 @@ mod tests {
         );
         assert_eq!(
             input.scroll_snap_type,
-            layout::ScrollSnapType::Enabled {
-                axis: layout::ScrollSnapAxis::Inline,
-                strictness: layout::ScrollSnapStrictness::Mandatory,
+            layout::overflow::ScrollSnapType::Enabled {
+                axis: layout::overflow::ScrollSnapAxis::Inline,
+                strictness: layout::overflow::ScrollSnapStrictness::Mandatory,
             }
         );
         assert_eq!(
             input.scroll_snap_align,
-            layout::ScrollSnapAlign::new(
-                layout::ScrollSnapAlignValue::Start,
-                layout::ScrollSnapAlignValue::Center,
+            layout::overflow::ScrollSnapAlign::new(
+                layout::overflow::ScrollSnapAlignValue::Start,
+                layout::overflow::ScrollSnapAlignValue::Center,
             )
         );
-        assert_eq!(input.scroll_snap_stop, layout::ScrollSnapStop::Always);
+        assert_eq!(
+            input.scroll_snap_stop,
+            layout::overflow::ScrollSnapStop::Always
+        );
     }
 
     #[test]
@@ -9095,18 +9211,24 @@ mod tests {
     #[test]
     fn fri05_c06_parser_rejects_noncanonical_computed_overflow_constructor_pairs() {
         assert!(
-            layout::ComputedOverflow::try_new(layout::Overflow::Visible, layout::Overflow::Auto)
-                .is_err()
+            layout::overflow::ComputedOverflow::try_new(
+                layout::overflow::Overflow::Visible,
+                layout::overflow::Overflow::Auto
+            )
+            .is_err()
         );
         assert!(
-            layout::ComputedOverflow::try_new(layout::Overflow::Clip, layout::Overflow::Scroll)
-                .is_err()
+            layout::overflow::ComputedOverflow::try_new(
+                layout::overflow::Overflow::Clip,
+                layout::overflow::Overflow::Scroll
+            )
+            .is_err()
         );
     }
 
     #[test]
     fn fri05_c06_computed_overflow_transition_accepts_direct_valid_computed_pairs() {
-        use layout::Overflow::{Auto, Clip, Hidden, Scroll, Visible};
+        use layout::overflow::Overflow::{Auto, Clip, Hidden, Scroll, Visible};
 
         for (x_token, y_token, expected) in [
             ("visible", "visible", (Visible, Visible)),
@@ -9278,15 +9400,15 @@ mod tests {
         );
     }
 
-    fn line_break_tree(input: layout::LineBreakInput) -> TestTree {
+    fn line_break_tree(input: layout::text_flow::LineBreakInput) -> TestTree {
         // Comparison-only expected geometry, with the authored control role.
         let expected = Observation {
-            kind: observation::Kind::NonBox(layout::NonBoxKind::LineBreak),
+            kind: observation::Kind::NonBox(layout::fragmentation::NonBoxKind::LineBreak),
             box_output: None,
-            ..layout::NodeOutput::new().into()
+            ..layout::node::NodeOutput::new().into()
         };
         TestTree {
-            publication_targets: layout::LayoutPublicationTargets::new(),
+            publication_targets: layout::batch::LayoutPublicationTargets::new(),
             paragraphs: Vec::new(),
             placed_text: Vec::new(),
             flex_text: Vec::new(),
@@ -9295,8 +9417,8 @@ mod tests {
             grid_lanes_text: Default::default(),
             replaced_image: None,
             nodes: vec![TestNode {
-                non_box_input: layout::NodeInput::non_box(),
-                layout_input: layout::LayoutInput::LineBreak(input),
+                non_box_input: layout::node::NodeInput::non_box(),
+                layout_input: layout::node::LayoutInput::LineBreak(input),
                 is_br_source: true,
                 font_family: FontFamily::Ahem,
                 font_size: TextMeasure::LINE_HEIGHT,
@@ -9309,7 +9431,7 @@ mod tests {
                 explicit_range_root: false,
                 preserve_fractional_min_content: false,
                 use_tighter_monospace_wrap: false,
-                cache: layout::Cache::new(),
+                cache: layout::cache::Cache::new(),
                 unrounded: expected,
                 unrounded_present: true,
                 unrounded_entry: None,
@@ -9323,25 +9445,25 @@ mod tests {
     }
 
     fn fri06_c12_t07_endpoint_control_comparison_fixture() -> (TestTree, Expectation) {
-        fn block_input() -> layout::NodeInput {
-            layout::NodeInput {
-                display: layout::Display::Block,
-                ..layout::NodeInput::default()
+        fn block_input() -> layout::node::NodeInput {
+            layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                ..layout::node::NodeInput::default()
             }
         }
 
-        fn output(x: Scalar, y: Scalar, width: Scalar, height: Scalar) -> layout::NodeOutput {
-            let mut output = layout::NodeOutput::new();
-            output.location = layout::Point::new(x, y);
-            output.size = layout::Size::new(width, height);
+        fn output(x: Scalar, y: Scalar, width: Scalar, height: Scalar) -> layout::node::NodeOutput {
+            let mut output = layout::node::NodeOutput::new();
+            output.location = layout::geometry::Point::new(x, y);
+            output.size = layout::geometry::Size::new(width, height);
             output
         }
 
         fn node(
-            layout_input: layout::LayoutInput,
+            layout_input: layout::node::LayoutInput,
             parent: Option<usize>,
             children: Vec<usize>,
-            output: layout::NodeOutput,
+            output: layout::node::NodeOutput,
         ) -> TestNode {
             // These authored numeric expectations are not completed packets.
             let kind = observation::expected_kind(layout_input.as_view(), false);
@@ -9351,8 +9473,8 @@ mod tests {
                 ..output.into()
             };
             TestNode {
-                non_box_input: layout::NodeInput::non_box(),
-                is_br_source: matches!(layout_input, layout::LayoutInput::LineBreak(_)),
+                non_box_input: layout::node::NodeInput::non_box(),
+                is_br_source: matches!(layout_input, layout::node::LayoutInput::LineBreak(_)),
                 layout_input,
                 font_family: FontFamily::Ahem,
                 font_size: TextMeasure::LINE_HEIGHT,
@@ -9365,7 +9487,7 @@ mod tests {
                 explicit_range_root: false,
                 preserve_fractional_min_content: false,
                 use_tighter_monospace_wrap: false,
-                cache: layout::Cache::new(),
+                cache: layout::cache::Cache::new(),
                 unrounded: expected,
                 unrounded_present: true,
                 unrounded_entry: None,
@@ -9393,7 +9515,7 @@ mod tests {
         }
 
         let tree = TestTree {
-            publication_targets: layout::LayoutPublicationTargets::new(),
+            publication_targets: layout::batch::LayoutPublicationTargets::new(),
             paragraphs: Vec::new(),
             placed_text: Vec::new(),
             flex_text: Vec::new(),
@@ -9403,25 +9525,25 @@ mod tests {
             replaced_image: None,
             nodes: vec![
                 node(
-                    layout::LayoutInput::box_input(block_input()),
+                    layout::node::LayoutInput::box_input(block_input()),
                     None,
                     vec![1, 2, 3],
                     output(0.0, 0.0, 100.0, 45.0),
                 ),
                 node(
-                    layout::LayoutInput::box_input(block_input()),
+                    layout::node::LayoutInput::box_input(block_input()),
                     Some(0),
                     Vec::new(),
                     output(0.0, 5.0, 20.0, 20.0),
                 ),
                 node(
-                    layout::LayoutInput::line_break(layout::LineBreakInput::new()),
+                    layout::node::LayoutInput::line_break(layout::text_flow::LineBreakInput::new()),
                     Some(0),
                     Vec::new(),
                     output(20.0, 25.0, 0.0, 0.0),
                 ),
                 node(
-                    layout::LayoutInput::box_input(block_input()),
+                    layout::node::LayoutInput::box_input(block_input()),
                     Some(0),
                     Vec::new(),
                     output(0.0, 25.0, 20.0, 20.0),
@@ -9452,7 +9574,7 @@ mod tests {
 
     #[test]
     fn fri06_c06_comparator_wrong_control_x_names_x_mismatch() {
-        let tree = line_break_tree(layout::LineBreakInput::new());
+        let tree = line_break_tree(layout::text_flow::LineBreakInput::new());
         let expected = Expectation {
             x: Some(1.0),
             y: Some(0.0),
@@ -9500,7 +9622,7 @@ mod tests {
             browser_br_font_band: None,
             children: Vec::new(),
         };
-        let mut tree = line_break_tree(layout::LineBreakInput::new());
+        let mut tree = line_break_tree(layout::text_flow::LineBreakInput::new());
         compare_expectation(&tree, 0, &expected, "fri06-c06-control", true, &[], &[])
             .expect("published zero control geometry should compare");
 
@@ -9798,13 +9920,16 @@ mod tests {
 
     #[test]
     fn fri06_c08_r0_float_and_clear_token_tables_are_finite() {
-        let flow = layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr);
+        let flow = layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
+            layout::geometry::Direction::Ltr,
+        );
         for (raw, expected) in [
-            ("none", layout::Float::None),
-            ("left", layout::Float::Left),
-            ("right", layout::Float::Right),
-            ("inline-start", layout::Float::Left),
-            ("inline-end", layout::Float::Right),
+            ("none", layout::box_model::Float::None),
+            ("left", layout::box_model::Float::Left),
+            ("right", layout::box_model::Float::Right),
+            ("inline-start", layout::box_model::Float::Left),
+            ("inline-end", layout::box_model::Float::Right),
         ] {
             assert_eq!(
                 parse_float(raw, flow).unwrap(),
@@ -9813,12 +9938,12 @@ mod tests {
             );
         }
         for (raw, expected) in [
-            ("none", layout::Clear::None),
-            ("left", layout::Clear::Left),
-            ("right", layout::Clear::Right),
-            ("inline-start", layout::Clear::Left),
-            ("inline-end", layout::Clear::Right),
-            ("both", layout::Clear::Both),
+            ("none", layout::box_model::Clear::None),
+            ("left", layout::box_model::Clear::Left),
+            ("right", layout::box_model::Clear::Right),
+            ("inline-start", layout::box_model::Clear::Left),
+            ("inline-end", layout::box_model::Clear::Right),
+            ("both", layout::box_model::Clear::Both),
         ] {
             assert_eq!(
                 parse_clear(raw, flow).unwrap(),
@@ -9941,8 +10066,10 @@ mod tests {
 
     #[test]
     fn fri06_c12_t07_zero_size_shared_endpoint_is_same_in_both_block_orientations() {
-        let forward =
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr);
+        let forward = layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
+            layout::geometry::Direction::Ltr,
+        );
         let control = (25.0, 25.0);
         assert_eq!(
             block_relation(control, (5.0, 25.0), forward),
@@ -9955,8 +10082,10 @@ mod tests {
             "the touching next neighbor shares the closed control interval"
         );
 
-        let reverse =
-            layout::FlowAxes::new(layout::WritingMode::VerticalRl, layout::Direction::Ltr);
+        let reverse = layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::VerticalRl,
+            layout::geometry::Direction::Ltr,
+        );
         assert_eq!(
             block_relation(control, (25.0, 45.0), reverse),
             BrowserNeighborLine::Same,
@@ -10035,8 +10164,9 @@ mod tests {
         );
 
         let mut hidden_break = tree.clone();
-        hidden_break.nodes[2].layout_input =
-            layout::LayoutInput::line_break(layout::LineBreakInput::new().hidden());
+        hidden_break.nodes[2].layout_input = layout::node::LayoutInput::line_break(
+            layout::text_flow::LineBreakInput::new().hidden(),
+        );
         assert!(
             compare_expectation_with_endpoint_accounting(
                 &hidden_break,
@@ -10469,22 +10599,25 @@ mod tests {
         );
     }
 
-    fn fri06_c06_fragment_observation()
-    -> (TestTree, layout::CompletedLayoutBatch<usize>, Expectation) {
+    fn fri06_c06_fragment_observation() -> (
+        TestTree,
+        layout::batch::CompletedLayoutBatch<usize>,
+        Expectation,
+    ) {
         let golden = native_test_golden(&[("X", 10.0, 0.25), ("X", 5.0, 0.0)], true);
         let mut tree = TestTree::from_golden(&golden.root, None).unwrap();
         let batch = native_tree_compute(&tree, fri06_c06_inline_request());
         tree.apply_completed_batch(&batch);
         fn expected_for(
             tree: &TestTree,
-            batch: &layout::CompletedLayoutBatch<usize>,
+            batch: &layout::batch::CompletedLayoutBatch<usize>,
             node: usize,
         ) -> Expectation {
             let fragments = batch
                 .final_inline_fragments()
                 .iter()
                 .filter(|entry| {
-                    entry.owner() == &layout::InlineFragmentOwner::Node(node)
+                    entry.owner() == &layout::text_layout::InlineFragmentOwner::Node(node)
                         && entry
                             .fragment()
                             .finalized_fragment()
@@ -10539,7 +10672,7 @@ mod tests {
 
     fn fri06_c06_compare_fragments(
         tree: &TestTree,
-        batch: &layout::CompletedLayoutBatch<usize>,
+        batch: &layout::batch::CompletedLayoutBatch<usize>,
         expected: &Expectation,
     ) -> Result<(), Error> {
         compare_expectation(
@@ -10563,7 +10696,9 @@ mod tests {
             let fragment = batch
                 .final_inline_fragments()
                 .iter()
-                .find(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(node))
+                .find(|entry| {
+                    entry.owner() == &layout::text_layout::InlineFragmentOwner::Node(node)
+                })
                 .unwrap()
                 .fragment();
             let issued = fragment.finalized_fragment();
@@ -10795,32 +10930,37 @@ mod tests {
 
         assert_native_test_matches(
             &golden,
-            layout::LayoutRootRequest::standalone(
-                layout::SizingRequest::new(
-                    layout::Size::new(
-                        layout::AxisSizingRequest::new(
-                            layout::AvailableSpace::Definite(
-                                layout::NonNegativeFiniteOf::new(100.0).unwrap(),
+            layout::request::LayoutRootRequest::standalone(
+                layout::constraint::SizingRequest::new(
+                    layout::geometry::Size::new(
+                        layout::constraint::AxisSizingRequest::new(
+                            layout::constraint::AvailableSpace::Definite(
+                                layout::length::NonNegativeFiniteOf::new(100.0).unwrap(),
                             ),
-                            layout::SizingOperation::Normal,
+                            layout::constraint::SizingOperation::Normal,
                         ),
-                        layout::AxisSizingRequest::new(
-                            layout::AvailableSpace::Definite(
-                                layout::NonNegativeFiniteOf::new(80.0).unwrap(),
+                        layout::constraint::AxisSizingRequest::new(
+                            layout::constraint::AvailableSpace::Definite(
+                                layout::length::NonNegativeFiniteOf::new(80.0).unwrap(),
                             ),
-                            layout::SizingOperation::Normal,
+                            layout::constraint::SizingOperation::Normal,
                         ),
                     ),
-                    layout::OrthogonalFallbackOf::new(
-                        layout::Size::NONE,
-                        layout::NearestScrollportOf::Absent,
-                        layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                    layout::constraint::OrthogonalFallbackOf::new(
+                        layout::geometry::Size::NONE,
+                        layout::constraint::NearestScrollportOf::Absent,
+                        layout::geometry::Size::splat(
+                            layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                        ),
                     ),
                 ),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-                layout::Size::new(
-                    Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()),
-                    Some(layout::NonNegativeFiniteOf::new(80.0).unwrap()),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
+                layout::geometry::Size::new(
+                    Some(layout::length::NonNegativeFiniteOf::new(100.0).unwrap()),
+                    Some(layout::length::NonNegativeFiniteOf::new(80.0).unwrap()),
                 ),
             ),
         )
@@ -10829,26 +10969,28 @@ mod tests {
 
     #[test]
     fn layout_input_returns_browser_parity_line_break_node() {
-        let input = layout::LineBreakInput::new().hidden();
+        let input = layout::text_flow::LineBreakInput::new().hidden();
         let tree = line_break_tree(input);
 
         assert_eq!(
             tree.layout_input(0),
-            layout::LayoutInputView::LineBreak(input)
+            layout::node::LayoutInputView::LineBreak(input)
         );
         assert_eq!(tree.layout_input(0).as_line_break(), Some(input));
     }
 
     #[test]
     fn node_input_returns_canonical_non_box_for_browser_parity_line_break_node() {
-        let tree = line_break_tree(layout::LineBreakInput::new());
+        let tree = line_break_tree(layout::text_flow::LineBreakInput::new());
 
-        assert_eq!(tree.node_input(0), &layout::NodeInput::non_box());
+        assert_eq!(tree.node_input(0), &layout::node::NodeInput::non_box());
     }
 
     #[test]
     fn browser_parity_xml_numbers_use_default_layout_scalar() {
-        fn require_default_scalar(value: layout::DefaultScalar) -> layout::DefaultScalar {
+        fn require_default_scalar(
+            value: layout::scalar::DefaultScalar,
+        ) -> layout::scalar::DefaultScalar {
             value
         }
 
@@ -10856,14 +10998,14 @@ mod tests {
             parse_number("137.203125").expect("fixture number should parse as default scalar");
         // Exact default-scalar value for 137.203125, written without a
         // decimal literal that trips clippy's excessive-precision lint.
-        let expected = layout::DefaultScalar::from_bits(0x4309_3400);
+        let expected = layout::scalar::DefaultScalar::from_bits(0x4309_3400);
 
         assert_eq!(require_default_scalar(parsed), expected);
     }
 
     #[test]
     fn item_order_parser_is_canonical_and_scalar_independent() {
-        fn parse_fixture_order(raw: Option<&str>) -> Result<layout::ItemOrder, Error> {
+        fn parse_fixture_order(raw: Option<&str>) -> Result<layout::node::ItemOrder, Error> {
             let order = raw
                 .map(|value| format!(r#" order="{value}""#))
                 .unwrap_or_default();
@@ -10886,7 +11028,7 @@ mod tests {
 
         assert_eq!(
             parse_fixture_order(None).expect("missing order should default"),
-            layout::ItemOrder::ZERO
+            layout::node::ItemOrder::ZERO
         );
         for (raw, expected) in [
             ("-2147483648", i32::MIN),
@@ -10895,7 +11037,7 @@ mod tests {
         ] {
             assert_eq!(
                 parse_fixture_order(Some(raw)).expect("canonical i32 order should parse"),
-                layout::ItemOrder::new(expected),
+                layout::node::ItemOrder::new(expected),
                 "{raw}"
             );
         }
@@ -10943,42 +11085,56 @@ mod tests {
 
     #[test]
     fn native_flex_allocation_remains_separate_from_percentage_parent() {
-        let parent = layout::Size::new(
-            Some(layout::NonNegativeFiniteOf::new(400.0).unwrap()),
-            Some(layout::NonNegativeFiniteOf::new(60.0).unwrap()),
+        let parent = layout::geometry::Size::new(
+            Some(layout::length::NonNegativeFiniteOf::new(400.0).unwrap()),
+            Some(layout::length::NonNegativeFiniteOf::new(60.0).unwrap()),
         );
         for (axes, allocated) in [
             (
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-                layout::Size::new(Some(layout::NonNegativeFiniteOf::new(160.0).unwrap()), None),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
+                layout::geometry::Size::new(
+                    Some(layout::length::NonNegativeFiniteOf::new(160.0).unwrap()),
+                    None,
+                ),
             ),
             (
-                layout::FlowAxes::new(layout::WritingMode::VerticalRl, layout::Direction::Rtl),
-                layout::Size::new(None, Some(layout::NonNegativeFiniteOf::new(80.5).unwrap())),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::VerticalRl,
+                    layout::geometry::Direction::Rtl,
+                ),
+                layout::geometry::Size::new(
+                    None,
+                    Some(layout::length::NonNegativeFiniteOf::new(80.5).unwrap()),
+                ),
             ),
         ] {
-            let sizing = layout::SizingRequest::new(
-                layout::Size::new(
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Definite(parent.width.unwrap()),
-                        layout::SizingOperation::Normal,
+            let sizing = layout::constraint::SizingRequest::new(
+                layout::geometry::Size::new(
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Definite(parent.width.unwrap()),
+                        layout::constraint::SizingOperation::Normal,
                     ),
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Definite(parent.height.unwrap()),
-                        layout::SizingOperation::Normal,
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Definite(parent.height.unwrap()),
+                        layout::constraint::SizingOperation::Normal,
                     ),
                 ),
-                layout::OrthogonalFallbackOf::new(
-                    layout::Size::NONE,
-                    layout::NearestScrollportOf::Absent,
-                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                layout::constraint::OrthogonalFallbackOf::new(
+                    layout::geometry::Size::NONE,
+                    layout::constraint::NearestScrollportOf::Absent,
+                    layout::geometry::Size::splat(
+                        layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             );
-            let request = layout::LayoutRootRequest::flex_item(
+            let request = layout::request::LayoutRootRequest::flex_item(
                 sizing,
-                layout::FlexItemRootContext::new(axes, parent, allocated),
+                layout::request::FlexItemRootContext::new(axes, parent, allocated),
             );
-            let layout::LayoutRootContext::FlexItem(context) = request.context() else {
+            let layout::request::LayoutRootContext::FlexItem(context) = request.context() else {
                 panic!("wrong Native root");
             };
             assert_eq!(context.parent_flow_axes(), axes);
@@ -10995,7 +11151,7 @@ mod tests {
             );
             assert_eq!(
                 request.sizing_request().axes().height.operation(),
-                layout::SizingOperation::Normal
+                layout::constraint::SizingOperation::Normal
             );
         }
     }
@@ -11008,33 +11164,38 @@ mod tests {
             r#"<test name="native-flex-item"><viewport width="400px" height="80px"/><input><div display="flex" width="50%" height="20px"/></input><expectations><node x="0" y="0" width="200" height="20"/></expectations></test>"#,
         ).unwrap();
         let mut tree = TestTree::from_golden(&golden.root, None).unwrap();
-        let parent = layout::Size::new(
-            Some(layout::NonNegativeFiniteOf::new(400.0).unwrap()),
-            Some(layout::NonNegativeFiniteOf::new(80.0).unwrap()),
+        let parent = layout::geometry::Size::new(
+            Some(layout::length::NonNegativeFiniteOf::new(400.0).unwrap()),
+            Some(layout::length::NonNegativeFiniteOf::new(80.0).unwrap()),
         );
-        let sizing = layout::SizingRequest::new(
-            layout::Size::new(
-                layout::AxisSizingRequest::new(
-                    layout::AvailableSpace::Definite(parent.width.unwrap()),
-                    layout::SizingOperation::Normal,
+        let sizing = layout::constraint::SizingRequest::new(
+            layout::geometry::Size::new(
+                layout::constraint::AxisSizingRequest::new(
+                    layout::constraint::AvailableSpace::Definite(parent.width.unwrap()),
+                    layout::constraint::SizingOperation::Normal,
                 ),
-                layout::AxisSizingRequest::new(
-                    layout::AvailableSpace::Definite(parent.height.unwrap()),
-                    layout::SizingOperation::Normal,
+                layout::constraint::AxisSizingRequest::new(
+                    layout::constraint::AvailableSpace::Definite(parent.height.unwrap()),
+                    layout::constraint::SizingOperation::Normal,
                 ),
             ),
-            layout::OrthogonalFallbackOf::new(
-                layout::Size::NONE,
-                layout::NearestScrollportOf::Absent,
-                layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+            layout::constraint::OrthogonalFallbackOf::new(
+                layout::geometry::Size::NONE,
+                layout::constraint::NearestScrollportOf::Absent,
+                layout::geometry::Size::splat(
+                    layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                ),
             ),
         );
-        let request = layout::LayoutRootRequest::flex_item(
+        let request = layout::request::LayoutRootRequest::flex_item(
             sizing,
-            layout::FlexItemRootContext::new(
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::request::FlexItemRootContext::new(
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
                 parent,
-                layout::Size::NONE,
+                layout::geometry::Size::NONE,
             ),
         );
         let batch = layout::compute_layout(&tree, 0, request).unwrap();
@@ -11068,32 +11229,37 @@ mod tests {
         )
         .expect("batch fixture should parse");
         let mut tree = TestTree::from_golden(&golden.root, None).expect("test tree should build");
-        let request = layout::LayoutRootRequest::standalone(
-            layout::SizingRequest::new(
-                layout::Size::new(
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Definite(
-                            layout::NonNegativeFiniteOf::new(100.0).unwrap(),
+        let request = layout::request::LayoutRootRequest::standalone(
+            layout::constraint::SizingRequest::new(
+                layout::geometry::Size::new(
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Definite(
+                            layout::length::NonNegativeFiniteOf::new(100.0).unwrap(),
                         ),
-                        layout::SizingOperation::Normal,
+                        layout::constraint::SizingOperation::Normal,
                     ),
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Definite(
-                            layout::NonNegativeFiniteOf::new(80.0).unwrap(),
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Definite(
+                            layout::length::NonNegativeFiniteOf::new(80.0).unwrap(),
                         ),
-                        layout::SizingOperation::Normal,
+                        layout::constraint::SizingOperation::Normal,
                     ),
                 ),
-                layout::OrthogonalFallbackOf::new(
-                    layout::Size::NONE,
-                    layout::NearestScrollportOf::Absent,
-                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                layout::constraint::OrthogonalFallbackOf::new(
+                    layout::geometry::Size::NONE,
+                    layout::constraint::NearestScrollportOf::Absent,
+                    layout::geometry::Size::splat(
+                        layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-            layout::Size::new(
-                Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()),
-                Some(layout::NonNegativeFiniteOf::new(80.0).unwrap()),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
+            layout::geometry::Size::new(
+                Some(layout::length::NonNegativeFiniteOf::new(100.0).unwrap()),
+                Some(layout::length::NonNegativeFiniteOf::new(80.0).unwrap()),
             ),
         );
         let batch = layout::compute_layout(&tree, 0, request)
@@ -11103,10 +11269,13 @@ mod tests {
         assert_eq!(batch.node_layouts().len(), 1);
         assert_eq!(batch.cache_store_entries().len(), 1);
         tree.apply_completed_batch(&batch);
-        assert_eq!(tree.nodes[0].unrounded.size, layout::Size::new(10.25, 20.5));
+        assert_eq!(
+            tree.nodes[0].unrounded.size,
+            layout::geometry::Size::new(10.25, 20.5)
+        );
         assert_eq!(
             tree.nodes[0].final_layout.size,
-            layout::Size::new(10.0, 21.0)
+            layout::geometry::Size::new(10.0, 21.0)
         );
         assert!(!tree.nodes[0].cache.is_empty());
 
@@ -11118,68 +11287,78 @@ mod tests {
         assert!(cached_batch.cache_store_entries().is_empty());
         assert_native_test_matches(
             &golden,
-            layout::LayoutRootRequest::standalone(
-                layout::SizingRequest::new(
-                    layout::Size::new(
-                        layout::AxisSizingRequest::new(
-                            layout::AvailableSpace::Definite(
-                                layout::NonNegativeFiniteOf::new(100.0).unwrap(),
+            layout::request::LayoutRootRequest::standalone(
+                layout::constraint::SizingRequest::new(
+                    layout::geometry::Size::new(
+                        layout::constraint::AxisSizingRequest::new(
+                            layout::constraint::AvailableSpace::Definite(
+                                layout::length::NonNegativeFiniteOf::new(100.0).unwrap(),
                             ),
-                            layout::SizingOperation::Normal,
+                            layout::constraint::SizingOperation::Normal,
                         ),
-                        layout::AxisSizingRequest::new(
-                            layout::AvailableSpace::Definite(
-                                layout::NonNegativeFiniteOf::new(80.0).unwrap(),
+                        layout::constraint::AxisSizingRequest::new(
+                            layout::constraint::AvailableSpace::Definite(
+                                layout::length::NonNegativeFiniteOf::new(80.0).unwrap(),
                             ),
-                            layout::SizingOperation::Normal,
+                            layout::constraint::SizingOperation::Normal,
                         ),
                     ),
-                    layout::OrthogonalFallbackOf::new(
-                        layout::Size::NONE,
-                        layout::NearestScrollportOf::Absent,
-                        layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                    layout::constraint::OrthogonalFallbackOf::new(
+                        layout::geometry::Size::NONE,
+                        layout::constraint::NearestScrollportOf::Absent,
+                        layout::geometry::Size::splat(
+                            layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                        ),
                     ),
                 ),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-                layout::Size::new(
-                    Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()),
-                    Some(layout::NonNegativeFiniteOf::new(80.0).unwrap()),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
+                layout::geometry::Size::new(
+                    Some(layout::length::NonNegativeFiniteOf::new(100.0).unwrap()),
+                    Some(layout::length::NonNegativeFiniteOf::new(80.0).unwrap()),
                 ),
             ),
         )
         .expect("unrounded expectations should remain observable");
 
-        let hidden_input = layout::NodeInput {
-            display: layout::Display::None,
-            ..layout::NodeInput::default()
+        let hidden_input = layout::node::NodeInput {
+            display: layout::box_model::Display::None,
+            ..layout::node::NodeInput::default()
         };
-        tree.nodes[0].layout_input = layout::LayoutInput::box_input(hidden_input);
-        let hidden_request = layout::LayoutRootRequest::standalone(
-            layout::SizingRequest::new(
-                layout::Size::new(
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Definite(
-                            layout::NonNegativeFiniteOf::new(100.0).unwrap(),
+        tree.nodes[0].layout_input = layout::node::LayoutInput::box_input(hidden_input);
+        let hidden_request = layout::request::LayoutRootRequest::standalone(
+            layout::constraint::SizingRequest::new(
+                layout::geometry::Size::new(
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Definite(
+                            layout::length::NonNegativeFiniteOf::new(100.0).unwrap(),
                         ),
-                        layout::SizingOperation::Normal,
+                        layout::constraint::SizingOperation::Normal,
                     ),
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Definite(
-                            layout::NonNegativeFiniteOf::new(80.0).unwrap(),
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Definite(
+                            layout::length::NonNegativeFiniteOf::new(80.0).unwrap(),
                         ),
-                        layout::SizingOperation::Normal,
+                        layout::constraint::SizingOperation::Normal,
                     ),
                 ),
-                layout::OrthogonalFallbackOf::new(
-                    layout::Size::NONE,
-                    layout::NearestScrollportOf::Absent,
-                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                layout::constraint::OrthogonalFallbackOf::new(
+                    layout::geometry::Size::NONE,
+                    layout::constraint::NearestScrollportOf::Absent,
+                    layout::geometry::Size::splat(
+                        layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-            layout::Size::new(
-                Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()),
-                Some(layout::NonNegativeFiniteOf::new(80.0).unwrap()),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
+            layout::geometry::Size::new(
+                Some(layout::length::NonNegativeFiniteOf::new(100.0).unwrap()),
+                Some(layout::length::NonNegativeFiniteOf::new(80.0).unwrap()),
             ),
         );
         let hidden_batch = layout::compute_layout(&tree, 0, hidden_request)
@@ -11217,15 +11396,15 @@ mod tests {
     fn parse_text_align_accepts_chromium_webkit_aliases() {
         assert_eq!(
             parse_text_align("-webkit-left").expect("webkit left should parse"),
-            layout::TextAlign::LegacyLeft
+            layout::text_flow::TextAlign::LegacyLeft
         );
         assert_eq!(
             parse_text_align("-webkit-right").expect("webkit right should parse"),
-            layout::TextAlign::LegacyRight
+            layout::text_flow::TextAlign::LegacyRight
         );
         assert_eq!(
             parse_text_align("-webkit-center").expect("webkit center should parse"),
-            layout::TextAlign::LegacyCenter
+            layout::text_flow::TextAlign::LegacyCenter
         );
     }
 
@@ -11272,7 +11451,7 @@ mod tests {
     #[test]
     fn parse_length_accepts_fixture_calc_px_plus_percent() {
         let length = parse_length_with_calc("calc(12px + 25%)").expect("fixture calc should parse");
-        let layout::Length::Value(value) = length else {
+        let layout::length::Length::Value(value) = length else {
             panic!("expected affine calc length, got {length:?}");
         };
         assert_eq!(value.absolute_px(), 12.0);
@@ -11284,8 +11463,8 @@ mod tests {
     fn property_field_migration_preferred_parser_accepts_fixture_calc_percent_minus_px() {
         let preferred = parse_preferred_size("calc(50% - 8px)")
             .expect("fixture calc preferred size should parse");
-        let expected = layout::PreferredSize::value(
-            layout::LengthPercentageOf::from_coefficients(-8.0, 0.5)
+        let expected = layout::sizing::PreferredSize::value(
+            layout::length::LengthPercentageOf::from_coefficients(-8.0, 0.5)
                 .expect("finite expected fixture calculation"),
         );
         assert_eq!(preferred, expected);
@@ -11293,22 +11472,22 @@ mod tests {
 
     #[test]
     fn property_field_migration_parser_routes_simple_values_by_destination_property() {
-        let value = layout::LengthPercentageOf::px(12.0).expect("finite fixture value");
+        let value = layout::length::LengthPercentageOf::px(12.0).expect("finite fixture value");
         assert_eq!(
             parse_preferred_size("12px").expect("preferred size should parse"),
-            layout::PreferredSize::value(value),
+            layout::sizing::PreferredSize::value(value),
         );
         assert_eq!(
             parse_min_size("12px").expect("minimum size should parse"),
-            layout::MinSize::value(value),
+            layout::sizing::MinSize::value(value),
         );
         assert_eq!(
             parse_max_size("none").expect("maximum initial value should parse"),
-            layout::MaxSize::NONE,
+            layout::sizing::MaxSize::NONE,
         );
         assert_eq!(
             parse_flex_basis("12px").expect("flex basis should parse"),
-            layout::FlexBasis::value(value),
+            layout::sizing::FlexBasis::value(value),
         );
         assert!(parse_max_size("auto").is_err());
         assert!(parse_preferred_size("none").is_err());
@@ -11319,12 +11498,12 @@ mod tests {
     #[test]
     fn fri04_c05_parser_accepts_property_keywords_nested_calculations_and_fit_content() {
         for (raw, expected) in [
-            ("auto", layout::PreferredSize::AUTO),
-            ("min-content", layout::PreferredSize::MIN_CONTENT),
-            ("max-content", layout::PreferredSize::MAX_CONTENT),
-            ("stretch", layout::PreferredSize::STRETCH),
-            ("fit-content", layout::PreferredSize::FIT_CONTENT),
-            ("contain", layout::PreferredSize::CONTAIN),
+            ("auto", layout::sizing::PreferredSize::AUTO),
+            ("min-content", layout::sizing::PreferredSize::MIN_CONTENT),
+            ("max-content", layout::sizing::PreferredSize::MAX_CONTENT),
+            ("stretch", layout::sizing::PreferredSize::STRETCH),
+            ("fit-content", layout::sizing::PreferredSize::FIT_CONTENT),
+            ("contain", layout::sizing::PreferredSize::CONTAIN),
         ] {
             assert_eq!(
                 parse_preferred_size(raw).expect("preferred keyword should parse"),
@@ -11333,12 +11512,12 @@ mod tests {
             );
         }
         for (raw, expected) in [
-            ("auto", layout::MinSize::AUTO),
-            ("min-content", layout::MinSize::MIN_CONTENT),
-            ("max-content", layout::MinSize::MAX_CONTENT),
-            ("stretch", layout::MinSize::STRETCH),
-            ("fit-content", layout::MinSize::FIT_CONTENT),
-            ("contain", layout::MinSize::CONTAIN),
+            ("auto", layout::sizing::MinSize::AUTO),
+            ("min-content", layout::sizing::MinSize::MIN_CONTENT),
+            ("max-content", layout::sizing::MinSize::MAX_CONTENT),
+            ("stretch", layout::sizing::MinSize::STRETCH),
+            ("fit-content", layout::sizing::MinSize::FIT_CONTENT),
+            ("contain", layout::sizing::MinSize::CONTAIN),
         ] {
             assert_eq!(
                 parse_min_size(raw).expect("minimum keyword should parse"),
@@ -11347,12 +11526,12 @@ mod tests {
             );
         }
         for (raw, expected) in [
-            ("none", layout::MaxSize::NONE),
-            ("min-content", layout::MaxSize::MIN_CONTENT),
-            ("max-content", layout::MaxSize::MAX_CONTENT),
-            ("stretch", layout::MaxSize::STRETCH),
-            ("fit-content", layout::MaxSize::FIT_CONTENT),
-            ("contain", layout::MaxSize::CONTAIN),
+            ("none", layout::sizing::MaxSize::NONE),
+            ("min-content", layout::sizing::MaxSize::MIN_CONTENT),
+            ("max-content", layout::sizing::MaxSize::MAX_CONTENT),
+            ("stretch", layout::sizing::MaxSize::STRETCH),
+            ("fit-content", layout::sizing::MaxSize::FIT_CONTENT),
+            ("contain", layout::sizing::MaxSize::CONTAIN),
         ] {
             assert_eq!(
                 parse_max_size(raw).expect("maximum keyword should parse"),
@@ -11361,13 +11540,13 @@ mod tests {
             );
         }
         for (raw, expected) in [
-            ("auto", layout::FlexBasis::AUTO),
-            ("content", layout::FlexBasis::CONTENT),
-            ("min-content", layout::FlexBasis::MIN_CONTENT),
-            ("max-content", layout::FlexBasis::MAX_CONTENT),
-            ("stretch", layout::FlexBasis::STRETCH),
-            ("fit-content", layout::FlexBasis::FIT_CONTENT),
-            ("contain", layout::FlexBasis::CONTAIN),
+            ("auto", layout::sizing::FlexBasis::AUTO),
+            ("content", layout::sizing::FlexBasis::CONTENT),
+            ("min-content", layout::sizing::FlexBasis::MIN_CONTENT),
+            ("max-content", layout::sizing::FlexBasis::MAX_CONTENT),
+            ("stretch", layout::sizing::FlexBasis::STRETCH),
+            ("fit-content", layout::sizing::FlexBasis::FIT_CONTENT),
+            ("contain", layout::sizing::FlexBasis::CONTAIN),
         ] {
             assert_eq!(
                 parse_flex_basis(raw).expect("flex keyword should parse"),
@@ -11377,29 +11556,27 @@ mod tests {
         }
 
         let px = |value| {
-            layout::SizingCalculation::value(
-                layout::LengthPercentageOf::px(value).expect("finite expected px"),
+            layout::sizing::SizingCalculation::value(
+                layout::length::LengthPercentageOf::px(value).expect("finite expected px"),
             )
         };
         let percent = |value| {
-            layout::SizingCalculation::value(
-                layout::LengthPercentageOf::from_percent_fraction(value)
+            layout::sizing::SizingCalculation::value(
+                layout::length::LengthPercentageOf::from_percent_fraction(value)
                     .expect("finite expected percentage"),
             )
         };
-        let affine = layout::SizingCalculation::value(
-            layout::LengthPercentageOf::from_coefficients(5.0, 0.1)
+        let affine = layout::sizing::SizingCalculation::value(
+            layout::length::LengthPercentageOf::from_coefficients(5.0, 0.1)
                 .expect("finite expected affine value"),
         );
-        let nested_min = layout::SizingCalculation::min(vec![percent(0.25), affine])
+        let nested_min = layout::sizing::SizingCalculation::min(vec![percent(0.25), affine])
             .expect("nonempty expected minimum");
-        let nested_max = layout::SizingCalculation::max(vec![px(10.0), nested_min])
+        let nested_max = layout::sizing::SizingCalculation::max(vec![px(10.0), nested_min])
             .expect("nonempty expected maximum");
-        let expected = layout::PreferredSize::calculation(layout::SizingCalculation::clamp(
-            None,
-            nested_max,
-            Some(px(90.0)),
-        ));
+        let expected = layout::sizing::PreferredSize::calculation(
+            layout::sizing::SizingCalculation::clamp(None, nested_max, Some(px(90.0))),
+        );
         assert_eq!(
             parse_preferred_size("clamp(none, max(10px, min(25%, calc(5px + 10%))), 90px)")
                 .expect("nested preferred calculation should parse"),
@@ -11408,7 +11585,11 @@ mod tests {
         assert_eq!(
             parse_min_size("clamp(none, 20px, none)")
                 .expect("omitted clamp endpoints should parse"),
-            layout::MinSize::calculation(layout::SizingCalculation::clamp(None, px(20.0), None))
+            layout::sizing::MinSize::calculation(layout::sizing::SizingCalculation::clamp(
+                None,
+                px(20.0),
+                None
+            ))
         );
         assert!(
             parse_flex_basis("fit-content(max(10px, 25%))")
@@ -11418,86 +11599,107 @@ mod tests {
         assert!(matches!(
             parse_max_track_sizing_with_calc("fit-content(min(40px, 50%))")
                 .expect("maximum track fit-content should parse"),
-            layout::MaxTrackSizing::FitContent(_)
+            layout::grid::MaxTrackSizing::FitContent(_)
         ));
     }
 
     #[test]
     fn fri04_c05_parser_accepts_canonical_calc_size_bases_and_affine_programs() {
-        let size = layout::CalcSizeCalculation::size();
+        let size = layout::sizing::CalcSizeCalculation::size();
         for (raw, basis) in [
-            ("100%", layout::PreferredSizeCalcBasis::FullPercentage),
-            ("auto", layout::PreferredSizeCalcBasis::Auto),
-            ("min-content", layout::PreferredSizeCalcBasis::MinContent),
-            ("max-content", layout::PreferredSizeCalcBasis::MaxContent),
-            ("stretch", layout::PreferredSizeCalcBasis::Stretch),
-            ("fit-content", layout::PreferredSizeCalcBasis::FitContent),
-            ("contain", layout::PreferredSizeCalcBasis::Contain),
+            (
+                "100%",
+                layout::sizing::PreferredSizeCalcBasis::FullPercentage,
+            ),
+            ("auto", layout::sizing::PreferredSizeCalcBasis::Auto),
+            (
+                "min-content",
+                layout::sizing::PreferredSizeCalcBasis::MinContent,
+            ),
+            (
+                "max-content",
+                layout::sizing::PreferredSizeCalcBasis::MaxContent,
+            ),
+            ("stretch", layout::sizing::PreferredSizeCalcBasis::Stretch),
+            (
+                "fit-content",
+                layout::sizing::PreferredSizeCalcBasis::FitContent,
+            ),
+            ("contain", layout::sizing::PreferredSizeCalcBasis::Contain),
         ] {
             assert_eq!(
                 parse_preferred_size(&format!("calc-size({raw}, size)"))
                     .expect("preferred calc-size basis should parse"),
-                layout::PreferredSize::calc_size(basis, size.clone())
+                layout::sizing::PreferredSize::calc_size(basis, size.clone())
                     .expect("expected preferred calc-size should construct")
             );
         }
         for (raw, basis) in [
-            ("100%", layout::MinSizeCalcBasis::FullPercentage),
-            ("auto", layout::MinSizeCalcBasis::Auto),
-            ("min-content", layout::MinSizeCalcBasis::MinContent),
-            ("max-content", layout::MinSizeCalcBasis::MaxContent),
-            ("stretch", layout::MinSizeCalcBasis::Stretch),
-            ("fit-content", layout::MinSizeCalcBasis::FitContent),
-            ("contain", layout::MinSizeCalcBasis::Contain),
+            ("100%", layout::sizing::MinSizeCalcBasis::FullPercentage),
+            ("auto", layout::sizing::MinSizeCalcBasis::Auto),
+            ("min-content", layout::sizing::MinSizeCalcBasis::MinContent),
+            ("max-content", layout::sizing::MinSizeCalcBasis::MaxContent),
+            ("stretch", layout::sizing::MinSizeCalcBasis::Stretch),
+            ("fit-content", layout::sizing::MinSizeCalcBasis::FitContent),
+            ("contain", layout::sizing::MinSizeCalcBasis::Contain),
         ] {
             assert_eq!(
                 parse_min_size(&format!("calc-size({raw}, size)"))
                     .expect("minimum calc-size basis should parse"),
-                layout::MinSize::calc_size(basis, size.clone())
+                layout::sizing::MinSize::calc_size(basis, size.clone())
                     .expect("expected minimum calc-size should construct")
             );
         }
         for (raw, basis) in [
-            ("100%", layout::MaxSizeCalcBasis::FullPercentage),
-            ("none", layout::MaxSizeCalcBasis::None),
-            ("min-content", layout::MaxSizeCalcBasis::MinContent),
-            ("max-content", layout::MaxSizeCalcBasis::MaxContent),
-            ("stretch", layout::MaxSizeCalcBasis::Stretch),
-            ("fit-content", layout::MaxSizeCalcBasis::FitContent),
-            ("contain", layout::MaxSizeCalcBasis::Contain),
+            ("100%", layout::sizing::MaxSizeCalcBasis::FullPercentage),
+            ("none", layout::sizing::MaxSizeCalcBasis::None),
+            ("min-content", layout::sizing::MaxSizeCalcBasis::MinContent),
+            ("max-content", layout::sizing::MaxSizeCalcBasis::MaxContent),
+            ("stretch", layout::sizing::MaxSizeCalcBasis::Stretch),
+            ("fit-content", layout::sizing::MaxSizeCalcBasis::FitContent),
+            ("contain", layout::sizing::MaxSizeCalcBasis::Contain),
         ] {
             assert_eq!(
                 parse_max_size(&format!("calc-size({raw}, size)"))
                     .expect("maximum calc-size basis should parse"),
-                layout::MaxSize::calc_size(basis, size.clone())
+                layout::sizing::MaxSize::calc_size(basis, size.clone())
                     .expect("expected maximum calc-size should construct")
             );
         }
         for (raw, basis) in [
-            ("100%", layout::FlexBasisCalcBasis::FullPercentage),
-            ("auto", layout::FlexBasisCalcBasis::Auto),
-            ("content", layout::FlexBasisCalcBasis::Content),
-            ("min-content", layout::FlexBasisCalcBasis::MinContent),
-            ("max-content", layout::FlexBasisCalcBasis::MaxContent),
-            ("stretch", layout::FlexBasisCalcBasis::Stretch),
-            ("fit-content", layout::FlexBasisCalcBasis::FitContent),
-            ("contain", layout::FlexBasisCalcBasis::Contain),
+            ("100%", layout::sizing::FlexBasisCalcBasis::FullPercentage),
+            ("auto", layout::sizing::FlexBasisCalcBasis::Auto),
+            ("content", layout::sizing::FlexBasisCalcBasis::Content),
+            (
+                "min-content",
+                layout::sizing::FlexBasisCalcBasis::MinContent,
+            ),
+            (
+                "max-content",
+                layout::sizing::FlexBasisCalcBasis::MaxContent,
+            ),
+            ("stretch", layout::sizing::FlexBasisCalcBasis::Stretch),
+            (
+                "fit-content",
+                layout::sizing::FlexBasisCalcBasis::FitContent,
+            ),
+            ("contain", layout::sizing::FlexBasisCalcBasis::Contain),
         ] {
             assert_eq!(
                 parse_flex_basis(&format!("calc-size({raw}, size)"))
                     .expect("flex calc-size basis should parse"),
-                layout::FlexBasis::calc_size(basis, size.clone())
+                layout::sizing::FlexBasis::calc_size(basis, size.clone())
                     .expect("expected flex calc-size should construct")
             );
         }
 
-        let independent = layout::CalcSizeCalculation::from_coefficients(10.0, 0.25, 0.0)
+        let independent = layout::sizing::CalcSizeCalculation::from_coefficients(10.0, 0.25, 0.0)
             .expect("finite independent calc-size coefficients");
         assert_eq!(
             parse_preferred_size("calc-size(any, 10px + 25%)")
                 .expect("independent Any calc-size should parse"),
-            layout::PreferredSize::calc_size(
-                layout::PreferredSizeCalcBasis::Any,
+            layout::sizing::PreferredSize::calc_size(
+                layout::sizing::PreferredSizeCalcBasis::Any,
                 independent.clone()
             )
             .expect("independent Any calc-size should construct")
@@ -11505,40 +11707,49 @@ mod tests {
         assert_eq!(
             parse_min_size("calc-size(any, 10px + 25%)")
                 .expect("minimum Any calc-size should parse"),
-            layout::MinSize::calc_size(layout::MinSizeCalcBasis::Any, independent.clone())
-                .expect("minimum Any calc-size should construct")
+            layout::sizing::MinSize::calc_size(
+                layout::sizing::MinSizeCalcBasis::Any,
+                independent.clone()
+            )
+            .expect("minimum Any calc-size should construct")
         );
         assert_eq!(
             parse_max_size("calc-size(any, 10px + 25%)")
                 .expect("maximum Any calc-size should parse"),
-            layout::MaxSize::calc_size(layout::MaxSizeCalcBasis::Any, independent.clone())
-                .expect("maximum Any calc-size should construct")
+            layout::sizing::MaxSize::calc_size(
+                layout::sizing::MaxSizeCalcBasis::Any,
+                independent.clone()
+            )
+            .expect("maximum Any calc-size should construct")
         );
         assert_eq!(
             parse_flex_basis("calc-size(any, 10px + 25%)")
                 .expect("flex Any calc-size should parse"),
-            layout::FlexBasis::calc_size(layout::FlexBasisCalcBasis::Any, independent)
-                .expect("flex Any calc-size should construct")
+            layout::sizing::FlexBasis::calc_size(
+                layout::sizing::FlexBasisCalcBasis::Any,
+                independent
+            )
+            .expect("flex Any calc-size should construct")
         );
 
-        let nested_min = layout::CalcSizeCalculation::min(vec![
-            layout::CalcSizeCalculation::from_coefficients(0.0, 0.0, 0.5)
+        let nested_min = layout::sizing::CalcSizeCalculation::min(vec![
+            layout::sizing::CalcSizeCalculation::from_coefficients(0.0, 0.0, 0.5)
                 .expect("finite size coefficient"),
-            layout::CalcSizeCalculation::from_coefficients(0.0, 0.8, 0.0)
+            layout::sizing::CalcSizeCalculation::from_coefficients(0.0, 0.8, 0.0)
                 .expect("finite percentage coefficient"),
         ])
         .expect("nonempty calc-size minimum");
-        let nested_max = layout::CalcSizeCalculation::max(vec![
-            layout::CalcSizeCalculation::from_coefficients(10.0, 0.25, 0.0)
+        let nested_max = layout::sizing::CalcSizeCalculation::max(vec![
+            layout::sizing::CalcSizeCalculation::from_coefficients(10.0, 0.25, 0.0)
                 .expect("finite affine coefficient"),
             nested_min,
         ])
         .expect("nonempty calc-size maximum");
-        let nested = layout::CalcSizeCalculation::clamp(
+        let nested = layout::sizing::CalcSizeCalculation::clamp(
             None,
             nested_max,
             Some(
-                layout::CalcSizeCalculation::from_coefficients(100.0, 0.0, 0.0)
+                layout::sizing::CalcSizeCalculation::from_coefficients(100.0, 0.0, 0.0)
                     .expect("finite maximum coefficient"),
             ),
         );
@@ -11547,21 +11758,24 @@ mod tests {
                 "calc-size(auto, clamp(none, max(10px + 25%, min(size * 0.5, 80%)), 100px))"
             )
             .expect("nested calc-size program should parse"),
-            layout::PreferredSize::calc_size(layout::PreferredSizeCalcBasis::Auto, nested)
-                .expect("nested calc-size program should construct")
+            layout::sizing::PreferredSize::calc_size(
+                layout::sizing::PreferredSizeCalcBasis::Auto,
+                nested
+            )
+            .expect("nested calc-size program should construct")
         );
     }
 
     #[test]
     fn fri04_c05_parser_accepts_track_only_flex_and_rejects_flex_in_minimum_track() {
-        let factor = layout::TrackFlexFactor::try_new(2.0).expect("finite track flex");
+        let factor = layout::grid::TrackFlexFactor::try_new(2.0).expect("finite track flex");
         assert_eq!(
             parse_max_track_sizing_with_calc("2fr").expect("maximum track flex should parse"),
-            layout::MaxTrackSizing::flex(factor)
+            layout::grid::MaxTrackSizing::flex(factor)
         );
         assert_eq!(
             parse_track_sizing_with_calc("2fr").expect("complete track flex should parse"),
-            layout::TrackSizing::flex(factor)
+            layout::grid::TrackSizing::flex(factor)
         );
         assert!(parse_min_track_sizing_with_calc("2fr").is_err());
         assert!(parse_track_sizing_with_calc("minmax(2fr, 20px)").is_err());
@@ -11653,9 +11867,12 @@ mod tests {
     #[test]
     fn fri08_c08_t02_fixture_expression_leaves_and_functions_lower_to_both_destinations() {
         let sizing_value = |absolute_px, percent_fraction| {
-            layout::SizingCalculation::value(
-                layout::LengthPercentageOf::from_coefficients(absolute_px, percent_fraction)
-                    .unwrap_or_else(|error| panic!("finite sizing coefficients failed: {error}")),
+            layout::sizing::SizingCalculation::value(
+                layout::length::LengthPercentageOf::from_coefficients(
+                    absolute_px,
+                    percent_fraction,
+                )
+                .unwrap_or_else(|error| panic!("finite sizing coefficients failed: {error}")),
             )
         };
         for (raw, calculation) in [
@@ -11665,7 +11882,7 @@ mod tests {
             ("calc(5px + 10%)", sizing_value(5.0, 0.1)),
             (
                 "min(10px, 25%)",
-                layout::SizingCalculation::min(vec![
+                layout::sizing::SizingCalculation::min(vec![
                     sizing_value(10.0, 0.0),
                     sizing_value(0.0, 0.25),
                 ])
@@ -11673,7 +11890,7 @@ mod tests {
             ),
             (
                 "max(10px, 25%)",
-                layout::SizingCalculation::max(vec![
+                layout::sizing::SizingCalculation::max(vec![
                     sizing_value(10.0, 0.0),
                     sizing_value(0.0, 0.25),
                 ])
@@ -11681,7 +11898,7 @@ mod tests {
             ),
             (
                 "clamp(10px, 25%, 90px)",
-                layout::SizingCalculation::clamp(
+                layout::sizing::SizingCalculation::clamp(
                     Some(sizing_value(10.0, 0.0)),
                     sizing_value(0.0, 0.25),
                     Some(sizing_value(90.0, 0.0)),
@@ -11691,13 +11908,13 @@ mod tests {
             assert_eq!(
                 parse_preferred_size(raw)
                     .unwrap_or_else(|error| panic!("ordinary expression `{raw}` failed: {error}")),
-                layout::PreferredSize::calculation(calculation),
+                layout::sizing::PreferredSize::calculation(calculation),
                 "ordinary expression `{raw}`",
             );
         }
 
         let calc_value = |absolute_px, percent_fraction, size_fraction| {
-            layout::CalcSizeCalculation::from_coefficients(
+            layout::sizing::CalcSizeCalculation::from_coefficients(
                 absolute_px,
                 percent_fraction,
                 size_fraction,
@@ -11716,7 +11933,7 @@ mod tests {
             ("calc(5px + 10% + size * 0.5)", calc_value(5.0, 0.1, 0.5)),
             (
                 "min(10px, size)",
-                layout::CalcSizeCalculation::min(vec![
+                layout::sizing::CalcSizeCalculation::min(vec![
                     calc_value(10.0, 0.0, 0.0),
                     calc_value(0.0, 0.0, 1.0),
                 ])
@@ -11724,7 +11941,7 @@ mod tests {
             ),
             (
                 "max(25%, size)",
-                layout::CalcSizeCalculation::max(vec![
+                layout::sizing::CalcSizeCalculation::max(vec![
                     calc_value(0.0, 0.25, 0.0),
                     calc_value(0.0, 0.0, 1.0),
                 ])
@@ -11732,7 +11949,7 @@ mod tests {
             ),
             (
                 "clamp(10px, size, 90px)",
-                layout::CalcSizeCalculation::clamp(
+                layout::sizing::CalcSizeCalculation::clamp(
                     Some(calc_value(10.0, 0.0, 0.0)),
                     calc_value(0.0, 0.0, 1.0),
                     Some(calc_value(90.0, 0.0, 0.0)),
@@ -11741,11 +11958,11 @@ mod tests {
         ] {
             let parsed = parse_preferred_size(&format!("calc-size(auto, {raw})"))
                 .unwrap_or_else(|error| panic!("calc-size expression `{raw}` failed: {error}"));
-            let wanted =
-                layout::PreferredSize::calc_size(layout::PreferredSizeCalcBasis::Auto, calculation)
-                    .unwrap_or_else(|error| {
-                        panic!("finite calc-size construction failed: {error}")
-                    });
+            let wanted = layout::sizing::PreferredSize::calc_size(
+                layout::sizing::PreferredSizeCalcBasis::Auto,
+                calculation,
+            )
+            .unwrap_or_else(|error| panic!("finite calc-size construction failed: {error}"));
             assert_eq!(parsed, wanted, "calc-size expression `{raw}`");
         }
     }
@@ -11777,8 +11994,8 @@ mod tests {
         );
 
         let px = |value| {
-            layout::SizingCalculation::value(
-                layout::LengthPercentageOf::px(value)
+            layout::sizing::SizingCalculation::value(
+                layout::length::LengthPercentageOf::px(value)
                     .unwrap_or_else(|error| panic!("finite clamp value failed: {error}")),
             )
         };
@@ -11786,19 +12003,19 @@ mod tests {
             parse_preferred_size("clamp(none, 20px, none)").unwrap_or_else(|error| {
                 panic!("ordinary omitted clamp bounds failed: {error}")
             }),
-            layout::PreferredSize::calculation(layout::SizingCalculation::clamp(
+            layout::sizing::PreferredSize::calculation(layout::sizing::SizingCalculation::clamp(
                 None,
                 px(20.0),
                 None,
             )),
         );
-        let size = layout::CalcSizeCalculation::size();
+        let size = layout::sizing::CalcSizeCalculation::size();
         assert_eq!(
             parse_preferred_size("calc-size(auto, clamp(none, size, none))")
                 .unwrap_or_else(|error| panic!("calc-size omitted clamp bounds failed: {error}"),),
-            layout::PreferredSize::calc_size(
-                layout::PreferredSizeCalcBasis::Auto,
-                layout::CalcSizeCalculation::clamp(None, size, None),
+            layout::sizing::PreferredSize::calc_size(
+                layout::sizing::PreferredSizeCalcBasis::Auto,
+                layout::sizing::CalcSizeCalculation::clamp(None, size, None),
             )
             .unwrap_or_else(|error| panic!("finite omitted clamp construction failed: {error}")),
         );
@@ -11876,7 +12093,7 @@ mod tests {
         );
         assert_eq!(
             parse_min_size("0").expect("unitless minimum length should parse"),
-            layout::MinSize::ZERO
+            layout::sizing::MinSize::ZERO
         );
         assert_eq!(
             parse_max_track_sizing_with_calc("12")
@@ -11914,7 +12131,7 @@ mod tests {
 
         let tree = TestTree::from_golden(&golden.root, None).expect("calc margin should lower");
 
-        let layout::LengthAuto::Value(value) = tree.box_node_input(0).margin.left else {
+        let layout::length::LengthAuto::Value(value) = tree.box_node_input(0).margin.left else {
             panic!(
                 "expected affine calc margin-left, got {:?}",
                 tree.box_node_input(0).margin.left
@@ -11950,7 +12167,7 @@ mod tests {
 
         let tree = TestTree::from_golden(&golden.root, None).expect("calc grid track should lower");
 
-        let [layout::TrackComponent::Track(track)] =
+        let [layout::grid::TrackComponent::Track(track)] =
             tree.box_node_input(0).grid_template_columns.as_slice()
         else {
             panic!(
@@ -11958,15 +12175,15 @@ mod tests {
                 tree.box_node_input(0).grid_template_columns
             );
         };
-        let layout::MinTrackSizing::Calculation(min) = &track.min else {
+        let layout::grid::MinTrackSizing::Calculation(min) = &track.min else {
             panic!("expected affine calc min track, got {:?}", track.min);
         };
-        let layout::MaxTrackSizing::Calculation(max) = &track.max else {
+        let layout::grid::MaxTrackSizing::Calculation(max) = &track.max else {
             panic!("expected affine calc max track, got {:?}", track.max);
         };
         assert_eq!(min, max);
         assert_eq!(
-            min.resolve_against(layout::PercentageBasisOf::definite(240.0).unwrap())
+            min.resolve_against(layout::length::PercentageBasisOf::definite(240.0).unwrap())
                 .value,
             Some(80.0)
         );
@@ -11983,22 +12200,24 @@ mod tests {
         assert_eq!(tracks[0], track_component_px(40.0));
         assert_eq!(
             tracks[1],
-            layout::TrackComponent::minmax(min_track_px(20.0), max_track_px(40.0))
+            layout::grid::TrackComponent::minmax(min_track_px(20.0), max_track_px(40.0))
         );
         assert_eq!(
             tracks[2],
-            layout::TrackComponent::fit_content(layout::SizingCalculation::value(
-                layout::LengthPercentageOf::from_percent_fraction(0.5).unwrap()
+            layout::grid::TrackComponent::fit_content(layout::sizing::SizingCalculation::value(
+                layout::length::LengthPercentageOf::from_percent_fraction(0.5).unwrap()
             ))
         );
         assert_eq!(
             tracks[3],
-            layout::TrackComponent::Repeat(
-                layout::TrackRepetition::count(
+            layout::grid::TrackComponent::Repeat(
+                layout::grid::TrackRepetition::count(
                     2,
                     vec![
-                        layout::TrackSizing::flex(layout::TrackFlexFactor::try_new(1.0).unwrap()),
-                        layout::TrackSizing::AUTO
+                        layout::grid::TrackSizing::flex(
+                            layout::grid::TrackFlexFactor::try_new(1.0).unwrap()
+                        ),
+                        layout::grid::TrackSizing::AUTO
                     ]
                 )
                 .expect("valid track repetition")
@@ -12024,18 +12243,20 @@ mod tests {
         assert_eq!(
             parse_track_component("repeat(auto-fill, minmax(150px,1fr))")
                 .expect("auto-fill should parse"),
-            layout::TrackComponent::Repeat(
-                layout::TrackRepetition::auto_fill(vec![layout::TrackSizing::minmax(
+            layout::grid::TrackComponent::Repeat(
+                layout::grid::TrackRepetition::auto_fill(vec![layout::grid::TrackSizing::minmax(
                     min_track_px(150.0),
-                    layout::MaxTrackSizing::Flex(layout::TrackFlexFactor::try_new(1.0).unwrap())
+                    layout::grid::MaxTrackSizing::Flex(
+                        layout::grid::TrackFlexFactor::try_new(1.0).unwrap()
+                    )
                 )])
                 .expect("valid track repetition")
             )
         );
         assert_eq!(
             parse_track_component("repeat(auto-fit, 40px)").expect("auto-fit should parse"),
-            layout::TrackComponent::Repeat(
-                layout::TrackRepetition::auto_fit(vec![track_px(40.0)])
+            layout::grid::TrackComponent::Repeat(
+                layout::grid::TrackRepetition::auto_fit(vec![track_px(40.0)])
                     .expect("valid track repetition")
             )
         );
@@ -12049,11 +12270,11 @@ mod tests {
         assert_eq!(
             parsed,
             vec![
-                layout::TrackComponent::LineNames(vec!["a".to_string()]),
-                layout::TrackComponent::Track(track_px(10.0)),
-                layout::TrackComponent::LineNames(vec!["b".to_string(), "c".to_string()]),
-                layout::TrackComponent::Track(track_px(20.0)),
-                layout::TrackComponent::LineNames(vec!["d".to_string()]),
+                layout::grid::TrackComponent::LineNames(vec!["a".to_string()]),
+                layout::grid::TrackComponent::Track(track_px(10.0)),
+                layout::grid::TrackComponent::LineNames(vec!["b".to_string(), "c".to_string()]),
+                layout::grid::TrackComponent::Track(track_px(20.0)),
+                layout::grid::TrackComponent::LineNames(vec!["d".to_string()]),
             ]
         );
     }
@@ -12079,20 +12300,20 @@ mod tests {
 
         assert_eq!(
             input.raw_grid_column,
-            layout::RawGridPlacement::new(
-                layout::RawGridLine::NamedLine {
+            layout::grid::RawGridPlacement::new(
+                layout::grid::RawGridLine::NamedLine {
                     name: "a".to_string(),
                     index: 2,
                 },
-                layout::RawGridLine::Auto,
+                layout::grid::RawGridLine::Auto,
             )
         );
         assert_eq!(
             input.grid_template_columns,
             vec![
-                layout::TrackComponent::LineNames(vec!["a".to_string()]),
-                layout::TrackComponent::Track(track_px(10.0)),
-                layout::TrackComponent::LineNames(vec!["b".to_string()]),
+                layout::grid::TrackComponent::LineNames(vec!["a".to_string()]),
+                layout::grid::TrackComponent::Track(track_px(10.0)),
+                layout::grid::TrackComponent::LineNames(vec!["b".to_string()]),
             ]
         );
     }
@@ -12104,7 +12325,7 @@ mod tests {
         })
         .expect("empty attrs should parse");
 
-        assert_eq!(input.display, layout::NodeInput::default().display);
+        assert_eq!(input.display, layout::node::NodeInput::default().display);
     }
 
     #[test]
@@ -12114,7 +12335,7 @@ mod tests {
         })
         .expect("source-tag div should parse");
 
-        assert_eq!(div.display, layout::Display::Block);
+        assert_eq!(div.display, layout::box_model::Display::Block);
     }
 
     #[test]
@@ -12131,13 +12352,16 @@ mod tests {
         })
         .expect("source-tag br should lower");
 
-        let layout::LayoutInput::LineBreak(input) = input else {
+        let layout::node::LayoutInput::LineBreak(input) = input else {
             panic!("br should lower to line break");
         };
-        assert_eq!(input.direction(), layout::Direction::Rtl);
-        assert_eq!(input.writing_mode(), layout::WritingMode::VerticalRl);
-        assert_eq!(input.vertical_align(), layout::VerticalAlign::Top);
-        assert_eq!(input.clear(), layout::Clear::Both);
+        assert_eq!(input.direction(), layout::geometry::Direction::Rtl);
+        assert_eq!(
+            input.writing_mode(),
+            layout::geometry::WritingMode::VerticalRl
+        );
+        assert_eq!(input.vertical_align(), layout::inline::VerticalAlign::Top);
+        assert_eq!(input.clear(), layout::box_model::Clear::Both);
     }
 
     #[test]
@@ -12162,12 +12386,15 @@ mod tests {
         .expect("fixture should parse");
 
         let tree = TestTree::from_golden(&golden.root, None).expect("test tree should build");
-        let layout::LayoutInput::LineBreak(input) = tree.nodes[1].layout_input else {
+        let layout::node::LayoutInput::LineBreak(input) = tree.nodes[1].layout_input else {
             panic!("br should lower to line break");
         };
 
-        assert_eq!(input.direction(), layout::Direction::Rtl);
-        assert_eq!(input.writing_mode(), layout::WritingMode::VerticalRl);
+        assert_eq!(input.direction(), layout::geometry::Direction::Rtl);
+        assert_eq!(
+            input.writing_mode(),
+            layout::geometry::WritingMode::VerticalRl
+        );
         assert_eq!(golden.root.children[0].style.get("direction"), Some("ltr"));
         assert_eq!(
             golden.root.children[0].style.get("writing-mode"),
@@ -12186,11 +12413,11 @@ mod tests {
         })
         .expect("display inline br should lower");
 
-        let layout::LayoutInput::LineBreak(input) = input else {
+        let layout::node::LayoutInput::LineBreak(input) = input else {
             panic!("br should lower to line break");
         };
-        assert_eq!(input.display(), layout::LineBreakDisplay::Break);
-        assert_eq!(input.direction(), layout::Direction::Rtl);
+        assert_eq!(input.display(), layout::text_flow::LineBreakDisplay::Break);
+        assert_eq!(input.direction(), layout::geometry::Direction::Rtl);
     }
 
     #[test]
@@ -12203,10 +12430,10 @@ mod tests {
         })
         .expect("display none br should lower");
 
-        let layout::LayoutInput::LineBreak(input) = input else {
+        let layout::node::LayoutInput::LineBreak(input) = input else {
             panic!("br should lower to line break");
         };
-        assert_eq!(input.display(), layout::LineBreakDisplay::None);
+        assert_eq!(input.display(), layout::text_flow::LineBreakDisplay::None);
     }
 
     #[test]
@@ -12221,7 +12448,7 @@ mod tests {
         })
         .expect("source-tag br with inline metrics should lower");
 
-        let layout::LayoutInput::LineBreak(input) = input else {
+        let layout::node::LayoutInput::LineBreak(input) = input else {
             panic!("br should lower to line break");
         };
         assert_eq!(input.metrics().baseline(), 15.0);
@@ -12232,11 +12459,11 @@ mod tests {
     #[test]
     fn sideways_writing_mode_parses_without_normalization() {
         for (raw, expected) in [
-            ("horizontal-tb", layout::WritingMode::HorizontalTb),
-            ("vertical-rl", layout::WritingMode::VerticalRl),
-            ("vertical-lr", layout::WritingMode::VerticalLr),
-            ("sideways-rl", layout::WritingMode::SidewaysRl),
-            ("sideways-lr", layout::WritingMode::SidewaysLr),
+            ("horizontal-tb", layout::geometry::WritingMode::HorizontalTb),
+            ("vertical-rl", layout::geometry::WritingMode::VerticalRl),
+            ("vertical-lr", layout::geometry::WritingMode::VerticalLr),
+            ("sideways-rl", layout::geometry::WritingMode::SidewaysRl),
+            ("sideways-lr", layout::geometry::WritingMode::SidewaysLr),
         ] {
             assert_eq!(
                 parse_writing_mode(Some(raw)).expect("known writing mode should parse"),
@@ -12277,12 +12504,12 @@ mod tests {
 
         assert_eq!(
             input.grid_template_areas,
-            layout::GridTemplateAreas {
+            layout::grid::GridTemplateAreas {
                 rows: vec![
-                    layout::GridTemplateAreaRow {
+                    layout::grid::GridTemplateAreaRow {
                         cells: vec![Some("head".to_string()), Some("head".to_string())],
                     },
-                    layout::GridTemplateAreaRow {
+                    layout::grid::GridTemplateAreaRow {
                         cells: vec![Some("nav".to_string()), Some("main".to_string())],
                     },
                 ],
@@ -12302,12 +12529,12 @@ mod tests {
 
         assert_eq!(
             input.grid_template_areas,
-            layout::GridTemplateAreas {
+            layout::grid::GridTemplateAreas {
                 rows: vec![
-                    layout::GridTemplateAreaRow {
+                    layout::grid::GridTemplateAreaRow {
                         cells: vec![None, Some("main".to_string())],
                     },
-                    layout::GridTemplateAreaRow {
+                    layout::grid::GridTemplateAreaRow {
                         cells: vec![Some("footer".to_string()), None],
                     },
                 ],
@@ -12319,15 +12546,17 @@ mod tests {
     fn parse_track_component_list_accepts_subgrid() {
         assert_eq!(
             parse_track_component_list("subgrid [] [start end]").expect("subgrid should parse"),
-            vec![layout::TrackComponent::Subgrid(layout::SubgridTrack {
-                name_components: vec![
-                    layout::SubgridLineNameComponent::LineNames(Vec::new()),
-                    layout::SubgridLineNameComponent::LineNames(vec![
-                        "start".to_string(),
-                        "end".to_string(),
-                    ]),
-                ],
-            })]
+            vec![layout::grid::TrackComponent::Subgrid(
+                layout::grid::SubgridTrack {
+                    name_components: vec![
+                        layout::grid::SubgridLineNameComponent::LineNames(Vec::new()),
+                        layout::grid::SubgridLineNameComponent::LineNames(vec![
+                            "start".to_string(),
+                            "end".to_string(),
+                        ]),
+                    ],
+                }
+            )]
         );
     }
 
@@ -12335,11 +12564,11 @@ mod tests {
     fn parse_display_preserves_inline_grid_variants() {
         assert_eq!(
             parse_display("inline-grid").expect("inline-grid should parse"),
-            layout::Display::InlineGrid
+            layout::box_model::Display::InlineGrid
         );
         assert_eq!(
             parse_display("inline-grid-lanes").expect("inline-grid-lanes should parse"),
-            layout::Display::InlineGridLanes
+            layout::box_model::Display::InlineGridLanes
         );
     }
 
@@ -12347,20 +12576,20 @@ mod tests {
     fn parse_display_preserves_inline_block() {
         assert_eq!(
             parse_display("inline-block").expect("inline-block should parse"),
-            layout::Display::InlineBlock
+            layout::box_model::Display::InlineBlock
         );
     }
 
     #[test]
     fn empty_inline_grid_display_uses_grid_tracks_instead_of_leaf_measurement() {
-        let node_input = layout::NodeInput {
-            display: layout::Display::InlineGrid,
+        let node_input = layout::node::NodeInput {
+            display: layout::box_model::Display::InlineGrid,
             grid_template_columns: vec![track_component_px(40.0)],
             grid_template_rows: vec![track_component_px(20.0)],
-            ..layout::NodeInput::default()
+            ..layout::node::NodeInput::default()
         };
         let mut tree = TestTree {
-            publication_targets: layout::LayoutPublicationTargets::new(),
+            publication_targets: layout::batch::LayoutPublicationTargets::new(),
             paragraphs: Vec::new(),
             placed_text: Vec::new(),
             flex_text: Vec::new(),
@@ -12369,8 +12598,8 @@ mod tests {
             grid_lanes_text: Default::default(),
             replaced_image: None,
             nodes: vec![TestNode {
-                non_box_input: layout::NodeInput::non_box(),
-                layout_input: layout::LayoutInput::box_input(node_input),
+                non_box_input: layout::node::NodeInput::non_box(),
+                layout_input: layout::node::LayoutInput::box_input(node_input),
                 is_br_source: false,
                 font_family: FontFamily::Ahem,
                 font_size: TextMeasure::LINE_HEIGHT,
@@ -12383,11 +12612,11 @@ mod tests {
                 explicit_range_root: false,
                 preserve_fractional_min_content: false,
                 use_tighter_monospace_wrap: false,
-                cache: layout::Cache::new(),
-                unrounded: layout::NodeOutput::new().into(),
+                cache: layout::cache::Cache::new(),
+                unrounded: layout::node::NodeOutput::new().into(),
                 unrounded_present: false,
                 unrounded_entry: None,
-                final_layout: layout::NodeOutput::new().into(),
+                final_layout: layout::node::NodeOutput::new().into(),
                 final_layout_present: false,
                 unrounded_inline_fragments: None,
                 final_inline_fragments: None,
@@ -12395,26 +12624,31 @@ mod tests {
             }],
         };
 
-        let request = layout::LayoutRootRequest::standalone(
-            layout::SizingRequest::new(
-                layout::Size::new(
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Indefinite,
-                        layout::SizingOperation::Normal,
+        let request = layout::request::LayoutRootRequest::standalone(
+            layout::constraint::SizingRequest::new(
+                layout::geometry::Size::new(
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Indefinite,
+                        layout::constraint::SizingOperation::Normal,
                     ),
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Indefinite,
-                        layout::SizingOperation::Normal,
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Indefinite,
+                        layout::constraint::SizingOperation::Normal,
                     ),
                 ),
-                layout::OrthogonalFallbackOf::new(
-                    layout::Size::NONE,
-                    layout::NearestScrollportOf::Absent,
-                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                layout::constraint::OrthogonalFallbackOf::new(
+                    layout::geometry::Size::NONE,
+                    layout::constraint::NearestScrollportOf::Absent,
+                    layout::geometry::Size::splat(
+                        layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-            layout::Size::new(None, None),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
+            layout::geometry::Size::new(None, None),
         );
         let batch =
             layout::compute_layout(&tree, 0, request).expect("inline grid layout should complete");
@@ -12422,7 +12656,7 @@ mod tests {
 
         assert_eq!(
             tree.nodes[0].final_layout.size,
-            layout::Size::new(40.0, 20.0)
+            layout::geometry::Size::new(40.0, 20.0)
         );
     }
 
@@ -12684,13 +12918,13 @@ mod tests {
     #[test]
     fn lanes_fixture_resolves_default_and_explicit_flow_after_templates() {
         for (flow, axis, dense) in [
-            (None, layout::GridAxisKind::Row, false),
-            (Some("normal"), layout::GridAxisKind::Row, false),
-            (Some("dense"), layout::GridAxisKind::Row, true),
-            (Some("row"), layout::GridAxisKind::Column, false),
-            (Some("row dense"), layout::GridAxisKind::Column, true),
-            (Some("column"), layout::GridAxisKind::Row, false),
-            (Some("column dense"), layout::GridAxisKind::Row, true),
+            (None, layout::grid::GridAxisKind::Row, false),
+            (Some("normal"), layout::grid::GridAxisKind::Row, false),
+            (Some("dense"), layout::grid::GridAxisKind::Row, true),
+            (Some("row"), layout::grid::GridAxisKind::Column, false),
+            (Some("row dense"), layout::grid::GridAxisKind::Column, true),
+            (Some("column"), layout::grid::GridAxisKind::Row, false),
+            (Some("column dense"), layout::grid::GridAxisKind::Row, true),
         ] {
             let mut attrs = StyleAttrs {
                 attrs: [
@@ -12714,7 +12948,7 @@ mod tests {
             let input = to_node_input(&attrs).unwrap();
             assert_eq!(
                 input.grid_lanes_flow.grid_axis(),
-                layout::GridAxisKind::Column
+                layout::grid::GridAxisKind::Column
             );
             assert!(input.grid_lanes_flow.reversed());
             assert_eq!(input.grid_lanes_flow.is_dense(), dense);
@@ -12749,35 +12983,37 @@ mod tests {
     fn parse_alignment_accepts_safe_and_unsafe_prefixes() {
         assert_eq!(
             parse_align_items("safe center").expect("safe item alignment should parse"),
-            layout::AlignItems::Safe(layout::ItemAlignmentPosition::Center)
+            layout::box_model::AlignItems::Safe(layout::box_model::ItemAlignmentPosition::Center)
         );
         assert_eq!(
             parse_align_items("safe start").expect("safe item alignment should parse"),
-            layout::AlignItems::Safe(layout::ItemAlignmentPosition::Start)
+            layout::box_model::AlignItems::Safe(layout::box_model::ItemAlignmentPosition::Start)
         );
         assert_eq!(
             parse_align_items("safe flex-start").expect("safe item alignment should parse"),
-            layout::AlignItems::Safe(layout::ItemAlignmentPosition::FlexStart)
+            layout::box_model::AlignItems::Safe(
+                layout::box_model::ItemAlignmentPosition::FlexStart
+            )
         );
         assert_eq!(
             parse_align_items("unsafe center").expect("unsafe item alignment should parse"),
-            layout::AlignItems::Unsafe(layout::ItemAlignmentPosition::Center)
+            layout::box_model::AlignItems::Unsafe(layout::box_model::ItemAlignmentPosition::Center)
         );
         assert_eq!(
             parse_align_items("baseline").expect("baseline alignment should parse"),
-            layout::AlignItems::Baseline
+            layout::box_model::AlignItems::Baseline
         );
         assert_eq!(
             parse_align_items("first baseline").expect("first baseline alignment should parse"),
-            layout::AlignItems::Baseline
+            layout::box_model::AlignItems::Baseline
         );
         assert_eq!(
             parse_align_items("last baseline").expect("last baseline alignment should parse"),
-            layout::AlignItems::LastBaseline
+            layout::box_model::AlignItems::LastBaseline
         );
         assert_eq!(
             parse_align_content("unsafe end").expect("unsafe content alignment should parse"),
-            layout::AlignContent::End
+            layout::box_model::AlignContent::End
         );
     }
 
@@ -12803,20 +13039,25 @@ mod tests {
         })
         .expect("baseline subgrid attrs should parse");
 
-        assert_eq!(node_input.display, layout::Display::InlineGrid);
+        assert_eq!(node_input.display, layout::box_model::Display::InlineGrid);
         assert_eq!(
             node_input.align_items,
-            Some(layout::AlignItems::LastBaseline)
+            Some(layout::box_model::AlignItems::LastBaseline)
         );
-        assert_eq!(node_input.align_self, Some(layout::AlignItems::Baseline));
+        assert_eq!(
+            node_input.align_self,
+            Some(layout::box_model::AlignItems::Baseline)
+        );
         assert_eq!(
             node_input.grid_template_columns,
-            vec![layout::TrackComponent::Subgrid(layout::SubgridTrack {
-                name_components: vec![
-                    layout::SubgridLineNameComponent::LineNames(vec!["a".to_string()]),
-                    layout::SubgridLineNameComponent::LineNames(vec!["b".to_string()]),
-                ],
-            })]
+            vec![layout::grid::TrackComponent::Subgrid(
+                layout::grid::SubgridTrack {
+                    name_components: vec![
+                        layout::grid::SubgridLineNameComponent::LineNames(vec!["a".to_string()]),
+                        layout::grid::SubgridLineNameComponent::LineNames(vec!["b".to_string()]),
+                    ],
+                }
+            )]
         );
     }
 
@@ -12829,11 +13070,14 @@ mod tests {
 
         assert_eq!(
             node_input.grid_column,
-            layout::GridPlacement::try_end_line(1).expect("valid grid line")
+            layout::grid::GridPlacement::try_end_line(1).expect("valid grid line")
         );
         assert_eq!(
             node_input.raw_grid_column,
-            layout::RawGridPlacement::new(layout::RawGridLine::Auto, layout::RawGridLine::Line(1))
+            layout::grid::RawGridPlacement::new(
+                layout::grid::RawGridLine::Auto,
+                layout::grid::RawGridLine::Line(1)
+            )
         );
     }
 
@@ -12847,7 +13091,7 @@ mod tests {
         })
         .expect("physical margin attrs should parse");
 
-        assert_eq!(node_input.margin.left, layout::LengthAuto::AUTO);
+        assert_eq!(node_input.margin.left, layout::length::LengthAuto::AUTO);
         assert_eq!(
             node_input.margin.right,
             length_px(12.0, "12px").unwrap().into()
@@ -12856,7 +13100,7 @@ mod tests {
 
     #[test]
     fn fixture_gaps_project_logical_css_axes() {
-        let expected_physical_gap = layout::Size::new(
+        let expected_physical_gap = layout::geometry::Size::new(
             length_px(7.0, "7px").expect("valid row gap"),
             length_px(11.0, "11px").expect("valid column gap"),
         );
@@ -12902,7 +13146,7 @@ mod tests {
     fn parse_grid_line_accepts_named_line() {
         assert_eq!(
             parse_raw_grid_line("a").unwrap(),
-            layout::RawGridLine::BareIdent("a".to_string())
+            layout::grid::RawGridLine::BareIdent("a".to_string())
         );
     }
 
@@ -12910,7 +13154,7 @@ mod tests {
     fn parse_grid_line_accepts_named_line_with_occurrence() {
         assert_eq!(
             parse_raw_grid_line("a 8").unwrap(),
-            layout::RawGridLine::NamedLine {
+            layout::grid::RawGridLine::NamedLine {
                 name: "a".to_string(),
                 index: 8
             }
@@ -12921,7 +13165,7 @@ mod tests {
     fn parse_grid_line_accepts_integer_before_named_line() {
         assert_eq!(
             parse_raw_grid_line("2 a").unwrap(),
-            layout::RawGridLine::NamedLine {
+            layout::grid::RawGridLine::NamedLine {
                 name: "a".to_string(),
                 index: 2
             }
@@ -12932,7 +13176,7 @@ mod tests {
     fn parse_grid_line_accepts_negative_named_line_occurrence() {
         assert_eq!(
             parse_raw_grid_line("b -1").unwrap(),
-            layout::RawGridLine::NamedLine {
+            layout::grid::RawGridLine::NamedLine {
                 name: "b".to_string(),
                 index: -1
             }
@@ -12948,7 +13192,7 @@ mod tests {
     fn parse_grid_line_accepts_named_span() {
         assert_eq!(
             parse_raw_grid_line("span a").unwrap(),
-            layout::RawGridLine::NamedSpan {
+            layout::grid::RawGridLine::NamedSpan {
                 name: "a".to_string(),
                 index: 1
             }
@@ -12959,7 +13203,7 @@ mod tests {
     fn parse_grid_line_accepts_named_span_with_count() {
         assert_eq!(
             parse_raw_grid_line("span 2 a").unwrap(),
-            layout::RawGridLine::NamedSpan {
+            layout::grid::RawGridLine::NamedSpan {
                 name: "a".to_string(),
                 index: 2
             }
@@ -12970,7 +13214,7 @@ mod tests {
     fn parse_grid_line_accepts_named_span_with_reversed_count_order() {
         assert_eq!(
             parse_raw_grid_line("span a 2").unwrap(),
-            layout::RawGridLine::NamedSpan {
+            layout::grid::RawGridLine::NamedSpan {
                 name: "a".to_string(),
                 index: 2
             }
@@ -13358,9 +13602,12 @@ mod tests {
         assert_eq!(participation.bidi_level().get(), 3);
         assert_eq!(
             participation.following_break(),
-            layout::InlineBreakOpportunity::Mandatory
+            layout::text_flow::InlineBreakOpportunity::Mandatory
         );
-        assert_eq!(tree.node_input(2).display, layout::Display::Block);
+        assert_eq!(
+            tree.node_input(2).display,
+            layout::box_model::Display::Block
+        );
     }
 
     #[test]
@@ -13405,35 +13652,43 @@ mod tests {
         }
     }
 
-    fn fri06_c06_inline_request() -> layout::LayoutRootRequest {
-        layout::LayoutRootRequest::standalone(
-            layout::SizingRequest::new(
-                layout::Size::new(
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Definite(
-                            layout::NonNegativeFiniteOf::new(100.0).unwrap(),
+    fn fri06_c06_inline_request() -> layout::request::LayoutRootRequest {
+        layout::request::LayoutRootRequest::standalone(
+            layout::constraint::SizingRequest::new(
+                layout::geometry::Size::new(
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Definite(
+                            layout::length::NonNegativeFiniteOf::new(100.0).unwrap(),
                         ),
-                        layout::SizingOperation::Normal,
+                        layout::constraint::SizingOperation::Normal,
                     ),
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Indefinite,
-                        layout::SizingOperation::Normal,
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Indefinite,
+                        layout::constraint::SizingOperation::Normal,
                     ),
                 ),
-                layout::OrthogonalFallbackOf::new(
-                    layout::Size::NONE,
-                    layout::NearestScrollportOf::Absent,
-                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                layout::constraint::OrthogonalFallbackOf::new(
+                    layout::geometry::Size::NONE,
+                    layout::constraint::NearestScrollportOf::Absent,
+                    layout::geometry::Size::splat(
+                        layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-            layout::Size::new(Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()), None),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
+            layout::geometry::Size::new(
+                Some(layout::length::NonNegativeFiniteOf::new(100.0).unwrap()),
+                None,
+            ),
         )
     }
 
     fn assert_native_cached_source_geometry(
-        cold: &layout::CompletedLayoutBatch<usize>,
-        warm: &layout::CompletedLayoutBatch<usize>,
+        cold: &layout::batch::CompletedLayoutBatch<usize>,
+        warm: &layout::batch::CompletedLayoutBatch<usize>,
         origin: &surgeist_text::prepared::PreparedOrigin,
     ) {
         assert_eq!(
@@ -13487,7 +13742,7 @@ mod tests {
         let request = fri06_c06_inline_request();
         let cold = native_tree_compute(&tree, request);
         let origin = tree.paragraphs[0].origins[0].origin.clone();
-        let assert_slices = |batch: &layout::CompletedLayoutBatch<usize>| {
+        let assert_slices = |batch: &layout::batch::CompletedLayoutBatch<usize>| {
             for entries in [
                 batch.unrounded_inline_fragments(),
                 batch.final_inline_fragments(),
@@ -13498,7 +13753,10 @@ mod tests {
                 let line = entries[0].fragment().finalized_fragment().finalized_line();
                 let mut coverage = Vec::new();
                 for (index, entry) in entries.iter().enumerate() {
-                    assert_eq!(entry.owner(), &layout::InlineFragmentOwner::Node(1));
+                    assert_eq!(
+                        entry.owner(),
+                        &layout::text_layout::InlineFragmentOwner::Node(1)
+                    );
                     let fragment = entry.fragment();
                     assert_eq!(fragment.line_index(), 0);
                     let issued = fragment.finalized_fragment();
@@ -13575,7 +13833,7 @@ mod tests {
         let golden = native_test_golden(&[("", 10.0, 0.0)], false);
         let mut tree = TestTree::from_golden(&golden.root, None).unwrap();
         let origin = tree.paragraphs[0].origins[0].origin.clone();
-        let snapshot = |batch: &layout::CompletedLayoutBatch<usize>| {
+        let snapshot = |batch: &layout::batch::CompletedLayoutBatch<usize>| {
             assert!(batch.unrounded_inline_fragments().is_empty());
             assert!(batch.final_inline_fragments().is_empty());
             let placed = batch.placed_text()[0].layout();
@@ -13673,40 +13931,54 @@ mod tests {
     fn fri06_c06_shape_input_query(
         band_minimum: Scalar,
         band_maximum: Scalar,
-    ) -> layout::FloatExclusionQuery {
-        layout::FloatExclusionQuery::try_new(
-            layout::ScrollRect::try_new(layout::Point::ZERO, layout::Size::new(80.0, 20.0))
-                .expect("finite test margin box"),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+    ) -> layout::box_model::FloatExclusionQuery {
+        layout::box_model::FloatExclusionQuery::try_new(
+            layout::scroll::ScrollRect::try_new(
+                layout::geometry::Point::ZERO,
+                layout::geometry::Size::new(80.0, 20.0),
+            )
+            .expect("finite test margin box"),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
             band_minimum,
             band_maximum,
         )
         .expect("finite test query")
     }
 
-    fn fri06_c06_shape_input_request() -> layout::LayoutRootRequest {
-        layout::LayoutRootRequest::standalone(
-            layout::SizingRequest::new(
-                layout::Size::new(
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Definite(
-                            layout::NonNegativeFiniteOf::new(100.0).unwrap(),
+    fn fri06_c06_shape_input_request() -> layout::request::LayoutRootRequest {
+        layout::request::LayoutRootRequest::standalone(
+            layout::constraint::SizingRequest::new(
+                layout::geometry::Size::new(
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Definite(
+                            layout::length::NonNegativeFiniteOf::new(100.0).unwrap(),
                         ),
-                        layout::SizingOperation::Normal,
+                        layout::constraint::SizingOperation::Normal,
                     ),
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Indefinite,
-                        layout::SizingOperation::Normal,
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Indefinite,
+                        layout::constraint::SizingOperation::Normal,
                     ),
                 ),
-                layout::OrthogonalFallbackOf::new(
-                    layout::Size::NONE,
-                    layout::NearestScrollportOf::Absent,
-                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                layout::constraint::OrthogonalFallbackOf::new(
+                    layout::geometry::Size::NONE,
+                    layout::constraint::NearestScrollportOf::Absent,
+                    layout::geometry::Size::splat(
+                        layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-            layout::Size::new(Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()), None),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
+            layout::geometry::Size::new(
+                Some(layout::length::NonNegativeFiniteOf::new(100.0).unwrap()),
+                None,
+            ),
         )
     }
 
@@ -13716,7 +13988,7 @@ mod tests {
             .expect("bottom is the reviewed finite alignment addition");
         assert_eq!(
             bottom.node_input(1).vertical_align,
-            layout::VerticalAlign::Bottom
+            layout::inline::VerticalAlign::Bottom
         );
 
         let error = fri06_c06_shape_input_lower(r#"float="left" vertical-align="middle""#, "")
@@ -13742,7 +14014,7 @@ mod tests {
             .expect("finite shape table lowers through production constructors");
         assert_eq!(
             tree.node_input(1).float_exclusion,
-            layout::FloatExclusion::Shape
+            layout::box_model::FloatExclusion::Shape
         );
 
         let empty = tree
@@ -13863,7 +14135,10 @@ mod tests {
             .single_box()
             .expect("float produces one box")
             .final_output();
-        assert_eq!(second_float.location, layout::Point::new(0.0, 20.0));
+        assert_eq!(
+            second_float.location,
+            layout::geometry::Point::new(0.0, 20.0)
+        );
     }
 
     #[test]
@@ -13880,8 +14155,8 @@ mod tests {
             .single_box()
             .unwrap()
             .final_output();
-        assert_eq!(inline.location, layout::Point::new(40.0, 0.0));
-        assert_eq!(inline.size, layout::Size::new(30.0, 10.0));
+        assert_eq!(inline.location, layout::geometry::Point::new(40.0, 0.0));
+        assert_eq!(inline.size, layout::geometry::Size::new(30.0, 10.0));
     }
 
     #[test]
@@ -13893,19 +14168,19 @@ mod tests {
             .expect_err("requested missing provider must fail");
         assert_eq!(
             error.site(),
-            layout::LayoutErrorSite::ContainerSubject {
+            layout::error::LayoutErrorSite::ContainerSubject {
                 container: 0,
                 subject: 1,
             }
         );
         assert_eq!(
             error.operation(),
-            layout::LayoutOperation::FloatExclusionQuery
+            layout::error::LayoutOperation::FloatExclusionQuery
         );
         assert!(matches!(
             error.kind(),
-            layout::LayoutErrorKind::MissingContext(
-                layout::LayoutMissingContext::FloatExclusionProvider
+            layout::error::LayoutErrorKind::MissingContext(
+                layout::error::LayoutMissingContext::FloatExclusionProvider
             )
         ));
 
@@ -13916,9 +14191,10 @@ mod tests {
         .expect("representable mismatched origin lowers");
         let error = layout::compute_layout(&mismatch, 0, fri06_c06_shape_input_request())
             .expect_err("production compute must reject a mismatched originating query");
-        let layout::LayoutErrorKind::InvalidInput(
-            layout::LayoutInvalidInput::FloatExclusionProviderOutput {
-                error: layout::FloatExclusionIntervalError::QueryMismatch { expected, actual },
+        let layout::error::LayoutErrorKind::InvalidInput(
+            layout::error::LayoutInvalidInput::FloatExclusionProviderOutput {
+                error:
+                    layout::box_model::FloatExclusionIntervalError::QueryMismatch { expected, actual },
             },
         ) = error.kind()
         else {
@@ -13939,16 +14215,16 @@ mod tests {
             .expect_err("production compute must preserve fixture provider failure");
         assert_eq!(
             error.site(),
-            layout::LayoutErrorSite::ContainerSubject {
+            layout::error::LayoutErrorSite::ContainerSubject {
                 container: 0,
                 subject: 1,
             }
         );
         assert_eq!(
             error.operation(),
-            layout::LayoutOperation::FloatExclusionQuery
+            layout::error::LayoutOperation::FloatExclusionQuery
         );
-        let layout::LayoutErrorKind::Measurement(provider_error) = error.kind() else {
+        let layout::error::LayoutErrorKind::Measurement(provider_error) = error.kind() else {
             panic!("unexpected provider failure diagnostic: {error:?}");
         };
         assert_eq!(
@@ -14022,32 +14298,37 @@ mod tests {
         let golden = Golden::parse(r#"<test name="structural-br-band" use-rounding="false"><viewport width="120px" height="120px"/><input><div display="block" width="120px"><div source-tag="br" display="inline"/></div></input><expectations><node><node><browser-control source_index="0" terminal_visual_slot="0" previous_line="absent" next_line="absent"/><browser-br-font-band x="0" y="0" width="0" height="16"/></node></node></expectations></test>"#).unwrap();
         let error = assert_native_test_matches(
             &golden,
-            layout::LayoutRootRequest::standalone(
-                layout::SizingRequest::new(
-                    layout::Size::new(
-                        layout::AxisSizingRequest::new(
-                            layout::AvailableSpace::Definite(
-                                layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+            layout::request::LayoutRootRequest::standalone(
+                layout::constraint::SizingRequest::new(
+                    layout::geometry::Size::new(
+                        layout::constraint::AxisSizingRequest::new(
+                            layout::constraint::AvailableSpace::Definite(
+                                layout::length::NonNegativeFiniteOf::new(120.0).unwrap(),
                             ),
-                            layout::SizingOperation::Normal,
+                            layout::constraint::SizingOperation::Normal,
                         ),
-                        layout::AxisSizingRequest::new(
-                            layout::AvailableSpace::Definite(
-                                layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+                        layout::constraint::AxisSizingRequest::new(
+                            layout::constraint::AvailableSpace::Definite(
+                                layout::length::NonNegativeFiniteOf::new(120.0).unwrap(),
                             ),
-                            layout::SizingOperation::Normal,
+                            layout::constraint::SizingOperation::Normal,
                         ),
                     ),
-                    layout::OrthogonalFallbackOf::new(
-                        layout::Size::NONE,
-                        layout::NearestScrollportOf::Absent,
-                        layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                    layout::constraint::OrthogonalFallbackOf::new(
+                        layout::geometry::Size::NONE,
+                        layout::constraint::NearestScrollportOf::Absent,
+                        layout::geometry::Size::splat(
+                            layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                        ),
                     ),
                 ),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-                layout::Size::new(
-                    Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
-                    Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
+                layout::geometry::Size::new(
+                    Some(layout::length::NonNegativeFiniteOf::new(120.0).unwrap()),
+                    Some(layout::length::NonNegativeFiniteOf::new(120.0).unwrap()),
                 ),
             ),
         )
@@ -14062,32 +14343,37 @@ mod tests {
         relations.expectations.children[0].browser_br_font_band = None;
         assert_native_test_matches(
             &relations,
-            layout::LayoutRootRequest::standalone(
-                layout::SizingRequest::new(
-                    layout::Size::new(
-                        layout::AxisSizingRequest::new(
-                            layout::AvailableSpace::Definite(
-                                layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+            layout::request::LayoutRootRequest::standalone(
+                layout::constraint::SizingRequest::new(
+                    layout::geometry::Size::new(
+                        layout::constraint::AxisSizingRequest::new(
+                            layout::constraint::AvailableSpace::Definite(
+                                layout::length::NonNegativeFiniteOf::new(120.0).unwrap(),
                             ),
-                            layout::SizingOperation::Normal,
+                            layout::constraint::SizingOperation::Normal,
                         ),
-                        layout::AxisSizingRequest::new(
-                            layout::AvailableSpace::Definite(
-                                layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+                        layout::constraint::AxisSizingRequest::new(
+                            layout::constraint::AvailableSpace::Definite(
+                                layout::length::NonNegativeFiniteOf::new(120.0).unwrap(),
                             ),
-                            layout::SizingOperation::Normal,
+                            layout::constraint::SizingOperation::Normal,
                         ),
                     ),
-                    layout::OrthogonalFallbackOf::new(
-                        layout::Size::NONE,
-                        layout::NearestScrollportOf::Absent,
-                        layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                    layout::constraint::OrthogonalFallbackOf::new(
+                        layout::geometry::Size::NONE,
+                        layout::constraint::NearestScrollportOf::Absent,
+                        layout::geometry::Size::splat(
+                            layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                        ),
                     ),
                 ),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-                layout::Size::new(
-                    Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
-                    Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
+                layout::geometry::Size::new(
+                    Some(layout::length::NonNegativeFiniteOf::new(120.0).unwrap()),
+                    Some(layout::length::NonNegativeFiniteOf::new(120.0).unwrap()),
                 ),
             ),
         )
@@ -14110,9 +14396,12 @@ mod source_root_frame_tests {
         tree.apply_completed_batch(&batch);
         assert_eq!(
             tree.nodes[0].unrounded.location,
-            layout::Point::new(800.0 - 100.0, 0.0)
+            layout::geometry::Point::new(800.0 - 100.0, 0.0)
         );
-        assert_eq!(tree.nodes[1].unrounded.location, layout::Point::ZERO);
+        assert_eq!(
+            tree.nodes[1].unrounded.location,
+            layout::geometry::Point::ZERO
+        );
         golden
             .viewport
             .root_context
@@ -14211,7 +14500,10 @@ mod source_root_frame_tests {
         let tree =
             TestTree::from_golden(&golden.root, Some(&golden.viewport.root_context)).unwrap();
         assert_eq!(golden.root.style.get("position"), Some("static"));
-        assert_eq!(tree.box_node_input(0).position, layout::Position::Relative);
+        assert_eq!(
+            tree.box_node_input(0).position,
+            layout::box_model::Position::Relative
+        );
         assert!(TestTree::from_golden(&golden.root, None).is_err());
         let displaced =
             Golden::parse(&xml.replace(r#"position="static""#, r#"position="static" top="1px""#))

@@ -8,94 +8,107 @@ const AHEM: &[u8] = include_bytes!(concat!(
     "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
 ));
 
-struct Host<S: layout::LayoutScalar> {
-    root: layout::NodeInputOf<S>,
-    non_box: layout::NodeInputOf<S>,
+struct Host<S: layout::scalar::LayoutScalar> {
+    root: layout::node::NodeInputOf<S>,
+    non_box: layout::node::NodeInputOf<S>,
     children: [Vec<u32>; 3],
     origins: Vec<(usize, u32)>,
-    declarations: Vec<layout::SourceWrappingScopeInput<u32>>,
-    scopes: Vec<layout::SourceScopeAssociation<u32>>,
-    orders: Vec<layout::InlineChildOrderInput<u32, usize>>,
-    installed: Vec<Option<layout::LayoutInputOf<S>>>,
+    declarations: Vec<layout::inline_wrapping::SourceWrappingScopeInput<u32>>,
+    scopes: Vec<layout::inline_wrapping::SourceScopeAssociation<u32>>,
+    orders: Vec<layout::inline_wrapping::InlineChildOrderInput<u32, usize>>,
+    installed: Vec<Option<layout::node::LayoutInputOf<S>>>,
 }
-impl<S: layout::LayoutScalar> Host<S> {
-    fn new(before: bool, edge: layout::WrapEdge, direction: layout::Direction) -> Self {
-        let s = layout::GeneratedBoxRef::Inline(layout::InlineBoxRef::Scope(1));
-        let child = |box_| layout::GeneratedChildBoxInput {
+impl<S: layout::scalar::LayoutScalar> Host<S> {
+    fn new(
+        before: bool,
+        edge: layout::inline_wrapping::WrapEdge,
+        direction: layout::geometry::Direction,
+    ) -> Self {
+        let s = layout::inline_wrapping::GeneratedBoxRef::Inline(
+            layout::inline_wrapping::InlineBoxRef::Scope(1),
+        );
+        let child = |box_| layout::inline_wrapping::GeneratedChildBoxInput {
             box_,
-            participation: layout::GeneratedBoxParticipation::InFlow,
+            participation: layout::inline_wrapping::GeneratedBoxParticipation::InFlow,
         };
-        let row = |parent, children| layout::InlineChildOrderInput {
+        let row = |parent, children| layout::inline_wrapping::InlineChildOrderInput {
             parent,
             children,
-            prefix: layout::ChildOrderCompleteness::Complete,
-            suffix: layout::ChildOrderCompleteness::Complete,
+            prefix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
+            suffix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
             formatting_context: 0,
         };
         Self {
-            root: layout::NodeInputOf {
-                display: layout::Display::Block,
+            root: layout::node::NodeInputOf {
+                display: layout::box_model::Display::Block,
                 direction,
-                size: layout::Size::new(
-                    layout::PreferredSizeOf::value(
-                        layout::LengthPercentageOf::px(S::from_f64(40.0)).unwrap(),
+                size: layout::geometry::Size::new(
+                    layout::sizing::PreferredSizeOf::value(
+                        layout::length::LengthPercentageOf::px(S::from_f64(40.0)).unwrap(),
                     ),
-                    layout::PreferredSizeOf::AUTO,
+                    layout::sizing::PreferredSizeOf::AUTO,
                 ),
-                ..layout::NodeInputOf::default()
+                ..layout::node::NodeInputOf::default()
             },
-            non_box: layout::NodeInputOf::non_box(),
+            non_box: layout::node::NodeInputOf::non_box(),
             children: [vec![1, 2], vec![], vec![]],
             origins: vec![(0, 1), (1, 2)],
-            declarations: vec![layout::SourceWrappingScopeInput {
-                box_: layout::InlineBoxRef::Scope(1),
-                wrap_inside: layout::WrapInside::Auto,
+            declarations: vec![layout::inline_wrapping::SourceWrappingScopeInput {
+                box_: layout::inline_wrapping::InlineBoxRef::Scope(1),
+                wrap_inside: layout::inline_wrapping::WrapInside::Auto,
                 edges: if before {
-                    layout::WrapEdges {
+                    layout::inline_wrapping::WrapEdges {
                         before: edge,
-                        after: layout::WrapEdge::Auto,
+                        after: layout::inline_wrapping::WrapEdge::Auto,
                     }
                 } else {
-                    layout::WrapEdges {
-                        before: layout::WrapEdge::Auto,
+                    layout::inline_wrapping::WrapEdges {
+                        before: layout::inline_wrapping::WrapEdge::Auto,
                         after: edge,
                     }
                 },
             }],
-            scopes: vec![layout::SourceScopeAssociation {
+            scopes: vec![layout::inline_wrapping::SourceScopeAssociation {
                 scope: 1,
                 flow: 0,
                 pair: None,
             }],
             orders: vec![
                 row(
-                    layout::GeneratedBoxRef::Node(0),
+                    layout::inline_wrapping::GeneratedBoxRef::Node(0),
                     if before {
-                        vec![child(layout::GeneratedBoxRef::Node(1)), child(s.clone())]
+                        vec![
+                            child(layout::inline_wrapping::GeneratedBoxRef::Node(1)),
+                            child(s.clone()),
+                        ]
                     } else {
-                        vec![child(s.clone()), child(layout::GeneratedBoxRef::Node(2))]
+                        vec![
+                            child(s.clone()),
+                            child(layout::inline_wrapping::GeneratedBoxRef::Node(2)),
+                        ]
                     },
                 ),
                 row(
                     s,
-                    vec![child(layout::GeneratedBoxRef::Node(if before {
-                        2
-                    } else {
-                        1
-                    }))],
+                    vec![child(layout::inline_wrapping::GeneratedBoxRef::Node(
+                        if before { 2 } else { 1 },
+                    ))],
                 ),
             ],
             installed: vec![None, None, None],
         }
     }
-    fn occurrences(&self) -> layout::SourceOccurrenceAssociations<u32> {
-        layout::SourceOccurrenceAssociations {
+    fn occurrences(&self) -> layout::inline_wrapping::SourceOccurrenceAssociations<u32> {
+        layout::inline_wrapping::SourceOccurrenceAssociations {
             origins: self.origins.clone(),
             controls: vec![],
             atomics: vec![],
         }
     }
-    fn install(&mut self, p: &text::prepared::PreparedText) -> layout::TextParagraphBinding<u32> {
+    fn install(
+        &mut self,
+        p: &text::prepared::PreparedText,
+    ) -> layout::text_layout::TextParagraphBinding<u32> {
         let origins = p
             .origin_views()
             .enumerate()
@@ -110,17 +123,18 @@ impl<S: layout::LayoutScalar> Host<S> {
                     origin.aggregate_range(),
                     text::source::Range::new(ordinal, ordinal + 1)
                 );
-                self.installed[node as usize] = Some(layout::LayoutInputOf::inline_text(
-                    layout::TextParticipation::new(origin.handle()),
+                self.installed[node as usize] = Some(layout::node::LayoutInputOf::inline_text(
+                    layout::text_layout::TextParticipation::new(origin.handle()),
                 ));
-                layout::TextOriginBinding {
+                layout::text_layout::TextOriginBinding {
                     origin: origin.handle(),
                     node,
                 }
             })
             .collect();
-        layout::TextParagraphBinding {
-            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+        layout::text_layout::TextParagraphBinding {
+            inline_box_fragments:
+                surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: p.clone(),
             container: 0,
             nodes: self.children[0].clone(),
@@ -133,33 +147,39 @@ impl<S: layout::LayoutScalar> Host<S> {
     fn final_wrapping(
         &self,
         processed: &text::processing::ProcessedSource,
-        contribution: Option<layout::InlineBoxMetricContribution>,
-    ) -> layout::WrappingInput<u32> {
-        let convert = |box_: &layout::GeneratedBoxRef<u32, usize>| match box_ {
-            layout::GeneratedBoxRef::Node(node) => layout::GeneratedBoxRef::Node(*node),
-            layout::GeneratedBoxRef::Inline(layout::InlineBoxRef::Scope(scope)) => {
-                layout::GeneratedBoxRef::Inline(layout::InlineBoxRef::Scope(
-                    processed.captured_scope(*scope).unwrap(),
-                ))
+        contribution: Option<layout::inline_wrapping::InlineBoxMetricContribution>,
+    ) -> layout::inline_wrapping::WrappingInput<u32> {
+        let convert = |box_: &layout::inline_wrapping::GeneratedBoxRef<u32, usize>| match box_ {
+            layout::inline_wrapping::GeneratedBoxRef::Node(node) => {
+                layout::inline_wrapping::GeneratedBoxRef::Node(*node)
             }
-            layout::GeneratedBoxRef::Inline(layout::InlineBoxRef::NativePair { start, end }) => {
-                layout::GeneratedBoxRef::Inline(layout::InlineBoxRef::NativePair {
+            layout::inline_wrapping::GeneratedBoxRef::Inline(
+                layout::inline_wrapping::InlineBoxRef::Scope(scope),
+            ) => layout::inline_wrapping::GeneratedBoxRef::Inline(
+                layout::inline_wrapping::InlineBoxRef::Scope(
+                    processed.captured_scope(*scope).unwrap(),
+                ),
+            ),
+            layout::inline_wrapping::GeneratedBoxRef::Inline(
+                layout::inline_wrapping::InlineBoxRef::NativePair { start, end },
+            ) => layout::inline_wrapping::GeneratedBoxRef::Inline(
+                layout::inline_wrapping::InlineBoxRef::NativePair {
                     start: *start,
                     end: *end,
-                })
-            }
+                },
+            ),
         };
-        layout::WrappingInput {
+        layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: self
                 .declarations
                 .iter()
                 .map(|d| {
-                    let layout::InlineBoxRef::Scope(scope) = d.box_ else {
+                    let layout::inline_wrapping::InlineBoxRef::Scope(scope) = d.box_ else {
                         unreachable!("this fixture authors a source scope")
                     };
-                    layout::WrappingScopeInput::Captured {
+                    layout::inline_wrapping::WrappingScopeInput::Captured {
                         scope: processed.captured_scope(scope).unwrap(),
                         wrap_inside: d.wrap_inside,
                         edges: d.edges,
@@ -170,12 +190,12 @@ impl<S: layout::LayoutScalar> Host<S> {
             child_order: self
                 .orders
                 .iter()
-                .map(|o| layout::InlineChildOrderInput {
+                .map(|o| layout::inline_wrapping::InlineChildOrderInput {
                     parent: convert(&o.parent),
                     children: o
                         .children
                         .iter()
-                        .map(|c| layout::GeneratedChildBoxInput {
+                        .map(|c| layout::inline_wrapping::GeneratedChildBoxInput {
                             box_: convert(&c.box_),
                             participation: c.participation,
                         })
@@ -188,11 +208,11 @@ impl<S: layout::LayoutScalar> Host<S> {
         }
     }
 }
-struct Early<'a, S: layout::LayoutScalar>(&'a Host<S>);
-struct Final<'a, S: layout::LayoutScalar>(&'a Host<S>);
+struct Early<'a, S: layout::scalar::LayoutScalar>(&'a Host<S>);
+struct Final<'a, S: layout::scalar::LayoutScalar>(&'a Host<S>);
 macro_rules! traversal {
     ($view:ident) => {
-        impl<S: layout::LayoutScalar> layout::Traverse for $view<'_, S> {
+        impl<S: layout::scalar::LayoutScalar> layout::tree::Traverse for $view<'_, S> {
             type Node = u32;
             type Scalar = S;
             type Children<'a>
@@ -209,23 +229,34 @@ macro_rules! traversal {
                 self.0.children[node as usize][index]
             }
         }
-        impl<S: layout::LayoutScalar> layout::WrapEdgeSource for $view<'_, S> {
-            fn wrap_edge_source_node(&self, node: u32) -> layout::WrapEdgeSourceNodeView<'_, S> {
+        impl<S: layout::scalar::LayoutScalar> layout::inline_wrapping::WrapEdgeSource
+            for $view<'_, S>
+        {
+            fn wrap_edge_source_node(
+                &self,
+                node: u32,
+            ) -> layout::inline_wrapping::WrapEdgeSourceNodeView<'_, S> {
                 if node == 0 {
-                    layout::WrapEdgeSourceNodeView::Box(&self.0.root)
+                    layout::inline_wrapping::WrapEdgeSourceNodeView::Box(&self.0.root)
                 } else {
-                    layout::WrapEdgeSourceNodeView::SourceOrigin {
+                    layout::inline_wrapping::WrapEdgeSourceNodeView::SourceOrigin {
                         origin: self.0.origins.iter().find(|(_, n)| *n == node).unwrap().0,
                     }
                 }
             }
-            fn source_wrapping_scopes(&self) -> &[layout::SourceWrappingScopeInput<u32>] {
+            fn source_wrapping_scopes(
+                &self,
+            ) -> &[layout::inline_wrapping::SourceWrappingScopeInput<u32>] {
                 &self.0.declarations
             }
-            fn source_scope_associations(&self) -> &[layout::SourceScopeAssociation<u32>] {
+            fn source_scope_associations(
+                &self,
+            ) -> &[layout::inline_wrapping::SourceScopeAssociation<u32>] {
                 &self.0.scopes
             }
-            fn generated_child_order(&self) -> &[layout::InlineChildOrderInput<u32, usize>] {
+            fn generated_child_order(
+                &self,
+            ) -> &[layout::inline_wrapping::InlineChildOrderInput<u32, usize>] {
                 &self.0.orders
             }
         }
@@ -234,18 +265,18 @@ macro_rules! traversal {
 traversal!(Early);
 traversal!(Final);
 // Early intentionally has no LayoutTree implementation or prepared input.
-impl<S: layout::LayoutScalar> layout::LayoutTree for Final<'_, S> {
+impl<S: layout::scalar::LayoutScalar> layout::tree::LayoutTree for Final<'_, S> {
     type MeasureError = Infallible;
-    fn node_input(&self, node: u32) -> &layout::NodeInputOf<S> {
+    fn node_input(&self, node: u32) -> &layout::node::NodeInputOf<S> {
         if node == 0 {
             &self.0.root
         } else {
             &self.0.non_box
         }
     }
-    fn layout_input(&self, node: u32) -> layout::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: u32) -> layout::node::LayoutInputViewOf<'_, S> {
         if node == 0 {
-            layout::LayoutInputViewOf::Box(&self.0.root)
+            layout::node::LayoutInputViewOf::Box(&self.0.root)
         } else {
             self.0.installed[node as usize]
                 .as_ref()
@@ -254,9 +285,12 @@ impl<S: layout::LayoutScalar> layout::LayoutTree for Final<'_, S> {
         }
     }
 }
-fn source(before: bool, direction: layout::Direction) -> text::capture::ContextualSourceInput {
+fn source(
+    before: bool,
+    direction: layout::geometry::Direction,
+) -> text::capture::ContextualSourceInput {
     use text::capture::SourceProcessingEvent as E;
-    let base = if direction == layout::Direction::Ltr {
+    let base = if direction == layout::geometry::Direction::Ltr {
         text::paragraph::ParagraphBaseDirection::LeftToRight
     } else {
         text::paragraph::ParagraphBaseDirection::RightToLeft
@@ -388,16 +422,18 @@ fn normal_prepare(
         .prepare(&a, text::prepared::PreparationOptions::default())
         .unwrap()
 }
-fn request<S: layout::LayoutScalar>(frame: layout::FlowAxes) -> layout::LayoutRootRequestOf<S> {
+fn request<S: layout::scalar::LayoutScalar>(
+    frame: layout::geometry::FlowAxes,
+) -> layout::request::LayoutRootRequestOf<S> {
     {
         let sizing_request = crate::layout::native_request::sizing(
-            surgeist_layout::Size::new(Some(S::from_f64(40.0)), None),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(S::from_f64(40.0)), None),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         );
-        layout::LayoutRootRequestOf::standalone(
+        layout::request::LayoutRootRequestOf::standalone(
             sizing_request,
             frame,
             sizing_request
@@ -406,16 +442,16 @@ fn request<S: layout::LayoutScalar>(frame: layout::FlowAxes) -> layout::LayoutRo
         )
     }
 }
-fn finish<S: layout::LayoutScalar>(
+fn finish<S: layout::scalar::LayoutScalar>(
     host: &Host<S>,
     processed: &text::processing::ProcessedSource,
     p: &text::prepared::PreparedText,
-    binding: layout::TextParagraphBinding<u32>,
-    receipt: &layout::ResolvedWrapEdges<u32>,
-    metric: layout::InlineBoxMetricContribution,
-) -> layout::CompletedLayoutBatchOf<u32, S> {
+    binding: layout::text_layout::TextParagraphBinding<u32>,
+    receipt: &layout::inline_wrapping::ResolvedWrapEdges<u32>,
+    metric: layout::inline_wrapping::InlineBoxMetricContribution,
+) -> layout::batch::CompletedLayoutBatchOf<u32, S> {
     let tree = Final(host);
-    let flow = layout::LayoutFlowInput::try_new_with_edges(
+    let flow = layout::text_layout::LayoutFlowInput::try_new_with_edges(
         &tree,
         0,
         vec![binding],
@@ -427,9 +463,9 @@ fn finish<S: layout::LayoutScalar>(
     let result = layout::compute_layout_with_flow(
         &flow,
         0,
-        request(surgeist_layout::FlowAxes::new(
-            surgeist_layout::LayoutTree::node_input(&tree, 0).writing_mode,
-            surgeist_layout::LayoutTree::node_input(&tree, 0).direction,
+        request(surgeist_layout::geometry::FlowAxes::new(
+            surgeist_layout::tree::LayoutTree::node_input(&tree, 0).writing_mode,
+            surgeist_layout::tree::LayoutTree::node_input(&tree, 0).direction,
         )),
     )
     .unwrap();
@@ -442,10 +478,10 @@ fn finish<S: layout::LayoutScalar>(
     );
     result
 }
-fn qualify<S: layout::LayoutScalar>(
-    result: &layout::CompletedLayoutBatchOf<u32, S>,
+fn qualify<S: layout::scalar::LayoutScalar>(
+    result: &layout::batch::CompletedLayoutBatchOf<u32, S>,
     p: &text::prepared::PreparedText,
-    direction: layout::Direction,
+    direction: layout::geometry::Direction,
     forced: bool,
     heights: &[f64],
     baselines: &[f64],
@@ -492,7 +528,7 @@ fn qualify<S: layout::LayoutScalar>(
         .final_output();
     assert_eq!(
         root.size,
-        layout::Size::new(S::from_f64(40.0), S::from_f64(heights.iter().sum()))
+        layout::geometry::Size::new(S::from_f64(40.0), S::from_f64(heights.iter().sum()))
     );
     let mut glyphs = vec![];
     for run in placed.run_views() {
@@ -500,7 +536,7 @@ fn qualify<S: layout::LayoutScalar>(
         assert_eq!(run.font_size(), 10.0);
         for glyph in run.glyphs() {
             let x = run.origin().x + glyph.pen() + f64::from(glyph.x());
-            let expected = if direction == layout::Direction::Ltr {
+            let expected = if direction == layout::geometry::Direction::Ltr {
                 if forced {
                     0.0
                 } else {
@@ -542,14 +578,20 @@ fn qualify<S: layout::LayoutScalar>(
         usize::from(forced)
     );
 }
-fn first_pipeline<S: layout::LayoutScalar>() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+fn first_pipeline<S: layout::scalar::LayoutScalar>() {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         for before in [false, true] {
-            for edge in [layout::WrapEdge::Auto, layout::WrapEdge::Line] {
+            for edge in [
+                layout::inline_wrapping::WrapEdge::Auto,
+                layout::inline_wrapping::WrapEdge::Line,
+            ] {
                 let mut host = Host::<S>::new(before, edge, direction);
                 let output = {
                     let early = Early(&host);
-                    layout::process_wrapping_source(
+                    layout::inline_wrapping::process_wrapping_source(
                         &early,
                         0,
                         source(before, direction),
@@ -561,7 +603,7 @@ fn first_pipeline<S: layout::LayoutScalar>() {
                 let processed = Arc::new(processed);
                 let p = normal_prepare(&processed); // first font system exists only now
                 let binding = host.install(&p); // mutable install proves early borrow ended
-                let forced = edge == layout::WrapEdge::Line;
+                let forced = edge == layout::inline_wrapping::WrapEdge::Line;
                 if forced {
                     let cause = processed.captured_computed_line_boundary(0).unwrap();
                     assert_eq!(
@@ -577,13 +619,13 @@ fn first_pipeline<S: layout::LayoutScalar>() {
                     );
                     assert_eq!(cause.domain(), processed.captured_scope(0).unwrap());
                     let tree = Final(&host);
-                    let error = layout::LayoutFlowInput::try_new(
+                    let error = layout::text_layout::LayoutFlowInput::try_new(
                         &tree,
                         0,
                         vec![binding.clone()],
                         host.final_wrapping(
                             &processed,
-                            Some(layout::InlineBoxMetricContribution::NoContribution),
+                            Some(layout::inline_wrapping::InlineBoxMetricContribution::NoContribution),
                         ),
                         Vec::new(),
                     )
@@ -591,9 +633,9 @@ fn first_pipeline<S: layout::LayoutScalar>() {
                     .expect("ordinary late route does not authenticate an early Layout plan");
                     assert!(matches!(
                         error.kind(),
-                        layout::LayoutErrorKindOf::InvalidInput(
-                            layout::LayoutInvalidInputOf::WrappingScope(
-                                layout::WrappingScopeError::SourceProcessingRequired
+                        layout::error::LayoutErrorKindOf::InvalidInput(
+                            layout::error::LayoutInvalidInputOf::WrappingScope(
+                                layout::inline_wrapping::WrappingScopeError::SourceProcessingRequired
                             )
                         )
                     ));
@@ -604,7 +646,7 @@ fn first_pipeline<S: layout::LayoutScalar>() {
                     &p,
                     binding,
                     &receipt,
-                    layout::InlineBoxMetricContribution::NoContribution,
+                    layout::inline_wrapping::InlineBoxMetricContribution::NoContribution,
                 );
                 qualify(
                     &batch,
@@ -624,13 +666,21 @@ fn real_early_borrow_normal_prepare_and_final_source_receipt_execute_before_afte
     first_pipeline::<f32>();
     first_pipeline::<f64>();
 }
-fn reusable_receipt<S: layout::LayoutScalar>() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
-        let mut host = Host::<S>::new(true, layout::WrapEdge::Line, direction);
+fn reusable_receipt<S: layout::scalar::LayoutScalar>() {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
+        let mut host = Host::<S>::new(true, layout::inline_wrapping::WrapEdge::Line, direction);
         let output = {
             let early = Early(&host);
-            layout::process_wrapping_source(&early, 0, source(true, direction), host.occurrences())
-                .unwrap()
+            layout::inline_wrapping::process_wrapping_source(
+                &early,
+                0,
+                source(true, direction),
+                host.occurrences(),
+            )
+            .unwrap()
         };
         let (processed, receipt) = output.into_parts();
         let processed = Arc::new(processed);
@@ -642,18 +692,20 @@ fn reusable_receipt<S: layout::LayoutScalar>() {
             &p1,
             b1,
             &receipt,
-            layout::InlineBoxMetricContribution::NoContribution,
+            layout::inline_wrapping::InlineBoxMetricContribution::NoContribution,
         );
         let p2 = normal_prepare(&processed);
         let b2 = host.install(&p2);
-        let metric = layout::InlineBoxMetricContribution::Strut(text::allocation::LineBoxStrut {
-            scope: None,
-            metrics: text::allocation::LineStrut {
-                baseline: 16.0,
-                line_extent: 20.0,
+        let metric = layout::inline_wrapping::InlineBoxMetricContribution::Strut(
+            text::allocation::LineBoxStrut {
+                scope: None,
+                metrics: text::allocation::LineStrut {
+                    baseline: 16.0,
+                    line_extent: 20.0,
+                },
+                alignment: text::allocation::LineBoxAlignment::Baseline,
             },
-            alignment: text::allocation::LineBoxAlignment::Baseline,
-        });
+        );
         let current = finish(&host, &processed, &p2, b2, &receipt, metric);
         qualify(&old, &p1, direction, true, &[10.0, 10.0], &[8.0, 18.0]);
         qualify(&current, &p2, direction, true, &[10.0, 20.0], &[8.0, 26.0]);
@@ -664,14 +716,18 @@ fn same_owned_early_receipt_accepts_fresh_coherent_preparation_and_final_only_us
     reusable_receipt::<f32>();
     reusable_receipt::<f64>();
 }
-fn changed_declaration<S: layout::LayoutScalar>() {
-    let mut host = Host::<S>::new(true, layout::WrapEdge::Line, layout::Direction::Ltr);
+fn changed_declaration<S: layout::scalar::LayoutScalar>() {
+    let mut host = Host::<S>::new(
+        true,
+        layout::inline_wrapping::WrapEdge::Line,
+        layout::geometry::Direction::Ltr,
+    );
     let output = {
         let early = Early(&host);
-        layout::process_wrapping_source(
+        layout::inline_wrapping::process_wrapping_source(
             &early,
             0,
-            source(true, layout::Direction::Ltr),
+            source(true, layout::geometry::Direction::Ltr),
             host.occurrences(),
         )
         .unwrap()
@@ -680,15 +736,15 @@ fn changed_declaration<S: layout::LayoutScalar>() {
     let processed = Arc::new(processed);
     let p = normal_prepare(&processed);
     let binding = host.install(&p);
-    host.declarations[0].edges = layout::WrapEdges::AUTO;
+    host.declarations[0].edges = layout::inline_wrapping::WrapEdges::AUTO;
     let tree = Final(&host);
-    let error = layout::LayoutFlowInput::try_new_with_edges(
+    let error = layout::text_layout::LayoutFlowInput::try_new_with_edges(
         &tree,
         0,
         vec![binding],
         host.final_wrapping(
             &processed,
-            Some(layout::InlineBoxMetricContribution::NoContribution),
+            Some(layout::inline_wrapping::InlineBoxMetricContribution::NoContribution),
         ),
         Vec::new(),
         &receipt,
@@ -697,9 +753,11 @@ fn changed_declaration<S: layout::LayoutScalar>() {
     .expect("changed current declaration is not authenticated by old Text cause geometry");
     assert!(matches!(
         error.kind(),
-        layout::LayoutErrorKindOf::InvalidInput(layout::LayoutInvalidInputOf::WrappingScope(
-            layout::WrappingScopeError::PlanMismatch
-        ))
+        layout::error::LayoutErrorKindOf::InvalidInput(
+            layout::error::LayoutInvalidInputOf::WrappingScope(
+                layout::inline_wrapping::WrappingScopeError::PlanMismatch
+            )
+        )
     ));
 }
 #[test]
@@ -813,12 +871,15 @@ fn semantic_source(
         ],
     }
 }
-fn source_phase_casing_boundary<S: layout::LayoutScalar>() {
-    for edge in [layout::WrapEdge::Auto, layout::WrapEdge::Line] {
-        let host = Host::<S>::new(true, edge, layout::Direction::Ltr);
+fn source_phase_casing_boundary<S: layout::scalar::LayoutScalar>() {
+    for edge in [
+        layout::inline_wrapping::WrapEdge::Auto,
+        layout::inline_wrapping::WrapEdge::Line,
+    ] {
+        let host = Host::<S>::new(true, edge, layout::geometry::Direction::Ltr);
         let result = {
             let view = Early(&host);
-            layout::process_wrapping_source(
+            layout::inline_wrapping::process_wrapping_source(
                 &view,
                 0,
                 semantic_source(
@@ -878,7 +939,7 @@ fn source_phase_casing_boundary<S: layout::LayoutScalar>() {
         assert!(processed.captured_origin(0).is_some());
         assert!(processed.captured_origin(1).is_some());
         assert!(processed.captured_control(0).is_none());
-        if edge == layout::WrapEdge::Line {
+        if edge == layout::inline_wrapping::WrapEdge::Line {
             let cause = processed.captured_computed_line_boundary(0).unwrap();
             assert_eq!(
                 cause.target(),
@@ -901,7 +962,7 @@ fn source_only_lithuanian_input_keeps_phase_i_mapping_and_authentic_early_dot_bo
     source_phase_casing_boundary::<f32>();
     source_phase_casing_boundary::<f64>();
 }
-fn typed_early_text_errors<S: layout::LayoutScalar>() {
+fn typed_early_text_errors<S: layout::scalar::LayoutScalar>() {
     for (left, right, delimiters, expected) in [
         (
             vec![0xd83d],
@@ -919,10 +980,14 @@ fn typed_early_text_errors<S: layout::LayoutScalar>() {
         // This is the exact requested-force error profile. Do not assert a
         // successful neutral control for defined CRLF crossing the scope:
         // lower Text separately rejects that unforced input as DelimiterCrossing.
-        let host = Host::<S>::new(true, layout::WrapEdge::Line, layout::Direction::Ltr);
+        let host = Host::<S>::new(
+            true,
+            layout::inline_wrapping::WrapEdge::Line,
+            layout::geometry::Direction::Ltr,
+        );
         let result = {
             let view = Early(&host);
-            layout::process_wrapping_source(
+            layout::inline_wrapping::process_wrapping_source(
                 &view,
                 0,
                 semantic_source(&left, &right, delimiters, false),
@@ -936,7 +1001,7 @@ fn typed_early_text_errors<S: layout::LayoutScalar>() {
             Err(error) => error,
         };
         match error.kind() {
-            layout::LayoutErrorKindOf::Text(cause) => assert!(
+            layout::error::LayoutErrorKindOf::Text(cause) => assert!(
                 matches!(cause.detail(),
                     Some(text::ErrorDetail::SourceProcessing {reason:text::capture::SourceProcessingError::ComputedLineBoundary {request:0,reason}}) if *reason==expected
                 ),
@@ -952,16 +1017,21 @@ fn source_wrapper_preserves_typed_inside_scalar_and_defined_crlf_boundary_refusa
     typed_early_text_errors::<f64>();
 }
 
-fn association_error<S: layout::LayoutScalar>(error: layout::LayoutErrorOf<u32, S>) {
+fn association_error<S: layout::scalar::LayoutScalar>(error: layout::error::LayoutErrorOf<u32, S>) {
     assert!(matches!(
         error.kind(),
-        layout::LayoutErrorKindOf::InvalidInput(layout::LayoutInvalidInputOf::WrappingScope(
-            layout::WrappingScopeError::SourceAssociation
-        ))
+        layout::error::LayoutErrorKindOf::InvalidInput(
+            layout::error::LayoutInvalidInputOf::WrappingScope(
+                layout::inline_wrapping::WrappingScopeError::SourceAssociation
+            )
+        )
     ));
 }
-fn contrary_canonical_order<S: layout::LayoutScalar>() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+fn contrary_canonical_order<S: layout::scalar::LayoutScalar>() {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         // The source is independently valid and canonically contains A in S;
         // the borrowed producer instead claims A followed by S containing B.
         // Equal source lengths and a valid input-local scope ordinal do not
@@ -978,8 +1048,8 @@ fn contrary_canonical_order<S: layout::LayoutScalar>() {
             text::capture::SourceProcessingTopology::Complete
         );
         assert!(raw.captured_computed_line_boundary(0).is_none());
-        let host = Host::<S>::new(true, layout::WrapEdge::Line, direction);
-        let result = layout::process_wrapping_source(
+        let host = Host::<S>::new(true, layout::inline_wrapping::WrapEdge::Line, direction);
+        let result = layout::inline_wrapping::process_wrapping_source(
             &Early(&host),
             0,
             source(false, direction),
@@ -997,11 +1067,14 @@ fn complete_source_capture_contradicts_claimed_generated_order_before_receipt_pu
     contrary_canonical_order::<f64>();
 }
 
-fn coherent_foreign_capture<S: layout::LayoutScalar>() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
-        let mut host = Host::<S>::new(true, layout::WrapEdge::Line, direction);
+fn coherent_foreign_capture<S: layout::scalar::LayoutScalar>() {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
+        let mut host = Host::<S>::new(true, layout::inline_wrapping::WrapEdge::Line, direction);
         let process = || {
-            layout::process_wrapping_source(
+            layout::inline_wrapping::process_wrapping_source(
                 &Early(&host),
                 0,
                 source(true, direction),
@@ -1032,17 +1105,17 @@ fn coherent_foreign_capture<S: layout::LayoutScalar>() {
             &p,
             binding.clone(),
             &foreign_receipt,
-            layout::InlineBoxMetricContribution::NoContribution,
+            layout::inline_wrapping::InlineBoxMetricContribution::NoContribution,
         );
         qualify(&positive, &p, direction, true, &[10.0, 10.0], &[8.0, 18.0]);
         let tree = Final(&host);
-        let result = layout::LayoutFlowInput::try_new_with_edges(
+        let result = layout::text_layout::LayoutFlowInput::try_new_with_edges(
             &tree,
             0,
             vec![binding],
             host.final_wrapping(
                 &foreign,
-                Some(layout::InlineBoxMetricContribution::NoContribution),
+                Some(layout::inline_wrapping::InlineBoxMetricContribution::NoContribution),
             ),
             Vec::new(),
             &receipt,
@@ -1052,9 +1125,11 @@ fn coherent_foreign_capture<S: layout::LayoutScalar>() {
             .expect("equal source bytes do not make a foreign capture authentic");
         assert!(matches!(
             error.kind(),
-            layout::LayoutErrorKindOf::InvalidInput(layout::LayoutInvalidInputOf::WrappingScope(
-                layout::WrappingScopeError::PlanMismatch
-            ))
+            layout::error::LayoutErrorKindOf::InvalidInput(
+                layout::error::LayoutInvalidInputOf::WrappingScope(
+                    layout::inline_wrapping::WrappingScopeError::PlanMismatch
+                )
+            )
         ));
     }
 }
@@ -1064,9 +1139,12 @@ fn internally_coherent_foreign_capture_refuses_old_receipt_despite_equal_source_
     coherent_foreign_capture::<f64>();
 }
 
-fn caller_causes_and_duplicate_ordinals<S: layout::LayoutScalar>() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
-        let host = Host::<S>::new(true, layout::WrapEdge::Line, direction);
+fn caller_causes_and_duplicate_ordinals<S: layout::scalar::LayoutScalar>() {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
+        let host = Host::<S>::new(true, layout::inline_wrapping::WrapEdge::Line, direction);
         let mut raw = source(true, direction);
         // A caller's After cause is distinct. Two literal caller Before
         // requests and the adapter's same Before edge share one cause.
@@ -1084,10 +1162,14 @@ fn caller_causes_and_duplicate_ordinals<S: layout::LayoutScalar>() {
                 side: text::capture::SourceBoxSide::Before,
             },
         ];
-        let (processed, _receipt) =
-            layout::process_wrapping_source(&Early(&host), 0, raw, host.occurrences())
-                .unwrap()
-                .into_parts();
+        let (processed, _receipt) = layout::inline_wrapping::process_wrapping_source(
+            &Early(&host),
+            0,
+            raw,
+            host.occurrences(),
+        )
+        .unwrap()
+        .into_parts();
         assert_eq!(processed.source().text(), &text::source::Text::from("AB"));
         assert_eq!(processed.processed_text().code_units(), [0x41, 0x42]);
         assert!(processed.captured_control(0).is_none());
@@ -1133,43 +1215,43 @@ fn caller_distinct_cause_survives_and_duplicate_request_ordinals_resolve_idempot
 
 // A separate early borrow with physical source controls. It never
 // implements LayoutTree or pretends that preparation has already occurred.
-struct PairedEarly<S: layout::LayoutScalar> {
+struct PairedEarly<S: layout::scalar::LayoutScalar> {
     base: Host<S>,
     children: [Vec<u32>; 5],
-    start: layout::InlineBoundaryInputOf<S>,
-    end: layout::InlineBoundaryInputOf<S>,
-    declarations: Vec<layout::SourceWrappingScopeInput<u32>>,
-    scopes: Vec<layout::SourceScopeAssociation<u32>>,
+    start: layout::inline::InlineBoundaryInputOf<S>,
+    end: layout::inline::InlineBoundaryInputOf<S>,
+    declarations: Vec<layout::inline_wrapping::SourceWrappingScopeInput<u32>>,
+    scopes: Vec<layout::inline_wrapping::SourceScopeAssociation<u32>>,
 }
-impl<S: layout::LayoutScalar> PairedEarly<S> {
-    fn new(direction: layout::Direction, reverse: bool) -> Self {
-        let mut base = Host::new(true, layout::WrapEdge::Line, direction);
-        let pair = layout::SourceWrappingScopeInput {
-            box_: layout::InlineBoxRef::NativePair { start: 3, end: 4 },
-            wrap_inside: layout::WrapInside::Auto,
+impl<S: layout::scalar::LayoutScalar> PairedEarly<S> {
+    fn new(direction: layout::geometry::Direction, reverse: bool) -> Self {
+        let mut base = Host::new(true, layout::inline_wrapping::WrapEdge::Line, direction);
+        let pair = layout::inline_wrapping::SourceWrappingScopeInput {
+            box_: layout::inline_wrapping::InlineBoxRef::NativePair { start: 3, end: 4 },
+            wrap_inside: layout::inline_wrapping::WrapInside::Auto,
             edges: base.declarations[0].edges,
         };
         let mut declarations = vec![base.declarations[0].clone(), pair];
         if reverse {
             declarations.reverse();
         }
-        let metrics = layout::InlineMetricsOf::try_new(
-            surgeist_layout::InlineBaselineContext::Physical,
+        let metrics = layout::inline::InlineMetricsOf::try_new(
+            surgeist_layout::baseline::InlineBaselineContext::Physical,
             S::ZERO,
             S::ZERO,
         )
         .unwrap();
-        let start = layout::InlineBoundaryInputOf::contribution(
-            layout::InlineBoundaryKind::Start,
+        let start = layout::inline::InlineBoundaryInputOf::contribution(
+            layout::inline::InlineBoundaryKind::Start,
             metrics,
-            layout::InlineBoundaryEdgeOf::ZERO,
+            layout::inline::InlineBoundaryEdgeOf::ZERO,
         )
         .unwrap()
         .with_direction(direction);
-        let end = layout::InlineBoundaryInputOf::contribution(
-            layout::InlineBoundaryKind::End,
+        let end = layout::inline::InlineBoundaryInputOf::contribution(
+            layout::inline::InlineBoundaryKind::End,
             metrics,
-            layout::InlineBoundaryEdgeOf::ZERO,
+            layout::inline::InlineBoundaryEdgeOf::ZERO,
         )
         .unwrap()
         .with_direction(direction);
@@ -1182,22 +1264,22 @@ impl<S: layout::LayoutScalar> PairedEarly<S> {
             start,
             end,
             declarations,
-            scopes: vec![layout::SourceScopeAssociation {
+            scopes: vec![layout::inline_wrapping::SourceScopeAssociation {
                 scope: 1,
                 flow: 0,
                 pair: Some((3, 4)),
             }],
         }
     }
-    fn occurrences(&self) -> layout::SourceOccurrenceAssociations<u32> {
-        layout::SourceOccurrenceAssociations {
+    fn occurrences(&self) -> layout::inline_wrapping::SourceOccurrenceAssociations<u32> {
+        layout::inline_wrapping::SourceOccurrenceAssociations {
             origins: self.base.origins.clone(),
             controls: vec![(0, 3), (1, 4)],
             atomics: vec![],
         }
     }
 }
-impl<S: layout::LayoutScalar> layout::Traverse for PairedEarly<S> {
+impl<S: layout::scalar::LayoutScalar> layout::tree::Traverse for PairedEarly<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -1214,28 +1296,33 @@ impl<S: layout::LayoutScalar> layout::Traverse for PairedEarly<S> {
         self.children[node as usize][index]
     }
 }
-impl<S: layout::LayoutScalar> layout::WrapEdgeSource for PairedEarly<S> {
-    fn wrap_edge_source_node(&self, node: u32) -> layout::WrapEdgeSourceNodeView<'_, S> {
+impl<S: layout::scalar::LayoutScalar> layout::inline_wrapping::WrapEdgeSource for PairedEarly<S> {
+    fn wrap_edge_source_node(
+        &self,
+        node: u32,
+    ) -> layout::inline_wrapping::WrapEdgeSourceNodeView<'_, S> {
         match node {
-            0 => layout::WrapEdgeSourceNodeView::Box(&self.base.root),
-            1 => layout::WrapEdgeSourceNodeView::SourceOrigin { origin: 0 },
-            2 => layout::WrapEdgeSourceNodeView::SourceOrigin { origin: 1 },
-            3 => layout::WrapEdgeSourceNodeView::Boundary(self.start),
-            4 => layout::WrapEdgeSourceNodeView::Boundary(self.end),
+            0 => layout::inline_wrapping::WrapEdgeSourceNodeView::Box(&self.base.root),
+            1 => layout::inline_wrapping::WrapEdgeSourceNodeView::SourceOrigin { origin: 0 },
+            2 => layout::inline_wrapping::WrapEdgeSourceNodeView::SourceOrigin { origin: 1 },
+            3 => layout::inline_wrapping::WrapEdgeSourceNodeView::Boundary(self.start),
+            4 => layout::inline_wrapping::WrapEdgeSourceNodeView::Boundary(self.end),
             _ => unreachable!("the fixture has exactly five nodes"),
         }
     }
-    fn source_wrapping_scopes(&self) -> &[layout::SourceWrappingScopeInput<u32>] {
+    fn source_wrapping_scopes(&self) -> &[layout::inline_wrapping::SourceWrappingScopeInput<u32>] {
         &self.declarations
     }
-    fn source_scope_associations(&self) -> &[layout::SourceScopeAssociation<u32>] {
+    fn source_scope_associations(&self) -> &[layout::inline_wrapping::SourceScopeAssociation<u32>] {
         &self.scopes
     }
-    fn generated_child_order(&self) -> &[layout::InlineChildOrderInput<u32, usize>] {
+    fn generated_child_order(
+        &self,
+    ) -> &[layout::inline_wrapping::InlineChildOrderInput<u32, usize>] {
         &self.base.orders
     }
 }
-fn paired_source(direction: layout::Direction) -> text::capture::ContextualSourceInput {
+fn paired_source(direction: layout::geometry::Direction) -> text::capture::ContextualSourceInput {
     use text::capture::SourceProcessingEvent as E;
     let mut raw = source(true, direction);
     raw.controls = vec![
@@ -1290,11 +1377,14 @@ fn paired_source(direction: layout::Direction) -> text::capture::ContextualSourc
     ];
     raw
 }
-fn source_native_alias<S: layout::LayoutScalar>() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+fn source_native_alias<S: layout::scalar::LayoutScalar>() {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         for reverse in [false, true] {
             let host = PairedEarly::<S>::new(direction, reverse);
-            let (processed, _receipt) = layout::process_wrapping_source(
+            let (processed, _receipt) = layout::inline_wrapping::process_wrapping_source(
                 &host,
                 0,
                 paired_source(direction),

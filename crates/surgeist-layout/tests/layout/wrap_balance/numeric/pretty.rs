@@ -8,8 +8,8 @@ struct Profile<'a> {
     auto: &'a [&'a [u32]],
     pretty: &'a [&'a [u32]],
 }
-fn profiles<S: l::LayoutScalar>() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+fn profiles<S: l::scalar::LayoutScalar>() {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         for Profile {
             width,
             widths,
@@ -44,20 +44,20 @@ fn profiles<S: l::LayoutScalar>() {
         ] {
             let mut tree = profile_tree::<S>(direction, width, widths);
             let available = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(width)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(S::from_f64(width)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
             let ordinary = numeric_compute(&tree, available, &[]);
             geometry(&ordinary, direction, width, widths, auto);
-            let selected = numeric_style(&mut tree, l::TextWrapStyle::Pretty, available);
+            let selected = numeric_style(&mut tree, l::text_flow::TextWrapStyle::Pretty, available);
             geometry(&selected, direction, width, widths, pretty);
             let repeated = numeric_compute(&tree, available, &[]);
             numeric_equal(&selected, &repeated, &tree);
             let mut fresh = profile_tree::<S>(direction, width, widths);
-            let cold = numeric_style(&mut fresh, l::TextWrapStyle::Pretty, available);
+            let cold = numeric_style(&mut fresh, l::text_flow::TextWrapStyle::Pretty, available);
             numeric_equal(&selected, &cold, &tree);
             geometry(&ordinary, direction, width, widths, auto);
         }
@@ -72,8 +72,8 @@ fn pretty_native_stages_tail_and_body_with_equal_terminal_guard_f64() {
     profiles::<f64>();
 }
 
-fn long_body<S: l::LayoutScalar>() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+fn long_body<S: l::scalar::LayoutScalar>() {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         let mut widths = vec![60.0; 9];
         widths.extend([30.0, 30.0, 20.0, 50.0]);
         let mut auto = (1..=9).map(|id| vec![id]).collect::<Vec<_>>();
@@ -84,15 +84,15 @@ fn long_body<S: l::LayoutScalar>() {
         let pretty_rows = expected.iter().map(Vec::as_slice).collect::<Vec<_>>();
         let mut tree = profile_tree::<S>(direction, 60.0, &widths);
         let available = crate::layout::native_request::sizing(
-            surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(S::from_f64(60.0)), None),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         );
         let ordinary = numeric_compute(&tree, available, &[]);
         geometry(&ordinary, direction, 60.0, &widths, &ordinary_rows);
-        let pretty = numeric_style(&mut tree, l::TextWrapStyle::Pretty, available);
+        let pretty = numeric_style(&mut tree, l::text_flow::TextWrapStyle::Pretty, available);
         geometry(&pretty, direction, 60.0, &widths, &pretty_rows);
         // Twelve real rows, eleven nonterminal terms: Q4/99 ->5/198.
         for (before, after) in [
@@ -111,7 +111,7 @@ fn long_body<S: l::LayoutScalar>() {
                         before,
                         id,
                         crate::layout::observation::expected_kind(
-                            l::LayoutTree::layout_input(&tree, id),
+                            l::tree::LayoutTree::layout_input(&tree, id),
                             false
                         )
                     ),
@@ -119,7 +119,7 @@ fn long_body<S: l::LayoutScalar>() {
                         after,
                         id,
                         crate::layout::observation::expected_kind(
-                            l::LayoutTree::layout_input(&tree, id),
+                            l::tree::LayoutTree::layout_input(&tree, id),
                             false
                         )
                     )
@@ -139,10 +139,16 @@ fn pretty_native_body_repairs_twelve_line_group_without_moving_full_prefix_f64()
     long_body::<f64>();
 }
 
-fn forced_and_domains<S: l::LayoutScalar>() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
-        let atom =
-            |width| numeric_atomic(direction, width, 10.0, l::InlineBreakOpportunity::Allowed);
+fn forced_and_domains<S: l::scalar::LayoutScalar>() {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
+        let atom = |width| {
+            numeric_atomic(
+                direction,
+                width,
+                10.0,
+                l::text_flow::InlineBreakOpportunity::Allowed,
+            )
+        };
         let mut tree = numeric_tree::<S>(
             direction,
             vec![
@@ -157,20 +163,20 @@ fn forced_and_domains<S: l::LayoutScalar>() {
             ],
         );
         let available = crate::layout::native_request::sizing(
-            surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(S::from_f64(60.0)), None),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         );
-        let pretty = numeric_style(&mut tree, l::TextWrapStyle::Pretty, available);
+        let pretty = numeric_style(&mut tree, l::text_flow::TextWrapStyle::Pretty, available);
         for entries in [
             crate::layout::observation::phase(&pretty, false),
             crate::layout::observation::phase(&pretty, true),
         ] {
             assert_eq!(
                 numeric_node(entries, 0).size,
-                l::Size::new(S::from_f64(60.0), S::from_f64(50.0))
+                l::geometry::Size::new(S::from_f64(60.0), S::from_f64(50.0))
             );
             // Body is permitted before real Forced; the later Paragraph group
             // independently takes Tail. No participant crosses the control.
@@ -186,14 +192,14 @@ fn forced_and_domains<S: l::LayoutScalar>() {
             let forced = numeric_node_of_kind(
                 entries,
                 5,
-                crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak),
+                crate::layout::observation::Kind::NonBox(l::fragmentation::NonBoxKind::LineBreak),
             );
-            assert_eq!(forced.size, l::Size::ZERO);
-            assert_eq!(forced.source_index, l::SourceIndex::new(4));
+            assert_eq!(forced.size, l::geometry::Size::ZERO);
+            assert_eq!(forced.source_index, l::node::SourceIndex::new(4));
             assert_eq!(
                 forced.location,
-                l::Point::new(
-                    S::from_f64(if direction == l::Direction::Ltr {
+                l::geometry::Point::new(
+                    S::from_f64(if direction == l::geometry::Direction::Ltr {
                         50.0
                     } else {
                         10.0
@@ -214,14 +220,17 @@ fn forced_and_domains<S: l::LayoutScalar>() {
                     entries,
                     id,
                     crate::layout::observation::expected_kind(
-                        l::LayoutTree::layout_input(&tree, id),
+                        l::tree::LayoutTree::layout_input(&tree, id),
                         false,
                     ),
                 );
-                assert_eq!(output.source_index, l::SourceIndex::new(id as usize - 1));
+                assert_eq!(
+                    output.source_index,
+                    l::node::SourceIndex::new(id as usize - 1)
+                );
                 assert_eq!(
                     output.size,
-                    l::Size::new(S::from_f64(width), S::from_f64(10.0))
+                    l::geometry::Size::new(S::from_f64(width), S::from_f64(10.0))
                 );
             }
         }
@@ -232,48 +241,57 @@ fn forced_and_domains<S: l::LayoutScalar>() {
         ] {
             let mut domain = profile_tree::<S>(direction, width, widths);
             let capacity = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(width)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(S::from_f64(width)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
             let auto = numeric_compute(&domain, capacity, &[]);
             geometry(&auto, direction, width, widths, rows);
-            let selected = numeric_style(&mut domain, l::TextWrapStyle::Pretty, capacity);
+            let selected =
+                numeric_style(&mut domain, l::text_flow::TextWrapStyle::Pretty, capacity);
             numeric_equal(&auto, &selected, &domain);
         }
-        let mut nowrap = partition_tree::<S>(direction, 1, l::InlineBreakOpportunity::Prohibited);
+        let mut nowrap = partition_tree::<S>(
+            direction,
+            1,
+            l::text_flow::InlineBreakOpportunity::Prohibited,
+        );
         let auto = numeric_compute(&nowrap, available, &[]);
-        let selected = numeric_style(&mut nowrap, l::TextWrapStyle::Pretty, available);
+        let selected = numeric_style(&mut nowrap, l::text_flow::TextWrapStyle::Pretty, available);
         numeric_equal(&auto, &selected, &nowrap);
         for minimum in [true, false] {
             let mut intrinsic =
-                partition_tree::<S>(direction, 1, l::InlineBreakOpportunity::Allowed);
+                partition_tree::<S>(direction, 1, l::text_flow::InlineBreakOpportunity::Allowed);
             let root = intrinsic.inputs[0].as_box().cloned().unwrap();
-            intrinsic.inputs[0] = l::LayoutInputOf::box_input(l::NodeInputOf {
-                size: l::Size::new(l::PreferredSizeOf::AUTO, root.size.height),
+            intrinsic.inputs[0] = l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+                size: l::geometry::Size::new(l::sizing::PreferredSizeOf::AUTO, root.size.height),
                 ..root
             });
             let capacity = if minimum {
                 crate::layout::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::MinContent,
-                        surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::MinContent,
+                        surgeist_layout::constraint::SizingOperation::Normal,
                     ),
                 )
             } else {
                 crate::layout::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::MaxContent,
-                        surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::MaxContent,
+                        surgeist_layout::constraint::SizingOperation::Normal,
                     ),
                 )
             };
             let auto = numeric_compute(&intrinsic, capacity, &[]);
-            let selected = numeric_style(&mut intrinsic, l::TextWrapStyle::Pretty, capacity);
+            let selected = numeric_style(
+                &mut intrinsic,
+                l::text_flow::TextWrapStyle::Pretty,
+                capacity,
+            );
             numeric_equal(&auto, &selected, &intrinsic);
         }
     }

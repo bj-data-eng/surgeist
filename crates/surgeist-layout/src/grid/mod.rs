@@ -1,3 +1,15 @@
+//! Grid tracks, lines, placement, template areas, the axis kind, lanes flow and tolerance, and named-grid errors.
+//!
+//! A track list is a [`TrackComponentListOf`] of [`TrackComponentOf`]s: line names, a [`TrackSizingOf`] (a pair of
+//! [`MinTrackSizingOf`] and [`MaxTrackSizingOf`] breadths), a [`TrackRepetitionOf`] or a [`SubgridTrack`];
+//! [`track_sizing_components`] and [`track_sizing_components_of`] give the [`TrackSizingOf`]s of a component list. An
+//! item is placed with a [`GridPlacement`] of [`GridLine`]s and a [`GridSpan`], or with a [`RawGridPlacement`] of
+//! [`RawGridLine`]s, which can name lines, and [`GridTemplateAreas`] describe the named areas. [`GridAutoFlow`]
+//! selects auto-placement and [`GridAxisKind`] names a grid axis. [`GridLanesFlow`], [`GridFlowToleranceOf`] and
+//! [`GridFlowTolerance`] are the orientation, placement policy and tolerance of a Grid Lanes container.
+//! [`NamedGridError`] is a failure to resolve named grid input: a reserved or unresolved name, invalid template
+//! areas, an invalid repeat, or a line placement that cannot be resolved.
+
 use std::ops::ControlFlow;
 
 use crate::accounting::LayoutWork;
@@ -30,8 +42,8 @@ use crate::{
     },
     geometry::{Edges, Point, Size},
     node_input::{
-        AlignContent, AlignItems, BoxSizing, Direction, Display, GridAutoFlow, GridPlacement,
-        Overflow, Position, RawGridLine, RawGridPlacement, SizeContainment,
+        AlignContent, AlignItems, BoxSizing, Direction, Display, Overflow, Position,
+        SizeContainment,
     },
     output::{
         BaselinesOf, ComputeInputOf, ComputeOutputOf, NodeOutputOf, RequestedAxis, RunMode,
@@ -41,9 +53,8 @@ use crate::{
     sizing::{MinSizeOf, PreferredSizeOf},
     tree::Traverse,
     value::{
-        AvailableSpaceOf, AxisSizingRequestOf, GridSpan, LengthAutoOf, LengthOf,
-        LengthResolutionStatus, MaxTrackSizingOf, MinTrackSizingOf, OrthogonalFallbackOf,
-        SizingOperation, SizingRequestOf, TrackComponentOf, TrackRepeat, TrackSizingOf,
+        AvailableSpaceOf, AxisSizingRequestOf, LengthAutoOf, LengthOf, LengthResolutionStatus,
+        OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
     },
 };
 
@@ -64,6 +75,19 @@ pub(crate) use observation::{
 mod placement;
 mod subgrid;
 pub(crate) use subgrid::{WrapperResolutionMemo, WrapperResolutions};
+
+pub use crate::node_input::{
+    GridAutoFlow, GridFlowTolerance, GridFlowToleranceOf, GridLanesFlow, GridPlacement,
+    RawGridLine, RawGridPlacement,
+};
+pub use crate::value::{
+    GridLine, GridSpan, GridTemplateAreaRow, GridTemplateAreas, MaxTrackSizing, MaxTrackSizingOf,
+    MinTrackSizing, MinTrackSizingOf, SubgridLineNameComponent, SubgridLineNameRepeatCount,
+    SubgridTrack, TrackComponent, TrackComponentList, TrackComponentListOf, TrackComponentOf,
+    TrackFlexFactor, TrackFlexFactorOf, TrackRepeat, TrackRepeatCount, TrackRepetition,
+    TrackRepetitionError, TrackRepetitionOf, TrackSizing, TrackSizingOf, track_sizing_components,
+    track_sizing_components_of,
+};
 
 /// Whether a test asks every nested subgrid computation to repeat.
 #[cfg(test)]

@@ -6,11 +6,11 @@ use std::sync::Arc;
 const JAPANESE: &str = "今日は天気です。";
 
 struct ContinuationTree {
-    inputs: Vec<layout::LayoutInput>,
-    non_box: layout::NodeInput,
+    inputs: Vec<layout::node::LayoutInput>,
+    non_box: layout::node::NodeInput,
 }
 
-impl layout::Traverse for ContinuationTree {
+impl layout::tree::Traverse for ContinuationTree {
     type Node = usize;
     type Scalar = f32;
     type Children<'a> = std::ops::Range<usize>;
@@ -26,22 +26,22 @@ impl layout::Traverse for ContinuationTree {
     }
 }
 
-impl layout::LayoutTree for ContinuationTree {
+impl layout::tree::LayoutTree for ContinuationTree {
     type MeasureError = Infallible;
 
-    fn node_input(&self, node: usize) -> &layout::NodeInput {
+    fn node_input(&self, node: usize) -> &layout::node::NodeInput {
         self.inputs[node]
             .as_view()
             .as_box()
             .unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, node: usize) -> layout::LayoutInputView<'_> {
+    fn layout_input(&self, node: usize) -> layout::node::LayoutInputView<'_> {
         self.inputs[node].as_view()
     }
 }
 
 fn capture() -> (
-    layout::CompletedLayoutBatch<usize>,
+    layout::batch::CompletedLayoutBatch<usize>,
     Vec<text::prepared::PreparedText>,
     Vec<u8>,
 ) {
@@ -246,40 +246,40 @@ fn capture() -> (
     assert_eq!(prepared[1].virtual_separators().count(), 0);
 
     let boundary = |kind| {
-        layout::LayoutInput::InlineBoundary(
-            layout::InlineBoundaryInput::contribution(
+        layout::node::LayoutInput::InlineBoundary(
+            layout::inline::InlineBoundaryInput::contribution(
                 kind,
-                layout::InlineMetrics::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
+                layout::inline::InlineMetrics::try_new(
+                    surgeist_layout::baseline::InlineBaselineContext::Physical,
                     16.0,
                     20.0,
                 )
                 .unwrap(),
-                layout::InlineBoundaryEdge::ZERO,
+                layout::inline::InlineBoundaryEdge::ZERO,
             )
             .unwrap(),
         )
     };
     let tree = ContinuationTree {
         inputs: vec![
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
-                ..layout::NodeInput::DEFAULT
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                ..layout::node::NodeInput::DEFAULT
             }),
-            boundary(layout::InlineBoundaryKind::Start),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(
+            boundary(layout::inline::InlineBoundaryKind::Start),
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
                 prepared[0].origin_views().next().unwrap().handle(),
             )),
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
-                ..layout::NodeInput::DEFAULT
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
                 prepared[2].origin_views().next().unwrap().handle(),
             )),
-            boundary(layout::InlineBoundaryKind::End),
+            boundary(layout::inline::InlineBoundaryKind::End),
         ],
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
     let bindings = prepared
         .iter()
@@ -291,21 +291,22 @@ fn capture() -> (
                 2 => (0, vec![4, 5], 4, 5),
                 _ => unreachable!(),
             };
-            layout::TextParagraphBinding {
-                inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+            layout::text_layout::TextParagraphBinding {
+                inline_box_fragments:
+                    layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared: prepared.clone(),
                 container,
                 nodes,
                 origins: prepared
                     .origin_views()
-                    .map(|view| layout::TextOriginBinding {
+                    .map(|view| layout::text_layout::TextOriginBinding {
                         origin: view.handle(),
                         node: origin_node,
                     })
                     .collect(),
                 controls: prepared
                     .control_views()
-                    .map(|view| layout::TextControlBinding {
+                    .map(|view| layout::text_layout::TextControlBinding {
                         occurrence: view.handle(),
                         node: control_node,
                     })
@@ -315,11 +316,11 @@ fn capture() -> (
             }
         })
         .collect();
-    let captured = layout::LayoutFlowInput::try_new(
+    let captured = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         bindings,
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -332,12 +333,15 @@ fn capture() -> (
         &captured,
         0,
         NativeViewport::new(
-            layout::Size::new(Some(200.0), None),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::geometry::Size::new(Some(200.0), None),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
         )
-        .request(layout::Size::new(
-            layout::SizingOperation::Normal,
-            layout::SizingOperation::Normal,
+        .request(layout::geometry::Size::new(
+            layout::constraint::SizingOperation::Normal,
+            layout::constraint::SizingOperation::Normal,
         )),
     )
     .unwrap();
@@ -363,23 +367,28 @@ fn global_phrase_owner_keeps_each_local_occurrence_through_empty_block_paint_and
         .single_box()
         .expect("fixture node produces one box")
         .final_output();
-    assert_eq!(empty_box.location, layout::Point::new(0.0, 20.0));
-    assert_eq!(empty_box.size, layout::Size::new(200.0, 0.0));
+    assert_eq!(empty_box.location, layout::geometry::Point::new(0.0, 20.0));
+    assert_eq!(empty_box.size, layout::geometry::Size::new(200.0, 0.0));
     assert!(
         !batch
             .final_inline_fragments()
             .iter()
-            .any(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(3))
+            .any(|entry| entry.owner() == &layout::text_layout::InlineFragmentOwner::Node(3))
     );
     let generated: Vec<_> = batch
         .final_inline_fragments()
         .iter()
-        .filter(|entry| matches!(entry.owner(), layout::InlineFragmentOwner::Scope(_)))
+        .filter(|entry| {
+            matches!(
+                entry.owner(),
+                layout::text_layout::InlineFragmentOwner::Scope(_)
+            )
+        })
         .collect();
     assert_eq!(generated.len(), 2);
     let mut positions = Vec::new();
     for entry in generated {
-        let layout::InlineFragmentOwner::Scope(owner) = entry.owner() else {
+        let layout::text_layout::InlineFragmentOwner::Scope(owner) = entry.owner() else {
             unreachable!()
         };
         let fragment = entry.fragment();
@@ -405,7 +414,7 @@ fn global_phrase_owner_keeps_each_local_occurrence_through_empty_block_paint_and
         );
         assert_eq!(
             owner.association,
-            layout::TextScopeAssociation::Inline { start: 1, end: 5 }
+            layout::text_layout::TextScopeAssociation::Inline { start: 1, end: 5 }
         );
         assert_eq!(view.origin(), None);
         assert_eq!(view.aggregate_range(), None);
@@ -413,8 +422,8 @@ fn global_phrase_owner_keeps_each_local_occurrence_through_empty_block_paint_and
         let rect = fragment.rect().unwrap();
         // Three 10px original cells precede a half-em SPACE at owner size20.
         // Each parent line allocates 20px; the empty block adds zero.
-        assert_eq!(rect.origin(), layout::Point::new(30.0, y));
-        assert_eq!(rect.size(), layout::Size::new(10.0, 20.0));
+        assert_eq!(rect.origin(), layout::geometry::Point::new(30.0, y));
+        assert_eq!(rect.size(), layout::geometry::Size::new(10.0, 20.0));
         assert_eq!(
             view.bounds(),
             Some(text::geometry::Rect::new(30.0, 0.0, 10.0, 20.0))

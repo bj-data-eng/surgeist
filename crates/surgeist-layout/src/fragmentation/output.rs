@@ -1,4 +1,7 @@
-use super::input::*;
+use crate::fragmentation::input::{
+    FragmentainerOf, FragmentationBreakKinds, FragmentationPosition, FragmentationStage,
+    FragmentationStart,
+};
 use crate::scalar::{DefaultScalar, LayoutScalar};
 
 #[derive(Clone, Debug, PartialEq)]

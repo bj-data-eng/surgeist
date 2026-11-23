@@ -421,28 +421,33 @@ fn complete_mixed_domain_ledger_retains_equal_integers_and_rejects_extra_scroll_
 
 // These are explicitly authored Native operations. Neither a historical viewport
 // nor a browser expectation supplies this standalone request or any Text metric.
-fn output_census_native_request() -> layout::LayoutRootRequest {
-    let width = layout::NonNegativeFiniteOf::new(100.0).unwrap();
-    layout::LayoutRootRequest::standalone(
-        layout::SizingRequest::new(
-            layout::Size::new(
-                layout::AxisSizingRequest::new(
-                    layout::AvailableSpace::Definite(width),
-                    layout::SizingOperation::Normal,
+fn output_census_native_request() -> layout::request::LayoutRootRequest {
+    let width = layout::length::NonNegativeFiniteOf::new(100.0).unwrap();
+    layout::request::LayoutRootRequest::standalone(
+        layout::constraint::SizingRequest::new(
+            layout::geometry::Size::new(
+                layout::constraint::AxisSizingRequest::new(
+                    layout::constraint::AvailableSpace::Definite(width),
+                    layout::constraint::SizingOperation::Normal,
                 ),
-                layout::AxisSizingRequest::new(
-                    layout::AvailableSpace::Indefinite,
-                    layout::SizingOperation::Normal,
+                layout::constraint::AxisSizingRequest::new(
+                    layout::constraint::AvailableSpace::Indefinite,
+                    layout::constraint::SizingOperation::Normal,
                 ),
             ),
-            layout::OrthogonalFallbackOf::new(
-                layout::Size::NONE,
-                layout::NearestScrollportOf::Absent,
-                layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+            layout::constraint::OrthogonalFallbackOf::new(
+                layout::geometry::Size::NONE,
+                layout::constraint::NearestScrollportOf::Absent,
+                layout::geometry::Size::splat(
+                    layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                ),
             ),
         ),
-        layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-        layout::Size::new(Some(width), None),
+        layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
+            layout::geometry::Direction::Ltr,
+        ),
+        layout::geometry::Size::new(Some(width), None),
     )
 }
 
@@ -483,19 +488,21 @@ fn completed_empty_native_inline_family_is_rejected_even_without_text_fragments_
     assert_eq!(ordinary.native_inline_box_pieces().count(), 0);
     assert!(snapshot_batch(&tree, &ordinary, &source, false).is_ok());
 
-    let flow = layout::LayoutFlowInput::try_new(
+    let flow = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         Vec::new(),
-        layout::WrappingInput {
-            native_inline_boxes: vec![layout::NativeInlineBoxFamilyInput { formatter: 0 }],
+        layout::inline_wrapping::WrappingInput {
+            native_inline_boxes: vec![layout::inline_wrapping::NativeInlineBoxFamilyInput {
+                formatter: 0,
+            }],
             scopes: Vec::new(),
             gaps: Vec::new(),
-            child_order: vec![layout::InlineChildOrderInput {
-                parent: layout::GeneratedBoxRef::Node(0),
+            child_order: vec![layout::inline_wrapping::InlineChildOrderInput {
+                parent: layout::inline_wrapping::GeneratedBoxRef::Node(0),
                 children: Vec::new(),
-                prefix: layout::ChildOrderCompleteness::Complete,
-                suffix: layout::ChildOrderCompleteness::Complete,
+                prefix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
+                suffix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
                 formatting_context: 0,
             }],
         },

@@ -8,12 +8,12 @@ const AHEM: &[u8] = include_bytes!("../../crates/surgeist-text/tests/fixtures/fo
 const ATOMIC_NODE: usize = 2;
 
 struct AtomicTree {
-    inputs: Vec<layout::LayoutInput>,
+    inputs: Vec<layout::node::LayoutInput>,
     children: Vec<Vec<usize>>,
-    non_box: layout::NodeInput,
+    non_box: layout::node::NodeInput,
 }
 
-impl layout::Traverse for AtomicTree {
+impl layout::tree::Traverse for AtomicTree {
     type Node = usize;
     type Scalar = f32;
     type Children<'a> = std::iter::Copied<std::slice::Iter<'a, usize>>;
@@ -31,17 +31,17 @@ impl layout::Traverse for AtomicTree {
     }
 }
 
-impl layout::LayoutTree for AtomicTree {
+impl layout::tree::LayoutTree for AtomicTree {
     type MeasureError = Infallible;
 
-    fn node_input(&self, node: usize) -> &layout::NodeInput {
+    fn node_input(&self, node: usize) -> &layout::node::NodeInput {
         self.inputs[node]
             .as_view()
             .as_box()
             .unwrap_or(&self.non_box)
     }
 
-    fn layout_input(&self, node: usize) -> layout::LayoutInputView<'_> {
+    fn layout_input(&self, node: usize) -> layout::node::LayoutInputView<'_> {
         self.inputs[node].as_view()
     }
 }
@@ -196,8 +196,8 @@ fn prepare(
     prepared
 }
 
-fn px(value: f32) -> layout::PreferredSize {
-    layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(value).unwrap())
+fn px(value: f32) -> layout::sizing::PreferredSize {
+    layout::sizing::PreferredSizeOf::value(layout::length::LengthPercentageOf::px(value).unwrap())
 }
 
 fn limits() -> render::text_layout::TextLayoutLimits {
@@ -209,7 +209,10 @@ fn limits() -> render::text_layout::TextLayoutLimits {
     )
 }
 
-fn placed(batch: &layout::CompletedLayoutBatch<usize>, container: usize) -> &text::layout::Layout {
+fn placed(
+    batch: &layout::batch::CompletedLayoutBatch<usize>,
+    container: usize,
+) -> &text::layout::Layout {
     batch
         .placed_text()
         .iter()
@@ -262,42 +265,49 @@ fn assert_composition(kind: text::source::InlineBoxKind) {
     );
     let tree = AtomicTree {
         inputs: vec![
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
-                writing_mode: layout::WritingMode::SidewaysRl,
-                inline_baseline_context: layout::InlineBaselineContext::Physical,
-                size: layout::Size::new(px(40.0), px(40.0)),
-                ..layout::NodeInput::DEFAULT
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                writing_mode: layout::geometry::WritingMode::SidewaysRl,
+                inline_baseline_context: layout::baseline::InlineBaselineContext::Physical,
+                size: layout::geometry::Size::new(px(40.0), px(40.0)),
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::inline_text(layout::TextParticipation::new(origins[0].clone())),
-            layout::LayoutInput::box_input(layout::NodeInput {
+            layout::node::LayoutInput::inline_text(layout::text_layout::TextParticipation::new(
+                origins[0].clone(),
+            )),
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
                 display: if kind == text::source::InlineBoxKind::InFlow {
-                    layout::Display::InlineBlock
+                    layout::box_model::Display::InlineBlock
                 } else {
-                    layout::Display::Block
+                    layout::box_model::Display::Block
                 },
                 position: if kind == text::source::InlineBoxKind::OutOfFlow {
-                    layout::Position::Absolute
+                    layout::box_model::Position::Absolute
                 } else {
-                    layout::Position::Relative
+                    layout::box_model::Position::Relative
                 },
-                writing_mode: layout::WritingMode::HorizontalTb,
-                inline_baseline_context: layout::InlineBaselineContext::Physical,
-                size: layout::Size::new(px(6.0), px(14.0)),
-                ..layout::NodeInput::DEFAULT
+                writing_mode: layout::geometry::WritingMode::HorizontalTb,
+                inline_baseline_context: layout::baseline::InlineBaselineContext::Physical,
+                size: layout::geometry::Size::new(px(6.0), px(14.0)),
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::inline_text(layout::TextParticipation::new(origins[1].clone())),
-            layout::LayoutInput::inline_text(layout::TextParticipation::new(child_origin.clone())),
+            layout::node::LayoutInput::inline_text(layout::text_layout::TextParticipation::new(
+                origins[1].clone(),
+            )),
+            layout::node::LayoutInput::inline_text(layout::text_layout::TextParticipation::new(
+                child_origin.clone(),
+            )),
         ],
         children: vec![vec![1, 2, 3], vec![], vec![4], vec![], vec![]],
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let flow = layout::LayoutFlowInput::try_new(
+    let flow = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         vec![
-            layout::TextParagraphBinding {
-                inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+            layout::text_layout::TextParagraphBinding {
+                inline_box_fragments:
+                    layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared: parent.clone(),
                 container: 0,
                 nodes: vec![1, 2, 3],
@@ -305,21 +315,22 @@ fn assert_composition(kind: text::source::InlineBoxKind) {
                     .iter()
                     .cloned()
                     .zip([1, 3])
-                    .map(|(origin, node)| layout::TextOriginBinding { origin, node })
+                    .map(|(origin, node)| layout::text_layout::TextOriginBinding { origin, node })
                     .collect(),
-                atomics: vec![layout::TextAtomicBinding {
+                atomics: vec![layout::text_layout::TextAtomicBinding {
                     occurrence: atomic,
                     node: ATOMIC_NODE,
                 }],
                 controls: vec![],
                 line_strut: None,
             },
-            layout::TextParagraphBinding {
-                inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+            layout::text_layout::TextParagraphBinding {
+                inline_box_fragments:
+                    layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared: child.clone(),
                 container: ATOMIC_NODE,
                 nodes: vec![4],
-                origins: vec![layout::TextOriginBinding {
+                origins: vec![layout::text_layout::TextOriginBinding {
                     origin: child_origin.clone(),
                     node: 4,
                 }],
@@ -328,7 +339,7 @@ fn assert_composition(kind: text::source::InlineBoxKind) {
                 line_strut: None,
             },
         ],
-        layout::WrappingInput::default(),
+        layout::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
@@ -336,12 +347,15 @@ fn assert_composition(kind: text::source::InlineBoxKind) {
         &flow,
         0,
         NativeViewport::new(
-            layout::Size::new(Some(40.0), Some(40.0)),
-            layout::FlowAxes::new(layout::WritingMode::SidewaysRl, layout::Direction::Ltr),
+            layout::geometry::Size::new(Some(40.0), Some(40.0)),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::SidewaysRl,
+                layout::geometry::Direction::Ltr,
+            ),
         )
-        .request(layout::Size::new(
-            layout::SizingOperation::Normal,
-            layout::SizingOperation::Normal,
+        .request(layout::geometry::Size::new(
+            layout::constraint::SizingOperation::Normal,
+            layout::constraint::SizingOperation::Normal,
         )),
     )
     .unwrap();
@@ -356,8 +370,11 @@ fn assert_composition(kind: text::source::InlineBoxKind) {
         .single_box()
         .expect("atomic node produces one box");
     for output in [view.unrounded_output(), view.final_output()] {
-        assert_eq!(output.location, layout::Point::new(child_x as f32, 10.0));
-        assert_eq!(output.size, layout::Size::new(6.0, 14.0));
+        assert_eq!(
+            output.location,
+            layout::geometry::Point::new(child_x as f32, 10.0)
+        );
+        assert_eq!(output.size, layout::geometry::Size::new(6.0, 14.0));
         // Its real horizontal10px glyph overflows a6px physical child width.
         assert_eq!(output.content_size.width, 10.0);
     }
@@ -389,7 +406,12 @@ fn assert_composition(kind: text::source::InlineBoxKind) {
     let line = batch
         .final_inline_fragments()
         .iter()
-        .find(|entry| matches!(entry.owner(), layout::InlineFragmentOwner::Node(1)))
+        .find(|entry| {
+            matches!(
+                entry.owner(),
+                layout::text_layout::InlineFragmentOwner::Node(1)
+            )
+        })
         .unwrap()
         .fragment()
         .finalized_fragment()

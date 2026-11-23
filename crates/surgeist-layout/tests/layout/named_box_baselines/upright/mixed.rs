@@ -9,8 +9,8 @@ fn near(actual: f64, expected: f64) {
     );
 }
 
-fn central() -> l::InlineBaselineContext {
-    l::InlineBaselineContext::Named(FontBaseline::Central)
+fn central() -> l::baseline::InlineBaselineContext {
+    l::baseline::InlineBaselineContext::Named(FontBaseline::Central)
 }
 
 fn mixed_font() -> Vec<u8> {
@@ -201,9 +201,10 @@ fn binding(
     container: u32,
     nodes: &[u32],
     strut: Option<t::allocation::LineStrut>,
-) -> l::TextParagraphBinding<u32> {
-    l::TextParagraphBinding {
-        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+) -> l::text_layout::TextParagraphBinding<u32> {
+    l::text_layout::TextParagraphBinding {
+        inline_box_fragments:
+            surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: f.prepared.clone(),
         container,
         nodes: nodes.to_vec(),
@@ -211,7 +212,7 @@ fn binding(
             .prepared
             .origin_views()
             .zip(nodes)
-            .map(|(view, &node)| l::TextOriginBinding {
+            .map(|(view, &node)| l::text_layout::TextOriginBinding {
                 origin: view.handle(),
                 node,
             })
@@ -222,17 +223,17 @@ fn binding(
     }
 }
 
-fn solve<S: l::LayoutScalar>(
+fn solve<S: l::scalar::LayoutScalar>(
     host: &Host<S>,
-    bindings: &[l::TextParagraphBinding<u32>],
-    space: surgeist_layout::SizingRequestOf<S>,
+    bindings: &[l::text_layout::TextParagraphBinding<u32>],
+    space: surgeist_layout::constraint::SizingRequestOf<S>,
     dirty: &[u32],
-) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-    let flow = l::LayoutFlowInput::try_new(
+) -> Result<l::batch::CompletedLayoutBatchOf<u32, S>, l::error::LayoutErrorOf<u32, S>> {
+    let flow = l::text_layout::LayoutFlowInput::try_new(
         host,
         0,
         bindings.to_vec(),
-        l::WrappingInput::default(),
+        l::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
@@ -241,11 +242,11 @@ fn solve<S: l::LayoutScalar>(
         0,
         {
             let sizing_request = space;
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
-                    surgeist_layout::LayoutTree::node_input(host, 0).direction,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::tree::LayoutTree::node_input(host, 0).writing_mode,
+                    surgeist_layout::tree::LayoutTree::node_input(host, 0).direction,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -256,27 +257,36 @@ fn solve<S: l::LayoutScalar>(
     )
 }
 
-fn available<S: l::LayoutScalar>(height: f64) -> surgeist_layout::SizingRequestOf<S> {
+fn available<S: l::scalar::LayoutScalar>(
+    height: f64,
+) -> surgeist_layout::constraint::SizingRequestOf<S> {
     crate::layout::native_request::sizing(
-        surgeist_layout::Size::new(Some(n(40.0)), Some(n(height))),
-        surgeist_layout::Size::new(
-            surgeist_layout::SizingOperation::Normal,
-            surgeist_layout::SizingOperation::Normal,
+        surgeist_layout::geometry::Size::new(Some(n(40.0)), Some(n(height))),
+        surgeist_layout::geometry::Size::new(
+            surgeist_layout::constraint::SizingOperation::Normal,
+            surgeist_layout::constraint::SizingOperation::Normal,
         ),
     )
 }
 
-fn central_facts<S: l::LayoutScalar>(facts: l::NamedBaselinesOf<S>, first: f64, last: f64) {
+fn central_facts<S: l::scalar::LayoutScalar>(
+    facts: l::baseline::NamedBaselinesOf<S>,
+    first: f64,
+    last: f64,
+) {
     let pair = facts.get(FontBaseline::Central);
     for (actual, expected) in [(pair.first(), first), (pair.last(), last)] {
-        let point =
-            l::BaselineCoordinateOf::try_new(l::PhysicalAxis::Horizontal, n(expected)).unwrap();
-        assert_eq!(actual, l::BaselineFactOf::Available(point));
+        let point = l::baseline::BaselineCoordinateOf::try_new(
+            l::geometry::PhysicalAxis::Horizontal,
+            n(expected),
+        )
+        .unwrap();
+        assert_eq!(actual, l::baseline::BaselineFactOf::Available(point));
     }
 }
 
-fn placed<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+fn placed<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     container: u32,
 ) -> &t::layout::Layout {
     batch
@@ -348,19 +358,21 @@ fn packets(text: &t::layout::Layout, fixture: &Fixture, centers: &[f64], inline:
     assert_eq!(selection.plaintext(), fixture.source.text());
 }
 
-fn admission<S: l::LayoutScalar>() {
+fn admission<S: l::scalar::LayoutScalar>() {
     let fixture = capture("A一", 1_570_099, &[]);
     for (mode, c) in [
-        (l::WritingMode::VerticalRl, 32.0),
-        (l::WritingMode::VerticalLr, 2.0),
+        (l::geometry::WritingMode::VerticalRl, 32.0),
+        (l::geometry::WritingMode::VerticalLr, 2.0),
     ] {
-        let mut input = root(mode, l::Direction::Ltr, central());
-        input.size = l::Size::new(px(40.0), px(6.0));
+        let mut input = root(mode, l::geometry::Direction::Ltr, central());
+        input.size = l::geometry::Size::new(px(40.0), px(6.0));
         let mut host = Host::<S>::new(input);
         let b = binding(&fixture, 0, &[1], Some(STRUT));
         host.push(
             Some(0),
-            l::LayoutInputOf::inline_text(l::TextParticipation::new(b.origins[0].origin.clone())),
+            l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+                b.origins[0].origin.clone(),
+            )),
         );
         let batch = solve(&host, &[b], available(6.0), &[]).unwrap();
         // One actual mixed line is enough to require the same authenticated
@@ -384,23 +396,26 @@ fn native_mixed_named_central_admission_f64() {
     admission::<f64>();
 }
 
-fn columns<S: l::LayoutScalar>() {
+fn columns<S: l::scalar::LayoutScalar>() {
     let fixture = capture("A一A一", 1_570_100, &[]);
-    for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
-        for context in [central(), l::InlineBaselineContext::Physical] {
-            let mut input = root(mode, l::Direction::Ltr, context);
-            input.size = l::Size::new(px(40.0), px(6.0));
+    for mode in [
+        l::geometry::WritingMode::VerticalRl,
+        l::geometry::WritingMode::VerticalLr,
+    ] {
+        for context in [central(), l::baseline::InlineBaselineContext::Physical] {
+            let mut input = root(mode, l::geometry::Direction::Ltr, context);
+            input.size = l::geometry::Size::new(px(40.0), px(6.0));
             let mut host = Host::<S>::new(input);
             let b = binding(&fixture, 0, &[1], Some(STRUT));
             host.push(
                 Some(0),
-                l::LayoutInputOf::inline_text(l::TextParticipation::new(
+                l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
                     b.origins[0].origin.clone(),
                 )),
             );
             let batch = solve(&host, &[b], available(6.0), &[])
                 .expect("real Mixed named Central must be admitted by Layout");
-            let centers = if mode == l::WritingMode::VerticalRl {
+            let centers = if mode == l::geometry::WritingMode::VerticalRl {
                 [32.0, 22.0]
             } else {
                 [2.0, 12.0]
@@ -414,7 +429,7 @@ fn columns<S: l::LayoutScalar>() {
             } else {
                 assert_eq!(
                     node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
-                    l::NamedBaselinesOf::unknown()
+                    l::baseline::NamedBaselinesOf::unknown()
                 );
             }
             let text = placed(&batch, 0);
@@ -453,8 +468,8 @@ fn columns<S: l::LayoutScalar>() {
                 assert_eq!(
                     (rect.origin(), rect.size()),
                     (
-                        l::Point::new(n(c - 2.0), n(y)),
-                        l::Size::new(n(4.0), n(height))
+                        l::geometry::Point::new(n(c - 2.0), n(y)),
+                        l::geometry::Size::new(n(4.0), n(height))
                     )
                 );
                 ranges.push(source);
@@ -469,22 +484,27 @@ fn columns<S: l::LayoutScalar>() {
                 ]
             );
         }
-        let mut input = root(mode, l::Direction::Ltr, central());
-        input.size = l::Size::new(l::PreferredSizeOf::AUTO, l::PreferredSizeOf::AUTO);
+        let mut input = root(mode, l::geometry::Direction::Ltr, central());
+        input.size = l::geometry::Size::new(
+            l::sizing::PreferredSizeOf::AUTO,
+            l::sizing::PreferredSizeOf::AUTO,
+        );
         let mut host = Host::<S>::new(input);
         let b = binding(&fixture, 0, &[1], Some(STRUT));
         host.push(
             Some(0),
-            l::LayoutInputOf::inline_text(l::TextParticipation::new(b.origins[0].origin.clone())),
+            l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+                b.origins[0].origin.clone(),
+            )),
         );
         let batch = solve(
             &host,
             &[b],
             crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(None, None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(None, None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             ),
             &[],
@@ -492,7 +512,7 @@ fn columns<S: l::LayoutScalar>() {
         .unwrap();
         assert_eq!(
             node(crate::layout::observation::phase(&batch, false), 0).size,
-            l::Size::new(n(10.0), n(12.0))
+            l::geometry::Size::new(n(10.0), n(12.0))
         );
         central_facts(
             node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
@@ -512,13 +532,13 @@ fn native_mixed_named_central_columns_preserve_axes_source_and_intrinsic_geometr
     columns::<f64>();
 }
 
-struct Scene<S: l::LayoutScalar> {
+struct Scene<S: l::scalar::LayoutScalar> {
     host: Host<S>,
     parent: Fixture,
-    bindings: Vec<l::TextParagraphBinding<u32>>,
+    bindings: Vec<l::text_layout::TextParagraphBinding<u32>>,
 }
 
-fn scene<S: l::LayoutScalar>(mode: l::WritingMode) -> Scene<S> {
+fn scene<S: l::scalar::LayoutScalar>(mode: l::geometry::WritingMode) -> Scene<S> {
     let parent = capture(
         "A一",
         1_570_200,
@@ -537,8 +557,8 @@ fn scene<S: l::LayoutScalar>(mode: l::WritingMode) -> Scene<S> {
     );
     let child = capture("A一", 1_570_201, &[]);
     let absolute = capture("A一", 1_570_202, &[]);
-    let mut input = root(mode, l::Direction::Ltr, central());
-    input.size = l::Size::new(px(40.0), px(14.0));
+    let mut input = root(mode, l::geometry::Direction::Ltr, central());
+    input.size = l::geometry::Size::new(px(40.0), px(14.0));
     let mut host = Host::new(input);
     let origins = parent
         .prepared
@@ -547,49 +567,62 @@ fn scene<S: l::LayoutScalar>(mode: l::WritingMode) -> Scene<S> {
         .collect::<Vec<_>>();
     host.push(
         Some(0),
-        l::LayoutInputOf::inline_text(l::TextParticipation::new(origins[0].clone())),
+        l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+            origins[0].clone(),
+        )),
     );
-    let mut input = root(l::WritingMode::VerticalLr, l::Direction::Ltr, central());
-    input.display = l::Display::InlineBlock;
-    input.size = l::Size::new(px(6.0), px(8.0));
-    host.push(Some(0), l::LayoutInputOf::box_input(input));
     let mut input = root(
-        l::WritingMode::VerticalLr,
-        l::Direction::Ltr,
-        l::InlineBaselineContext::Physical,
+        l::geometry::WritingMode::VerticalLr,
+        l::geometry::Direction::Ltr,
+        central(),
     );
-    input.position = l::Position::Absolute;
-    input.size = l::Size::new(px(5.0), px(7.0));
-    host.push(Some(0), l::LayoutInputOf::box_input(input));
+    input.display = l::box_model::Display::InlineBlock;
+    input.size = l::geometry::Size::new(px(6.0), px(8.0));
+    host.push(Some(0), l::node::LayoutInputOf::box_input(input));
+    let mut input = root(
+        l::geometry::WritingMode::VerticalLr,
+        l::geometry::Direction::Ltr,
+        l::baseline::InlineBaselineContext::Physical,
+    );
+    input.position = l::box_model::Position::Absolute;
+    input.size = l::geometry::Size::new(px(5.0), px(7.0));
+    host.push(Some(0), l::node::LayoutInputOf::box_input(input));
     host.push(
         Some(0),
-        l::LayoutInputOf::inline_text(l::TextParticipation::new(origins[1].clone())),
+        l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+            origins[1].clone(),
+        )),
     );
     let inner = binding(&child, 2, &[5], None);
     host.push(
         Some(2),
-        l::LayoutInputOf::inline_text(l::TextParticipation::new(inner.origins[0].origin.clone())),
+        l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+            inner.origins[0].origin.clone(),
+        )),
     );
     let out = binding(&absolute, 3, &[6], None);
     host.push(
         Some(3),
-        l::LayoutInputOf::inline_text(l::TextParticipation::new(out.origins[0].origin.clone())),
+        l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+            out.origins[0].origin.clone(),
+        )),
     );
-    let outer = l::TextParagraphBinding {
-        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+    let outer = l::text_layout::TextParagraphBinding {
+        inline_box_fragments:
+            surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: parent.prepared.clone(),
         container: 0,
         nodes: vec![1, 2, 3, 4],
         origins: origins
             .into_iter()
             .zip([1, 4])
-            .map(|(origin, node)| l::TextOriginBinding { origin, node })
+            .map(|(origin, node)| l::text_layout::TextOriginBinding { origin, node })
             .collect(),
         atomics: parent
             .prepared
             .atomic_views()
             .zip([2, 3])
-            .map(|(view, node)| l::TextAtomicBinding {
+            .map(|(view, node)| l::text_layout::TextAtomicBinding {
                 occurrence: view.handle(),
                 node,
             })
@@ -604,16 +637,19 @@ fn scene<S: l::LayoutScalar>(mode: l::WritingMode) -> Scene<S> {
     }
 }
 
-fn atomics<S: l::LayoutScalar>() {
-    for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
+fn atomics<S: l::scalar::LayoutScalar>() {
+    for mode in [
+        l::geometry::WritingMode::VerticalRl,
+        l::geometry::WritingMode::VerticalLr,
+    ] {
         let scene = scene::<S>(mode);
         let batch = solve(&scene.host, &scene.bindings, available(14.0), &[]).unwrap();
-        let c = if mode == l::WritingMode::VerticalRl {
+        let c = if mode == l::geometry::WritingMode::VerticalRl {
             32.0
         } else {
             2.0
         };
-        let out_x = if mode == l::WritingMode::VerticalRl {
+        let out_x = if mode == l::geometry::WritingMode::VerticalRl {
             // Static block-start is C+B=32+8=40; absolute RTL placement
             // subtracts this child's actual width5, not the in-flow width6.
             35.0
@@ -629,8 +665,8 @@ fn atomics<S: l::LayoutScalar>() {
             assert_eq!(
                 (child.location, child.size),
                 (
-                    l::Point::new(n(c - 2.0), n(2.0)),
-                    l::Size::new(n(6.0), n(8.0))
+                    l::geometry::Point::new(n(c - 2.0), n(2.0)),
+                    l::geometry::Size::new(n(6.0), n(8.0))
                 )
             );
             central_facts(child.named_baselines, 2.0, 2.0);
@@ -638,11 +674,14 @@ fn atomics<S: l::LayoutScalar>() {
             assert_eq!(
                 (out.location, out.size),
                 (
-                    l::Point::new(n(out_x), n(10.0)),
-                    l::Size::new(n(5.0), n(7.0))
+                    l::geometry::Point::new(n(out_x), n(10.0)),
+                    l::geometry::Size::new(n(5.0), n(7.0))
                 )
             );
-            assert_eq!(out.named_baselines, l::NamedBaselinesOf::unknown());
+            assert_eq!(
+                out.named_baselines,
+                l::baseline::NamedBaselinesOf::unknown()
+            );
         }
         let text = placed(&batch, 0);
         packets(text, &scene.parent, &[c], &[0.0, 10.0]);
@@ -678,33 +717,37 @@ fn native_mixed_actual_children_keep_named_physical_custody_and_unrotated_boxes_
     atomics::<f64>();
 }
 
-struct RefusingSink<'a, S: l::LayoutScalar>(&'a mut Host<S>);
-impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for RefusingSink<'_, S> {
+struct RefusingSink<'a, S: l::scalar::LayoutScalar>(&'a mut Host<S>);
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutBatchSink<u32, S> for RefusingSink<'_, S> {
     type Error = &'static str;
     type Prepared = Published<S>;
-    fn publication_targets(&self) -> &l::LayoutPublicationTargets<u32> {
-        l::LayoutBatchSink::publication_targets(&*self.0)
+    fn publication_targets(&self) -> &l::batch::LayoutPublicationTargets<u32> {
+        l::tree::LayoutBatchSink::publication_targets(&*self.0)
     }
-    fn publication_targets_mut(&mut self) -> &mut l::LayoutPublicationTargets<u32> {
-        l::LayoutBatchSink::publication_targets_mut(self.0)
+    fn publication_targets_mut(&mut self) -> &mut l::batch::LayoutPublicationTargets<u32> {
+        l::tree::LayoutBatchSink::publication_targets_mut(self.0)
     }
     fn prepare_layout_batch<'call>(
         &self,
-        preparation: l::LayoutBatchPreparation<'call, u32, S>,
+        preparation: l::batch::LayoutBatchPreparation<'call, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
-        let _staged = l::LayoutBatchSink::prepare_layout_batch(&*self.0, preparation).unwrap();
+        let _staged =
+            l::tree::LayoutBatchSink::prepare_layout_batch(&*self.0, preparation).unwrap();
         Err("reject complete staged Mixed replacement")
     }
     fn commit_layout_batch<'call>(
         &mut self,
-        commit: l::LayoutBatchCommit<'call, u32, S, Self::Prepared>,
+        commit: l::batch::LayoutBatchCommit<'call, u32, S, Self::Prepared>,
     ) {
-        l::LayoutBatchSink::commit_layout_batch(self.0, commit);
+        l::tree::LayoutBatchSink::commit_layout_batch(self.0, commit);
     }
 }
 
-fn publication<S: l::LayoutScalar>() {
-    for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
+fn publication<S: l::scalar::LayoutScalar>() {
+    for mode in [
+        l::geometry::WritingMode::VerticalRl,
+        l::geometry::WritingMode::VerticalLr,
+    ] {
         let mut scene = scene::<S>(mode);
         let old = solve(&scene.host, &scene.bindings, available(14.0), &[]).unwrap();
         old.apply_to(&mut scene.host).unwrap();
@@ -714,21 +757,22 @@ fn publication<S: l::LayoutScalar>() {
         let original_input = scene.host.inputs[1].clone();
         let other = capture("A一", 1_570_203, &[]);
         let foreign_origin = other.prepared.origin_views().next().unwrap().handle();
-        scene.host.inputs[1] =
-            l::LayoutInputOf::inline_text(l::TextParticipation::new(foreign_origin));
-        let stale = l::LayoutFlowInput::try_new(
+        scene.host.inputs[1] = l::node::LayoutInputOf::inline_text(
+            l::text_layout::TextParticipation::new(foreign_origin),
+        );
+        let stale = l::text_layout::LayoutFlowInput::try_new(
             &scene.host,
             0,
             scene.bindings.clone(),
-            l::WrappingInput::default(),
+            l::inline_wrapping::WrappingInput::default(),
             Vec::new(),
         )
         .err()
         .expect("replacing a source occurrence cannot reuse its old paragraph binding");
         assert!(matches!(
             stale.kind(),
-            l::LayoutErrorKindOf::InvalidInput(l::LayoutInvalidInputOf::TextBinding(
-                l::TextBindingError::ParticipantRole
+            l::error::LayoutErrorKindOf::InvalidInput(l::error::LayoutInvalidInputOf::TextBinding(
+                l::text_layout::TextBindingError::ParticipantRole
             ))
         ));
         scene.host.inputs[1] = original_input;
@@ -737,7 +781,7 @@ fn publication<S: l::LayoutScalar>() {
         let changed = solve(&scene.host, &scene.bindings, available(18.0), &[0, 2]).unwrap();
         assert_eq!(
             node(crate::layout::observation::phase(&changed, true), 2).size,
-            l::Size::new(n(6.0), n(10.0))
+            l::geometry::Size::new(n(6.0), n(10.0))
         );
         let foreign = placed(&changed, 0)
             .position_geometry(&position)
@@ -750,7 +794,7 @@ fn publication<S: l::LayoutScalar>() {
         );
         assert_eq!(
             changed.apply_to(&mut RefusingSink(&mut scene.host)),
-            Err(l::LayoutBatchApplyError::Preparation(
+            Err(l::batch::LayoutBatchApplyError::Preparation(
                 "reject complete staged Mixed replacement"
             ))
         );
@@ -763,9 +807,11 @@ fn publication<S: l::LayoutScalar>() {
                 .map(|(node, view)| (
                     node,
                     match view {
-                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -774,9 +820,11 @@ fn publication<S: l::LayoutScalar>() {
                 .map(|(node, view)| (
                     node,
                     match view {
-                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))

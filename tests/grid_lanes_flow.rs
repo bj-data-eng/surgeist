@@ -6,13 +6,24 @@ use surgeist::css::values::layout::{
     CssGridAutoFlow, CssGridAutoFlowAxis, CssGridTrackList, CssItemDirection, CssItemPack,
 };
 use surgeist::layout::{
-    AlignContent, AvailableSpaceOf, AxisSizingRequestOf, Direction, Display, FlowAxes,
-    GridAxisKind, GridFlowToleranceOf, GridLanesFlow, GridPlacement, LayoutInputOf,
-    LayoutInputViewOf, LayoutRootRequestOf, LayoutScalar, LayoutTree, LengthOf, LengthPercentageOf,
-    NearestScrollportOf, NodeInputOf, NonNegativeFiniteOf, OrthogonalFallbackLimitOf,
-    OrthogonalFallbackOf, Point, PreferredSizeOf, Size, SizingCalculationOf, SizingOperation,
-    SizingRequestOf, TrackComponentOf, TrackSizingOf, Traverse, WritingMode, compute_layout,
+    box_model::{AlignContent, Display},
+    compute_layout,
+    constraint::{
+        AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, OrthogonalFallbackLimitOf,
+        OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+    },
+    geometry::{Direction, FlowAxes, Point, Size, WritingMode},
+    grid::{
+        GridAxisKind, GridFlowToleranceOf, GridLanesFlow, GridPlacement, TrackComponentOf,
+        TrackSizingOf,
+    },
+    length::{LengthOf, LengthPercentageOf, NonNegativeFiniteOf},
+    node::{LayoutInputOf, LayoutInputViewOf, NodeInputOf},
+    request::LayoutRootRequestOf,
     resolve_grid_lanes_flow,
+    scalar::LayoutScalar,
+    sizing::{PreferredSizeOf, SizingCalculationOf},
+    tree::{LayoutTree, Traverse},
 };
 
 #[test]

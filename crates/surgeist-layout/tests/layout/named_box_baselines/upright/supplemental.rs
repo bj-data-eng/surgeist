@@ -3,53 +3,57 @@
 use super::*;
 use surgeist_text::font::FontBaseline;
 
-fn central() -> l::InlineBaselineContext {
-    l::InlineBaselineContext::Named(FontBaseline::Central)
+fn central() -> l::baseline::InlineBaselineContext {
+    l::baseline::InlineBaselineContext::Named(FontBaseline::Central)
 }
 
-fn attach<S: l::LayoutScalar>(
+fn attach<S: l::scalar::LayoutScalar>(
     host: &mut Host<S>,
     container: u32,
     fixture: &Fixture,
-) -> l::TextParagraphBinding<u32> {
+) -> l::text_layout::TextParagraphBinding<u32> {
     let origin = fixture.prepared.origin_views().next().unwrap().handle();
     let text = host.push(
         Some(container),
-        l::LayoutInputOf::inline_text(l::TextParticipation::new(origin.clone())),
+        l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(origin.clone())),
     );
-    l::TextParagraphBinding {
-        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+    l::text_layout::TextParagraphBinding {
+        inline_box_fragments:
+            surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: fixture.prepared.clone(),
         container,
         nodes: vec![text],
-        origins: vec![l::TextOriginBinding { origin, node: text }],
+        origins: vec![l::text_layout::TextOriginBinding { origin, node: text }],
         controls: vec![],
         atomics: vec![],
         line_strut: Some(STRUT),
     }
 }
 
-fn available<S: l::LayoutScalar>(width: f64, height: f64) -> surgeist_layout::SizingRequestOf<S> {
+fn available<S: l::scalar::LayoutScalar>(
+    width: f64,
+    height: f64,
+) -> surgeist_layout::constraint::SizingRequestOf<S> {
     crate::layout::native_request::sizing(
-        surgeist_layout::Size::new(Some(n(width)), Some(n(height))),
-        surgeist_layout::Size::new(
-            surgeist_layout::SizingOperation::Normal,
-            surgeist_layout::SizingOperation::Normal,
+        surgeist_layout::geometry::Size::new(Some(n(width)), Some(n(height))),
+        surgeist_layout::geometry::Size::new(
+            surgeist_layout::constraint::SizingOperation::Normal,
+            surgeist_layout::constraint::SizingOperation::Normal,
         ),
     )
 }
 
-fn solve<S: l::LayoutScalar>(
+fn solve<S: l::scalar::LayoutScalar>(
     host: &Host<S>,
-    bindings: &[l::TextParagraphBinding<u32>],
-    space: surgeist_layout::SizingRequestOf<S>,
+    bindings: &[l::text_layout::TextParagraphBinding<u32>],
+    space: surgeist_layout::constraint::SizingRequestOf<S>,
     changed: &[u32],
-) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-    let flow = l::LayoutFlowInput::try_new(
+) -> Result<l::batch::CompletedLayoutBatchOf<u32, S>, l::error::LayoutErrorOf<u32, S>> {
+    let flow = l::text_layout::LayoutFlowInput::try_new(
         host,
         0,
         bindings.to_vec(),
-        l::WrappingInput::default(),
+        l::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .expect("actual capture, host and issued origin must form a valid binding");
@@ -58,11 +62,11 @@ fn solve<S: l::LayoutScalar>(
         0,
         {
             let sizing_request = space;
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
-                    surgeist_layout::LayoutTree::node_input(host, 0).direction,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::tree::LayoutTree::node_input(host, 0).writing_mode,
+                    surgeist_layout::tree::LayoutTree::node_input(host, 0).direction,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -73,8 +77,8 @@ fn solve<S: l::LayoutScalar>(
     )
 }
 
-fn placed<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+fn placed<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     container: u32,
 ) -> &t::layout::Layout {
     batch
@@ -85,19 +89,19 @@ fn placed<S: l::LayoutScalar>(
         .layout()
 }
 
-fn central_offsets<S: l::LayoutScalar>(facts: l::NamedBaselinesOf<S>) -> [S; 2] {
+fn central_offsets<S: l::scalar::LayoutScalar>(facts: l::baseline::NamedBaselinesOf<S>) -> [S; 2] {
     let pair = facts.get(FontBaseline::Central);
     [pair.first(), pair.last()].map(|fact| match fact {
-        l::BaselineFactOf::Available(coordinate) => {
-            assert_eq!(coordinate.axis(), l::PhysicalAxis::Horizontal);
+        l::baseline::BaselineFactOf::Available(coordinate) => {
+            assert_eq!(coordinate.axis(), l::geometry::PhysicalAxis::Horizontal);
             coordinate.offset()
         }
         other => panic!("expected actual Central authority, got {other:?}"),
     })
 }
 
-fn assert_named<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+fn assert_named<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     container: u32,
     offsets: [f64; 2],
 ) {
@@ -109,13 +113,13 @@ fn assert_named<S: l::LayoutScalar>(
     );
 }
 
-fn lines<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
-    binding: &l::TextParagraphBinding<u32>,
+fn lines<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
+    binding: &l::text_layout::TextParagraphBinding<u32>,
 ) -> Vec<t::finalized::FinalizedLine> {
     let mut selected = std::collections::BTreeMap::new();
     for row in batch.unrounded_inline_fragments() {
-        if matches!(row.owner(), l::InlineFragmentOwner::Node(node) if binding.nodes.contains(node))
+        if matches!(row.owner(), l::text_layout::InlineFragmentOwner::Node(node) if binding.nodes.contains(node))
         {
             let fragment = row.fragment();
             let line = fragment.finalized_fragment().finalized_line();
@@ -132,14 +136,14 @@ fn lines<S: l::LayoutScalar>(
     selected.into_values().collect()
 }
 
-fn assert_frame<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
-    binding: &l::TextParagraphBinding<u32>,
+fn assert_frame<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
+    binding: &l::text_layout::TextParagraphBinding<u32>,
     fixture: &Fixture,
     centers: &[f64],
     inline: (f64, f64, f64), // cell top, allocated inline capacity, actual run start
     border_origin: (f64, f64),
-    direction: l::Direction,
+    direction: l::geometry::Direction,
 ) {
     let (top, capacity, run_start) = inline;
     let (gx, gy) = border_origin;
@@ -185,7 +189,7 @@ fn assert_frame<S: l::LayoutScalar>(
         );
         assert_eq!(
             request.context.line_box_direction,
-            if direction == l::Direction::Ltr {
+            if direction == l::geometry::Direction::Ltr {
                 t::selection::LineBoxDirection::LeftToRight
             } else {
                 t::selection::LineBoxDirection::RightToLeft
@@ -238,7 +242,7 @@ fn assert_frame<S: l::LayoutScalar>(
     );
     let mut source_ranges = Vec::new();
     for row in batch.unrounded_inline_fragments() {
-        if matches!(row.owner(), l::InlineFragmentOwner::Node(node) if binding.nodes.contains(node))
+        if matches!(row.owner(), l::text_layout::InlineFragmentOwner::Node(node) if binding.nodes.contains(node))
         {
             let fragment = row.fragment();
             let c = centers[fragment.line_index()];
@@ -251,7 +255,10 @@ fn assert_frame<S: l::LayoutScalar>(
             assert!(line_range.start <= source_range.start && source_range.end <= line_range.end);
             source_ranges.push(source_range);
             // The common u0 anchor is distinct from each aligned source unit.
-            assert_eq!(fragment.baseline(), l::Point::new(n(c - gx), n(top - gy)));
+            assert_eq!(
+                fragment.baseline(),
+                l::geometry::Point::new(n(c - gx), n(top - gy))
+            );
             let pen = if centers.len() == 1 {
                 [0.0, 4.0][source_range.start]
             } else {
@@ -260,9 +267,9 @@ fn assert_frame<S: l::LayoutScalar>(
             let rect = fragment.rect().unwrap();
             assert_eq!(
                 rect.origin(),
-                l::Point::new(n(c - gx - 2.0), n(run_start - gy + pen))
+                l::geometry::Point::new(n(c - gx - 2.0), n(run_start - gy + pen))
             );
-            assert_eq!(rect.size(), l::Size::new(n(4.0), n(4.0)));
+            assert_eq!(rect.size(), l::geometry::Size::new(n(4.0), n(4.0)));
         }
     }
     source_ranges.sort_by_key(|range| range.start);
@@ -272,33 +279,50 @@ fn assert_frame<S: l::LayoutScalar>(
     );
 }
 
-fn intrinsic_and_auto<S: l::LayoutScalar>() {
+fn intrinsic_and_auto<S: l::scalar::LayoutScalar>() {
     let fixture = fixture();
-    for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
+    for mode in [
+        l::geometry::WritingMode::VerticalRl,
+        l::geometry::WritingMode::VerticalLr,
+    ] {
         for (inline, width, height) in [
-            (surgeist_layout::SizingOperation::MinContent, 20.0, 4.0),
-            (surgeist_layout::SizingOperation::MaxContent, 10.0, 8.0),
+            (
+                surgeist_layout::constraint::SizingOperation::MinContent,
+                20.0,
+                4.0,
+            ),
+            (
+                surgeist_layout::constraint::SizingOperation::MaxContent,
+                10.0,
+                8.0,
+            ),
         ] {
-            let mut input = root(mode, l::Direction::Ltr, central());
-            input.size = l::Size::new(l::PreferredSizeOf::AUTO, l::PreferredSizeOf::AUTO);
+            let mut input = root(mode, l::geometry::Direction::Ltr, central());
+            input.size = l::geometry::Size::new(
+                l::sizing::PreferredSizeOf::AUTO,
+                l::sizing::PreferredSizeOf::AUTO,
+            );
             let mut host = Host::<S>::new(input);
             let binding = attach(&mut host, 0, &fixture);
             let batch = solve(
                 &host,
                 std::slice::from_ref(&binding),
                 crate::layout::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(surgeist_layout::SizingOperation::Normal, inline),
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::Normal,
+                        inline,
+                    ),
                 ),
                 &[],
             )
             .unwrap();
             let output = node(crate::layout::observation::phase(&batch, false), 0);
-            assert_eq!(output.location, l::Point::ZERO);
-            assert_eq!(output.size, l::Size::new(n(width), n(height)));
+            assert_eq!(output.location, l::geometry::Point::ZERO);
+            assert_eq!(output.size, l::geometry::Size::new(n(width), n(height)));
             let centers = if width == 10.0 {
                 vec![2.0]
-            } else if mode == l::WritingMode::VerticalRl {
+            } else if mode == l::geometry::WritingMode::VerticalRl {
                 vec![12.0, 2.0]
             } else {
                 vec![2.0, 12.0]
@@ -310,45 +334,45 @@ fn intrinsic_and_auto<S: l::LayoutScalar>() {
                 &centers,
                 (0.0, height, 0.0),
                 (0.0, 0.0),
-                l::Direction::Ltr,
+                l::geometry::Direction::Ltr,
             );
             assert_named(&batch, 0, [centers[0], *centers.last().unwrap()]);
         }
         for finite in [false, true] {
-            let mut input = root(mode, l::Direction::Ltr, central());
-            input.size = l::Size::new(l::PreferredSizeOf::AUTO, px(4.0));
+            let mut input = root(mode, l::geometry::Direction::Ltr, central());
+            input.size = l::geometry::Size::new(l::sizing::PreferredSizeOf::AUTO, px(4.0));
             let mut host = Host::<S>::new(input);
             let binding = attach(&mut host, 0, &fixture);
             let batch = solve(
                 &host,
                 std::slice::from_ref(&binding),
                 crate::layout::native_request::sizing(
-                    surgeist_layout::Size::new(
+                    surgeist_layout::geometry::Size::new(
                         if finite { Some(n(40.0)) } else { None },
                         Some(n(4.0)),
                     ),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::Normal,
-                        surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::Normal,
+                        surgeist_layout::constraint::SizingOperation::Normal,
                     ),
                 ),
                 &[],
             )
             .unwrap();
-            let gx = if finite && mode == l::WritingMode::VerticalRl {
+            let gx = if finite && mode == l::geometry::WritingMode::VerticalRl {
                 20.0
             } else {
                 0.0
             };
             assert_eq!(
                 node(crate::layout::observation::phase(&batch, false), 0).location,
-                l::Point::new(n(gx), n(0.0))
+                l::geometry::Point::new(n(gx), n(0.0))
             );
             assert_eq!(
                 node(crate::layout::observation::phase(&batch, false), 0).size,
-                l::Size::new(n(20.0), n(4.0))
+                l::geometry::Size::new(n(20.0), n(4.0))
             );
-            let local = if mode == l::WritingMode::VerticalRl {
+            let local = if mode == l::geometry::WritingMode::VerticalRl {
                 [12.0, 2.0]
             } else {
                 [2.0, 12.0]
@@ -360,28 +384,34 @@ fn intrinsic_and_auto<S: l::LayoutScalar>() {
                 &local.map(|c| c + gx),
                 (0.0, 4.0, 0.0),
                 (gx, 0.0),
-                l::Direction::Ltr,
+                l::geometry::Direction::Ltr,
             );
             assert_named(&batch, 0, local);
         }
     }
 }
 
-fn insets_and_direction<S: l::LayoutScalar>() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+fn insets_and_direction<S: l::scalar::LayoutScalar>() {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         let fixture = fixture_in_direction(direction);
         for (mode, centers) in [
-            (l::WritingMode::VerticalRl, [35.0, 25.0]),
-            (l::WritingMode::VerticalLr, [5.0, 15.0]),
+            (l::geometry::WritingMode::VerticalRl, [35.0, 25.0]),
+            (l::geometry::WritingMode::VerticalLr, [5.0, 15.0]),
         ] {
             let mut input = root(mode, direction, central());
-            input.box_sizing = l::BoxSizing::BorderBox;
-            input.size = l::Size::new(px(50.0), px(17.0));
-            input.padding = l::Edges {
-                left: l::LengthOf::value(l::LengthPercentageOf::px(n(3.0)).unwrap()),
-                right: l::LengthOf::value(l::LengthPercentageOf::px(n(7.0)).unwrap()),
-                top: l::LengthOf::value(l::LengthPercentageOf::px(n(4.0)).unwrap()),
-                bottom: l::LengthOf::value(l::LengthPercentageOf::px(n(6.0)).unwrap()),
+            input.box_sizing = l::box_model::BoxSizing::BorderBox;
+            input.size = l::geometry::Size::new(px(50.0), px(17.0));
+            input.padding = l::geometry::Edges {
+                left: l::length::LengthOf::value(
+                    l::length::LengthPercentageOf::px(n(3.0)).unwrap(),
+                ),
+                right: l::length::LengthOf::value(
+                    l::length::LengthPercentageOf::px(n(7.0)).unwrap(),
+                ),
+                top: l::length::LengthOf::value(l::length::LengthPercentageOf::px(n(4.0)).unwrap()),
+                bottom: l::length::LengthOf::value(
+                    l::length::LengthPercentageOf::px(n(6.0)).unwrap(),
+                ),
             };
             let mut host = Host::<S>::new(input);
             let binding = attach(&mut host, 0, &fixture);
@@ -394,7 +424,7 @@ fn insets_and_direction<S: l::LayoutScalar>() {
             .unwrap();
             assert_eq!(
                 node(crate::layout::observation::phase(&batch, false), 0).size,
-                l::Size::new(n(50.0), n(17.0))
+                l::geometry::Size::new(n(50.0), n(17.0))
             );
             assert_frame(
                 &batch,
@@ -404,7 +434,7 @@ fn insets_and_direction<S: l::LayoutScalar>() {
                 (
                     4.0,
                     7.0,
-                    if direction == l::Direction::Ltr {
+                    if direction == l::geometry::Direction::Ltr {
                         4.0
                     } else {
                         7.0
@@ -418,17 +448,26 @@ fn insets_and_direction<S: l::LayoutScalar>() {
     }
 }
 
-fn fractional_translation<S: l::LayoutScalar>() {
+fn fractional_translation<S: l::scalar::LayoutScalar>() {
     let fixture = fixture();
-    for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
-        let mut outer = root(l::WritingMode::VerticalLr, l::Direction::Ltr, central());
-        outer.size = l::Size::new(px(100.0), px(100.0));
-        outer.padding.left = l::LengthOf::value(l::LengthPercentageOf::px(n(7.25)).unwrap());
-        outer.padding.top = l::LengthOf::value(l::LengthPercentageOf::px(n(9.5)).unwrap());
+    for mode in [
+        l::geometry::WritingMode::VerticalRl,
+        l::geometry::WritingMode::VerticalLr,
+    ] {
+        let mut outer = root(
+            l::geometry::WritingMode::VerticalLr,
+            l::geometry::Direction::Ltr,
+            central(),
+        );
+        outer.size = l::geometry::Size::new(px(100.0), px(100.0));
+        outer.padding.left =
+            l::length::LengthOf::value(l::length::LengthPercentageOf::px(n(7.25)).unwrap());
+        outer.padding.top =
+            l::length::LengthOf::value(l::length::LengthPercentageOf::px(n(9.5)).unwrap());
         let mut host = Host::<S>::new(outer);
-        let mut child = root(mode, l::Direction::Ltr, central());
-        child.size = l::Size::new(px(40.0), px(4.0));
-        let container = host.push(Some(0), l::LayoutInputOf::box_input(child));
+        let mut child = root(mode, l::geometry::Direction::Ltr, central());
+        child.size = l::geometry::Size::new(px(40.0), px(4.0));
+        let container = host.push(Some(0), l::node::LayoutInputOf::box_input(child));
         let binding = attach(&mut host, container, &fixture);
         let batch = solve(
             &host,
@@ -442,19 +481,19 @@ fn fractional_translation<S: l::LayoutScalar>() {
                 crate::layout::observation::phase(&batch, false),
                 container,
                 crate::layout::observation::expected_kind(
-                    l::LayoutTree::layout_input(&host, container),
+                    l::tree::LayoutTree::layout_input(&host, container),
                     false
                 )
             )
             .location,
-            l::Point::new(n(7.25), n(9.5))
+            l::geometry::Point::new(n(7.25), n(9.5))
         );
         let text = placed(&batch, container);
         assert_eq!(text.lines().len(), 2);
         // Reference: docs/reference.md named-frame and canonical-placement
         // contracts: raw named facts remain unsnapped. Final packet facts
         // reconstruct the once-snapped Text anchor from its published border.
-        let raw_offsets = if mode == l::WritingMode::VerticalRl {
+        let raw_offsets = if mode == l::geometry::WritingMode::VerticalRl {
             [32.0, 22.0]
         } else {
             [2.0, 12.0]
@@ -468,7 +507,7 @@ fn fractional_translation<S: l::LayoutScalar>() {
                 entries,
                 container,
                 crate::layout::observation::expected_kind(
-                    l::LayoutTree::layout_input(&host, container),
+                    l::tree::LayoutTree::layout_input(&host, container),
                     false,
                 ),
             );
@@ -490,7 +529,7 @@ fn fractional_translation<S: l::LayoutScalar>() {
         let last = text.lines()[1].baseline();
         assert_eq!(
             last - first,
-            if mode == l::WritingMode::VerticalRl {
+            if mode == l::geometry::WritingMode::VerticalRl {
                 -10.0
             } else {
                 10.0
@@ -516,36 +555,43 @@ fn fractional_translation<S: l::LayoutScalar>() {
     }
 }
 
-fn replay_host<S: l::LayoutScalar>(
-    mode: l::WritingMode,
+fn replay_host<S: l::scalar::LayoutScalar>(
+    mode: l::geometry::WritingMode,
     height: f64,
     fixture: &Fixture,
-) -> (Host<S>, l::TextParagraphBinding<u32>, u32) {
-    let mut input = root(mode, l::Direction::Ltr, central());
-    input.size = l::Size::new(px(40.0), px(height));
+) -> (Host<S>, l::text_layout::TextParagraphBinding<u32>, u32) {
+    let mut input = root(mode, l::geometry::Direction::Ltr, central());
+    input.size = l::geometry::Size::new(px(40.0), px(height));
     let mut host = Host::<S>::new(input);
-    let mut child = root(mode, l::Direction::Ltr, central());
-    child.size = l::Size::new(l::PreferredSizeOf::AUTO, l::PreferredSizeOf::AUTO);
-    let container = host.push(Some(0), l::LayoutInputOf::box_input(child));
+    let mut child = root(mode, l::geometry::Direction::Ltr, central());
+    child.size = l::geometry::Size::new(
+        l::sizing::PreferredSizeOf::AUTO,
+        l::sizing::PreferredSizeOf::AUTO,
+    );
+    let container = host.push(Some(0), l::node::LayoutInputOf::box_input(child));
     let binding = attach(&mut host, container, fixture);
     // An ordinary numeric sibling outside the complete paragraph's
     // captured node window participates in the public cache operation.
-    let mut leaf = root(mode, l::Direction::Ltr, l::InlineBaselineContext::Physical);
-    leaf.block_flow_context = l::BlockFlowContext::Independent;
-    leaf.size = l::Size::new(px(5.0), px(4.0));
-    let leaf = host.push(Some(0), l::LayoutInputOf::box_input(leaf));
+    let mut leaf = root(
+        mode,
+        l::geometry::Direction::Ltr,
+        l::baseline::InlineBaselineContext::Physical,
+    );
+    leaf.block_flow_context = l::box_model::BlockFlowContext::Independent;
+    leaf.size = l::geometry::Size::new(px(5.0), px(4.0));
+    let leaf = host.push(Some(0), l::node::LayoutInputOf::box_input(leaf));
     (host, binding, leaf)
 }
 
-fn cache_and_frame_change<S: l::LayoutScalar>() {
+fn cache_and_frame_change<S: l::scalar::LayoutScalar>() {
     let fixture = fixture();
     for (mode, centers) in [
-        (l::WritingMode::VerticalRl, [32.0, 22.0]),
-        (l::WritingMode::VerticalLr, [2.0, 12.0]),
+        (l::geometry::WritingMode::VerticalRl, [32.0, 22.0]),
+        (l::geometry::WritingMode::VerticalLr, [2.0, 12.0]),
     ] {
         let (mut host, binding, leaf) = replay_host::<S>(mode, 4.0, &fixture);
         let cold_origin = (
-            if mode == l::WritingMode::VerticalRl {
+            if mode == l::geometry::WritingMode::VerticalRl {
                 20.0
             } else {
                 0.0
@@ -553,7 +599,7 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
             0.0,
         );
         let changed_origin = (
-            if mode == l::WritingMode::VerticalRl {
+            if mode == l::geometry::WritingMode::VerticalRl {
                 30.0
             } else {
                 0.0
@@ -574,7 +620,7 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
             &centers,
             (0.0, 4.0, 0.0),
             cold_origin,
-            l::Direction::Ltr,
+            l::geometry::Direction::Ltr,
         );
         assert!(
             cold.cache_store_entries()
@@ -602,7 +648,7 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
             &centers,
             (0.0, 4.0, 0.0),
             cold_origin,
-            l::Direction::Ltr,
+            l::geometry::Direction::Ltr,
         );
         assert_eq!(semantic(&cold, &host), semantic(&warm, &host));
         warm.apply_to(&mut host).unwrap();
@@ -622,7 +668,7 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
             &[c],
             (0.0, 8.0, 0.0),
             changed_origin,
-            l::Direction::Ltr,
+            l::geometry::Direction::Ltr,
         );
         assert_eq!(
             node(
@@ -630,7 +676,7 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
                 binding.container
             )
             .size,
-            l::Size::new(n(10.0), n(8.0))
+            l::geometry::Size::new(n(10.0), n(8.0))
         );
         assert_named(&changed, binding.container, [2.0, 2.0]);
         let (fresh, fresh_binding, fresh_leaf) = replay_host::<S>(mode, 8.0, &fixture);
@@ -648,7 +694,7 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
             &[c],
             (0.0, 8.0, 0.0),
             changed_origin,
-            l::Direction::Ltr,
+            l::geometry::Direction::Ltr,
         );
         assert_eq!(semantic(&changed, &host), semantic(&fresh_batch, &host));
         assert_eq!(
@@ -666,7 +712,7 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
             &centers,
             (0.0, 4.0, 0.0),
             cold_origin,
-            l::Direction::Ltr,
+            l::geometry::Direction::Ltr,
         );
         assert_frame(
             &warm,
@@ -675,7 +721,7 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
             &centers,
             (0.0, 4.0, 0.0),
             cold_origin,
-            l::Direction::Ltr,
+            l::geometry::Direction::Ltr,
         );
         assert_frame(
             host.published.batch.as_ref().unwrap(),
@@ -684,15 +730,19 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
             &[c],
             (0.0, 8.0, 0.0),
             changed_origin,
-            l::Direction::Ltr,
+            l::geometry::Direction::Ltr,
         );
     }
 }
 
-fn refusals_preserve_publication<S: l::LayoutScalar>() {
+fn refusals_preserve_publication<S: l::scalar::LayoutScalar>() {
     let fixture = fixture();
-    let mut input = root(l::WritingMode::VerticalRl, l::Direction::Ltr, central());
-    input.size = l::Size::new(px(40.0), px(4.0));
+    let mut input = root(
+        l::geometry::WritingMode::VerticalRl,
+        l::geometry::Direction::Ltr,
+        central(),
+    );
+    input.size = l::geometry::Size::new(px(40.0), px(4.0));
     let mut host = Host::<S>::new(input);
     let binding = attach(&mut host, 0, &fixture);
     let old = solve(
@@ -705,7 +755,8 @@ fn refusals_preserve_publication<S: l::LayoutScalar>() {
     old.apply_to(&mut host).unwrap();
     let published_nodes = semantic(host.published.batch.as_ref().unwrap(), &host);
     host.change(0, |input| {
-        input.inline_baseline_context = l::InlineBaselineContext::Named(FontBaseline::Alphabetic)
+        input.inline_baseline_context =
+            l::baseline::InlineBaselineContext::Named(FontBaseline::Alphabetic)
     });
     let error = solve(
         &host,
@@ -714,21 +765,23 @@ fn refusals_preserve_publication<S: l::LayoutScalar>() {
         &[0],
     )
     .unwrap_err();
-    assert_eq!(error.site(), l::LayoutErrorSiteOf::Node(0));
-    assert_eq!(error.operation(), l::LayoutOperation::TextCapture);
+    assert_eq!(error.site(), l::error::LayoutErrorSiteOf::Node(0));
+    assert_eq!(error.operation(), l::error::LayoutOperation::TextCapture);
     assert!(matches!(
         error.kind(),
-        l::LayoutErrorKindOf::MissingContext(l::LayoutMissingContext::NamedInlineBaseline)
+        l::error::LayoutErrorKindOf::MissingContext(
+            l::error::LayoutMissingContext::NamedInlineBaseline
+        )
     ));
     // These failures are actual immutable computations, not sink-prepare
     // attempts. Their absence of a new batch leaves published state intact.
     for mode in [
-        l::WritingMode::HorizontalTb,
-        l::WritingMode::SidewaysRl,
-        l::WritingMode::SidewaysLr,
+        l::geometry::WritingMode::HorizontalTb,
+        l::geometry::WritingMode::SidewaysRl,
+        l::geometry::WritingMode::SidewaysLr,
     ] {
         host.change(0, |input| {
-            input.inline_baseline_context = l::InlineBaselineContext::Physical;
+            input.inline_baseline_context = l::baseline::InlineBaselineContext::Physical;
             input.writing_mode = mode;
         });
         let error = solve(
@@ -738,17 +791,19 @@ fn refusals_preserve_publication<S: l::LayoutScalar>() {
             &[0],
         )
         .unwrap_err();
-        assert_eq!(error.site(), l::LayoutErrorSiteOf::Node(0));
-        if mode == l::WritingMode::SidewaysLr {
-            assert_eq!(error.operation(), l::LayoutOperation::TextCapture);
+        assert_eq!(error.site(), l::error::LayoutErrorSiteOf::Node(0));
+        if mode == l::geometry::WritingMode::SidewaysLr {
+            assert_eq!(error.operation(), l::error::LayoutOperation::TextCapture);
             assert!(matches!(
                 error.kind(),
-                l::LayoutErrorKindOf::UnsupportedCapability(
-                    l::LayoutUnsupportedCapability::TextWritingMode(l::WritingMode::SidewaysLr)
+                l::error::LayoutErrorKindOf::UnsupportedCapability(
+                    l::error::LayoutUnsupportedCapability::TextWritingMode(
+                        l::geometry::WritingMode::SidewaysLr
+                    )
                 )
             ));
         } else {
-            let l::LayoutErrorKindOf::Text(text_error) = error.kind() else {
+            let l::error::LayoutErrorKindOf::Text(text_error) = error.kind() else {
                 panic!("expected actual orientation error: {error:?}")
             };
             assert_eq!(
@@ -771,11 +826,11 @@ fn refusals_preserve_publication<S: l::LayoutScalar>() {
             &[32.0, 22.0],
             (0.0, 4.0, 0.0),
             (0.0, 0.0),
-            l::Direction::Ltr,
+            l::geometry::Direction::Ltr,
         );
     }
     host.change(0, |input| {
-        input.writing_mode = l::WritingMode::VerticalRl;
+        input.writing_mode = l::geometry::WritingMode::VerticalRl;
         input.inline_baseline_context = central();
     });
     let restored = solve(&host, &[binding], available(40.0, 4.0), &[0]).unwrap();
@@ -783,25 +838,27 @@ fn refusals_preserve_publication<S: l::LayoutScalar>() {
     // SidewaysLr remains supported for box-only layout; the guard
     // belongs to the Text-backed adapter rather than FlowAxes generally.
     let mut input = root(
-        l::WritingMode::SidewaysLr,
-        l::Direction::Ltr,
-        l::InlineBaselineContext::Physical,
+        l::geometry::WritingMode::SidewaysLr,
+        l::geometry::Direction::Ltr,
+        l::baseline::InlineBaselineContext::Physical,
     );
-    input.size = l::Size::new(px(40.0), px(4.0));
+    input.size = l::geometry::Size::new(px(40.0), px(4.0));
     let boxes = Host::<S>::new(input);
-    let batch = boxes.compute(l::WritingMode::SidewaysLr, &[]).unwrap();
+    let batch = boxes
+        .compute(l::geometry::WritingMode::SidewaysLr, &[])
+        .unwrap();
     assert!(batch.placed_text().is_empty());
     assert_eq!(
         node(crate::layout::observation::phase(&batch, false), 0).size,
-        l::Size::new(n(40.0), n(4.0))
+        l::geometry::Size::new(n(40.0), n(4.0))
     );
 }
 
-fn interaction_and_scroll<S: l::LayoutScalar>() {
+fn interaction_and_scroll<S: l::scalar::LayoutScalar>() {
     let fixture = fixture();
     for (mode, centers) in [
-        (l::WritingMode::VerticalRl, [32.0, 22.0]),
-        (l::WritingMode::VerticalLr, [2.0, 12.0]),
+        (l::geometry::WritingMode::VerticalRl, [32.0, 22.0]),
+        (l::geometry::WritingMode::VerticalLr, [2.0, 12.0]),
     ] {
         let batch = compute::<S>(&fixture, mode, central());
         let text = placed(&batch, 0);
@@ -869,10 +926,13 @@ fn interaction_and_scroll<S: l::LayoutScalar>() {
         // Two H10 allocations consume 20 physical block units in a 12-unit
         // scrollport: eight units toward flow-end. Vrl has negative physical
         // x scrolling and Vlr positive x scrolling; inline y does not overflow.
-        let mut input = root(mode, l::Direction::Ltr, central());
-        input.size = l::Size::new(px(12.0), px(4.0));
-        input.overflow =
-            l::ComputedOverflow::try_new(l::Overflow::Auto, l::Overflow::Auto).unwrap();
+        let mut input = root(mode, l::geometry::Direction::Ltr, central());
+        input.size = l::geometry::Size::new(px(12.0), px(4.0));
+        input.overflow = l::overflow::ComputedOverflow::try_new(
+            l::overflow::Overflow::Auto,
+            l::overflow::Overflow::Auto,
+        )
+        .unwrap();
         let mut host = Host::<S>::new(input);
         let binding = attach(&mut host, 0, &fixture);
         let narrow = solve(
@@ -882,7 +942,7 @@ fn interaction_and_scroll<S: l::LayoutScalar>() {
             &[],
         )
         .unwrap();
-        let expected_centers = if mode == l::WritingMode::VerticalRl {
+        let expected_centers = if mode == l::geometry::WritingMode::VerticalRl {
             [4.0, -6.0]
         } else {
             [2.0, 12.0]
@@ -894,7 +954,7 @@ fn interaction_and_scroll<S: l::LayoutScalar>() {
             &expected_centers,
             (0.0, 4.0, 0.0),
             (0.0, 0.0),
-            l::Direction::Ltr,
+            l::geometry::Direction::Ltr,
         );
         for entries in [
             crate::layout::observation::phase(&narrow, false),
@@ -906,7 +966,7 @@ fn interaction_and_scroll<S: l::LayoutScalar>() {
                 (range.y().minimum(), range.y().maximum()),
                 (S::ZERO, S::ZERO)
             );
-            let (minimum, maximum, left) = if mode == l::WritingMode::VerticalRl {
+            let (minimum, maximum, left) = if mode == l::geometry::WritingMode::VerticalRl {
                 (-8.0, 0.0, -8.0)
             } else {
                 (0.0, 8.0, 0.0)
@@ -917,11 +977,11 @@ fn interaction_and_scroll<S: l::LayoutScalar>() {
             );
             assert_eq!(
                 scroll.scrollable_overflow().origin(),
-                l::Point::new(n(left), n(0.0))
+                l::geometry::Point::new(n(left), n(0.0))
             );
             assert_eq!(
                 scroll.scrollable_overflow().size(),
-                l::Size::new(n(20.0), n(4.0))
+                l::geometry::Size::new(n(20.0), n(4.0))
             );
         }
     }

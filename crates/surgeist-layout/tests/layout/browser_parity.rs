@@ -36,23 +36,28 @@ fn parses_browser_parity_xml() {
 
 // These tests author a formal Native query independently of historical XML.
 // Nothing here converts viewport metadata into a captured browser operation.
-fn authored_max_content_request() -> surgeist_layout::LayoutRootRequest {
+fn authored_max_content_request() -> surgeist_layout::request::LayoutRootRequest {
     use surgeist_layout as layout;
-    let axis = layout::AxisSizingRequest::new(
-        layout::AvailableSpace::Indefinite,
-        layout::SizingOperation::MaxContent,
+    let axis = layout::constraint::AxisSizingRequest::new(
+        layout::constraint::AvailableSpace::Indefinite,
+        layout::constraint::SizingOperation::MaxContent,
     );
-    layout::LayoutRootRequest::standalone(
-        layout::SizingRequest::new(
-            layout::Size::splat(axis),
-            layout::OrthogonalFallbackOf::new(
-                layout::Size::NONE,
-                layout::NearestScrollportOf::Absent,
-                layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+    layout::request::LayoutRootRequest::standalone(
+        layout::constraint::SizingRequest::new(
+            layout::geometry::Size::splat(axis),
+            layout::constraint::OrthogonalFallbackOf::new(
+                layout::geometry::Size::NONE,
+                layout::constraint::NearestScrollportOf::Absent,
+                layout::geometry::Size::splat(
+                    layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                ),
             ),
         ),
-        layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-        layout::Size::NONE,
+        layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
+            layout::geometry::Direction::Ltr,
+        ),
+        layout::geometry::Size::NONE,
     )
 }
 
@@ -937,7 +942,7 @@ fn assert_fri04_c05_source_intent(golden: &support::Golden) {
                 child.style.get("max-width"),
                 Some("clamp(35%, max(50%, 100px), 70%)")
             );
-            let basis: surgeist_layout::DefaultScalar = 240.0;
+            let basis: surgeist_layout::scalar::DefaultScalar = 240.0;
             let minimum = (0.25 * basis).max((0.30 * basis).min(72.0));
             let maximum = (0.50 * basis).max(100.0).clamp(0.35 * basis, 0.70 * basis);
             let width = (0.50 * basis - 10.0).clamp(minimum, maximum);

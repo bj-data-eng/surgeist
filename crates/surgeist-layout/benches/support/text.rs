@@ -9,9 +9,15 @@
 use std::sync::Arc;
 
 use surgeist_layout::{
-    Float, FloatExclusion, InlineBoxFragmentationDemand, InlineMetrics, LayoutFlowInput,
-    LayoutInput, LineBreakInput, TextControlBinding, TextOriginBinding, TextParagraphBinding,
-    TextParticipation, TextWrapStyle, WrappingInput,
+    box_model::{Float, FloatExclusion},
+    inline::InlineMetrics,
+    inline_wrapping::WrappingInput,
+    node::LayoutInput,
+    text_flow::{LineBreakInput, TextWrapStyle},
+    text_layout::{
+        InlineBoxFragmentationDemand, LayoutFlowInput, TextControlBinding, TextOriginBinding,
+        TextParagraphBinding, TextParticipation,
+    },
 };
 use surgeist_text as t;
 
@@ -187,13 +193,17 @@ impl Paragraphs {
         let origins: Vec<_> = prepared.origin_views().map(|view| view.handle()).collect();
         let controls: Vec<_> = prepared.control_views().map(|view| view.handle()).collect();
 
-        let mut root = boxed(surgeist_layout::Display::Block, Some(width), None);
+        let mut root = boxed(
+            surgeist_layout::box_model::Display::Block,
+            Some(width),
+            None,
+        );
         root.text_wrap_style = wrap_style;
         let mut host = Host::new(root);
         host.shape_floats = shape;
         for _ in 0..floats {
             let mut float = boxed(
-                surgeist_layout::Display::Block,
+                surgeist_layout::box_model::Display::Block,
                 Some(4.0 * EM),
                 Some(4.0 * EM),
             );
@@ -211,7 +221,7 @@ impl Paragraphs {
                 let node = host.push(LayoutInput::line_break(
                     LineBreakInput::new().with_metrics(
                         InlineMetrics::try_new(
-                            surgeist_layout::InlineBaselineContext::Physical,
+                            surgeist_layout::baseline::InlineBaselineContext::Physical,
                             0.8 * EM,
                             EM,
                         )
@@ -251,7 +261,7 @@ impl Paragraphs {
     }
 
     /// One full flow computation over a fresh checked flow input.
-    pub fn compute(&self, width: f32) -> surgeist_layout::CompletedLayoutBatch<u32> {
+    pub fn compute(&self, width: f32) -> surgeist_layout::batch::CompletedLayoutBatch<u32> {
         let flow = LayoutFlowInput::try_new(
             &self.host,
             0,

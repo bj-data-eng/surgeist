@@ -9,7 +9,7 @@ struct Profile<'a> {
     auto: &'a [(usize, f64)],
     pretty: &'a [(usize, f64)],
 }
-fn text_profiles<S: l::LayoutScalar>() {
+fn text_profiles<S: l::scalar::LayoutScalar>() {
     for Profile {
         source,
         width,
@@ -44,7 +44,7 @@ fn text_profiles<S: l::LayoutScalar>() {
         let mut fixture = Advanced::<S>::new(&[source], width, None, false);
         let ordinary = fixture.compute(&[]);
         rows(&fixture, &ordinary, auto);
-        fixture.root(|root| root.text_wrap_style = l::TextWrapStyle::Pretty);
+        fixture.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::Pretty);
         let selected = fixture.compute(&[0]);
         rows(&fixture, &selected, pretty);
         let repeated = fixture.compute(&[]);
@@ -105,7 +105,7 @@ fn semantic_prefix(before: &t::finalized::FinalizedLine, after: &t::finalized::F
     };
     assert_eq!(slots(before), slots(after));
 }
-fn long_and_justified<S: l::LayoutScalar>() {
+fn long_and_justified<S: l::scalar::LayoutScalar>() {
     let source = "AAAAAA ".repeat(9) + "AAA BB C CCCCC";
     let mut fixture = Advanced::<S>::new(&[source.as_str()], 60.0, None, false);
     let mut ordinary = (1..=9).map(|i| (i * 7, 60.0)).collect::<Vec<_>>();
@@ -115,7 +115,7 @@ fn long_and_justified<S: l::LayoutScalar>() {
     let auto = fixture.compute(&[]);
     rows(&fixture, &auto, &ordinary);
     let original = fixture.receipts(&auto);
-    fixture.root(|root| root.text_wrap_style = l::TextWrapStyle::Pretty);
+    fixture.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::Pretty);
     let pretty = fixture.compute(&[0]);
     rows(&fixture, &pretty, &expected);
     let actual = fixture.receipts(&pretty);
@@ -129,13 +129,13 @@ fn long_and_justified<S: l::LayoutScalar>() {
 
     let mut justified = Advanced::<S>::new(&["AA B C D E FFFFF"], 60.0, None, false);
     justified.root(|root| {
-        root.text_align = l::TextAlign::Justify;
-        root.text_align_last = l::TextAlignLast::Start;
-        root.text_justification = l::TextJustification::Spaces;
+        root.text_align = l::text_flow::TextAlign::Justify;
+        root.text_align_last = l::text_flow::TextAlignLast::Start;
+        root.text_justification = l::text_flow::TextJustification::Spaces;
     });
     let auto = justified.compute(&[]);
     rows(&justified, &auto, &[(7, 60.0), (11, 30.0), (16, 50.0)]);
-    justified.root(|root| root.text_wrap_style = l::TextWrapStyle::Pretty);
+    justified.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::Pretty);
     let pretty = justified.compute(&[0]);
     rows(&justified, &pretty, &[(5, 40.0), (11, 50.0), (16, 50.0)]);
     // Both actual programs allocate60/60 on nonterminal rows. Natural Body
@@ -165,16 +165,16 @@ fn pretty_text_body_exceeds_ten_lines_and_scores_natural_not_justified_rows_f64(
     long_and_justified::<f64>();
 }
 
-fn source_and_cache<S: l::LayoutScalar>() {
+fn source_and_cache<S: l::scalar::LayoutScalar>() {
     let mut old = Advanced::<S>::with_revision(&["AAA BB C"], 60.0, None, false, 3);
-    old.root(|r| r.text_wrap_style = l::TextWrapStyle::Pretty);
+    old.root(|r| r.text_wrap_style = l::text_flow::TextWrapStyle::Pretty);
     let packet = old.compute(&[]);
     rows(&old, &packet, &[(4, 30.0), (8, 40.0)]);
     packet.apply_to(&mut old.host).unwrap();
     let old_receipts = old.receipts(&packet);
     let old_source = packet.placed_text()[0].layout().source().clone();
     let mut current = Advanced::<S>::with_revision(&["AAA BB CCCC"], 60.0, None, false, 4);
-    current.root(|r| r.text_wrap_style = l::TextWrapStyle::Pretty);
+    current.root(|r| r.text_wrap_style = l::text_flow::TextWrapStyle::Pretty);
     let cold = current.compute(&[]);
     rows(&current, &cold, &[(7, 60.0), (11, 40.0)]);
     assert_eq!(old_source.id(), current.capture.source().id());
@@ -201,12 +201,12 @@ fn source_and_cache<S: l::LayoutScalar>() {
     auto.apply_to(&mut fixture.host).unwrap();
     let mut retained = vec![(auto, false)];
     for style in [
-        l::TextWrapStyle::Pretty,
-        l::TextWrapStyle::Balance,
-        l::TextWrapStyle::Stable,
-        l::TextWrapStyle::Pretty,
+        l::text_flow::TextWrapStyle::Pretty,
+        l::text_flow::TextWrapStyle::Balance,
+        l::text_flow::TextWrapStyle::Stable,
+        l::text_flow::TextWrapStyle::Pretty,
     ] {
-        let repaired = style != l::TextWrapStyle::Stable;
+        let repaired = style != l::text_flow::TextWrapStyle::Stable;
         fixture.root(|r| r.text_wrap_style = style);
         let selected = fixture.compute(&[0]);
         assert_float(&fixture, &selected, repaired);
@@ -240,9 +240,9 @@ fn pretty_text_source_revision_and_real_warm_float_leaf_keep_publication_coheren
     source_and_cache::<f64>();
 }
 
-fn forced_body<S: l::LayoutScalar>() {
+fn forced_body<S: l::scalar::LayoutScalar>() {
     let mut fixture = Advanced::<S>::new(&["AAA BB C CCCCC", "AAA BB C"], 60.0, None, false);
-    fixture.root(|r| r.text_wrap_style = l::TextWrapStyle::Pretty);
+    fixture.root(|r| r.text_wrap_style = l::text_flow::TextWrapStyle::Pretty);
     let packet = fixture.compute(&[]);
     assert_eq!(
         fixture.cuts_and_natural(&packet),
@@ -282,7 +282,7 @@ fn forced_body<S: l::LayoutScalar>() {
             .expect("fixture node produces one box")
             .final_output()
             .size,
-        l::Size::new(S::from_f64(60.0), S::from_f64(50.0))
+        l::geometry::Size::new(S::from_f64(60.0), S::from_f64(50.0))
     );
     assert_eq!(
         fixture.cuts_and_natural(&fixture.compute(&[])),
@@ -298,30 +298,30 @@ fn pretty_text_body_improves_forced_group_before_paragraph_tail_f64() {
     forced_body::<f64>();
 }
 
-fn native_float_host<S: l::LayoutScalar>(entry: bool) -> Host<S> {
+fn native_float_host<S: l::scalar::LayoutScalar>(entry: bool) -> Host<S> {
     let n = S::from_f64;
-    let float = l::LayoutInputOf::box_input(l::NodeInputOf {
-        display: l::Display::Block,
-        float: l::Float::Left,
+    let float = l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+        display: l::box_model::Display::Block,
+        float: l::box_model::Float::Left,
         float_exclusion: if entry {
-            l::FloatExclusion::MarginBox
+            l::box_model::FloatExclusion::MarginBox
         } else {
-            l::FloatExclusion::Shape
+            l::box_model::FloatExclusion::Shape
         },
-        size: l::Size::new(
-            l::PreferredSizeOf::value(l::LengthPercentageOf::px(n(20.0)).unwrap()),
-            l::PreferredSizeOf::value(
-                l::LengthPercentageOf::px(n(if entry { 60.0 } else { 20.0 })).unwrap(),
+        size: l::geometry::Size::new(
+            l::sizing::PreferredSizeOf::value(l::length::LengthPercentageOf::px(n(20.0)).unwrap()),
+            l::sizing::PreferredSizeOf::value(
+                l::length::LengthPercentageOf::px(n(if entry { 60.0 } else { 20.0 })).unwrap(),
             ),
         ),
-        ..l::NodeInputOf::default()
+        ..l::node::NodeInputOf::default()
     });
     let atom = |width, height| {
         numeric_atomic(
-            l::Direction::Ltr,
+            l::geometry::Direction::Ltr,
             width,
             height,
-            l::InlineBreakOpportunity::Allowed,
+            l::text_flow::InlineBreakOpportunity::Allowed,
         )
     };
     let participants = if entry {
@@ -331,7 +331,7 @@ fn native_float_host<S: l::LayoutScalar>(entry: bool) -> Host<S> {
             atom(30.0, 30.0),
             atom(20.0, 30.0),
             atom(50.0, 10.0),
-            numeric_forced(l::Direction::Ltr, 10.0, 10.0),
+            numeric_forced(l::geometry::Direction::Ltr, 10.0, 10.0),
             atom(30.0, 10.0),
             atom(30.0, 10.0),
             atom(10.0, 10.0),
@@ -339,12 +339,12 @@ fn native_float_host<S: l::LayoutScalar>(entry: bool) -> Host<S> {
     } else {
         vec![float, atom(60.0, 10.0), atom(0.0, 30.0), atom(10.0, 10.0)]
     };
-    let mut tree = numeric_tree(l::Direction::Ltr, participants);
+    let mut tree = numeric_tree(l::geometry::Direction::Ltr, participants);
     let root = tree.inputs[0].as_box().cloned().unwrap();
-    tree.inputs[0] = l::LayoutInputOf::box_input(l::NodeInputOf {
-        size: l::Size::new(
-            l::PreferredSizeOf::value(l::LengthPercentageOf::px(n(80.0)).unwrap()),
-            l::PreferredSizeOf::AUTO,
+    tree.inputs[0] = l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+        size: l::geometry::Size::new(
+            l::sizing::PreferredSizeOf::value(l::length::LengthPercentageOf::px(n(80.0)).unwrap()),
+            l::sizing::PreferredSizeOf::AUTO,
         ),
         ..root
     });
@@ -352,26 +352,26 @@ fn native_float_host<S: l::LayoutScalar>(entry: bool) -> Host<S> {
     host.triangle = (!entry).then_some(1);
     host
 }
-fn native_compute<S: l::LayoutScalar>(
+fn native_compute<S: l::scalar::LayoutScalar>(
     host: &Host<S>,
     changed: &[u32],
-) -> l::CompletedLayoutBatchOf<u32, S> {
+) -> l::batch::CompletedLayoutBatchOf<u32, S> {
     l::compute_layout_invalidated(
         host,
         0,
         {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(80.0)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(S::from_f64(80.0)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
-                    surgeist_layout::LayoutTree::node_input(host, 0).direction,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::tree::LayoutTree::node_input(host, 0).writing_mode,
+                    surgeist_layout::tree::LayoutTree::node_input(host, 0).direction,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -382,16 +382,19 @@ fn native_compute<S: l::LayoutScalar>(
     )
     .unwrap()
 }
-fn native_style<S: l::LayoutScalar>(host: &mut Host<S>, style: l::TextWrapStyle) {
+fn native_style<S: l::scalar::LayoutScalar>(
+    host: &mut Host<S>,
+    style: l::text_flow::TextWrapStyle,
+) {
     let root = host.tree.inputs[0].as_box().cloned().unwrap();
-    host.tree.inputs[0] = l::LayoutInputOf::box_input(l::NodeInputOf {
+    host.tree.inputs[0] = l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
         text_wrap_style: style,
         ..root
     });
 }
-fn native_packet<S: l::LayoutScalar>(
+fn native_packet<S: l::scalar::LayoutScalar>(
     fixture: &Host<S>,
-    packet: &l::CompletedLayoutBatchOf<u32, S>,
+    packet: &l::batch::CompletedLayoutBatchOf<u32, S>,
     expected: &[(u32, f64, f64, f64, f64)],
     height: f64,
 ) {
@@ -404,7 +407,7 @@ fn native_packet<S: l::LayoutScalar>(
         assert_eq!(entries.0.node_layouts().len(), expected.len() + 1);
         assert_eq!(
             numeric_node(entries, 0).size,
-            l::Size::new(S::from_f64(80.0), S::from_f64(height))
+            l::geometry::Size::new(S::from_f64(80.0), S::from_f64(height))
         );
         for &(id, x, y, width, block) in expected {
             assert_eq!(
@@ -419,23 +422,26 @@ fn native_packet<S: l::LayoutScalar>(
                 entries,
                 id,
                 crate::layout::observation::expected_kind(
-                    l::LayoutTree::layout_input(&fixture.tree, id),
+                    l::tree::LayoutTree::layout_input(&fixture.tree, id),
                     false,
                 ),
             );
-            assert_eq!(output.source_index, l::SourceIndex::new(id as usize - 1));
+            assert_eq!(
+                output.source_index,
+                l::node::SourceIndex::new(id as usize - 1)
+            );
             assert_eq!(
                 output.location,
-                l::Point::new(S::from_f64(x), S::from_f64(y))
+                l::geometry::Point::new(S::from_f64(x), S::from_f64(y))
             );
             assert_eq!(
                 output.size,
-                l::Size::new(S::from_f64(width), S::from_f64(block))
+                l::geometry::Size::new(S::from_f64(width), S::from_f64(block))
             );
         }
     }
 }
-fn streaming_entry<S: l::LayoutScalar>() {
+fn streaming_entry<S: l::scalar::LayoutScalar>() {
     let auto_expected = [
         (1, 0.0, 0.0, 20.0, 60.0),
         (2, 20.0, 20.0, 30.0, 10.0),
@@ -462,7 +468,7 @@ fn streaming_entry<S: l::LayoutScalar>() {
     let original = native_compute(&host, &[]);
     native_packet(&host, &original, &auto_expected, 80.0);
     original.apply_to(&mut host).unwrap();
-    native_style(&mut host, l::TextWrapStyle::Pretty);
+    native_style(&mut host, l::text_flow::TextWrapStyle::Pretty);
     let selected = native_compute(&host, &[0]);
     native_packet(&host, &selected, &pretty_expected, 70.0);
     assert!(selected.invalidated_nodes().contains(&0));
@@ -479,14 +485,14 @@ fn streaming_entry<S: l::LayoutScalar>() {
     warm.apply_to(&mut host).unwrap();
     native_packet(&host, &native_compute(&host, &[]), &pretty_expected, 70.0);
     let mut fresh = native_float_host::<S>(true);
-    native_style(&mut fresh, l::TextWrapStyle::Pretty);
+    native_style(&mut fresh, l::text_flow::TextWrapStyle::Pretty);
     native_packet(&fresh, &native_compute(&fresh, &[]), &pretty_expected, 70.0);
     // First Body changes outgoing entry70->50. There local Auto has TWO
     // EF/G rows (not stale EFG/count1); Tail then chooses E/FG. Thus global
     // count4->5 while root80->70. Private owner tests prove phase invocation.
     native_packet(&host, &original, &auto_expected, 80.0);
     native_packet(&host, &selected, &pretty_expected, 70.0);
-    native_style(&mut host, l::TextWrapStyle::Auto);
+    native_style(&mut host, l::text_flow::TextWrapStyle::Auto);
     native_packet(&host, &native_compute(&host, &[0]), &auto_expected, 80.0);
 }
 #[test]
@@ -498,7 +504,7 @@ fn pretty_native_body_changes_actual_later_entry_and_local_count_with_real_cache
     streaming_entry::<f64>();
 }
 
-fn triangle_contrast<S: l::LayoutScalar>() {
+fn triangle_contrast<S: l::scalar::LayoutScalar>() {
     let ordinary = [
         (1, 0.0, 0.0, 20.0, 20.0),
         (2, 20.0, 20.0, 60.0, 10.0),
@@ -514,10 +520,10 @@ fn triangle_contrast<S: l::LayoutScalar>() {
     let mut host = native_float_host::<S>(false);
     let auto = native_compute(&host, &[]);
     native_packet(&host, &auto, &ordinary, 40.0);
-    native_style(&mut host, l::TextWrapStyle::Balance);
+    native_style(&mut host, l::text_flow::TextWrapStyle::Balance);
     let balance = native_compute(&host, &[0]);
     native_packet(&host, &balance, &balanced, 40.0);
-    native_style(&mut host, l::TextWrapStyle::Pretty);
+    native_style(&mut host, l::text_flow::TextWrapStyle::Pretty);
     let pretty = native_compute(&host, &[0]);
     native_packet(&host, &pretty, &ordinary, 40.0);
     // Contour gives ordinary capacities60/80, alternate70/60.

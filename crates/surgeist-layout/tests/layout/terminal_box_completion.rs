@@ -8,12 +8,12 @@ const AHEM: &[u8] = include_bytes!(concat!(
     "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
 ));
 
-struct Tree<S: l::LayoutScalar> {
-    inputs: Vec<l::LayoutInputOf<S>>,
-    non_box: l::NodeInputOf<S>,
+struct Tree<S: l::scalar::LayoutScalar> {
+    inputs: Vec<l::node::LayoutInputOf<S>>,
+    non_box: l::node::NodeInputOf<S>,
     children: [u32; 2],
 }
-impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for Tree<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -32,12 +32,12 @@ impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
         self.children[i]
     }
 }
-impl<S: l::LayoutScalar> l::LayoutTree for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for Tree<S> {
     type MeasureError = Infallible;
-    fn node_input(&self, n: u32) -> &l::NodeInputOf<S> {
+    fn node_input(&self, n: u32) -> &l::node::NodeInputOf<S> {
         self.inputs[n as usize].as_box().unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, n: u32) -> l::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, n: u32) -> l::node::LayoutInputViewOf<'_, S> {
         self.inputs[n as usize].as_view()
     }
 }
@@ -63,17 +63,17 @@ fn expected_metric(
     strut
 }
 
-struct Fixture<S: l::LayoutScalar> {
+struct Fixture<S: l::scalar::LayoutScalar> {
     processed: Arc<t::processing::ProcessedSource>,
     prepared: t::prepared::PreparedText,
-    binding: l::TextParagraphBinding<u32>,
+    binding: l::text_layout::TextParagraphBinding<u32>,
     scopes: [t::capture::CapturedScope; 2],
     tree: Tree<S>,
 }
-impl<S: l::LayoutScalar> Fixture<S> {
-    fn new(direction: l::Direction, forced: bool) -> Self {
+impl<S: l::scalar::LayoutScalar> Fixture<S> {
+    fn new(direction: l::geometry::Direction, forced: bool) -> Self {
         use t::capture::SourceProcessingEvent as E;
-        let base = if direction == l::Direction::Ltr {
+        let base = if direction == l::geometry::Direction::Ltr {
             t::paragraph::ParagraphBaseDirection::LeftToRight
         } else {
             t::paragraph::ParagraphBaseDirection::RightToLeft
@@ -219,14 +219,16 @@ impl<S: l::LayoutScalar> Fixture<S> {
         assert_eq!(prepared.control_views().count(), 0);
         assert_eq!(prepared.atomic_views().count(), 0);
         assert_eq!(prepared.participants().count(), if forced { 3 } else { 2 });
-        let mut inputs = vec![l::LayoutInputOf::box_input(l::NodeInputOf {
-            display: l::Display::Block,
+        let mut inputs = vec![l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+            display: l::box_model::Display::Block,
             direction,
-            size: l::Size::new(
-                l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(30.0)).unwrap()),
-                l::PreferredSizeOf::AUTO,
+            size: l::geometry::Size::new(
+                l::sizing::PreferredSizeOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(30.0)).unwrap(),
+                ),
+                l::sizing::PreferredSizeOf::AUTO,
             ),
-            ..l::NodeInputOf::default()
+            ..l::node::NodeInputOf::default()
         })];
         let origins = prepared
             .origin_views()
@@ -239,17 +241,18 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 assert_eq!(origin.source().revision(), 9);
                 assert_eq!(origin.aggregate_range(), t::source::Range::new(i, i + 1));
                 assert_eq!(origin.local_range(), t::source::Range::new(0, 1));
-                inputs.push(l::LayoutInputOf::inline_text(l::TextParticipation::new(
-                    origin.handle(),
-                )));
-                l::TextOriginBinding {
+                inputs.push(l::node::LayoutInputOf::inline_text(
+                    l::text_layout::TextParticipation::new(origin.handle()),
+                ));
+                l::text_layout::TextOriginBinding {
                     origin: origin.handle(),
                     node: i as u32 + 1,
                 }
             })
             .collect();
-        let binding = l::TextParagraphBinding {
-            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+        let binding = l::text_layout::TextParagraphBinding {
+            inline_box_fragments:
+                surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 0,
             nodes: vec![1, 2],
@@ -265,46 +268,54 @@ impl<S: l::LayoutScalar> Fixture<S> {
             scopes,
             tree: Tree {
                 inputs,
-                non_box: l::NodeInputOf::non_box(),
+                non_box: l::node::NodeInputOf::non_box(),
                 children: [1, 2],
             },
         }
     }
 
-    fn inventory(&self) -> l::WrappingInput<u32> {
-        let child = |box_| l::GeneratedChildBoxInput {
+    fn inventory(&self) -> l::inline_wrapping::WrappingInput<u32> {
+        let child = |box_| l::inline_wrapping::GeneratedChildBoxInput {
             box_,
-            participation: l::GeneratedBoxParticipation::InFlow,
+            participation: l::inline_wrapping::GeneratedBoxParticipation::InFlow,
         };
-        let row = |parent, children| l::InlineChildOrderInput {
+        let row = |parent, children| l::inline_wrapping::InlineChildOrderInput {
             parent,
             children,
-            prefix: l::ChildOrderCompleteness::Complete,
-            suffix: l::ChildOrderCompleteness::Complete,
+            prefix: l::inline_wrapping::ChildOrderCompleteness::Complete,
+            suffix: l::inline_wrapping::ChildOrderCompleteness::Complete,
             formatting_context: 0,
         };
-        let s = l::GeneratedBoxRef::Inline(l::InlineBoxRef::Scope(self.scopes[0].clone()));
-        let inner = l::GeneratedBoxRef::Inline(l::InlineBoxRef::Scope(self.scopes[1].clone()));
-        l::WrappingInput {
+        let s = l::inline_wrapping::GeneratedBoxRef::Inline(
+            l::inline_wrapping::InlineBoxRef::Scope(self.scopes[0].clone()),
+        );
+        let inner = l::inline_wrapping::GeneratedBoxRef::Inline(
+            l::inline_wrapping::InlineBoxRef::Scope(self.scopes[1].clone()),
+        );
+        l::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: self
                 .scopes
                 .iter()
                 .zip([metric(16.0, 20.0), metric(12.0, 30.0)])
-                .map(|(scope, strut)| l::WrappingScopeInput::Captured {
-                    scope: scope.clone(),
-                    wrap_inside: l::WrapInside::Auto,
-                    edges: l::WrapEdges::AUTO,
-                    metric_contribution: Some(l::InlineBoxMetricContribution::Strut(strut)),
-                })
+                .map(
+                    |(scope, strut)| l::inline_wrapping::WrappingScopeInput::Captured {
+                        scope: scope.clone(),
+                        wrap_inside: l::inline_wrapping::WrapInside::Auto,
+                        edges: l::inline_wrapping::WrapEdges::AUTO,
+                        metric_contribution: Some(
+                            l::inline_wrapping::InlineBoxMetricContribution::Strut(strut),
+                        ),
+                    },
+                )
                 .collect(),
             child_order: vec![
                 row(
-                    l::GeneratedBoxRef::Node(0),
+                    l::inline_wrapping::GeneratedBoxRef::Node(0),
                     vec![
-                        child(l::GeneratedBoxRef::Node(1)),
-                        child(l::GeneratedBoxRef::Node(2)),
+                        child(l::inline_wrapping::GeneratedBoxRef::Node(1)),
+                        child(l::inline_wrapping::GeneratedBoxRef::Node(2)),
                         child(s.clone()),
                     ],
                 ),
@@ -407,8 +418,8 @@ impl<S: l::LayoutScalar> Fixture<S> {
         incidences
     }
 
-    fn compute(&self) -> l::CompletedLayoutBatchOf<u32, S> {
-        let flow = l::LayoutFlowInput::try_new(
+    fn compute(&self) -> l::batch::CompletedLayoutBatchOf<u32, S> {
+        let flow = l::text_layout::LayoutFlowInput::try_new(
             &self.tree,
             0,
             vec![self.binding.clone()],
@@ -418,17 +429,17 @@ impl<S: l::LayoutScalar> Fixture<S> {
         .unwrap();
         let request = {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(30.0)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(S::from_f64(30.0)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::LayoutTree::node_input(&self.tree, 0).writing_mode,
-                    surgeist_layout::LayoutTree::node_input(&self.tree, 0).direction,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::tree::LayoutTree::node_input(&self.tree, 0).writing_mode,
+                    surgeist_layout::tree::LayoutTree::node_input(&self.tree, 0).direction,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -448,7 +459,7 @@ fn assert_struts(actual: &[t::allocation::LineBoxStrut], expected: &[t::allocati
     }
 }
 
-fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
+fn check<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction, forced: bool) {
     let fixture = Fixture::<S>::new(direction, forced);
     let before = if forced {
         fixture.pinned()
@@ -504,7 +515,7 @@ fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
         .final_output();
     assert_eq!(
         root.size,
-        l::Size::new(
+        l::geometry::Size::new(
             S::from_f64(30.0),
             S::from_f64(if forced { 20.0 } else { 34.0 })
         )
@@ -575,7 +586,7 @@ fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
             ));
         }
     }
-    let x = if direction == l::Direction::Ltr {
+    let x = if direction == l::geometry::Direction::Ltr {
         0.0
     } else {
         10.0
@@ -606,7 +617,7 @@ fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
 
 #[test]
 fn source_terminal_force_completes_boxes_without_publishing_phantom_receiver() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         check::<f32>(direction, true);
         check::<f64>(direction, true);
     }
@@ -614,18 +625,18 @@ fn source_terminal_force_completes_boxes_without_publishing_phantom_receiver() {
 
 #[test]
 fn without_terminal_force_trailing_boxes_complete_on_the_existing_body_line() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         check::<f32>(direction, false);
         check::<f64>(direction, false);
     }
 }
 
-impl<S: l::LayoutScalar> Fixture<S> {
+impl<S: l::scalar::LayoutScalar> Fixture<S> {
     fn try_compute_inventory(
         &self,
-        inventory: l::WrappingInput<u32>,
-    ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-        let flow = l::LayoutFlowInput::try_new(
+        inventory: l::inline_wrapping::WrappingInput<u32>,
+    ) -> Result<l::batch::CompletedLayoutBatchOf<u32, S>, l::error::LayoutErrorOf<u32, S>> {
+        let flow = l::text_layout::LayoutFlowInput::try_new(
             &self.tree,
             0,
             vec![self.binding.clone()],
@@ -634,17 +645,17 @@ impl<S: l::LayoutScalar> Fixture<S> {
         )?;
         let request = {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(30.0)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(S::from_f64(30.0)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::LayoutTree::node_input(&self.tree, 0).writing_mode,
-                    surgeist_layout::LayoutTree::node_input(&self.tree, 0).direction,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::tree::LayoutTree::node_input(&self.tree, 0).writing_mode,
+                    surgeist_layout::tree::LayoutTree::node_input(&self.tree, 0).direction,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -656,14 +667,14 @@ impl<S: l::LayoutScalar> Fixture<S> {
 }
 
 fn replace_t_metric(
-    inventory: &mut l::WrappingInput<u32>,
+    inventory: &mut l::inline_wrapping::WrappingInput<u32>,
     target: &t::capture::CapturedScope,
-    contribution: Option<l::InlineBoxMetricContribution>,
+    contribution: Option<l::inline_wrapping::InlineBoxMetricContribution>,
 ) {
     let mut replaced = 0;
     for row in &mut inventory.scopes {
         match row {
-            l::WrappingScopeInput::Captured {
+            l::inline_wrapping::WrappingScopeInput::Captured {
                 scope,
                 metric_contribution,
                 ..
@@ -680,7 +691,7 @@ fn replace_t_metric(
     );
 }
 
-fn missing_trailing_metric<S: l::LayoutScalar>(direction: l::Direction) {
+fn missing_trailing_metric<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     let fixture = Fixture::<S>::new(direction, true);
     let pin = fixture.pinned();
     let mut inventory = fixture.inventory();
@@ -691,9 +702,11 @@ fn missing_trailing_metric<S: l::LayoutScalar>(direction: l::Direction) {
     assert!(
         matches!(
             error.kind(),
-            l::LayoutErrorKindOf::InvalidInput(l::LayoutInvalidInputOf::WrappingScope(
-                l::WrappingScopeError::MissingBoxMetrics
-            ))
+            l::error::LayoutErrorKindOf::InvalidInput(
+                l::error::LayoutInvalidInputOf::WrappingScope(
+                    l::inline_wrapping::WrappingScopeError::MissingBoxMetrics
+                )
+            )
         ),
         "{error:?}"
     );
@@ -704,16 +717,16 @@ fn missing_trailing_metric<S: l::LayoutScalar>(direction: l::Direction) {
 
 #[test]
 fn trailing_box_without_its_actual_metric_witness_refuses_precisely() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         missing_trailing_metric::<f32>(direction);
         missing_trailing_metric::<f64>(direction);
     }
 }
 
-fn assert_phantom_terminal_result<S: l::LayoutScalar>(
+fn assert_phantom_terminal_result<S: l::scalar::LayoutScalar>(
     fixture: &Fixture<S>,
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
-    direction: l::Direction,
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
+    direction: l::geometry::Direction,
 ) {
     assert_eq!(batch.placed_text().len(), 1);
     let entry = &batch.placed_text()[0];
@@ -751,7 +764,7 @@ fn assert_phantom_terminal_result<S: l::LayoutScalar>(
         .final_output();
     assert_eq!(
         root.size,
-        l::Size::new(S::from_f64(30.0), S::from_f64(20.0))
+        l::geometry::Size::new(S::from_f64(30.0), S::from_f64(20.0))
     );
     assert_eq!(root.content_size.height, S::from_f64(20.0));
     let body_entry = batch
@@ -803,7 +816,7 @@ fn assert_phantom_terminal_result<S: l::LayoutScalar>(
             (t::source::Range::new(1, 2), 36, 10.0)
         ]
     );
-    let x = if direction == l::Direction::Ltr {
+    let x = if direction == l::geometry::Direction::Ltr {
         0.0
     } else {
         10.0
@@ -838,9 +851,9 @@ fn assert_phantom_terminal_result<S: l::LayoutScalar>(
     assert_eq!(fixture.prepared.atomic_views().count(), 0);
 }
 
-fn assert_retained_phantom_receipt<S: l::LayoutScalar>(
+fn assert_retained_phantom_receipt<S: l::scalar::LayoutScalar>(
     fixture: &Fixture<S>,
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     tail_extent: f64,
     nominal_height: f64,
 ) {
@@ -887,7 +900,7 @@ fn assert_retained_phantom_receipt<S: l::LayoutScalar>(
     assert!(!finalized.has_in_flow_content());
 }
 
-fn phantom_terminal<S: l::LayoutScalar>(direction: l::Direction) {
+fn phantom_terminal<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     let fixture = Fixture::<S>::new(direction, true);
     let pin = fixture.pinned();
     let batch = fixture.compute();
@@ -896,7 +909,7 @@ fn phantom_terminal<S: l::LayoutScalar>(direction: l::Direction) {
     assert_eq!(fixture.pinned(), pin);
 }
 
-fn phantom_t_metric<S: l::LayoutScalar>(direction: l::Direction) {
+fn phantom_t_metric<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     let fixture = Fixture::<S>::new(direction, true);
     let pin = fixture.pinned();
     let old = fixture.compute();
@@ -906,7 +919,9 @@ fn phantom_t_metric<S: l::LayoutScalar>(direction: l::Direction) {
     replace_t_metric(
         &mut inventory,
         &fixture.scopes[1],
-        Some(l::InlineBoxMetricContribution::Strut(metric(12.0, 40.0))),
+        Some(l::inline_wrapping::InlineBoxMetricContribution::Strut(
+            metric(12.0, 40.0),
+        )),
     );
     let changed = fixture
         .try_compute_inventory(inventory)
@@ -924,7 +939,7 @@ fn phantom_t_metric<S: l::LayoutScalar>(direction: l::Direction) {
 
 #[test]
 fn terminal_strut_only_paragraph_completion_has_no_published_line_or_extent() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         phantom_terminal::<f32>(direction);
         phantom_terminal::<f64>(direction);
     }
@@ -932,7 +947,7 @@ fn terminal_strut_only_paragraph_completion_has_no_published_line_or_extent() {
 
 #[test]
 fn larger_phantom_tail_metrics_do_not_create_extent_or_mutate_prior_output() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         phantom_t_metric::<f32>(direction);
         phantom_t_metric::<f64>(direction);
     }
@@ -941,13 +956,13 @@ fn larger_phantom_tail_metrics_do_not_create_extent_or_mutate_prior_output() {
 #[test]
 fn phantom_completion_still_requires_the_actual_trailing_metric_witness() {
     // Existing metric-demand control: None is not zero or a font proxy.
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         missing_trailing_metric::<f32>(direction);
         missing_trailing_metric::<f64>(direction);
     }
 }
 
-fn omitted_paragraph_receipt<S: l::LayoutScalar>(direction: l::Direction) {
+fn omitted_paragraph_receipt<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     let fixture = Fixture::<S>::new(direction, true);
     let pin = fixture.pinned();
     let batch = fixture.compute();
@@ -1009,7 +1024,7 @@ fn omitted_paragraph_receipt<S: l::LayoutScalar>(direction: l::Direction) {
 
 #[test]
 fn whole_paragraph_rejects_only_forced_receipt_even_at_its_final_boundary() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         omitted_paragraph_receipt::<f32>(direction);
         omitted_paragraph_receipt::<f64>(direction);
     }

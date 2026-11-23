@@ -25,7 +25,7 @@ fn invalid(detail: impl std::fmt::Display) -> Error {
 
 #[derive(Clone, Copy)]
 struct ExpectedOutput {
-    source_index: layout::SourceIndex,
+    source_index: layout::node::SourceIndex,
     collapsed: bool,
     is_box: bool,
     kind: super::observation::Kind,
@@ -33,7 +33,7 @@ struct ExpectedOutput {
 
 pub(super) fn validate_batch_targets(
     tree: &TestTree,
-    batch: &layout::CompletedLayoutBatch<usize>,
+    batch: &layout::batch::CompletedLayoutBatch<usize>,
 ) -> Result<(), Error> {
     let count = tree.nodes.len();
     let foreign_node = batch
@@ -46,7 +46,7 @@ pub(super) fn validate_batch_targets(
         .any(|node| node >= count);
     let foreign_fragment = batch.unrounded_inline_fragments().iter()
         .chain(batch.final_inline_fragments())
-        .any(|entry| !matches!(entry.owner(), layout::InlineFragmentOwner::Node(node) if *node < count));
+        .any(|entry| !matches!(entry.owner(), layout::text_layout::InlineFragmentOwner::Node(node) if *node < count));
     if foreign_node || foreign_fragment {
         return Err(invalid("batch targets a foreign node or fragment owner"));
     }
@@ -55,7 +55,7 @@ pub(super) fn validate_batch_targets(
 
 pub(super) fn validate(
     tree: &TestTree,
-    batch: &layout::CompletedLayoutBatch<usize>,
+    batch: &layout::batch::CompletedLayoutBatch<usize>,
 ) -> Result<ValidatedProjection, Error> {
     let mut projection = ValidatedProjection::default();
     let first = tree
@@ -69,7 +69,8 @@ pub(super) fn validate(
         .ok_or_else(|| invalid("missing original Flex root"))?;
     if root.synthetic
         || root.parent.is_some()
-        || root.layout_input.as_box().map(|input| input.display) != Some(layout::Display::Flex)
+        || root.layout_input.as_box().map(|input| input.display)
+            != Some(layout::box_model::Display::Flex)
         || tree.paragraphs.len() != tree.flex_text.len()
         || tree
             .flex_text
@@ -85,7 +86,7 @@ pub(super) fn validate(
 
     let visible_box = |index| {
         Some(ExpectedOutput {
-            source_index: layout::SourceIndex::new(index),
+            source_index: layout::node::SourceIndex::new(index),
             collapsed: false,
             is_box: true,
             kind: super::observation::Kind::Box,
@@ -107,9 +108,9 @@ pub(super) fn validate(
                 || row.children.len() != 2
                 || row.text.is_some()
                 || row.layout_input.as_box().is_none_or(|input| {
-                    input.display != layout::Display::Flex
-                        || input.position == layout::Position::Absolute
-                        || input.flex_item_collapse != layout::FlexItemCollapse::Normal
+                    input.display != layout::box_model::Display::Flex
+                        || input.position == layout::box_model::Position::Absolute
+                        || input.flex_item_collapse != layout::flex::FlexItemCollapse::Normal
                 })
                 || expected[id].is_some()
             {
@@ -143,15 +144,17 @@ pub(super) fn validate(
         {
             if expected[id]
                 .replace(ExpectedOutput {
-                    source_index: layout::SourceIndex::new(source_index),
+                    source_index: layout::node::SourceIndex::new(source_index),
                     collapsed,
                     is_box,
                     kind: if collapsed {
-                        super::observation::Kind::NonBox(layout::NonBoxKind::Hidden)
+                        super::observation::Kind::NonBox(layout::fragmentation::NonBoxKind::Hidden)
                     } else if is_box {
                         super::observation::Kind::Box
                     } else {
-                        super::observation::Kind::NonBox(layout::NonBoxKind::InlineText)
+                        super::observation::Kind::NonBox(
+                            layout::fragmentation::NonBoxKind::InlineText,
+                        )
                     },
                 })
                 .is_some()
@@ -187,7 +190,7 @@ pub(super) fn validate(
     if batch.placed_text().len() != visible_text.len()
         || batch.unrounded_inline_fragments() != batch.final_inline_fragments()
         || batch.unrounded_inline_fragments().iter().any(|entry| {
-            !matches!(entry.owner(), layout::InlineFragmentOwner::Node(node) if visible_text.contains(node))
+            !matches!(entry.owner(), layout::text_layout::InlineFragmentOwner::Node(node) if visible_text.contains(node))
         })
     {
         return Err(invalid("unexpected placed Text or fragment outside a visible Text leaf"));
@@ -212,7 +215,7 @@ fn validate_occurrence<'a>(
     let Some(source_input) = source_node.layout_input.as_box() else {
         return Err(invalid(format!("source {path} is missing its Flex box")));
     };
-    let layout::LayoutInput::InlineText(participation) = &text_node.layout_input else {
+    let layout::node::LayoutInput::InlineText(participation) = &text_node.layout_input else {
         return Err(invalid(format!(
             "source {path} is missing its prepared Text leaf"
         )));
@@ -221,16 +224,16 @@ fn validate_occurrence<'a>(
     if source_node.synthetic
         || source_node.parent != Some(parent)
         || source_node.children != [wrapper]
-        || source_input.display != layout::Display::Flex
-        || source_input.position == layout::Position::Absolute
+        || source_input.display != layout::box_model::Display::Flex
+        || source_input.position == layout::box_model::Position::Absolute
         || source_node.text.is_some()
         || !wrapper_node.synthetic
         || wrapper_node.parent != Some(source)
         || wrapper_node.children != [text]
         || wrapper_node.text.is_some()
         || wrapper_node.layout_input.as_box().is_none_or(|input| {
-            input.display != layout::Display::Block
-                || input.position == layout::Position::Absolute
+            input.display != layout::box_model::Display::Block
+                || input.position == layout::box_model::Position::Absolute
                 || input.writing_mode != source_input.writing_mode
                 || input.direction != source_input.direction
         })
@@ -259,20 +262,21 @@ fn validate_occurrence<'a>(
         || !matches!(binding.origins.as_slice(), [row] if row.node == text && &row.origin == origin)
         || !binding.atomics.is_empty()
         || !binding.controls.is_empty()
-        || binding.inline_box_fragments != layout::InlineBoxFragmentationDemand::NotRequested
+        || binding.inline_box_fragments
+            != layout::text_layout::InlineBoxFragmentationDemand::NotRequested
     {
         return Err(invalid(format!(
             "source {path} lost its prepared paragraph custody"
         )));
     }
 
-    let collapsed = source_input.flex_item_collapse == layout::FlexItemCollapse::Collapsed;
+    let collapsed = source_input.flex_item_collapse == layout::flex::FlexItemCollapse::Collapsed;
     Ok((collapsed, origin))
 }
 
 fn validate_visible_text(
     tree: &TestTree,
-    batch: &layout::CompletedLayoutBatch<usize>,
+    batch: &layout::batch::CompletedLayoutBatch<usize>,
     occurrence: &LoweredOccurrence,
     origin: &surgeist_text::prepared::PreparedOrigin,
     single_line: bool,
@@ -361,31 +365,32 @@ fn validate_visible_text(
 fn validate_text_output(
     path: SourcePath,
     text_node: &TestNode,
-    fragments: &[layout::ScrollRect],
+    fragments: &[layout::scroll::ScrollRect],
 ) -> Result<(), Error> {
     let text_output = text_node.unrounded;
     let start = fragments
         .iter()
         .map(|rect| rect.origin())
-        .reduce(|a, b| layout::Point::new(a.x.min(b.x), a.y.min(b.y)))
+        .reduce(|a, b| layout::geometry::Point::new(a.x.min(b.x), a.y.min(b.y)))
         .expect("validated line has actual fragment bounds");
     let end = fragments
         .iter()
         .map(|rect| {
             let origin = rect.origin();
             let size = rect.size();
-            layout::Point::new(origin.x + size.width, origin.y + size.height)
+            layout::geometry::Point::new(origin.x + size.width, origin.y + size.height)
         })
-        .reduce(|a, b| layout::Point::new(a.x.max(b.x), a.y.max(b.y)))
+        .reduce(|a, b| layout::geometry::Point::new(a.x.max(b.x), a.y.max(b.y)))
         .expect("validated line has actual fragment bounds");
-    let size = layout::Size::new(end.x - start.x, end.y - start.y);
-    if text_output.kind != super::observation::Kind::NonBox(layout::NonBoxKind::InlineText)
+    let size = layout::geometry::Size::new(end.x - start.x, end.y - start.y);
+    if text_output.kind
+        != super::observation::Kind::NonBox(layout::fragmentation::NonBoxKind::InlineText)
         || !text_output.matches_numeric_fields(
-            &(layout::NodeOutput {
+            &(layout::node::NodeOutput {
                 location: start,
                 size,
                 content_size: size,
-                ..layout::NodeOutput::new()
+                ..layout::node::NodeOutput::new()
             }),
         )
         || text_node.final_layout != text_output
@@ -403,7 +408,7 @@ fn validate_fragments(
     text_node: &TestNode,
     mut issued_lines: Vec<(Vec<surgeist_text::finalized::FinalizedFragment>, f64)>,
     origin: &surgeist_text::prepared::PreparedOrigin,
-) -> Result<Vec<layout::ScrollRect>, Error> {
+) -> Result<Vec<layout::scroll::ScrollRect>, Error> {
     let actual = text_node
         .unrounded_inline_fragments
         .as_deref()
@@ -439,13 +444,13 @@ fn validate_fragments(
 fn validate_outputs(
     nodes: &[TestNode],
     expected: &[Option<ExpectedOutput>],
-    batch: &layout::CompletedLayoutBatch<usize>,
+    batch: &layout::batch::CompletedLayoutBatch<usize>,
     final_phase: bool,
 ) -> Result<(), Error> {
     let phase = if final_phase { "final" } else { "unrounded" };
     let mut seen = vec![false; nodes.len()];
     for (id, view) in batch.node_layouts() {
-        if matches!(view, layout::NodeLayoutRefOf::Fragments(_)) {
+        if matches!(view, layout::fragmentation::NodeLayoutRefOf::Fragments(_)) {
             return Err(invalid(format!(
                 "unexpected {phase} box fragmentation for node {id}"
             )));
@@ -465,7 +470,7 @@ fn validate_outputs(
             || output.source_index != role.source_index
             || output.scroll_geometry.is_some() != (role.is_box && !role.collapsed)
             || role.collapsed
-                && !output.matches_numeric_fields(&layout::NodeOutput::with_source_index(
+                && !output.matches_numeric_fields(&layout::node::NodeOutput::with_source_index(
                     role.source_index,
                 ))
         {

@@ -1,3 +1,9 @@
+//! Flex container and item input.
+//!
+//! [`FlexDirection`] selects a container-local logical main axis and [`FlexWrap`] the wrapping; [`FlexGrowOf`] and
+//! [`FlexShrinkOf`] are the item factors. [`FlexItemCollapse`] is the normalized, layout-ready flex-layout
+//! participation fact of an item.
+
 use std::ops::ControlFlow;
 
 use crate::engine::containment::{
@@ -23,7 +29,7 @@ use crate::{
     engine::contracts::Compute,
     error::LayoutResultOf,
     geometry::{Edges, Point, Size},
-    node_input::{AlignContent, AlignItems, BoxSizing, Direction, FlexDirection, FlexWrap},
+    node_input::{AlignContent, AlignItems, BoxSizing, Direction},
     output::{
         BaselinesOf, ComputeInputOf, ComputeOutputOf, ContainingLayoutContext,
         ParentFormattingContext, RequestedAxis, RunMode, SizingMode,
@@ -77,6 +83,10 @@ use rounds::{FlexRoundChild, FlexRounds, ResolvedFlexRound};
 use scroll::{
     FlexChildContribution, flex_container_scroll_box, flex_container_scroll_geometry,
     flex_scroll_contribution_error, flex_scroll_contributions, retain_flex_scroll_geometry,
+};
+
+pub use crate::node_input::{
+    FlexDirection, FlexGrow, FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap,
 };
 
 /// When a row owns its preferred inline size, retain any intrinsic cross

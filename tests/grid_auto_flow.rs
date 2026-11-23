@@ -4,12 +4,21 @@ use surgeist::css::property::{
 };
 use surgeist::css::values::layout::{CssGridAutoFlow, CssGridAutoFlowAxis, CssItemPack};
 use surgeist::layout::{
-    AlignContent, AlignItems, AvailableSpaceOf, AxisSizingRequestOf, Direction, Display, FlowAxes,
-    GridAutoFlow, GridPlacement, ItemOrder, LayoutInputOf, LayoutInputViewOf, LayoutRootRequestOf,
-    LayoutScalar, LayoutTree, LengthPercentageOf, NearestScrollportOf, NodeInputOf,
-    OrthogonalFallbackLimitOf, OrthogonalFallbackOf, Point, PreferredSizeOf, Size,
-    SizingCalculationOf, SizingOperation, SizingRequestOf, TrackComponentOf, TrackSizingOf,
-    Traverse, WritingMode, compute_layout, resolve_grid_auto_flow,
+    box_model::{AlignContent, AlignItems, Display},
+    compute_layout,
+    constraint::{
+        AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, OrthogonalFallbackLimitOf,
+        OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+    },
+    geometry::{Direction, FlowAxes, Point, Size, WritingMode},
+    grid::{GridAutoFlow, GridPlacement, TrackComponentOf, TrackSizingOf},
+    length::LengthPercentageOf,
+    node::{ItemOrder, LayoutInputOf, LayoutInputViewOf, NodeInputOf},
+    request::LayoutRootRequestOf,
+    resolve_grid_auto_flow,
+    scalar::LayoutScalar,
+    sizing::{PreferredSizeOf, SizingCalculationOf},
+    tree::{LayoutTree, Traverse},
 };
 
 struct FlowCase {

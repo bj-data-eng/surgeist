@@ -3,21 +3,21 @@ use super::*;
 use std::cell::Cell;
 
 #[derive(Clone)]
-struct Published<S: l::LayoutScalar> {
-    caches: Vec<l::CacheOf<S>>,
-    unrounded: Vec<Option<l::LayoutOutputEntryOf<u32, S>>>,
+struct Published<S: l::scalar::LayoutScalar> {
+    caches: Vec<l::cache::CacheOf<S>>,
+    unrounded: Vec<Option<l::batch::LayoutOutputEntryOf<u32, S>>>,
     final_output: Vec<Option<crate::layout::observation::Observation<S>>>,
 }
-struct CachedNumeric<S: l::LayoutScalar> {
+struct CachedNumeric<S: l::scalar::LayoutScalar> {
     actual: NumericTree<S>,
     published: Published<S>,
-    publication_targets: l::LayoutPublicationTargets<u32>,
+    publication_targets: l::batch::LayoutPublicationTargets<u32>,
     cache_calls: Vec<Cell<usize>>,
     cache_hits: Vec<Cell<usize>>,
-    last_answer: Vec<Cell<Option<l::ComputeOutputOf<S>>>>,
+    last_answer: Vec<Cell<Option<l::cache::ComputeOutputOf<S>>>>,
     with_leaf: bool,
 }
-impl<S: l::LayoutScalar> l::Traverse for CachedNumeric<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for CachedNumeric<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -25,29 +25,29 @@ impl<S: l::LayoutScalar> l::Traverse for CachedNumeric<S> {
     where
         Self: 'a;
     fn children(&self, node: u32) -> Self::Children<'_> {
-        l::Traverse::children(&self.actual, node)
+        l::tree::Traverse::children(&self.actual, node)
     }
     fn child_count(&self, node: u32) -> usize {
-        l::Traverse::child_count(&self.actual, node)
+        l::tree::Traverse::child_count(&self.actual, node)
     }
     fn child(&self, node: u32, index: usize) -> u32 {
-        l::Traverse::child(&self.actual, node, index)
+        l::tree::Traverse::child(&self.actual, node, index)
     }
 }
-impl<S: l::LayoutScalar> l::LayoutTree for CachedNumeric<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for CachedNumeric<S> {
     type MeasureError = Infallible;
-    fn node_input(&self, node: u32) -> &l::NodeInputOf<S> {
-        l::LayoutTree::node_input(&self.actual, node)
+    fn node_input(&self, node: u32) -> &l::node::NodeInputOf<S> {
+        l::tree::LayoutTree::node_input(&self.actual, node)
     }
-    fn layout_input(&self, node: u32) -> l::LayoutInputViewOf<'_, S> {
-        l::LayoutTree::layout_input(&self.actual, node)
+    fn layout_input(&self, node: u32) -> l::node::LayoutInputViewOf<'_, S> {
+        l::tree::LayoutTree::layout_input(&self.actual, node)
     }
     fn cache_get(
         &self,
         node: u32,
-        input: &l::ComputeInputOf<S>,
-        context: l::CacheKeyContext,
-    ) -> Option<l::ComputeOutputOf<S>> {
+        input: &l::cache::ComputeInputOf<S>,
+        context: l::cache::CacheKeyContext,
+    ) -> Option<l::cache::ComputeOutputOf<S>> {
         let index = node as usize;
         self.cache_calls[index].set(self.cache_calls[index].get() + 1);
         let answer = self.published.caches[index].get_with_context(input, context);
@@ -57,22 +57,22 @@ impl<S: l::LayoutScalar> l::LayoutTree for CachedNumeric<S> {
         }
         answer
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<l::batch::LayoutOutputEntryOf<u32, S>> {
         self.published.unrounded[node as usize]
     }
 }
-impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for CachedNumeric<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutBatchSink<u32, S> for CachedNumeric<S> {
     type Error = Infallible;
     type Prepared = Published<S>;
-    fn publication_targets(&self) -> &l::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &l::batch::LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut l::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut l::batch::LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
     fn prepare_layout_batch<'call>(
         &self,
-        preparation: l::LayoutBatchPreparation<'call, u32, S>,
+        preparation: l::batch::LayoutBatchPreparation<'call, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
         let batch = preparation.batch();
         let mut next = self.published.clone();
@@ -97,9 +97,9 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for CachedNumeric<S> {
         }
         for (node, view) in batch.node_layouts() {
             let entry = match view {
-                l::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
-                l::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
-                l::NodeLayoutRefOf::Fragments(_) => {
+                l::fragmentation::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
+                l::fragmentation::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
+                l::fragmentation::NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             };
@@ -110,7 +110,7 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for CachedNumeric<S> {
                 (batch, true),
                 node,
                 crate::layout::observation::expected_kind(
-                    l::LayoutTree::layout_input(&self.actual, node),
+                    l::tree::LayoutTree::layout_input(&self.actual, node),
                     false,
                 ),
             ));
@@ -126,40 +126,42 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for CachedNumeric<S> {
     }
     fn commit_layout_batch<'call>(
         &mut self,
-        commit: l::LayoutBatchCommit<'call, u32, S, Self::Prepared>,
+        commit: l::batch::LayoutBatchCommit<'call, u32, S, Self::Prepared>,
     ) {
         let prepared = commit.into_prepared();
         self.published = prepared;
     }
 }
-impl<S: l::LayoutScalar> CachedNumeric<S> {
-    fn new(direction: l::Direction, with_leaf: bool) -> Self {
+impl<S: l::scalar::LayoutScalar> CachedNumeric<S> {
+    fn new(direction: l::geometry::Direction, with_leaf: bool) -> Self {
         let mut participants = vec![
-            boundary(direction, l::InlineBoundaryKind::Start),
-            boundary(direction, l::InlineBoundaryKind::End),
+            boundary(direction, l::inline::InlineBoundaryKind::Start),
+            boundary(direction, l::inline::InlineBoundaryKind::End),
         ];
         if with_leaf {
             // A Block separator outside the phantom inline run, NOT an
             // atomic participant that would itself make that line formatted.
-            participants.push(l::LayoutInputOf::box_input(l::NodeInputOf {
-                display: l::Display::Block,
+            participants.push(l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+                display: l::box_model::Display::Block,
                 direction,
-                size: l::Size::new(
-                    l::PreferredSizeOf::value(
-                        l::LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
+                size: l::geometry::Size::new(
+                    l::sizing::PreferredSizeOf::value(
+                        l::length::LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
                     ),
-                    l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(5.0)).unwrap()),
+                    l::sizing::PreferredSizeOf::value(
+                        l::length::LengthPercentageOf::px(S::from_f64(5.0)).unwrap(),
+                    ),
                 ),
-                ..l::NodeInputOf::default()
+                ..l::node::NodeInputOf::default()
             }));
         }
         let actual = NumericTree::<S>::new(direction, participants);
         let count = actual.inputs.len();
         Self {
             actual,
-            publication_targets: l::LayoutPublicationTargets::new(),
+            publication_targets: l::batch::LayoutPublicationTargets::new(),
             published: Published {
-                caches: vec![l::CacheOf::new(); count],
+                caches: vec![l::cache::CacheOf::new(); count],
                 unrounded: vec![None; count],
                 final_output: vec![None; count],
             },
@@ -169,20 +171,20 @@ impl<S: l::LayoutScalar> CachedNumeric<S> {
             with_leaf,
         }
     }
-    fn compute(&self, changed: &[u32]) -> l::CompletedLayoutBatchOf<u32, S> {
+    fn compute(&self, changed: &[u32]) -> l::batch::CompletedLayoutBatchOf<u32, S> {
         let request = {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(S::from_f64(60.0)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
-                    surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::tree::LayoutTree::node_input(self, 0).writing_mode,
+                    surgeist_layout::tree::LayoutTree::node_input(self, 0).direction,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -193,25 +195,26 @@ impl<S: l::LayoutScalar> CachedNumeric<S> {
     }
     fn replace_pair(
         &mut self,
-        direction: l::Direction,
+        direction: l::geometry::Direction,
         baseline: f64,
         extent: f64,
         positive_start: bool,
     ) {
         for (node, kind) in [
-            (1, l::InlineBoundaryKind::Start),
-            (2, l::InlineBoundaryKind::End),
+            (1, l::inline::InlineBoundaryKind::Start),
+            (2, l::inline::InlineBoundaryKind::End),
         ] {
             let edge = if positive_start && node == 1 {
-                l::InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::ZERO).unwrap()
+                l::inline::InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::ZERO)
+                    .unwrap()
             } else {
-                l::InlineBoundaryEdgeOf::ZERO
+                l::inline::InlineBoundaryEdgeOf::ZERO
             };
-            self.actual.inputs[node] = l::LayoutInputOf::inline_boundary(
-                l::InlineBoundaryInputOf::contribution(
+            self.actual.inputs[node] = l::node::LayoutInputOf::inline_boundary(
+                l::inline::InlineBoundaryInputOf::contribution(
                     kind,
-                    l::InlineMetricsOf::try_new(
-                        surgeist_layout::InlineBaselineContext::Physical,
+                    l::inline::InlineMetricsOf::try_new(
+                        surgeist_layout::baseline::InlineBaselineContext::Physical,
                         S::from_f64(baseline),
                         S::from_f64(extent),
                     )
@@ -225,15 +228,15 @@ impl<S: l::LayoutScalar> CachedNumeric<S> {
     }
     fn assert_metrics(&self, baseline: f64, extent: f64) {
         for node in [1, 2] {
-            let l::LayoutInputViewOf::InlineBoundary(input) =
-                l::LayoutTree::layout_input(&self.actual, node)
+            let l::node::LayoutInputViewOf::InlineBoundary(input) =
+                l::tree::LayoutTree::layout_input(&self.actual, node)
             else {
                 panic!("actual matched endpoints required");
             };
             assert_eq!(
                 input.metrics(),
-                l::InlineMetricsOf::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
+                l::inline::InlineMetricsOf::try_new(
+                    surgeist_layout::baseline::InlineBaselineContext::Physical,
                     S::from_f64(baseline),
                     S::from_f64(extent)
                 )
@@ -241,7 +244,7 @@ impl<S: l::LayoutScalar> CachedNumeric<S> {
             );
         }
     }
-    fn assert_root_bypass(&self, batch: &l::CompletedLayoutBatchOf<u32, S>) {
+    fn assert_root_bypass(&self, batch: &l::batch::CompletedLayoutBatchOf<u32, S>) {
         // The ordinary nonleaf root has no shape-provider dependency. Its
         // intentional current cache policy reexecutes it; this is not a hit.
         assert_eq!(self.cache_calls[0].get(), 0);
@@ -255,9 +258,9 @@ impl<S: l::LayoutScalar> CachedNumeric<S> {
         assert!(self.published.caches[0].is_empty());
     }
 }
-fn assert_numeric_state<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
-    direction: l::Direction,
+fn assert_numeric_state<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
+    direction: l::geometry::Direction,
     positive: bool,
     with_leaf: bool,
 ) {
@@ -269,7 +272,7 @@ fn assert_numeric_state<S: l::LayoutScalar>(
     ] {
         assert_eq!(
             node(entries, 0).size,
-            l::Size::new(
+            l::geometry::Size::new(
                 S::from_f64(60.0),
                 S::from_f64(line_height + if with_leaf { 5.0 } else { 0.0 })
             )
@@ -278,49 +281,57 @@ fn assert_numeric_state<S: l::LayoutScalar>(
             let actual = node_of_kind(
                 entries,
                 id,
-                crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                crate::layout::observation::Kind::NonBox(
+                    l::fragmentation::NonBoxKind::InlineBoundary,
+                ),
             );
-            assert_eq!(actual.source_index, l::SourceIndex::new(index));
+            assert_eq!(actual.source_index, l::node::SourceIndex::new(index));
             assert_eq!(
                 actual.location.y,
                 if positive { S::from_f64(16.0) } else { S::ZERO }
             );
-            assert_eq!(actual.padding, l::Edges::all(S::ZERO));
+            assert_eq!(actual.padding, l::geometry::Edges::all(S::ZERO));
             if positive && id == 1 {
-                assert_eq!(actual.size, l::Size::new(S::from_f64(2.0), S::ZERO));
+                assert_eq!(
+                    actual.size,
+                    l::geometry::Size::new(S::from_f64(2.0), S::ZERO)
+                );
                 assert_eq!(
                     actual.border,
-                    if direction == l::Direction::Ltr {
-                        l::Edges {
+                    if direction == l::geometry::Direction::Ltr {
+                        l::geometry::Edges {
                             left: S::from_f64(2.0),
-                            ..l::Edges::all(S::ZERO)
+                            ..l::geometry::Edges::all(S::ZERO)
                         }
                     } else {
-                        l::Edges {
+                        l::geometry::Edges {
                             right: S::from_f64(2.0),
-                            ..l::Edges::all(S::ZERO)
+                            ..l::geometry::Edges::all(S::ZERO)
                         }
                     }
                 );
             } else {
-                assert_eq!(actual.size, l::Size::ZERO);
-                assert_eq!(actual.border, l::Edges::all(S::ZERO));
+                assert_eq!(actual.size, l::geometry::Size::ZERO);
+                assert_eq!(actual.border, l::geometry::Edges::all(S::ZERO));
             }
         }
         if with_leaf {
             let leaf = node(entries, 3);
-            assert_eq!(leaf.source_index, l::SourceIndex::new(2));
-            assert_eq!(leaf.size, l::Size::new(S::from_f64(60.0), S::from_f64(5.0)));
+            assert_eq!(leaf.source_index, l::node::SourceIndex::new(2));
+            assert_eq!(
+                leaf.size,
+                l::geometry::Size::new(S::from_f64(60.0), S::from_f64(5.0))
+            );
             assert_eq!(
                 leaf.location,
-                l::Point::new(S::ZERO, S::from_f64(line_height))
+                l::geometry::Point::new(S::ZERO, S::from_f64(line_height))
             );
         }
     }
 }
-fn assert_same_numeric_outputs<S: l::LayoutScalar>(
-    a: &l::CompletedLayoutBatchOf<u32, S>,
-    b: &l::CompletedLayoutBatchOf<u32, S>,
+fn assert_same_numeric_outputs<S: l::scalar::LayoutScalar>(
+    a: &l::batch::CompletedLayoutBatchOf<u32, S>,
+    b: &l::batch::CompletedLayoutBatchOf<u32, S>,
     count: usize,
 ) {
     for (left, right) in [
@@ -337,7 +348,9 @@ fn assert_same_numeric_outputs<S: l::LayoutScalar>(
             let kind = if id == 0 || id == 3 {
                 crate::layout::observation::Kind::Box
             } else {
-                crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary)
+                crate::layout::observation::Kind::NonBox(
+                    l::fragmentation::NonBoxKind::InlineBoundary,
+                )
             };
             assert_eq!(
                 node_of_kind(left, id as u32, kind),
@@ -346,16 +359,18 @@ fn assert_same_numeric_outputs<S: l::LayoutScalar>(
         }
     }
 }
-fn assert_endpoint_invalidation<S: l::LayoutScalar>(batch: &l::CompletedLayoutBatchOf<u32, S>) {
+fn assert_endpoint_invalidation<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
+) {
     for id in [0, 1, 2] {
         assert!(batch.invalidated_nodes().contains(&id));
     }
 }
-fn repeat_after_publication<S: l::LayoutScalar>(
+fn repeat_after_publication<S: l::scalar::LayoutScalar>(
     host: &mut CachedNumeric<S>,
-    direction: l::Direction,
+    direction: l::geometry::Direction,
     positive: bool,
-) -> l::CompletedLayoutBatchOf<u32, S> {
+) -> l::batch::CompletedLayoutBatchOf<u32, S> {
     for id in 0..host.actual.inputs.len() {
         assert!(host.published.unrounded[id].is_some());
         assert!(host.published.final_output[id].is_some());
@@ -371,7 +386,7 @@ fn repeat_after_publication<S: l::LayoutScalar>(
         );
         assert_eq!(
             host.last_answer[3].get().unwrap().size,
-            l::Size::new(S::from_f64(60.0), S::from_f64(5.0))
+            l::geometry::Size::new(S::from_f64(60.0), S::from_f64(5.0))
         );
     } else {
         assert!(
@@ -382,7 +397,10 @@ fn repeat_after_publication<S: l::LayoutScalar>(
     repeated.apply_to(host).unwrap();
     repeated
 }
-fn numeric_cache_policy<S: l::LayoutScalar>(direction: l::Direction, with_leaf: bool) {
+fn numeric_cache_policy<S: l::scalar::LayoutScalar>(
+    direction: l::geometry::Direction,
+    with_leaf: bool,
+) {
     let mut host = CachedNumeric::<S>::new(direction, with_leaf);
     host.assert_metrics(8.0, 10.0);
     let cold = host.compute(&[]);
@@ -448,14 +466,14 @@ fn numeric_cache_policy<S: l::LayoutScalar>(direction: l::Direction, with_leaf: 
 }
 #[test]
 fn pure_numeric_endpoint_root_reexecutes_uncached_after_explicit_metric_and_bp_changes() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         numeric_cache_policy::<f32>(direction, false);
         numeric_cache_policy::<f64>(direction, false);
     }
 }
 #[test]
 fn actual_cached_block_leaf_keeps_numeric_phantom_and_positive_line_positions() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         numeric_cache_policy::<f32>(direction, true);
         numeric_cache_policy::<f64>(direction, true);
     }

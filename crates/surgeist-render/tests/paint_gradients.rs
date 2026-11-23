@@ -62,7 +62,7 @@ fn omitted(color: Color) -> GradientStopItem<Color> {
 
 fn line(length: f64) -> LinearGradientLine {
     resolve_linear_gradient(
-        layout::Size::<f64>::new(length, 1.0),
+        layout::geometry::Size::<f64>::new(length, 1.0),
         LinearGradientDirection::Right,
         paint_options(),
     )
@@ -72,9 +72,12 @@ fn line(length: f64) -> LinearGradientLine {
 
 fn radial(x: f64, y: f64) -> RadialGradientGeometry {
     resolve_radial_gradient(
-        layout::Size::<f64>::new(16.0, 8.0),
-        Some(layout::Point::new(8.0, 4.0)),
-        RadialGradientSize::EllipseRadii(layout::Size::new(position(x, 0.0), position(y, 0.0))),
+        layout::geometry::Size::<f64>::new(16.0, 8.0),
+        Some(layout::geometry::Point::new(8.0, 4.0)),
+        RadialGradientSize::EllipseRadii(layout::geometry::Size::new(
+            position(x, 0.0),
+            position(y, 0.0),
+        )),
         paint_options(),
     )
     .result
@@ -123,7 +126,7 @@ fn no_custody(report: &RenderAttemptReport) {
 #[test]
 fn actual_paint_line_and_shared_fixup_preserve_geometry_colors_and_expanded_order() {
     let geometry = resolve_linear_gradient(
-        layout::Size::new(200.0, 100.0),
+        layout::geometry::Size::new(200.0, 100.0),
         LinearGradientDirection::Top,
         paint_options(),
     )
@@ -205,7 +208,7 @@ fn zero_geometry_precedes_basis_and_source_conversion_and_radial_zero_cases_are_
     ));
     for geometry in [
         resolve_radial_gradient(
-            layout::Size::new(16.0, 8.0),
+            layout::geometry::Size::new(16.0, 8.0),
             None,
             RadialGradientSize::CircleRadius(0.0),
             paint_options(),

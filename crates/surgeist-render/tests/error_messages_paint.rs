@@ -54,7 +54,7 @@ fn resolved(source: &[GradientStopItem<Color>], length: f64) -> GradientStops<'_
 
 fn line(length: f64) -> LinearGradientLine {
     resolve_linear_gradient(
-        layout::Size::<f64>::new(length, 1.0),
+        layout::geometry::Size::<f64>::new(length, 1.0),
         LinearGradientDirection::Right,
         options(),
     )
@@ -64,9 +64,9 @@ fn line(length: f64) -> LinearGradientLine {
 
 fn ellipse(x: f64, y: f64) -> RadialGradientGeometry {
     resolve_radial_gradient(
-        layout::Size::<f64>::new(16.0, 8.0),
-        Some(layout::Point::new(8.0, 4.0)),
-        RadialGradientSize::EllipseRadii(layout::Size::new(position(x), position(y))),
+        layout::geometry::Size::<f64>::new(16.0, 8.0),
+        Some(layout::geometry::Point::new(8.0, 4.0)),
+        RadialGradientSize::EllipseRadii(layout::geometry::Size::new(position(x), position(y))),
         options(),
     )
     .result
@@ -102,7 +102,7 @@ fn zero_circle_and_zero_height_radial_geometry_name_their_case() {
     let source = stops_of_length(10.0);
     let used = resolved(&source, 10.0);
     let zero_circle = resolve_radial_gradient(
-        layout::Size::new(16.0, 8.0),
+        layout::geometry::Size::new(16.0, 8.0),
         None,
         RadialGradientSize::CircleRadius(0.0),
         options(),

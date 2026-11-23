@@ -1,10 +1,28 @@
-//! The concrete immutable Text capture and its Layout-owned consuming adapter.
+//! Binding prepared Text to layout, and the placed Text output.
+//!
+//! [`LayoutFlowInput`] is the complete, checked inline flow over one borrowed tree, built from the host's
+//! [`TextParagraphBinding`]s; `LayoutFlowInput::try_new` rejects an association with a layout error that carries a
+//! [`TextBindingError`]. The bindings tie Text-issued source occurrences ([`TextOriginBinding`], [`TextAtomicBinding`],
+//! [`TextControlBinding`], [`TextParticipation`], [`TextControlParticipation`]) and scopes ([`TextScopeBinding`],
+//! [`TextScopeAssociation`]) to actual tree nodes, and [`TextScopeAlignmentInputOf`] supplies a scope's resolved
+//! alignment. The result is published with its containing node as a [`PlacedTextOutput`], with the retained fragments
+//! of [`InlineFragmentOutputOf`] and their [`InlineFragmentOwner`], and [`PlacedInlineBoxFragments`] reads the pieces
+//! of an inline box back. [`InlineBoxFragmentationDemand`] says whether a binding requests inline-box fragment
+//! identity.
+//!
+//! The entry points that consume a `LayoutFlowInput` are [`compute_layout_with_flow`](crate::compute_layout_with_flow)
+//! and [`compute_layout_with_flow_invalidated`](crate::compute_layout_with_flow_invalidated).
 
 use crate::{
     block_fragmentation::LayoutBoundRequestOf,
     error::LayoutResultOf,
     inline_wrapping::WrappingInput,
     node_input::{Display, LayoutInputViewOf, Position},
+};
+
+pub use crate::output::{
+    InlineFragmentOutput, InlineFragmentOutputOf, InlineFragmentOwner, PlacedInlineBoxFragments,
+    PlacedTextOutput,
 };
 
 pub(crate) mod boxes;

@@ -1,9 +1,9 @@
 //! Actual source/cut witnesses for threshold-free paragraph-tail repair.
 use super::*;
 
-pub(super) fn rows<S: l::LayoutScalar>(
+pub(super) fn rows<S: l::scalar::LayoutScalar>(
     fixture: &Advanced<S>,
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     expected: &[(usize, f64)],
 ) {
     assert_eq!(fixture.cuts_and_natural(batch), expected);
@@ -62,7 +62,7 @@ pub(super) fn rows<S: l::LayoutScalar>(
         .final_output();
     assert_eq!(
         root.size,
-        l::Size::new(
+        l::geometry::Size::new(
             S::from_f64(fixture.width),
             S::from_f64(10.0 * expected.len() as f64)
         )
@@ -74,7 +74,7 @@ struct TextProfile<'a> {
     ordinary: &'a [(usize, f64)],
     repaired: &'a [(usize, f64)],
 }
-fn literal_profiles<S: l::LayoutScalar>() {
+fn literal_profiles<S: l::scalar::LayoutScalar>() {
     let profiles = [
         TextProfile {
             source: "AAA BB C",
@@ -114,14 +114,14 @@ fn literal_profiles<S: l::LayoutScalar>() {
         let mut f = Advanced::<S>::new(&[source], width, None, false);
         let auto = f.compute(&[]);
         rows(&f, &auto, ordinary);
-        f.root(|r| r.text_wrap_style = l::TextWrapStyle::AvoidShortLastLine);
+        f.root(|r| r.text_wrap_style = l::text_flow::TextWrapStyle::AvoidShortLastLine);
         let actual = f.compute(&[0]);
         rows(&f, &actual, repaired);
         let replay = f.compute(&[]);
         rows(&f, &replay, repaired);
         rows(&f, &auto, ordinary);
         let mut fresh = Advanced::<S>::new(&[source], width, None, false);
-        fresh.root(|r| r.text_wrap_style = l::TextWrapStyle::AvoidShortLastLine);
+        fresh.root(|r| r.text_wrap_style = l::text_flow::TextWrapStyle::AvoidShortLastLine);
         rows(&fresh, &fresh.compute(&[]), repaired);
     }
 }
@@ -134,16 +134,16 @@ fn avoid_short_last_line_text_repairs_without_transferring_or_rebalancing_prefix
     literal_profiles::<f64>();
 }
 
-fn coherent_revision<S: l::LayoutScalar>() {
+fn coherent_revision<S: l::scalar::LayoutScalar>() {
     let mut old = Advanced::<S>::with_revision(&["AAA BB C"], 60.0, None, false, 3);
-    old.root(|r| r.text_wrap_style = l::TextWrapStyle::AvoidShortLastLine);
+    old.root(|r| r.text_wrap_style = l::text_flow::TextWrapStyle::AvoidShortLastLine);
     let published = old.compute(&[]);
     rows(&old, &published, &[(4, 30.0), (8, 40.0)]);
     published.apply_to(&mut old.host).unwrap();
     let old_source = published.placed_text()[0].layout().source().clone();
     let old_receipts = old.receipts(&published);
     let mut current = Advanced::<S>::with_revision(&["AAA BB CCCC"], 60.0, None, false, 4);
-    current.root(|r| r.text_wrap_style = l::TextWrapStyle::AvoidShortLastLine);
+    current.root(|r| r.text_wrap_style = l::text_flow::TextWrapStyle::AvoidShortLastLine);
     let fresh = current.compute(&[]);
     rows(&current, &fresh, &[(7, 60.0), (11, 40.0)]);
     assert_eq!(old_source.id(), current.capture.source().id());
@@ -184,19 +184,19 @@ fn avoid_short_last_line_text_revision_invalidates_current_source_without_mutati
     coherent_revision::<f64>();
 }
 
-fn real_float_cache<S: l::LayoutScalar>() {
+fn real_float_cache<S: l::scalar::LayoutScalar>() {
     let mut f = Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::source::Range::new(4, 6)), true);
     let auto = f.compute(&[]);
     assert_float(&f, &auto, false);
     auto.apply_to(&mut f.host).unwrap();
     let mut retained = vec![(auto, false)];
     for style in [
-        l::TextWrapStyle::AvoidShortLastLine,
-        l::TextWrapStyle::Balance,
-        l::TextWrapStyle::Stable,
-        l::TextWrapStyle::AvoidShortLastLine,
+        l::text_flow::TextWrapStyle::AvoidShortLastLine,
+        l::text_flow::TextWrapStyle::Balance,
+        l::text_flow::TextWrapStyle::Stable,
+        l::text_flow::TextWrapStyle::AvoidShortLastLine,
     ] {
-        let repaired = style != l::TextWrapStyle::Stable;
+        let repaired = style != l::text_flow::TextWrapStyle::Stable;
         f.root(|r| r.text_wrap_style = style);
         let switched = f.compute(&[0]);
         assert!(switched.invalidated_nodes().contains(&0));
@@ -233,7 +233,7 @@ fn avoid_short_last_line_real_float_bands_and_warm_leaf_survive_mode_replay_f64(
     real_float_cache::<f64>();
 }
 
-fn long_final_group<S: l::LayoutScalar>() {
+fn long_final_group<S: l::scalar::LayoutScalar>() {
     // Ten50-unit words cannot share a60-unit row with the next word. Their
     // real trailing SPACE is consumed at each soft cut, six source units each.
     // The final AAA BB C is the ordinary60/10 versus repaired30/40 witness.
@@ -246,7 +246,7 @@ fn long_final_group<S: l::LayoutScalar>() {
     let auto = fixture.compute(&[]);
     rows(&fixture, &auto, &ordinary);
     let prefix = fixture.receipts(&auto);
-    fixture.root(|root| root.text_wrap_style = l::TextWrapStyle::AvoidShortLastLine);
+    fixture.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::AvoidShortLastLine);
     let actual = fixture.compute(&[0]);
     rows(&fixture, &actual, &repaired);
     let actual_receipts = fixture.receipts(&actual);

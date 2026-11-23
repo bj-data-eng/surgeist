@@ -3,29 +3,29 @@ use super::*;
 use std::cell::Cell;
 
 #[derive(Clone)]
-struct Published<S: l::LayoutScalar> {
-    caches: Vec<l::CacheOf<S>>,
-    unrounded: Vec<Option<l::LayoutOutputEntryOf<u32, S>>>,
+struct Published<S: l::scalar::LayoutScalar> {
+    caches: Vec<l::cache::CacheOf<S>>,
+    unrounded: Vec<Option<l::batch::LayoutOutputEntryOf<u32, S>>>,
     final_output: Vec<Option<crate::layout::observation::Observation<S>>>,
-    batch: Option<l::CompletedLayoutBatchOf<u32, S>>,
+    batch: Option<l::batch::CompletedLayoutBatchOf<u32, S>>,
 }
 
 // A real host cache: only entries issued by a completed public batch are stored.
-struct Host<S: l::LayoutScalar> {
+struct Host<S: l::scalar::LayoutScalar> {
     tree: Tree<S>,
     published: Published<S>,
-    publication_targets: l::LayoutPublicationTargets<u32>,
+    publication_targets: l::batch::LayoutPublicationTargets<u32>,
     hits: Vec<Cell<usize>>,
     triangle: Option<u32>,
 }
-impl<S: l::LayoutScalar> Host<S> {
+impl<S: l::scalar::LayoutScalar> Host<S> {
     fn new(tree: Tree<S>) -> Self {
         let count = tree.inputs.len();
         Self {
             tree,
-            publication_targets: l::LayoutPublicationTargets::new(),
+            publication_targets: l::batch::LayoutPublicationTargets::new(),
             published: Published {
-                caches: vec![l::CacheOf::new(); count],
+                caches: vec![l::cache::CacheOf::new(); count],
                 unrounded: vec![None; count],
                 final_output: vec![None; count],
                 batch: None,
@@ -35,7 +35,7 @@ impl<S: l::LayoutScalar> Host<S> {
         }
     }
 }
-impl<S: l::LayoutScalar> l::Traverse for Host<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for Host<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -43,29 +43,29 @@ impl<S: l::LayoutScalar> l::Traverse for Host<S> {
     where
         Self: 'a;
     fn children(&self, node: u32) -> Self::Children<'_> {
-        l::Traverse::children(&self.tree, node)
+        l::tree::Traverse::children(&self.tree, node)
     }
     fn child_count(&self, node: u32) -> usize {
-        l::Traverse::child_count(&self.tree, node)
+        l::tree::Traverse::child_count(&self.tree, node)
     }
     fn child(&self, node: u32, index: usize) -> u32 {
-        l::Traverse::child(&self.tree, node, index)
+        l::tree::Traverse::child(&self.tree, node, index)
     }
 }
-impl<S: l::LayoutScalar> l::LayoutTree for Host<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for Host<S> {
     type MeasureError = Infallible;
-    fn node_input(&self, node: u32) -> &l::NodeInputOf<S> {
-        l::LayoutTree::node_input(&self.tree, node)
+    fn node_input(&self, node: u32) -> &l::node::NodeInputOf<S> {
+        l::tree::LayoutTree::node_input(&self.tree, node)
     }
-    fn layout_input(&self, node: u32) -> l::LayoutInputViewOf<'_, S> {
-        l::LayoutTree::layout_input(&self.tree, node)
+    fn layout_input(&self, node: u32) -> l::node::LayoutInputViewOf<'_, S> {
+        l::tree::LayoutTree::layout_input(&self.tree, node)
     }
     fn cache_get(
         &self,
         node: u32,
-        input: &l::ComputeInputOf<S>,
-        context: l::CacheKeyContext,
-    ) -> Option<l::ComputeOutputOf<S>> {
+        input: &l::cache::ComputeInputOf<S>,
+        context: l::cache::CacheKeyContext,
+    ) -> Option<l::cache::ComputeOutputOf<S>> {
         let answer = self.published.caches[node as usize].get_with_context(input, context);
         if answer.is_some() {
             self.hits[node as usize].set(self.hits[node as usize].get() + 1);
@@ -75,19 +75,22 @@ impl<S: l::LayoutScalar> l::LayoutTree for Host<S> {
     fn float_exclusion_interval(
         &self,
         node: u32,
-        query: l::FloatExclusionQueryOf<S>,
-    ) -> Option<Result<Option<l::FloatExclusionIntervalOf<S>>, Self::MeasureError>> {
+        query: l::box_model::FloatExclusionQueryOf<S>,
+    ) -> Option<Result<Option<l::box_model::FloatExclusionIntervalOf<S>>, Self::MeasureError>> {
         if self.triangle != Some(node) {
             return None;
         }
-        assert_eq!(query.margin_box().origin(), l::Point::ZERO);
+        assert_eq!(query.margin_box().origin(), l::geometry::Point::ZERO);
         assert_eq!(
             query.margin_box().size(),
-            l::Size::new(S::from_f64(20.0), S::from_f64(20.0))
+            l::geometry::Size::new(S::from_f64(20.0), S::from_f64(20.0))
         );
         assert_eq!(
             query.flow_axes(),
-            l::FlowAxes::new(l::WritingMode::HorizontalTb, l::Direction::Ltr)
+            l::geometry::FlowAxes::new(
+                l::geometry::WritingMode::HorizontalTb,
+                l::geometry::Direction::Ltr
+            )
         );
         if query.band_minimum() >= S::from_f64(20.0) || query.band_maximum() <= S::ZERO {
             return Some(Ok(None));
@@ -95,29 +98,29 @@ impl<S: l::LayoutScalar> l::LayoutTree for Host<S> {
         // Fixed contour (0,0),(0,20),(20,20): its greatest x over the
         // actual intersected vertical band is min(band maximum,20).
         let right = query.band_maximum().min(S::from_f64(20.0)).max(S::ZERO);
-        Some(Ok(l::FloatExclusionIntervalOf::try_new(
+        Some(Ok(l::box_model::FloatExclusionIntervalOf::try_new(
             query,
             S::ZERO,
             right,
         )
         .unwrap()))
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<l::batch::LayoutOutputEntryOf<u32, S>> {
         self.published.unrounded[node as usize]
     }
 }
-impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutBatchSink<u32, S> for Host<S> {
     type Error = Infallible;
     type Prepared = Published<S>;
-    fn publication_targets(&self) -> &l::LayoutPublicationTargets<u32> {
+    fn publication_targets(&self) -> &l::batch::LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
-    fn publication_targets_mut(&mut self) -> &mut l::LayoutPublicationTargets<u32> {
+    fn publication_targets_mut(&mut self) -> &mut l::batch::LayoutPublicationTargets<u32> {
         &mut self.publication_targets
     }
     fn prepare_layout_batch<'call>(
         &self,
-        preparation: l::LayoutBatchPreparation<'call, u32, S>,
+        preparation: l::batch::LayoutBatchPreparation<'call, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
         let batch = preparation.batch();
         let mut next = self.published.clone();
@@ -140,9 +143,9 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
         }
         for (node, view) in batch.node_layouts() {
             let entry = match view {
-                l::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
-                l::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
-                l::NodeLayoutRefOf::Fragments(_) => {
+                l::fragmentation::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
+                l::fragmentation::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
+                l::fragmentation::NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             };
@@ -153,7 +156,7 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
                 (batch, true),
                 node,
                 crate::layout::observation::expected_kind(
-                    l::LayoutTree::layout_input(&self.tree, node),
+                    l::tree::LayoutTree::layout_input(&self.tree, node),
                     false,
                 ),
             ));
@@ -170,22 +173,22 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
     }
     fn commit_layout_batch<'call>(
         &mut self,
-        commit: l::LayoutBatchCommit<'call, u32, S, Self::Prepared>,
+        commit: l::batch::LayoutBatchCommit<'call, u32, S, Self::Prepared>,
     ) {
         let prepared = commit.into_prepared();
         self.published = prepared;
     }
 }
 
-struct Advanced<S: l::LayoutScalar> {
+struct Advanced<S: l::scalar::LayoutScalar> {
     capture: Arc<t::processing::ProcessedSource>,
     prepared: t::prepared::PreparedText,
-    binding: l::TextParagraphBinding<u32>,
+    binding: l::text_layout::TextParagraphBinding<u32>,
     host: Host<S>,
     width: f64,
     float: Option<u32>,
 }
-impl<S: l::LayoutScalar> Advanced<S> {
+impl<S: l::scalar::LayoutScalar> Advanced<S> {
     fn new(groups: &[&str], width: f64, tall: Option<t::source::Range>, with_float: bool) -> Self {
         Self::with_revision(groups, width, tall, with_float, 3)
     }
@@ -337,13 +340,15 @@ impl<S: l::LayoutScalar> Advanced<S> {
             .control_views()
             .map(|view| view.handle())
             .collect::<Vec<_>>();
-        let mut inputs = vec![l::LayoutInputOf::box_input(l::NodeInputOf {
-            display: l::Display::Block,
-            size: l::Size::new(
-                l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(width)).unwrap()),
-                l::PreferredSizeOf::AUTO,
+        let mut inputs = vec![l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+            display: l::box_model::Display::Block,
+            size: l::geometry::Size::new(
+                l::sizing::PreferredSizeOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(width)).unwrap(),
+                ),
+                l::sizing::PreferredSizeOf::AUTO,
             ),
-            ..l::NodeInputOf::default()
+            ..l::node::NodeInputOf::default()
         })];
         let mut nodes = vec![];
         let mut origins = vec![];
@@ -351,10 +356,10 @@ impl<S: l::LayoutScalar> Advanced<S> {
         for (i, origin) in origin_handles.iter().enumerate() {
             if i > 0 {
                 let node = inputs.len() as u32;
-                inputs.push(l::LayoutInputOf::line_break(
-                    l::LineBreakInputOf::new().with_metrics(
-                        l::InlineMetricsOf::try_new(
-                            surgeist_layout::InlineBaselineContext::Physical,
+                inputs.push(l::node::LayoutInputOf::line_break(
+                    l::text_flow::LineBreakInputOf::new().with_metrics(
+                        l::inline::InlineMetricsOf::try_new(
+                            surgeist_layout::baseline::InlineBaselineContext::Physical,
                             S::from_f64(8.0),
                             S::from_f64(10.0),
                         )
@@ -362,17 +367,17 @@ impl<S: l::LayoutScalar> Advanced<S> {
                     ),
                 ));
                 nodes.push(node);
-                bindings.push(l::TextControlBinding {
+                bindings.push(l::text_layout::TextControlBinding {
                     occurrence: controls[i - 1].clone(),
                     node,
                 });
             }
             let node = inputs.len() as u32;
-            inputs.push(l::LayoutInputOf::inline_text(l::TextParticipation::new(
-                origin.clone(),
-            )));
+            inputs.push(l::node::LayoutInputOf::inline_text(
+                l::text_layout::TextParticipation::new(origin.clone()),
+            ));
             nodes.push(node);
-            origins.push(l::TextOriginBinding {
+            origins.push(l::text_layout::TextOriginBinding {
                 origin: origin.clone(),
                 node,
             });
@@ -380,18 +385,18 @@ impl<S: l::LayoutScalar> Advanced<S> {
         let mut children = nodes.clone();
         let float = with_float.then(|| {
             let node = inputs.len() as u32;
-            inputs.push(l::LayoutInputOf::box_input(l::NodeInputOf {
-                display: l::Display::Block,
-                float: l::Float::Left,
-                size: l::Size::new(
-                    l::PreferredSizeOf::value(
-                        l::LengthPercentageOf::px(S::from_f64(20.0)).unwrap(),
+            inputs.push(l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+                display: l::box_model::Display::Block,
+                float: l::box_model::Float::Left,
+                size: l::geometry::Size::new(
+                    l::sizing::PreferredSizeOf::value(
+                        l::length::LengthPercentageOf::px(S::from_f64(20.0)).unwrap(),
                     ),
-                    l::PreferredSizeOf::value(
-                        l::LengthPercentageOf::px(S::from_f64(20.0)).unwrap(),
+                    l::sizing::PreferredSizeOf::value(
+                        l::length::LengthPercentageOf::px(S::from_f64(20.0)).unwrap(),
                     ),
                 ),
-                ..l::NodeInputOf::default()
+                ..l::node::NodeInputOf::default()
             }));
             children.insert(0, node);
             node
@@ -402,8 +407,9 @@ impl<S: l::LayoutScalar> Advanced<S> {
         Self {
             capture,
             prepared: prepared.clone(),
-            binding: l::TextParagraphBinding {
-                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+            binding: l::text_layout::TextParagraphBinding {
+                inline_box_fragments:
+                    surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: 0,
                 nodes,
@@ -414,40 +420,40 @@ impl<S: l::LayoutScalar> Advanced<S> {
             },
             host: Host::new(Tree {
                 inputs,
-                non_box: l::NodeInputOf::non_box(),
+                non_box: l::node::NodeInputOf::non_box(),
                 children: child_lists,
             }),
             width,
             float,
         }
     }
-    fn root(&mut self, change: impl FnOnce(&mut l::NodeInputOf<S>)) {
+    fn root(&mut self, change: impl FnOnce(&mut l::node::NodeInputOf<S>)) {
         let mut root = self.host.tree.inputs[0].as_box().unwrap().clone();
         change(&mut root);
-        self.host.tree.inputs[0] = l::LayoutInputOf::box_input(root);
+        self.host.tree.inputs[0] = l::node::LayoutInputOf::box_input(root);
     }
-    fn compute(&self, changed: &[u32]) -> l::CompletedLayoutBatchOf<u32, S> {
-        let flow = l::LayoutFlowInput::try_new(
+    fn compute(&self, changed: &[u32]) -> l::batch::CompletedLayoutBatchOf<u32, S> {
+        let flow = l::text_layout::LayoutFlowInput::try_new(
             &self.host,
             0,
             vec![self.binding.clone()],
-            l::WrappingInput::default(),
+            l::inline_wrapping::WrappingInput::default(),
             Vec::new(),
         )
         .unwrap();
         let request = {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(self.width)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(S::from_f64(self.width)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::LayoutTree::node_input(&self.host, 0).writing_mode,
-                    surgeist_layout::LayoutTree::node_input(&self.host, 0).direction,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::tree::LayoutTree::node_input(&self.host, 0).writing_mode,
+                    surgeist_layout::tree::LayoutTree::node_input(&self.host, 0).direction,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -458,7 +464,7 @@ impl<S: l::LayoutScalar> Advanced<S> {
     }
     fn receipts(
         &self,
-        batch: &l::CompletedLayoutBatchOf<u32, S>,
+        batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     ) -> Vec<t::finalized::FinalizedLine> {
         assert_eq!(batch.placed_text().len(), 1);
         let layout = batch.placed_text()[0].layout();
@@ -470,7 +476,7 @@ impl<S: l::LayoutScalar> Advanced<S> {
         assert_eq!(layout.nonformatted_lines().count(), 0);
         let mut result = vec![None; layout.lines().len()];
         for entry in batch.final_inline_fragments() {
-            let l::InlineFragmentOwner::Node(node) = entry.owner() else {
+            let l::text_layout::InlineFragmentOwner::Node(node) = entry.owner() else {
                 continue;
             };
             if !self
@@ -494,7 +500,10 @@ impl<S: l::LayoutScalar> Advanced<S> {
             .map(|line| line.expect("real body line has a published origin fragment"))
             .collect()
     }
-    fn cuts_and_natural(&self, batch: &l::CompletedLayoutBatchOf<u32, S>) -> Vec<(usize, f64)> {
+    fn cuts_and_natural(
+        &self,
+        batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
+    ) -> Vec<(usize, f64)> {
         self.receipts(batch)
             .iter()
             .map(|line| {
@@ -519,16 +528,16 @@ impl<S: l::LayoutScalar> Advanced<S> {
     }
 }
 
-fn justify<S: l::LayoutScalar>() {
+fn justify<S: l::scalar::LayoutScalar>() {
     let mut fixture = Advanced::<S>::new(&["AA A A A A"], 60.0, None, false);
     fixture.root(|root| {
-        root.text_align = l::TextAlign::Justify;
-        root.text_align_last = l::TextAlignLast::Justify;
-        root.text_justification = l::TextJustification::Spaces;
+        root.text_align = l::text_flow::TextAlign::Justify;
+        root.text_align_last = l::text_flow::TextAlignLast::Justify;
+        root.text_justification = l::text_flow::TextJustification::Spaces;
     });
     let auto = fixture.compute(&[]);
     assert_eq!(fixture.cuts_and_natural(&auto), [(7, 60.0), (10, 30.0)]);
-    fixture.root(|root| root.text_wrap_style = l::TextWrapStyle::Balance);
+    fixture.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::Balance);
     let balanced = fixture.compute(&[0]);
     assert_eq!(fixture.cuts_and_natural(&balanced), [(5, 40.0), (10, 50.0)]);
     for batch in [&auto, &balanced] {
@@ -550,7 +559,7 @@ fn justification_does_not_erase_the_natural_balance_preference() {
     justify::<f64>();
 }
 
-fn count_profile<S: l::LayoutScalar>() {
+fn count_profile<S: l::scalar::LayoutScalar>() {
     for count in [5, 6, 10, 11] {
         let group = format!("{}C", "AAA BB ".repeat(count - 1));
         let mut fixture = Advanced::<S>::new(&[&group], 60.0, None, false);
@@ -558,7 +567,7 @@ fn count_profile<S: l::LayoutScalar>() {
         let mut auto_expected = (1..count).map(|i| (i * 7, 60.0)).collect::<Vec<_>>();
         auto_expected.push((group.len(), 10.0));
         assert_eq!(fixture.cuts_and_natural(&auto), auto_expected);
-        fixture.root(|root| root.text_wrap_style = l::TextWrapStyle::Balance);
+        fixture.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::Balance);
         let balanced = fixture.compute(&[0]);
         let expected = if count > 10 {
             auto_expected
@@ -577,7 +586,7 @@ fn count_profile<S: l::LayoutScalar>() {
     // Two independently eligible six-line groups remain eligible in a 12-line run.
     let group = format!("{}C", "AAA BB ".repeat(5));
     let mut fixture = Advanced::<S>::new(&[&group, &group], 60.0, None, false);
-    fixture.root(|root| root.text_wrap_style = l::TextWrapStyle::Balance);
+    fixture.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::Balance);
     let balanced = fixture.compute(&[]);
     assert_eq!(
         fixture.cuts_and_natural(&balanced),
@@ -616,9 +625,9 @@ fn five_six_and_ten_line_counts_and_group_local_exemption_are_preserved() {
     count_profile::<f64>();
 }
 
-fn assert_float<S: l::LayoutScalar>(
+fn assert_float<S: l::scalar::LayoutScalar>(
     fixture: &Advanced<S>,
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     balance: bool,
 ) {
     assert_eq!(
@@ -656,7 +665,7 @@ fn assert_float<S: l::LayoutScalar>(
         .final_output();
     assert_eq!(
         root.size,
-        l::Size::new(S::from_f64(80.0), S::from_f64(40.0))
+        l::geometry::Size::new(S::from_f64(80.0), S::from_f64(40.0))
     );
     let float = batch
         .node_layout(fixture.float.unwrap())
@@ -664,13 +673,13 @@ fn assert_float<S: l::LayoutScalar>(
         .single_box()
         .expect("float produces one box")
         .final_output();
-    assert_eq!(float.location, l::Point::new(S::ZERO, S::ZERO));
+    assert_eq!(float.location, l::geometry::Point::new(S::ZERO, S::ZERO));
     assert_eq!(
         float.size,
-        l::Size::new(S::from_f64(20.0), S::from_f64(20.0))
+        l::geometry::Size::new(S::from_f64(20.0), S::from_f64(20.0))
     );
 }
-fn float_replay<S: l::LayoutScalar>() {
+fn float_replay<S: l::scalar::LayoutScalar>() {
     let mut fixture =
         Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::source::Range::new(4, 6)), true);
     let auto = fixture.compute(&[]);
@@ -681,7 +690,7 @@ fn float_replay<S: l::LayoutScalar>() {
             .any(|entry| Some(entry.node()) == fixture.float)
     );
     auto.apply_to(&mut fixture.host).unwrap();
-    fixture.root(|root| root.text_wrap_style = l::TextWrapStyle::Balance);
+    fixture.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::Balance);
     let balanced = fixture.compute(&[0]);
     assert_float(&fixture, &balanced, true);
     assert_float(
@@ -707,10 +716,10 @@ fn float_replay<S: l::LayoutScalar>() {
     warm.apply_to(&mut fixture.host).unwrap();
     let mut fresh =
         Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::source::Range::new(4, 6)), true);
-    fresh.root(|root| root.text_wrap_style = l::TextWrapStyle::Balance);
+    fresh.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::Balance);
     let fresh_batch = fresh.compute(&[]);
     assert_float(&fresh, &fresh_batch, true);
-    fixture.root(|root| root.text_wrap_style = l::TextWrapStyle::Auto);
+    fixture.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::Auto);
     let restored = fixture.compute(&[0]);
     assert_float(&fixture, &restored, false);
     restored.apply_to(&mut fixture.host).unwrap();

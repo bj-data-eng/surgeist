@@ -1,3 +1,15 @@
+//! Physical and flow-relative scroll geometry, clip geometry and snap geometry.
+//!
+//! [`ScrollGeometryOf`] is the immutable canonical geometry that layout produces for a scroll container and its
+//! targets ([`ScrollTargetGeometryOf`]), in local physical coordinates. Its building blocks are [`ScrollRectOf`],
+//! the offsets and closed ranges in physical ([`PhysicalScrollOffsetOf`], [`PhysicalScrollRangeOf`]) and
+//! flow-relative ([`FlowRelativeScrollOffsetOf`], [`FlowRelativeScrollRangeOf`]) coordinates, the clip intervals
+//! ([`OverflowClipOf`]) and [`ScrollbarGutterRectsOf`]. [`ScrollSnapContextOf`] and [`ScrollSnapGeometryOf`]
+//! carry the geometry that snapping works from. [`ScrollRectErrorOf`] and [`ScrollCoordinateErrorOf`] are the
+//! construction errors.
+//!
+//! Anchor selection is in [`anchor_selection`].
+
 use crate::geometry::LogicalEdgesOf;
 use crate::{
     geometry::{Edges, FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide, Point, Size},
@@ -7,7 +19,7 @@ use crate::{
 };
 pub(crate) use construction::include_scope_overflow;
 
-pub(crate) mod anchor_selection;
+pub mod anchor_selection;
 mod box_geometry;
 mod construction;
 mod contribution;
@@ -55,12 +67,6 @@ pub(crate) use construction::{
     settled_auto_scrollbars_change_available_geometry,
 };
 
-pub use anchor_selection::{
-    ScrollAnchorBox, ScrollAnchorBoxOf, ScrollAnchorContainingBlock, ScrollAnchorNode,
-    ScrollAnchorNodeOf, ScrollAnchorPolicy, ScrollAnchorPosition, ScrollAnchorPriority,
-    ScrollAnchorRequest, ScrollAnchorRequestOf, ScrollAnchorSelectionError, ScrollAnchorSubject,
-    ScrollAnchorSubjectOf, select_scroll_anchor,
-};
 use model::validate_physical_scroll_range;
 pub use model::{
     FlowRelativeScrollAxisRange, FlowRelativeScrollAxisRangeOf, FlowRelativeScrollOffset,

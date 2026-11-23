@@ -93,11 +93,11 @@ fn font() -> Vec<u8> {
 }
 
 struct Tree {
-    inputs: Vec<layout::LayoutInput>,
-    non_box: layout::NodeInput,
+    inputs: Vec<layout::node::LayoutInput>,
+    non_box: layout::node::NodeInput,
 }
 
-impl layout::Traverse for Tree {
+impl layout::tree::Traverse for Tree {
     type Node = usize;
     type Scalar = f32;
     type Children<'a> = std::ops::Range<usize>;
@@ -117,16 +117,16 @@ impl layout::Traverse for Tree {
     }
 }
 
-impl layout::LayoutTree for Tree {
+impl layout::tree::LayoutTree for Tree {
     type MeasureError = Infallible;
 
-    fn node_input(&self, node: usize) -> &layout::NodeInput {
+    fn node_input(&self, node: usize) -> &layout::node::NodeInput {
         self.inputs[node]
             .as_view()
             .as_box()
             .unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, node: usize) -> layout::LayoutInputView<'_> {
+    fn layout_input(&self, node: usize) -> layout::node::LayoutInputView<'_> {
         self.inputs[node].as_view()
     }
 }
@@ -158,7 +158,7 @@ impl<'a> Case<'a> {
 struct Fixture {
     prepared: text::prepared::PreparedText,
     tree: Tree,
-    binding: layout::TextParagraphBinding<usize>,
+    binding: layout::text_layout::TextParagraphBinding<usize>,
     bytes: Vec<u8>,
 }
 
@@ -335,39 +335,42 @@ fn fixture(case: Case<'_>) -> Fixture {
 }
 
 fn bind(prepared: text::prepared::PreparedText, rtl: bool, bytes: Vec<u8>) -> Fixture {
-    let mut inputs = vec![layout::LayoutInput::box_input(layout::NodeInput {
-        display: layout::Display::Block,
-        direction: if rtl {
-            layout::Direction::Rtl
-        } else {
-            layout::Direction::Ltr
+    let mut inputs = vec![layout::node::LayoutInput::box_input(
+        layout::node::NodeInput {
+            display: layout::box_model::Display::Block,
+            direction: if rtl {
+                layout::geometry::Direction::Rtl
+            } else {
+                layout::geometry::Direction::Ltr
+            },
+            ..layout::node::NodeInput::DEFAULT
         },
-        ..layout::NodeInput::DEFAULT
-    })];
+    )];
     let mut origins = Vec::new();
     let mut controls = Vec::new();
     for (index, origin) in prepared.origin_views().enumerate() {
         if index == 1 && prepared.control_views().len() == 1 {
             let occurrence = prepared.control_views().next().unwrap().handle();
-            controls.push(layout::TextControlBinding {
+            controls.push(layout::text_layout::TextControlBinding {
                 occurrence: occurrence.clone(),
                 node: inputs.len(),
             });
-            inputs.push(layout::LayoutInput::text_control(
-                layout::TextControlParticipation::new(occurrence),
+            inputs.push(layout::node::LayoutInput::text_control(
+                layout::text_layout::TextControlParticipation::new(occurrence),
             ));
         }
         let origin = origin.handle();
-        origins.push(layout::TextOriginBinding {
+        origins.push(layout::text_layout::TextOriginBinding {
             origin: origin.clone(),
             node: inputs.len(),
         });
-        inputs.push(layout::LayoutInput::inline_text(
-            layout::TextParticipation::new(origin),
+        inputs.push(layout::node::LayoutInput::inline_text(
+            layout::text_layout::TextParticipation::new(origin),
         ));
     }
-    let binding = layout::TextParagraphBinding {
-        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+    let binding = layout::text_layout::TextParagraphBinding {
+        inline_box_fragments:
+            surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared.clone(),
         container: 0,
         nodes: (1..inputs.len()).collect(),
@@ -380,19 +383,22 @@ fn bind(prepared: text::prepared::PreparedText, rtl: bool, bytes: Vec<u8>) -> Fi
         prepared,
         tree: Tree {
             inputs,
-            non_box: layout::NodeInput::non_box(),
+            non_box: layout::node::NodeInput::non_box(),
         },
         binding,
         bytes,
     }
 }
 
-fn compute(fixture: &Fixture, width: layout::SizingRequest) -> layout::CompletedLayoutBatch<usize> {
-    let capture = layout::LayoutFlowInput::try_new(
+fn compute(
+    fixture: &Fixture,
+    width: layout::constraint::SizingRequest,
+) -> layout::batch::CompletedLayoutBatch<usize> {
+    let capture = layout::text_layout::LayoutFlowInput::try_new(
         &fixture.tree,
         0,
         vec![fixture.binding.clone()],
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -403,11 +409,11 @@ fn compute(fixture: &Fixture, width: layout::SizingRequest) -> layout::Completed
     .unwrap();
     layout::compute_layout_with_flow(&capture, 0, {
         let sizing_request = width;
-        layout::LayoutRootRequest::standalone(
+        layout::request::LayoutRootRequest::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::LayoutTree::node_input(&fixture.tree, 0).writing_mode,
-                surgeist_layout::LayoutTree::node_input(&fixture.tree, 0).direction,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::tree::LayoutTree::node_input(&fixture.tree, 0).writing_mode,
+                surgeist_layout::tree::LayoutTree::node_input(&fixture.tree, 0).direction,
             ),
             sizing_request
                 .orthogonal_fallback()
@@ -417,7 +423,9 @@ fn compute(fixture: &Fixture, width: layout::SizingRequest) -> layout::Completed
     .unwrap()
 }
 
-fn finalized(batch: &layout::CompletedLayoutBatch<usize>) -> Vec<text::finalized::FinalizedLine> {
+fn finalized(
+    batch: &layout::batch::CompletedLayoutBatch<usize>,
+) -> Vec<text::finalized::FinalizedLine> {
     let mut result = Vec::new();
     for fragment in batch.final_inline_fragments() {
         let line = fragment.fragment().finalized_fragment().finalized_line();
@@ -428,7 +436,11 @@ fn finalized(batch: &layout::CompletedLayoutBatch<usize>) -> Vec<text::finalized
     result
 }
 
-fn source_and_font(fixture: &Fixture, batch: &layout::CompletedLayoutBatch<usize>, original: &str) {
+fn source_and_font(
+    fixture: &Fixture,
+    batch: &layout::batch::CompletedLayoutBatch<usize>,
+    original: &str,
+) {
     assert_eq!(batch.placed_text().len(), 1);
     assert_eq!(
         batch.placed_text()[0].layout().source().text().code_units(),
@@ -440,7 +452,7 @@ fn source_and_font(fixture: &Fixture, batch: &layout::CompletedLayoutBatch<usize
     }
 }
 
-fn root_width(batch: &layout::CompletedLayoutBatch<usize>) -> f32 {
+fn root_width(batch: &layout::batch::CompletedLayoutBatch<usize>) -> f32 {
     batch
         .node_layout(0)
         .unwrap()
@@ -466,10 +478,10 @@ fn preserve_spaces_conversion_soft_hanging_and_intrinsics_survive_bidi_placement
         let batch = compute(
             &fixture,
             crate::native_request::sizing(
-                surgeist_layout::Size::new(Some(15.0), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(15.0), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             ),
         );
@@ -517,10 +529,10 @@ fn preserve_spaces_conversion_soft_hanging_and_intrinsics_survive_bidi_placement
             root_width(&compute(
                 &fixture,
                 crate::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::MinContent,
-                        surgeist_layout::SizingOperation::Normal
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::MinContent,
+                        surgeist_layout::constraint::SizingOperation::Normal
                     )
                 )
             )),
@@ -530,10 +542,10 @@ fn preserve_spaces_conversion_soft_hanging_and_intrinsics_survive_bidi_placement
             root_width(&compute(
                 &fixture,
                 crate::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::MaxContent,
-                        surgeist_layout::SizingOperation::Normal
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::MaxContent,
+                        surgeist_layout::constraint::SizingOperation::Normal
                     )
                 )
             )),
@@ -552,10 +564,10 @@ fn preserve_spaces_block_end_is_conditional_and_nowrap_keeps_ordinary_measures()
             let batch = compute(
                 &fixture,
                 crate::native_request::sizing(
-                    surgeist_layout::Size::new(Some(width), None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::Normal,
-                        surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::geometry::Size::new(Some(width), None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::Normal,
+                        surgeist_layout::constraint::SizingOperation::Normal,
                     ),
                 ),
             );
@@ -609,10 +621,10 @@ fn preserve_spaces_block_end_is_conditional_and_nowrap_keeps_ordinary_measures()
             root_width(&compute(
                 &fixture,
                 crate::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::MinContent,
-                        surgeist_layout::SizingOperation::Normal
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::MinContent,
+                        surgeist_layout::constraint::SizingOperation::Normal
                     )
                 )
             )),
@@ -626,10 +638,10 @@ fn preserve_spaces_block_end_is_conditional_and_nowrap_keeps_ordinary_measures()
             root_width(&compute(
                 &fixture,
                 crate::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::MaxContent,
-                        surgeist_layout::SizingOperation::Normal
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::MaxContent,
+                        surgeist_layout::constraint::SizingOperation::Normal
                     )
                 )
             )),
@@ -647,10 +659,10 @@ fn preserve_spaces_converted_tab_before_a_real_forced_control_hangs_conditionall
         let batch = compute(
             &fixture,
             crate::native_request::sizing(
-                surgeist_layout::Size::new(Some(width), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(width), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             ),
         );
@@ -672,10 +684,10 @@ fn preserve_spaces_converted_tab_before_a_real_forced_control_hangs_conditionall
         root_width(&compute(
             &fixture,
             crate::native_request::sizing(
-                surgeist_layout::Size::new(None, None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::MinContent,
-                    surgeist_layout::SizingOperation::Normal
+                surgeist_layout::geometry::Size::new(None, None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::MinContent,
+                    surgeist_layout::constraint::SizingOperation::Normal
                 )
             )
         )),
@@ -685,10 +697,10 @@ fn preserve_spaces_converted_tab_before_a_real_forced_control_hangs_conditionall
         root_width(&compute(
             &fixture,
             crate::native_request::sizing(
-                surgeist_layout::Size::new(None, None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::MaxContent,
-                    surgeist_layout::SizingOperation::Normal
+                surgeist_layout::geometry::Size::new(None, None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::MaxContent,
+                    surgeist_layout::constraint::SizingOperation::Normal
                 )
             )
         )),
@@ -753,10 +765,10 @@ fn discard_removes_document_whitespace_breaks_but_keeps_independent_zwsp_and_for
         let batch = compute(
             &fixture,
             crate::native_request::sizing(
-                surgeist_layout::Size::new(Some(10.0), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(10.0), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             ),
         );
@@ -775,10 +787,10 @@ fn discard_removes_document_whitespace_breaks_but_keeps_independent_zwsp_and_for
             root_width(&compute(
                 &fixture,
                 crate::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::MinContent,
-                        surgeist_layout::SizingOperation::Normal
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::MinContent,
+                        surgeist_layout::constraint::SizingOperation::Normal
                     )
                 )
             )),
@@ -792,10 +804,10 @@ fn discard_removes_document_whitespace_breaks_but_keeps_independent_zwsp_and_for
             root_width(&compute(
                 &fixture,
                 crate::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::MaxContent,
-                        surgeist_layout::SizingOperation::Normal
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::MaxContent,
+                        surgeist_layout::constraint::SizingOperation::Normal
                     )
                 )
             )),
@@ -831,10 +843,10 @@ fn collapse_removes_only_trailing_ogham_and_retains_its_original_range() {
     let batch = compute(
         &fixture,
         crate::native_request::sizing(
-            surgeist_layout::Size::new(Some(40.0), None),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(40.0), None),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         ),
     );
@@ -891,10 +903,10 @@ fn contextual_trim_precedes_preserve_spaces_conversion_and_full_width_presentati
         let batch = compute(
             &fixture,
             crate::native_request::sizing(
-                surgeist_layout::Size::new(Some(100.0), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(100.0), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             ),
         );
@@ -923,10 +935,10 @@ fn contextual_trim_precedes_preserve_spaces_conversion_and_full_width_presentati
             root_width(&compute(
                 &fixture,
                 crate::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::MinContent,
-                        surgeist_layout::SizingOperation::Normal
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::MinContent,
+                        surgeist_layout::constraint::SizingOperation::Normal
                     )
                 )
             )),
@@ -936,10 +948,10 @@ fn contextual_trim_precedes_preserve_spaces_conversion_and_full_width_presentati
             root_width(&compute(
                 &fixture,
                 crate::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::MaxContent,
-                        surgeist_layout::SizingOperation::Normal
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::MaxContent,
+                        surgeist_layout::constraint::SizingOperation::Normal
                     )
                 )
             )),
@@ -1086,10 +1098,10 @@ fn collapsed_sibling_space_permission_controls_actual_narrow_layout() {
             let batch = compute(
                 &fixture,
                 crate::native_request::sizing(
-                    surgeist_layout::Size::new(Some(10.0), None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::Normal,
-                        surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::geometry::Size::new(Some(10.0), None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::Normal,
+                        surgeist_layout::constraint::SizingOperation::Normal,
                     ),
                 ),
             );

@@ -44,9 +44,15 @@ pub enum ParentFormattingContext {
 /// components explicitly.
 ///
 /// ```compile_fail
-/// use surgeist_layout::ContainingLayoutContext;
+/// use surgeist_layout::request::ContainingLayoutContext;
 ///
 /// let _ = ContainingLayoutContext::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::request::ContainingLayoutContext;
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ContainingLayoutContext {

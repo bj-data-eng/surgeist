@@ -2,7 +2,30 @@
 //! CSS Grid1 §5.2 defines max-content from the fixed track sum; Overflow3
 //! §4.1/§4.2 reserves stable classic gutters as border-box space, even for
 //! hidden overflow. Available space is not an authored definite border box.
-use surgeist_layout::*;
+use surgeist_layout::{
+    box_model::{AlignContent, AlignItems, BoxSizing, Display},
+    compute_layout, compute_layout_with_flow,
+    constraint::SizingOperation,
+    geometry::{Direction, FlowAxes, Point, Size, WritingMode},
+    grid::{
+        GridAutoFlow, GridAxisKind, GridLanesFlow, GridPlacement, MaxTrackSizingOf,
+        MinTrackSizingOf, SubgridTrack, TrackComponentOf, TrackFlexFactorOf,
+    },
+    inline_wrapping::WrappingInput,
+    length::LengthPercentageOf,
+    node::{LayoutInputOf, LayoutInputViewOf, NodeInputOf},
+    overflow::{ComputedOverflow, Overflow, ScrollbarGutter, ScrollbarWidthOf},
+    request::LayoutRootRequestOf,
+    scalar::LayoutScalar,
+    scroll::ScrollRectOf,
+    sizing::{MaxSizeOf, MinSizeOf, PreferredSizeOf, SizingCalculationOf},
+    text_flow::TextAlign,
+    text_layout::{
+        InlineBoxFragmentationDemand, LayoutFlowInput, TextOriginBinding, TextParagraphBinding,
+        TextParticipation,
+    },
+    tree::{LayoutTree, LeafMeasureInputOf, Traverse},
+};
 
 struct FixedGrid<S: LayoutScalar> {
     inputs: [LayoutInputOf<S>; 2],
@@ -102,17 +125,17 @@ fn qualify<S: LayoutScalar>(intrinsic: bool) {
                 let tree = fixture::<S>(display, gutter, width);
                 let batch = compute_layout(&tree, 0, {
                     let sizing_request = crate::layout::native_request::sizing(
-                        surgeist_layout::Size::new(Some(S::from_f64(available)), None),
-                        surgeist_layout::Size::new(
-                            surgeist_layout::SizingOperation::Normal,
-                            surgeist_layout::SizingOperation::Normal,
+                        surgeist_layout::geometry::Size::new(Some(S::from_f64(available)), None),
+                        surgeist_layout::geometry::Size::new(
+                            surgeist_layout::constraint::SizingOperation::Normal,
+                            surgeist_layout::constraint::SizingOperation::Normal,
                         ),
                     );
                     LayoutRootRequestOf::standalone(
                         sizing_request,
-                        surgeist_layout::FlowAxes::new(
-                            surgeist_layout::WritingMode::HorizontalTb,
-                            surgeist_layout::Direction::Ltr,
+                        surgeist_layout::geometry::FlowAxes::new(
+                            surgeist_layout::geometry::WritingMode::HorizontalTb,
+                            surgeist_layout::geometry::Direction::Ltr,
                         ),
                         sizing_request
                             .orthogonal_fallback()
@@ -276,17 +299,17 @@ fn qualify_inherited_columns<S: LayoutScalar>() {
             };
             let request = {
                 let sizing_request = crate::layout::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::Normal,
-                        surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::Normal,
+                        surgeist_layout::constraint::SizingOperation::Normal,
                     ),
                 );
                 LayoutRootRequestOf::standalone(
                     sizing_request,
-                    surgeist_layout::FlowAxes::new(
-                        surgeist_layout::WritingMode::HorizontalTb,
-                        surgeist_layout::Direction::Ltr,
+                    surgeist_layout::geometry::FlowAxes::new(
+                        surgeist_layout::geometry::WritingMode::HorizontalTb,
+                        surgeist_layout::geometry::Direction::Ltr,
                     ),
                     sizing_request
                         .orthogonal_fallback()
@@ -478,17 +501,17 @@ fn qualify_reciprocal_axis_modes<S: LayoutScalar>() {
                     };
                     let batch = match compute_layout(&tree, 0, {
                         let sizing_request = crate::layout::native_request::sizing(
-                            surgeist_layout::Size::new(None, None),
-                            surgeist_layout::Size::new(
-                                surgeist_layout::SizingOperation::Normal,
-                                surgeist_layout::SizingOperation::Normal,
+                            surgeist_layout::geometry::Size::new(None, None),
+                            surgeist_layout::geometry::Size::new(
+                                surgeist_layout::constraint::SizingOperation::Normal,
+                                surgeist_layout::constraint::SizingOperation::Normal,
                             ),
                         );
                         LayoutRootRequestOf::standalone(
                             sizing_request,
-                            surgeist_layout::FlowAxes::new(
+                            surgeist_layout::geometry::FlowAxes::new(
                                 writing_mode,
-                                surgeist_layout::Direction::Ltr,
+                                surgeist_layout::geometry::Direction::Ltr,
                             ),
                             sizing_request
                                 .orthogonal_fallback()
@@ -767,7 +790,8 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
             &tree,
             0,
             vec![TextParagraphBinding {
-                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+                inline_box_fragments:
+                    surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: 2,
                 nodes: vec![3, 4],
@@ -785,7 +809,7 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
                 controls: vec![],
                 line_strut: None,
             }],
-            surgeist_layout::WrappingInput {
+            surgeist_layout::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -796,17 +820,17 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(None, None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(None, None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
             LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::WritingMode::HorizontalTb,
-                    surgeist_layout::Direction::Ltr,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::geometry::WritingMode::HorizontalTb,
+                    surgeist_layout::geometry::Direction::Ltr,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -851,8 +875,8 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
             .unrounded_inline_fragments()
             .iter()
             .filter(|entry| {
-                entry.owner() == &surgeist_layout::InlineFragmentOwner::Node(3)
-                    || entry.owner() == &surgeist_layout::InlineFragmentOwner::Node(4)
+                entry.owner() == &surgeist_layout::text_layout::InlineFragmentOwner::Node(3)
+                    || entry.owner() == &surgeist_layout::text_layout::InlineFragmentOwner::Node(4)
             })
             .map(|entry| {
                 let fragment = entry.fragment();
@@ -864,8 +888,8 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
                 };
                 (
                     match entry.owner() {
-                        surgeist_layout::InlineFragmentOwner::Node(node) => *node,
-                        surgeist_layout::InlineFragmentOwner::Scope(_) => {
+                        surgeist_layout::text_layout::InlineFragmentOwner::Node(node) => *node,
+                        surgeist_layout::text_layout::InlineFragmentOwner::Scope(_) => {
                             panic!("source fixture requires node ownership")
                         }
                     },
@@ -1119,17 +1143,17 @@ fn qualify_max_constrained_alignment<S: LayoutScalar>() {
             tree.inputs[0] = LayoutInputOf::box_input(root);
             let batch = compute_layout(&tree, 0, {
                 let sizing_request = crate::layout::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::Normal,
-                        surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::Normal,
+                        surgeist_layout::constraint::SizingOperation::Normal,
                     ),
                 );
                 LayoutRootRequestOf::standalone(
                     sizing_request,
-                    surgeist_layout::FlowAxes::new(
-                        surgeist_layout::WritingMode::HorizontalTb,
-                        surgeist_layout::Direction::Ltr,
+                    surgeist_layout::geometry::FlowAxes::new(
+                        surgeist_layout::geometry::WritingMode::HorizontalTb,
+                        surgeist_layout::geometry::Direction::Ltr,
                     ),
                     sizing_request
                         .orthogonal_fallback()
@@ -1386,15 +1410,18 @@ fn qualify_orthogonal_standalone_contribution<S: LayoutScalar>() {
             // maps those literal dimensions to60x80 or reciprocal80x60.
             let batch = match compute_layout(&tree, 0, {
                 let sizing_request = crate::layout::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::Normal,
-                        surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::Normal,
+                        surgeist_layout::constraint::SizingOperation::Normal,
                     ),
                 );
                 LayoutRootRequestOf::standalone(
                     sizing_request,
-                    surgeist_layout::FlowAxes::new(parent_mode, surgeist_layout::Direction::Ltr),
+                    surgeist_layout::geometry::FlowAxes::new(
+                        parent_mode,
+                        surgeist_layout::geometry::Direction::Ltr,
+                    ),
                     sizing_request
                         .orthogonal_fallback()
                         .initial_containing_block(),
@@ -1583,15 +1610,18 @@ fn qualify_first_axis_opposite_estimate<S: LayoutScalar>() {
             // does not permit a column revisit to replace the AUTO control.
             let batch = compute_layout(&tree, 0, {
                 let sizing_request = crate::layout::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(
-                        surgeist_layout::SizingOperation::Normal,
-                        surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::Normal,
+                        surgeist_layout::constraint::SizingOperation::Normal,
                     ),
                 );
                 LayoutRootRequestOf::standalone(
                     sizing_request,
-                    surgeist_layout::FlowAxes::new(writing_mode, surgeist_layout::Direction::Ltr),
+                    surgeist_layout::geometry::FlowAxes::new(
+                        writing_mode,
+                        surgeist_layout::geometry::Direction::Ltr,
+                    ),
                     sizing_request
                         .orthogonal_fallback()
                         .initial_containing_block(),

@@ -1,9 +1,9 @@
 //! Stable's local quality choice, real source revisions and eligible leaf reuse.
 use super::*;
 
-fn assert_rows<S: l::LayoutScalar>(
+fn assert_rows<S: l::scalar::LayoutScalar>(
     fixture: &Advanced<S>,
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     expected: &[(usize, usize, f64)],
 ) {
     let layout = batch.placed_text()[0].layout();
@@ -57,13 +57,13 @@ fn assert_rows<S: l::LayoutScalar>(
         .final_output();
     assert_eq!(
         root.size,
-        l::Size::new(S::from_f64(60.0), S::from_f64(20.0))
+        l::geometry::Size::new(S::from_f64(60.0), S::from_f64(20.0))
     );
 }
 
-fn suffix<S: l::LayoutScalar>() {
+fn suffix<S: l::scalar::LayoutScalar>() {
     let mut base = Advanced::<S>::with_revision(&["AAA BB C"], 60.0, None, false, 3);
-    base.root(|root| root.text_wrap_style = l::TextWrapStyle::Stable);
+    base.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::Stable);
     let old = base.compute(&[]);
     // Collapsed trailing SPACE belongs to the first issued source range, while
     // its visible natural advance is AAA(30)+SPACE(10)+BB(20)=60.
@@ -73,7 +73,7 @@ fn suffix<S: l::LayoutScalar>() {
     let old_receipts = base.receipts(&old);
     old.apply_to(&mut base.host).unwrap();
 
-    base.root(|root| root.text_wrap_style = l::TextWrapStyle::Balance);
+    base.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::Balance);
     let balanced = base.compute(&[0]);
     assert_rows(&base, &balanced, &[(0, 4, 30.0), (4, 8, 40.0)]);
     // The frame is unchanged; only the selected legal cuts differ.
@@ -84,7 +84,7 @@ fn suffix<S: l::LayoutScalar>() {
         );
     }
     balanced.apply_to(&mut base.host).unwrap();
-    base.root(|root| root.text_wrap_style = l::TextWrapStyle::Stable);
+    base.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::Stable);
     let restored = base.compute(&[0]);
     assert_rows(&base, &restored, &[(0, 7, 60.0), (7, 8, 10.0)]);
     restored.apply_to(&mut base.host).unwrap();
@@ -92,7 +92,7 @@ fn suffix<S: l::LayoutScalar>() {
     // Same document identity, coherent next revision; offers/ends are issued by
     // the new preparation rather than borrowed from the old paragraph.
     let mut revised = Advanced::<S>::with_revision(&["AAA BB CCCC"], 60.0, None, false, 4);
-    revised.root(|root| root.text_wrap_style = l::TextWrapStyle::Stable);
+    revised.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::Stable);
     let changed = revised.compute(&[]);
     assert_rows(&revised, &changed, &[(0, 7, 60.0), (7, 11, 40.0)]);
 
@@ -127,7 +127,7 @@ fn suffix<S: l::LayoutScalar>() {
     assert_eq!(old.placed_text()[0].layout().source(), &old_source);
     assert_eq!(base.receipts(&old), old_receipts);
     assert_rows(&base, &old, &[(0, 7, 60.0), (7, 8, 10.0)]);
-    revised.root(|root| root.text_wrap_style = l::TextWrapStyle::Balance);
+    revised.root(|root| root.text_wrap_style = l::text_flow::TextWrapStyle::Balance);
     let changed_balance = revised.compute(&[0]);
     // The alternative 30/70 no longer fits60, so both modes retain60/40.
     assert_rows(&revised, &changed_balance, &[(0, 7, 60.0), (7, 11, 40.0)]);
@@ -141,7 +141,7 @@ fn stable_text_uses_local_cuts_across_a_coherent_suffix_revision_f64() {
     suffix::<f64>();
 }
 
-fn warm_float<S: l::LayoutScalar>() {
+fn warm_float<S: l::scalar::LayoutScalar>() {
     let mut fixture =
         Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::source::Range::new(4, 6)), true);
     let first = fixture.compute(&[]);
@@ -149,11 +149,11 @@ fn warm_float<S: l::LayoutScalar>() {
     first.apply_to(&mut fixture.host).unwrap();
     let mut retained = vec![(first, false)];
     for style in [
-        l::TextWrapStyle::Balance,
-        l::TextWrapStyle::Stable,
-        l::TextWrapStyle::Auto,
+        l::text_flow::TextWrapStyle::Balance,
+        l::text_flow::TextWrapStyle::Stable,
+        l::text_flow::TextWrapStyle::Auto,
     ] {
-        let balance = style == l::TextWrapStyle::Balance;
+        let balance = style == l::text_flow::TextWrapStyle::Balance;
         fixture.root(|root| root.text_wrap_style = style);
         let switched = fixture.compute(&[0]);
         assert!(switched.invalidated_nodes().contains(&0));

@@ -2,7 +2,7 @@
 //! Actual child orientation remains independent of the containing writing mode.
 use super::*;
 
-fn composition(mode: layout::WritingMode, kind: text::source::InlineBoxKind) {
+fn composition(mode: layout::geometry::WritingMode, kind: text::source::InlineBoxKind) {
     let mut system = text::System::default();
     system
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
@@ -41,42 +41,49 @@ fn composition(mode: layout::WritingMode, kind: text::source::InlineBoxKind) {
     let child_origin = child.origin_views().next().unwrap().handle();
     let tree = AtomicTree {
         inputs: vec![
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
                 writing_mode: mode,
-                inline_baseline_context: layout::InlineBaselineContext::Physical,
-                size: layout::Size::new(px(40.0), px(40.0)),
-                ..layout::NodeInput::DEFAULT
+                inline_baseline_context: layout::baseline::InlineBaselineContext::Physical,
+                size: layout::geometry::Size::new(px(40.0), px(40.0)),
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::inline_text(layout::TextParticipation::new(origins[0].clone())),
-            layout::LayoutInput::box_input(layout::NodeInput {
+            layout::node::LayoutInput::inline_text(layout::text_layout::TextParticipation::new(
+                origins[0].clone(),
+            )),
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
                 display: if kind == text::source::InlineBoxKind::InFlow {
-                    layout::Display::InlineBlock
+                    layout::box_model::Display::InlineBlock
                 } else {
-                    layout::Display::Block
+                    layout::box_model::Display::Block
                 },
                 position: if kind == text::source::InlineBoxKind::InFlow {
-                    layout::Position::Relative
+                    layout::box_model::Position::Relative
                 } else {
-                    layout::Position::Absolute
+                    layout::box_model::Position::Absolute
                 },
-                writing_mode: layout::WritingMode::HorizontalTb,
-                inline_baseline_context: layout::InlineBaselineContext::Physical,
-                size: layout::Size::new(px(6.0), px(14.0)),
-                ..layout::NodeInput::DEFAULT
+                writing_mode: layout::geometry::WritingMode::HorizontalTb,
+                inline_baseline_context: layout::baseline::InlineBaselineContext::Physical,
+                size: layout::geometry::Size::new(px(6.0), px(14.0)),
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::inline_text(layout::TextParticipation::new(origins[1].clone())),
-            layout::LayoutInput::inline_text(layout::TextParticipation::new(child_origin.clone())),
+            layout::node::LayoutInput::inline_text(layout::text_layout::TextParticipation::new(
+                origins[1].clone(),
+            )),
+            layout::node::LayoutInput::inline_text(layout::text_layout::TextParticipation::new(
+                child_origin.clone(),
+            )),
         ],
         children: vec![vec![1, 2, 3], vec![], vec![4], vec![], vec![]],
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let flow = layout::LayoutFlowInput::try_new(
+    let flow = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         vec![
-            layout::TextParagraphBinding {
-                inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+            layout::text_layout::TextParagraphBinding {
+                inline_box_fragments:
+                    layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared: parent.clone(),
                 container: 0,
                 nodes: vec![1, 2, 3],
@@ -84,21 +91,22 @@ fn composition(mode: layout::WritingMode, kind: text::source::InlineBoxKind) {
                     .iter()
                     .cloned()
                     .zip([1, 3])
-                    .map(|(origin, node)| layout::TextOriginBinding { origin, node })
+                    .map(|(origin, node)| layout::text_layout::TextOriginBinding { origin, node })
                     .collect(),
-                atomics: vec![layout::TextAtomicBinding {
+                atomics: vec![layout::text_layout::TextAtomicBinding {
                     occurrence: atomic.clone(),
                     node: ATOMIC_NODE,
                 }],
                 controls: vec![],
                 line_strut: None,
             },
-            layout::TextParagraphBinding {
-                inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+            layout::text_layout::TextParagraphBinding {
+                inline_box_fragments:
+                    layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared: child.clone(),
                 container: ATOMIC_NODE,
                 nodes: vec![4],
-                origins: vec![layout::TextOriginBinding {
+                origins: vec![layout::text_layout::TextOriginBinding {
                     origin: child_origin,
                     node: 4,
                 }],
@@ -107,7 +115,7 @@ fn composition(mode: layout::WritingMode, kind: text::source::InlineBoxKind) {
                 line_strut: None,
             },
         ],
-        layout::WrappingInput::default(),
+        layout::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
@@ -115,12 +123,12 @@ fn composition(mode: layout::WritingMode, kind: text::source::InlineBoxKind) {
         &flow,
         0,
         NativeViewport::new(
-            layout::Size::new(Some(40.0), Some(40.0)),
-            layout::FlowAxes::new(mode, layout::Direction::Ltr),
+            layout::geometry::Size::new(Some(40.0), Some(40.0)),
+            layout::geometry::FlowAxes::new(mode, layout::geometry::Direction::Ltr),
         )
-        .request(layout::Size::new(
-            layout::SizingOperation::Normal,
-            layout::SizingOperation::Normal,
+        .request(layout::geometry::Size::new(
+            layout::constraint::SizingOperation::Normal,
+            layout::constraint::SizingOperation::Normal,
         )),
     )
     .unwrap();
@@ -130,10 +138,18 @@ fn composition(mode: layout::WritingMode, kind: text::source::InlineBoxKind) {
     // left line-under border, so in-flow x=C. Absolute all-auto placement
     // instead uses the static flow-start edge: right40 or left0.
     let (cross, child_x) = match (mode, kind) {
-        (layout::WritingMode::VerticalRl, text::source::InlineBoxKind::InFlow) => (32.0, 32.0),
-        (layout::WritingMode::VerticalLr, text::source::InlineBoxKind::InFlow) => (2.0, 2.0),
-        (layout::WritingMode::VerticalRl, text::source::InlineBoxKind::OutOfFlow) => (32.0, 34.0),
-        (layout::WritingMode::VerticalLr, text::source::InlineBoxKind::OutOfFlow) => (2.0, 0.0),
+        (layout::geometry::WritingMode::VerticalRl, text::source::InlineBoxKind::InFlow) => {
+            (32.0, 32.0)
+        }
+        (layout::geometry::WritingMode::VerticalLr, text::source::InlineBoxKind::InFlow) => {
+            (2.0, 2.0)
+        }
+        (layout::geometry::WritingMode::VerticalRl, text::source::InlineBoxKind::OutOfFlow) => {
+            (32.0, 34.0)
+        }
+        (layout::geometry::WritingMode::VerticalLr, text::source::InlineBoxKind::OutOfFlow) => {
+            (2.0, 0.0)
+        }
         _ => unreachable!("this witness covers precisely the two vertical writing modes"),
     };
     let (following, advance) = match kind {
@@ -146,8 +162,11 @@ fn composition(mode: layout::WritingMode, kind: text::source::InlineBoxKind) {
         .single_box()
         .expect("atomic node produces one box");
     for output in [view.unrounded_output(), view.final_output()] {
-        assert_eq!(output.location, layout::Point::new(child_x as f32, 10.0));
-        assert_eq!(output.size, layout::Size::new(6.0, 14.0));
+        assert_eq!(
+            output.location,
+            layout::geometry::Point::new(child_x as f32, 10.0)
+        );
+        assert_eq!(output.size, layout::geometry::Size::new(6.0, 14.0));
         assert_eq!(output.content_size.width, 10.0);
     }
     let parent_layout = placed(&batch, 0);
@@ -170,7 +189,12 @@ fn composition(mode: layout::WritingMode, kind: text::source::InlineBoxKind) {
     let receipt = batch
         .final_inline_fragments()
         .iter()
-        .find(|entry| matches!(entry.owner(), layout::InlineFragmentOwner::Node(1)))
+        .find(|entry| {
+            matches!(
+                entry.owner(),
+                layout::text_layout::InlineFragmentOwner::Node(1)
+            )
+        })
         .unwrap()
         .fragment()
         .finalized_fragment()
@@ -330,8 +354,8 @@ fn native_vertical_writing_modes_keep_clockwise_parent_and_horizontal_atomic_chi
         Some(render::geometry::Rect::try_new(0.0, -6.0, 10.0, 2.0).unwrap())
     );
     for mode in [
-        layout::WritingMode::VerticalRl,
-        layout::WritingMode::VerticalLr,
+        layout::geometry::WritingMode::VerticalRl,
+        layout::geometry::WritingMode::VerticalLr,
     ] {
         for kind in [
             text::source::InlineBoxKind::InFlow,

@@ -29,11 +29,11 @@ pub(super) fn install(tree: &mut TestTree, golden: &Golden, proof: &Proof) -> Re
             .sizes
             .ok_or_else(|| invalid("missing independent text sizes"))?;
         if !sizes.valid()
-            || style.display != layout::Display::Flex
+            || style.display != layout::box_model::Display::Flex
             || style.direction != occurrence.direction
-            || style.writing_mode != layout::WritingMode::HorizontalTb
-            || style.padding != layout::Edges::all(layout::Length::ZERO)
-            || style.border != layout::Edges::all(layout::Length::ZERO)
+            || style.writing_mode != layout::geometry::WritingMode::HorizontalTb
+            || style.padding != layout::geometry::Edges::all(layout::length::Length::ZERO)
+            || style.border != layout::geometry::Edges::all(layout::length::Length::ZERO)
             || leaf.font_family != FontFamily::Monospace
             || leaf.font_size != 15.0
             || leaf.line_height != 15.0
@@ -56,9 +56,9 @@ pub(super) fn install(tree: &mut TestTree, golden: &Golden, proof: &Proof) -> Re
 
 pub(super) fn measure(
     sizes: profile::Sizes,
-    input: layout::LeafMeasureInput,
-) -> Result<layout::Size, Error> {
-    if input.flow_axes().writing_mode() != layout::WritingMode::HorizontalTb {
+    input: layout::tree::LeafMeasureInput,
+) -> Result<layout::geometry::Size, Error> {
+    if input.flow_axes().writing_mode() != layout::geometry::WritingMode::HorizontalTb {
         return Err(invalid("unsupported measured source writing mode"));
     }
     let known = input.known_content_size();
@@ -66,9 +66,9 @@ pub(super) fn measure(
     let min = sizes.min_content.inline_size;
     let max = sizes.max_content.inline_size;
     let width = known.width.unwrap_or_else(|| match request.operation() {
-        layout::SizingOperation::MinContent => min,
-        layout::SizingOperation::MaxContent => max,
-        layout::SizingOperation::Normal => request
+        layout::constraint::SizingOperation::MinContent => min,
+        layout::constraint::SizingOperation::MaxContent => max,
+        layout::constraint::SizingOperation::Normal => request
             .space()
             .definite_size()
             .map_or(max, |available| available.get().clamp(min, max)),
@@ -77,7 +77,7 @@ pub(super) fn measure(
         Some(height) => height,
         None => block_size(sizes, width)?,
     };
-    Ok(layout::Size::new(width, height))
+    Ok(layout::geometry::Size::new(width, height))
 }
 
 fn block_size(sizes: profile::Sizes, width: Scalar) -> Result<Scalar, Error> {

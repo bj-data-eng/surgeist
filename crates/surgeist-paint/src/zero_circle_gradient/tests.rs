@@ -3,7 +3,7 @@ use crate::accounting::{PaintChange, PaintLimits, PaintPhase};
 use crate::gradient_stops::{GradientPositionComponent, GradientStopPositions, GradientStopsError};
 use crate::radial_gradient::{RadialGradientSize, resolve_radial_gradient};
 use std::ptr;
-use surgeist_layout::Size;
+use surgeist_layout::geometry::Size;
 use surgeist_ledger::ProfileMode;
 
 fn options(limits: PaintLimits) -> PaintOptions {

@@ -1,3 +1,17 @@
+//! Scroll-anchor selection and its request.
+//!
+//! [`select_scroll_anchor`] selects an anchor according to the CSS Scroll Anchoring 1 selection rules for one
+//! scroller and one optimal viewing region ([`ScrollAnchorRequestOf`]); the request also names the focused and
+//! find-match designations ([`ScrollAnchorPriority`]). The host reads each node from a coherent tree and geometry
+//! observation as a [`ScrollAnchorNodeOf`]: its parent, children, positioned descendants and subject
+//! ([`ScrollAnchorSubjectOf`]), which carries the node's policy ([`ScrollAnchorPolicy`]), box
+//! ([`ScrollAnchorBoxOf`]) and positioning ([`ScrollAnchorPosition`], [`ScrollAnchorContainingBlock`]).
+//! [`ScrollAnchorSelectionError`] is the refusal.
+//!
+//! Further scroll-anchoring work is tracked in surgeist-layout issues #98 (complete CSS Scroll Anchoring Module
+//! Level 1 contribution) and #102 (compute anchor adjustments constrained by snapping), and in surgeist-runtime
+//! issue #99 (schedule suppression windows and adjustment invalidation).
+
 use core::fmt;
 use core::hash::Hash;
 use core::slice;

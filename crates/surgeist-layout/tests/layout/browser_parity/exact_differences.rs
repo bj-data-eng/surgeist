@@ -114,25 +114,25 @@ struct Interval {
 }
 
 macro_rules! semantic_enum {
-    ($name:ident, $actual:ident, {$($variant:ident),+ $(,)?}) => {
+    ($name:ident, $module:ident, $actual:ident, {$($variant:ident),+ $(,)?}) => {
         #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
         #[serde(rename_all = "kebab-case")]
         enum $name { $($variant),+ }
-        impl From<layout::$actual> for $name {
-            fn from(actual: layout::$actual) -> Self {
-                match actual { $(layout::$actual::$variant => Self::$variant),+ }
+        impl From<layout::$module::$actual> for $name {
+            fn from(actual: layout::$module::$actual) -> Self {
+                match actual { $(layout::$module::$actual::$variant => Self::$variant),+ }
             }
         }
     };
 }
-semantic_enum!(WritingMode, WritingMode, {HorizontalTb, VerticalRl, VerticalLr, SidewaysRl, SidewaysLr});
-semantic_enum!(Direction, Direction, {Ltr, Rtl});
-semantic_enum!(Overflow, Overflow, {Visible, Clip, Hidden, Scroll, Auto});
-semantic_enum!(Axis, PhysicalAxis, {Horizontal, Vertical});
-semantic_enum!(SnapAxis, ScrollSnapAxis, {X, Y, Block, Inline, Both});
-semantic_enum!(Strictness, ScrollSnapStrictness, {Proximity, Mandatory});
-semantic_enum!(Align, ScrollSnapAlignValue, {None, Start, End, Center});
-semantic_enum!(Stop, ScrollSnapStop, {Normal, Always});
+semantic_enum!(WritingMode, geometry, WritingMode, {HorizontalTb, VerticalRl, VerticalLr, SidewaysRl, SidewaysLr});
+semantic_enum!(Direction, geometry, Direction, {Ltr, Rtl});
+semantic_enum!(Overflow, overflow, Overflow, {Visible, Clip, Hidden, Scroll, Auto});
+semantic_enum!(Axis, geometry, PhysicalAxis, {Horizontal, Vertical});
+semantic_enum!(SnapAxis, overflow, ScrollSnapAxis, {X, Y, Block, Inline, Both});
+semantic_enum!(Strictness, overflow, ScrollSnapStrictness, {Proximity, Mandatory});
+semantic_enum!(Align, overflow, ScrollSnapAlignValue, {None, Start, End, Center});
+semantic_enum!(Stop, overflow, ScrollSnapStop, {Normal, Always});
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -1855,7 +1855,7 @@ fn compare_native(expected: &NativeNode, actual: &NativeNode) -> Result<()> {
 }
 fn snapshot_batch(
     tree: &TestTree,
-    batch: &layout::CompletedLayoutBatch<usize>,
+    batch: &layout::batch::CompletedLayoutBatch<usize>,
     source: &[SourceNode],
     inline_grid_root: bool,
 ) -> Result<Vec<NativeNode>> {
@@ -1882,14 +1882,14 @@ fn snapshot_batch(
         return Err(unsupported("/", "synthetic/non-box lowered source"));
     }
     fn packets(
-        batch: &layout::CompletedLayoutBatch<usize>,
+        batch: &layout::batch::CompletedLayoutBatch<usize>,
         final_phase: bool,
         tree: &TestTree,
         count: usize,
     ) -> Result<BTreeMap<usize, Packet>> {
         let mut out = BTreeMap::new();
         for (node, view) in batch.node_layouts() {
-            if matches!(view, layout::NodeLayoutRefOf::Fragments(_)) {
+            if matches!(view, layout::fragmentation::NodeLayoutRefOf::Fragments(_)) {
                 return Err(unsupported(
                     "/",
                     "fragmented output in continuous qualification",
@@ -1962,7 +1962,7 @@ fn snapshot_batch(
                 !actual.synthetic
                     && actual.layout_input.as_box().is_some_and(|input| {
                         if inline_grid_root && path == "/" {
-                            input.display == layout::Display::InlineGrid
+                            input.display == layout::box_model::Display::InlineGrid
                         } else {
                             !input.display.is_inline_level()
                         }
@@ -1973,11 +1973,14 @@ fn snapshot_batch(
                     && actual
                         .layout_input
                         .as_box()
-                        .is_some_and(|input| input.display == layout::Display::Block)
+                        .is_some_and(|input| input.display == layout::box_model::Display::Block)
             }
             SourceRole::PreparedText => {
                 actual.synthetic
-                    && matches!(actual.layout_input, layout::LayoutInput::InlineText(_))
+                    && matches!(
+                        actual.layout_input,
+                        layout::node::LayoutInput::InlineText(_)
+                    )
             }
         };
         if !matches_role {
@@ -1997,19 +2000,19 @@ fn snapshot_batch(
     Ok(nodes)
 }
 
-fn point(value: layout::Point) -> Result<Point> {
+fn point(value: layout::geometry::Point) -> Result<Point> {
     Ok(Point {
         x: Number::new(value.x)?,
         y: Number::new(value.y)?,
     })
 }
-fn extent(value: layout::Size<Scalar>) -> Result<Extent> {
+fn extent(value: layout::geometry::Size<Scalar>) -> Result<Extent> {
     Ok(Extent {
         width: Number::new(value.width)?,
         height: Number::new(value.height)?,
     })
 }
-fn edges(value: layout::Edges<Scalar>) -> Result<Edges> {
+fn edges(value: layout::geometry::Edges<Scalar>) -> Result<Edges> {
     Ok(Edges {
         top: Number::new(value.top)?,
         right: Number::new(value.right)?,
@@ -2017,13 +2020,13 @@ fn edges(value: layout::Edges<Scalar>) -> Result<Edges> {
         left: Number::new(value.left)?,
     })
 }
-fn rect(value: layout::ScrollRect) -> Result<Rect> {
+fn rect(value: layout::scroll::ScrollRect) -> Result<Rect> {
     Ok(Rect {
         origin: point(value.origin())?,
         size: extent(value.size())?,
     })
 }
-fn flow(value: layout::FlowAxes) -> Flow {
+fn flow(value: layout::geometry::FlowAxes) -> Flow {
     Flow {
         writing_mode: value.writing_mode().into(),
         direction: value.direction().into(),
@@ -2035,17 +2038,17 @@ fn interval(minimum: Scalar, maximum: Scalar) -> Result<Interval> {
         maximum: Number::new(maximum)?,
     })
 }
-fn fact(value: layout::BaselineFactOf) -> Result<Fact> {
+fn fact(value: layout::baseline::BaselineFactOf) -> Result<Fact> {
     Ok(match value {
-        layout::BaselineFactOf::Unknown => Fact::Unknown,
-        layout::BaselineFactOf::Absent => Fact::Absent,
-        layout::BaselineFactOf::Available(c) => Fact::Available {
+        layout::baseline::BaselineFactOf::Unknown => Fact::Unknown,
+        layout::baseline::BaselineFactOf::Absent => Fact::Absent,
+        layout::baseline::BaselineFactOf::Available(c) => Fact::Available {
             axis: c.axis().into(),
             offset: Number::new(c.offset())?,
         },
     })
 }
-fn pair(value: layout::BaselinePairOf) -> Result<Pair> {
+fn pair(value: layout::baseline::BaselinePairOf) -> Result<Pair> {
     Ok(Pair {
         first: fact(value.first())?,
         last: fact(value.last())?,
@@ -2086,7 +2089,7 @@ fn node_facts(output: super::observation::Observation<Scalar>) -> Result<NodeFac
         },
     })
 }
-fn scroll_facts(g: layout::ScrollGeometry) -> Result<ScrollFacts> {
+fn scroll_facts(g: layout::scroll::ScrollGeometry) -> Result<ScrollFacts> {
     let clips = g.overflow_clip();
     let range = g.physical_range();
     let gutters = g.gutters();
@@ -2119,8 +2122,8 @@ fn scroll_facts(g: layout::ScrollGeometry) -> Result<ScrollFacts> {
         resolved_scroll_padding: edges(g.resolved_scroll_padding())?,
         optimal_viewing_region: rect(g.optimal_viewing_region())?,
         scroll_snap_type: match g.scroll_snap_type() {
-            layout::ScrollSnapType::None => Snap::None,
-            layout::ScrollSnapType::Enabled { axis, strictness } => Snap::Enabled {
+            layout::overflow::ScrollSnapType::None => Snap::None,
+            layout::overflow::ScrollSnapType::Enabled { axis, strictness } => Snap::Enabled {
                 axis: axis.into(),
                 strictness: strictness.into(),
             },

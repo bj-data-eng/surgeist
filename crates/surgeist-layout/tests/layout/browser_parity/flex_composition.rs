@@ -46,7 +46,7 @@ pub(super) struct Capture<'a> {
 pub(super) struct Proof {
     root: Box<Node>,
     viewport: Viewport,
-    natural_size: layout::Size,
+    natural_size: layout::geometry::Size,
 }
 
 fn invalid(detail: impl std::fmt::Display) -> Error {
@@ -146,7 +146,7 @@ pub(super) fn bind(
     Ok(Proof {
         root: Box::new(golden.root.clone()),
         viewport: golden.viewport.clone(),
-        natural_size: layout::Size::new(80.0, 40.0),
+        natural_size: layout::geometry::Size::new(80.0, 40.0),
     })
 }
 
@@ -321,16 +321,19 @@ pub(super) fn lower(tree: &mut TestTree, golden: &Golden, proof: &Proof) -> Resu
         .clone();
     let ratio = proof.natural_size.width / proof.natural_size.height;
     input.item_is_replaced = true;
-    input.aspect_ratio = layout::AspectRatio::new(ratio);
-    leaf.layout_input = layout::LayoutInput::box_input(input);
+    input.aspect_ratio = layout::length::AspectRatio::new(ratio);
+    leaf.layout_input = layout::node::LayoutInput::box_input(input);
     tree.replaced_image = Some((node, proof.natural_size));
     Ok(())
 }
 
-pub(super) fn measure(natural: layout::Size, input: layout::LeafMeasureInput) -> layout::Size {
+pub(super) fn measure(
+    natural: layout::geometry::Size,
+    input: layout::tree::LeafMeasureInput,
+) -> layout::geometry::Size {
     let known = input.known_content_size();
     let ratio = natural.width / natural.height;
-    layout::Size::new(
+    layout::geometry::Size::new(
         known
             .width
             .or_else(|| known.height.map(|height| height * ratio))

@@ -2,7 +2,7 @@
 
 These procedures assume you have completed [getting started](getting-started.md).
 They apply to the `surgeist-layout` workspace crate. The [manifest](../Cargo.toml),
-[public crate root](../src/lib.rs), and [Justfile](../Justfile) define the APIs,
+[crate root and its public modules](../src/lib.rs), and [Justfile](../Justfile) define the APIs,
 features, and commands used here.
 
 ## Use higher coordinate precision

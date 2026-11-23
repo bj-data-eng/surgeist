@@ -70,10 +70,10 @@ pub(super) fn phrase_ahem() -> Vec<u8> {
 }
 
 struct PhraseTree {
-    inputs: Vec<layout::LayoutInput>,
-    non_box: layout::NodeInput,
+    inputs: Vec<layout::node::LayoutInput>,
+    non_box: layout::node::NodeInput,
 }
-impl layout::Traverse for PhraseTree {
+impl layout::tree::Traverse for PhraseTree {
     type Node = usize;
     type Scalar = f32;
     type Children<'a> = std::ops::Range<usize>;
@@ -91,15 +91,15 @@ impl layout::Traverse for PhraseTree {
         self.children(node).nth(index).unwrap()
     }
 }
-impl layout::LayoutTree for PhraseTree {
+impl layout::tree::LayoutTree for PhraseTree {
     type MeasureError = Infallible;
-    fn node_input(&self, node: usize) -> &layout::NodeInput {
+    fn node_input(&self, node: usize) -> &layout::node::NodeInput {
         self.inputs[node]
             .as_view()
             .as_box()
             .unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, node: usize) -> layout::LayoutInputView<'_> {
+    fn layout_input(&self, node: usize) -> layout::node::LayoutInputView<'_> {
         self.inputs[node].as_view()
     }
 }
@@ -108,7 +108,7 @@ fn capture(
     system: &mut text::System,
     inline: bool,
 ) -> (
-    layout::CompletedLayoutBatch<usize>,
+    layout::batch::CompletedLayoutBatch<usize>,
     text::prepared::PreparedScope,
     text::prepared::PreparedVirtualSeparator,
 ) {
@@ -246,61 +246,63 @@ fn capture(
     assert_eq!(virtual_separator.view().source_position().get(), 3);
     assert_eq!(scope.view().style().size, 20.0);
     let origin = prepared.origin_views().next().unwrap().handle();
-    let mut inputs = vec![layout::LayoutInput::box_input(layout::NodeInput {
-        display: layout::Display::Block,
-        ..layout::NodeInput::DEFAULT
-    })];
+    let mut inputs = vec![layout::node::LayoutInput::box_input(
+        layout::node::NodeInput {
+            display: layout::box_model::Display::Block,
+            ..layout::node::NodeInput::DEFAULT
+        },
+    )];
     let mut bindings = vec![];
     if inline {
         for (kind, control) in [
             (
-                layout::InlineBoundaryKind::Start,
+                layout::inline::InlineBoundaryKind::Start,
                 scope.view().entry_control().unwrap(),
             ),
             (
-                layout::InlineBoundaryKind::End,
+                layout::inline::InlineBoundaryKind::End,
                 scope.view().exit_control().unwrap(),
             ),
         ] {
-            if kind == layout::InlineBoundaryKind::End {
-                inputs.push(layout::LayoutInput::InlineText(
-                    layout::TextParticipation::new(origin.clone()),
+            if kind == layout::inline::InlineBoundaryKind::End {
+                inputs.push(layout::node::LayoutInput::InlineText(
+                    layout::text_layout::TextParticipation::new(origin.clone()),
                 ));
             }
-            bindings.push(layout::TextControlBinding {
+            bindings.push(layout::text_layout::TextControlBinding {
                 occurrence: control,
                 node: inputs.len(),
             });
-            inputs.push(layout::LayoutInput::InlineBoundary(
-                layout::InlineBoundaryInput::contribution(
+            inputs.push(layout::node::LayoutInput::InlineBoundary(
+                layout::inline::InlineBoundaryInput::contribution(
                     kind,
-                    layout::InlineMetrics::try_new(
-                        surgeist_layout::InlineBaselineContext::Physical,
+                    layout::inline::InlineMetrics::try_new(
+                        surgeist_layout::baseline::InlineBaselineContext::Physical,
                         16.0,
                         20.0,
                     )
                     .unwrap(),
-                    layout::InlineBoundaryEdge::ZERO,
+                    layout::inline::InlineBoundaryEdge::ZERO,
                 )
                 .unwrap(),
             ));
         }
     } else {
-        inputs.push(layout::LayoutInput::InlineText(
-            layout::TextParticipation::new(origin.clone()),
+        inputs.push(layout::node::LayoutInput::InlineText(
+            layout::text_layout::TextParticipation::new(origin.clone()),
         ));
     }
     let tree = PhraseTree {
         inputs,
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let captured = layout::LayoutFlowInput::try_new(
+    let captured = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
-        vec![layout::TextParagraphBinding {
-            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+        vec![layout::text_layout::TextParagraphBinding {
+            inline_box_fragments: layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             nodes: (1..tree.inputs.len()).collect(),
-            origins: vec![layout::TextOriginBinding {
+            origins: vec![layout::text_layout::TextOriginBinding {
                 origin,
                 node: if inline { 2 } else { 1 },
             }],
@@ -310,7 +312,7 @@ fn capture(
             container: 0,
             line_strut: None,
         }],
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -323,12 +325,15 @@ fn capture(
         &captured,
         0,
         NativeViewport::new(
-            layout::Size::new(Some(200.0), None),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::geometry::Size::new(Some(200.0), None),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
         )
-        .request(layout::Size::new(
-            layout::SizingOperation::Normal,
-            layout::SizingOperation::Normal,
+        .request(layout::geometry::Size::new(
+            layout::constraint::SizingOperation::Normal,
+            layout::constraint::SizingOperation::Normal,
         )),
     )
     .unwrap();
@@ -363,19 +368,24 @@ fn phrase_separator_retains_actual_scope_font_pair_and_source_free_selection() {
         let scoped = batch
             .final_inline_fragments()
             .iter()
-            .filter(|entry| matches!(entry.owner(), layout::InlineFragmentOwner::Scope(_)))
+            .filter(|entry| {
+                matches!(
+                    entry.owner(),
+                    layout::text_layout::InlineFragmentOwner::Scope(_)
+                )
+            })
             .collect::<Vec<_>>();
         assert_eq!(scoped.len(), 1);
-        let layout::InlineFragmentOwner::Scope(binding) = scoped[0].owner() else {
+        let layout::text_layout::InlineFragmentOwner::Scope(binding) = scoped[0].owner() else {
             unreachable!()
         };
         assert_eq!(binding.scope, scope);
         assert_eq!(
             binding.association,
             if inline {
-                layout::TextScopeAssociation::Inline { start: 1, end: 3 }
+                layout::text_layout::TextScopeAssociation::Inline { start: 1, end: 3 }
             } else {
-                layout::TextScopeAssociation::ParagraphContainer(0)
+                layout::text_layout::TextScopeAssociation::ParagraphContainer(0)
             }
         );
         let fragment = scoped[0].fragment().finalized_fragment();

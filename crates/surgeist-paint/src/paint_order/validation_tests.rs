@@ -1,7 +1,7 @@
 use super::*;
 use crate::accounting::{OperationKind, PaintLimits, PaintOptions, PaintPhase, PaintReport};
 use crate::stacking::{BoxFacts, ContextEffect, Position, ZIndex};
-use surgeist_layout::ItemOrder;
+use surgeist_layout::node::ItemOrder;
 use surgeist_ledger::{Limits, ProfileMode, Tariffs};
 
 #[derive(Debug, Eq, PartialEq)]

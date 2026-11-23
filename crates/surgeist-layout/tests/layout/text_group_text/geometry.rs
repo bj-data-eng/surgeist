@@ -1,9 +1,9 @@
 use super::*;
 
-fn pair_geometry<S: l::LayoutScalar>(
-    direction: l::Direction,
-    group: l::TextGroupAlign,
-    align: l::TextAlign,
+fn pair_geometry<S: l::scalar::LayoutScalar>(
+    direction: l::geometry::Direction,
+    group: l::text_flow::TextGroupAlign,
+    align: l::text_flow::TextAlign,
     expected: [f64; 2],
     insets: (f64, f64),
 ) {
@@ -56,7 +56,7 @@ fn pair_geometry<S: l::LayoutScalar>(
         );
         assert_eq!(
             request.context.line_box_direction,
-            if direction == l::Direction::Ltr {
+            if direction == l::geometry::Direction::Ltr {
                 t::selection::LineBoxDirection::LeftToRight
             } else {
                 t::selection::LineBoxDirection::RightToLeft
@@ -117,49 +117,59 @@ fn pair_geometry<S: l::LayoutScalar>(
     assert_eq!(selection.rects()[0].rect().size.width, 10.0);
     assert_eq!(
         node_output(&batch, 0).size,
-        l::Size::new(S::from_f64(100.0), S::from_f64(20.0))
+        l::geometry::Size::new(S::from_f64(100.0), S::from_f64(20.0))
     );
 }
-fn alignment_matrix<S: l::LayoutScalar>() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+fn alignment_matrix<S: l::scalar::LayoutScalar>() {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         for (group, expected, insets) in [
-            (l::TextGroupAlign::None, [20.0, 30.0], (0.0, 0.0)),
-            (l::TextGroupAlign::Left, [0.0, 10.0], (0.0, 40.0)),
-            (l::TextGroupAlign::Right, [40.0, 50.0], (40.0, 0.0)),
+            (l::text_flow::TextGroupAlign::None, [20.0, 30.0], (0.0, 0.0)),
+            (l::text_flow::TextGroupAlign::Left, [0.0, 10.0], (0.0, 40.0)),
             (
-                l::TextGroupAlign::Start,
-                if direction == l::Direction::Ltr {
+                l::text_flow::TextGroupAlign::Right,
+                [40.0, 50.0],
+                (40.0, 0.0),
+            ),
+            (
+                l::text_flow::TextGroupAlign::Start,
+                if direction == l::geometry::Direction::Ltr {
                     [0.0, 10.0]
                 } else {
                     [40.0, 50.0]
                 },
-                if direction == l::Direction::Ltr {
+                if direction == l::geometry::Direction::Ltr {
                     (0.0, 40.0)
                 } else {
                     (40.0, 0.0)
                 },
             ),
             (
-                l::TextGroupAlign::End,
-                if direction == l::Direction::Ltr {
+                l::text_flow::TextGroupAlign::End,
+                if direction == l::geometry::Direction::Ltr {
                     [40.0, 50.0]
                 } else {
                     [0.0, 10.0]
                 },
-                if direction == l::Direction::Ltr {
+                if direction == l::geometry::Direction::Ltr {
                     (40.0, 0.0)
                 } else {
                     (0.0, 40.0)
                 },
             ),
         ] {
-            pair_geometry::<S>(direction, group, l::TextAlign::Center, expected, insets);
+            pair_geometry::<S>(
+                direction,
+                group,
+                l::text_flow::TextAlign::Center,
+                expected,
+                insets,
+            );
         }
         pair_geometry::<S>(
             direction,
-            l::TextGroupAlign::Center,
-            l::TextAlign::Start,
-            if direction == l::Direction::Ltr {
+            l::text_flow::TextGroupAlign::Center,
+            l::text_flow::TextAlign::Start,
+            if direction == l::geometry::Direction::Ltr {
                 [20.0, 20.0]
             } else {
                 [20.0, 40.0]
@@ -174,12 +184,12 @@ fn real_text_group_padding_precedes_ordinary_alignment_without_replacing_the_out
     alignment_matrix::<f64>();
 }
 
-fn justify<S: l::LayoutScalar>(direction: l::Direction) {
-    let mut host = Host::<S>::new(direction, l::TextGroupAlign::Center);
+fn justify<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
+    let mut host = Host::<S>::new(direction, l::text_flow::TextGroupAlign::Center);
     host.box_change(0, |root| {
-        root.text_align = l::TextAlign::Justify;
-        root.text_align_last = l::TextAlignLast::Justify;
-        root.text_justification = l::TextJustification::Spaces;
+        root.text_align = l::text_flow::TextAlign::Justify;
+        root.text_align_last = l::text_flow::TextAlignLast::Justify;
+        root.text_justification = l::text_flow::TextJustification::Spaces;
     });
     let paragraph = Paragraph::pair(&mut host, 0);
     let batch = compute(&host, &[&paragraph], &[]);
@@ -248,14 +258,17 @@ fn justify<S: l::LayoutScalar>(direction: l::Direction) {
 }
 #[test]
 fn centered_real_space_justification_expands_zero_and_twenty_inside_the_common_sixty_unit_frame() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         justify::<f32>(direction);
         justify::<f64>(direction);
     }
 }
 
-fn natural_frames<S: l::LayoutScalar>() {
-    let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Center);
+fn natural_frames<S: l::scalar::LayoutScalar>() {
+    let mut host = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::Center,
+    );
     let mut tabs = style();
     tabs.white_space = t::style::WhiteSpace::Preserve;
     tabs.tab_size = t::tabs::TabSize::length(40.0).unwrap();
@@ -310,7 +323,10 @@ fn natural_frames<S: l::LayoutScalar>() {
     assert_eq!(first, [(35, 20.0), (36, 60.0)]);
     assert_eq!(glyph_extents(layout)[1], (20.0, 80.0));
 
-    let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Center);
+    let mut host = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::Center,
+    );
     let mut hanging = style();
     hanging.hanging_punctuation = t::style::HangingPunctuation::new(
         false,
@@ -372,8 +388,11 @@ fn real_tabs_and_hanging_keep_their_outer_natural_basis_before_group_padding() {
     natural_frames::<f64>();
 }
 
-fn empty_receivers<S: l::LayoutScalar>(extra_force: bool) {
-    let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Center);
+fn empty_receivers<S: l::scalar::LayoutScalar>(extra_force: bool) {
+    let mut host = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::Center,
+    );
     let parts = if extra_force {
         vec![
             Part::Text("AA A A"),
@@ -455,8 +474,11 @@ fn real_forced_empty_line_participates_while_the_terminal_phantom_retains_only_c
     }
 }
 
-fn mixed<S: l::LayoutScalar>() {
-    let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Center);
+fn mixed<S: l::scalar::LayoutScalar>() {
+    let mut host = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::Center,
+    );
     let paragraph = Paragraph::new(
         &mut host,
         0,
@@ -506,7 +528,7 @@ fn mixed<S: l::LayoutScalar>() {
         node_output_of_kind(
             &batch,
             start,
-            crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary)
+            crate::layout::observation::Kind::NonBox(l::fragmentation::NonBoxKind::InlineBoundary)
         )
         .location
         .x,
@@ -516,7 +538,7 @@ fn mixed<S: l::LayoutScalar>() {
         node_output_of_kind(
             &batch,
             end,
-            crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary)
+            crate::layout::observation::Kind::NonBox(l::fragmentation::NonBoxKind::InlineBoundary)
         )
         .location
         .x,
@@ -548,18 +570,25 @@ fn actual_atomic_exterior_endpoints_controls_and_independent_interior_share_the_
     mixed::<f64>();
 }
 
-fn real_float_bands<S: l::LayoutScalar>() {
-    let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Center);
+fn real_float_bands<S: l::scalar::LayoutScalar>() {
+    let mut host = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::Center,
+    );
     let float = host.push(
         Some(0),
-        l::LayoutInputOf::box_input(l::NodeInputOf {
-            display: l::Display::Block,
-            float: l::Float::Left,
-            size: l::Size::new(
-                l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(20.0)).unwrap()),
-                l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(10.0)).unwrap()),
+        l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+            display: l::box_model::Display::Block,
+            float: l::box_model::Float::Left,
+            size: l::geometry::Size::new(
+                l::sizing::PreferredSizeOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(20.0)).unwrap(),
+                ),
+                l::sizing::PreferredSizeOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(10.0)).unwrap(),
+                ),
             ),
-            ..l::NodeInputOf::default()
+            ..l::node::NodeInputOf::default()
         }),
     );
     let paragraph = Paragraph::new(
@@ -605,10 +634,13 @@ fn real_float_bands<S: l::LayoutScalar>() {
         [(35.0, 85.0), (15.0, 75.0)]
     );
     let actual_float = node_output(&batch, float);
-    assert_eq!(actual_float.location, l::Point::new(S::ZERO, S::ZERO));
+    assert_eq!(
+        actual_float.location,
+        l::geometry::Point::new(S::ZERO, S::ZERO)
+    );
     assert_eq!(
         actual_float.size,
-        l::Size::new(S::from_f64(20.0), S::from_f64(10.0))
+        l::geometry::Size::new(S::from_f64(20.0), S::from_f64(10.0))
     );
 }
 #[test]
@@ -617,12 +649,15 @@ fn common_text_padding_uses_actual_offset_float_bands_and_does_not_move_the_floa
     real_float_bands::<f64>();
 }
 
-fn signed_indent_and_overflow<S: l::LayoutScalar>() {
+fn signed_indent_and_overflow<S: l::scalar::LayoutScalar>() {
     for (indent, inset, start) in [(-10.0, 25.0, 15.0), (10.0, 15.0, 25.0)] {
-        let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Center);
+        let mut host = Host::<S>::new(
+            l::geometry::Direction::Ltr,
+            l::text_flow::TextGroupAlign::Center,
+        );
         host.box_change(0, |root| {
-            root.text_indent = l::TextIndentOf {
-                amount: l::LengthPercentageOf::px(S::from_f64(indent)).unwrap(),
+            root.text_indent = l::text_flow::TextIndentOf {
+                amount: l::length::LengthPercentageOf::px(S::from_f64(indent)).unwrap(),
                 each_line: true,
                 hanging: false,
             }
@@ -647,8 +682,11 @@ fn signed_indent_and_overflow<S: l::LayoutScalar>() {
             assert_eq!(context.available_inline, Some(100.0));
         }
     }
-    let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::Center);
-    host.box_change(0, |root| root.text_align = l::TextAlign::Center);
+    let mut host = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::Center,
+    );
+    host.box_change(0, |root| root.text_align = l::text_flow::TextAlign::Center);
     let paragraph = Paragraph::new(
         &mut host,
         0,

@@ -62,7 +62,7 @@ See [getting started](docs/getting-started.md) for context planning and the
 This request orders one already-resolved canvas appearance record:
 
 ```rust
-use surgeist_layout::SourceIndex;
+use surgeist_layout::node::SourceIndex;
 use surgeist_ledger::ProfileMode;
 use surgeist_paint::accounting::{PaintLimits, PaintOptions, ResourceKind};
 use surgeist_paint::paint_order::{
@@ -108,7 +108,7 @@ explicit native CSS paint facts and do not authenticate computed Style.
 For a concrete gradient box, supply its size separately from its placement:
 
 ```rust
-use surgeist_layout::{Point, Size};
+use surgeist_layout::geometry::{Point, Size};
 use surgeist_ledger::ProfileMode;
 use surgeist_paint::accounting::{PaintLimits, PaintOptions};
 use surgeist_paint::linear_gradient::{LinearGradientDirection, resolve_linear_gradient};
@@ -127,7 +127,7 @@ For radial geometry, select a native size request and an optional already-used
 physical center. This side-sized ellipse has a rightward ray length of 100:
 
 ```rust
-use surgeist_layout::{Point, Size};
+use surgeist_layout::geometry::{Point, Size};
 use surgeist_ledger::ProfileMode;
 use surgeist_paint::accounting::{PaintLimits, PaintOptions};
 use surgeist_paint::radial_gradient::{

@@ -1,7 +1,7 @@
 use core::error::Error;
 use std::fmt;
 
-use surgeist_layout::{ItemOrder, SourceIndex};
+use surgeist_layout::node::{ItemOrder, SourceIndex};
 
 /// A slot in the immutable box-fact slice passed to one planning operation.
 /// This is not a DOM identity. Equal external identities can generate distinct boxes.

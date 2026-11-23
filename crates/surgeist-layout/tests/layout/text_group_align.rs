@@ -4,12 +4,12 @@ use surgeist_layout as l;
 use surgeist_text::supplied_line::BidiLevel;
 
 #[derive(Clone)]
-struct Tree<S: l::LayoutScalar> {
-    inputs: Vec<l::LayoutInputOf<S>>,
+struct Tree<S: l::scalar::LayoutScalar> {
+    inputs: Vec<l::node::LayoutInputOf<S>>,
     children: Vec<Vec<u32>>,
-    non_box: l::NodeInputOf<S>,
+    non_box: l::node::NodeInputOf<S>,
 }
-impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for Tree<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -26,79 +26,87 @@ impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
         self.children[node as usize][index]
     }
 }
-impl<S: l::LayoutScalar> l::LayoutTree for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for Tree<S> {
     type MeasureError = Infallible;
-    fn node_input(&self, node: u32) -> &l::NodeInputOf<S> {
+    fn node_input(&self, node: u32) -> &l::node::NodeInputOf<S> {
         self.inputs[node as usize].as_box().unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, node: u32) -> l::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: u32) -> l::node::LayoutInputViewOf<'_, S> {
         self.inputs[node as usize].as_view()
     }
 }
-fn n<S: l::LayoutScalar>(x: f64) -> S {
+fn n<S: l::scalar::LayoutScalar>(x: f64) -> S {
     S::from_f64(x)
 }
-fn px<S: l::LayoutScalar>(x: f64) -> l::PreferredSizeOf<S> {
-    l::PreferredSizeOf::value(l::LengthPercentageOf::px(n(x)).unwrap())
+fn px<S: l::scalar::LayoutScalar>(x: f64) -> l::sizing::PreferredSizeOf<S> {
+    l::sizing::PreferredSizeOf::value(l::length::LengthPercentageOf::px(n(x)).unwrap())
 }
-fn size<S: l::LayoutScalar>(mode: l::WritingMode, inline: f64, block: f64) -> l::Size<S> {
-    match mode {
-        l::WritingMode::HorizontalTb => l::Size::new(n(inline), n(block)),
-        _ => l::Size::new(n(block), n(inline)),
-    }
-}
-fn block<S: l::LayoutScalar>(
-    mode: l::WritingMode,
-    direction: l::Direction,
-    width: f64,
-) -> l::NodeInputOf<S> {
-    l::NodeInputOf {
-        display: l::Display::Block,
-        writing_mode: mode,
-        direction,
-        text_align: l::TextAlign::Start,
-        text_align_last: l::TextAlignLast::Start,
-        size: if mode == l::WritingMode::HorizontalTb {
-            l::Size::new(px(width), l::PreferredSizeOf::AUTO)
-        } else {
-            l::Size::new(l::PreferredSizeOf::AUTO, px(width))
-        },
-        ..l::NodeInputOf::default()
-    }
-}
-fn atomic<S: l::LayoutScalar>(
-    mode: l::WritingMode,
-    direction: l::Direction,
+fn size<S: l::scalar::LayoutScalar>(
+    mode: l::geometry::WritingMode,
     inline: f64,
-) -> l::LayoutInputOf<S> {
-    let physical = size::<S>(mode, inline, 10.0);
-    l::LayoutInputOf::box_input(l::NodeInputOf {
-        display: l::Display::InlineBlock,
+    block: f64,
+) -> l::geometry::Size<S> {
+    match mode {
+        l::geometry::WritingMode::HorizontalTb => l::geometry::Size::new(n(inline), n(block)),
+        _ => l::geometry::Size::new(n(block), n(inline)),
+    }
+}
+fn block<S: l::scalar::LayoutScalar>(
+    mode: l::geometry::WritingMode,
+    direction: l::geometry::Direction,
+    width: f64,
+) -> l::node::NodeInputOf<S> {
+    l::node::NodeInputOf {
+        display: l::box_model::Display::Block,
         writing_mode: mode,
         direction,
-        vertical_align: l::VerticalAlignOf::Baseline,
-        atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
-            BidiLevel::try_new(u8::from(direction == l::Direction::Rtl)).unwrap(),
-            l::InlineBreakOpportunity::Allowed,
+        text_align: l::text_flow::TextAlign::Start,
+        text_align_last: l::text_flow::TextAlignLast::Start,
+        size: if mode == l::geometry::WritingMode::HorizontalTb {
+            l::geometry::Size::new(px(width), l::sizing::PreferredSizeOf::AUTO)
+        } else {
+            l::geometry::Size::new(l::sizing::PreferredSizeOf::AUTO, px(width))
+        },
+        ..l::node::NodeInputOf::default()
+    }
+}
+fn atomic<S: l::scalar::LayoutScalar>(
+    mode: l::geometry::WritingMode,
+    direction: l::geometry::Direction,
+    inline: f64,
+) -> l::node::LayoutInputOf<S> {
+    let physical = size::<S>(mode, inline, 10.0);
+    l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+        display: l::box_model::Display::InlineBlock,
+        writing_mode: mode,
+        direction,
+        vertical_align: l::inline::VerticalAlignOf::Baseline,
+        atomic_inline_participation: Some(l::inline::AtomicInlineParticipation::new(
+            BidiLevel::try_new(u8::from(direction == l::geometry::Direction::Rtl)).unwrap(),
+            l::text_flow::InlineBreakOpportunity::Allowed,
         )),
-        size: l::Size::new(
-            l::PreferredSizeOf::value(l::LengthPercentageOf::px(physical.width).unwrap()),
-            l::PreferredSizeOf::value(l::LengthPercentageOf::px(physical.height).unwrap()),
+        size: l::geometry::Size::new(
+            l::sizing::PreferredSizeOf::value(
+                l::length::LengthPercentageOf::px(physical.width).unwrap(),
+            ),
+            l::sizing::PreferredSizeOf::value(
+                l::length::LengthPercentageOf::px(physical.height).unwrap(),
+            ),
         ),
-        ..l::NodeInputOf::default()
+        ..l::node::NodeInputOf::default()
     })
 }
-fn forced<S: l::LayoutScalar>(
-    mode: l::WritingMode,
-    direction: l::Direction,
-) -> l::LayoutInputOf<S> {
-    l::LayoutInputOf::line_break(
-        l::LineBreakInputOf::new()
+fn forced<S: l::scalar::LayoutScalar>(
+    mode: l::geometry::WritingMode,
+    direction: l::geometry::Direction,
+) -> l::node::LayoutInputOf<S> {
+    l::node::LayoutInputOf::line_break(
+        l::text_flow::LineBreakInputOf::new()
             .with_writing_mode(mode)
             .with_direction(direction)
             .with_metrics(
-                l::InlineMetricsOf::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
+                l::inline::InlineMetricsOf::try_new(
+                    surgeist_layout::baseline::InlineBaselineContext::Physical,
                     n(10.0),
                     n(10.0),
                 )
@@ -106,8 +114,8 @@ fn forced<S: l::LayoutScalar>(
             ),
     )
 }
-impl<S: l::LayoutScalar> Tree<S> {
-    fn new(inputs: Vec<l::LayoutInputOf<S>>, edges: &[(u32, &[u32])]) -> Self {
+impl<S: l::scalar::LayoutScalar> Tree<S> {
+    fn new(inputs: Vec<l::node::LayoutInputOf<S>>, edges: &[(u32, &[u32])]) -> Self {
         let mut children = vec![vec![]; inputs.len()];
         for &(node, list) in edges {
             children[node as usize] = list.to_vec();
@@ -115,39 +123,43 @@ impl<S: l::LayoutScalar> Tree<S> {
         Self {
             inputs,
             children,
-            non_box: l::NodeInputOf::non_box(),
+            non_box: l::node::NodeInputOf::non_box(),
         }
     }
-    fn update(&mut self, node: u32, f: impl FnOnce(&mut l::NodeInputOf<S>)) {
+    fn update(&mut self, node: u32, f: impl FnOnce(&mut l::node::NodeInputOf<S>)) {
         let mut input = self.inputs[node as usize].as_box().unwrap().clone();
         f(&mut input);
-        self.inputs[node as usize] = l::LayoutInputOf::box_input(input);
+        self.inputs[node as usize] = l::node::LayoutInputOf::box_input(input);
     }
-    fn compute(&self, mode: l::WritingMode, changed: &[u32]) -> l::CompletedLayoutBatchOf<u32, S> {
-        let available = if mode == l::WritingMode::HorizontalTb {
+    fn compute(
+        &self,
+        mode: l::geometry::WritingMode,
+        changed: &[u32],
+    ) -> l::batch::CompletedLayoutBatchOf<u32, S> {
+        let available = if mode == l::geometry::WritingMode::HorizontalTb {
             crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(n(100.0)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(n(100.0)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             )
         } else {
             crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(None, Some(n(100.0))),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(None, Some(n(100.0))),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             )
         };
         let request = {
             let sizing_request = available;
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
-                    surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::tree::LayoutTree::node_input(self, 0).writing_mode,
+                    surgeist_layout::tree::LayoutTree::node_input(self, 0).direction,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -159,18 +171,18 @@ impl<S: l::LayoutScalar> Tree<S> {
         batch
     }
 }
-fn numeric<S: l::LayoutScalar>(batch: &l::CompletedLayoutBatchOf<u32, S>) {
+fn numeric<S: l::scalar::LayoutScalar>(batch: &l::batch::CompletedLayoutBatchOf<u32, S>) {
     assert!(batch.placed_text().is_empty());
     assert!(batch.final_inline_fragments().is_empty());
 }
-fn node<S: l::LayoutScalar>(
-    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+fn node<S: l::scalar::LayoutScalar>(
+    entries: (&l::batch::CompletedLayoutBatchOf<u32, S>, bool),
     id: u32,
 ) -> crate::layout::observation::Observation<S> {
     crate::layout::observation::observe(entries, id, crate::layout::observation::Kind::Box)
 }
-fn node_of_kind<S: l::LayoutScalar>(
-    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+fn node_of_kind<S: l::scalar::LayoutScalar>(
+    entries: (&l::batch::CompletedLayoutBatchOf<u32, S>, bool),
     id: u32,
     expected_kind: crate::layout::observation::Kind,
 ) -> crate::layout::observation::Observation<S> {
@@ -179,41 +191,43 @@ fn node_of_kind<S: l::LayoutScalar>(
 // Independent physical rectangles from the five writing-mode definitions.
 // The argument u is measured from LINE-LEFT, not logical inline-start. This
 // deliberately does not call FlowAxes or any production alignment helper.
-fn point<S: l::LayoutScalar>(
-    mode: l::WritingMode,
+fn point<S: l::scalar::LayoutScalar>(
+    mode: l::geometry::WritingMode,
     u: f64,
     b: f64,
     inline: f64,
     block: f64,
     total_block: f64,
-) -> l::Point<S> {
+) -> l::geometry::Point<S> {
     match mode {
-        l::WritingMode::HorizontalTb => l::Point::new(n(u), n(b)),
-        l::WritingMode::VerticalRl | l::WritingMode::SidewaysRl => {
-            l::Point::new(n(total_block - b - block), n(u))
+        l::geometry::WritingMode::HorizontalTb => l::geometry::Point::new(n(u), n(b)),
+        l::geometry::WritingMode::VerticalRl | l::geometry::WritingMode::SidewaysRl => {
+            l::geometry::Point::new(n(total_block - b - block), n(u))
         }
-        l::WritingMode::VerticalLr => l::Point::new(n(b), n(u)),
-        l::WritingMode::SidewaysLr => l::Point::new(n(b), n(100.0 - u - inline)),
+        l::geometry::WritingMode::VerticalLr => l::geometry::Point::new(n(b), n(u)),
+        l::geometry::WritingMode::SidewaysLr => {
+            l::geometry::Point::new(n(b), n(100.0 - u - inline))
+        }
     }
 }
-fn two_rows<S: l::LayoutScalar>(
-    mode: l::WritingMode,
-    direction: l::Direction,
-    group: l::TextGroupAlign,
-    align: l::TextAlign,
+fn two_rows<S: l::scalar::LayoutScalar>(
+    mode: l::geometry::WritingMode,
+    direction: l::geometry::Direction,
+    group: l::text_flow::TextGroupAlign,
+    align: l::text_flow::TextAlign,
 ) -> Tree<S> {
     let mut root = block(mode, direction, 100.0);
     root.text_group_align = group;
     root.text_align = align;
     root.text_align_last = match align {
-        l::TextAlign::Center => l::TextAlignLast::Center,
-        l::TextAlign::End => l::TextAlignLast::End,
-        l::TextAlign::Justify => l::TextAlignLast::Justify,
-        _ => l::TextAlignLast::Start,
+        l::text_flow::TextAlign::Center => l::text_flow::TextAlignLast::Center,
+        l::text_flow::TextAlign::End => l::text_flow::TextAlignLast::End,
+        l::text_flow::TextAlign::Justify => l::text_flow::TextAlignLast::Justify,
+        _ => l::text_flow::TextAlignLast::Start,
     };
     Tree::new(
         vec![
-            l::LayoutInputOf::box_input(root),
+            l::node::LayoutInputOf::box_input(root),
             atomic(mode, direction, 60.0),
             forced(mode, direction),
             atomic(mode, direction, 40.0),
@@ -221,10 +235,10 @@ fn two_rows<S: l::LayoutScalar>(
         &[(0, &[1, 2, 3])],
     )
 }
-fn assert_two_rows<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
-    mode: l::WritingMode,
-    direction: l::Direction,
+fn assert_two_rows<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
+    mode: l::geometry::WritingMode,
+    direction: l::geometry::Direction,
     starts: [f64; 2],
 ) {
     numeric(batch);
@@ -237,22 +251,22 @@ fn assert_two_rows<S: l::LayoutScalar>(
             [(1, 60.0, 0.0, starts[0], 0), (3, 40.0, 10.0, starts[1], 2)]
         {
             let item = node(entries, id);
-            assert_eq!(item.source_index, l::SourceIndex::new(source));
+            assert_eq!(item.source_index, l::node::SourceIndex::new(source));
             assert_eq!(item.size, size(mode, width, 10.0));
             assert_eq!(item.location, point(mode, start, top, width, 10.0, 20.0));
-            assert_eq!(item.margin, l::Edges::all(S::ZERO));
-            assert_eq!(item.border, l::Edges::all(S::ZERO));
-            assert_eq!(item.padding, l::Edges::all(S::ZERO));
+            assert_eq!(item.margin, l::geometry::Edges::all(S::ZERO));
+            assert_eq!(item.border, l::geometry::Edges::all(S::ZERO));
+            assert_eq!(item.padding, l::geometry::Edges::all(S::ZERO));
         }
         let br = node_of_kind(
             entries,
             2,
-            crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak),
+            crate::layout::observation::Kind::NonBox(l::fragmentation::NonBoxKind::LineBreak),
         );
-        assert_eq!(br.source_index, l::SourceIndex::new(1));
-        assert_eq!(br.size, l::Size::ZERO);
+        assert_eq!(br.source_index, l::node::SourceIndex::new(1));
+        assert_eq!(br.size, l::geometry::Size::ZERO);
         let end = starts[0]
-            + if direction == l::Direction::Ltr {
+            + if direction == l::geometry::Direction::Ltr {
                 60.0
             } else {
                 0.0
@@ -260,52 +274,71 @@ fn assert_two_rows<S: l::LayoutScalar>(
         assert_eq!(br.location, point(mode, end, 10.0, 0.0, 0.0, 20.0));
     }
 }
-fn matrix<S: l::LayoutScalar>() {
-    assert_eq!(l::TextGroupAlign::default(), l::TextGroupAlign::None);
+fn matrix<S: l::scalar::LayoutScalar>() {
     assert_eq!(
-        l::NodeInputOf::<S>::default().text_group_align,
-        l::TextGroupAlign::None
+        l::text_flow::TextGroupAlign::default(),
+        l::text_flow::TextGroupAlign::None
+    );
+    assert_eq!(
+        l::node::NodeInputOf::<S>::default().text_group_align,
+        l::text_flow::TextGroupAlign::None
     );
     for mode in [
-        l::WritingMode::HorizontalTb,
-        l::WritingMode::VerticalRl,
-        l::WritingMode::VerticalLr,
-        l::WritingMode::SidewaysRl,
-        l::WritingMode::SidewaysLr,
+        l::geometry::WritingMode::HorizontalTb,
+        l::geometry::WritingMode::VerticalRl,
+        l::geometry::WritingMode::VerticalLr,
+        l::geometry::WritingMode::SidewaysRl,
+        l::geometry::WritingMode::SidewaysLr,
     ] {
-        for direction in [l::Direction::Ltr, l::Direction::Rtl] {
-            let rtl = direction == l::Direction::Rtl;
+        for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
+            let rtl = direction == l::geometry::Direction::Rtl;
             for (group, align, starts) in [
-                (l::TextGroupAlign::None, l::TextAlign::Center, [20.0, 30.0]),
-                (l::TextGroupAlign::Left, l::TextAlign::Center, [0.0, 10.0]),
-                (l::TextGroupAlign::Right, l::TextAlign::Center, [40.0, 50.0]),
+                (
+                    l::text_flow::TextGroupAlign::None,
+                    l::text_flow::TextAlign::Center,
+                    [20.0, 30.0],
+                ),
+                (
+                    l::text_flow::TextGroupAlign::Left,
+                    l::text_flow::TextAlign::Center,
+                    [0.0, 10.0],
+                ),
+                (
+                    l::text_flow::TextGroupAlign::Right,
+                    l::text_flow::TextAlign::Center,
+                    [40.0, 50.0],
+                ),
                 // Numeric Justify has no spacing slots. Its actual
                 // unexpandable Center fallback uses the reduced frame and
                 // leaves the 60/40 atomics unexpanded.
-                (l::TextGroupAlign::Left, l::TextAlign::Justify, [0.0, 10.0]),
                 (
-                    l::TextGroupAlign::Right,
-                    l::TextAlign::Justify,
+                    l::text_flow::TextGroupAlign::Left,
+                    l::text_flow::TextAlign::Justify,
+                    [0.0, 10.0],
+                ),
+                (
+                    l::text_flow::TextGroupAlign::Right,
+                    l::text_flow::TextAlign::Justify,
                     [40.0, 50.0],
                 ),
                 (
-                    l::TextGroupAlign::Center,
-                    l::TextAlign::Start,
+                    l::text_flow::TextGroupAlign::Center,
+                    l::text_flow::TextAlign::Start,
                     if rtl { [20.0, 40.0] } else { [20.0, 20.0] },
                 ),
                 (
-                    l::TextGroupAlign::Center,
-                    l::TextAlign::End,
+                    l::text_flow::TextGroupAlign::Center,
+                    l::text_flow::TextAlign::End,
                     if rtl { [20.0, 20.0] } else { [20.0, 40.0] },
                 ),
                 (
-                    l::TextGroupAlign::Start,
-                    l::TextAlign::Start,
+                    l::text_flow::TextGroupAlign::Start,
+                    l::text_flow::TextAlign::Start,
                     if rtl { [40.0, 60.0] } else { [0.0, 0.0] },
                 ),
                 (
-                    l::TextGroupAlign::End,
-                    l::TextAlign::Start,
+                    l::text_flow::TextGroupAlign::End,
+                    l::text_flow::TextAlign::Start,
                     if rtl { [0.0, 20.0] } else { [40.0, 40.0] },
                 ),
             ] {
@@ -320,11 +353,12 @@ fn matrix<S: l::LayoutScalar>() {
                         .map(|(node, view)| (
                             node,
                             match view {
-                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(
+                                    view,
+                                ) => view.unrounded_entry(),
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
                                     view.unrounded_entry(),
-                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
-                                    view.unrounded_entry(),
-                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))
@@ -334,11 +368,12 @@ fn matrix<S: l::LayoutScalar>() {
                         .map(|(node, view)| (
                             node,
                             match view {
-                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(
+                                    view,
+                                ) => view.unrounded_entry(),
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
                                     view.unrounded_entry(),
-                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
-                                    view.unrounded_entry(),
-                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))
@@ -350,11 +385,12 @@ fn matrix<S: l::LayoutScalar>() {
                         .map(|(node, view)| (
                             node,
                             match view {
-                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(
+                                    view,
+                                ) => view.final_entry(),
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
                                     view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
-                                    view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))
@@ -364,11 +400,12 @@ fn matrix<S: l::LayoutScalar>() {
                         .map(|(node, view)| (
                             node,
                             match view {
-                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(
+                                    view,
+                                ) => view.final_entry(),
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
                                     view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
-                                    view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))
@@ -384,14 +421,14 @@ fn numeric_group_matrix_preserves_rows_controls_and_axes() {
     matrix::<f64>();
 }
 
-fn ordered_slots<S: l::LayoutScalar>() {
-    let mode = l::WritingMode::HorizontalTb;
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+fn ordered_slots<S: l::scalar::LayoutScalar>() {
+    let mode = l::geometry::WritingMode::HorizontalTb;
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         let mut root = block(mode, direction, 100.0);
-        root.text_group_align = l::TextGroupAlign::Center;
+        root.text_group_align = l::text_flow::TextGroupAlign::Center;
         let tree = Tree::<S>::new(
             vec![
-                l::LayoutInputOf::box_input(root),
+                l::node::LayoutInputOf::box_input(root),
                 atomic(mode, direction, 30.0),
                 atomic(mode, direction, 20.0),
                 atomic(mode, direction, 10.0),
@@ -405,7 +442,7 @@ fn ordered_slots<S: l::LayoutScalar>() {
         // Real resolved0/1 levels preserve each atomic's public native identity
         // and physical visual order. Group padding shifts the existing slots;
         // it cannot reorder boxes or change which real Forced row owns them.
-        let xs = if direction == l::Direction::Ltr {
+        let xs = if direction == l::geometry::Direction::Ltr {
             [20.0, 50.0, 70.0, 20.0, 45.0]
         } else {
             [50.0, 30.0, 20.0, 55.0, 40.0]
@@ -428,33 +465,43 @@ fn ordered_slots<S: l::LayoutScalar>() {
                     entries,
                     id,
                     crate::layout::observation::expected_kind(
-                        l::LayoutTree::layout_input(&tree, id),
+                        l::tree::LayoutTree::layout_input(&tree, id),
                         false,
                     ),
                 );
-                assert_eq!(item.source_index, l::SourceIndex::new((id - 1) as usize));
-                assert_eq!(item.location, l::Point::new(n(x), n(y)));
-                assert_eq!(item.size, l::Size::new(n(width), n(10.0)));
+                assert_eq!(
+                    item.source_index,
+                    l::node::SourceIndex::new((id - 1) as usize)
+                );
+                assert_eq!(item.location, l::geometry::Point::new(n(x), n(y)));
+                assert_eq!(item.size, l::geometry::Size::new(n(width), n(10.0)));
             }
             assert_eq!(
                 node_of_kind(
                     entries,
                     4,
-                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak)
+                    crate::layout::observation::Kind::NonBox(
+                        l::fragmentation::NonBoxKind::LineBreak
+                    )
                 )
                 .source_index,
-                l::SourceIndex::new(3)
+                l::node::SourceIndex::new(3)
             );
             assert_eq!(
                 node_of_kind(
                     entries,
                     4,
-                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak)
+                    crate::layout::observation::Kind::NonBox(
+                        l::fragmentation::NonBoxKind::LineBreak
+                    )
                 )
                 .size,
-                l::Size::ZERO
+                l::geometry::Size::ZERO
             );
-            assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(20.0)));
+            assert_eq!(
+                node(entries, 0).size,
+                l::geometry::Size::new(n(100.0), n(20.0))
+            );
         }
     }
 }

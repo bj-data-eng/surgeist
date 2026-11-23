@@ -1090,7 +1090,7 @@ mod tests {
     use crate::accounting::{PaintChange, PaintLimits};
     use crate::gradient_stops::GradientStopPositions;
     use crate::radial_gradient::{RadialGradientSize, resolve_radial_gradient};
-    use surgeist_layout::{Point, Size};
+    use surgeist_layout::geometry::{Point, Size};
     use surgeist_ledger::ProfileMode;
 
     fn options(limits: PaintLimits) -> PaintOptions {

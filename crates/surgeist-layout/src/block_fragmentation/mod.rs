@@ -8,10 +8,7 @@ pub(crate) use compute::compute;
 pub(crate) mod input;
 mod output;
 pub(crate) mod publication;
-pub use input::{
-    BlockFragmentainerOf, BlockFragmentationFailure, LayoutBoundRequestOf,
-    LayoutPublicationTargets, LayoutSourceBasis, LayoutTargetBasis,
-};
+pub use input::{BlockFragmentainerOf, BlockFragmentationFailure, LayoutBoundRequestOf};
 pub(crate) use input::{BoundMode, FragmentBoxAllocation};
 pub use output::{
     BoxFragmentGeometryOf, BoxGeometryPairOf, FragmentCoordinateSpace, FragmentOutputOf,
@@ -21,6 +18,5 @@ pub use output::{
 };
 pub(crate) use output::{NodePublication, ResultIdentity};
 pub(crate) use publication::check_target;
-pub use publication::{LayoutBatchApplyError, LayoutBatchCommit, LayoutBatchPreparation};
 #[cfg(test)]
 mod result_tests;

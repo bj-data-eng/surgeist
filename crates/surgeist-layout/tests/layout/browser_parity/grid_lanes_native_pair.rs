@@ -7,7 +7,11 @@ use super::{
     Error, Golden, Node, NodeKind, NumericComparisonSink, RootContext, Scalar, TestTree,
     compare_captured_with_batch, layout, root_context::QualifiedRootContext,
 };
-use layout::{Direction, GridAxisKind, NodeOutput, Point, Size, WritingMode};
+use layout::{
+    geometry::{Direction, Point, Size, WritingMode},
+    grid::GridAxisKind,
+    node::NodeOutput,
+};
 
 const BOX_PATHS: [&str; 7] = ["/", "/0", "/0/0", "/0/1", "/1", "/1/0", "/1/1"];
 const ITEM_SIZES: [Size; 2] = [Size::new(30.0, 50.0), Size::new(40.0, 60.0)];
@@ -214,7 +218,7 @@ fn capture_packets(golden: &Golden, expected: Expected) -> Result<Packets, Error
 
 fn snapshot(
     tree: &TestTree,
-    batch: &layout::CompletedLayoutBatch<usize>,
+    batch: &layout::batch::CompletedLayoutBatch<usize>,
     expected: Expected,
 ) -> Result<Packets, Error> {
     let invalid = || Error::new("Grid Lanes pair requires exactly seven ordinary single boxes");
@@ -248,7 +252,7 @@ fn snapshot(
         (second, GridAxisKind::Column, [second_a, second_b]),
     ] {
         let input = tree.nodes[lane].layout_input.as_box().ok_or_else(invalid)?;
-        if input.grid_lanes_flow != layout::GridLanesFlow::new(axis, false, false) {
+        if input.grid_lanes_flow != layout::grid::GridLanesFlow::new(axis, false, false) {
             return Err(Error::new(format!(
                 "Native Grid Lanes flow must select {axis:?} tracks"
             )));
@@ -258,12 +262,12 @@ fn snapshot(
                 .layout_input
                 .as_box()
                 .ok_or_else(invalid)?;
-            let placement = layout::RawGridPlacement::lines(start, end);
+            let placement = layout::grid::RawGridPlacement::lines(start, end);
             let (grid, stacking) = match axis {
                 GridAxisKind::Row => (&input.raw_grid_row, &input.raw_grid_column),
                 GridAxisKind::Column => (&input.raw_grid_column, &input.raw_grid_row),
             };
-            if grid != &placement || stacking != &layout::RawGridPlacement::AUTO {
+            if grid != &placement || stacking != &layout::grid::RawGridPlacement::AUTO {
                 return Err(Error::new(format!(
                     "Native Grid Lanes item must occupy {axis:?} lines {start} / {end}"
                 )));
@@ -271,13 +275,25 @@ fn snapshot(
         }
     }
     let roles = [
-        (layout::Display::Block, WritingMode::HorizontalTb, 0),
-        (layout::Display::GridLanes, expected.parent_mode, 0),
-        (layout::Display::Flex, expected.child_mode, 0),
-        (layout::Display::Flex, expected.child_mode, 1),
-        (layout::Display::GridLanes, expected.parent_mode, 1),
-        (layout::Display::Flex, expected.child_mode, 0),
-        (layout::Display::Flex, expected.child_mode, 1),
+        (
+            layout::box_model::Display::Block,
+            WritingMode::HorizontalTb,
+            0,
+        ),
+        (
+            layout::box_model::Display::GridLanes,
+            expected.parent_mode,
+            0,
+        ),
+        (layout::box_model::Display::Flex, expected.child_mode, 0),
+        (layout::box_model::Display::Flex, expected.child_mode, 1),
+        (
+            layout::box_model::Display::GridLanes,
+            expected.parent_mode,
+            1,
+        ),
+        (layout::box_model::Display::Flex, expected.child_mode, 0),
+        (layout::box_model::Display::Flex, expected.child_mode, 1),
     ];
     BOX_PATHS
         .into_iter()
@@ -286,9 +302,9 @@ fn snapshot(
         .map(|((path, node), (display, writing_mode, source_index))| {
             let input = tree.nodes[node].layout_input.as_box().ok_or_else(invalid)?;
             let position = if path == "/" {
-                layout::Position::Absolute
+                layout::box_model::Position::Absolute
             } else {
-                layout::Position::Relative
+                layout::box_model::Position::Relative
             };
             if input.display != display
                 || input.writing_mode != writing_mode
@@ -302,7 +318,7 @@ fn snapshot(
             }
             let output = batch
                 .node_layout(node)
-                .and_then(layout::NodeLayoutRefOf::single_box)
+                .and_then(layout::fragmentation::NodeLayoutRefOf::single_box)
                 .ok_or_else(invalid)?;
             let unrounded = output.unrounded_output();
             let final_output = output.final_output();
@@ -327,7 +343,7 @@ fn snapshot(
 fn finite(packet: NodeOutput) -> bool {
     // Named baseline coordinates and canonical scroll geometry already enforce
     // finite construction. Check the remaining unconstrained numeric fields.
-    let layout::NodeOutputOf {
+    let layout::node::NodeOutputOf {
         named_baselines: _,
         source_index: _,
         location,

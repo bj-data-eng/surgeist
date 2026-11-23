@@ -2,45 +2,71 @@
 use super::*;
 use surgeist_text::font::FontBaseline;
 
-fn single_signed_top<S: l::LayoutScalar>() {
-    let mode = l::WritingMode::HorizontalTb;
-    let direction = l::Direction::Ltr;
-    let mut host = Host::<S>::new(root(mode, direction, l::InlineBaselineContext::Physical));
+fn single_signed_top<S: l::scalar::LayoutScalar>() {
+    let mode = l::geometry::WritingMode::HorizontalTb;
+    let direction = l::geometry::Direction::Ltr;
+    let mut host = Host::<S>::new(root(
+        mode,
+        direction,
+        l::baseline::InlineBaselineContext::Physical,
+    ));
     let mut item = atomic(mode, direction, 10.0, (-2.0, 6.0));
-    item.vertical_align = l::VerticalAlignOf::Top;
-    assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(item)), 1);
+    item.vertical_align = l::inline::VerticalAlignOf::Top;
+    assert_eq!(
+        host.push(Some(0), l::node::LayoutInputOf::box_input(item)),
+        1
+    );
     let batch = host.compute(mode, &[]).unwrap();
     for entries in [
         crate::layout::observation::phase(&batch, false),
         crate::layout::observation::phase(&batch, true),
     ] {
         assert_eq!(entries.0.node_layouts().len(), 2);
-        assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(14.0)));
-        assert_eq!(node(entries, 1).size, l::Size::new(n(20.0), n(10.0)));
+        assert_eq!(
+            node(entries, 0).size,
+            l::geometry::Size::new(n(100.0), n(14.0))
+        );
+        assert_eq!(
+            node(entries, 1).size,
+            l::geometry::Size::new(n(20.0), n(10.0))
+        );
         assert_eq!(node(entries, 1).margin.top, n(-2.0));
         assert_eq!(node(entries, 1).margin.bottom, n(6.0));
-        assert_eq!(node(entries, 0).source_index, l::SourceIndex::new(0));
-        assert_eq!(node(entries, 1).source_index, l::SourceIndex::new(0));
+        assert_eq!(node(entries, 0).source_index, l::node::SourceIndex::new(0));
+        assert_eq!(node(entries, 1).source_index, l::node::SourceIndex::new(0));
         absent(node(entries, 1).named_baselines);
         // Atomic bounds are its real margin box. Its14-unit span starts0;
         // border top−2 makes margin-over −2−(−2)=0 and margin-under14.
-        assert_eq!(node(entries, 1).location, l::Point::new(S::ZERO, n(-2.0)));
+        assert_eq!(
+            node(entries, 1).location,
+            l::geometry::Point::new(S::ZERO, n(-2.0))
+        );
     }
     assert!(batch.placed_text().is_empty());
     assert!(batch.final_inline_fragments().is_empty());
 }
 
-fn vertical_lr_taller_peer<S: l::LayoutScalar>(alignment: l::VerticalAlignOf<S>, expected_x: f64) {
-    let mode = l::WritingMode::VerticalLr;
-    let direction = l::Direction::Ltr;
-    let mut host = Host::<S>::new(root(mode, direction, l::InlineBaselineContext::Physical));
+fn vertical_lr_taller_peer<S: l::scalar::LayoutScalar>(
+    alignment: l::inline::VerticalAlignOf<S>,
+    expected_x: f64,
+) {
+    let mode = l::geometry::WritingMode::VerticalLr;
+    let direction = l::geometry::Direction::Ltr;
+    let mut host = Host::<S>::new(root(
+        mode,
+        direction,
+        l::baseline::InlineBaselineContext::Physical,
+    ));
     let mut item = atomic(mode, direction, 10.0, (0.0, 0.0));
     item.vertical_align = alignment;
-    assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(item)), 1);
+    assert_eq!(
+        host.push(Some(0), l::node::LayoutInputOf::box_input(item)),
+        1
+    );
     assert_eq!(
         host.push(
             Some(0),
-            l::LayoutInputOf::box_input(atomic(mode, direction, 30.0, (0.0, 0.0)))
+            l::node::LayoutInputOf::box_input(atomic(mode, direction, 30.0, (0.0, 0.0)))
         ),
         2
     );
@@ -50,24 +76,36 @@ fn vertical_lr_taller_peer<S: l::LayoutScalar>(alignment: l::VerticalAlignOf<S>,
         crate::layout::observation::phase(&batch, true),
     ] {
         assert_eq!(entries.0.node_layouts().len(), 3);
-        assert_eq!(node(entries, 0).size, l::Size::new(n(30.0), n(100.0)));
-        assert_eq!(node(entries, 2).location, l::Point::new(S::ZERO, n(20.0)));
-        assert_eq!(node(entries, 2).size, l::Size::new(n(30.0), n(20.0)));
-        assert_eq!(node(entries, 1).size, l::Size::new(n(10.0), n(20.0)));
-        assert_eq!(node(entries, 1).margin, l::Edges::ZERO);
-        assert_eq!(node(entries, 2).margin, l::Edges::ZERO);
+        assert_eq!(
+            node(entries, 0).size,
+            l::geometry::Size::new(n(30.0), n(100.0))
+        );
+        assert_eq!(
+            node(entries, 2).location,
+            l::geometry::Point::new(S::ZERO, n(20.0))
+        );
+        assert_eq!(
+            node(entries, 2).size,
+            l::geometry::Size::new(n(30.0), n(20.0))
+        );
+        assert_eq!(
+            node(entries, 1).size,
+            l::geometry::Size::new(n(10.0), n(20.0))
+        );
+        assert_eq!(node(entries, 1).margin, l::geometry::Edges::ZERO);
+        assert_eq!(node(entries, 2).margin, l::geometry::Edges::ZERO);
         for (id, source) in [(0, 0), (1, 0), (2, 1)] {
             assert_eq!(
                 node_of_kind(
                     entries,
                     id,
                     crate::layout::observation::expected_kind(
-                        l::LayoutTree::layout_input(&host, id),
+                        l::tree::LayoutTree::layout_input(&host, id),
                         false
                     )
                 )
                 .source_index,
-                l::SourceIndex::new(source)
+                l::node::SourceIndex::new(source)
             );
         }
         absent(node(entries, 1).named_baselines);
@@ -77,7 +115,7 @@ fn vertical_lr_taller_peer<S: l::LayoutScalar>(alignment: l::VerticalAlignOf<S>,
         // Top), line-under LEFT (A x0 for Bottom), regardless of block-start.
         assert_eq!(
             node(entries, 1).location,
-            l::Point::new(n(expected_x), S::ZERO)
+            l::geometry::Point::new(n(expected_x), S::ZERO)
         );
     }
     assert!(batch.placed_text().is_empty());
@@ -94,69 +132,75 @@ fn atomic_top_signed_margin_aligns_actual_over_edge_f64() {
 }
 #[test]
 fn vertical_lr_atomic_top_aligns_line_over_with_taller_peer_f32() {
-    vertical_lr_taller_peer::<f32>(l::VerticalAlignOf::Top, 20.0);
+    vertical_lr_taller_peer::<f32>(l::inline::VerticalAlignOf::Top, 20.0);
 }
 #[test]
 fn vertical_lr_atomic_top_aligns_line_over_with_taller_peer_f64() {
-    vertical_lr_taller_peer::<f64>(l::VerticalAlignOf::Top, 20.0);
+    vertical_lr_taller_peer::<f64>(l::inline::VerticalAlignOf::Top, 20.0);
 }
 #[test]
 fn vertical_lr_atomic_bottom_aligns_line_under_with_taller_peer_f32() {
-    vertical_lr_taller_peer::<f32>(l::VerticalAlignOf::Bottom, 0.0);
+    vertical_lr_taller_peer::<f32>(l::inline::VerticalAlignOf::Bottom, 0.0);
 }
 #[test]
 fn vertical_lr_atomic_bottom_aligns_line_under_with_taller_peer_f64() {
-    vertical_lr_taller_peer::<f64>(l::VerticalAlignOf::Bottom, 0.0);
+    vertical_lr_taller_peer::<f64>(l::inline::VerticalAlignOf::Bottom, 0.0);
 }
 
 #[derive(Clone, Copy, Debug)]
-struct EdgeSpec<S: l::LayoutScalar> {
-    mode: l::WritingMode,
-    direction: l::Direction,
-    context: l::InlineBaselineContext,
-    alignment: l::VerticalAlignOf<S>,
+struct EdgeSpec<S: l::scalar::LayoutScalar> {
+    mode: l::geometry::WritingMode,
+    direction: l::geometry::Direction,
+    context: l::baseline::InlineBaselineContext,
+    alignment: l::inline::VerticalAlignOf<S>,
     margins: (f64, f64),
     peer: bool,
 }
-fn edge_tree<S: l::LayoutScalar>(spec: EdgeSpec<S>) -> Host<S> {
+fn edge_tree<S: l::scalar::LayoutScalar>(spec: EdgeSpec<S>) -> Host<S> {
     let mut host = Host::<S>::new(root(spec.mode, spec.direction, spec.context));
     let mut item = atomic(spec.mode, spec.direction, 10.0, spec.margins);
     item.vertical_align = spec.alignment;
-    host.push(Some(0), l::LayoutInputOf::box_input(item));
+    host.push(Some(0), l::node::LayoutInputOf::box_input(item));
     if spec.peer {
         host.push(
             Some(0),
-            l::LayoutInputOf::box_input(atomic(spec.mode, spec.direction, 30.0, (0.0, 0.0))),
+            l::node::LayoutInputOf::box_input(atomic(spec.mode, spec.direction, 30.0, (0.0, 0.0))),
         );
     }
     host
 }
-fn edge_point<S: l::LayoutScalar>(mode: l::WritingMode, inline: f64, cross: f64) -> l::Point<S> {
+fn edge_point<S: l::scalar::LayoutScalar>(
+    mode: l::geometry::WritingMode,
+    inline: f64,
+    cross: f64,
+) -> l::geometry::Point<S> {
     // Expand physical coordinate notation only; no production axis helper
     // chooses expected sides, margin signs, or scalar baseline values.
-    if mode == l::WritingMode::HorizontalTb {
-        l::Point::new(n(inline), n(cross))
+    if mode == l::geometry::WritingMode::HorizontalTb {
+        l::geometry::Point::new(n(inline), n(cross))
     } else {
-        l::Point::new(n(cross), n(inline))
+        l::geometry::Point::new(n(cross), n(inline))
     }
 }
-fn edge_geometry_matrix<S: l::LayoutScalar>() {
+fn edge_geometry_matrix<S: l::scalar::LayoutScalar>() {
     for mode in [
-        l::WritingMode::HorizontalTb,
-        l::WritingMode::VerticalRl,
-        l::WritingMode::VerticalLr,
-        l::WritingMode::SidewaysRl,
-        l::WritingMode::SidewaysLr,
+        l::geometry::WritingMode::HorizontalTb,
+        l::geometry::WritingMode::VerticalRl,
+        l::geometry::WritingMode::VerticalLr,
+        l::geometry::WritingMode::SidewaysRl,
+        l::geometry::WritingMode::SidewaysLr,
     ] {
         let over_right = matches!(
             mode,
-            l::WritingMode::VerticalRl | l::WritingMode::VerticalLr | l::WritingMode::SidewaysRl
+            l::geometry::WritingMode::VerticalRl
+                | l::geometry::WritingMode::VerticalLr
+                | l::geometry::WritingMode::SidewaysRl
         );
-        for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
             for context in [
-                l::InlineBaselineContext::Physical,
-                l::InlineBaselineContext::Named(FontBaseline::Alphabetic),
-                l::InlineBaselineContext::Named(FontBaseline::Central),
+                l::baseline::InlineBaselineContext::Physical,
+                l::baseline::InlineBaselineContext::Named(FontBaseline::Alphabetic),
+                l::baseline::InlineBaselineContext::Named(FontBaseline::Central),
             ] {
                 // Margins, single span, single forward/right-over border,
                 // taller-peer forward Top/Bottom, taller-peer right Top/Bottom.
@@ -175,11 +219,17 @@ fn edge_geometry_matrix<S: l::LayoutScalar>() {
                     // Full Physical geometry matrix; selected signed/positive
                     // Named contrasts exercise different baseline-group origins
                     // without needlessly repeating every margin combination.
-                    if context != l::InlineBaselineContext::Physical && index != 1 && index != 2 {
+                    if context != l::baseline::InlineBaselineContext::Physical
+                        && index != 1
+                        && index != 2
+                    {
                         continue;
                     }
                     for peer in [false, true] {
-                        for alignment in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
+                        for alignment in [
+                            l::inline::VerticalAlignOf::Top,
+                            l::inline::VerticalAlignOf::Bottom,
+                        ] {
                             let spec = EdgeSpec {
                                 mode,
                                 direction,
@@ -194,15 +244,21 @@ fn edge_geometry_matrix<S: l::LayoutScalar>() {
                             let cross = if peer { 30.0 } else { span };
                             let expected_cross = if peer {
                                 let values = if over_right { right } else { forward };
-                                values[usize::from(alignment == l::VerticalAlignOf::Bottom)]
+                                values[usize::from(alignment == l::inline::VerticalAlignOf::Bottom)]
                             } else {
                                 single[usize::from(over_right)]
                             };
                             let (item_inline, peer_inline) = match (mode, direction) {
-                                (l::WritingMode::SidewaysLr, l::Direction::Ltr) => (80.0, 60.0),
-                                (l::WritingMode::SidewaysLr, l::Direction::Rtl) => (0.0, 20.0),
-                                (_, l::Direction::Ltr) => (0.0, 20.0),
-                                (_, l::Direction::Rtl) => (80.0, 60.0),
+                                (
+                                    l::geometry::WritingMode::SidewaysLr,
+                                    l::geometry::Direction::Ltr,
+                                ) => (80.0, 60.0),
+                                (
+                                    l::geometry::WritingMode::SidewaysLr,
+                                    l::geometry::Direction::Rtl,
+                                ) => (0.0, 20.0),
+                                (_, l::geometry::Direction::Ltr) => (0.0, 20.0),
+                                (_, l::geometry::Direction::Rtl) => (80.0, 60.0),
                             };
                             for entries in [
                                 crate::layout::observation::phase(&batch, false),
@@ -214,10 +270,10 @@ fn edge_geometry_matrix<S: l::LayoutScalar>() {
                                 );
                                 assert_eq!(
                                     node(entries, 0).size,
-                                    if mode == l::WritingMode::HorizontalTb {
-                                        l::Size::new(n(100.0), n(cross))
+                                    if mode == l::geometry::WritingMode::HorizontalTb {
+                                        l::geometry::Size::new(n(100.0), n(cross))
                                     } else {
-                                        l::Size::new(n(cross), n(100.0))
+                                        l::geometry::Size::new(n(cross), n(100.0))
                                     },
                                     "{spec:?}"
                                 );
@@ -228,34 +284,41 @@ fn edge_geometry_matrix<S: l::LayoutScalar>() {
                                 );
                                 assert_eq!(
                                     node(entries, 1).size,
-                                    if mode == l::WritingMode::HorizontalTb {
-                                        l::Size::new(n(20.0), n(10.0))
+                                    if mode == l::geometry::WritingMode::HorizontalTb {
+                                        l::geometry::Size::new(n(20.0), n(10.0))
                                     } else {
-                                        l::Size::new(n(10.0), n(20.0))
+                                        l::geometry::Size::new(n(10.0), n(20.0))
                                     }
                                 );
-                                let expected_margin = if mode == l::WritingMode::HorizontalTb {
-                                    l::Edges {
-                                        top: n(margins.0),
-                                        bottom: n(margins.1),
-                                        ..l::Edges::ZERO
-                                    }
-                                } else if over_right {
-                                    l::Edges {
-                                        right: n(margins.0),
-                                        left: n(margins.1),
-                                        ..l::Edges::ZERO
-                                    }
-                                } else {
-                                    l::Edges {
-                                        left: n(margins.0),
-                                        right: n(margins.1),
-                                        ..l::Edges::ZERO
-                                    }
-                                };
+                                let expected_margin =
+                                    if mode == l::geometry::WritingMode::HorizontalTb {
+                                        l::geometry::Edges {
+                                            top: n(margins.0),
+                                            bottom: n(margins.1),
+                                            ..l::geometry::Edges::ZERO
+                                        }
+                                    } else if over_right {
+                                        l::geometry::Edges {
+                                            right: n(margins.0),
+                                            left: n(margins.1),
+                                            ..l::geometry::Edges::ZERO
+                                        }
+                                    } else {
+                                        l::geometry::Edges {
+                                            left: n(margins.0),
+                                            right: n(margins.1),
+                                            ..l::geometry::Edges::ZERO
+                                        }
+                                    };
                                 assert_eq!(node(entries, 1).margin, expected_margin);
-                                assert_eq!(node(entries, 0).source_index, l::SourceIndex::new(0));
-                                assert_eq!(node(entries, 1).source_index, l::SourceIndex::new(0));
+                                assert_eq!(
+                                    node(entries, 0).source_index,
+                                    l::node::SourceIndex::new(0)
+                                );
+                                assert_eq!(
+                                    node(entries, 1).source_index,
+                                    l::node::SourceIndex::new(0)
+                                );
                                 absent(node(entries, 1).named_baselines);
                                 if peer {
                                     assert_eq!(
@@ -265,27 +328,30 @@ fn edge_geometry_matrix<S: l::LayoutScalar>() {
                                     );
                                     assert_eq!(
                                         node(entries, 2).size,
-                                        if mode == l::WritingMode::HorizontalTb {
-                                            l::Size::new(n(20.0), n(30.0))
+                                        if mode == l::geometry::WritingMode::HorizontalTb {
+                                            l::geometry::Size::new(n(20.0), n(30.0))
                                         } else {
-                                            l::Size::new(n(30.0), n(20.0))
+                                            l::geometry::Size::new(n(30.0), n(20.0))
                                         }
                                     );
                                     assert_eq!(
                                         node(entries, 2).source_index,
-                                        l::SourceIndex::new(1)
+                                        l::node::SourceIndex::new(1)
                                     );
                                     absent(node(entries, 2).named_baselines);
                                 }
                                 for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
                                     let pair = node(entries, 0).named_baselines.get(name);
-                                    if peer && context == l::InlineBaselineContext::Named(name) {
+                                    if peer
+                                        && context
+                                            == l::baseline::InlineBaselineContext::Named(name)
+                                    {
                                         let anchor = if name == FontBaseline::Central {
                                             15.0
                                         } else if matches!(
                                             mode,
-                                            l::WritingMode::HorizontalTb
-                                                | l::WritingMode::SidewaysLr
+                                            l::geometry::WritingMode::HorizontalTb
+                                                | l::geometry::WritingMode::SidewaysLr
                                         ) {
                                             30.0
                                         } else {
@@ -294,16 +360,22 @@ fn edge_geometry_matrix<S: l::LayoutScalar>() {
                                         named(
                                             node(entries, 0).named_baselines,
                                             name,
-                                            if mode == l::WritingMode::HorizontalTb {
-                                                l::PhysicalAxis::Vertical
+                                            if mode == l::geometry::WritingMode::HorizontalTb {
+                                                l::geometry::PhysicalAxis::Vertical
                                             } else {
-                                                l::PhysicalAxis::Horizontal
+                                                l::geometry::PhysicalAxis::Horizontal
                                             },
                                             anchor,
                                         );
                                     } else {
-                                        assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
-                                        assert_eq!(pair.last(), l::BaselineFactOf::Unknown);
+                                        assert_eq!(
+                                            pair.first(),
+                                            l::baseline::BaselineFactOf::Unknown
+                                        );
+                                        assert_eq!(
+                                            pair.last(),
+                                            l::baseline::BaselineFactOf::Unknown
+                                        );
                                     }
                                 }
                             }
@@ -325,23 +397,25 @@ fn atomic_margin_edges_have_literal_geometry_across_modes_and_directions_f64() {
     edge_geometry_matrix::<f64>();
 }
 
-fn edge_cache_and_publication<S: l::LayoutScalar>() {
+fn edge_cache_and_publication<S: l::scalar::LayoutScalar>() {
     for mode in [
-        l::WritingMode::HorizontalTb,
-        l::WritingMode::VerticalRl,
-        l::WritingMode::VerticalLr,
-        l::WritingMode::SidewaysRl,
-        l::WritingMode::SidewaysLr,
+        l::geometry::WritingMode::HorizontalTb,
+        l::geometry::WritingMode::VerticalRl,
+        l::geometry::WritingMode::VerticalLr,
+        l::geometry::WritingMode::SidewaysRl,
+        l::geometry::WritingMode::SidewaysLr,
     ] {
         let right = matches!(
             mode,
-            l::WritingMode::VerticalRl | l::WritingMode::VerticalLr | l::WritingMode::SidewaysRl
+            l::geometry::WritingMode::VerticalRl
+                | l::geometry::WritingMode::VerticalLr
+                | l::geometry::WritingMode::SidewaysRl
         );
         let before = EdgeSpec {
             mode,
-            direction: l::Direction::Ltr,
-            context: l::InlineBaselineContext::Physical,
-            alignment: l::VerticalAlignOf::Top,
+            direction: l::geometry::Direction::Ltr,
+            context: l::baseline::InlineBaselineContext::Physical,
+            alignment: l::inline::VerticalAlignOf::Top,
             margins: (-2.0, 6.0),
             peer: true,
         };
@@ -357,9 +431,11 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
                 .map(|(node, view)| (
                     node,
                     match view {
-                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -368,9 +444,11 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
                 .map(|(node, view)| (
                     node,
                     match view {
-                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -379,14 +457,14 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
         assert!(host.hits.iter().map(Cell::get).sum::<usize>() > hits);
         warm.apply_to(&mut host).unwrap();
         let after = EdgeSpec {
-            context: l::InlineBaselineContext::Named(FontBaseline::Central),
-            alignment: l::VerticalAlignOf::Bottom,
+            context: l::baseline::InlineBaselineContext::Named(FontBaseline::Central),
+            alignment: l::inline::VerticalAlignOf::Bottom,
             margins: (3.0, 5.0),
             ..before
         };
         host.change(0, |input| input.inline_baseline_context = after.context);
         let changed_input = edge_tree::<S>(after).inputs[1].as_box().unwrap().clone();
-        host.inputs[1] = l::LayoutInputOf::box_input(changed_input);
+        host.inputs[1] = l::node::LayoutInputOf::box_input(changed_input);
         let changed = host.compute(mode, &[0, 1]).unwrap();
         let fresh = edge_tree::<S>(after).compute(mode, &[]).unwrap();
         assert_eq!(semantic(&changed, &host), semantic(&fresh, &host));
@@ -396,9 +474,11 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
                 .map(|(node, view)| (
                     node,
                     match view {
-                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -408,9 +488,11 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
                 .map(|(node, view)| (
                     node,
                     match view {
-                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -424,7 +506,7 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
                 node(entries, 1).location,
                 edge_point(
                     mode,
-                    if mode == l::WritingMode::SidewaysLr {
+                    if mode == l::geometry::WritingMode::SidewaysLr {
                         80.0
                     } else {
                         0.0
@@ -435,10 +517,10 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
             named(
                 node(entries, 0).named_baselines,
                 FontBaseline::Central,
-                if mode == l::WritingMode::HorizontalTb {
-                    l::PhysicalAxis::Vertical
+                if mode == l::geometry::WritingMode::HorizontalTb {
+                    l::geometry::PhysicalAxis::Vertical
                 } else {
-                    l::PhysicalAxis::Horizontal
+                    l::geometry::PhysicalAxis::Horizontal
                 },
                 15.0,
             );
@@ -453,9 +535,10 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
         assert!(
             matches!(
                 error.kind(),
-                l::LayoutErrorKindOf::InvalidInput(
-                    l::LayoutInvalidInputOf::AtomicInlineParticipation {
-                        reason: l::AtomicInlineParticipationRoleError::MissingForAtomicInline
+                l::error::LayoutErrorKindOf::InvalidInput(
+                    l::error::LayoutInvalidInputOf::AtomicInlineParticipation {
+                        reason:
+                            l::error::AtomicInlineParticipationRoleError::MissingForAtomicInline
                     }
                 )
             ),
@@ -469,9 +552,9 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
         assert_eq!(semantic(&cold, &host), old);
         assert_eq!(semantic(&changed, &host), accepted);
         host.change(1, |input| {
-            input.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
+            input.atomic_inline_participation = Some(l::inline::AtomicInlineParticipation::new(
                 t::supplied_line::BidiLevel::try_new(0).unwrap(),
-                l::InlineBreakOpportunity::Allowed,
+                l::text_flow::InlineBreakOpportunity::Allowed,
             ))
         });
         let restored = host.compute(mode, &[1]).unwrap();
@@ -487,29 +570,35 @@ fn atomic_margin_edge_changes_use_real_warm_cache_and_preserve_prior_packets_f64
     edge_cache_and_publication::<f64>();
 }
 
-fn explicit_control_offsets<S: l::LayoutScalar>() {
-    let mode = l::WritingMode::HorizontalTb;
+fn explicit_control_offsets<S: l::scalar::LayoutScalar>() {
+    let mode = l::geometry::WritingMode::HorizontalTb;
     for context in [
-        l::InlineBaselineContext::Physical,
-        l::InlineBaselineContext::Named(FontBaseline::Alphabetic),
-        l::InlineBaselineContext::Named(FontBaseline::Central),
+        l::baseline::InlineBaselineContext::Physical,
+        l::baseline::InlineBaselineContext::Named(FontBaseline::Alphabetic),
+        l::baseline::InlineBaselineContext::Named(FontBaseline::Central),
     ] {
         for (alignment, y) in [
-            (l::VerticalAlignOf::Top, 2.0),
-            (l::VerticalAlignOf::Bottom, 22.0),
+            (l::inline::VerticalAlignOf::Top, 2.0),
+            (l::inline::VerticalAlignOf::Bottom, 22.0),
         ] {
-            let mut host = Host::<S>::new(root(mode, l::Direction::Ltr, context));
-            let metrics =
-                l::InlineMetricsOf::try_new(l::InlineBaselineContext::Physical, n(2.0), n(10.0))
-                    .unwrap();
-            for kind in [l::InlineBoundaryKind::Start, l::InlineBoundaryKind::End] {
+            let mut host = Host::<S>::new(root(mode, l::geometry::Direction::Ltr, context));
+            let metrics = l::inline::InlineMetricsOf::try_new(
+                l::baseline::InlineBaselineContext::Physical,
+                n(2.0),
+                n(10.0),
+            )
+            .unwrap();
+            for kind in [
+                l::inline::InlineBoundaryKind::Start,
+                l::inline::InlineBoundaryKind::End,
+            ] {
                 host.push(
                     Some(0),
-                    l::LayoutInputOf::inline_boundary(
-                        l::InlineBoundaryInputOf::contribution(
+                    l::node::LayoutInputOf::inline_boundary(
+                        l::inline::InlineBoundaryInputOf::contribution(
                             kind,
                             metrics,
-                            l::InlineBoundaryEdgeOf::ZERO,
+                            l::inline::InlineBoundaryEdgeOf::ZERO,
                         )
                         .unwrap()
                         .with_vertical_align(alignment),
@@ -518,7 +607,12 @@ fn explicit_control_offsets<S: l::LayoutScalar>() {
             }
             host.push(
                 Some(0),
-                l::LayoutInputOf::box_input(atomic(mode, l::Direction::Ltr, 30.0, (0.0, 0.0))),
+                l::node::LayoutInputOf::box_input(atomic(
+                    mode,
+                    l::geometry::Direction::Ltr,
+                    30.0,
+                    (0.0, 0.0),
+                )),
             );
             let batch = host.compute(mode, &[]).unwrap();
             for entries in [
@@ -526,21 +620,27 @@ fn explicit_control_offsets<S: l::LayoutScalar>() {
                 crate::layout::observation::phase(&batch, true),
             ] {
                 assert_eq!(entries.0.node_layouts().len(), 4);
-                assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(30.0)));
-                assert_eq!(node(entries, 3).location, l::Point::ZERO);
-                assert_eq!(node(entries, 3).size, l::Size::new(n(20.0), n(30.0)));
+                assert_eq!(
+                    node(entries, 0).size,
+                    l::geometry::Size::new(n(100.0), n(30.0))
+                );
+                assert_eq!(node(entries, 3).location, l::geometry::Point::ZERO);
+                assert_eq!(
+                    node(entries, 3).size,
+                    l::geometry::Size::new(n(20.0), n(30.0))
+                );
                 for (id, index) in [(0, 0), (1, 0), (2, 1), (3, 2)] {
                     assert_eq!(
                         node_of_kind(
                             entries,
                             id,
                             crate::layout::observation::expected_kind(
-                                l::LayoutTree::layout_input(&host, id),
+                                l::tree::LayoutTree::layout_input(&host, id),
                                 false
                             )
                         )
                         .source_index,
-                        l::SourceIndex::new(index)
+                        l::node::SourceIndex::new(index)
                     );
                 }
                 // Control outputs are allocated baseline points, not atomic
@@ -551,24 +651,24 @@ fn explicit_control_offsets<S: l::LayoutScalar>() {
                             entries,
                             id,
                             crate::layout::observation::expected_kind(
-                                l::LayoutTree::layout_input(&host, id),
+                                l::tree::LayoutTree::layout_input(&host, id),
                                 false
                             )
                         )
                         .location,
-                        l::Point::new(S::ZERO, n(y))
+                        l::geometry::Point::new(S::ZERO, n(y))
                     );
                     assert_eq!(
                         node_of_kind(
                             entries,
                             id,
                             crate::layout::observation::expected_kind(
-                                l::LayoutTree::layout_input(&host, id),
+                                l::tree::LayoutTree::layout_input(&host, id),
                                 false
                             )
                         )
                         .size,
-                        l::Size::ZERO
+                        l::geometry::Size::ZERO
                     );
                 }
             }

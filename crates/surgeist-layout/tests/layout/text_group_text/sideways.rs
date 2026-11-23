@@ -100,25 +100,32 @@ fn qualify_preparation(paragraph: &Paragraph, orientation: t::selection::LineOri
     );
 }
 
-fn finite<S: l::LayoutScalar>() {
+fn finite<S: l::scalar::LayoutScalar>() {
     for (writing_mode, orientation) in [
         (
-            l::WritingMode::HorizontalTb,
+            l::geometry::WritingMode::HorizontalTb,
             t::selection::LineOrientation::Horizontal,
         ),
         (
-            l::WritingMode::SidewaysRl,
+            l::geometry::WritingMode::SidewaysRl,
             t::selection::LineOrientation::SidewaysClockwise,
         ),
     ] {
-        let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::None);
+        let mut host = Host::<S>::new(
+            l::geometry::Direction::Ltr,
+            l::text_flow::TextGroupAlign::None,
+        );
         host.box_change(0, |root| {
             root.writing_mode = writing_mode;
-            root.text_align = l::TextAlign::Start;
-            root.inline_baseline_context = l::InlineBaselineContext::Physical;
-            root.size = l::Size::new(
-                l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(40.0)).unwrap()),
-                l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(15.0)).unwrap()),
+            root.text_align = l::text_flow::TextAlign::Start;
+            root.inline_baseline_context = l::baseline::InlineBaselineContext::Physical;
+            root.size = l::geometry::Size::new(
+                l::sizing::PreferredSizeOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(40.0)).unwrap(),
+                ),
+                l::sizing::PreferredSizeOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(15.0)).unwrap(),
+                ),
             );
         });
         let paragraph = Paragraph::with_preparation(
@@ -133,25 +140,31 @@ fn finite<S: l::LayoutScalar>() {
             t::prepared::PreparationOptions::default().with_orientation(orientation),
         );
         qualify_preparation(&paragraph, orientation);
-        let flow = l::LayoutFlowInput::try_new(
+        let flow = l::text_layout::LayoutFlowInput::try_new(
             &host,
             0,
             vec![paragraph.binding.clone()],
-            l::WrappingInput::default(),
+            l::inline_wrapping::WrappingInput::default(),
             Vec::new(),
         )
         .unwrap();
         let request = {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(40.0)), Some(S::from_f64(15.0))),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(
+                    Some(S::from_f64(40.0)),
+                    Some(S::from_f64(15.0)),
+                ),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(writing_mode, surgeist_layout::Direction::Ltr),
+                surgeist_layout::geometry::FlowAxes::new(
+                    writing_mode,
+                    surgeist_layout::geometry::Direction::Ltr,
+                ),
                 sizing_request
                     .orthogonal_fallback()
                     .initial_containing_block(),
@@ -162,12 +175,12 @@ fn finite<S: l::LayoutScalar>() {
         let batch = l::compute_layout_with_flow(&flow, 0, request)
             .expect("actual finite Layout must consume the matching prepared Text basis");
         let root = node_output(&batch, 0);
-        assert_eq!(root.location, l::Point::ZERO);
+        assert_eq!(root.location, l::geometry::Point::ZERO);
         assert_eq!(
             root.size,
-            l::Size::new(S::from_f64(40.0), S::from_f64(15.0))
+            l::geometry::Size::new(S::from_f64(40.0), S::from_f64(15.0))
         );
-        assert_eq!(root.source_index, l::SourceIndex::new(0));
+        assert_eq!(root.source_index, l::node::SourceIndex::new(0));
         let layout = placed(&batch, &paragraph);
         assert_eq!(layout.orientation(), orientation);
         assert_eq!(layout.source().text().code_units(), [65, 66]);

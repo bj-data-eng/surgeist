@@ -12,12 +12,12 @@ use surgeist_text as t;
 const AHEM: &[u8] = include_bytes!("../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
 struct Host {
-    inputs: Vec<l::LayoutInput>,
+    inputs: Vec<l::node::LayoutInput>,
     children: Vec<Vec<usize>>,
-    non_box: l::NodeInput,
+    non_box: l::node::NodeInput,
 }
 
-impl l::Traverse for Host {
+impl l::tree::Traverse for Host {
     type Node = usize;
     type Scalar = f32;
     type Children<'a> = std::iter::Copied<std::slice::Iter<'a, usize>>;
@@ -32,45 +32,49 @@ impl l::Traverse for Host {
     }
 }
 
-impl l::LayoutTree for Host {
+impl l::tree::LayoutTree for Host {
     type MeasureError = Infallible;
-    fn node_input(&self, node: usize) -> &l::NodeInput {
+    fn node_input(&self, node: usize) -> &l::node::NodeInput {
         self.inputs[node].as_box().unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, node: usize) -> l::LayoutInputView<'_> {
+    fn layout_input(&self, node: usize) -> l::node::LayoutInputView<'_> {
         self.inputs[node].as_view()
     }
 }
 
-fn px(value: f32) -> l::PreferredSize {
-    l::PreferredSize::value(l::LengthPercentageOf::px(value).unwrap())
+fn px(value: f32) -> l::sizing::PreferredSize {
+    l::sizing::PreferredSize::value(l::length::LengthPercentageOf::px(value).unwrap())
 }
 
 fn host() -> Host {
     Host {
         inputs: (0..3)
             .map(|node| {
-                l::LayoutInput::box_input(l::NodeInput {
+                l::node::LayoutInput::box_input(l::node::NodeInput {
                     display: if node == 0 {
-                        l::Display::Flex
+                        l::box_model::Display::Flex
                     } else {
-                        l::Display::Block
+                        l::box_model::Display::Block
                     },
-                    flex_direction: l::FlexDirection::RowReverse,
-                    size: l::Size::new(
+                    flex_direction: l::flex::FlexDirection::RowReverse,
+                    size: l::geometry::Size::new(
                         px(if node == 0 { 200.0 } else { 100.0 }),
-                        l::PreferredSize::AUTO,
+                        l::sizing::PreferredSize::AUTO,
                     ),
-                    ..l::NodeInput::DEFAULT
+                    ..l::node::NodeInput::DEFAULT
                 })
             })
             .collect(),
         children: vec![vec![1, 2], vec![], vec![]],
-        non_box: l::NodeInput::non_box(),
+        non_box: l::node::NodeInput::non_box(),
     }
 }
 
-fn paragraph(host: &mut Host, container: usize, parts: &[&str]) -> l::TextParagraphBinding<usize> {
+fn paragraph(
+    host: &mut Host,
+    container: usize,
+    parts: &[&str],
+) -> l::text_layout::TextParagraphBinding<usize> {
     use t::capture::SourceProcessingEvent as E;
     let style = t::style::Style {
         font: t::style::Font::new().family("Ahem"),
@@ -180,22 +184,21 @@ fn paragraph(host: &mut Host, container: usize, parts: &[&str]) -> l::TextParagr
     let mut bindings = Vec::new();
     for origin in prepared.origin_views() {
         let node = host.inputs.len();
-        host.inputs
-            .push(l::LayoutInput::inline_text(l::TextParticipation::new(
-                origin.handle(),
-            )));
+        host.inputs.push(l::node::LayoutInput::inline_text(
+            l::text_layout::TextParticipation::new(origin.handle()),
+        ));
         host.children.push(Vec::new());
         host.children[container].push(node);
         nodes.push(node);
-        bindings.push(l::TextOriginBinding {
+        bindings.push(l::text_layout::TextOriginBinding {
             origin: origin.handle(),
             node,
         });
     }
     assert_eq!(nodes.len(), parts.len());
-    l::TextParagraphBinding {
+    l::text_layout::TextParagraphBinding {
         prepared,
-        inline_box_fragments: l::InlineBoxFragmentationDemand::NotRequested,
+        inline_box_fragments: l::text_layout::InlineBoxFragmentationDemand::NotRequested,
         container,
         nodes,
         origins: bindings,
@@ -205,32 +208,43 @@ fn paragraph(host: &mut Host, container: usize, parts: &[&str]) -> l::TextParagr
     }
 }
 
-fn root_request() -> l::LayoutRootRequest {
-    let extent = l::Size::new(Some(l::NonNegativeFiniteOf::new(200.0).unwrap()), None);
-    l::LayoutRootRequest::standalone(
-        l::SizingRequest::new(
-            l::Size::new(
-                l::AxisSizingRequest::new(
-                    l::AvailableSpace::Definite(l::NonNegativeFiniteOf::new(200.0).unwrap()),
-                    l::SizingOperation::Normal,
+fn root_request() -> l::request::LayoutRootRequest {
+    let extent = l::geometry::Size::new(
+        Some(l::length::NonNegativeFiniteOf::new(200.0).unwrap()),
+        None,
+    );
+    l::request::LayoutRootRequest::standalone(
+        l::constraint::SizingRequest::new(
+            l::geometry::Size::new(
+                l::constraint::AxisSizingRequest::new(
+                    l::constraint::AvailableSpace::Definite(
+                        l::length::NonNegativeFiniteOf::new(200.0).unwrap(),
+                    ),
+                    l::constraint::SizingOperation::Normal,
                 ),
-                l::AxisSizingRequest::new(
-                    l::AvailableSpace::Indefinite,
-                    l::SizingOperation::Normal,
+                l::constraint::AxisSizingRequest::new(
+                    l::constraint::AvailableSpace::Indefinite,
+                    l::constraint::SizingOperation::Normal,
                 ),
             ),
-            l::OrthogonalFallback::new(
+            l::constraint::OrthogonalFallback::new(
                 extent,
-                l::NearestScrollport::Absent,
-                l::Size::splat(l::OrthogonalFallbackLimit::Unbounded),
+                l::constraint::NearestScrollport::Absent,
+                l::geometry::Size::splat(l::constraint::OrthogonalFallbackLimit::Unbounded),
             ),
         ),
-        l::FlowAxes::new(l::WritingMode::HorizontalTb, l::Direction::Ltr),
+        l::geometry::FlowAxes::new(
+            l::geometry::WritingMode::HorizontalTb,
+            l::geometry::Direction::Ltr,
+        ),
         extent,
     )
 }
 
-fn source_index(batch: &l::CompletedLayoutBatch<usize>, node: usize) -> l::SourceIndex {
+fn source_index(
+    batch: &l::batch::CompletedLayoutBatch<usize>,
+    node: usize,
+) -> l::node::SourceIndex {
     let output = batch.node_layout(node).unwrap();
     if let Some(single) = output.single_box() {
         single.final_output().source_index
@@ -240,8 +254,8 @@ fn source_index(batch: &l::CompletedLayoutBatch<usize>, node: usize) -> l::Sourc
 }
 
 struct NativeLine<'a> {
-    binding: &'a l::TextParagraphBinding<usize>,
-    placed: &'a l::PlacedTextOutput<usize>,
+    binding: &'a l::text_layout::TextParagraphBinding<usize>,
+    placed: &'a l::text_layout::PlacedTextOutput<usize>,
     line: t::finalized::FinalizedLine,
     local_index: usize,
 }
@@ -253,11 +267,11 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
     let second = paragraph(&mut host, 2, &["C", "D"]);
     assert_eq!(first.nodes, [3, 4, 5]);
     assert_eq!(second.nodes, [6, 7]);
-    let flow = l::LayoutFlowInput::try_new(
+    let flow = l::text_layout::LayoutFlowInput::try_new(
         &host,
         0,
         vec![first.clone(), second.clone()],
-        l::WrappingInput::default(),
+        l::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
@@ -291,7 +305,9 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
             let row = batch
                 .final_inline_fragments()
                 .iter()
-                .find(|row| row.owner() == &l::InlineFragmentOwner::Node(binding.nodes[0]))
+                .find(|row| {
+                    row.owner() == &l::text_layout::InlineFragmentOwner::Node(binding.nodes[0])
+                })
                 .unwrap();
             NativeLine {
                 binding,
@@ -325,7 +341,7 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
                 if node == 0 {
                     stacking::Participation::Ordinary
                 } else {
-                    stacking::Participation::FlexItem(l::ItemOrder::new(0))
+                    stacking::Participation::FlexItem(l::node::ItemOrder::new(0))
                 },
                 stacking::Position::Static,
                 stacking::ZIndex::Auto,
@@ -366,7 +382,7 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
     // Deliberately reverse the producer association table. Paint gets explicit
     // source IDs and occurrence order rather than inheriting its storage order.
     for row in batch.final_inline_fragments().iter().rev() {
-        let l::InlineFragmentOwner::Node(node) = row.owner() else {
+        let l::text_layout::InlineFragmentOwner::Node(node) = row.owner() else {
             panic!("fixture has only origin-owned fragments")
         };
         let line_slot = if first.nodes.contains(node) { 1 } else { 0 };
@@ -391,7 +407,7 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
                 .fragment()
                 .rect()
                 .expect("one Ahem character has source geometry");
-            assert_eq!(bounds.size(), l::Size::new(10.0, 10.0));
+            assert_eq!(bounds.size(), l::geometry::Size::new(10.0, 10.0));
             assert_eq!(
                 bounds.origin().x,
                 if matches!(*node, 3 | 6) { 0.0 } else { 10.0 }
@@ -410,7 +426,9 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
             native_fragments
                 .iter()
                 .position(|row| {
-                    row.is_some_and(|row| row.owner() == &l::InlineFragmentOwner::Node(node))
+                    row.is_some_and(|row| {
+                        row.owner() == &l::text_layout::InlineFragmentOwner::Node(node)
+                    })
                 })
                 .unwrap(),
         )
@@ -518,7 +536,10 @@ fn issued_text_fragments_keep_exact_binding_owner_and_line_when_native_line_indi
                         panic!("actual text occurrence retains a text source")
                     };
                     let node = text_nodes[id.get()];
-                    assert_eq!(row.owner(), &l::InlineFragmentOwner::Node(node));
+                    assert_eq!(
+                        row.owner(),
+                        &l::text_layout::InlineFragmentOwner::Node(node)
+                    );
                     assert!(ptr::eq(fragment.text_source().unwrap(), &texts[id.get()]));
                     let line = fragment.line().unwrap();
                     assert!(ptr::eq(line.record(), &lines[line.id().get()]));

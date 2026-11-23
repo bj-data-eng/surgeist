@@ -2,9 +2,9 @@
 use super::geometry::{available, break_all, fixture, paragraph, run};
 use super::*;
 
-fn forced_completion<S: l::LayoutScalar>() {
+fn forced_completion<S: l::scalar::LayoutScalar>() {
     for twice in [false, true] {
-        let mut host = fixture::<S>(l::Direction::Ltr, Some(40.0), Some(15.0));
+        let mut host = fixture::<S>(l::geometry::Direction::Ltr, Some(40.0), Some(15.0));
         let parts = if twice {
             vec![Part::Text("A"), Part::Forced, Part::Forced]
         } else {
@@ -102,8 +102,8 @@ fn actual_forced_and_nonformatted_receipts_keep_distinct_geometry_f64() {
     forced_completion::<f64>();
 }
 
-fn endpoints<S: l::LayoutScalar>() {
-    let mut host = fixture::<S>(l::Direction::Ltr, Some(40.0), Some(15.0));
+fn endpoints<S: l::scalar::LayoutScalar>() {
+    let mut host = fixture::<S>(l::geometry::Direction::Ltr, Some(40.0), Some(15.0));
     let p = paragraph(
         &mut host,
         0,
@@ -136,19 +136,22 @@ fn endpoints<S: l::LayoutScalar>() {
         let output = node_output_of_kind(
             &batch,
             binding.node,
-            crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+            crate::layout::observation::Kind::NonBox(l::fragmentation::NonBoxKind::InlineBoundary),
         );
         assert_eq!(
             output.location,
-            l::Point::new(S::from_f64(32.0), S::from_f64(y))
+            l::geometry::Point::new(S::from_f64(32.0), S::from_f64(y))
         );
-        assert_eq!(output.size, l::Size::new(S::ZERO, S::from_f64(advance)));
-        assert_eq!(output.content_size, l::Size::ZERO);
+        assert_eq!(
+            output.size,
+            l::geometry::Size::new(S::ZERO, S::from_f64(advance))
+        );
+        assert_eq!(output.content_size, l::geometry::Size::ZERO);
         assert_eq!(
             output.source_index,
-            l::SourceIndex::new(if y == 0.0 { 0 } else { 2 })
+            l::node::SourceIndex::new(if y == 0.0 { 0 } else { 2 })
         );
-        let fragment = batch.final_inline_fragments().iter().find(|row| matches!(row.owner(), l::InlineFragmentOwner::Node(node) if *node == binding.node)).unwrap().fragment();
+        let fragment = batch.final_inline_fragments().iter().find(|row| matches!(row.owner(), l::text_layout::InlineFragmentOwner::Node(node) if *node == binding.node)).unwrap().fragment();
         let view = fragment.finalized_fragment().view();
         assert_eq!(
             view.owner(),
@@ -159,11 +162,11 @@ fn endpoints<S: l::LayoutScalar>() {
         let rect = fragment.rect().unwrap();
         assert_eq!(
             rect.origin(),
-            l::Point::new(S::from_f64(30.0), S::from_f64(y))
+            l::geometry::Point::new(S::from_f64(30.0), S::from_f64(y))
         );
         assert_eq!(
             rect.size(),
-            l::Size::new(S::from_f64(10.0), S::from_f64(advance))
+            l::geometry::Size::new(S::from_f64(10.0), S::from_f64(advance))
         );
     }
     assert_eq!(
@@ -207,10 +210,13 @@ fn real_source_free_boundary_slots_and_exact_positions_f64() {
     endpoints::<f64>();
 }
 
-fn refusal_transaction<S: l::LayoutScalar>() {
-    let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::None);
+fn refusal_transaction<S: l::scalar::LayoutScalar>() {
+    let mut host = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     host.box_change(0, |root| {
-        root.size = l::Size::new(super::geometry::px(40.0), super::geometry::px(15.0))
+        root.size = l::geometry::Size::new(super::geometry::px(40.0), super::geometry::px(15.0))
     });
     let p = Paragraph::new(
         &mut host,
@@ -223,13 +229,16 @@ fn refusal_transaction<S: l::LayoutScalar>() {
     let old = run(&host, &[&p], available(40.0, 15.0), &[]);
     old.apply_to(&mut host).unwrap();
     let old_bounds = placed(&old, &p).bounds();
-    for wm in [l::WritingMode::SidewaysRl, l::WritingMode::VerticalRl] {
+    for wm in [
+        l::geometry::WritingMode::SidewaysRl,
+        l::geometry::WritingMode::VerticalRl,
+    ] {
         host.box_change(0, |root| root.writing_mode = wm);
-        let flow = l::LayoutFlowInput::try_new(
+        let flow = l::text_layout::LayoutFlowInput::try_new(
             &host,
             0,
             vec![p.binding.clone()],
-            l::WrappingInput::default(),
+            l::inline_wrapping::WrappingInput::default(),
             Vec::new(),
         )
         .unwrap();
@@ -238,11 +247,11 @@ fn refusal_transaction<S: l::LayoutScalar>() {
             0,
             {
                 let sizing_request = available(40.0, 15.0);
-                l::LayoutRootRequestOf::standalone(
+                l::request::LayoutRootRequestOf::standalone(
                     sizing_request,
-                    surgeist_layout::FlowAxes::new(
-                        surgeist_layout::LayoutTree::node_input(&host, 0).writing_mode,
-                        surgeist_layout::LayoutTree::node_input(&host, 0).direction,
+                    surgeist_layout::geometry::FlowAxes::new(
+                        surgeist_layout::tree::LayoutTree::node_input(&host, 0).writing_mode,
+                        surgeist_layout::tree::LayoutTree::node_input(&host, 0).direction,
                     ),
                     sizing_request
                         .orthogonal_fallback()
@@ -252,13 +261,13 @@ fn refusal_transaction<S: l::LayoutScalar>() {
             &[0],
         )
         .unwrap_err();
-        let l::LayoutErrorKindOf::Text(error) = error.kind() else {
+        let l::error::LayoutErrorKindOf::Text(error) = error.kind() else {
             panic!("actual Text owner must report orientation refusal: {error:?}");
         };
         assert_eq!(
             error.detail(),
             Some(&t::ErrorDetail::InvalidTextProtocol {
-                reason: if wm == l::WritingMode::SidewaysRl {
+                reason: if wm == l::geometry::WritingMode::SidewaysRl {
                     t::prepared::ProtocolError::MismatchedContext {
                         field: t::prepared::ProtocolContextField::Orientation,
                     }
@@ -277,7 +286,10 @@ fn refusal_transaction<S: l::LayoutScalar>() {
     }
     // A separately issued preparation cannot replace the preparation while
     // retaining the old origin capability, even for identical original AB.
-    let mut other = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::None);
+    let mut other = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     let fresh = Paragraph::new(
         &mut other,
         0,
@@ -288,20 +300,22 @@ fn refusal_transaction<S: l::LayoutScalar>() {
     );
     let mut stale = p.binding.clone();
     stale.prepared = fresh.prepared;
-    host.box_change(0, |root| root.writing_mode = l::WritingMode::HorizontalTb);
-    let error = l::LayoutFlowInput::try_new(
+    host.box_change(0, |root| {
+        root.writing_mode = l::geometry::WritingMode::HorizontalTb
+    });
+    let error = l::text_layout::LayoutFlowInput::try_new(
         &host,
         0,
         vec![stale],
-        l::WrappingInput::default(),
+        l::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .err()
     .expect("foreign issued origins cannot satisfy preparation coverage");
     assert!(matches!(
         error.kind(),
-        l::LayoutErrorKindOf::InvalidInput(l::LayoutInvalidInputOf::TextBinding(
-            l::TextBindingError::OriginCoverage
+        l::error::LayoutErrorKindOf::InvalidInput(l::error::LayoutInvalidInputOf::TextBinding(
+            l::text_layout::TextBindingError::OriginCoverage
         ))
     ));
     assert_eq!(

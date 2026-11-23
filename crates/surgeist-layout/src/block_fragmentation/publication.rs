@@ -1,4 +1,4 @@
-use super::LayoutTargetBasis;
+use super::input::LayoutTargetBasis;
 use crate::{output::CompletedLayoutBatchOf, scalar::LayoutScalar};
 
 /// Call-scoped preparation authority issued only by CompletedLayoutBatch::apply_to.

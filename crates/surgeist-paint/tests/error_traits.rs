@@ -6,7 +6,10 @@
 //! row, so a new variant cannot be added without a row and a message here.
 
 use std::error::Error;
-use surgeist_layout::{Edges, ItemOrder, PhysicalAxis, Point, Size, SourceIndex};
+use surgeist_layout::{
+    geometry::{Edges, PhysicalAxis, Point, Size},
+    node::{ItemOrder, SourceIndex},
+};
 use surgeist_ledger::{Defect, ProfileMode, RefusalReason};
 use surgeist_paint::PaintError;
 use surgeist_paint::accounting::{

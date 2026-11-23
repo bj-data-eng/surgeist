@@ -1,26 +1,29 @@
 //! Descendant of tests/layout/node_free_completion.rs; reuse its authentic Fixture.
 use super::*;
 
-fn auto_intrinsics<S: l::LayoutScalar>(direction: l::Direction) {
+fn auto_intrinsics<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     for force in [false, true] {
         let mut fixture = Fixture::<S>::new(direction, force);
         // Unlike the parent's explicitly30px case, both authored root axes
         // are auto, with the original zero edges/default constraints.
-        fixture.tree.input.size = l::Size::new(l::PreferredSizeOf::AUTO, l::PreferredSizeOf::AUTO);
+        fixture.tree.input.size = l::geometry::Size::new(
+            l::sizing::PreferredSizeOf::AUTO,
+            l::sizing::PreferredSizeOf::AUTO,
+        );
         let pin = fixture.inventory_facts(force);
         for available in [
             crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(None, None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::MinContent,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(None, None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::MinContent,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             ),
             crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(None, None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::MaxContent,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(None, None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::MaxContent,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             ),
         ] {
@@ -35,7 +38,7 @@ fn auto_intrinsics<S: l::LayoutScalar>(direction: l::Direction) {
             // The Force keeps its20px block extent; metadata alone does not.
             assert_eq!(
                 root.size,
-                l::Size::new(S::ZERO, S::from_f64(if force { 20.0 } else { 0.0 }))
+                l::geometry::Size::new(S::ZERO, S::from_f64(if force { 20.0 } else { 0.0 }))
             );
             assert!(batch.final_inline_fragments().is_empty());
             if !force {
@@ -118,7 +121,7 @@ fn auto_intrinsics<S: l::LayoutScalar>(direction: l::Direction) {
 
 #[test]
 fn source_auto_root_intrinsics_keep_semantic_force_and_zero_inline_contribution() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         auto_intrinsics::<f32>(direction);
         auto_intrinsics::<f64>(direction);
     }

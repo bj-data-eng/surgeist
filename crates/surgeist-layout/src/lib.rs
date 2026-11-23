@@ -1,48 +1,76 @@
 //! Native layout algorithm boundary for Surgeist.
 //!
+//! The crate root holds the four functions a host calls first, [`compute_layout`],
+//! [`compute_layout_invalidated`], [`compute_layout_with_flow`] and
+//! [`compute_layout_with_flow_invalidated`]. Every other public item lives in one module and has one path.
+//!
+//! # Where things live
+//!
+//! | Module | Contents |
+//! | --- | --- |
+//! | [`tree`] | host contracts (`Traverse`, `LayoutTree`, `LayoutBatchSink`) and direct leaf computation |
+//! | [`request`] | the root request and the contexts of a layout run |
+//! | [`batch`] | completed layout batches and their atomic publication |
+//! | [`error`] | the layout failure taxonomy |
+//! | [`cache`] | cache storage and the compute request and answer it is keyed by |
+//! | [`scalar`] | the numeric lane, `LayoutScalar` and `DefaultScalar` |
+//! | [`node`] | per-node input and output aggregates |
+//! | [`box_model`] | display, position, float and clear, containment, box alignment |
+//! | [`flex`], [`grid`] | flex and grid container and item input |
+//! | [`overflow`] | overflow, scrollbar, scroll padding and margin, snap inputs |
+//! | [`text_flow`] | text alignment, wrapping, indentation, hyphenation, line breaks |
+//! | [`inline`], [`inline_wrapping`] | inline boundaries and metrics, wrapping scopes and edges |
+//! | [`baseline`] | baseline references, offsets and named baseline outputs |
+//! | [`length`], [`sizing`], [`constraint`] | lengths and percentages, box-size properties, available space and sizing requests |
+//! | [`geometry`] | physical points, sizes, edges and axes, and writing-mode mapping |
+//! | [`scroll`], [`scroll::anchor_selection`] | scroll geometry and scroll-anchor selection |
+//! | [`text_layout`] | binding prepared Text to layout, and the placed Text output |
+//! | [`fragmentation`] | break controls and native Block fragmentation |
+//! | [`resize_observer`] | resize-observer box measurements |
+//!
 //! The public physical geometry contract uses x/y points, width/height sizes,
 //! and top/right/bottom/left edges. Public layout outputs, cached geometry, and
 //! scroll geometry remain physical. Layout algorithms may use
 //! crate-private logical algorithm geometry while working in inline/block
-//! coordinates. Those carriers stay private until the owning [`FlowAxes`]
+//! coordinates. Those carriers stay private until the owning [`FlowAxes`](crate::geometry::FlowAxes)
 //! projects them to physical geometry at a contextual boundary.
 //!
-//! [`FlowAxes`] is the sole production owner of writing-mode mapping for
-//! [`WritingMode::HorizontalTb`], [`WritingMode::VerticalRl`],
-//! [`WritingMode::VerticalLr`], [`WritingMode::SidewaysRl`], and
-//! [`WritingMode::SidewaysLr`]. Its [`Direction`] is the already-resolved
+//! [`FlowAxes`](crate::geometry::FlowAxes) is the sole production owner of writing-mode mapping for
+//! [`WritingMode::HorizontalTb`](crate::geometry::WritingMode::HorizontalTb), [`WritingMode::VerticalRl`](crate::geometry::WritingMode::VerticalRl),
+//! [`WritingMode::VerticalLr`](crate::geometry::WritingMode::VerticalLr), [`WritingMode::SidewaysRl`](crate::geometry::WritingMode::SidewaysRl), and
+//! [`WritingMode::SidewaysLr`](crate::geometry::WritingMode::SidewaysLr). Its [`Direction`](crate::geometry::Direction) is the already-resolved
 //! used inline direction, not authored or otherwise unresolved CSS. Layout owns
 //! its consuming computed-style adapter; callers supply the resolved value at
 //! the current normalized input boundary.
 //!
 //! Scroll input is normalized, computed or otherwise layout-ready input rather
-//! than authored CSS. [`ComputedOverflow`] is an atomic canonical pair; layout
+//! than authored CSS. [`ComputedOverflow`](crate::overflow::ComputedOverflow) is an atomic canonical pair; layout
 //! privately derives used overflow from that pair and box-generation facts.
-//! [`ScrollbarWidthOf`] is the explicit finite thickness selected by the caller's
+//! [`ScrollbarWidthOf`](crate::overflow::ScrollbarWidthOf) is the explicit finite thickness selected by the caller's
 //! scrollbar environment, including zero for overlay or disabled scrollbars.
 //! Layout does not discover host scrollbar metrics or guess a missing policy.
 //!
-//! [`ScrollGeometryOf`] is immutable, layout-produced physical geometry. Its
+//! [`ScrollGeometryOf`](crate::scroll::ScrollGeometryOf) is immutable, layout-produced physical geometry. Its
 //! signed x/y range contains the zero initial anchor, and an axis's scroll size
 //! is the span `maximum - minimum`, including an explicit zero span. Nested
-//! [`ScrollTargetGeometryOf`] preserves the target border box, physical scroll
+//! [`ScrollTargetGeometryOf`](crate::scroll::ScrollTargetGeometryOf) preserves the target border box, physical scroll
 //! margin, flow axes, and snap metadata used to integrate that target later.
 //! The general physical and flow-relative range types also keep finite ordered
-//! bounds; when an axis runs in reverse, [`FlowAxes`] swaps and negates endpoints
+//! bounds; when an axis runs in reverse, [`FlowAxes`](crate::geometry::FlowAxes) swaps and negates endpoints
 //! so signed minima and maxima retain their meaning.
 //!
-//! [`PreferredSizeOf`], [`MinSizeOf`], [`MaxSizeOf`], and [`FlexBasisOf`] are
+//! [`PreferredSizeOf`](crate::sizing::PreferredSizeOf), [`MinSizeOf`](crate::sizing::MinSizeOf), [`MaxSizeOf`](crate::sizing::MaxSizeOf), and [`FlexBasisOf`](crate::sizing::FlexBasisOf) are
 //! distinct closed property domains with only their role-valid keywords.
-//! Direct [`FlexBasisOf::MIN_CONTENT`] and [`FlexBasisOf::MAX_CONTENT`] values
+//! Direct [`FlexBasisOf::MIN_CONTENT`](crate::sizing::FlexBasisOf::MIN_CONTENT) and [`FlexBasisOf::MAX_CONTENT`](crate::sizing::FlexBasisOf::MAX_CONTENT) values
 //! retain their distinct intrinsic measurement constraints through the public
 //! layout front door; neither is normalized to the generic content basis.
-//! [`SizingCalculationOf`] preserves finite affine leaves and nested `min`,
+//! [`SizingCalculationOf`](crate::sizing::SizingCalculationOf) preserves finite affine leaves and nested `min`,
 //! `max`, and `clamp` in a validated program evaluated iteratively. Percentages
-//! remain symbolic until an explicit [`PercentageBasisOf`] is available; a
+//! remain symbolic until an explicit [`PercentageBasisOf`](crate::length::PercentageBasisOf) is available; a
 //! required missing basis remains unresolved rather than being guessed.
 //!
-//! [`NodeInputOf::flex_item_collapse`] is a normalized, layout-ready flex
-//! effect, and [`FlexItemCollapse::Normal`] is its default. A collapsed in-flow
+//! [`NodeInputOf::flex_item_collapse`](crate::node::NodeInputOf::flex_item_collapse) is a normalized, layout-ready flex
+//! effect, and [`FlexItemCollapse::Normal`](crate::flex::FlexItemCollapse::Normal) is its default. A collapsed in-flow
 //! flex item participates through a finite cross-size strut replay, publishes
 //! zero committed collapsed geometry, and hides its descendants. Layout
 //! owns lowering a flex item's computed `visibility: collapse` into this
@@ -50,59 +78,59 @@
 //! authored CSS or provide a general visibility model.
 //!
 //! Canonical layout-ready `calc-size()` input pairs the property's calc-size
-//! basis with a validated [`CalcSizeCalculationOf`] containing finite length,
+//! basis with a validated [`CalcSizeCalculationOf`](crate::sizing::CalcSizeCalculationOf) containing finite length,
 //! percentage, and size coefficients. Track flex remains track-only: callers
-//! validate a finite, non-negative [`TrackFlexFactorOf`] and place it only in a
-//! [`MaxTrackSizingOf`] breadth. Later-owned valid behavior returns
-//! [`LayoutUnsupportedCapability::SizingBehavior`] with an exact
-//! [`UnsupportedSizingBehavior`] property, behavior, algorithm, and axis.
+//! validate a finite, non-negative [`TrackFlexFactorOf`](crate::grid::TrackFlexFactorOf) and place it only in a
+//! [`MaxTrackSizingOf`](crate::grid::MaxTrackSizingOf) breadth. Later-owned valid behavior returns
+//! [`LayoutUnsupportedCapability::SizingBehavior`](crate::error::LayoutUnsupportedCapability::SizingBehavior) with an exact
+//! [`UnsupportedSizingBehavior`](crate::error::UnsupportedSizingBehavior) property, behavior, algorithm, and axis.
 //!
-//! [`LayoutRootRequestOf`] carries validated dimensions and explicit root context
+//! [`LayoutRootRequestOf`](crate::request::LayoutRootRequestOf) carries validated dimensions and explicit root context
 //! for [`compute_layout`], which
-//! returns either a complete [`CompletedLayoutBatchOf`] or a typed
-//! [`LayoutErrorOf`] with no partial public result. Recursive compute modes are
+//! returns either a complete [`CompletedLayoutBatchOf`](crate::batch::CompletedLayoutBatchOf) or a typed
+//! [`LayoutErrorOf`](crate::error::LayoutErrorOf) with no partial public result. Recursive compute modes are
 //! internal.
 //!
-//! [`LayoutFlowInput`] binds immutable Text paragraphs and declared
-//! [`WrappingScopeInput`] boxes to one borrowed tree. Numeric box/control flow
+//! [`LayoutFlowInput`](crate::text_layout::LayoutFlowInput) binds immutable Text paragraphs and declared
+//! [`WrappingScopeInput`](crate::inline_wrapping::WrappingScopeInput) boxes to one borrowed tree. Numeric box/control flow
 //! can supply no Text paragraphs. [`compute_layout_with_flow`] consumes that
 //! checked flow and selects Text-issued candidates when present. It retains the exact
-//! placed [`surgeist_text::layout::Layout`] in each [`PlacedTextOutput`], alongside
+//! placed [`surgeist_text::layout::Layout`] in each [`PlacedTextOutput`](crate::text_layout::PlacedTextOutput), alongside
 //! source-associated fragment handles and canonical atomic allocations.
 //! Text owns shaping and source mappings; Layout owns fitting and placement,
 //! Render owns paint conversion, and Runtime owns coherent publication.
 //! The prepared-text profile supports horizontal LTR and RTL flow, signed
-//! indentation, and font-advance or CSS-stop tabs. [`TextAlign`] and
-//! [`TextAlignLast`] select line alignment. [`TextWrapStyle`] selects ordinary
-//! or balanced breaks; [`TextWrapStyle::Stable`] retains ordinary line-local
-//! quality selection. [`TextWrapStyle::AvoidShortLastLine`] attempts bounded
-//! final-pair repair in a Paragraph-ending group. [`TextWrapStyle::Pretty`]
+//! indentation, and font-advance or CSS-stop tabs. [`TextAlign`](crate::text_flow::TextAlign) and
+//! [`TextAlignLast`](crate::text_flow::TextAlignLast) select line alignment. [`TextWrapStyle`](crate::text_flow::TextWrapStyle) selects ordinary
+//! or balanced breaks; [`TextWrapStyle::Stable`](crate::text_flow::TextWrapStyle::Stable) retains ordinary line-local
+//! quality selection. [`TextWrapStyle::AvoidShortLastLine`](crate::text_flow::TextWrapStyle::AvoidShortLastLine) attempts bounded
+//! final-pair repair in a Paragraph-ending group. [`TextWrapStyle::Pretty`](crate::text_flow::TextWrapStyle::Pretty)
 //! composes that repair with bounded body-line improvement at each actual group
 //! entry. See the [native quality policy](../docs/reference.md#node-input).
 //! These choices do not
 //! change the real containing geometry
-//! or wrapping permission. [`TextJustification::Spaces`] permits
+//! or wrapping permission. [`TextJustification::Spaces`](crate::text_flow::TextJustification::Spaces) permits
 //! explicit expansion of actual retained U+0020 slots during justification.
-//! [`TextJustification::InterWord`] consumes Text-qualified separators and exact
+//! [`TextJustification::InterWord`](crate::text_flow::TextJustification::InterWord) consumes Text-qualified separators and exact
 //! alignment feedback, including actual tab response and unexpandable fallback.
-//! [`TextJustification::InterCharacter`] uses the same allocator over Text-qualified
+//! [`TextJustification::InterCharacter`](crate::text_flow::TextJustification::InterCharacter) uses the same allocator over Text-qualified
 //! visual character boundaries, retaining protected/constrained provider geometry.
-//! [`TextJustification::None`]
+//! [`TextJustification::None`](crate::text_flow::TextJustification::None)
 //! adds no expansion. Text owns line-edge and trailing-space decisions.
 //! Other Text orientations return a precise unsupported error.
-//! [`NodeInputOf::non_box`] is the canonical tree companion for text and inline
+//! [`NodeInputOf::non_box`](crate::node::NodeInputOf::non_box) is the canonical tree companion for text and inline
 //! controls.
 //!
-//! Completed batches keep unrounded and final [`InlineFragmentOutputEntryOf`]
+//! Completed batches keep unrounded and final [`InlineFragmentOutputEntryOf`](crate::batch::InlineFragmentOutputEntryOf)
 //! phases alongside node and cache state. [`compute_layout_invalidated`] stages
-//! the exact invalidation closure, and [`CompletedLayoutBatchOf::apply_to`]
-//! uses [`LayoutBatchSink`] to prepare an owned replacement immutably before an
+//! the exact invalidation closure, and [`CompletedLayoutBatchOf::apply_to`](crate::batch::CompletedLayoutBatchOf::apply_to)
+//! uses [`LayoutBatchSink`](crate::tree::LayoutBatchSink) to prepare an owned replacement immutably before an
 //! infallible exclusive commit.
 //!
-//! Floating boxes select the closed [`FloatExclusion`] contract. `MarginBox` is
+//! Floating boxes select the closed [`FloatExclusion`](crate::box_model::FloatExclusion) contract. `MarginBox` is
 //! the default; `Shape` promises a tree provider that accepts a validated
-//! physical [`FloatExclusionQueryOf`] and returns a clipped
-//! [`FloatExclusionIntervalOf`]. Float placement and independent block sizing
+//! physical [`FloatExclusionQueryOf`](crate::box_model::FloatExclusionQueryOf) and returns a clipped
+//! [`FloatExclusionIntervalOf`](crate::box_model::FloatExclusionIntervalOf). Float placement and independent block sizing
 //! and collision use the floats' physical margin boxes for both variants,
 //! without shape queries. Layout invokes the provider for inline wrapping
 //! across an overlapping finite candidate band. Missing providers, provider
@@ -117,23 +145,23 @@
 //! become typed layout errors. `DefaultScalar` uses `f32`; generic
 //! `*Of<S>` contracts support end-to-end `f32` and `f64` scalar lanes.
 //!
-//! [`ItemOrder`] is the layout-ready signed order value. [`SourceIndex`] is
+//! [`ItemOrder`](crate::node::ItemOrder) is the layout-ready signed order value. [`SourceIndex`](crate::node::SourceIndex) is
 //! stable source-sibling identity: outputs remain source-associated while flex,
 //! ordinary grid, and grid-lanes consume one stable order-modified traversal
 //! sorted by item order and then source index.
 //!
-//! [`NodeInputOf::item_is_replaced`] is an independent box-generation fact, not
+//! [`NodeInputOf::item_is_replaced`](crate::node::NodeInputOf::item_is_replaced) is an independent box-generation fact, not
 //! inferred from table role, measurement, aspect ratio, or stretch. Block and
 //! root sizing use it to avoid ordinary auto-inline fill; flex uses it for
 //! automatic main-size suggestion selection; and grid and grid-lanes use it for
 //! normal alignment while preserving explicit stretch.
 //!
-//! [`ContainingLayoutContext`] and [`ParentFormattingContext`] form the complete
+//! [`ContainingLayoutContext`](crate::request::ContainingLayoutContext) and [`ParentFormattingContext`](crate::request::ParentFormattingContext) form the complete
 //! containing context and cache identity, including explicit containing flow and
-//! parent role. [`SizingRequestOf`] independently carries physical available space,
+//! parent role. [`SizingRequestOf`](crate::constraint::SizingRequestOf) independently carries physical available space,
 //! per-axis sizing operations, and independent ICB, nearest-scrollport and local
 //! containing-bound authority for orthogonal fallback.
-//! [`FlexItemRootContext`] keeps actual parent flow axes, imposed host allocation,
+//! [`FlexItemRootContext`](crate::request::FlexItemRootContext) keeps actual parent flow axes, imposed host allocation,
 //! and percentage bases separate from those request dimensions and operations.
 //!
 //! Browser-parity generation is crate-local tooling. `generate` is the
@@ -153,19 +181,23 @@
 //! scrolling runtime.
 //!
 //! The normalized scroll input and read-only output surface composes through the
-//! crate root in either scalar lane without constructing derived geometry:
+//! [`node`], [`overflow`] and [`scroll`] modules in either scalar lane without constructing derived geometry:
 //!
 //! ```
 //! use surgeist_layout::{
-//! ComputedOverflow, NodeInputOf, NodeOutputOf, Overflow, OverflowClipMarginOf,
-//! ScrollGeometryOf, ScrollMarginOf, ScrollPaddingOf, ScrollbarWidthOf,
+//! node::{NodeInputOf, NodeOutputOf},
+//! overflow::{
+//! ComputedOverflow, Overflow, OverflowClipMarginOf, ScrollMarginOf, ScrollPaddingOf,
+//! ScrollbarWidthOf,
+//! },
+//! scroll::ScrollGeometryOf,
 //! };
 //!
-//! fn normalized_input<S: surgeist_layout::LayoutScalar>() -> NodeInputOf<S> {
+//! fn normalized_input<S: surgeist_layout::scalar::LayoutScalar>() -> NodeInputOf<S> {
 //! let mut input = NodeInputOf::<S>::default();
 //! input.overflow = ComputedOverflow::try_new(Overflow::Auto, Overflow::Scroll).unwrap();
 //! input.overflow_clip_margin = OverflowClipMarginOf::try_new(
-//! surgeist_layout::OverflowClipBox::PaddingBox,
+//! surgeist_layout::overflow::OverflowClipBox::PaddingBox,
 //! S::ZERO,
 //! ).unwrap();
 //! input.scrollbar_width = ScrollbarWidthOf::try_new(S::ZERO).unwrap();
@@ -174,7 +206,7 @@
 //! input
 //! }
 //!
-//! fn inspect<S: surgeist_layout::LayoutScalar>(output: NodeOutputOf<S>) {
+//! fn inspect<S: surgeist_layout::scalar::LayoutScalar>(output: NodeOutputOf<S>) {
 //! let geometry: Option<ScrollGeometryOf<S>> = output.scroll_geometry;
 //! if let Some(geometry) = geometry {
 //! let x = geometry.physical_range().x();
@@ -189,36 +221,45 @@
 //! ```
 //!
 //! ```compile_fail
-//! use surgeist_layout::{NodeInput, Overflow, Point};
+//! use surgeist_layout::{geometry::Point, node::NodeInput, overflow::Overflow};
 //! let mut input = NodeInput::DEFAULT;
 //! input.overflow = Point::new(Overflow::Visible, Overflow::Visible);
 //! ```
 //!
 //! ```compile_fail
-//! use surgeist_layout::{NodeOutput, Size};
+//! use surgeist_layout::{geometry::Size, node::NodeOutput};
 //! let mut output = NodeOutput::default();
 //! output.scrollbar_size = Size::ZERO;
 //! ```
 //!
 //! ```compile_fail
-//! use surgeist_layout::{ScrollGeometry, ScrollbarGutterRects};
+//! use surgeist_layout::scroll::{ScrollbarGutterRects, ScrollGeometry};
 //! let _ = ScrollGeometry::default();
 //! let _ = ScrollbarGutterRects::default();
 //! ```
 //!
 //! ```compile_fail
-//! use surgeist_layout::ScrollPaddingValue;
+//! use surgeist_layout::overflow::ScrollPaddingValue;
 //! let _ = ScrollPaddingValue::Deferred;
 //! ```
 //!
 //! ```compile_fail
-//! use surgeist_layout::NodeOutput;
+//! use surgeist_layout::node::NodeOutput;
 //! let output = NodeOutput::default();
 //! let _ = output.current_scroll_offset;
 //! ```
 //!
 //! ```compile_fail
 //! use surgeist_layout::{LogicalEdgesOf, LogicalPointOf, LogicalRectOf, LogicalSizeOf};
+//! ```
+//!
+//! The imports of the failing examples above resolve:
+//!
+//! ```no_run
+//! use surgeist_layout::geometry::{Point, Size};
+//! use surgeist_layout::node::{NodeInput, NodeOutput};
+//! use surgeist_layout::overflow::{Overflow, ScrollPaddingValue};
+//! use surgeist_layout::scroll::{ScrollGeometry, ScrollbarGutterRects};
 //! ```
 
 #[cfg(test)]
@@ -227,170 +268,49 @@ mod browser_parity_modules;
 #[cfg(test)]
 use browser_parity_modules::*;
 
+pub mod baseline;
+pub mod batch;
+pub mod box_model;
+pub mod cache;
+pub mod constraint;
+pub mod error;
+pub mod flex;
+pub mod fragmentation;
+pub mod geometry;
+pub mod grid;
+pub mod inline;
+pub mod inline_wrapping;
+pub mod length;
+pub mod node;
+pub mod overflow;
+pub mod request;
+pub mod resize_observer;
+pub mod scalar;
+pub mod scroll;
+pub mod sizing;
+pub mod text_flow;
+pub mod text_layout;
+pub mod tree;
+
 mod accounting;
 mod baseline_offset;
 mod block;
 mod block_fragmentation;
-pub use block_fragmentation::{
-    BlockFragmentainerOf, BlockFragmentationFailure, BoxFragmentGeometryOf, BoxGeometryPairOf,
-    FragmentCoordinateSpace, FragmentOutputOf, FragmentPayloadOf, LayoutBatchApplyError,
-    LayoutBatchCommit, LayoutBatchPreparation, LayoutBoundRequestOf, LayoutFragmentId,
-    LayoutFragmentainerId, LayoutFragmentainerOutputOf, LayoutHandleError,
-    LayoutPublicationTargets, LayoutSourceBasis, LayoutTargetBasis, NodeLayoutRefOf,
-    NonBoxGeometryOf, NonBoxKind, NonBoxOutputRefOf, OverflowFragmentGeometryOf,
-    OverflowGeometryPairOf, SingleBoxOutputRefOf,
-};
-mod cache;
 mod engine;
-mod error;
-mod flex;
-mod fragmentation;
-pub use fragmentation::{
-    FragmentationBreak, FragmentationBreakInside, FragmentationBreakKinds,
-    FragmentationGraphicalCoverageOf, FragmentationInputError, FragmentationKind,
-    FragmentationLogicalPageSide, FragmentationPageSide, FragmentationPhysicalPageSide,
-    PageProgression,
-};
-mod geometry;
-mod grid;
 mod group_alignment;
 mod hyphenation;
-mod inline;
 mod layout_math;
+mod line_box;
 mod measurement;
 mod node_input;
 mod node_projection;
 mod output;
-pub use baseline_offset::{BaselineOffset, BaselineOffsetOf, BaselineOffsetResolutionError};
-pub use hyphenation::{HyphenateLimitLast, HyphenateLimitLines};
-mod inline_wrapping;
-mod line_box;
 mod text_indent;
-mod text_layout;
-pub use inline_wrapping::{
-    ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
-    InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, InlineDelimiterSide,
-    InlineFormatterEdge, InlineGapAffinity, InlineGapAnchor, InlineGapGroupInput,
-    NativeInlineBoxEdgeView, NativeInlineBoxFamily, NativeInlineBoxFamilyInput,
-    NativeInlineBoxFragment, NativeInlineBoxMemberView, NativeInlineBoxPieceView,
-    ProcessedWrappingSource, ResolvedWrapEdges, SourceOccurrenceAssociations,
-    SourceScopeAssociation, SourceWrappingScopeInput, WrapEdge, WrapEdgeSource,
-    WrapEdgeSourceNodeView, WrapEdges, WrapInside, WrappingInput, WrappingScopeError,
-    WrappingScopeInput, process_wrapping_source,
-};
-pub use text_layout::{
-    InlineBoxFragmentationDemand, LayoutFlowInput, TextAtomicBinding, TextBindingError,
-    TextControlBinding, TextControlParticipation, TextOriginBinding, TextParagraphBinding,
-    TextParticipation, TextScopeAlignmentInput, TextScopeAlignmentInputOf, TextScopeAssociation,
-    TextScopeBinding,
-};
-mod resize_observer;
-mod scalar;
-mod scroll;
-mod sizing;
-mod tree;
 mod value;
 
-pub use cache::{Cache, CacheKeyContext, CacheOf, ClearState};
 pub use engine::{
     compute_layout, compute_layout_invalidated, compute_layout_with_flow,
-    compute_layout_with_flow_invalidated, measure_definite_inline_atomic_size,
-};
-pub use error::{
-    AtomicInlineParticipationRoleError, CalcSizeBehaviorBasis, FloatExclusionRoleError,
-    InvalidMeasurementOutput, InvalidMeasurementOutputOf, LayoutError, LayoutErrorKind,
-    LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSite, LayoutErrorSiteOf, LayoutInternalInvariant,
-    LayoutInvalidInput, LayoutInvalidInputOf, LayoutMissingContext, LayoutOperation, LayoutResult,
-    LayoutResultOf, LayoutScrollGeometryError, LayoutScrollGeometryErrorOf, LayoutTextNumericError,
-    LayoutUnsupportedCapability, NonBoxNodeRoleError, SizingAlgorithm, SizingBehavior,
-    SizingProperty, UnsupportedSizingBehavior,
-};
-pub use geometry::{Edges, FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide, Point, Size};
-pub use grid::{GridAxisKind, NamedGridError};
-pub use measurement::{LeafMeasureInput, LeafMeasureInputOf, compute_leaf};
-pub use node_input::{
-    AlignContent, AlignItems, AtomicInlineParticipation, BaselineSource, BlockFlowContext,
-    BlockGeneration, BoxSizing, Clear, ComputedOverflow, ComputedOverflowError, Direction, Display,
-    FlexDirection, FlexGrow, FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap,
-    Float, FloatExclusion, FloatExclusionInterval, FloatExclusionIntervalError,
-    FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQuery,
-    FloatExclusionQueryOf, GridAutoFlow, GridBaselineError, GridBaselineReference,
-    GridBaselineReferences, GridFlowTolerance, GridFlowToleranceOf, GridLanesFlow, GridPlacement,
-    InlineBaselineContext, InlineBaselineError, InlineBoundaryEdge, InlineBoundaryEdgeError,
-    InlineBoundaryEdgeErrorOf, InlineBoundaryEdgeOf, InlineBoundaryInput, InlineBoundaryInputOf,
-    InlineBoundaryKind, InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf,
-    ItemAlignmentPosition, ItemOrder, LayoutInput, LayoutInputOf, LayoutInputView,
-    LayoutInputViewOf, LineBoxDirectionPolicy, LineBreakDisplay, LineBreakInput, LineBreakInputOf,
-    NodeInput, NodeInputOf, Overflow, OverflowClipBox, OverflowClipMargin, OverflowClipMarginOf,
-    Position, RawGridLine, RawGridPlacement, ScrollMargin, ScrollMarginError, ScrollMarginErrorOf,
-    ScrollMarginOf, ScrollPadding, ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf,
-    ScrollSnapAlign, ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness,
-    ScrollSnapType, ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, SizeContainment, TextAlign,
-    TextAlignLast, TextGroupAlign, TextIndent, TextIndentOf, TextJustification, TextWrapStyle,
-    VerticalAlign, VerticalAlignOf, WritingMode,
-};
-pub use output::{
-    BaselineCoordinateOf, BaselineFactOf, BaselinePairOf, Baselines, BaselinesOf,
-    BlockFlowRootContext, BlockFlowRootContextOf, CollapsibleMargin, CollapsibleMarginOf,
-    CompletedLayoutBatch, CompletedLayoutBatchOf, ComputeInput, ComputeInputOf, ComputeOutput,
-    ComputeOutputOf, ContainingLayoutContext, FlexItemRootContext, FlexItemRootContextOf,
-    InlineFragmentOutput, InlineFragmentOutputEntry, InlineFragmentOutputEntryOf,
-    InlineFragmentOutputOf, InlineFragmentOwner, LayoutCacheClearEntry, LayoutCacheStoreEntry,
-    LayoutCacheStoreEntryOf, LayoutOutputEntry, LayoutOutputEntryOf, LayoutRootContext,
-    LayoutRootContextOf, LayoutRootRequest, LayoutRootRequestOf, LayoutRoundingMode,
-    LayoutSizeInput, LayoutSizeInputError, LayoutSizeInputErrorOf, NamedBaselinesOf, NodeOutput,
-    NodeOutputOf, ParentFormattingContext, PhysicalBlockMarginCollapse,
-    PhysicalBlockMarginCollapseOf, PlacedInlineBoxFragments, PlacedTextOutput,
-    PositionedRootContext, PositionedRootContextOf, RootContextMismatch,
-    RootLocalPositionedContext, RootLocalPositionedContextOf, SourceIndex,
-};
-pub use resize_observer::{
-    ResizeObserverBoxSize, ResizeObserverContentRectOf, ResizeObserverMeasurementError,
-    ResizeObserverMeasurementOf, ResizeObserverPixelGrid,
-};
-pub use scalar::DefaultScalar;
-/// Supported scalar contract for generic layout APIs.
-pub use scalar::LayoutScalar;
-pub use scroll::{
-    FlowRelativeScrollAxisRange, FlowRelativeScrollAxisRangeOf, FlowRelativeScrollOffset,
-    FlowRelativeScrollOffsetOf, FlowRelativeScrollRange, FlowRelativeScrollRangeOf, OverflowClip,
-    OverflowClipOf, PhysicalClipAxis, PhysicalClipAxisOf, PhysicalScrollAxisRange,
-    PhysicalScrollAxisRangeOf, PhysicalScrollOffset, PhysicalScrollOffsetOf, PhysicalScrollRange,
-    PhysicalScrollRangeOf, ScrollAnchorBox, ScrollAnchorBoxOf, ScrollAnchorContainingBlock,
-    ScrollAnchorNode, ScrollAnchorNodeOf, ScrollAnchorPolicy, ScrollAnchorPosition,
-    ScrollAnchorPriority, ScrollAnchorRequest, ScrollAnchorRequestOf, ScrollAnchorSelectionError,
-    ScrollAnchorSubject, ScrollAnchorSubjectOf, ScrollCoordinateError, ScrollCoordinateErrorOf,
-    ScrollGeometry, ScrollGeometryOf, ScrollRect, ScrollRectError, ScrollRectErrorOf, ScrollRectOf,
-    ScrollSnapContext, ScrollSnapContextOf, ScrollSnapGeometry, ScrollSnapGeometryOf,
-    ScrollTargetGeometry, ScrollTargetGeometryOf, ScrollbarGutterRects, ScrollbarGutterRectsOf,
-    select_scroll_anchor,
-};
-pub use sizing::{
-    CalcSizeCalculation, CalcSizeCalculationErrorOf, CalcSizeCalculationOf,
-    CalcSizeConstructionError, FlexBasis, FlexBasisCalcBasis, FlexBasisOf, MaxSize,
-    MaxSizeCalcBasis, MaxSizeOf, MinSize, MinSizeCalcBasis, MinSizeOf, PreferredSize,
-    PreferredSizeCalcBasis, PreferredSizeOf, SizingCalculation, SizingCalculationError,
-    SizingCalculationOf,
-};
-pub use tree::{LayoutBatchSink, LayoutTree, Traverse};
-pub use value::{
-    AspectRatio, AspectRatioOf, AvailableSpace, AvailableSpaceOf, AxisSizingRequest,
-    AxisSizingRequestOf, ContentSizingRequest, ContentSizingRequestOf, FiniteScalarErrorOf, Length,
-    LengthAuto, LengthAutoOf, LengthOf, LengthPercentageErrorOf, LengthPercentageOf,
-    LengthResolution, LengthResolutionOf, LengthResolutionStatus, NearestScrollport,
-    NearestScrollportOf, NonNegativeFiniteOf, NonNegativeFiniteScalarErrorOf, NumericResolutionOf,
-    OrthogonalFallback, OrthogonalFallbackError, OrthogonalFallbackErrorOf,
-    OrthogonalFallbackLimit, OrthogonalFallbackLimitOf, OrthogonalFallbackOf, PercentageBasisOf,
-    ResolvedLengthAuto, ResolvedLengthAutoOf, ScrollportFallbackChange, ScrollportFallbackChangeOf,
-    SizingOperation, SizingRequest, SizingRequestOf, UnresolvedLengthReason,
-};
-pub use value::{
-    GridLine, GridSpan, GridTemplateAreaRow, GridTemplateAreas, MaxTrackSizing, MaxTrackSizingOf,
-    MinTrackSizing, MinTrackSizingOf, SubgridLineNameComponent, SubgridLineNameRepeatCount,
-    SubgridTrack, TrackComponent, TrackComponentList, TrackComponentListOf, TrackComponentOf,
-    TrackFlexFactor, TrackFlexFactorOf, TrackRepeat, TrackRepeatCount, TrackRepetition,
-    TrackRepetitionError, TrackRepetitionOf, TrackSizing, TrackSizingOf, track_sizing_components,
-    track_sizing_components_of,
+    compute_layout_with_flow_invalidated,
 };
 
 #[cfg(test)]

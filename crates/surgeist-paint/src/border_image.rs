@@ -29,7 +29,10 @@ use crate::accounting::{
 };
 use core::error::Error;
 use std::{cmp::Ordering, fmt};
-use surgeist_layout::{Edges, LengthPercentageOf, Point, Size};
+use surgeist_layout::{
+    geometry::{Edges, Point, Size},
+    length::LengthPercentageOf,
+};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
 mod mask;
@@ -155,7 +158,7 @@ impl BorderImageRect {
 /// A resolved paint area and the border widths that produced it.
 ///
 /// ```compile_fail,E0616
-/// use surgeist_layout::Size;
+/// use surgeist_layout::geometry::Size;
 /// use surgeist_paint::border_image::BorderImageArea;
 ///
 /// fn replace_sizing_extent(area: &mut BorderImageArea) {

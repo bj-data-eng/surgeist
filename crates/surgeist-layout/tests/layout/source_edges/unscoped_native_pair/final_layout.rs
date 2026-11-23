@@ -2,11 +2,11 @@
 //! canonical inline scope; actual original controls remain native participants.
 use super::*;
 
-struct FinalUnscopedPair<'a, S: layout::LayoutScalar> {
+struct FinalUnscopedPair<'a, S: layout::scalar::LayoutScalar> {
     host: &'a PairedEarly<S>,
-    installed: Vec<Option<layout::LayoutInputOf<S>>>,
+    installed: Vec<Option<layout::node::LayoutInputOf<S>>>,
 }
-impl<S: layout::LayoutScalar> layout::Traverse for FinalUnscopedPair<'_, S> {
+impl<S: layout::scalar::LayoutScalar> layout::tree::Traverse for FinalUnscopedPair<'_, S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -23,32 +23,39 @@ impl<S: layout::LayoutScalar> layout::Traverse for FinalUnscopedPair<'_, S> {
         self.host.children[node as usize][index]
     }
 }
-impl<S: layout::LayoutScalar> layout::WrapEdgeSource for FinalUnscopedPair<'_, S> {
-    fn wrap_edge_source_node(&self, node: u32) -> layout::WrapEdgeSourceNodeView<'_, S> {
-        layout::WrapEdgeSource::wrap_edge_source_node(self.host, node)
+impl<S: layout::scalar::LayoutScalar> layout::inline_wrapping::WrapEdgeSource
+    for FinalUnscopedPair<'_, S>
+{
+    fn wrap_edge_source_node(
+        &self,
+        node: u32,
+    ) -> layout::inline_wrapping::WrapEdgeSourceNodeView<'_, S> {
+        layout::inline_wrapping::WrapEdgeSource::wrap_edge_source_node(self.host, node)
     }
-    fn source_wrapping_scopes(&self) -> &[layout::SourceWrappingScopeInput<u32>] {
+    fn source_wrapping_scopes(&self) -> &[layout::inline_wrapping::SourceWrappingScopeInput<u32>] {
         &self.host.declarations
     }
-    fn source_scope_associations(&self) -> &[layout::SourceScopeAssociation<u32>] {
+    fn source_scope_associations(&self) -> &[layout::inline_wrapping::SourceScopeAssociation<u32>] {
         &self.host.scopes
     }
-    fn generated_child_order(&self) -> &[layout::InlineChildOrderInput<u32, usize>] {
+    fn generated_child_order(
+        &self,
+    ) -> &[layout::inline_wrapping::InlineChildOrderInput<u32, usize>] {
         &self.host.base.orders
     }
 }
-impl<S: layout::LayoutScalar> layout::LayoutTree for FinalUnscopedPair<'_, S> {
+impl<S: layout::scalar::LayoutScalar> layout::tree::LayoutTree for FinalUnscopedPair<'_, S> {
     type MeasureError = Infallible;
-    fn node_input(&self, node: u32) -> &layout::NodeInputOf<S> {
+    fn node_input(&self, node: u32) -> &layout::node::NodeInputOf<S> {
         if node == 0 {
             &self.host.base.root
         } else {
             &self.host.base.non_box
         }
     }
-    fn layout_input(&self, node: u32) -> layout::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: u32) -> layout::node::LayoutInputViewOf<'_, S> {
         if node == 0 {
-            layout::LayoutInputViewOf::Box(&self.host.base.root)
+            layout::node::LayoutInputViewOf::Box(&self.host.base.root)
         } else {
             self.installed[node as usize]
                 .as_ref()
@@ -57,23 +64,23 @@ impl<S: layout::LayoutScalar> layout::LayoutTree for FinalUnscopedPair<'_, S> {
         }
     }
 }
-fn final_pair_wrapping<S: layout::LayoutScalar>(
+fn final_pair_wrapping<S: layout::scalar::LayoutScalar>(
     host: &PairedEarly<S>,
-) -> layout::WrappingInput<u32> {
+) -> layout::inline_wrapping::WrappingInput<u32> {
     assert_eq!(host.declarations.len(), 1);
     assert_eq!(
         host.declarations[0].box_,
-        layout::InlineBoxRef::NativePair { start: 3, end: 4 }
+        layout::inline_wrapping::InlineBoxRef::NativePair { start: 3, end: 4 }
     );
-    layout::WrappingInput {
+    layout::inline_wrapping::WrappingInput {
         native_inline_boxes: Vec::new(),
         gaps: Vec::new(),
-        scopes: vec![layout::WrappingScopeInput::NativePair {
+        scopes: vec![layout::inline_wrapping::WrappingScopeInput::NativePair {
             start: 3,
             end: 4,
             wrap_inside: host.declarations[0].wrap_inside,
             edges: host.declarations[0].edges,
-            metric_contribution: Some(layout::InlineBoxMetricContribution::Strut(
+            metric_contribution: Some(layout::inline_wrapping::InlineBoxMetricContribution::Strut(
                 text::allocation::LineBoxStrut {
                     scope: None,
                     metrics: text::allocation::LineStrut {
@@ -87,10 +94,10 @@ fn final_pair_wrapping<S: layout::LayoutScalar>(
         child_order: vec![],
     }
 }
-fn qualify_final_pair<S: layout::LayoutScalar>(
-    batch: &layout::CompletedLayoutBatchOf<u32, S>,
+fn qualify_final_pair<S: layout::scalar::LayoutScalar>(
+    batch: &layout::batch::CompletedLayoutBatchOf<u32, S>,
     prepared: &text::prepared::PreparedText,
-    direction: layout::Direction,
+    direction: layout::geometry::Direction,
 ) {
     assert_eq!(batch.placed_text().len(), 1);
     let placed = batch.placed_text()[0].layout();
@@ -132,7 +139,7 @@ fn qualify_final_pair<S: layout::LayoutScalar>(
         .final_output();
     assert_eq!(
         root.size,
-        layout::Size::new(S::from_f64(40.0), S::from_f64(20.0))
+        layout::geometry::Size::new(S::from_f64(40.0), S::from_f64(20.0))
     );
     let mut glyphs = vec![];
     let mut advances = [0.0, 0.0];
@@ -142,7 +149,7 @@ fn qualify_final_pair<S: layout::LayoutScalar>(
             assert_eq!(run.font_size(), 10.0);
             assert_eq!(
                 run.origin().x + glyph.pen() + f64::from(glyph.x()),
-                if direction == layout::Direction::Ltr {
+                if direction == layout::geometry::Direction::Ltr {
                     0.0
                 } else {
                     30.0
@@ -172,14 +179,21 @@ fn qualify_final_pair<S: layout::LayoutScalar>(
         ]
     );
 }
-fn unscoped_pair_complete_pipeline<S: layout::LayoutScalar>() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+fn unscoped_pair_complete_pipeline<S: layout::scalar::LayoutScalar>() {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         let mut host = PairedEarly::<S>::new(direction, false);
-        host.declarations
-            .retain(|row| matches!(&row.box_, layout::InlineBoxRef::NativePair { .. }));
+        host.declarations.retain(|row| {
+            matches!(
+                &row.box_,
+                layout::inline_wrapping::InlineBoxRef::NativePair { .. }
+            )
+        });
         host.scopes.clear();
         host.base.orders.clear();
-        let (processed, receipt) = layout::process_wrapping_source(
+        let (processed, receipt) = layout::inline_wrapping::process_wrapping_source(
             &host,
             0,
             unscoped_native_pair_input(direction),
@@ -227,31 +241,33 @@ fn unscoped_pair_complete_pipeline<S: layout::LayoutScalar>() {
             assert_eq!(input.metrics().baseline(), S::ZERO);
             assert_eq!(input.metrics().line_extent(), S::ZERO);
             assert_eq!(input.edge().border_padding_advance(), S::ZERO);
-            installed[node as usize] = Some(layout::LayoutInputOf::inline_boundary(input));
-            binding.controls.push(layout::TextControlBinding {
-                occurrence: handle,
-                node,
-            });
+            installed[node as usize] = Some(layout::node::LayoutInputOf::inline_boundary(input));
+            binding
+                .controls
+                .push(layout::text_layout::TextControlBinding {
+                    occurrence: handle,
+                    node,
+                });
         }
         assert_eq!(binding.controls.len(), 2);
         let tree = FinalUnscopedPair {
             host: &host,
             installed,
         };
-        let flow=layout::LayoutFlowInput::try_new_with_edges(&tree,0,vec![binding.clone()],
+        let flow=layout::text_layout::LayoutFlowInput::try_new_with_edges(&tree,0,vec![binding.clone()],
             final_pair_wrapping(&host),Vec::new(), &receipt)
             .expect("the same real native pair must admit with its own early receipt, without an InlineScope");
         let batch = layout::compute_layout_with_flow(
             &flow,
             0,
-            request(layout::FlowAxes::new(
-                layout::WritingMode::HorizontalTb,
+            request(layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
                 direction,
             )),
         )
         .unwrap();
         qualify_final_pair(&batch, &prepared, direction);
-        let late = layout::LayoutFlowInput::try_new(
+        let late = layout::text_layout::LayoutFlowInput::try_new(
             &tree,
             0,
             vec![binding],
@@ -264,9 +280,9 @@ fn unscoped_pair_complete_pipeline<S: layout::LayoutScalar>() {
         assert!(
             matches!(
                 error.kind(),
-                layout::LayoutErrorKindOf::InvalidInput(
-                    layout::LayoutInvalidInputOf::WrappingScope(
-                        layout::WrappingScopeError::SourceProcessingRequired
+                layout::error::LayoutErrorKindOf::InvalidInput(
+                    layout::error::LayoutInvalidInputOf::WrappingScope(
+                        layout::inline_wrapping::WrappingScopeError::SourceProcessingRequired
                     )
                 )
             ),

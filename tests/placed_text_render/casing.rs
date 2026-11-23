@@ -6,9 +6,9 @@ fn capture(
     system: &mut text::System,
     uppercase: bool,
     authored_width: Option<f32>,
-    request: layout::LayoutRootRequest,
+    request: layout::request::LayoutRootRequest,
 ) -> (
-    layout::CompletedLayoutBatch<usize>,
+    layout::batch::CompletedLayoutBatch<usize>,
     text::prepared::PreparedOrigin,
     text::source::Source,
 ) {
@@ -73,32 +73,34 @@ fn capture(
     let origin = prepared.origin_views().next().unwrap().handle();
     let tree = Tree {
         inputs: [
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
-                size: layout::Size::new(
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                size: layout::geometry::Size::new(
                     match authored_width {
-                        Some(width) => layout::PreferredSizeOf::value(
-                            layout::LengthPercentageOf::px(width).unwrap(),
+                        Some(width) => layout::sizing::PreferredSizeOf::value(
+                            layout::length::LengthPercentageOf::px(width).unwrap(),
                         ),
-                        None => layout::PreferredSizeOf::AUTO,
+                        None => layout::sizing::PreferredSizeOf::AUTO,
                     },
-                    layout::PreferredSizeOf::AUTO,
+                    layout::sizing::PreferredSizeOf::AUTO,
                 ),
-                ..layout::NodeInput::DEFAULT
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(origin.clone())),
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
+                origin.clone(),
+            )),
         ],
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let capture = layout::LayoutFlowInput::try_new(
+    let capture = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
-        vec![layout::TextParagraphBinding {
-            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+        vec![layout::text_layout::TextParagraphBinding {
+            inline_box_fragments: layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1],
-            origins: vec![layout::TextOriginBinding {
+            origins: vec![layout::text_layout::TextOriginBinding {
                 origin: origin.clone(),
                 node: 1,
             }],
@@ -106,7 +108,7 @@ fn capture(
             controls: vec![],
             line_strut: None,
         }],
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -134,12 +136,15 @@ fn casing_expansion_changes_actual_fit_and_intrinsic_widths() {
             uppercase,
             Some(12.0),
             NativeViewport::new(
-                layout::Size::new(Some(12.0), None),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::geometry::Size::new(Some(12.0), None),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
             )
-            .request(layout::Size::new(
-                layout::SizingOperation::Normal,
-                layout::SizingOperation::Normal,
+            .request(layout::geometry::Size::new(
+                layout::constraint::SizingOperation::Normal,
+                layout::constraint::SizingOperation::Normal,
             )),
         );
         let placed = batch.placed_text()[0].layout();
@@ -193,9 +198,9 @@ fn casing_expansion_changes_actual_fit_and_intrinsic_widths() {
         assert_eq!(advances.len(), lines.len());
         assert!(advances.values().all(|advance| *advance == 10.0));
         for (operation, expected) in [
-            (layout::SizingOperation::MinContent, 10.0),
+            (layout::constraint::SizingOperation::MinContent, 10.0),
             (
-                layout::SizingOperation::MaxContent,
+                layout::constraint::SizingOperation::MaxContent,
                 if uppercase { 20.0 } else { 10.0 },
             ),
         ] {
@@ -204,15 +209,15 @@ fn casing_expansion_changes_actual_fit_and_intrinsic_widths() {
                 uppercase,
                 None,
                 NativeViewport::new(
-                    layout::Size::new(None, None),
-                    layout::FlowAxes::new(
-                        layout::WritingMode::HorizontalTb,
-                        layout::Direction::Ltr,
+                    layout::geometry::Size::new(None, None),
+                    layout::geometry::FlowAxes::new(
+                        layout::geometry::WritingMode::HorizontalTb,
+                        layout::geometry::Direction::Ltr,
                     ),
                 )
-                .request(layout::Size::new(
+                .request(layout::geometry::Size::new(
                     operation,
-                    layout::SizingOperation::Normal,
+                    layout::constraint::SizingOperation::Normal,
                 )),
             );
             let root = intrinsic
@@ -236,12 +241,15 @@ fn receiving_expansion_selection_and_paint_retain_exact_original_occurrence() {
         true,
         Some(12.0),
         NativeViewport::new(
-            layout::Size::new(Some(12.0), None),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::geometry::Size::new(Some(12.0), None),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
         )
-        .request(layout::Size::new(
-            layout::SizingOperation::Normal,
-            layout::SizingOperation::Normal,
+        .request(layout::geometry::Size::new(
+            layout::constraint::SizingOperation::Normal,
+            layout::constraint::SizingOperation::Normal,
         )),
     );
     let placed = batch.placed_text()[0].layout();
@@ -341,12 +349,15 @@ fn casing_expansion_enriches_original_accessibility_with_actual_geometry() {
             uppercase,
             Some(30.0),
             NativeViewport::new(
-                layout::Size::new(Some(30.0), None),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::geometry::Size::new(Some(30.0), None),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
             )
-            .request(layout::Size::new(
-                layout::SizingOperation::Normal,
-                layout::SizingOperation::Normal,
+            .request(layout::geometry::Size::new(
+                layout::constraint::SizingOperation::Normal,
+                layout::constraint::SizingOperation::Normal,
             )),
         );
         let placed = batch.placed_text()[0].layout();

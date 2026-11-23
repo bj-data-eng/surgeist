@@ -26,67 +26,67 @@ enum Case {
     EmptyBefore,
 }
 
-struct Host<S: l::LayoutScalar> {
-    root: l::NodeInputOf<S>,
-    non_box: l::NodeInputOf<S>,
+struct Host<S: l::scalar::LayoutScalar> {
+    root: l::node::NodeInputOf<S>,
+    non_box: l::node::NodeInputOf<S>,
     children: [Vec<u32>; 8],
-    boundaries: [l::InlineBoundaryInputOf<S>; 4],
-    declarations: Vec<l::SourceWrappingScopeInput<u32>>,
-    associations: Vec<l::SourceScopeAssociation<u32>>,
-    orders: Vec<l::InlineChildOrderInput<u32, usize>>,
-    installed: Vec<Option<l::LayoutInputOf<S>>>,
+    boundaries: [l::inline::InlineBoundaryInputOf<S>; 4],
+    declarations: Vec<l::inline_wrapping::SourceWrappingScopeInput<u32>>,
+    associations: Vec<l::inline_wrapping::SourceScopeAssociation<u32>>,
+    orders: Vec<l::inline_wrapping::InlineChildOrderInput<u32, usize>>,
+    installed: Vec<Option<l::node::LayoutInputOf<S>>>,
 }
 
-fn pair(start: u32, end: u32) -> l::InlineBoxRef<u32, usize> {
-    l::InlineBoxRef::NativePair { start, end }
+fn pair(start: u32, end: u32) -> l::inline_wrapping::InlineBoxRef<u32, usize> {
+    l::inline_wrapping::InlineBoxRef::NativePair { start, end }
 }
-fn box_pair(start: u32, end: u32) -> l::GeneratedBoxRef<u32, usize> {
-    l::GeneratedBoxRef::Inline(pair(start, end))
+fn box_pair(start: u32, end: u32) -> l::inline_wrapping::GeneratedBoxRef<u32, usize> {
+    l::inline_wrapping::GeneratedBoxRef::Inline(pair(start, end))
 }
-fn edges(case: Case) -> l::WrapEdges {
+fn edges(case: Case) -> l::inline_wrapping::WrapEdges {
     match case {
-        Case::Before | Case::EmptyBefore => l::WrapEdges {
-            before: l::WrapEdge::Line,
-            after: l::WrapEdge::Auto,
+        Case::Before | Case::EmptyBefore => l::inline_wrapping::WrapEdges {
+            before: l::inline_wrapping::WrapEdge::Line,
+            after: l::inline_wrapping::WrapEdge::Auto,
         },
-        Case::After => l::WrapEdges {
-            before: l::WrapEdge::Auto,
-            after: l::WrapEdge::Line,
+        Case::After => l::inline_wrapping::WrapEdges {
+            before: l::inline_wrapping::WrapEdge::Auto,
+            after: l::inline_wrapping::WrapEdge::Line,
         },
     }
 }
-impl<S: l::LayoutScalar> Host<S> {
+impl<S: l::scalar::LayoutScalar> Host<S> {
     fn new(case: Case) -> Self {
-        let child = |box_| l::GeneratedChildBoxInput {
+        let child = |box_| l::inline_wrapping::GeneratedChildBoxInput {
             box_,
-            participation: l::GeneratedBoxParticipation::InFlow,
+            participation: l::inline_wrapping::GeneratedBoxParticipation::InFlow,
         };
-        let order = |parent, children| l::InlineChildOrderInput {
+        let order = |parent, children| l::inline_wrapping::InlineChildOrderInput {
             parent,
             children,
-            prefix: l::ChildOrderCompleteness::Complete,
-            suffix: l::ChildOrderCompleteness::Complete,
+            prefix: l::inline_wrapping::ChildOrderCompleteness::Complete,
+            suffix: l::inline_wrapping::ChildOrderCompleteness::Complete,
             formatting_context: 0,
         };
         let mut declarations = vec![
-            l::SourceWrappingScopeInput {
+            l::inline_wrapping::SourceWrappingScopeInput {
                 box_: pair(2, 6),
-                wrap_inside: l::WrapInside::Auto,
-                edges: l::WrapEdges::AUTO,
+                wrap_inside: l::inline_wrapping::WrapInside::Auto,
+                edges: l::inline_wrapping::WrapEdges::AUTO,
             },
-            l::SourceWrappingScopeInput {
+            l::inline_wrapping::SourceWrappingScopeInput {
                 box_: pair(3, 5),
-                wrap_inside: l::WrapInside::Auto,
+                wrap_inside: l::inline_wrapping::WrapInside::Auto,
                 edges: edges(case),
             },
         ];
         let mut associations = vec![
-            l::SourceScopeAssociation {
+            l::inline_wrapping::SourceScopeAssociation {
                 scope: 1,
                 flow: 0,
                 pair: Some((2, 6)),
             },
-            l::SourceScopeAssociation {
+            l::inline_wrapping::SourceScopeAssociation {
                 scope: 2,
                 flow: 0,
                 pair: Some((3, 5)),
@@ -94,67 +94,78 @@ impl<S: l::LayoutScalar> Host<S> {
         ];
         let mut inside_s = vec![child(box_pair(3, 5))];
         if matches!(case, Case::EmptyBefore) {
-            declarations.push(l::SourceWrappingScopeInput {
-                box_: l::InlineBoxRef::Scope(3),
-                wrap_inside: l::WrapInside::Auto,
-                edges: l::WrapEdges::AUTO,
+            declarations.push(l::inline_wrapping::SourceWrappingScopeInput {
+                box_: l::inline_wrapping::InlineBoxRef::Scope(3),
+                wrap_inside: l::inline_wrapping::WrapInside::Auto,
+                edges: l::inline_wrapping::WrapEdges::AUTO,
             });
-            associations.push(l::SourceScopeAssociation {
+            associations.push(l::inline_wrapping::SourceScopeAssociation {
                 scope: 3,
                 flow: 0,
                 pair: None,
             });
             inside_s.insert(
                 0,
-                child(l::GeneratedBoxRef::Inline(l::InlineBoxRef::Scope(3))),
+                child(l::inline_wrapping::GeneratedBoxRef::Inline(
+                    l::inline_wrapping::InlineBoxRef::Scope(3),
+                )),
             );
         }
         let mut orders = vec![
             order(
-                l::GeneratedBoxRef::Node(0),
+                l::inline_wrapping::GeneratedBoxRef::Node(0),
                 vec![
-                    child(l::GeneratedBoxRef::Node(1)),
+                    child(l::inline_wrapping::GeneratedBoxRef::Node(1)),
                     child(box_pair(2, 6)),
-                    child(l::GeneratedBoxRef::Node(7)),
+                    child(l::inline_wrapping::GeneratedBoxRef::Node(7)),
                 ],
             ),
             order(box_pair(2, 6), inside_s),
-            order(box_pair(3, 5), vec![child(l::GeneratedBoxRef::Node(4))]),
+            order(
+                box_pair(3, 5),
+                vec![child(l::inline_wrapping::GeneratedBoxRef::Node(4))],
+            ),
         ];
         if matches!(case, Case::EmptyBefore) {
             orders.push(order(
-                l::GeneratedBoxRef::Inline(l::InlineBoxRef::Scope(3)),
+                l::inline_wrapping::GeneratedBoxRef::Inline(
+                    l::inline_wrapping::InlineBoxRef::Scope(3),
+                ),
                 vec![],
             ));
         }
         Self {
-            root: l::NodeInputOf {
-                display: l::Display::Block,
-                size: l::Size::new(
-                    l::PreferredSizeOf::value(
-                        l::LengthPercentageOf::px(S::from_f64(100.0)).unwrap(),
+            root: l::node::NodeInputOf {
+                display: l::box_model::Display::Block,
+                size: l::geometry::Size::new(
+                    l::sizing::PreferredSizeOf::value(
+                        l::length::LengthPercentageOf::px(S::from_f64(100.0)).unwrap(),
                     ),
-                    l::PreferredSizeOf::AUTO,
+                    l::sizing::PreferredSizeOf::AUTO,
                 ),
-                ..l::NodeInputOf::default()
+                ..l::node::NodeInputOf::default()
             },
-            non_box: l::NodeInputOf::non_box(),
+            non_box: l::node::NodeInputOf::non_box(),
             children: std::array::from_fn(|i| if i == 0 { (1..=7).collect() } else { vec![] }),
             boundaries: std::array::from_fn(|i| {
-                l::InlineBoundaryInputOf::contribution(
+                l::inline::InlineBoundaryInputOf::contribution(
                     if i < 2 {
-                        l::InlineBoundaryKind::Start
+                        l::inline::InlineBoundaryKind::Start
                     } else {
-                        l::InlineBoundaryKind::End
+                        l::inline::InlineBoundaryKind::End
                     },
-                    l::InlineMetricsOf::try_new(
-                        surgeist_layout::InlineBaselineContext::Physical,
+                    l::inline::InlineMetricsOf::try_new(
+                        surgeist_layout::baseline::InlineBaselineContext::Physical,
                         S::from_f64(8.0),
                         S::from_f64(10.0),
                     )
                     .unwrap(),
-                    l::InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(ADVANCES[i]), S::ZERO)
-                        .unwrap(),
+                    l::inline::InlineBoundaryEdgeOf::try_new(
+                        S::ZERO,
+                        S::from_f64(ADVANCES[i]),
+                        S::ZERO,
+                    )
+                    .unwrap(),
                 )
                 .unwrap()
             }),
@@ -164,8 +175,8 @@ impl<S: l::LayoutScalar> Host<S> {
             installed: (0..8).map(|_| None).collect(),
         }
     }
-    fn occurrences(&self) -> l::SourceOccurrenceAssociations<u32> {
-        l::SourceOccurrenceAssociations {
+    fn occurrences(&self) -> l::inline_wrapping::SourceOccurrenceAssociations<u32> {
+        l::inline_wrapping::SourceOccurrenceAssociations {
             origins: ORIGIN_NODES.into_iter().enumerate().collect(),
             controls: CONTROL_NODES.into_iter().enumerate().collect(),
             atomics: vec![],
@@ -175,7 +186,7 @@ impl<S: l::LayoutScalar> Host<S> {
         &mut self,
         processed: &t::processing::ProcessedSource,
         p: &t::prepared::PreparedText,
-    ) -> l::TextParagraphBinding<u32> {
+    ) -> l::text_layout::TextParagraphBinding<u32> {
         let origins = p
             .origin_views()
             .enumerate()
@@ -188,10 +199,10 @@ impl<S: l::LayoutScalar> Host<S> {
                 );
                 assert_eq!(o.source().revision(), 21);
                 let node = ORIGIN_NODES[i];
-                self.installed[node as usize] = Some(l::LayoutInputOf::inline_text(
-                    l::TextParticipation::new(o.handle()),
+                self.installed[node as usize] = Some(l::node::LayoutInputOf::inline_text(
+                    l::text_layout::TextParticipation::new(o.handle()),
                 ));
-                l::TextOriginBinding {
+                l::text_layout::TextOriginBinding {
                     origin: o.handle(),
                     node,
                 }
@@ -214,15 +225,16 @@ impl<S: l::LayoutScalar> Host<S> {
                 );
                 let node = CONTROL_NODES[i];
                 self.installed[node as usize] =
-                    Some(l::LayoutInputOf::inline_boundary(self.boundaries[i]));
-                l::TextControlBinding {
+                    Some(l::node::LayoutInputOf::inline_boundary(self.boundaries[i]));
+                l::text_layout::TextControlBinding {
                     occurrence: actual.handle(),
                     node,
                 }
             })
             .collect();
-        l::TextParagraphBinding {
-            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+        l::text_layout::TextParagraphBinding {
+            inline_box_fragments:
+                surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: p.clone(),
             container: 0,
             nodes: self.children[0].clone(),
@@ -232,28 +244,37 @@ impl<S: l::LayoutScalar> Host<S> {
             line_strut: None,
         }
     }
-    fn final_wrapping(&self, processed: &t::processing::ProcessedSource) -> l::WrappingInput<u32> {
-        let convert = |b: &l::GeneratedBoxRef<u32, usize>| match b {
-            l::GeneratedBoxRef::Node(n) => l::GeneratedBoxRef::Node(*n),
-            l::GeneratedBoxRef::Inline(l::InlineBoxRef::NativePair { start, end }) => {
-                l::GeneratedBoxRef::Inline(l::InlineBoxRef::NativePair {
+    fn final_wrapping(
+        &self,
+        processed: &t::processing::ProcessedSource,
+    ) -> l::inline_wrapping::WrappingInput<u32> {
+        let convert = |b: &l::inline_wrapping::GeneratedBoxRef<u32, usize>| match b {
+            l::inline_wrapping::GeneratedBoxRef::Node(n) => {
+                l::inline_wrapping::GeneratedBoxRef::Node(*n)
+            }
+            l::inline_wrapping::GeneratedBoxRef::Inline(
+                l::inline_wrapping::InlineBoxRef::NativePair { start, end },
+            ) => l::inline_wrapping::GeneratedBoxRef::Inline(
+                l::inline_wrapping::InlineBoxRef::NativePair {
                     start: *start,
                     end: *end,
-                })
-            }
-            l::GeneratedBoxRef::Inline(l::InlineBoxRef::Scope(s)) => l::GeneratedBoxRef::Inline(
-                l::InlineBoxRef::Scope(processed.captured_scope(*s).unwrap()),
+                },
+            ),
+            l::inline_wrapping::GeneratedBoxRef::Inline(
+                l::inline_wrapping::InlineBoxRef::Scope(s),
+            ) => l::inline_wrapping::GeneratedBoxRef::Inline(
+                l::inline_wrapping::InlineBoxRef::Scope(processed.captured_scope(*s).unwrap()),
             ),
         };
-        l::WrappingInput {
+        l::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: self
                 .declarations
                 .iter()
                 .map(|d| match d.box_ {
-                    l::InlineBoxRef::NativePair { start, end } => {
-                        l::WrappingScopeInput::NativePair {
+                    l::inline_wrapping::InlineBoxRef::NativePair { start, end } => {
+                        l::inline_wrapping::WrappingScopeInput::NativePair {
                             start,
                             end,
                             wrap_inside: d.wrap_inside,
@@ -261,32 +282,36 @@ impl<S: l::LayoutScalar> Host<S> {
                             metric_contribution: None,
                         }
                     }
-                    l::InlineBoxRef::Scope(s) => l::WrappingScopeInput::Captured {
-                        scope: processed.captured_scope(s).unwrap(),
-                        wrap_inside: d.wrap_inside,
-                        edges: d.edges,
-                        metric_contribution: Some(l::InlineBoxMetricContribution::Strut(
-                            t::allocation::LineBoxStrut {
-                                scope: None,
-                                metrics: t::allocation::LineStrut {
-                                    baseline: 8.0,
-                                    line_extent: 10.0,
-                                },
-                                alignment: t::allocation::LineBoxAlignment::Baseline,
-                            },
-                        )),
-                    },
+                    l::inline_wrapping::InlineBoxRef::Scope(s) => {
+                        l::inline_wrapping::WrappingScopeInput::Captured {
+                            scope: processed.captured_scope(s).unwrap(),
+                            wrap_inside: d.wrap_inside,
+                            edges: d.edges,
+                            metric_contribution: Some(
+                                l::inline_wrapping::InlineBoxMetricContribution::Strut(
+                                    t::allocation::LineBoxStrut {
+                                        scope: None,
+                                        metrics: t::allocation::LineStrut {
+                                            baseline: 8.0,
+                                            line_extent: 10.0,
+                                        },
+                                        alignment: t::allocation::LineBoxAlignment::Baseline,
+                                    },
+                                ),
+                            ),
+                        }
+                    }
                 })
                 .collect(),
             child_order: self
                 .orders
                 .iter()
-                .map(|o| l::InlineChildOrderInput {
+                .map(|o| l::inline_wrapping::InlineChildOrderInput {
                     parent: convert(&o.parent),
                     children: o
                         .children
                         .iter()
-                        .map(|c| l::GeneratedChildBoxInput {
+                        .map(|c| l::inline_wrapping::GeneratedChildBoxInput {
                             box_: convert(&c.box_),
                             participation: c.participation,
                         })
@@ -300,11 +325,11 @@ impl<S: l::LayoutScalar> Host<S> {
     }
 }
 
-struct Early<'a, S: l::LayoutScalar>(&'a Host<S>);
-struct Final<'a, S: l::LayoutScalar>(&'a Host<S>);
+struct Early<'a, S: l::scalar::LayoutScalar>(&'a Host<S>);
+struct Final<'a, S: l::scalar::LayoutScalar>(&'a Host<S>);
 macro_rules! source_view {
     ($view:ident) => {
-        impl<S: l::LayoutScalar> l::Traverse for $view<'_, S> {
+        impl<S: l::scalar::LayoutScalar> l::tree::Traverse for $view<'_, S> {
             type Node = u32;
             type Scalar = S;
             type Children<'a>
@@ -321,25 +346,34 @@ macro_rules! source_view {
                 self.0.children[n as usize][i]
             }
         }
-        impl<S: l::LayoutScalar> l::WrapEdgeSource for $view<'_, S> {
-            fn wrap_edge_source_node(&self, n: u32) -> l::WrapEdgeSourceNodeView<'_, S> {
+        impl<S: l::scalar::LayoutScalar> l::inline_wrapping::WrapEdgeSource for $view<'_, S> {
+            fn wrap_edge_source_node(
+                &self,
+                n: u32,
+            ) -> l::inline_wrapping::WrapEdgeSourceNodeView<'_, S> {
                 if n == 0 {
-                    l::WrapEdgeSourceNodeView::Box(&self.0.root)
+                    l::inline_wrapping::WrapEdgeSourceNodeView::Box(&self.0.root)
                 } else if let Some(i) = CONTROL_NODES.iter().position(|&node| node == n) {
-                    l::WrapEdgeSourceNodeView::Boundary(self.0.boundaries[i])
+                    l::inline_wrapping::WrapEdgeSourceNodeView::Boundary(self.0.boundaries[i])
                 } else {
-                    l::WrapEdgeSourceNodeView::SourceOrigin {
+                    l::inline_wrapping::WrapEdgeSourceNodeView::SourceOrigin {
                         origin: ORIGIN_NODES.iter().position(|&node| node == n).unwrap(),
                     }
                 }
             }
-            fn source_wrapping_scopes(&self) -> &[l::SourceWrappingScopeInput<u32>] {
+            fn source_wrapping_scopes(
+                &self,
+            ) -> &[l::inline_wrapping::SourceWrappingScopeInput<u32>] {
                 &self.0.declarations
             }
-            fn source_scope_associations(&self) -> &[l::SourceScopeAssociation<u32>] {
+            fn source_scope_associations(
+                &self,
+            ) -> &[l::inline_wrapping::SourceScopeAssociation<u32>] {
                 &self.0.associations
             }
-            fn generated_child_order(&self) -> &[l::InlineChildOrderInput<u32, usize>] {
+            fn generated_child_order(
+                &self,
+            ) -> &[l::inline_wrapping::InlineChildOrderInput<u32, usize>] {
                 &self.0.orders
             }
         }
@@ -348,18 +382,18 @@ macro_rules! source_view {
 source_view!(Early);
 source_view!(Final);
 // Early implements no LayoutTree and cannot borrow prepared participation.
-impl<S: l::LayoutScalar> l::LayoutTree for Final<'_, S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for Final<'_, S> {
     type MeasureError = Infallible;
-    fn node_input(&self, n: u32) -> &l::NodeInputOf<S> {
+    fn node_input(&self, n: u32) -> &l::node::NodeInputOf<S> {
         if n == 0 {
             &self.0.root
         } else {
             &self.0.non_box
         }
     }
-    fn layout_input(&self, n: u32) -> l::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, n: u32) -> l::node::LayoutInputViewOf<'_, S> {
         if n == 0 {
-            l::LayoutInputViewOf::Box(&self.0.root)
+            l::node::LayoutInputViewOf::Box(&self.0.root)
         } else {
             self.0.installed[n as usize].as_ref().unwrap().as_view()
         }
@@ -529,14 +563,15 @@ fn qualify_empty_source() {
     assert!(processed.captured_computed_line_boundary(0).is_none());
 }
 
-fn run<S: l::LayoutScalar>(case: Case) {
+fn run<S: l::scalar::LayoutScalar>(case: Case) {
     if matches!(case, Case::EmptyBefore) {
         qualify_empty_source();
     }
     let mut host = Host::<S>::new(case);
     let output = {
         let early = Early(&host);
-        l::process_wrapping_source(&early, 0, source(case), host.occurrences()).unwrap()
+        l::inline_wrapping::process_wrapping_source(&early, 0, source(case), host.occurrences())
+            .unwrap()
     };
     let (processed, receipt) = output.into_parts();
     let processed = Arc::new(processed);
@@ -651,7 +686,7 @@ fn run<S: l::LayoutScalar>(case: Case) {
         .map(|c| c.occurrence.clone())
         .collect();
     let tree = Final(&host);
-    let flow = l::LayoutFlowInput::try_new_with_edges(
+    let flow = l::text_layout::LayoutFlowInput::try_new_with_edges(
         &tree,
         0,
         vec![binding],
@@ -662,17 +697,17 @@ fn run<S: l::LayoutScalar>(case: Case) {
     .unwrap();
     let request = {
         let sizing_request = crate::layout::native_request::sizing(
-            surgeist_layout::Size::new(Some(S::from_f64(100.0)), None),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(S::from_f64(100.0)), None),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         );
-        l::LayoutRootRequestOf::standalone(
+        l::request::LayoutRootRequestOf::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::WritingMode::HorizontalTb,
-                surgeist_layout::Direction::Ltr,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::geometry::WritingMode::HorizontalTb,
+                surgeist_layout::geometry::Direction::Ltr,
             ),
             sizing_request
                 .orthogonal_fallback()
@@ -712,7 +747,7 @@ fn run<S: l::LayoutScalar>(case: Case) {
         .final_output();
     assert_eq!(
         root.size,
-        l::Size::new(S::from_f64(100.0), S::from_f64(20.0))
+        l::geometry::Size::new(S::from_f64(100.0), S::from_f64(20.0))
     );
     let mut lines = vec![None, None];
     for entry in batch.final_inline_fragments() {

@@ -33,7 +33,7 @@ The [test implementation](../src/leaf_tests.rs) is
 [`compute_leaf`](../src/measurement.rs) with automatic dimensions, a provider
 that measures 40 × 12, padding of 3 on each edge, and a border of 2 on each edge.
 The assertions verify a final size of 50 × 22 and `content_size` of 46 × 18.
-The function is exported from the [public crate root](../src/lib.rs).
+The function is `surgeist_layout::tree::compute_leaf`, listed by the [tree module](../src/tree.rs).
 
 Continue with [how to run broader checks or select scalar precision](how-to.md),
 or use the [API reference](reference.md) to find the tree-layout front door.

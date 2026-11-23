@@ -504,7 +504,7 @@ fn verify_comparisons(comparisons: &Comparisons, rtl: bool) -> Result<(), Error>
 
 fn verify_native(
     golden: &Golden,
-    batch: &layout::CompletedLayoutBatch<usize>,
+    batch: &layout::batch::CompletedLayoutBatch<usize>,
     rtl: bool,
 ) -> Result<(), Error> {
     let [placed] = batch.placed_text() else {
@@ -618,8 +618,8 @@ fn verify_native(
         || fragment.baseline().y != FIRST_BASELINE as Scalar
         || fragment.rect().map(|rect| (rect.origin(), rect.size()))
             != Some((
-                layout::Point::new(x, BLOCK_SHIFT as Scalar),
-                layout::Size::new(0.0, 20.0),
+                layout::geometry::Point::new(x, BLOCK_SHIFT as Scalar),
+                layout::geometry::Size::new(0.0, 20.0),
             ))
     {
         return Err(Error::new(format!(
@@ -648,8 +648,8 @@ fn verify_native(
 
 fn verify_fragment_packets(
     golden: &Golden,
-    fragments: &[layout::InlineFragmentOutputEntry<usize>],
-    final_fragments: &[layout::InlineFragmentOutputEntry<usize>],
+    fragments: &[layout::batch::InlineFragmentOutputEntry<usize>],
+    final_fragments: &[layout::batch::InlineFragmentOutputEntry<usize>],
     lines: &[surgeist_text::finalized::FinalizedLine; 2],
 ) -> Result<(), Error> {
     // The captured paragraph has one canonical anchor per selected line.
@@ -692,17 +692,20 @@ fn verify_fragment_packets(
             let actual = entry.fragment();
             let expected = view.bounds().map(|bounds| {
                 (
-                    layout::Point::new(
+                    layout::geometry::Point::new(
                         bounds.origin.x as Scalar,
                         (baseline + (bounds.origin.y - line.feedback().baseline)) as Scalar,
                     ),
-                    layout::Size::new(bounds.size.width as Scalar, bounds.size.height as Scalar),
+                    layout::geometry::Size::new(
+                        bounds.size.width as Scalar,
+                        bounds.size.height as Scalar,
+                    ),
                 )
             });
             if matching.next().is_some()
-                || entry.owner() != &layout::InlineFragmentOwner::Node(child + 1)
+                || entry.owner() != &layout::text_layout::InlineFragmentOwner::Node(child + 1)
                 || actual.line_index() != line_index
-                || actual.baseline() != layout::Point::new(0.0, baseline as Scalar)
+                || actual.baseline() != layout::geometry::Point::new(0.0, baseline as Scalar)
                 || actual.rect().map(|rect| (rect.origin(), rect.size())) != expected
             {
                 return Err(Error::new(format!(
@@ -716,13 +719,13 @@ fn verify_fragment_packets(
 
 fn verify_node_packets(
     golden: &Golden,
-    batch: &layout::CompletedLayoutBatch<usize>,
+    batch: &layout::batch::CompletedLayoutBatch<usize>,
     rtl: bool,
 ) -> Result<(), Error> {
     let direction = if rtl {
-        layout::Direction::Rtl
+        layout::geometry::Direction::Rtl
     } else {
-        layout::Direction::Ltr
+        layout::geometry::Direction::Ltr
     };
     let children = if rtl {
         [
@@ -741,8 +744,11 @@ fn verify_node_packets(
             (0.0, 48.0, 40.0),
         ]
     };
-    let bounds = layout::ScrollRect::try_new(layout::Point::ZERO, layout::Size::new(72.0, 40.0))
-        .map_err(|_| Error::new("invalid authored root bounds"))?;
+    let bounds = layout::scroll::ScrollRect::try_new(
+        layout::geometry::Point::ZERO,
+        layout::geometry::Size::new(72.0, 40.0),
+    )
+    .map_err(|_| Error::new("invalid authored root bounds"))?;
     for (final_phase, content_height) in [(false, (40.0 + BLOCK_SHIFT) as Scalar), (true, 40.0)] {
         if batch.node_layouts().len() != children.len() + 1 {
             return Err(Error::new("prepared Range packet census changed"));
@@ -760,19 +766,25 @@ fn verify_node_packets(
         let scroll = root
             .scroll_geometry
             .ok_or_else(|| Error::new("missing prepared Range root scroll geometry"))?;
-        let expected_root = layout::NodeOutput {
+        let expected_root = layout::node::NodeOutput {
             size: bounds.size(),
-            content_size: layout::Size::new(72.0, content_height),
-            ..layout::NodeOutput::new()
+            content_size: layout::geometry::Size::new(72.0, content_height),
+            ..layout::node::NodeOutput::new()
         };
-        if (layout::NodeOutput {
+        if (layout::node::NodeOutput {
             scroll_geometry: None,
             ..root
         }) != expected_root
             || scroll.flow_axes()
-                != layout::FlowAxes::new(layout::WritingMode::HorizontalTb, direction)
+                != layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    direction,
+                )
             || (scroll.used_overflow_x(), scroll.used_overflow_y())
-                != (layout::Overflow::Visible, layout::Overflow::Visible)
+                != (
+                    layout::overflow::Overflow::Visible,
+                    layout::overflow::Overflow::Visible,
+                )
             || [
                 scroll.border_box(),
                 scroll.padding_box(),
@@ -781,7 +793,7 @@ fn verify_node_packets(
             ]
             .into_iter()
             .any(|rect| rect != bounds)
-            || scroll.scrollable_overflow().origin() != layout::Point::ZERO
+            || scroll.scrollable_overflow().origin() != layout::geometry::Point::ZERO
             || scroll.scrollable_overflow().size() != expected_root.content_size
         {
             return Err(Error::new(format!(
@@ -793,9 +805,9 @@ fn verify_node_packets(
                 Error::new(format!("missing prepared Range child packet {index}"))
             })?;
             let expected_kind = if golden.root.children[index].inline_boundary.is_some() {
-                super::observation::Kind::NonBox(layout::NonBoxKind::InlineBoundary)
+                super::observation::Kind::NonBox(layout::fragmentation::NonBoxKind::InlineBoundary)
             } else {
-                super::observation::Kind::NonBox(layout::NonBoxKind::InlineText)
+                super::observation::Kind::NonBox(layout::fragmentation::NonBoxKind::InlineText)
             };
             let actual =
                 super::observation::observe((batch, final_phase), index + 1, expected_kind);
@@ -804,11 +816,11 @@ fn verify_node_packets(
             } else {
                 FIRST_BASELINE
             } as Scalar;
-            let expected = layout::NodeOutput {
-                location: layout::Point::new(x, y),
-                size: layout::Size::new(width, height),
-                content_size: layout::Size::new(width, height),
-                ..layout::NodeOutput::with_source_index(layout::SourceIndex::new(index))
+            let expected = layout::node::NodeOutput {
+                location: layout::geometry::Point::new(x, y),
+                size: layout::geometry::Size::new(width, height),
+                content_size: layout::geometry::Size::new(width, height),
+                ..layout::node::NodeOutput::with_source_index(layout::node::SourceIndex::new(index))
             };
             if !actual.matches_numeric_fields(&expected) {
                 return Err(Error::new(format!(

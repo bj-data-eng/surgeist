@@ -5,6 +5,7 @@ pub use surgeist_layout::*;
 use surgeist_css::values::layout::{
     CssGridAutoFlow, CssGridAutoFlowAxis, CssGridTrackList, CssItemDirection, CssItemPack,
 };
+use surgeist_layout::grid::{GridAutoFlow, GridAxisKind, GridLanesFlow};
 
 /// A CSS flow value whose used interpretation is unavailable.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

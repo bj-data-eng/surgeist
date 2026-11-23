@@ -6,12 +6,20 @@
 //! and §5.2, CSS Sizing 4 §4.1, §4.2 and §4.4, and CSS 2.1 §10.3.7, §10.4 and
 //! §10.6.4.
 use surgeist_layout::{
-    AspectRatioOf, AvailableSpaceOf, AxisSizingRequestOf, BoxSizing, Direction, Display, Edges,
-    FlowAxes, LayoutInputOf, LayoutInputViewOf, LayoutRootRequestOf, LayoutScalar, LayoutTree,
-    LengthAutoOf, LengthOf, LengthPercentageOf, MaxSizeOf, MinSizeOf, NearestScrollportOf,
-    NodeInputOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf, Position, PreferredSizeOf, Size,
-    SizingCalculationOf, SizingOperation, SizingRequestOf, TrackComponentOf, TrackSizingOf,
-    Traverse, WritingMode, compute_layout,
+    box_model::{BoxSizing, Display, Position},
+    compute_layout,
+    constraint::{
+        AvailableSpaceOf, AxisSizingRequestOf, NearestScrollportOf, OrthogonalFallbackLimitOf,
+        OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
+    },
+    geometry::{Direction, Edges, FlowAxes, Size, WritingMode},
+    grid::{TrackComponentOf, TrackSizingOf},
+    length::{AspectRatioOf, LengthAutoOf, LengthOf, LengthPercentageOf},
+    node::{LayoutInputOf, LayoutInputViewOf, NodeInputOf},
+    request::LayoutRootRequestOf,
+    scalar::LayoutScalar,
+    sizing::{MaxSizeOf, MinSizeOf, PreferredSizeOf, SizingCalculationOf},
+    tree::{LayoutTree, Traverse},
 };
 
 const PARENTS: [Display; 3] = [Display::Block, Display::Flex, Display::Grid];

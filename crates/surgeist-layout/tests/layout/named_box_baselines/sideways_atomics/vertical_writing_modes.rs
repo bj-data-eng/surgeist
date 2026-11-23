@@ -116,7 +116,7 @@ fn qualify(parent: &Captured) {
     );
 }
 
-fn vertical_paragraph<S: l::LayoutScalar>() {
+fn vertical_paragraph<S: l::scalar::LayoutScalar>() {
     let parent = capture(
         AHEM,
         "AB",
@@ -129,26 +129,41 @@ fn vertical_paragraph<S: l::LayoutScalar>() {
     // succeed before the public Layout operation consumes this exact owner.
     qualify(&parent);
     for (mode, baselines, lefts) in [
-        (l::WritingMode::VerticalRl, [32.0, 22.0], [30.0, 20.0]),
-        (l::WritingMode::VerticalLr, [2.0, 12.0], [0.0, 10.0]),
+        (
+            l::geometry::WritingMode::VerticalRl,
+            [32.0, 22.0],
+            [30.0, 20.0],
+        ),
+        (
+            l::geometry::WritingMode::VerticalLr,
+            [2.0, 12.0],
+            [0.0, 10.0],
+        ),
     ] {
-        let mut input = root(mode, l::Direction::Ltr, l::InlineBaselineContext::Physical);
-        input.size = l::Size::new(px(40.0), px(15.0));
+        let mut input = root(
+            mode,
+            l::geometry::Direction::Ltr,
+            l::baseline::InlineBaselineContext::Physical,
+        );
+        input.size = l::geometry::Size::new(px(40.0), px(15.0));
         let mut host = Host::<S>::new(input);
         let origin = parent.prepared.origin_views().next().unwrap().handle();
         assert_eq!(
             host.push(
                 Some(0),
-                l::LayoutInputOf::inline_text(l::TextParticipation::new(origin.clone()))
+                l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+                    origin.clone()
+                ))
             ),
             1
         );
-        let binding = l::TextParagraphBinding {
-            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+        let binding = l::text_layout::TextParagraphBinding {
+            inline_box_fragments:
+                surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: parent.prepared.clone(),
             container: 0,
             nodes: vec![1],
-            origins: vec![l::TextOriginBinding { origin, node: 1 }],
+            origins: vec![l::text_layout::TextOriginBinding { origin, node: 1 }],
             atomics: vec![],
             controls: vec![],
             line_strut: None,
@@ -159,7 +174,10 @@ fn vertical_paragraph<S: l::LayoutScalar>() {
             crate::layout::observation::phase(&batch, false),
             crate::layout::observation::phase(&batch, true),
         ] {
-            assert_eq!(node(entries, 0).size, l::Size::new(n(40.0), n(15.0)));
+            assert_eq!(
+                node(entries, 0).size,
+                l::geometry::Size::new(n(40.0), n(15.0))
+            );
             unknown(node(entries, 0).named_baselines);
         }
         let text = placed(&batch, 0);
@@ -201,7 +219,7 @@ fn vertical_paragraph<S: l::LayoutScalar>() {
         assert_eq!(glyphs, [(35, baselines[0], 0.0), (36, baselines[1], 0.0)]);
         let mut lines = std::collections::BTreeMap::new();
         for row in batch.unrounded_inline_fragments() {
-            if matches!(row.owner(), l::InlineFragmentOwner::Node(1)) {
+            if matches!(row.owner(), l::text_layout::InlineFragmentOwner::Node(1)) {
                 let fragment = row.fragment();
                 let range = if fragment.line_index() == 0 {
                     t::source::Range::new(0, 1)

@@ -4,51 +4,55 @@ use std::slice;
 use surgeist_layout as layout;
 use surgeist_text as text;
 
-struct MixedHost<S: layout::LayoutScalar> {
-    root: layout::NodeInputOf<S>,
-    boundaries: [layout::InlineBoundaryInputOf<S>; 4],
+struct MixedHost<S: layout::scalar::LayoutScalar> {
+    root: layout::node::NodeInputOf<S>,
+    boundaries: [layout::inline::InlineBoundaryInputOf<S>; 4],
     children: [Vec<u32>; 8],
-    declarations: Vec<layout::SourceWrappingScopeInput<u32>>,
-    associations: Vec<layout::SourceScopeAssociation<u32>>,
-    orders: Vec<layout::InlineChildOrderInput<u32, usize>>,
+    declarations: Vec<layout::inline_wrapping::SourceWrappingScopeInput<u32>>,
+    associations: Vec<layout::inline_wrapping::SourceScopeAssociation<u32>>,
+    orders: Vec<layout::inline_wrapping::InlineChildOrderInput<u32, usize>>,
 }
-impl<S: layout::LayoutScalar> MixedHost<S> {
+impl<S: layout::scalar::LayoutScalar> MixedHost<S> {
     fn new(
         side: text::capture::SourceBoxSide,
         empty: bool,
-        direction: layout::Direction,
+        direction: layout::geometry::Direction,
         reverse: bool,
     ) -> Self {
-        let outer = layout::InlineBoxRef::NativePair { start: 2, end: 6 };
-        let inner = layout::InlineBoxRef::Scope(1);
-        let e = layout::InlineBoxRef::Scope(2);
-        let child = |box_| layout::GeneratedChildBoxInput {
+        let outer = layout::inline_wrapping::InlineBoxRef::NativePair { start: 2, end: 6 };
+        let inner = layout::inline_wrapping::InlineBoxRef::Scope(1);
+        let e = layout::inline_wrapping::InlineBoxRef::Scope(2);
+        let child = |box_| layout::inline_wrapping::GeneratedChildBoxInput {
             box_,
-            participation: layout::GeneratedBoxParticipation::InFlow,
+            participation: layout::inline_wrapping::GeneratedBoxParticipation::InFlow,
         };
-        let node = |n| layout::GeneratedBoxRef::Node(n);
-        let inline = |b| layout::GeneratedBoxRef::Inline(b);
-        let row = |parent, children| layout::InlineChildOrderInput {
+        let node = |n| layout::inline_wrapping::GeneratedBoxRef::Node(n);
+        let inline = |b| layout::inline_wrapping::GeneratedBoxRef::Inline(b);
+        let row = |parent, children| layout::inline_wrapping::InlineChildOrderInput {
             parent,
             children,
-            prefix: layout::ChildOrderCompleteness::Complete,
-            suffix: layout::ChildOrderCompleteness::Complete,
+            prefix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
+            suffix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
             formatting_context: 0,
         };
-        let mut edge = layout::WrapEdges::AUTO;
+        let mut edge = layout::inline_wrapping::WrapEdges::AUTO;
         match side {
-            text::capture::SourceBoxSide::Before => edge.before = layout::WrapEdge::Line,
-            text::capture::SourceBoxSide::After => edge.after = layout::WrapEdge::Line,
+            text::capture::SourceBoxSide::Before => {
+                edge.before = layout::inline_wrapping::WrapEdge::Line
+            }
+            text::capture::SourceBoxSide::After => {
+                edge.after = layout::inline_wrapping::WrapEdge::Line
+            }
         }
         let mut declarations = vec![
-            layout::SourceWrappingScopeInput {
+            layout::inline_wrapping::SourceWrappingScopeInput {
                 box_: outer.clone(),
-                wrap_inside: layout::WrapInside::Auto,
-                edges: layout::WrapEdges::AUTO,
+                wrap_inside: layout::inline_wrapping::WrapInside::Auto,
+                edges: layout::inline_wrapping::WrapEdges::AUTO,
             },
-            layout::SourceWrappingScopeInput {
+            layout::inline_wrapping::SourceWrappingScopeInput {
                 box_: inner.clone(),
-                wrap_inside: layout::WrapInside::Auto,
+                wrap_inside: layout::inline_wrapping::WrapInside::Auto,
                 edges: edge,
             },
         ];
@@ -70,45 +74,45 @@ impl<S: layout::LayoutScalar> MixedHost<S> {
             row(inline(outer), inside),
             row(inline(inner), vec![child(node(4))]),
         ];
-        let mut associations = vec![layout::SourceScopeAssociation {
+        let mut associations = vec![layout::inline_wrapping::SourceScopeAssociation {
             scope: 1,
             flow: 0,
             pair: Some((3, 5)),
         }];
         if empty {
             orders.push(row(inline(e), vec![]));
-            associations.push(layout::SourceScopeAssociation {
+            associations.push(layout::inline_wrapping::SourceScopeAssociation {
                 scope: 2,
                 flow: 0,
                 pair: None,
             });
         }
-        let metrics = layout::InlineMetricsOf::try_new(
-            surgeist_layout::InlineBaselineContext::Physical,
+        let metrics = layout::inline::InlineMetricsOf::try_new(
+            surgeist_layout::baseline::InlineBaselineContext::Physical,
             S::ZERO,
             S::ZERO,
         )
         .unwrap();
         let boundary = |kind| {
-            layout::InlineBoundaryInputOf::contribution(
+            layout::inline::InlineBoundaryInputOf::contribution(
                 kind,
                 metrics,
-                layout::InlineBoundaryEdgeOf::ZERO,
+                layout::inline::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap()
             .with_direction(direction)
         };
         Self {
-            root: layout::NodeInputOf {
-                display: layout::Display::Block,
+            root: layout::node::NodeInputOf {
+                display: layout::box_model::Display::Block,
                 direction,
-                ..layout::NodeInputOf::default()
+                ..layout::node::NodeInputOf::default()
             },
             boundaries: [
-                boundary(layout::InlineBoundaryKind::Start),
-                boundary(layout::InlineBoundaryKind::Start),
-                boundary(layout::InlineBoundaryKind::End),
-                boundary(layout::InlineBoundaryKind::End),
+                boundary(layout::inline::InlineBoundaryKind::Start),
+                boundary(layout::inline::InlineBoundaryKind::Start),
+                boundary(layout::inline::InlineBoundaryKind::End),
+                boundary(layout::inline::InlineBoundaryKind::End),
             ],
             children: [
                 vec![1, 2, 3, 4, 5, 6, 7],
@@ -125,15 +129,15 @@ impl<S: layout::LayoutScalar> MixedHost<S> {
             orders,
         }
     }
-    fn occurrences(&self) -> layout::SourceOccurrenceAssociations<u32> {
-        layout::SourceOccurrenceAssociations {
+    fn occurrences(&self) -> layout::inline_wrapping::SourceOccurrenceAssociations<u32> {
+        layout::inline_wrapping::SourceOccurrenceAssociations {
             origins: vec![(0, 1), (1, 4), (2, 7)],
             controls: vec![(0, 2), (1, 3), (2, 5), (3, 6)],
             atomics: vec![],
         }
     }
 }
-impl<S: layout::LayoutScalar> layout::Traverse for MixedHost<S> {
+impl<S: layout::scalar::LayoutScalar> layout::tree::Traverse for MixedHost<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -150,37 +154,42 @@ impl<S: layout::LayoutScalar> layout::Traverse for MixedHost<S> {
         self.children[node as usize][index]
     }
 }
-impl<S: layout::LayoutScalar> layout::WrapEdgeSource for MixedHost<S> {
-    fn wrap_edge_source_node(&self, node: u32) -> layout::WrapEdgeSourceNodeView<'_, S> {
+impl<S: layout::scalar::LayoutScalar> layout::inline_wrapping::WrapEdgeSource for MixedHost<S> {
+    fn wrap_edge_source_node(
+        &self,
+        node: u32,
+    ) -> layout::inline_wrapping::WrapEdgeSourceNodeView<'_, S> {
         match node {
-            0 => layout::WrapEdgeSourceNodeView::Box(&self.root),
-            1 => layout::WrapEdgeSourceNodeView::SourceOrigin { origin: 0 },
-            2 => layout::WrapEdgeSourceNodeView::Boundary(self.boundaries[0]),
-            3 => layout::WrapEdgeSourceNodeView::Boundary(self.boundaries[1]),
-            4 => layout::WrapEdgeSourceNodeView::SourceOrigin { origin: 1 },
-            5 => layout::WrapEdgeSourceNodeView::Boundary(self.boundaries[2]),
-            6 => layout::WrapEdgeSourceNodeView::Boundary(self.boundaries[3]),
-            7 => layout::WrapEdgeSourceNodeView::SourceOrigin { origin: 2 },
+            0 => layout::inline_wrapping::WrapEdgeSourceNodeView::Box(&self.root),
+            1 => layout::inline_wrapping::WrapEdgeSourceNodeView::SourceOrigin { origin: 0 },
+            2 => layout::inline_wrapping::WrapEdgeSourceNodeView::Boundary(self.boundaries[0]),
+            3 => layout::inline_wrapping::WrapEdgeSourceNodeView::Boundary(self.boundaries[1]),
+            4 => layout::inline_wrapping::WrapEdgeSourceNodeView::SourceOrigin { origin: 1 },
+            5 => layout::inline_wrapping::WrapEdgeSourceNodeView::Boundary(self.boundaries[2]),
+            6 => layout::inline_wrapping::WrapEdgeSourceNodeView::Boundary(self.boundaries[3]),
+            7 => layout::inline_wrapping::WrapEdgeSourceNodeView::SourceOrigin { origin: 2 },
             _ => unreachable!("the fixture has eight actual nodes"),
         }
     }
-    fn source_wrapping_scopes(&self) -> &[layout::SourceWrappingScopeInput<u32>] {
+    fn source_wrapping_scopes(&self) -> &[layout::inline_wrapping::SourceWrappingScopeInput<u32>] {
         &self.declarations
     }
-    fn source_scope_associations(&self) -> &[layout::SourceScopeAssociation<u32>] {
+    fn source_scope_associations(&self) -> &[layout::inline_wrapping::SourceScopeAssociation<u32>] {
         &self.associations
     }
-    fn generated_child_order(&self) -> &[layout::InlineChildOrderInput<u32, usize>] {
+    fn generated_child_order(
+        &self,
+    ) -> &[layout::inline_wrapping::InlineChildOrderInput<u32, usize>] {
         &self.orders
     }
 }
 fn mixed_input(
     side: text::capture::SourceBoxSide,
     empty: bool,
-    direction: layout::Direction,
+    direction: layout::geometry::Direction,
 ) -> text::capture::ContextualSourceInput {
     use text::capture::SourceProcessingEvent as E;
-    let base = if direction == layout::Direction::Ltr {
+    let base = if direction == layout::geometry::Direction::Ltr {
         text::paragraph::ParagraphBaseDirection::LeftToRight
     } else {
         text::paragraph::ParagraphBaseDirection::RightToLeft
@@ -391,8 +400,11 @@ fn qualify_capture(
     assert_eq!(p.source().text(), &text::source::Text::from("PAQ"));
     assert_eq!(p.processed_text().code_units(), [0x50, 0x41, 0x51]);
 }
-fn mixed_force<S: layout::LayoutScalar>(empty: bool) {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+fn mixed_force<S: layout::scalar::LayoutScalar>(empty: bool) {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         for side in [
             text::capture::SourceBoxSide::Before,
             text::capture::SourceBoxSide::After,
@@ -436,7 +448,7 @@ fn mixed_force<S: layout::LayoutScalar>(empty: bool) {
             assert!(direct.captured_computed_line_boundary(1).is_none());
             for reverse in [false, true] {
                 let host = MixedHost::<S>::new(side, empty, direction, reverse);
-                let (processed, _receipt) = layout::process_wrapping_source(
+                let (processed, _receipt) = layout::inline_wrapping::process_wrapping_source(
                     &host,
                     0,
                     mixed_input(side, empty, direction),

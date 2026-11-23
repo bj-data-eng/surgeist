@@ -5,7 +5,7 @@ use super::{
 };
 use crate::PaintError;
 use crate::accounting::{PaintOptions, PaintPhase, PaintReport, WorkKind, charge};
-use surgeist_layout::Size;
+use surgeist_layout::geometry::Size;
 
 /// Mask coverage geometry for an admitted border image and one destination area.
 #[derive(Debug, PartialEq)]
@@ -88,7 +88,7 @@ mod tests {
         BorderImageAreaRequest, BorderImageOutset, BorderImageSlice, BorderImageSource,
         BorderImageWidth, resolve_border_image_area,
     };
-    use surgeist_layout::{Edges, Point};
+    use surgeist_layout::geometry::{Edges, Point};
     use surgeist_ledger::ProfileMode;
 
     fn options(limits: PaintLimits) -> PaintOptions {

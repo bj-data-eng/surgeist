@@ -1,5 +1,24 @@
-use super::scheduler::ScopeRegistrationError;
 use super::*;
+use crate::fragmentation::controls_require_break;
+use crate::fragmentation::scheduler::ScopeRegistrationError;
+use crate::fragmentation::{
+    input::{
+        FragmentainerOf, FragmentationBoundaryControls, FragmentationBreak,
+        FragmentationBreakControl, FragmentationBreakInside, FragmentationBreakKinds,
+        FragmentationContext, FragmentationControlKind, FragmentationCutOf,
+        FragmentationEmergencySliceOf, FragmentationFallback, FragmentationFlowOf,
+        FragmentationGraphicalProgressOf, FragmentationInputOf, FragmentationKind,
+        FragmentationMeasuredHeadOf, FragmentationOccurrence, FragmentationOpportunityKindOf,
+        FragmentationOpportunityOf, FragmentationPosition, FragmentationProvider,
+        FragmentationQueryOf, FragmentationReplyOf, FragmentationRole, FragmentationStage,
+        FragmentationWindowEnd, FragmentationWindowOf,
+    },
+    output::{
+        FragmentationBreakReason, FragmentationError, FragmentationForcedSide,
+        FragmentationInputError, FragmentationPieceKindOf,
+    },
+    page::FragmentationPhysicalPageSide,
+};
 use std::cell::Cell;
 
 #[path = "scope_retained_tests.rs"]

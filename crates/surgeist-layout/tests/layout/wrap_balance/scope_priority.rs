@@ -3,39 +3,46 @@ mod stable;
 
 use super::*;
 
-fn fixture<S: l::LayoutScalar>(direction: l::Direction, style: l::TextWrapStyle) -> Tree<S> {
+fn fixture<S: l::scalar::LayoutScalar>(
+    direction: l::geometry::Direction,
+    style: l::text_flow::TextWrapStyle,
+) -> Tree<S> {
     let atomic = |width| {
-        l::LayoutInputOf::box_input(l::NodeInputOf {
-            display: l::Display::InlineBlock,
+        l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+            display: l::box_model::Display::InlineBlock,
             direction,
-            vertical_align: l::VerticalAlignOf::Baseline,
-            atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
-                t::supplied_line::BidiLevel::try_new(if direction == l::Direction::Ltr {
+            vertical_align: l::inline::VerticalAlignOf::Baseline,
+            atomic_inline_participation: Some(l::inline::AtomicInlineParticipation::new(
+                t::supplied_line::BidiLevel::try_new(if direction == l::geometry::Direction::Ltr {
                     0
                 } else {
                     1
                 })
                 .unwrap(),
-                l::InlineBreakOpportunity::Allowed,
+                l::text_flow::InlineBreakOpportunity::Allowed,
             )),
-            size: l::Size::new(
-                l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(width)).unwrap()),
-                l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(10.0)).unwrap()),
+            size: l::geometry::Size::new(
+                l::sizing::PreferredSizeOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(width)).unwrap(),
+                ),
+                l::sizing::PreferredSizeOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(10.0)).unwrap(),
+                ),
             ),
-            ..l::NodeInputOf::default()
+            ..l::node::NodeInputOf::default()
         })
     };
     let boundary = |kind| {
-        l::LayoutInputOf::inline_boundary(
-            l::InlineBoundaryInputOf::contribution(
+        l::node::LayoutInputOf::inline_boundary(
+            l::inline::InlineBoundaryInputOf::contribution(
                 kind,
-                l::InlineMetricsOf::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
+                l::inline::InlineMetricsOf::try_new(
+                    surgeist_layout::baseline::InlineBaselineContext::Physical,
                     S::from_f64(8.0),
                     S::from_f64(10.0),
                 )
                 .unwrap(),
-                l::InlineBoundaryEdgeOf::ZERO,
+                l::inline::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap()
             .with_direction(direction),
@@ -43,28 +50,28 @@ fn fixture<S: l::LayoutScalar>(direction: l::Direction, style: l::TextWrapStyle)
     };
     Tree {
         inputs: vec![
-            l::LayoutInputOf::box_input(l::NodeInputOf {
-                display: l::Display::Block,
+            l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+                display: l::box_model::Display::Block,
                 direction,
-                text_align: l::TextAlign::Start,
-                text_align_last: l::TextAlignLast::Start,
+                text_align: l::text_flow::TextAlign::Start,
+                text_align_last: l::text_flow::TextAlignLast::Start,
                 text_wrap_style: style,
-                size: l::Size::new(
-                    l::PreferredSizeOf::value(
-                        l::LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
+                size: l::geometry::Size::new(
+                    l::sizing::PreferredSizeOf::value(
+                        l::length::LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
                     ),
-                    l::PreferredSizeOf::AUTO,
+                    l::sizing::PreferredSizeOf::AUTO,
                 ),
-                ..l::NodeInputOf::default()
+                ..l::node::NodeInputOf::default()
             }),
-            boundary(l::InlineBoundaryKind::Start),
+            boundary(l::inline::InlineBoundaryKind::Start),
             atomic(30.0),
             atomic(20.0),
-            boundary(l::InlineBoundaryKind::End),
+            boundary(l::inline::InlineBoundaryKind::End),
             atomic(10.0),
             atomic(10.0),
         ],
-        non_box: l::NodeInputOf::non_box(),
+        non_box: l::node::NodeInputOf::non_box(),
         children: vec![
             vec![1, 2, 3, 4, 5, 6],
             vec![],
@@ -77,25 +84,25 @@ fn fixture<S: l::LayoutScalar>(direction: l::Direction, style: l::TextWrapStyle)
     }
 }
 
-fn compute<S: l::LayoutScalar>(
+fn compute<S: l::scalar::LayoutScalar>(
     tree: &Tree<S>,
-    inside: l::WrapInside,
-) -> l::CompletedLayoutBatchOf<u32, S> {
-    let flow = l::LayoutFlowInput::try_new(
+    inside: l::inline_wrapping::WrapInside,
+) -> l::batch::CompletedLayoutBatchOf<u32, S> {
+    let flow = l::text_layout::LayoutFlowInput::try_new(
         tree,
         0,
         Vec::new(),
-        l::WrappingInput {
+        l::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
-            scopes: vec![l::WrappingScopeInput::NativePair {
+            scopes: vec![l::inline_wrapping::WrappingScopeInput::NativePair {
                 start: 1,
                 end: 4,
                 wrap_inside: inside,
-                edges: l::WrapEdges::AUTO,
+                edges: l::inline_wrapping::WrapEdges::AUTO,
                 // The actual pair has these same Baseline metrics. The witness
                 // identifies that contribution; it must not duplicate it.
-                metric_contribution: Some(l::InlineBoxMetricContribution::Strut(
+                metric_contribution: Some(l::inline_wrapping::InlineBoxMetricContribution::Strut(
                     t::allocation::LineBoxStrut {
                         scope: None,
                         metrics: t::allocation::LineStrut {
@@ -113,17 +120,17 @@ fn compute<S: l::LayoutScalar>(
     .unwrap();
     let request = {
         let sizing_request = crate::layout::native_request::sizing(
-            surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(S::from_f64(60.0)), None),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         );
-        l::LayoutRootRequestOf::standalone(
+        l::request::LayoutRootRequestOf::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::LayoutTree::node_input(tree, 0).writing_mode,
-                surgeist_layout::LayoutTree::node_input(tree, 0).direction,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::tree::LayoutTree::node_input(tree, 0).writing_mode,
+                surgeist_layout::tree::LayoutTree::node_input(tree, 0).direction,
             ),
             sizing_request
                 .orthogonal_fallback()
@@ -136,21 +143,21 @@ fn compute<S: l::LayoutScalar>(
     batch
 }
 
-fn node<S: l::LayoutScalar>(
-    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+fn node<S: l::scalar::LayoutScalar>(
+    entries: (&l::batch::CompletedLayoutBatchOf<u32, S>, bool),
     id: u32,
 ) -> crate::layout::observation::Observation<S> {
     crate::layout::observation::observe(entries, id, crate::layout::observation::Kind::Box)
 }
-fn node_of_kind<S: l::LayoutScalar>(
-    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+fn node_of_kind<S: l::scalar::LayoutScalar>(
+    entries: (&l::batch::CompletedLayoutBatchOf<u32, S>, bool),
     id: u32,
     expected_kind: crate::layout::observation::Kind,
 ) -> crate::layout::observation::Observation<S> {
     crate::layout::observation::observe(entries, id, expected_kind)
 }
 
-fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
+fn qualify<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     // Real source order is Start, A30, B20, End, C10, D10. Every
     // atomic supplies its own following Allowed cut; neither endpoint does.
     // Auto takes ABC / D = 60/10. Balance can improve to A / BCD = 30/40:
@@ -158,10 +165,17 @@ fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
     // Cuts after A and B are inside the actual pair. The after-C cut is
     // outside it, so its empty violation set strictly dominates either inside
     // cut when Avoid is requested, before Balance compares line lengths.
-    for style in [l::TextWrapStyle::Auto, l::TextWrapStyle::Balance] {
+    for style in [
+        l::text_flow::TextWrapStyle::Auto,
+        l::text_flow::TextWrapStyle::Balance,
+    ] {
         let tree = fixture::<S>(direction, style);
-        for inside in [l::WrapInside::Auto, l::WrapInside::Avoid] {
-            let balanced = style == l::TextWrapStyle::Balance && inside == l::WrapInside::Auto;
+        for inside in [
+            l::inline_wrapping::WrapInside::Auto,
+            l::inline_wrapping::WrapInside::Avoid,
+        ] {
+            let balanced = style == l::text_flow::TextWrapStyle::Balance
+                && inside == l::inline_wrapping::WrapInside::Auto;
             let batch = compute(&tree, inside);
             for entries in [
                 crate::layout::observation::phase(&batch, false),
@@ -191,16 +205,19 @@ fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
                         entries,
                         id,
                         crate::layout::observation::expected_kind(
-                            l::LayoutTree::layout_input(&tree, id),
+                            l::tree::LayoutTree::layout_input(&tree, id),
                             false,
                         ),
                     );
-                    assert_eq!(actual.source_index, l::SourceIndex::new((id - 1) as usize));
+                    assert_eq!(
+                        actual.source_index,
+                        l::node::SourceIndex::new((id - 1) as usize)
+                    );
                     assert_eq!(
                         actual.size,
-                        l::Size::new(S::from_f64(width), S::from_f64(10.0))
+                        l::geometry::Size::new(S::from_f64(width), S::from_f64(10.0))
                     );
-                    if direction == l::Direction::Ltr {
+                    if direction == l::geometry::Direction::Ltr {
                         assert_eq!(
                             actual.location.x,
                             S::from_f64(expected_ltr_x[index]),
@@ -236,7 +253,7 @@ fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
                                 entries,
                                 id,
                                 crate::layout::observation::expected_kind(
-                                    l::LayoutTree::layout_input(&tree, id),
+                                    l::tree::LayoutTree::layout_input(&tree, id),
                                     false,
                                 ),
                             )
@@ -255,7 +272,7 @@ fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
                     let used = actual
                         .iter()
                         .fold(S::ZERO, |sum, item| sum + item.size.width);
-                    let start = if direction == l::Direction::Ltr {
+                    let start = if direction == l::geometry::Direction::Ltr {
                         0.0
                     } else {
                         60.0 - width
@@ -267,16 +284,23 @@ fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
                 let start = node_of_kind(
                     entries,
                     1,
-                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                    crate::layout::observation::Kind::NonBox(
+                        l::fragmentation::NonBoxKind::InlineBoundary,
+                    ),
                 );
                 let end = node_of_kind(
                     entries,
                     4,
-                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                    crate::layout::observation::Kind::NonBox(
+                        l::fragmentation::NonBoxKind::InlineBoundary,
+                    ),
                 );
                 for (id, output) in [(1, start), (4, end)] {
-                    assert_eq!(output.source_index, l::SourceIndex::new((id - 1) as usize));
-                    assert_eq!(output.size, l::Size::ZERO);
+                    assert_eq!(
+                        output.source_index,
+                        l::node::SourceIndex::new((id - 1) as usize)
+                    );
+                    assert_eq!(output.size, l::geometry::Size::ZERO);
                 }
                 // A boundary's output is its actual baseline attachment, not
                 // the top of an atomic box. Compare custody without guessing
@@ -289,7 +313,7 @@ fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
                     assert_eq!(end.location.y, start.location.y);
                     assert!(end.location.y < receiving_y);
                 }
-                if direction == l::Direction::Ltr {
+                if direction == l::geometry::Direction::Ltr {
                     assert_eq!(
                         end.location.x,
                         S::from_f64(if balanced { 20.0 } else { 50.0 })
@@ -309,7 +333,7 @@ fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
 
 #[test]
 fn native_scope_priority_precedes_balanced_numeric_line_lengths() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         qualify::<f32>(direction);
         qualify::<f64>(direction);
     }

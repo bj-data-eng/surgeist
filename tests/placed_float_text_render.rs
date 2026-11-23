@@ -12,11 +12,11 @@ mod native_viewport;
 use native_viewport::NativeViewport;
 
 struct Tree {
-    inputs: [layout::LayoutInput; 4],
-    non_box: layout::NodeInput,
+    inputs: [layout::node::LayoutInput; 4],
+    non_box: layout::node::NodeInput,
 }
 
-impl layout::Traverse for Tree {
+impl layout::tree::Traverse for Tree {
     type Node = usize;
     type Scalar = f32;
     type Children<'a> = std::iter::Copied<std::slice::Iter<'a, usize>>;
@@ -35,17 +35,17 @@ impl layout::Traverse for Tree {
     }
 }
 
-impl layout::LayoutTree for Tree {
+impl layout::tree::LayoutTree for Tree {
     type MeasureError = Infallible;
 
-    fn node_input(&self, node: usize) -> &layout::NodeInput {
+    fn node_input(&self, node: usize) -> &layout::node::NodeInput {
         self.inputs[node]
             .as_view()
             .as_box()
             .unwrap_or(&self.non_box)
     }
 
-    fn layout_input(&self, node: usize) -> layout::LayoutInputView<'_> {
+    fn layout_input(&self, node: usize) -> layout::node::LayoutInputView<'_> {
         self.inputs[node].as_view()
     }
 }
@@ -121,36 +121,44 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
     let origins: Vec<_> = prepared.origin_views().map(|view| view.handle()).collect();
     let tree = Tree {
         inputs: [
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
-                ..layout::NodeInput::DEFAULT
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(origins[0].clone())),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(origins[1].clone())),
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
-                float: layout::Float::Left,
-                size: layout::Size::new(
-                    layout::PreferredSize::value(layout::LengthPercentageOf::px(15.0).unwrap()),
-                    layout::PreferredSize::value(layout::LengthPercentageOf::px(10.0).unwrap()),
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
+                origins[0].clone(),
+            )),
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
+                origins[1].clone(),
+            )),
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                float: layout::box_model::Float::Left,
+                size: layout::geometry::Size::new(
+                    layout::sizing::PreferredSize::value(
+                        layout::length::LengthPercentageOf::px(15.0).unwrap(),
+                    ),
+                    layout::sizing::PreferredSize::value(
+                        layout::length::LengthPercentageOf::px(10.0).unwrap(),
+                    ),
                 ),
-                ..layout::NodeInput::DEFAULT
+                ..layout::node::NodeInput::DEFAULT
             }),
         ],
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let capture = layout::LayoutFlowInput::try_new(
+    let capture = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
-        vec![layout::TextParagraphBinding {
-            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+        vec![layout::text_layout::TextParagraphBinding {
+            inline_box_fragments: layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1, 3, 2],
             origins: origins
                 .into_iter()
                 .enumerate()
-                .map(|(index, origin)| layout::TextOriginBinding {
+                .map(|(index, origin)| layout::text_layout::TextOriginBinding {
                     origin,
                     node: index + 1,
                 })
@@ -159,7 +167,7 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
             controls: vec![],
             line_strut: None,
         }],
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -172,12 +180,15 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
         &capture,
         0,
         NativeViewport::new(
-            layout::Size::new(Some(35.0), None),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::geometry::Size::new(Some(35.0), None),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
         )
-        .request(layout::Size::new(
-            layout::SizingOperation::Normal,
-            layout::SizingOperation::Normal,
+        .request(layout::geometry::Size::new(
+            layout::constraint::SizingOperation::Normal,
+            layout::constraint::SizingOperation::Normal,
         )),
     )
     .unwrap();
@@ -187,8 +198,8 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
         .single_box()
         .expect("fixture node produces one box")
         .final_output();
-    assert_eq!(float.location, layout::Point::ZERO);
-    assert_eq!(float.size, layout::Size::new(15.0, 10.0));
+    assert_eq!(float.location, layout::geometry::Point::ZERO);
+    assert_eq!(float.size, layout::geometry::Size::new(15.0, 10.0));
     assert_eq!(batch.placed_text().len(), 1);
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[65, 88]);

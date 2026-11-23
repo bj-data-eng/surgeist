@@ -1,6 +1,16 @@
 //! Functional tests for private retained source participation and rollback.
-use super::scheduler::ScopeRegistrationError;
 use super::*;
+use crate::fragmentation::scheduler::ScopeRegistrationError;
+use crate::fragmentation::{
+    input::{
+        FragmentainerOf, FragmentationBreak, FragmentationBreakControl, FragmentationCutOf,
+        FragmentationFallback, FragmentationFlowOf, FragmentationInputOf,
+        FragmentationMeasuredHeadOf, FragmentationOccurrence, FragmentationOpportunityKindOf,
+        FragmentationOpportunityOf, FragmentationProvider, FragmentationQueryOf,
+        FragmentationReplyOf, FragmentationRole, FragmentationWindowEnd, FragmentationWindowOf,
+    },
+    output::FragmentationError,
+};
 
 #[path = "scope_retained_policy_tests.rs"]
 mod policy_tests;

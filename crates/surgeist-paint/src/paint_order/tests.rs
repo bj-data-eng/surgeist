@@ -3,7 +3,7 @@ use crate::accounting::{PaintLimits, PaintReport, ResourceKind};
 use crate::stacking::{
     BoxFacts, BoxId, ChildOrder, ContextEffect, Participation, Position, ZIndex,
 };
-use surgeist_layout::SourceIndex;
+use surgeist_layout::node::SourceIndex;
 use surgeist_ledger::ProfileMode;
 
 fn root() -> BoxFacts {
@@ -629,8 +629,8 @@ fn category_case(
         _ => ChildOrder::Source,
     };
     let participation = match role {
-        BlockifiedRole::Flex => Participation::FlexItem(surgeist_layout::ItemOrder::new(0)),
-        BlockifiedRole::Grid => Participation::GridItem(surgeist_layout::ItemOrder::new(0)),
+        BlockifiedRole::Flex => Participation::FlexItem(surgeist_layout::node::ItemOrder::new(0)),
+        BlockifiedRole::Grid => Participation::GridItem(surgeist_layout::node::ItemOrder::new(0)),
         _ => Participation::Ordinary,
     };
     let boxes = [

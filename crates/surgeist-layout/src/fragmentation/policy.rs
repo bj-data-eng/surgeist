@@ -1,4 +1,11 @@
-use super::*;
+use crate::fragmentation::{
+    input::{
+        FragmentationBreak, FragmentationBreakControl, FragmentationBreakInside,
+        FragmentationBreakKinds, FragmentationOpportunityKindOf, FragmentationOpportunityOf,
+        FragmentationRole, FragmentationStage, FragmentationWindowOf,
+    },
+    output::FragmentationForcedSide,
+};
 use crate::scalar::LayoutScalar;
 use std::sync::Arc;
 

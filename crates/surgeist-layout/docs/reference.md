@@ -1,7 +1,7 @@
 # Reference
 
 This page describes the current crate interfaces and local tooling. The
-[manifest](../Cargo.toml), [public crate root](../src/lib.rs), and linked source
+[manifest](../Cargo.toml), [crate root and its public modules](../src/lib.rs), and linked source
 files own their current definitions.
 
 ## Package and features
@@ -39,10 +39,39 @@ crate-local tests when a behavior specifically needs `f64` coverage.
 
 ## Public API map
 
-All public paths are exposed directly from the `surgeist_layout` crate root in
-[`src/lib.rs`](../src/lib.rs).
+The crate root holds the four compute functions `compute_layout`,
+`compute_layout_invalidated`, `compute_layout_with_flow` and
+`compute_layout_with_flow_invalidated`. Every other public item has one path
+through a public module declared in [`src/lib.rs`](../src/lib.rs); the crate
+documentation there has the same table, and each module's documentation names its
+principal items.
 Default-scalar aliases use `f32`; the corresponding `*Of` forms support either
 public scalar lane.
+
+| Module | Holds | Source |
+| --- | --- | --- |
+| `tree` | `Traverse`, `LayoutTree`, `LayoutBatchSink`, `compute_leaf`, `measure_definite_inline_atomic_size`, `LeafMeasureInputOf` | [tree](../src/tree.rs) |
+| `request` | `LayoutRootRequestOf`, the root, containing and parent contexts | [request](../src/request.rs) |
+| `batch` | `CompletedLayoutBatchOf`, its entries, publication carriers and `LayoutPublicationTargets` | [batch](../src/batch.rs) |
+| `error` | `LayoutErrorOf`, its kinds, sites, operations and causes | [error](../src/error.rs) |
+| `cache` | `CacheOf`, `ComputeInputOf`, `ComputeOutputOf`, `CacheKeyContext` | [cache](../src/cache.rs) |
+| `scalar` | `LayoutScalar`, `DefaultScalar` | [scalar](../src/scalar.rs) |
+| `node` | `NodeInputOf`, `NodeOutputOf`, `LayoutInputOf`, `LayoutInputViewOf`, `SourceIndex`, `ItemOrder` | [node](../src/node.rs) |
+| `box_model` | `Display`, `Position`, `Float`, `Clear`, `SizeContainment`, `AlignItems`, `AlignContent` | [box_model](../src/box_model.rs) |
+| `flex`, `grid` | flex and grid container and item input, grid tracks and placement | [flex](../src/flex/mod.rs), [grid](../src/grid/mod.rs) |
+| `overflow` | `ComputedOverflow`, scrollbar, scroll padding and margin, snap input | [overflow](../src/overflow.rs) |
+| `text_flow` | `TextAlign`, `TextWrapStyle`, `TextJustification`, `TextIndentOf`, hyphenation limits, line-break input | [text_flow](../src/text_flow.rs) |
+| `inline`, `inline_wrapping` | inline boundaries and metrics, `WrappingInput`, `process_wrapping_source` | [inline](../src/inline/mod.rs), [inline_wrapping](../src/inline_wrapping/mod.rs) |
+| `baseline` | baseline references, offsets and named baseline outputs | [baseline](../src/baseline.rs) |
+| `length`, `sizing`, `constraint` | lengths and percentages, box-size properties, `SizingRequestOf` and available space | [length](../src/length.rs), [sizing](../src/sizing.rs), [constraint](../src/constraint.rs) |
+| `geometry` | `Point`, `Size`, `Edges`, `FlowAxes`, `WritingMode`, `Direction` | [geometry](../src/geometry.rs) |
+| `scroll`, `scroll::anchor_selection` | scroll geometry, `select_scroll_anchor` | [scroll](../src/scroll/mod.rs), [anchor_selection](../src/scroll/anchor_selection.rs) |
+| `text_layout` | `LayoutFlowInput`, Text bindings, `PlacedTextOutput` | [text_layout](../src/text_layout/mod.rs) |
+| `fragmentation` | break controls, `FragmentationKind`, `LayoutBoundRequestOf` and the Block fragmentation results | [fragmentation](../src/fragmentation/mod.rs) |
+| `resize_observer` | `ResizeObserverMeasurementOf` and its parts | [resize_observer](../src/resize_observer/mod.rs) |
+
+The sections below keep the topic order and name items without their module;
+find one in the table above or in the crate documentation.
 
 ### Computation and tree
 

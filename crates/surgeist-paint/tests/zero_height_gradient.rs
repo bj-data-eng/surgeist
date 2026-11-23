@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use std::{cell::Cell, ptr, rc::Rc, time::Duration};
-use surgeist_layout::{Point, Size};
+use surgeist_layout::geometry::{Point, Size};
 use surgeist_ledger::{EventFilter, ProfileMode};
 use surgeist_paint::PaintError;
 use surgeist_paint::accounting::{
