@@ -808,6 +808,14 @@ pub(crate) const fn logical_axis_label(axis: LogicalAxis) -> &'static str {
     }
 }
 
+/// Words that name a grid axis in messages.
+pub(crate) const fn grid_axis_label(axis: crate::GridAxisKind) -> &'static str {
+    match axis {
+        crate::GridAxisKind::Column => "column",
+        crate::GridAxisKind::Row => "row",
+    }
+}
+
 /// Words that name a physical side in messages.
 pub(crate) const fn physical_side_label(side: PhysicalSide) -> &'static str {
     match side {

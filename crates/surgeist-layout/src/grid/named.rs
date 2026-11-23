@@ -190,6 +190,55 @@ pub enum NamedGridError {
     },
 }
 
+impl core::fmt::Display for NamedGridError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use crate::error::grid_axis_label;
+        match self {
+            Self::ReservedLineName { name } => {
+                write!(f, "the grid line name {name:?} is reserved")
+            }
+            Self::UnresolvedAutoRepeatNames { axis } => write!(
+                f,
+                "the line names of the {} axis cannot be resolved against its auto repeat or \
+                 subgrid span",
+                grid_axis_label(*axis)
+            ),
+            Self::EmptyTemplateAreas => f.write_str("the grid template areas are empty"),
+            Self::TemplateAreaRowLengthMismatch {
+                row,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "template area row {row} has {actual} cells where {expected} are expected"
+            ),
+            Self::NonRectangularTemplateArea { name } => {
+                write!(f, "the template area {name:?} is not rectangular")
+            }
+            Self::ZeroRepeat { axis } => write!(
+                f,
+                "a line-name repeat on the {} axis has a count of zero",
+                grid_axis_label(*axis)
+            ),
+            Self::MultipleAutoFillRepeats { axis } => write!(
+                f,
+                "the {} axis has more than one auto-fill line-name repeat",
+                grid_axis_label(*axis)
+            ),
+            Self::ZeroLine => f.write_str("a grid line number cannot be zero"),
+            Self::ZeroSpan => f.write_str("a grid span cannot be zero"),
+            Self::AutoWithoutCursor => f.write_str("an auto placement has no placement cursor"),
+            Self::LineBeforeFirst { axis, line } => write!(
+                f,
+                "grid line {line} lies before the first line of the {} axis",
+                grid_axis_label(*axis)
+            ),
+        }
+    }
+}
+
+impl std::error::Error for NamedGridError {}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PlacementSide {
     Start,

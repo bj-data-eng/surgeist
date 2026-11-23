@@ -610,3 +610,283 @@ fn inline_metrics_constructors_return_errors_that_print_the_rejected_metric() {
     assert_eq!(error.to_string(), "baseline 6 exceeds the line height 4");
     assert!(error.source().is_none());
 }
+
+#[test]
+fn text_binding_error_prints_its_message_and_has_no_source() {
+    use l::TextBindingError as E;
+    is_error::<E>();
+    let table = [
+        (E::EmptyRun, "a text run binds no nodes where it needs some"),
+        (
+            E::RunMembership,
+            "the nodes bound to a text run do not match the run's membership in the tree",
+        ),
+        (
+            E::ParticipantOrder,
+            "the participants of a text run are not in source order",
+        ),
+        (
+            E::DuplicateRunNode,
+            "a node appears more than once in a text run",
+        ),
+        (E::OverlappingParagraphs, "two text paragraphs overlap"),
+        (
+            E::OriginCoverage,
+            "the origin bindings do not cover the paragraph's origins exactly once",
+        ),
+        (
+            E::AtomicCoverage,
+            "the atomic bindings do not cover the paragraph's atomic boxes exactly once",
+        ),
+        (
+            E::ControlCoverage,
+            "the control bindings do not cover the paragraph's controls exactly once",
+        ),
+        (
+            E::ScopeCoverage,
+            "the scope bindings do not cover the paragraph's scopes exactly once",
+        ),
+        (
+            E::ScopeAssociation,
+            "a scope is not associated with the tree consistently with its text preparation",
+        ),
+        (
+            E::ScopeBoundaryCapture,
+            "a scope boundary is not captured by the text preparation",
+        ),
+        (
+            E::ScopeBoundaryOrder,
+            "scope boundaries are not in the order of the text preparation",
+        ),
+        (
+            E::ScopeOccurrenceMembership,
+            "a scope occurrence is not a member of its scope",
+        ),
+        (
+            E::ScopeTreeAmbiguity,
+            "a scope's association with the tree is ambiguous",
+        ),
+        (
+            E::ParticipantRole,
+            "a participant's role differs from the role the text preparation requires",
+        ),
+        (
+            E::MissingParagraph,
+            "an inline text or text control node is bound to no paragraph",
+        ),
+        (
+            E::RootMismatch,
+            "the text binding names a different root than the layout request",
+        ),
+        (
+            E::TabReferenceDirection,
+            "the direction of a tab reference differs from the paragraph's base direction",
+        ),
+        (
+            E::TerminalBlockEdge,
+            "a paragraph that ends at a block end is followed by in-flow content",
+        ),
+        (
+            E::ComputedBoundaryAssociation,
+            "a computed line boundary is not associated with its text preparation",
+        ),
+        (
+            E::InlineBoxFragmentsRequireFlow,
+            "complete inline box fragments require a run that binds a flow",
+        ),
+    ];
+    assert_messages(&table, 21);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn wrapping_scope_error_prints_its_message_and_has_no_source() {
+    use l::WrappingScopeError as E;
+    is_error::<E>();
+    let table = [
+        (
+            E::Allocation,
+            "wrapping could not allocate its working storage",
+        ),
+        (
+            E::NodeNotReachable,
+            "a node that the wrapping data names is not reachable in the flow's tree",
+        ),
+        (
+            E::AmbiguousNode,
+            "a node that the wrapping data names is reachable by more than one path",
+        ),
+        (
+            E::EndpointRole,
+            "a scope endpoint is not a node that can bound an inline scope",
+        ),
+        (
+            E::DifferentFlow,
+            "a scope, edge or node does not belong to the inline flow it is declared for",
+        ),
+        (E::EndpointOrder, "scope endpoints are not in source order"),
+        (
+            E::DuplicateScope,
+            "the same scope is declared more than once",
+        ),
+        (
+            E::ConflictingScope,
+            "two declarations of the same scope conflict",
+        ),
+        (E::CrossingScopes, "two scopes cross without nesting"),
+        (
+            E::MissingCapture,
+            "a text capture or wrapping context that a scope requires is missing",
+        ),
+        (
+            E::ForeignCapture,
+            "a scope names a text capture that belongs to another flow",
+        ),
+        (
+            E::NonInlineScope,
+            "a scope that is not an inline scope was supplied where an inline scope is required",
+        ),
+        (
+            E::CaptureAssociation,
+            "the association between a scope and its text capture is inconsistent",
+        ),
+        (
+            E::UnsupportedIncidence,
+            "a scope has an incidence that cannot be established or that this wrapping does not support",
+        ),
+        (
+            E::InconsistentIncidence,
+            "the incidences of the wrapping scopes are inconsistent with the flow",
+        ),
+        (
+            E::ChildOrder,
+            "the child order of a box is inconsistent with the tree",
+        ),
+        (
+            E::MissingChildOrder,
+            "a box that requires a child order has none",
+        ),
+        (
+            E::SourceProcessingRequired,
+            "the source must be processed before this wrapping input can be admitted",
+        ),
+        (
+            E::SourceAssociation,
+            "a source association is inconsistent with the processed source",
+        ),
+        (
+            E::PlanMismatch,
+            "the wrapping input does not match the processed wrapping plan",
+        ),
+        (E::MissingBoxMetrics, "a box has no metric contribution"),
+        (
+            E::InvalidBoxMetrics,
+            "a box's metric contribution is invalid",
+        ),
+        (
+            E::ConflictingBoxMetrics,
+            "a box's metric contributions conflict",
+        ),
+        (
+            E::MissingGap,
+            "a gap that the declarations require is missing",
+        ),
+        (E::AmbiguousGap, "a gap is declared ambiguously"),
+        (E::InvalidGapAnchor, "a gap anchor is invalid"),
+        (
+            E::ConflictingGap,
+            "two declarations of the same gap conflict",
+        ),
+        (E::CyclicGap, "gap anchors form a cycle"),
+        (
+            E::GapOutsideSelection,
+            "a gap lies outside the selected scope",
+        ),
+        (
+            E::DuplicateFamily,
+            "the same formatter was requested more than once",
+        ),
+        (
+            E::IncompleteFamily,
+            "the supplied proof does not establish the requested complete generated closure",
+        ),
+        (
+            E::IncompatibleContribution,
+            "a requested normal family's contribution endpoint has a nonzero flow advance",
+        ),
+        (
+            E::DifferentFamily,
+            "the fragment identities belong to different admitted families",
+        ),
+        (
+            E::DifferentBody,
+            "the fragments belong to distinct bodies of the same family",
+        ),
+    ];
+    assert_messages(&table, 34);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn named_grid_error_names_the_rejected_line_name_template_or_placement() {
+    use l::GridAxisKind as Axis;
+    use l::NamedGridError as E;
+    is_error::<E>();
+    let table = [
+        (
+            E::ReservedLineName {
+                name: "span".to_string(),
+            },
+            "the grid line name \"span\" is reserved",
+        ),
+        (
+            E::UnresolvedAutoRepeatNames { axis: Axis::Column },
+            "the line names of the column axis cannot be resolved against its auto repeat or \
+             subgrid span",
+        ),
+        (E::EmptyTemplateAreas, "the grid template areas are empty"),
+        (
+            E::TemplateAreaRowLengthMismatch {
+                row: 2,
+                expected: 3,
+                actual: 1,
+            },
+            "template area row 2 has 1 cells where 3 are expected",
+        ),
+        (
+            E::NonRectangularTemplateArea {
+                name: "main".to_string(),
+            },
+            "the template area \"main\" is not rectangular",
+        ),
+        (
+            E::ZeroRepeat { axis: Axis::Row },
+            "a line-name repeat on the row axis has a count of zero",
+        ),
+        (
+            E::MultipleAutoFillRepeats { axis: Axis::Column },
+            "the column axis has more than one auto-fill line-name repeat",
+        ),
+        (E::ZeroLine, "a grid line number cannot be zero"),
+        (E::ZeroSpan, "a grid span cannot be zero"),
+        (
+            E::AutoWithoutCursor,
+            "an auto placement has no placement cursor",
+        ),
+        (
+            E::LineBeforeFirst {
+                axis: Axis::Row,
+                line: -4,
+            },
+            "grid line -4 lies before the first line of the row axis",
+        ),
+    ];
+    assert_messages(&table, 11);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}

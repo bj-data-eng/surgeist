@@ -116,6 +116,49 @@ pub enum WrappingScopeError {
     DifferentBody,
 }
 
+impl core::fmt::Display for WrappingScopeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::Allocation => "wrapping could not allocate its working storage",
+            Self::NodeNotReachable => "a node that the wrapping data names is not reachable in the flow's tree",
+            Self::AmbiguousNode => "a node that the wrapping data names is reachable by more than one path",
+            Self::EndpointRole => "a scope endpoint is not a node that can bound an inline scope",
+            Self::DifferentFlow => "a scope, edge or node does not belong to the inline flow it is declared for",
+            Self::EndpointOrder => "scope endpoints are not in source order",
+            Self::DuplicateScope => "the same scope is declared more than once",
+            Self::ConflictingScope => "two declarations of the same scope conflict",
+            Self::CrossingScopes => "two scopes cross without nesting",
+            Self::MissingCapture => "a text capture or wrapping context that a scope requires is missing",
+            Self::ForeignCapture => "a scope names a text capture that belongs to another flow",
+            Self::NonInlineScope => "a scope that is not an inline scope was supplied where an inline scope is required",
+            Self::CaptureAssociation => "the association between a scope and its text capture is inconsistent",
+            Self::UnsupportedIncidence => "a scope has an incidence that cannot be established or that this wrapping does not support",
+            Self::InconsistentIncidence => "the incidences of the wrapping scopes are inconsistent with the flow",
+            Self::ChildOrder => "the child order of a box is inconsistent with the tree",
+            Self::MissingChildOrder => "a box that requires a child order has none",
+            Self::SourceProcessingRequired => "the source must be processed before this wrapping input can be admitted",
+            Self::SourceAssociation => "a source association is inconsistent with the processed source",
+            Self::PlanMismatch => "the wrapping input does not match the processed wrapping plan",
+            Self::MissingBoxMetrics => "a box has no metric contribution",
+            Self::InvalidBoxMetrics => "a box's metric contribution is invalid",
+            Self::ConflictingBoxMetrics => "a box's metric contributions conflict",
+            Self::MissingGap => "a gap that the declarations require is missing",
+            Self::AmbiguousGap => "a gap is declared ambiguously",
+            Self::InvalidGapAnchor => "a gap anchor is invalid",
+            Self::ConflictingGap => "two declarations of the same gap conflict",
+            Self::CyclicGap => "gap anchors form a cycle",
+            Self::GapOutsideSelection => "a gap lies outside the selected scope",
+            Self::DuplicateFamily => "the same formatter was requested more than once",
+            Self::IncompleteFamily => "the supplied proof does not establish the requested complete generated closure",
+            Self::IncompatibleContribution => "a requested normal family's contribution endpoint has a nonzero flow advance",
+            Self::DifferentFamily => "the fragment identities belong to different admitted families",
+            Self::DifferentBody => "the fragments belong to distinct bodies of the same family",
+        })
+    }
+}
+
+impl std::error::Error for WrappingScopeError {}
+
 #[derive(Debug, Default)]
 struct Ancestry {
     intervals: Vec<(usize, usize)>,
