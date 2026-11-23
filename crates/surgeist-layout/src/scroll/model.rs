@@ -416,6 +416,74 @@ pub enum ScrollCoordinateErrorOf<S: LayoutScalar = DefaultScalar> {
 
 pub type ScrollCoordinateError = ScrollCoordinateErrorOf<DefaultScalar>;
 
+impl<S: LayoutScalar> core::fmt::Display for ScrollCoordinateErrorOf<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use crate::error::{logical_axis_label, physical_axis_label};
+        match self {
+            Self::NonFinitePhysicalOffset { axis, value } => write!(
+                f,
+                "the {} physical scroll offset {} is not finite",
+                physical_axis_label(*axis),
+                value.to_f64()
+            ),
+            Self::NonFiniteFlowRelativeOffset { axis, value } => write!(
+                f,
+                "the {} flow-relative scroll offset {} is not finite",
+                logical_axis_label(*axis),
+                value.to_f64()
+            ),
+            Self::NonFinitePhysicalRangeMinimum { axis, value } => write!(
+                f,
+                "the {} physical scroll range minimum {} is not finite",
+                physical_axis_label(*axis),
+                value.to_f64()
+            ),
+            Self::NonFinitePhysicalRangeMaximum { axis, value } => write!(
+                f,
+                "the {} physical scroll range maximum {} is not finite",
+                physical_axis_label(*axis),
+                value.to_f64()
+            ),
+            Self::NonFiniteFlowRelativeRangeMinimum { axis, value } => write!(
+                f,
+                "the {} flow-relative scroll range minimum {} is not finite",
+                logical_axis_label(*axis),
+                value.to_f64()
+            ),
+            Self::NonFiniteFlowRelativeRangeMaximum { axis, value } => write!(
+                f,
+                "the {} flow-relative scroll range maximum {} is not finite",
+                logical_axis_label(*axis),
+                value.to_f64()
+            ),
+            Self::InvertedPhysicalRange {
+                axis,
+                minimum,
+                maximum,
+            } => write!(
+                f,
+                "the {} physical scroll range minimum {} exceeds its maximum {}",
+                physical_axis_label(*axis),
+                minimum.to_f64(),
+                maximum.to_f64()
+            ),
+            Self::InvertedFlowRelativeRange {
+                axis,
+                minimum,
+                maximum,
+            } => write!(
+                f,
+                "the {} flow-relative scroll range minimum {} exceeds its maximum {}",
+                logical_axis_label(*axis),
+                minimum.to_f64(),
+                maximum.to_f64()
+            ),
+        }
+    }
+}
+
+impl<S: LayoutScalar> std::error::Error for ScrollCoordinateErrorOf<S> {}
+
 /// Finite physical x/y scroll offset. Positive x is rightward and positive y is downward.
 ///
 /// ```compile_fail

@@ -229,10 +229,7 @@ fn scroll_geometry_failure_keeps_the_rejected_coordinate() {
         "child layout failed at node 5: scroll geometry rejected"
     );
     let source = error.source().expect("the geometry failure is the cause");
-    assert!(
-        source.to_string().contains("scroll coordinate rejected"),
-        "{source}"
-    );
+    assert_eq!(source.to_string(), "a scroll coordinate is invalid");
 }
 
 #[test]
@@ -277,7 +274,7 @@ fn rejected_scroll_rectangle_is_reported_through_source_only() {
     let LayoutErrorKindOf::ScrollGeometry(geometry) = error.kind() else {
         panic!("a rejected scroll rectangle is a scroll geometry failure: {error:?}");
     };
-    assert_eq!(geometry.to_string(), "scroll rectangle rejected");
+    assert_eq!(geometry.to_string(), "a scroll rectangle is invalid");
     let cause = geometry
         .source()
         .and_then(|source| source.downcast_ref::<crate::ScrollRectErrorOf<f64>>())

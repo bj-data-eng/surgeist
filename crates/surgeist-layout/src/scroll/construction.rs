@@ -314,6 +314,64 @@ pub(crate) enum CanonicalScrollGeometryErrorOf<S: LayoutScalar> {
     },
 }
 
+impl<S: LayoutScalar> core::fmt::Display for CanonicalScrollGeometryErrorOf<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use crate::error::physical_side_label;
+        match self {
+            Self::BoxClipGutter(_) => f.write_str("the scroll box clip or gutter is invalid"),
+            Self::Contribution(_) => f.write_str("a scroll contribution is invalid"),
+            Self::ScrollableOverflow(_) => {
+                f.write_str("the scrollable overflow rectangle is invalid")
+            }
+            Self::Range(_) => f.write_str("the scroll range is invalid"),
+            Self::RoundedRect { fact, .. } => write!(
+                f,
+                "the rounded {} is invalid",
+                match fact {
+                    CanonicalScrollRectFact::BorderBox => "border box",
+                    CanonicalScrollRectFact::TargetBorderBox => "target border box",
+                }
+            ),
+            Self::RoundedContribution(_) => f.write_str("a rounded scroll contribution is invalid"),
+            Self::RoundedFinalInFlowEnd { side, value } => write!(
+                f,
+                "the rounded final in-flow end {} on the {} side is not finite",
+                value.to_f64(),
+                physical_side_label(*side)
+            ),
+            Self::RoundedScrollbarWidth { value } => {
+                write!(
+                    f,
+                    "the rounded scrollbar width {} is invalid",
+                    value.to_f64()
+                )
+            }
+            Self::RoundedOptimalRegionInset { side, value } => write!(
+                f,
+                "the rounded optimal viewing region inset {} on the {} side is invalid",
+                value.to_f64(),
+                physical_side_label(*side)
+            ),
+        }
+    }
+}
+
+impl<S: LayoutScalar> std::error::Error for CanonicalScrollGeometryErrorOf<S> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::BoxClipGutter(cause) => Some(cause),
+            Self::Contribution(cause) => Some(cause),
+            Self::ScrollableOverflow(cause) => Some(cause),
+            Self::Range(cause) => Some(cause),
+            Self::RoundedRect { source, .. } => Some(source),
+            Self::RoundedContribution(cause) => Some(cause),
+            Self::RoundedFinalInFlowEnd { .. }
+            | Self::RoundedScrollbarWidth { .. }
+            | Self::RoundedOptimalRegionInset { .. } => None,
+        }
+    }
+}
+
 pub(crate) fn canonical_scroll_box_from_source<S: LayoutScalar>(
     source: CanonicalScrollBoxSourceOf<S>,
 ) -> Result<CanonicalScrollBoxOf<S>, CanonicalScrollGeometryErrorOf<S>> {

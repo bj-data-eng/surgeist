@@ -48,6 +48,28 @@ pub enum InlineBaselineError {
     },
 }
 
+impl core::fmt::Display for InlineBaselineError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use crate::error::physical_axis_label;
+        match self {
+            Self::UnrepresentableCoordinate => {
+                f.write_str("a named baseline coordinate cannot be represented in its output frame")
+            }
+            Self::AxisMismatch { expected, actual } => write!(
+                f,
+                "an inline baseline on the {} axis was supplied where the {} axis was expected",
+                physical_axis_label(*actual),
+                physical_axis_label(*expected)
+            ),
+            Self::ReferenceMismatch { .. } => f.write_str(
+                "an inline baseline reference differs from the reference the request expects",
+            ),
+        }
+    }
+}
+
+impl std::error::Error for InlineBaselineError {}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum LineBreakDisplay {
     #[default]
@@ -280,6 +302,37 @@ pub enum InlineMetricsError<S: LayoutScalar = DefaultScalar> {
     BaselineExceedsLineExtent { baseline: S, line_extent: S },
     BaselineExceedsLineHeight { baseline: S, line_height: S },
 }
+
+impl<S: LayoutScalar> core::fmt::Display for InlineMetricsError<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::NonFinite { value } => {
+                write!(f, "inline metric {} is not finite", value.to_f64())
+            }
+            Self::Negative { value } => write!(f, "inline metric {} is negative", value.to_f64()),
+            Self::BaselineExceedsLineExtent {
+                baseline,
+                line_extent,
+            } => write!(
+                f,
+                "baseline {} exceeds the line extent {}",
+                baseline.to_f64(),
+                line_extent.to_f64()
+            ),
+            Self::BaselineExceedsLineHeight {
+                baseline,
+                line_height,
+            } => write!(
+                f,
+                "baseline {} exceeds the line height {}",
+                baseline.to_f64(),
+                line_height.to_f64()
+            ),
+        }
+    }
+}
+
+impl<S: LayoutScalar> std::error::Error for InlineMetricsError<S> {}
 
 impl<S: LayoutScalar> InlineMetricsOf<S> {
     pub fn try_new(

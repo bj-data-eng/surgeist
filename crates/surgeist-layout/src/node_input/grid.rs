@@ -311,3 +311,22 @@ pub enum GridBaselineError {
     },
     UnrepresentableCoordinate,
 }
+
+impl core::fmt::Display for GridBaselineError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use crate::error::physical_axis_label;
+        match self {
+            Self::AxisMismatch { expected, actual } => write!(
+                f,
+                "a grid baseline on the {} axis was supplied where the {} axis was expected",
+                physical_axis_label(*actual),
+                physical_axis_label(*expected)
+            ),
+            Self::UnrepresentableCoordinate => {
+                f.write_str("a grid baseline coordinate cannot be represented in its output frame")
+            }
+        }
+    }
+}
+
+impl std::error::Error for GridBaselineError {}

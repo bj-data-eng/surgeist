@@ -459,6 +459,50 @@ pub(crate) enum ScrollBoxClipGutterErrorOf<S: LayoutScalar> {
     InvalidOptimalRegionInset { side: PhysicalSide },
 }
 
+impl<S: LayoutScalar> core::fmt::Display for ScrollBoxClipGutterErrorOf<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use crate::error::{physical_axis_label, physical_side_label};
+        match self {
+            Self::Rect(_) => f.write_str("a scroll box rectangle is invalid"),
+            Self::Clip(_) => f.write_str("the overflow clip is invalid"),
+            Self::InvalidInset { side, value } => write!(
+                f,
+                "the {} border or padding inset {} is not finite and non-negative",
+                physical_side_label(*side),
+                value.to_f64()
+            ),
+            Self::InvalidClipMargin { value } => write!(
+                f,
+                "the overflow clip margin {} is not finite and non-negative",
+                value.to_f64()
+            ),
+            Self::InvalidPercentageBasis { axis } => write!(
+                f,
+                "the scrollport size on the {} axis is not a valid percentage basis",
+                physical_axis_label(*axis)
+            ),
+            Self::InvalidOptimalRegionInset { side } => write!(
+                f,
+                "the optimal viewing region inset on the {} side cannot be resolved",
+                physical_side_label(*side)
+            ),
+        }
+    }
+}
+
+impl<S: LayoutScalar> std::error::Error for ScrollBoxClipGutterErrorOf<S> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Rect(cause) => Some(cause),
+            Self::Clip(cause) => Some(cause),
+            Self::InvalidInset { .. }
+            | Self::InvalidClipMargin { .. }
+            | Self::InvalidPercentageBasis { .. }
+            | Self::InvalidOptimalRegionInset { .. } => None,
+        }
+    }
+}
+
 impl<S: LayoutScalar> From<ScrollRectErrorOf<S>> for ScrollBoxClipGutterErrorOf<S> {
     fn from(value: ScrollRectErrorOf<S>) -> Self {
         Self::Rect(value)

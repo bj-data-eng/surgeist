@@ -1,5 +1,5 @@
 use crate::DefaultScalar;
-use crate::geometry::{FlowAxes, PhysicalAxis};
+use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide};
 use crate::node_input::FloatExclusionIntervalErrorOf;
 use crate::output::RunMode;
 use crate::scalar::LayoutScalar;
@@ -630,29 +630,24 @@ scroll_geometry_cause_from! {
 
 impl<S: LayoutScalar> fmt::Display for LayoutScrollGeometryErrorOf<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.cause {
-            ScrollGeometryCauseOf::Canonical(cause) => {
-                write!(f, "canonical scroll geometry rejected: {cause:?}")
-            }
-            ScrollGeometryCauseOf::Contribution(cause) => {
-                write!(f, "scroll contribution rejected: {cause:?}")
-            }
-            ScrollGeometryCauseOf::BoxClipGutter(cause) => {
-                write!(f, "scroll box clip or gutter rejected: {cause:?}")
-            }
-            ScrollGeometryCauseOf::Rect(_) => f.write_str("scroll rectangle rejected"),
-            ScrollGeometryCauseOf::Coordinate(cause) => {
-                write!(f, "scroll coordinate rejected: {cause:?}")
-            }
-        }
+        f.write_str(match &self.cause {
+            ScrollGeometryCauseOf::Canonical(_) => "canonical scroll geometry is invalid",
+            ScrollGeometryCauseOf::Contribution(_) => "a scroll contribution is invalid",
+            ScrollGeometryCauseOf::BoxClipGutter(_) => "a scroll box clip or gutter is invalid",
+            ScrollGeometryCauseOf::Rect(_) => "a scroll rectangle is invalid",
+            ScrollGeometryCauseOf::Coordinate(_) => "a scroll coordinate is invalid",
+        })
     }
 }
 
 impl<S: LayoutScalar> std::error::Error for LayoutScrollGeometryErrorOf<S> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.cause {
+            ScrollGeometryCauseOf::Canonical(cause) => Some(cause),
+            ScrollGeometryCauseOf::Contribution(cause) => Some(cause),
+            ScrollGeometryCauseOf::BoxClipGutter(cause) => Some(cause),
             ScrollGeometryCauseOf::Rect(cause) => Some(cause),
-            _ => None,
+            ScrollGeometryCauseOf::Coordinate(cause) => Some(cause),
         }
     }
 }
@@ -794,6 +789,32 @@ where
             ) => Some(error),
             _ => None,
         }
+    }
+}
+
+/// Words that name a physical axis in messages.
+pub(crate) const fn physical_axis_label(axis: PhysicalAxis) -> &'static str {
+    match axis {
+        PhysicalAxis::Horizontal => "horizontal",
+        PhysicalAxis::Vertical => "vertical",
+    }
+}
+
+/// Words that name a logical axis in messages.
+pub(crate) const fn logical_axis_label(axis: LogicalAxis) -> &'static str {
+    match axis {
+        LogicalAxis::Inline => "inline",
+        LogicalAxis::Block => "block",
+    }
+}
+
+/// Words that name a physical side in messages.
+pub(crate) const fn physical_side_label(side: PhysicalSide) -> &'static str {
+    match side {
+        PhysicalSide::Top => "top",
+        PhysicalSide::Right => "right",
+        PhysicalSide::Bottom => "bottom",
+        PhysicalSide::Left => "left",
     }
 }
 

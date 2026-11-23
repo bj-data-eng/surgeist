@@ -18,6 +18,8 @@ mod snap;
 mod snap_distance;
 
 #[cfg(test)]
+mod error_text_tests;
+#[cfg(test)]
 mod retained_child_tests;
 #[cfg(test)]
 mod snap_tests;

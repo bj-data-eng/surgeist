@@ -32,6 +32,31 @@ fn assert_text_is_plain(text: &str, what: &str) {
     );
 }
 
+/// Checks a table with one row per variant: the exact message, plain text that
+/// does not name its own variant, a message no other row shares, and no
+/// `source()` for a payload-free row.
+fn assert_messages<E>(table: &[(E, &str)], variants: usize)
+where
+    E: Error + core::fmt::Debug,
+{
+    assert_eq!(table.len(), variants, "one row per variant");
+    let mut seen = std::collections::BTreeSet::new();
+    for (value, expected) in table {
+        assert_eq!(value.to_string(), *expected, "message of {value:?}");
+        assert_text_is_plain(expected, &format!("{value:?}"));
+        let debug = format!("{value:?}");
+        let variant = debug
+            .split(['(', ' ', '{'])
+            .next()
+            .expect("a Debug form names its variant");
+        assert!(
+            !expected.contains(variant),
+            "message {expected:?} names its variant {variant}"
+        );
+        assert!(seen.insert(*expected), "two variants share {expected:?}");
+    }
+}
+
 #[derive(Debug, PartialEq)]
 struct HostFailure;
 
@@ -386,4 +411,202 @@ fn resize_observer_measurement_error_names_the_axis_in_words() {
         );
         assert!(error.source().is_none());
     }
+}
+
+// ---------------------------------------------------------------- group D: scroll
+
+#[test]
+fn scroll_coordinate_error_names_the_space_axis_and_value() {
+    use l::ScrollCoordinateErrorOf as E;
+    is_error::<E<f32>>();
+    let table: Vec<(E<f32>, &str)> = vec![
+        (
+            E::NonFinitePhysicalOffset {
+                axis: l::PhysicalAxis::Horizontal,
+                value: f32::INFINITY,
+            },
+            "the horizontal physical scroll offset inf is not finite",
+        ),
+        (
+            E::NonFiniteFlowRelativeOffset {
+                axis: l::LogicalAxis::Block,
+                value: f32::NAN,
+            },
+            "the block flow-relative scroll offset NaN is not finite",
+        ),
+        (
+            E::NonFinitePhysicalRangeMinimum {
+                axis: l::PhysicalAxis::Vertical,
+                value: f32::NEG_INFINITY,
+            },
+            "the vertical physical scroll range minimum -inf is not finite",
+        ),
+        (
+            E::NonFinitePhysicalRangeMaximum {
+                axis: l::PhysicalAxis::Horizontal,
+                value: f32::INFINITY,
+            },
+            "the horizontal physical scroll range maximum inf is not finite",
+        ),
+        (
+            E::NonFiniteFlowRelativeRangeMinimum {
+                axis: l::LogicalAxis::Inline,
+                value: f32::NAN,
+            },
+            "the inline flow-relative scroll range minimum NaN is not finite",
+        ),
+        (
+            E::NonFiniteFlowRelativeRangeMaximum {
+                axis: l::LogicalAxis::Block,
+                value: f32::INFINITY,
+            },
+            "the block flow-relative scroll range maximum inf is not finite",
+        ),
+        (
+            E::InvertedPhysicalRange {
+                axis: l::PhysicalAxis::Vertical,
+                minimum: 5.0,
+                maximum: 2.5,
+            },
+            "the vertical physical scroll range minimum 5 exceeds its maximum 2.5",
+        ),
+        (
+            E::InvertedFlowRelativeRange {
+                axis: l::LogicalAxis::Inline,
+                minimum: 1.0,
+                maximum: -1.0,
+            },
+            "the inline flow-relative scroll range minimum 1 exceeds its maximum -1",
+        ),
+    ];
+    let mut seen = [false; 8];
+    for (error, expected) in &table {
+        assert_text_is_plain(expected, "the expectation");
+        assert_eq!(&error.to_string(), expected);
+        assert!(error.source().is_none());
+        seen[match error {
+            E::NonFinitePhysicalOffset { .. } => 0,
+            E::NonFiniteFlowRelativeOffset { .. } => 1,
+            E::NonFinitePhysicalRangeMinimum { .. } => 2,
+            E::NonFinitePhysicalRangeMaximum { .. } => 3,
+            E::NonFiniteFlowRelativeRangeMinimum { .. } => 4,
+            E::NonFiniteFlowRelativeRangeMaximum { .. } => 5,
+            E::InvertedPhysicalRange { .. } => 6,
+            E::InvertedFlowRelativeRange { .. } => 7,
+        }] = true;
+    }
+    assert!(seen.iter().all(|&covered| covered));
+}
+
+#[test]
+fn scroll_coordinate_constructors_return_errors_that_print_their_message() {
+    let offset = l::PhysicalScrollOffsetOf::<f32>::try_new(f32::INFINITY, 0.0)
+        .expect_err("a non-finite offset is rejected");
+    assert_eq!(
+        offset.to_string(),
+        "the horizontal physical scroll offset inf is not finite"
+    );
+    let offset = l::FlowRelativeScrollOffsetOf::<f32>::try_new(0.0, f32::NAN)
+        .expect_err("a non-finite offset is rejected");
+    assert_eq!(
+        offset.to_string(),
+        "the block flow-relative scroll offset NaN is not finite"
+    );
+    let range = l::PhysicalScrollRangeOf::<f32>::try_new(2.0, 1.0, 0.0, 1.0)
+        .expect_err("an inverted range is rejected");
+    assert_eq!(
+        range.to_string(),
+        "the horizontal physical scroll range minimum 2 exceeds its maximum 1"
+    );
+    let range = l::FlowRelativeScrollRangeOf::<f32>::try_new(0.0, 1.0, 3.0, 2.0)
+        .expect_err("an inverted range is rejected");
+    assert_eq!(
+        range.to_string(),
+        "the block flow-relative scroll range minimum 3 exceeds its maximum 2"
+    );
+}
+
+// ---------------------------------------------------------------- group D: baselines
+
+#[test]
+fn inline_baseline_error_names_the_rejected_fact() {
+    use l::InlineBaselineError as E;
+    is_error::<E>();
+    let table = [
+        (
+            E::UnrepresentableCoordinate,
+            "a named baseline coordinate cannot be represented in its output frame",
+        ),
+        (
+            E::AxisMismatch {
+                expected: l::PhysicalAxis::Horizontal,
+                actual: l::PhysicalAxis::Vertical,
+            },
+            "an inline baseline on the vertical axis was supplied where the horizontal axis was \
+             expected",
+        ),
+        (
+            E::ReferenceMismatch {
+                expected: l::InlineBaselineContext::Physical,
+                actual: l::InlineBaselineContext::Named(
+                    surgeist_text::font::FontBaseline::Alphabetic,
+                ),
+            },
+            "an inline baseline reference differs from the reference the request expects",
+        ),
+    ];
+    assert_messages(&table, 3);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn grid_baseline_error_names_the_rejected_fact() {
+    use l::GridBaselineError as E;
+    is_error::<E>();
+    let table = [
+        (
+            E::AxisMismatch {
+                expected: l::PhysicalAxis::Vertical,
+                actual: l::PhysicalAxis::Horizontal,
+            },
+            "a grid baseline on the horizontal axis was supplied where the vertical axis was \
+             expected",
+        ),
+        (
+            E::UnrepresentableCoordinate,
+            "a grid baseline coordinate cannot be represented in its output frame",
+        ),
+    ];
+    assert_messages(&table, 2);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn inline_metrics_constructors_return_errors_that_print_the_rejected_metric() {
+    is_error::<l::InlineMetricsError<f32>>();
+    let physical = l::InlineBaselineContext::Physical;
+    let rejected = |baseline, extent| {
+        l::InlineMetricsOf::<f32>::try_new(physical, baseline, extent)
+            .expect_err("the metrics are rejected")
+    };
+    assert_eq!(
+        rejected(f32::NAN, 1.0).to_string(),
+        "inline metric NaN is not finite"
+    );
+    assert_eq!(
+        rejected(-1.0, 1.0).to_string(),
+        "inline metric -1 is negative"
+    );
+    assert_eq!(
+        rejected(5.0, 2.5).to_string(),
+        "baseline 5 exceeds the line extent 2.5"
+    );
+    let error = l::InlineMetricsOf::<f32>::from_line_height_and_baseline(physical, 4.0, 6.0)
+        .expect_err("a baseline below the line height is required");
+    assert_eq!(error.to_string(), "baseline 6 exceeds the line height 4");
+    assert!(error.source().is_none());
 }
