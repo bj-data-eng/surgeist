@@ -83,11 +83,10 @@ fn unsupported(
     .to_string()
 }
 
-/// Every behavior with its words; the exhaustive matches fail to compile when
-/// a behavior or a calc-size basis is added without a row here.
+/// Every behavior with its words, checked complete by `behavior_index`.
 fn behavior_rows() -> Vec<(SizingBehavior, &'static str)> {
     use CalcSizeBehaviorBasis as B;
-    let rows = vec![
+    vec![
         (SizingBehavior::MinContent, "min-content"),
         (SizingBehavior::MaxContent, "max-content"),
         (SizingBehavior::FitContentFunction, "fit-content function"),
@@ -126,34 +125,81 @@ fn behavior_rows() -> Vec<(SizingBehavior, &'static str)> {
             SizingBehavior::CalcSize(B::Contain),
             "calc-size with the contain basis",
         ),
-    ];
-    for (behavior, _) in &rows {
-        match behavior {
-            SizingBehavior::MinContent
-            | SizingBehavior::MaxContent
-            | SizingBehavior::FitContentFunction
-            | SizingBehavior::Stretch
-            | SizingBehavior::FitContent
-            | SizingBehavior::Contain => {}
-            SizingBehavior::CalcSize(basis) => match basis {
-                B::Auto
-                | B::None
-                | B::Content
-                | B::MinContent
-                | B::MaxContent
-                | B::Stretch
-                | B::FitContent
-                | B::Contain => {}
-            },
-        }
+    ]
+}
+
+/// The position of each variant in a list of rows. The exhaustive matches fail
+/// to compile when a variant is added, and `assert_complete` fails when the
+/// new variant has no row.
+fn behavior_index(behavior: SizingBehavior) -> usize {
+    use CalcSizeBehaviorBasis as B;
+    match behavior {
+        SizingBehavior::MinContent => 0,
+        SizingBehavior::MaxContent => 1,
+        SizingBehavior::FitContentFunction => 2,
+        SizingBehavior::Stretch => 3,
+        SizingBehavior::FitContent => 4,
+        SizingBehavior::Contain => 5,
+        SizingBehavior::CalcSize(B::Auto) => 6,
+        SizingBehavior::CalcSize(B::None) => 7,
+        SizingBehavior::CalcSize(B::Content) => 8,
+        SizingBehavior::CalcSize(B::MinContent) => 9,
+        SizingBehavior::CalcSize(B::MaxContent) => 10,
+        SizingBehavior::CalcSize(B::Stretch) => 11,
+        SizingBehavior::CalcSize(B::FitContent) => 12,
+        SizingBehavior::CalcSize(B::Contain) => 13,
     }
-    rows
+}
+
+fn property_index(property: SizingProperty) -> usize {
+    match property {
+        SizingProperty::Preferred => 0,
+        SizingProperty::Minimum => 1,
+        SizingProperty::Maximum => 2,
+        SizingProperty::FlexBasis => 3,
+    }
+}
+
+fn algorithm_index(algorithm: SizingAlgorithm) -> usize {
+    match algorithm {
+        SizingAlgorithm::Leaf => 0,
+        SizingAlgorithm::Block => 1,
+        SizingAlgorithm::Flex => 2,
+        SizingAlgorithm::Grid => 3,
+        SizingAlgorithm::GridLanes => 4,
+        SizingAlgorithm::Positioned => 5,
+    }
+}
+
+fn writing_mode_index(mode: crate::WritingMode) -> usize {
+    use crate::WritingMode as W;
+    match mode {
+        W::HorizontalTb => 0,
+        W::VerticalRl => 1,
+        W::VerticalLr => 2,
+        W::SidewaysRl => 3,
+        W::SidewaysLr => 4,
+    }
+}
+
+/// Every index below `rows` appears exactly once.
+fn assert_complete(indices: impl IntoIterator<Item = usize>, rows: usize) {
+    let mut seen = vec![false; rows];
+    for index in indices {
+        assert!(
+            index < rows,
+            "a variant has no row: index {index} of {rows}"
+        );
+        assert!(!seen[index], "two rows for index {index}");
+        seen[index] = true;
+    }
+    assert!(seen.iter().all(|&covered| covered), "a row is missing");
 }
 
 #[test]
 fn unsupported_sizing_behavior_names_every_behavior() {
     let rows = behavior_rows();
-    assert_eq!(rows.len(), 14);
+    assert_complete(rows.iter().map(|(b, _)| behavior_index(*b)), rows.len());
     for (behavior, words) in rows {
         assert_eq!(
             unsupported(
@@ -178,13 +224,11 @@ fn unsupported_sizing_behavior_names_every_property_algorithm_and_axis() {
         (SizingProperty::Maximum, "maximum size"),
         (SizingProperty::FlexBasis, "flex basis"),
     ];
+    assert_complete(
+        properties.iter().map(|(p, _)| property_index(*p)),
+        properties.len(),
+    );
     for (property, words) in properties {
-        match property {
-            SizingProperty::Preferred
-            | SizingProperty::Minimum
-            | SizingProperty::Maximum
-            | SizingProperty::FlexBasis => {}
-        }
         assert_eq!(
             unsupported(
                 property,
@@ -206,15 +250,11 @@ fn unsupported_sizing_behavior_names_every_property_algorithm_and_axis() {
         (SizingAlgorithm::GridLanes, "grid lanes"),
         (SizingAlgorithm::Positioned, "positioned"),
     ];
+    assert_complete(
+        algorithms.iter().map(|(a, _)| algorithm_index(*a)),
+        algorithms.len(),
+    );
     for (algorithm, words) in algorithms {
-        match algorithm {
-            SizingAlgorithm::Leaf
-            | SizingAlgorithm::Block
-            | SizingAlgorithm::Flex
-            | SizingAlgorithm::Grid
-            | SizingAlgorithm::GridLanes
-            | SizingAlgorithm::Positioned => {}
-        }
         assert_eq!(
             unsupported(
                 SizingProperty::Preferred,
@@ -240,10 +280,11 @@ fn unsupported_text_writing_mode_names_every_writing_mode() {
         (W::SidewaysRl, "sideways-rl"),
         (W::SidewaysLr, "sideways-lr"),
     ];
+    assert_complete(
+        modes.iter().map(|(m, _)| writing_mode_index(*m)),
+        modes.len(),
+    );
     for (mode, words) in modes {
-        match mode {
-            W::HorizontalTb | W::VerticalRl | W::VerticalLr | W::SidewaysRl | W::SidewaysLr => {}
-        }
         assert_eq!(
             LayoutUnsupportedCapability::TextWritingMode(mode).to_string(),
             format!(
