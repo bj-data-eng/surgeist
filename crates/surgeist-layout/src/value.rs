@@ -521,7 +521,13 @@ impl<S: LayoutScalar> core::fmt::Display for LengthPercentageErrorOf<S> {
     }
 }
 
-impl<S: LayoutScalar> std::error::Error for LengthPercentageErrorOf<S> {}
+impl<S: LayoutScalar> std::error::Error for LengthPercentageErrorOf<S> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidAbsolutePx(error) | Self::InvalidPercentFraction(error) => Some(error),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LengthPercentageOf<S: LayoutScalar = DefaultScalar> {

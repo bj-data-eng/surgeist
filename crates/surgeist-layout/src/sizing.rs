@@ -40,7 +40,15 @@ impl<S: LayoutScalar> core::fmt::Display for CalcSizeCalculationErrorOf<S> {
     }
 }
 
-impl<S: LayoutScalar> std::error::Error for CalcSizeCalculationErrorOf<S> {}
+impl<S: LayoutScalar> std::error::Error for CalcSizeCalculationErrorOf<S> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidAbsolutePx(error)
+            | Self::InvalidPercentFraction(error)
+            | Self::InvalidSizeFraction(error) => Some(error),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Instruction<S: LayoutScalar> {

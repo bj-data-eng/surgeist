@@ -513,7 +513,19 @@ impl<S: LayoutScalar> core::fmt::Display for InlineBoundaryEdgeErrorOf<S> {
         })
     }
 }
-impl<S: LayoutScalar> std::error::Error for InlineBoundaryEdgeErrorOf<S> {}
+impl<S: LayoutScalar> std::error::Error for InlineBoundaryEdgeErrorOf<S> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidMargin(error)
+            | Self::InvalidBorderPaddingAdvance(error)
+            | Self::InvalidFlowAdvance(error) => Some(error),
+            Self::InvalidBorder(error) | Self::InvalidPadding(error) => Some(error),
+            Self::LostMargin { .. }
+            | Self::LostBorderPaddingAdvance { .. }
+            | Self::MarginRequiresBoxEdge { .. } => None,
+        }
+    }
+}
 
 /// Actual used signed margin and nonnegative border/padding on one inline side.
 /// Both sums are computed and validated in this computation's native scalar lane.
