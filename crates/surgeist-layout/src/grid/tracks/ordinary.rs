@@ -1,7 +1,4 @@
 use super::*;
-use crate::scalar::{
-    from_nonnegative_finite_rank, max_nonnegative_finite_rank, nonnegative_finite_rank,
-};
 
 use super::flexible::span_contribution_with_gutters;
 use crate::LengthResolutionOf;
@@ -954,15 +951,15 @@ fn phase_feasible_size<S: LayoutScalar>(
     if preferred > lower && phase_trial_size(sizes, item, recipient, preferred) == Some(target) {
         return preferred;
     }
-    let mut low = nonnegative_finite_rank(lower);
-    let mut high = nonnegative_finite_rank(upper);
+    let mut low = lower.nonnegative_finite_rank();
+    let mut high = upper.nonnegative_finite_rank();
     if !phase_trial_size(sizes, item, recipient, upper).is_some_and(|total| total <= target) {
         // Positive finite IEEE ranks are ordered integers. Upper-midpoint
         // bisection strictly shrinks the interval: at most32/64 integer
         // iterations, plus fixed endpoint/preferred validation calls.
         while low < high {
             let middle = low + (high - low).div_ceil(2);
-            let candidate = from_nonnegative_finite_rank::<S>(middle);
+            let candidate = S::from_nonnegative_finite_rank(middle);
             if phase_trial_size(sizes, item, recipient, candidate)
                 .is_some_and(|total| total <= target)
             {
@@ -974,7 +971,7 @@ fn phase_feasible_size<S: LayoutScalar>(
     } else {
         low = high;
     }
-    let best = from_nonnegative_finite_rank::<S>(low);
+    let best = S::from_nonnegative_finite_rank(low);
     let best_fold = phase_trial_size(sizes, item, recipient, best);
     if preferred > lower && phase_trial_size(sizes, item, recipient, preferred) == best_fold {
         preferred
@@ -1107,7 +1104,7 @@ fn distribute_phase_space<S: LayoutScalar>(
             let upper = if nominal_final.is_finite() {
                 nominal_final
             } else {
-                from_nonnegative_finite_rank(max_nonnegative_finite_rank::<S>())
+                S::from_nonnegative_finite_rank(S::MAX_NONNEGATIVE_FINITE_RANK)
             };
             let upper = limit.map_or(upper, |limit| upper.min(limit)).max(previous);
             let candidate = if last {
@@ -1138,7 +1135,7 @@ fn distribute_phase_space<S: LayoutScalar>(
                 let previous = sizes[index];
                 let upper = limit
                     .unwrap_or_else(|| {
-                        from_nonnegative_finite_rank(max_nonnegative_finite_rank::<S>())
+                        S::from_nonnegative_finite_rank(S::MAX_NONNEGATIVE_FINITE_RANK)
                     })
                     .max(previous);
                 let candidate = phase_residual_candidate(sizes, item, index, target);

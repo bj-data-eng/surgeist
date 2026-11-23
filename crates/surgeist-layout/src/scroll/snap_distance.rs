@@ -1,9 +1,6 @@
-use core::{any::TypeId, cmp::Ordering};
+use core::cmp::Ordering;
 
-use crate::{
-    LayoutScalar,
-    scalar::{from_nonnegative_finite_rank, max_nonnegative_finite_rank},
-};
+use crate::LayoutScalar;
 
 // The unit is half the smallest binary64 subnormal. Four finite scalar
 // terms need at most 2101 bits, including the carry above their top bit.
@@ -130,11 +127,10 @@ impl SnapDistance {
             Ordering::Greater => (false, self.positive.subtract(&self.negative)),
         };
         let highest = magnitude.highest_bit().expect("nonzero distance");
-        let (fraction_bits, subnormal_shift) = if TypeId::of::<S>() == TypeId::of::<f32>() {
-            (f32::MANTISSA_DIGITS as usize - 1, UNIT_EXPONENT - 149)
-        } else {
-            (FRACTION_BITS, UNIT_EXPONENT - 1074)
-        };
+        let (fraction_bits, subnormal_shift) = (
+            S::FRACTION_BITS,
+            UNIT_EXPONENT - S::SMALLEST_SUBNORMAL_EXPONENT,
+        );
         let shift = highest.saturating_sub(fraction_bits).max(subnormal_shift);
         let significand = magnitude.shifted_word(shift);
         let rounds_away = match rounding {
@@ -160,7 +156,7 @@ impl SnapDistance {
             SnapRounding::Down => !negative,
         };
         let value = if toward_zero && !value.is_finite() {
-            from_nonnegative_finite_rank(max_nonnegative_finite_rank::<S>())
+            S::from_nonnegative_finite_rank(S::MAX_NONNEGATIVE_FINITE_RANK)
         } else {
             value
         };

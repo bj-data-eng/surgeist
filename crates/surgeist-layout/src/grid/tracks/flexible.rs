@@ -3,7 +3,6 @@ use super::*;
 
 use crate::geometry::FlowAxes;
 use crate::grid::input::GridOverflowFacts;
-use crate::scalar::{from_nonnegative_finite_rank, nonnegative_finite_rank};
 
 pub(in crate::grid) fn grid_axis_computed_overflow(
     style: &impl GridOverflowFacts,
@@ -126,19 +125,19 @@ fn feasible_flex_fraction<S: LayoutScalar>(
         return nominal;
     }
     let mut low = 0;
-    let mut high = nonnegative_finite_rank(nominal);
+    let mut high = nominal.nonnegative_finite_rank();
     // Positive finite IEEE ranks are monotone. This takes at most 32/64 probes;
     // it does not depend on the magnitude or spacing of the numeric interval.
     while low < high {
         let middle = low + (high - low).div_ceil(2);
-        let value = from_nonnegative_finite_rank(middle);
+        let value = S::from_nonnegative_finite_rank(middle);
         if flex_span_fold(states, value, gap_total).is_some_and(|sum| sum <= budget) {
             low = middle;
         } else {
             high = middle - 1;
         }
     }
-    from_nonnegative_finite_rank(low)
+    S::from_nonnegative_finite_rank(low)
 }
 
 fn resolve_flex_fraction<S: LayoutScalar>(
@@ -1058,7 +1057,7 @@ mod flex_item_tests {
         );
         assert!(sizes.iter().all(|&size| size == expected));
         assert!(track_sum_with_gutters(&sizes, S::ZERO, None) <= S::ONE);
-        let next = from_nonnegative_finite_rank::<S>(nonnegative_finite_rank(expected) + 1);
+        let next = S::from_nonnegative_finite_rank(expected.nonnegative_finite_rank() + 1);
         let nominal = S::ONE / S::from_usize(count);
         assert_eq!(next, nominal);
         assert!((0..count).fold(S::ZERO, |sum, _| sum + next) > S::ONE);
@@ -1106,8 +1105,7 @@ mod flex_item_tests {
     }
 
     fn assert_extreme_budget<S: LayoutScalar>() {
-        let budget =
-            from_nonnegative_finite_rank(crate::scalar::max_nonnegative_finite_rank::<S>());
+        let budget = S::from_nonnegative_finite_rank(S::MAX_NONNEGATIVE_FINITE_RANK);
         let tracks = [flex(S::from_f64(0.6)), flex(S::from_f64(0.6))];
         let rows = [
             item(0, 1, S::ZERO, S::ZERO, S::ZERO),
