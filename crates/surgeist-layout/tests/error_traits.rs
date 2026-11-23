@@ -1911,3 +1911,50 @@ fn existing_complete_errors_keep_their_messages_and_report_no_unwanted_source() 
     is_error::<l::TrackRepetitionError>();
     is_error::<l::ScrollMarginErrorOf<f32>>();
 }
+
+struct FailingSink {
+    targets: l::LayoutPublicationTargets<usize>,
+}
+
+impl l::LayoutBatchSink<usize, f32> for FailingSink {
+    type Error = HostFailure;
+    type Prepared = ();
+    fn publication_targets(&self) -> &l::LayoutPublicationTargets<usize> {
+        &self.targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut l::LayoutPublicationTargets<usize> {
+        &mut self.targets
+    }
+    fn prepare_layout_batch<'call>(
+        &self,
+        _preparation: l::LayoutBatchPreparation<'call, usize, f32>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        Err(HostFailure)
+    }
+    fn commit_layout_batch<'call>(
+        &mut self,
+        _commit: l::LayoutBatchCommit<'call, usize, f32, Self::Prepared>,
+    ) {
+    }
+}
+
+#[test]
+fn applying_a_batch_to_a_sink_that_cannot_prepare_it_reports_the_sink_error() {
+    let tree = Tree {
+        nodes: vec![(block(l::Size::new(px(50.0), px(50.0))), vec![])],
+    };
+    let batch = l::compute_layout(&tree, 0, root_request()).expect("a single box lays out");
+    let mut sink = FailingSink {
+        targets: l::LayoutPublicationTargets::new(),
+    };
+    let error = batch
+        .apply_to(&mut sink)
+        .expect_err("the sink cannot prepare the replacement");
+    assert_eq!(
+        chain(&error),
+        [
+            "the sink failed to prepare the replacement",
+            "the host could not measure the node"
+        ]
+    );
+}
