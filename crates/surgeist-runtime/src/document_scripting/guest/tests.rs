@@ -15,6 +15,7 @@ pub(in crate::document_scripting) fn projected_node_id<'scope>(
 
 pub(in crate::document_scripting) mod attributes;
 pub(in crate::document_scripting) mod canvas_dimension_admission;
+pub(in crate::document_scripting) mod child_collection_refusal;
 pub(in crate::document_scripting) mod control_autocomplete_admission;
 pub(in crate::document_scripting) mod conversion_admission;
 pub(in crate::document_scripting) mod dataset_admission;
