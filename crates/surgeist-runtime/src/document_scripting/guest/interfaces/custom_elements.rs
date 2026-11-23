@@ -955,10 +955,8 @@ impl Capture {
                 Some((promise, false)) => return Ok(promise),
                 None => (),
             }
-            let mut waiters = registry
-                .waiting
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            // Intrinsic promise creation can enter the collector. Finish
+            // preparing both roots and the record before borrowing the list.
             let record = events.reserve(&owner, size_of::<DefinitionWaiter>())?;
             #[cfg(test)]
             let registry_was_available = registry.waiting.try_borrow_mut().is_ok();
@@ -969,13 +967,18 @@ impl Capture {
                 "pending resolver creation entered with a waiter registry loan"
             );
             let promise = scope.resolver_promise(&resolver)?;
-            let entry = Box::new(DefinitionWaiter {
+            let mut entry = Box::new(DefinitionWaiter {
                 name,
                 resolver,
-                next: waiters.take(),
+                next: None,
                 _record: record,
                 _name: name_backing,
             });
+            let mut waiters = registry
+                .waiting
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            entry.next = waiters.take();
             *waiters = Some(entry);
             Ok(promise)
         })();
