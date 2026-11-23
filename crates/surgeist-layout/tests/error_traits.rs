@@ -1053,7 +1053,7 @@ fn root_context_mismatch_prints_its_message_and_has_no_source() {
         ),
         (
             E::WritingMode,
-            "the root context's non-horizontal writing mode or hypothetical block offset needs a definite local size, an auto-sized horizontal block or an auto-sized grid with fixed tracks",
+            "a root with a non-horizontal writing mode or a hypothetical block offset needs a definite local size, an auto-sized horizontal block or an auto-sized grid with fixed tracks",
         ),
         (
             E::Display,
