@@ -340,14 +340,7 @@ pub use error::{
 #[cfg(test)]
 pub(crate) use flex::compute_flex;
 pub use geometry::{Edges, FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide, Point, Size};
-pub use grid::{
-    DefiniteLaneIntrinsicItem, DefiniteLaneIntrinsicItemOf, GridAxisKind,
-    IndefiniteLaneContributionGroup, IndefiniteLaneContributionGroupOf, LaneContributionFacts,
-    LaneContributionFactsOf, LaneIntrinsicItem, LaneIntrinsicItemKind, LaneIntrinsicItemOf,
-    LaneIntrinsicSizingInput, LaneIntrinsicSizingInputOf, LaneIntrinsicSizingReport,
-    LaneIntrinsicSizingReportOf, LanePlacementError, LaneTrackSpan, LaneTrackSpanLength,
-    NamedGridError, lane_intrinsic_sizing,
-};
+pub use grid::{GridAxisKind, NamedGridError};
 #[cfg(test)]
 pub(crate) use grid::{compute_grid, compute_grid_with_report};
 pub use measurement::{LeafMeasureInput, LeafMeasureInputOf, compute_leaf};

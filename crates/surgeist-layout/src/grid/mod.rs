@@ -84,13 +84,6 @@ use intrinsic_stage::{
     GridIntrinsicProbe, GridIntrinsicProbeKind, GridTrackSizing, IntrinsicSubgridSource,
 };
 use lane_repeat::{LaneRepeatExpansion, LaneRepeatPlacement, LaneRepeatProbe};
-pub use lanes::{
-    DefiniteLaneIntrinsicItem, DefiniteLaneIntrinsicItemOf, IndefiniteLaneContributionGroup,
-    IndefiniteLaneContributionGroupOf, LaneContributionFacts, LaneContributionFactsOf,
-    LaneIntrinsicItem, LaneIntrinsicItemKind, LaneIntrinsicItemOf, LaneIntrinsicSizingInput,
-    LaneIntrinsicSizingInputOf, LaneIntrinsicSizingReport, LaneIntrinsicSizingReportOf,
-    LanePlacementError, LaneTrackSpan, LaneTrackSpanLength, lane_intrinsic_sizing,
-};
 use lanes::{
     GridLanesFinish, GridLanesLayoutInput, LaneIntrinsicTrackSizeInput, LanePacking,
     LanePackingChild, LanePackingSource, LanePlacementGeometry, LanePlacementPacking,

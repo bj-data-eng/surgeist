@@ -1154,40 +1154,6 @@ pub(super) fn assert_fri08_c04_standalone_nested_flows<S: LayoutScalar>() {
     }
 }
 
-pub(super) fn fri08_c03_intrinsic_facts<S: LayoutScalar>(
-    minimum: f64,
-    min_content: f64,
-    max_content: f64,
-) -> LaneContributionFactsOf<S> {
-    LaneContributionFactsOf {
-        min_content: S::from_f64(min_content),
-        max_content: S::from_f64(max_content),
-        min_size: S::from_f64(minimum),
-        automatic_minimum_applies: false,
-    }
-}
-
-pub(super) fn fri08_c03_intrinsic_projected_item<S: LayoutScalar>(
-    id: &'static str,
-    span: usize,
-    candidate_starts: Option<Vec<usize>>,
-    edges: LaneIntrinsicEdgeFactsOf<S>,
-    contribution: LaneContributionFactsOf<S>,
-) -> ProjectedLaneIntrinsicItemOf<S> {
-    ProjectedLaneIntrinsicItemOf {
-        id,
-        kind: LaneIntrinsicItemKind::Indefinite {
-            span: LaneTrackSpanLength::new(span).expect("intrinsic span is nonzero"),
-        },
-        candidate_starts,
-        contribution: contribution.into(),
-        edges,
-        contribution_kind: IntrinsicSpanContribution::MinContent {
-            prioritize_min_tracks: false,
-        },
-    }
-}
-
 pub(super) fn assert_fri08_c03_nested_candidate_bounds_edges_and_reversal<S: LayoutScalar>() {
     let scalar = S::from_f64;
     let projection = NestedLaneIntrinsicProjectionOf {

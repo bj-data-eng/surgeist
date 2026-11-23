@@ -1,6 +1,5 @@
 use super::*;
 
-use super::flexible::span_contribution_with_gutters;
 use crate::LengthResolutionOf;
 
 fn resolution_or_zero<S: LayoutScalar>(resolution: LengthResolutionOf<S>) -> S {
@@ -111,52 +110,6 @@ impl<'a, S: LayoutScalar> OrdinaryTrackState<'a, S> {
             self.growth_limit = Some(limit.max(self.base_size));
         }
     }
-}
-
-#[derive(Clone, Copy)]
-pub(in crate::grid) struct OrdinaryIntrinsicContributionInput<'a, S: LayoutScalar = DefaultScalar> {
-    pub(in crate::grid) tracks: &'a [TrackSizingOf<S>],
-    pub(in crate::grid) start: usize,
-    pub(in crate::grid) end: usize,
-    pub(in crate::grid) kind: IntrinsicSpanContribution,
-    pub(in crate::grid) percent_basis: Option<S>,
-    pub(in crate::grid) contribution: S,
-    pub(in crate::grid) gap: S,
-    pub(in crate::grid) gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
-}
-
-pub(in crate::grid) fn apply_ordinary_intrinsic_contribution<S: LayoutScalar>(
-    sizes: &mut [S],
-    input: OrdinaryIntrinsicContributionInput<'_, S>,
-) {
-    let OrdinaryIntrinsicContributionInput {
-        tracks,
-        start,
-        end,
-        kind,
-        percent_basis,
-        contribution,
-        gap,
-        gutters,
-    } = input;
-    let Some(span_tracks) = tracks.get(start..end) else {
-        return;
-    };
-    let Some(span_sizes) = sizes.get_mut(start..end) else {
-        return;
-    };
-    if span_tracks.is_empty() || !span_tracks.iter().any(track_has_intrinsic_sizing_function) {
-        return;
-    }
-    if span_tracks.len() == 1 {
-        span_sizes[0] = span_sizes[0].max(contribution);
-        return;
-    }
-    let mut target = span_contribution_with_gutters(contribution, start, end, gap, gutters);
-    if matches!(kind, IntrinsicSpanContribution::MinContent { .. }) {
-        target = (target - intrinsic_span_minimum_floor_space(span_tracks)).max(S::ZERO);
-    }
-    distribute_intrinsic_span(span_sizes, span_tracks, kind, percent_basis, target);
 }
 
 // The full track and actual containing constraint are necessary: an Auto

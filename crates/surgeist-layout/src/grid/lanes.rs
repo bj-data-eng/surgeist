@@ -7,12 +7,8 @@ use crate::sizing::resolve::{
     ResolvedPreferredSize, SizingResolutionError, resolve_maximum_optional,
     resolve_minimum_optional, resolve_preferred_sizing,
 };
-use crate::{
-    GridFlowToleranceOf, LayoutErrorSiteOf, LengthResolutionOf, LengthResolutionStatus,
-    MinTrackSizingOf, PercentageBasisOf,
-};
+use crate::{GridFlowToleranceOf, LengthResolutionOf, LengthResolutionStatus, PercentageBasisOf};
 use std::collections::TryReserveError;
-use std::num::NonZeroUsize;
 use std::ops::Range;
 
 mod packed;
@@ -74,7 +70,7 @@ impl<S: LayoutScalar> GridLanesItemContainingBlockOf<S> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LanePlacementError {
+pub(crate) enum LanePlacementError {
     EmptyTrackList,
     InvalidGridAxisStart {
         start: usize,
@@ -87,13 +83,6 @@ pub enum LanePlacementError {
         span: usize,
         tracks: usize,
     },
-    ContentSizedTrackOutOfRange {
-        track_index: usize,
-        tracks: usize,
-    },
-    InvalidDefiniteLaneSpan {
-        span: LaneTrackSpan,
-    },
     DefiniteLaneSpanOutOfRange {
         span: LaneTrackSpan,
         tracks: usize,
@@ -102,46 +91,8 @@ pub enum LanePlacementError {
     InvalidGridFlowToleranceResolution,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct LaneContributionFactsOf<S: LayoutScalar = DefaultScalar> {
-    pub min_content: S,
-    pub max_content: S,
-    pub min_size: S,
-    pub automatic_minimum_applies: bool,
-}
-
-pub type LaneContributionFacts = LaneContributionFactsOf<DefaultScalar>;
-
-impl<S: LayoutScalar> LaneContributionFactsOf<S> {
-    fn contributions(self) -> LaneContributionsOf<S> {
-        let minimum = if self.automatic_minimum_applies {
-            self.min_content
-        } else {
-            self.min_size
-        };
-        LaneContributionsOf {
-            minimum,
-            min_content: self.min_content,
-            max_content: self.max_content,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct LaneContributionsOf<S: LayoutScalar = DefaultScalar> {
-    pub(super) minimum: S,
-    pub(super) min_content: S,
-    pub(super) max_content: S,
-}
-
-impl<S: LayoutScalar> From<LaneContributionFactsOf<S>> for LaneContributionsOf<S> {
-    fn from(facts: LaneContributionFactsOf<S>) -> Self {
-        facts.contributions()
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct LaneTrackSpan {
+pub(crate) struct LaneTrackSpan {
     pub start: usize,
     pub end: usize,
 }
@@ -151,125 +102,7 @@ impl LaneTrackSpan {
     pub const fn new(start: usize, end: usize) -> Self {
         Self { start, end }
     }
-
-    fn len(self) -> Option<usize> {
-        if self.start == 0 || self.end <= self.start {
-            None
-        } else {
-            Some(self.end - self.start)
-        }
-    }
 }
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct LaneTrackSpanLength(NonZeroUsize);
-
-impl LaneTrackSpanLength {
-    #[must_use]
-    pub const fn new(span: usize) -> Option<Self> {
-        match NonZeroUsize::new(span) {
-            Some(span) => Some(Self(span)),
-            None => None,
-        }
-    }
-
-    #[must_use]
-    pub const fn get(self) -> usize {
-        self.0.get()
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct LaneIntrinsicSizingInputOf<S: LayoutScalar = DefaultScalar> {
-    pub axis: GridAxisKind,
-    pub available: Option<S>,
-    pub gap: S,
-    pub tracks: Vec<TrackSizingOf<S>>,
-    pub content_sized_tracks: Vec<usize>,
-    pub items: Vec<LaneIntrinsicItemOf<S>>,
-}
-
-pub type LaneIntrinsicSizingInput = LaneIntrinsicSizingInputOf<DefaultScalar>;
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct LaneIntrinsicItemOf<S: LayoutScalar = DefaultScalar> {
-    id: &'static str,
-    kind: LaneIntrinsicItemKind,
-    contribution: LaneContributionFactsOf<S>,
-}
-
-pub type LaneIntrinsicItem = LaneIntrinsicItemOf<DefaultScalar>;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LaneIntrinsicItemKind {
-    Definite { span: LaneTrackSpan },
-    Indefinite { span: LaneTrackSpanLength },
-}
-
-impl<S: LayoutScalar> LaneIntrinsicItemOf<S> {
-    pub fn definite(
-        id: &'static str,
-        span: LaneTrackSpan,
-        contribution: LaneContributionFactsOf<S>,
-    ) -> Result<Self, LanePlacementError> {
-        if span.len().is_none() {
-            return Err(LanePlacementError::InvalidDefiniteLaneSpan { span });
-        }
-        Ok(Self {
-            id,
-            kind: LaneIntrinsicItemKind::Definite { span },
-            contribution,
-        })
-    }
-
-    #[must_use]
-    pub const fn indefinite(
-        id: &'static str,
-        span: LaneTrackSpanLength,
-        contribution: LaneContributionFactsOf<S>,
-    ) -> Self {
-        Self {
-            id,
-            kind: LaneIntrinsicItemKind::Indefinite { span },
-            contribution,
-        }
-    }
-
-    #[must_use]
-    pub const fn id(&self) -> &'static str {
-        self.id
-    }
-
-    #[must_use]
-    pub const fn kind(&self) -> LaneIntrinsicItemKind {
-        self.kind
-    }
-
-    #[must_use]
-    pub const fn contribution(&self) -> LaneContributionFactsOf<S> {
-        self.contribution
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct DefiniteLaneIntrinsicItemOf<S: LayoutScalar = DefaultScalar> {
-    pub id: &'static str,
-    pub span: LaneTrackSpan,
-    pub contribution: LaneContributionFactsOf<S>,
-}
-
-pub type DefiniteLaneIntrinsicItem = DefiniteLaneIntrinsicItemOf<DefaultScalar>;
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct IndefiniteLaneContributionGroupOf<S: LayoutScalar = DefaultScalar> {
-    pub span: usize,
-    pub max_min_content: S,
-    pub max_max_content: S,
-    pub max_min_size: S,
-    pub item_ids: Vec<&'static str>,
-}
-
-pub type IndefiniteLaneContributionGroup = IndefiniteLaneContributionGroupOf<DefaultScalar>;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(super) struct LaneIntrinsicEdgeFactsOf<S: LayoutScalar = DefaultScalar> {
@@ -278,43 +111,6 @@ pub(super) struct LaneIntrinsicEdgeFactsOf<S: LayoutScalar = DefaultScalar> {
     pub(super) start_half_gap: S,
     pub(super) end_half_gap: S,
 }
-
-#[derive(Clone, Debug, PartialEq)]
-struct LaneIntrinsicEquivalenceKeyOf<S: LayoutScalar = DefaultScalar> {
-    span: usize,
-    candidate_starts: Vec<usize>,
-    edges: LaneIntrinsicEdgeFactsOf<S>,
-    contribution_kind: IntrinsicSpanContribution,
-}
-
-#[derive(Clone, Debug)]
-pub(super) struct ProjectedLaneIntrinsicItemOf<S: LayoutScalar = DefaultScalar> {
-    pub(super) id: &'static str,
-    pub(super) kind: LaneIntrinsicItemKind,
-    pub(super) candidate_starts: Option<Vec<usize>>,
-    pub(super) contribution: LaneContributionsOf<S>,
-    pub(super) edges: LaneIntrinsicEdgeFactsOf<S>,
-    pub(super) contribution_kind: IntrinsicSpanContribution,
-}
-
-#[derive(Clone, Debug)]
-struct ProjectedLaneIntrinsicGroupOf<S: LayoutScalar = DefaultScalar> {
-    key: LaneIntrinsicEquivalenceKeyOf<S>,
-    max_min_content: S,
-    max_max_content: S,
-    max_minimum: S,
-    item_ids: Vec<&'static str>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct LaneIntrinsicSizingReportOf<S: LayoutScalar = DefaultScalar> {
-    pub definite_items: Vec<DefiniteLaneIntrinsicItemOf<S>>,
-    pub indefinite_groups: Vec<IndefiniteLaneContributionGroupOf<S>>,
-    pub converted_indefinite_items: Vec<DefiniteLaneIntrinsicItemOf<S>>,
-    pub final_track_sizes: Vec<S>,
-}
-
-pub type LaneIntrinsicSizingReport = LaneIntrinsicSizingReportOf<DefaultScalar>;
 
 pub(super) fn lane_axis_for_grid_lanes<S: LayoutScalar>(
     style: &GridContainerProjection<'_, S>,
@@ -366,287 +162,6 @@ pub(super) fn apply_grid_lanes_auto_fit_policy<'input, Node, S: LayoutScalar>(
         })
         .collect::<Vec<_>>();
     topology.apply_lanes_auto_fit_policy(axis, track_count, explicit_start, &lanes_placements)
-}
-
-pub fn lane_intrinsic_sizing<S: LayoutScalar>(
-    input: LaneIntrinsicSizingInputOf<S>,
-) -> LayoutResultOf<(), Result<LaneIntrinsicSizingReportOf<S>, LanePlacementError>, S> {
-    lane_intrinsic_sizing_with(input, LayoutErrorSiteOf::Standalone)
-}
-
-pub(super) fn lane_intrinsic_sizing_with<Node, S, M>(
-    input: LaneIntrinsicSizingInputOf<S>,
-    site: LayoutErrorSiteOf<Node>,
-) -> LayoutResultOf<Node, Result<LaneIntrinsicSizingReportOf<S>, LanePlacementError>, S, M>
-where
-    Node: Copy,
-    S: LayoutScalar,
-{
-    let projected_items = input
-        .items
-        .iter()
-        .map(|item| ProjectedLaneIntrinsicItemOf {
-            id: item.id(),
-            kind: item.kind(),
-            candidate_starts: None,
-            contribution: item.contribution().into(),
-            edges: LaneIntrinsicEdgeFactsOf::default(),
-            contribution_kind: IntrinsicSpanContribution::MinContent {
-                prioritize_min_tracks: false,
-            },
-        })
-        .collect::<Vec<_>>();
-    lane_intrinsic_sizing_projected_with(&input, &projected_items, None, site)
-}
-
-struct LaneProjectedSpanOf<S: LayoutScalar> {
-    span: LaneTrackSpan,
-    contributions: LaneContributionsOf<S>,
-    contribution_kind: IntrinsicSpanContribution,
-}
-
-struct LaneProjectedContributionsOf<S: LayoutScalar> {
-    definite_items: Vec<DefiniteLaneIntrinsicItemOf<S>>,
-    indefinite_groups: Vec<IndefiniteLaneContributionGroupOf<S>>,
-    converted_indefinite_items: Vec<DefiniteLaneIntrinsicItemOf<S>>,
-    virtual_items: Vec<LaneProjectedSpanOf<S>>,
-}
-
-fn project_lane_intrinsic_contributions<S: LayoutScalar>(
-    input: &LaneIntrinsicSizingInputOf<S>,
-    projected_items: &[ProjectedLaneIntrinsicItemOf<S>],
-    gutters: Option<&OrdinaryGridAxisGuttersOf<S>>,
-) -> Result<LaneProjectedContributionsOf<S>, LanePlacementError> {
-    if input.content_sized_tracks.is_empty() || input.tracks.is_empty() {
-        return Err(LanePlacementError::EmptyTrackList);
-    }
-    if let Some(track_index) = input
-        .content_sized_tracks
-        .iter()
-        .copied()
-        .find(|track_index| *track_index >= input.tracks.len())
-    {
-        return Err(LanePlacementError::ContentSizedTrackOutOfRange {
-            track_index,
-            tracks: input.tracks.len(),
-        });
-    }
-
-    // The report retains authored public facts. Generated numerical spans use
-    // contribution values separately from the public automatic-minimum flag.
-    let definite_items = input
-        .items
-        .iter()
-        .filter_map(|item| match item.kind() {
-            LaneIntrinsicItemKind::Definite { span } => Some(DefiniteLaneIntrinsicItemOf {
-                id: item.id(),
-                span,
-                contribution: item.contribution(),
-            }),
-            LaneIntrinsicItemKind::Indefinite { .. } => None,
-        })
-        .collect::<Vec<_>>();
-    let mut definite_virtual_items = Vec::new();
-    let mut projected_groups: Vec<ProjectedLaneIntrinsicGroupOf<S>> = Vec::new();
-    let collapsed = gutters
-        .map(OrdinaryGridAxisGuttersOf::collapsed)
-        .unwrap_or(&[]);
-
-    for item in projected_items {
-        match item.kind {
-            LaneIntrinsicItemKind::Definite { span } => {
-                if span.len().is_none() || span.end > input.tracks.len() + 1 {
-                    return Err(LanePlacementError::DefiniteLaneSpanOutOfRange {
-                        span,
-                        tracks: input.tracks.len(),
-                    });
-                }
-                definite_virtual_items.push(LaneProjectedSpanOf {
-                    span,
-                    contributions: item.contribution,
-                    contribution_kind: item.contribution_kind,
-                });
-            }
-            LaneIntrinsicItemKind::Indefinite { span } => {
-                let span = span.get().min(input.tracks.len());
-                let contributions = item.contribution;
-                let active_starts = active_candidate_starts(input.tracks.len(), span, collapsed);
-                let mut candidate_starts =
-                    item.candidate_starts
-                        .as_ref()
-                        .map_or(active_starts.clone(), |candidates| {
-                            candidates
-                                .iter()
-                                .copied()
-                                .filter(|candidate| active_starts.contains(candidate))
-                                .collect()
-                        });
-                candidate_starts.sort_unstable();
-                candidate_starts.dedup();
-                let key = LaneIntrinsicEquivalenceKeyOf {
-                    span,
-                    candidate_starts,
-                    edges: item.edges,
-                    contribution_kind: item.contribution_kind,
-                };
-                if let Some(group) = projected_groups.iter_mut().find(|group| group.key == key) {
-                    group.max_min_content = group.max_min_content.max(contributions.min_content);
-                    group.max_max_content = group.max_max_content.max(contributions.max_content);
-                    group.max_minimum = group.max_minimum.max(contributions.minimum);
-                    group.item_ids.push(item.id);
-                } else {
-                    projected_groups.push(ProjectedLaneIntrinsicGroupOf {
-                        key,
-                        max_min_content: contributions.min_content,
-                        max_max_content: contributions.max_content,
-                        max_minimum: contributions.minimum,
-                        item_ids: vec![item.id],
-                    });
-                }
-            }
-        }
-    }
-
-    let indefinite_groups = projected_groups
-        .iter()
-        .map(|group| IndefiniteLaneContributionGroupOf {
-            span: group.key.span,
-            max_min_content: group.max_min_content,
-            max_max_content: group.max_max_content,
-            max_min_size: group.max_minimum,
-            item_ids: group.item_ids.clone(),
-        })
-        .collect::<Vec<_>>();
-    let mut converted_indefinite_items = Vec::new();
-    let mut virtual_items = definite_virtual_items;
-    for group in &projected_groups {
-        for start_index in &group.key.candidate_starts {
-            let span = LaneTrackSpan::new(*start_index + 1, *start_index + 1 + group.key.span);
-            converted_indefinite_items.push(DefiniteLaneIntrinsicItemOf {
-                id: "indefinite-group",
-                span,
-                contribution: LaneContributionFactsOf {
-                    min_content: group.max_min_content,
-                    max_content: group.max_max_content,
-                    min_size: group.max_minimum,
-                    automatic_minimum_applies: false,
-                },
-            });
-            virtual_items.push(LaneProjectedSpanOf {
-                span,
-                contributions: LaneContributionsOf {
-                    minimum: group.max_minimum,
-                    min_content: group.max_min_content,
-                    max_content: group.max_max_content,
-                },
-                contribution_kind: group.key.contribution_kind,
-            });
-        }
-    }
-
-    Ok(LaneProjectedContributionsOf {
-        definite_items,
-        indefinite_groups,
-        converted_indefinite_items,
-        virtual_items,
-    })
-}
-
-pub(super) fn lane_intrinsic_sizing_projected_with<Node, S, M>(
-    input: &LaneIntrinsicSizingInputOf<S>,
-    projected_items: &[ProjectedLaneIntrinsicItemOf<S>],
-    gutters: Option<&OrdinaryGridAxisGuttersOf<S>>,
-    site: LayoutErrorSiteOf<Node>,
-) -> LayoutResultOf<Node, Result<LaneIntrinsicSizingReportOf<S>, LanePlacementError>, S, M>
-where
-    Node: Copy,
-    S: LayoutScalar,
-{
-    let LaneProjectedContributionsOf {
-        definite_items,
-        indefinite_groups,
-        converted_indefinite_items,
-        virtual_items,
-    } = match project_lane_intrinsic_contributions(input, projected_items, gutters) {
-        Ok(projection) => projection,
-        Err(error) => return Ok(Err(error)),
-    };
-    let mut minimum_sizes = vec![S::ZERO; input.tracks.len()];
-    let mut min_content_sizes = vec![S::ZERO; input.tracks.len()];
-    let mut max_content_sizes = vec![S::ZERO; input.tracks.len()];
-    for LaneProjectedSpanOf {
-        span,
-        contributions,
-        contribution_kind,
-    } in virtual_items
-    {
-        if !span_overlaps_content_tracks(span, &input.content_sized_tracks) {
-            continue;
-        }
-        let start = span.start - 1;
-        let end = span.end - 1;
-        for (sizes, kind, contribution) in [
-            (&mut minimum_sizes, contribution_kind, contributions.minimum),
-            (
-                &mut min_content_sizes,
-                IntrinsicSpanContribution::MinContent {
-                    prioritize_min_tracks: matches!(
-                        contribution_kind,
-                        IntrinsicSpanContribution::MinContent {
-                            prioritize_min_tracks: true
-                        }
-                    ),
-                },
-                contributions.min_content,
-            ),
-            (
-                &mut max_content_sizes,
-                IntrinsicSpanContribution::MaxContent,
-                contributions.max_content,
-            ),
-        ] {
-            apply_ordinary_intrinsic_contribution(
-                sizes,
-                OrdinaryIntrinsicContributionInput {
-                    tracks: &input.tracks,
-                    start,
-                    end,
-                    kind,
-                    percent_basis: input.available,
-                    contribution,
-                    gap: input.gap,
-                    gutters,
-                },
-            );
-        }
-    }
-
-    let initialized_track_sizes = input
-        .tracks
-        .iter()
-        .map(|track| initialized_track_base(track.clone(), input.available, site))
-        .collect::<LayoutResultOf<Node, Vec<_>, S, M>>()?;
-    let final_track_sizes = input
-        .tracks
-        .iter()
-        .enumerate()
-        .map(|(index, track)| {
-            let contribution = match track.min {
-                MinTrackSizingOf::MinContent => min_content_sizes[index],
-                MinTrackSizingOf::MaxContent => max_content_sizes[index],
-                MinTrackSizingOf::Auto => minimum_sizes[index],
-                MinTrackSizingOf::Calculation(_) => S::ZERO,
-            };
-            initialized_track_sizes[index].max(contribution)
-        })
-        .collect();
-
-    Ok(Ok(LaneIntrinsicSizingReportOf {
-        definite_items,
-        indefinite_groups,
-        converted_indefinite_items,
-        final_track_sizes,
-    }))
 }
 
 fn candidate_starts(track_count: usize, span: usize) -> impl Iterator<Item = usize> {
@@ -709,51 +224,6 @@ pub(super) fn lane_intrinsic_wrapper_areas<'a, S: LayoutScalar>(
                     (index, area)
                 })
         })
-}
-
-fn initialized_track_base<Node, S, M>(
-    track: TrackSizingOf<S>,
-    available: Option<S>,
-    site: LayoutErrorSiteOf<Node>,
-) -> LayoutResultOf<Node, S, S, M>
-where
-    S: LayoutScalar,
-{
-    match track.min {
-        MinTrackSizingOf::Calculation(calculation) => {
-            let resolution = super::tracks::resolve_track_calculation(&calculation, available);
-            resolution_or_zero(resolution, site)
-        }
-        MinTrackSizingOf::Auto | MinTrackSizingOf::MinContent | MinTrackSizingOf::MaxContent => {
-            Ok(S::ZERO)
-        }
-    }
-}
-
-fn resolution_or_zero<Node, S, M>(
-    resolution: LengthResolutionOf<S>,
-    site: LayoutErrorSiteOf<Node>,
-) -> LayoutResultOf<Node, S, S, M>
-where
-    S: LayoutScalar,
-{
-    match resolution.status() {
-        LengthResolutionStatus::Resolved => Ok(resolution
-            .value
-            .expect("resolved length resolution must carry a value")),
-        LengthResolutionStatus::InvalidNumeric { .. } => Err(
-            crate::error::value_resolution_error_at_site(site, resolution.status()),
-        ),
-        LengthResolutionStatus::MissingBasis | LengthResolutionStatus::NonNumeric => Ok(S::ZERO),
-    }
-}
-
-fn span_overlaps_content_tracks(span: LaneTrackSpan, content_sized_tracks: &[usize]) -> bool {
-    let start = span.start - 1;
-    let end = span.end - 1;
-    content_sized_tracks
-        .iter()
-        .any(|track_index| (start..end).contains(track_index))
 }
 
 pub(super) struct LanePackingSource<'input, 'a, Node, S: LayoutScalar> {

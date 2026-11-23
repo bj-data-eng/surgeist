@@ -1120,8 +1120,6 @@ contributes to final scroll geometry.
 - Sparse lane placement runs inside container layout, which consumes
   `NodeInputOf::grid_lanes_flow` for the resolved axis pair, progression and
   dense packing.
-- Intrinsic lane sizing: `lane_intrinsic_sizing`, `LaneIntrinsicSizingInputOf`, and `LaneIntrinsicSizingReportOf`.
-- Grid computation reports: `GridComputationOf` and `GridComputationReport`.
 - Finite track construction: `TrackSizingOf`, `TrackComponentOf`, `TrackComponentListOf`, and `track_sizing_components_of`.
 
 ### Normalized fragmentation scheduling

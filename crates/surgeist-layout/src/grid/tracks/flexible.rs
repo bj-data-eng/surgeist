@@ -425,20 +425,6 @@ pub(in crate::grid) fn track_span_sum_with_boundary_gaps<S: LayoutScalar>(
         )
 }
 
-pub(super) fn span_contribution_with_gutters<S: LayoutScalar>(
-    contribution: S,
-    start: usize,
-    end: usize,
-    gap: S,
-    gutters: Option<&OrdinaryGridAxisGuttersOf<S>>,
-) -> S {
-    let gutter_total = gutters.map_or_else(
-        || gap * S::from_usize(end.saturating_sub(start + 1)),
-        |gutters| gutters.span_gap_total(start, end),
-    );
-    (contribution - gutter_total).max(S::ZERO)
-}
-
 pub(in crate::grid) fn offsets<S: LayoutScalar>(sizes: &[S], start: S, gap: S) -> Vec<S> {
     let mut cursor = start;
     sizes
