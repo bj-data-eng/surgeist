@@ -42,6 +42,7 @@ pub(in crate::document_scripting) mod token_list_admission;
 pub(in crate::document_scripting) mod tree_mutation_admission;
 pub(in crate::document_scripting) mod tree_walker_admission;
 pub(in crate::document_scripting) mod trusted_policy;
+pub(in crate::document_scripting) mod video_read_admission;
 
 pub(in crate::document_scripting) fn exhaust_guest_reaction_work(host: &DocumentScriptHost) {
     set_guest_work_remaining(host, 0);

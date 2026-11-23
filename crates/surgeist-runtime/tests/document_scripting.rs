@@ -203,6 +203,8 @@ mod text_comment;
 mod textarea_values;
 #[path = "document_scripting/translate_reflection.rs"]
 mod translate_reflection;
+#[path = "document_scripting/video_local_bindings.rs"]
+mod video_local_bindings;
 #[path = "document_scripting/window_document.rs"]
 mod window_document;
 #[path = "document_scripting/window_length.rs"]
@@ -2648,6 +2650,9 @@ fn main() {
             "image-local-setter-realm" => image_local_attributes::inactive_image_setters_follow_the_original_child_realm(),
             "link-local-reflections" => link_style_reflections::never_hosted_link_reflects_live_native_attributes(),
             "link-local-refusal" => link_style_reflections::hosted_link_reflection_preserves_original_source_refusal(),
+            "video-local-bindings" => video_local_bindings::video_reflects_canonical_attributes_and_its_unloaded_dimensions(),
+            "video-width-source-refusal" => video_local_bindings::video_width_retains_the_original_source_work_refusal(),
+            "video-borrowed-realm" => video_local_bindings::borrowed_video_accessors_keep_original_realms_and_have_nothing(),
             "style-local-reflections" => link_style_reflections::active_style_media_updates_the_original_native_sheet(),
             "input-list" => input_list::attached_input_list_follows_the_first_exact_id_in_its_tree(),
             "input-attributes" => input_attributes::attached_input_reflections_use_canonical_attributes(),
@@ -2832,6 +2837,9 @@ fn main() {
     image_local_attributes::inactive_image_setters_follow_the_original_child_realm();
     link_style_reflections::never_hosted_link_reflects_live_native_attributes();
     link_style_reflections::hosted_link_reflection_preserves_original_source_refusal();
+    video_local_bindings::video_reflects_canonical_attributes_and_its_unloaded_dimensions();
+    video_local_bindings::video_width_retains_the_original_source_work_refusal();
+    video_local_bindings::borrowed_video_accessors_keep_original_realms_and_have_nothing();
     link_style_reflections::active_style_media_updates_the_original_native_sheet();
     script_async::script_async_keeps_native_flag_and_content_coherent();
     source_reflections::local_source_reflections_preserve_canonical_picture_recipients();

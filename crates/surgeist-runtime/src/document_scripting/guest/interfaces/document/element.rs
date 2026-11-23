@@ -910,6 +910,7 @@ fn install_html_members<'scope>(
             )?;
         }
         "HTMLMediaElement" => super::media::install(scope, constructor, prototype, capture)?,
+        "HTMLVideoElement" => super::media::install_video(scope, prototype, capture)?,
         "HTMLAnchorElement" => super::anchor::install(scope, prototype, capture)?,
         "HTMLAreaElement" => super::area::install(scope, prototype, capture)?,
         "HTMLScriptElement" => super::script::install(scope, prototype, capture)?,

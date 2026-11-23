@@ -163,6 +163,7 @@ pub(super) enum Receiver {
     Legend,
     Marquee,
     Media,
+    Video,
     Meter,
     Li,
     OList,
@@ -297,6 +298,10 @@ impl Receiver {
                 step()?;
                 html_element_is(node, "HTMLSourceElement")
             }
+            Self::Video => {
+                step()?;
+                html_element_is(node, "HTMLVideoElement")
+            }
             Self::Input => {
                 step()?;
                 node.as_element().is_some_and(|element| {
@@ -418,6 +423,7 @@ impl Receiver {
             Self::Legend => const { &ascii(b"HTMLLegendElement required") },
             Self::Marquee => const { &ascii(b"HTMLMarqueeElement required") },
             Self::Media => const { &ascii(b"HTMLMediaElement required") },
+            Self::Video => const { &ascii(b"HTMLVideoElement required") },
             Self::Meter => const { &ascii(b"HTMLMeterElement required") },
             Self::Li => const { &ascii(b"HTMLLIElement required") },
             Self::OList => const { &ascii(b"HTMLOListElement required") },
@@ -924,7 +930,10 @@ impl Capture {
                         | Reflection::CanvasDimension(_)
                 ) || matches!(
                     (reflection, receiver),
-                    (Reflection::UnsignedLong, Receiver::Image | Receiver::Source)
+                    (
+                        Reflection::UnsignedLong,
+                        Receiver::Image | Receiver::Source | Receiver::Video
+                    )
                 ) {
                     let current = self.callbacks.with_read(&owner, &events, |read, _| {
                         receiver.matches(read.node(id)?, || read.step())
