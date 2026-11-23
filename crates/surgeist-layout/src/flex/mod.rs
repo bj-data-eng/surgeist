@@ -1,4 +1,8 @@
 //! Flex container and item input.
+//!
+//! [`FlexDirection`] selects a container-local logical main axis and [`FlexWrap`] the wrapping; [`FlexGrowOf`] and
+//! [`FlexShrinkOf`] are the item factors. [`FlexItemCollapse`] is the normalized, layout-ready flex-layout
+//! participation fact of an item.
 
 use std::ops::ControlFlow;
 

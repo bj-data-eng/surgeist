@@ -1,4 +1,9 @@
 //! Resize-observer box measurements.
+//!
+//! [`ResizeObserverMeasurementOf`] holds the measurements of one reported CSS box: its logical size
+//! ([`ResizeObserverBoxSize`]) and its content rectangle ([`ResizeObserverContentRectOf`]). A
+//! [`ResizeObserverPixelGrid`] maps CSS units to device pixels for an accepted content box;
+//! [`ResizeObserverMeasurementError`] is the refusal.
 
 mod pixel_edge;
 

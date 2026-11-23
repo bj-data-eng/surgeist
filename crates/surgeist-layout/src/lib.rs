@@ -1,5 +1,33 @@
 //! Native layout algorithm boundary for Surgeist.
 //!
+//! The crate root holds the four functions a host calls first, [`compute_layout`],
+//! [`compute_layout_invalidated`], [`compute_layout_with_flow`] and
+//! [`compute_layout_with_flow_invalidated`]. Every other public item lives in one module and has one path.
+//!
+//! # Where things live
+//!
+//! | Module | Contents |
+//! | --- | --- |
+//! | [`tree`] | host contracts (`Traverse`, `LayoutTree`, `LayoutBatchSink`) and direct leaf computation |
+//! | [`request`] | the root request and the contexts of a layout run |
+//! | [`batch`] | completed layout batches and their atomic publication |
+//! | [`error`] | the layout failure taxonomy |
+//! | [`cache`] | cache storage and the compute request and answer it is keyed by |
+//! | [`scalar`] | the numeric lane, `LayoutScalar` and `DefaultScalar` |
+//! | [`node`] | per-node input and output aggregates |
+//! | [`box_model`] | display, position, float and clear, containment, box alignment |
+//! | [`flex`], [`grid`] | flex and grid container and item input |
+//! | [`overflow`] | overflow, scrollbar, scroll padding and margin, snap inputs |
+//! | [`text_flow`] | text alignment, wrapping, indentation, hyphenation, line breaks |
+//! | [`inline`], [`inline_wrapping`] | inline boundaries and metrics, wrapping scopes and edges |
+//! | [`baseline`] | baseline references, offsets and named baseline outputs |
+//! | [`length`], [`sizing`], [`constraint`] | lengths and percentages, box-size properties, available space and sizing requests |
+//! | [`geometry`] | physical points, sizes, edges and axes, and writing-mode mapping |
+//! | [`scroll`], [`scroll::anchor_selection`] | scroll geometry and scroll-anchor selection |
+//! | [`text_layout`] | binding prepared Text to layout, and the placed Text output |
+//! | [`fragmentation`] | break controls and native Block fragmentation |
+//! | [`resize_observer`] | resize-observer box measurements |
+//!
 //! The public physical geometry contract uses x/y points, width/height sizes,
 //! and top/right/bottom/left edges. Public layout outputs, cached geometry, and
 //! scroll geometry remain physical. Layout algorithms may use
@@ -153,10 +181,17 @@
 //! scrolling runtime.
 //!
 //! The normalized scroll input and read-only output surface composes through the
-//! crate root in either scalar lane without constructing derived geometry:
+//! [`node`], [`overflow`] and [`scroll`] modules in either scalar lane without constructing derived geometry:
 //!
 //! ```
-//! use surgeist_layout::{node::{NodeInputOf, NodeOutputOf}, overflow::{ComputedOverflow, Overflow, OverflowClipMarginOf, ScrollbarWidthOf, ScrollMarginOf, ScrollPaddingOf}, scroll::ScrollGeometryOf};
+//! use surgeist_layout::{
+//! node::{NodeInputOf, NodeOutputOf},
+//! overflow::{
+//! ComputedOverflow, Overflow, OverflowClipMarginOf, ScrollMarginOf, ScrollPaddingOf,
+//! ScrollbarWidthOf,
+//! },
+//! scroll::ScrollGeometryOf,
+//! };
 //!
 //! fn normalized_input<S: surgeist_layout::scalar::LayoutScalar>() -> NodeInputOf<S> {
 //! let mut input = NodeInputOf::<S>::default();

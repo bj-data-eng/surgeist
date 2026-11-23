@@ -1,10 +1,14 @@
-//! Break controls, fragmentation kinds, page sides and progression, and the native Block fragmentation request and results.
+//! Break controls, fragmentation kinds, page sides and progression, and the native Block fragmentation request and
+//! results.
 //!
-//! Deterministic scheduling over mode-owned fragmentation facts.
-//!
-//! This algorithm does not publish native boxes or authenticate Text. The mode
-//! owner supplies actual legal opportunities and source correspondence under
-//! each queried fragmentainer. All flows complete or the operation fails.
+//! The break vocabulary of a node is [`FragmentationBreak`] and [`FragmentationBreakInside`]; a boundary crosses
+//! [`FragmentationBreakKinds`] of a [`FragmentationKind`] (including a page with its [`PageProgression`] and
+//! [`FragmentationPageSide`]). A host requests native Block fragmentation with a [`LayoutBoundRequestOf`]
+//! (`LayoutBoundRequestOf::block_fragmentation`, which reports a [`FragmentationInputError`]) over external
+//! [`BlockFragmentainerOf`] rectangles. The completed result is read back as [`NodeLayoutRefOf`]: a single box,
+//! fragments ([`FragmentOutputOf`], [`BoxFragmentGeometryOf`], [`OverflowFragmentGeometryOf`]) with their
+//! [`FragmentCoordinateSpace`], or a non-box participant ([`NonBoxGeometryOf`]). [`BlockFragmentationFailure`] and
+//! [`LayoutHandleError`] report refusals.
 
 pub use crate::block_fragmentation::{
     BlockFragmentainerOf, BlockFragmentationFailure, BoxFragmentGeometryOf, BoxGeometryPairOf,

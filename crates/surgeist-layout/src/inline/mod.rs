@@ -1,4 +1,11 @@
 //! Inline-box boundaries, metrics, vertical alignment and atomic participation.
+//!
+//! [`InlineBoundaryInputOf`] is the input of an inline-box boundary: its kind ([`InlineBoundaryKind`]) and the used
+//! edge ([`InlineBoundaryEdgeOf`]) on one inline side, whose signed margin and non-negative border and padding sums are
+//! computed and validated in the computation's scalar lane. [`InlineMetricsOf`] holds an inline baseline reference, a
+//! baseline and a line extent, and [`VerticalAlignOf`] is the resolved line alignment. [`AtomicInlineParticipation`] is
+//! the resolved level and break participation of an atomic inline box. [`InlineBoundaryEdgeErrorOf`] and
+//! [`InlineMetricsError`] are the construction errors.
 
 use crate::accounting::LayoutWork;
 #[cfg(test)]

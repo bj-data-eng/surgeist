@@ -1,4 +1,8 @@
 //! The numeric lane of a layout computation.
+//!
+//! [`LayoutScalar`] is the precision contract of one computation. It is sealed to `f32` and `f64`, so a host picks a
+//! lane and cannot add one. [`DefaultScalar`] is `f32`, the lane of the non-generic aliases such as
+//! [`NodeInput`](crate::node::NodeInput); the generic `*Of` forms take either lane.
 
 use crate::error::LayoutTextNumericError;
 use core::fmt::Debug;

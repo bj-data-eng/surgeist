@@ -1,4 +1,9 @@
-//! Physical points, sizes, edges and axes, and the writing-mode mapping of `FlowAxes`.
+//! Physical points, sizes, edges and axes, and the mapping from a writing mode to them.
+//!
+//! Public geometry is physical: [`Point`] is an x/y position, [`Size`] a width and height, [`Edges`] the four sides
+//! of a rectangle, [`PhysicalAxis`] and [`PhysicalSide`] name an axis and a side. [`FlowAxes`] owns the mapping from
+//! a [`WritingMode`] and the used [`Direction`] to those physical axes and sides, and [`LogicalAxis`] names the
+//! inline-or-block flow-relative axis it maps from. `Direction` is the already-resolved used inline direction, not authored CSS.
 
 use core::ops::{Add, Sub};
 

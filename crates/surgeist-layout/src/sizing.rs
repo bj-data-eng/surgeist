@@ -1,4 +1,11 @@
 //! Box-size properties and calc programs.
+//!
+//! [`PreferredSizeOf`], [`MinSizeOf`], [`MaxSizeOf`] and [`FlexBasisOf`] are distinct closed property domains, each
+//! with only its role-valid keywords. [`SizingCalculationOf`] is a validated, iteratively evaluated calc program of
+//! finite affine leaves and nested `min`, `max` and `clamp`; [`CalcSizeCalculationOf`] is the `calc-size()` form, and
+//! `*CalcBasis` ([`PreferredSizeCalcBasis`], [`MinSizeCalcBasis`], [`MaxSizeCalcBasis`], [`FlexBasisCalcBasis`])
+//! names the basis a `calc-size()` value starts from. [`SizingCalculationError`], [`CalcSizeCalculationErrorOf`]
+//! and [`CalcSizeConstructionError`] are the construction errors.
 
 use crate::{
     error::{

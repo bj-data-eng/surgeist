@@ -1,4 +1,14 @@
-//! Grid tracks, lines, placement, template areas, axis kind, lanes flow and tolerance, and named-line errors.
+//! Grid tracks, lines, placement, template areas, the axis kind, lanes flow and tolerance, and named-grid errors.
+//!
+//! A track list is a [`TrackComponentListOf`] of [`TrackComponentOf`]s: line names, a [`TrackSizingOf`] (a pair of
+//! [`MinTrackSizingOf`] and [`MaxTrackSizingOf`] breadths), a [`TrackRepetitionOf`] or a [`SubgridTrack`];
+//! [`track_sizing_components`] and [`track_sizing_components_of`] give the [`TrackSizingOf`]s of a component list. An
+//! item is placed with a [`GridPlacement`] of [`GridLine`]s and a [`GridSpan`], or with a [`RawGridPlacement`] of
+//! [`RawGridLine`]s, which can name lines, and [`GridTemplateAreas`] describe the named areas. [`GridAutoFlow`]
+//! selects auto-placement and [`GridAxisKind`] names a grid axis. [`GridLanesFlow`], [`GridFlowToleranceOf`] and
+//! [`GridFlowTolerance`] are the orientation, placement policy and tolerance of a Grid Lanes container.
+//! [`NamedGridError`] is a failure to resolve named grid input: a reserved or unresolved name, invalid template
+//! areas, an invalid repeat, or a line placement that cannot be resolved.
 
 use std::ops::ControlFlow;
 

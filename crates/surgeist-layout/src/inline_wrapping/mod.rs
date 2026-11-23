@@ -1,6 +1,19 @@
-//! Wrapping scopes, wrap edges, native inline-box families and the processing of wrapping sources.
+//! Wrapping scopes, wrap edges, native inline-box families, and the processing of wrapping sources.
 //!
-//! Layout-owned inline scope proof and ancestry-prefix break preference.
+//! [`WrapEdges`] are the normalized, noninherited before and after wrap edges ([`WrapEdge`]) of a box, and
+//! [`WrapInside`] is its preference for permitted breaks inside it. A [`WrappingInput`] holds the native inline-box
+//! family demands ([`NativeInlineBoxFamilyInput`]), the wrapping scopes ([`WrappingScopeInput`]), the child order
+//! ([`InlineChildOrderInput`]) and the gap groups ([`InlineGapGroupInput`]) of a flow; a [`NativeInlineBoxFamily`] is
+//! one requested formatter's immutable native inline-box family, read through [`NativeInlineBoxFragment`],
+//! [`NativeInlineBoxMemberView`], [`NativeInlineBoxEdgeView`] and [`NativeInlineBoxPieceView`].
+//!
+//! A host that has inline boxes with forced line edges runs [`process_wrapping_source`] before layout: it resolves
+//! native wrapping before the one Text processing operation, and returns a [`ProcessedWrappingSource`] and the
+//! [`ResolvedWrapEdges`] receipt that final admission revalidates. The host describes its tree through a
+//! [`WrapEdgeSource`], and a refused association is a [`WrappingScopeError`].
+//!
+//! Text composition is tracked in surgeist-layout issues #65 (compose text break opportunities and constrained
+//! wrapping) and #72 (compose text operation ordering and plaintext projection).
 
 use crate::error::{
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation,

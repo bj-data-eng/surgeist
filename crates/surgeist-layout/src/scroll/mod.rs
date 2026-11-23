@@ -1,4 +1,14 @@
 //! Physical and flow-relative scroll geometry, clip geometry and snap geometry.
+//!
+//! [`ScrollGeometryOf`] is the immutable canonical geometry that layout produces for a scroll container and its
+//! targets ([`ScrollTargetGeometryOf`]), in local physical coordinates. Its building blocks are [`ScrollRectOf`],
+//! the offsets and closed ranges in physical ([`PhysicalScrollOffsetOf`], [`PhysicalScrollRangeOf`]) and
+//! flow-relative ([`FlowRelativeScrollOffsetOf`], [`FlowRelativeScrollRangeOf`]) coordinates, the clip intervals
+//! ([`OverflowClipOf`]) and [`ScrollbarGutterRectsOf`]. [`ScrollSnapContextOf`] and [`ScrollSnapGeometryOf`]
+//! carry the geometry that snapping works from. [`ScrollRectErrorOf`] and [`ScrollCoordinateErrorOf`] are the
+//! construction errors.
+//!
+//! Anchor selection is in [`anchor_selection`].
 
 use crate::geometry::LogicalEdgesOf;
 use crate::{

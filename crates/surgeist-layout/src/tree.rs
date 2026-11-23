@@ -1,4 +1,22 @@
-//! Host contracts for traversal, measurement and batch publication, and direct leaf measurement.
+//! Host contracts for tree traversal, leaf measurement, cache access and batch publication, and direct leaf
+//! computation.
+//!
+//! A host implements [`Traverse`] to expose the shape of its tree and [`LayoutTree`] to supply each node's
+//! normalized input ([`LayoutTree::node_input`] and [`LayoutTree::layout_input`]). `LayoutTree` also carries the
+//! optional host services: leaf measurement ([`LayoutTree::measure_leaf`], which receives a
+//! [`LeafMeasureInputOf`]), cache lookup ([`LayoutTree::cache_get`]), the original unrounded entry of a warm cached
+//! subtree ([`LayoutTree::unrounded_layout`]) and shape-backed float exclusion intervals
+//! ([`LayoutTree::float_exclusion_interval`]).
+//!
+//! A completed batch is published through [`LayoutBatchSink`], which prepares and commits every state class
+//! atomically; see [`crate::batch`].
+//!
+//! Two functions work from a single node's input rather than a whole tree. [`compute_leaf`] computes one leaf with a
+//! measuring closure. [`measure_definite_inline_atomic_size`] measures an empty, unmeasured, in-flow inline block
+//! before the surrounding text is prepared.
+//!
+//! The functions that lay out a whole tree are at the crate root: [`compute_layout`](crate::compute_layout) and its
+//! variants.
 
 use crate::{
     cache::CacheKeyContext,

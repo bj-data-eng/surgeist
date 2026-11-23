@@ -1,4 +1,12 @@
-//! Cache storage and the compute request and answer it is keyed by.
+//! Cache storage, and the compute request and answer it is keyed by.
+//!
+//! [`ComputeInputOf`] is the direct and recursive state of one compute call and [`ComputeOutputOf`] its answer. A
+//! host stores answers in a [`CacheOf`] and returns them from
+//! [`LayoutTree::cache_get`](crate::tree::LayoutTree::cache_get) under a [`CacheKeyContext`]; [`ClearState`] reports
+//! whether a clear emptied the cache.
+//!
+//! The qualification of cached results by captured inputs is open work: surgeist-layout issue #1159
+//! (qualify composed results and cache reuse by captured inputs).
 
 use crate::output::ContainingLayoutContext;
 use crate::scroll::SettledAutoScrollbarState;
