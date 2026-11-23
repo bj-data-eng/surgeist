@@ -218,6 +218,7 @@ fn earlier_host_stays_first() -> TestResult {
                         IteratorOperation: 0,
                         SequenceItem: 0,
                         SequenceMove: 0,
+                        Selection: 0,
                     }),
                     ResourceTable::new(ResourceFields {
                         BufferBytes: u64::MAX,
@@ -731,6 +732,7 @@ fn native_usv_copy_accounts_for_each_pass_and_releases_scratch() -> TestResult {
 
 pub(crate) fn run() -> TestResult {
     super::hosted_execution::run()?;
+    super::selection::tests::run()?;
     hidden_union_keeps_selected_value_and_string_storage()?;
     native_usv_copy_accounts_for_each_pass_and_releases_scratch()?;
     installed_dom_exception_charges_the_retained_account_body()?;

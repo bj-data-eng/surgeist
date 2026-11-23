@@ -20,6 +20,8 @@ surgeist_ledger::dimensions! {
         ConversionEnumerationLookup,
         /// One declared argument presence/default decision.
         ConversionArgument,
+        /// One declared selection decision or reached native brand probe.
+        ConversionSelection,
         /// One dictionary member visited, before reading guest properties.
         ConversionDictionaryMember,
         /// One iterator property read or invocation, before entering guest code.
@@ -118,6 +120,7 @@ fn conversion_work(work: surgeist_bindings_js::conversion::Work) -> DocumentGues
         Work::CodeUnit => DocumentGuestWork::ConversionCodeUnit,
         Work::EnumerationLookup => DocumentGuestWork::ConversionEnumerationLookup,
         Work::Argument => DocumentGuestWork::ConversionArgument,
+        Work::Selection => DocumentGuestWork::ConversionSelection,
         Work::DictionaryMember => DocumentGuestWork::ConversionDictionaryMember,
         Work::IteratorOperation => DocumentGuestWork::ConversionIteratorOperation,
         Work::SequenceItem => DocumentGuestWork::ConversionSequenceItem,
@@ -670,9 +673,9 @@ mod tests {
     use surgeist_bindings_js::conversion::Work;
     use surgeist_ledger::{Dimension, EventFilter, RefusalReason};
 
-    // Independent conversion contract: eight distinct semantic counts retain
+    // Independent conversion contract: distinct semantic counts retain
     // their own child units while each consumes one original adapter unit.
-    const CONVERSION_COUNTS: [(Work, DocumentGuestWork, u64); 8] = [
+    const CONVERSION_COUNTS: [(Work, DocumentGuestWork, u64); 9] = [
         (Work::Value, DocumentGuestWork::ConversionValue, 1),
         (Work::CodeUnit, DocumentGuestWork::ConversionCodeUnit, 2),
         (
@@ -701,6 +704,7 @@ mod tests {
             DocumentGuestWork::ConversionSequenceMove,
             8,
         ),
+        (Work::Selection, DocumentGuestWork::ConversionSelection, 9),
     ];
 
     fn budget() -> (GuestBudget, DomSession, Arc<AtomicBool>) {
@@ -881,7 +885,7 @@ mod tests {
                 filter: EventFilter::All,
             },
         ] {
-            for limit in [37, 36] {
+            for limit in [46, 45] {
                 let mut operation = Operation::with_reserved_profile(
                     "runtime-guest",
                     Limits::new(adapter_work_limits(limit), ResourceTable::splat(0)),
@@ -905,14 +909,14 @@ mod tests {
                     .unwrap();
                 for (work, expected, units) in CONVERSION_COUNTS {
                     let result = operation.apply(child, Change::Work(conversion_work(work), units));
-                    if limit == 36 && work == Work::SequenceMove {
+                    if limit == 45 && work == Work::Selection {
                         let Err(AccountingError::Refused(refusal)) = result else {
                             panic!("one unit short must refuse the aggregate conversion work");
                         };
                         assert_eq!(refusal.scope, root);
-                        assert_eq!(refusal.change, Change::Work(DocumentGuestWork::Adapter, 8));
-                        assert_eq!(refusal.current, 29);
-                        assert_eq!(refusal.reason, RefusalReason::Limit { limit: 36 });
+                        assert_eq!(refusal.change, Change::Work(DocumentGuestWork::Adapter, 9));
+                        assert_eq!(refusal.current, 37);
+                        assert_eq!(refusal.reason, RefusalReason::Limit { limit: 45 });
                         assert_eq!(operation.usage(child).unwrap().work(expected), 0);
                     } else {
                         result.unwrap();
@@ -923,7 +927,7 @@ mod tests {
                 let aggregate = operation.usage(root).unwrap();
                 assert_eq!(
                     aggregate.work(DocumentGuestWork::Adapter),
-                    if limit == 37 { 37 } else { 29 }
+                    if limit == 46 { 46 } else { 37 }
                 );
                 for dimension in DocumentGuestWork::ALL {
                     if *dimension != DocumentGuestWork::Adapter {
@@ -939,7 +943,7 @@ mod tests {
                     for (work, expected, units) in CONVERSION_COUNTS {
                         assert_eq!(
                             report.scopes[1].usage.work(expected),
-                            if limit == 36 && work == Work::SequenceMove {
+                            if limit == 45 && work == Work::Selection {
                                 0
                             } else {
                                 units

@@ -18,6 +18,8 @@ pub enum Rule {
     Interface(&'static str),
     RequiredMember(&'static str),
     RequiredArgument(&'static str),
+    Union(&'static str),
+    Overload(&'static str),
 }
 
 /// Cleanup activity that failed after its value or phase was finished.

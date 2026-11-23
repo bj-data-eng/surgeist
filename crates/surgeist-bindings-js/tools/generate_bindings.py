@@ -18,6 +18,8 @@ import sys
 import textwrap
 from urllib.parse import urlsplit
 
+from selection_shapes import SelectionShapeError, lower_selection_shapes
+
 
 ROOT = Path(__file__).resolve().parents[3]
 DESCRIPTION = ROOT / "crates/surgeist-bindings-js/bindings/dom-core.json"
@@ -1085,13 +1087,133 @@ def lower_selected_setters(data, model):
     return setters
 
 
-def emit_conversions(model, arguments=(), selected_setters=()):
+def lower_union_cases(data, definitions, selection):
+    members = {member["id"]: member for definition in definitions.values()
+               for member in definition.get("members", ())}
+    mappings = data["access_mappings"]
+    categories = {"boolean": "Boolean", "numeric": "Number", "string": "String",
+                  "dictionary": "Dictionary"}
+
+    def bound_type(identifier, access, argument=None):
+        if mappings.get(identifier + "/" + access, {}).get("kind") not in {"native", "derived"}:
+            return None
+        member = members[identifier]
+        if argument is None:
+            return member["type"]
+        matches = [item["type"] for item in member["arguments"] if item["name"] == argument]
+        require(len(matches) == 1, f"missing selected argument: {identifier}/{argument}")
+        return matches[0]
+
+    def cases(enum, types, tags):
+        shapes = [selection.flatten_type(ty) for ty in types]
+        shape = shapes[0]
+        require(all(other == shape for other in shapes), f"inconsistent {enum} union profiles")
+        require(not shape.nullable and not shape.deferred and not shape.includes_undefined
+                and {atom.name for atom in shape.atoms} == tags.keys()
+                and all(atom.kind in categories for atom in shape.atoms),
+                f"unsupported {enum} union profile")
+        return [(tags[atom.name], categories[atom.kind]) for atom in shape.atoms]
+
+    tables = []
+    element_types = [ty for method in ("createElement", "createElementNS")
+                     if (ty := bound_type(f"Document.{method}:0", "call", "options")) is not None]
+    if element_types:
+        enum = "ElementCreationCase"
+        tables.append(("ELEMENT_CREATION_CASES", enum, cases(enum, element_types, {
+            "DOMString": "String", "ElementCreationOptions": "Options",
+        })))
+    if (ty := bound_type("Document.importNode:0", "call", "options")) is not None:
+        enum = "ImportNodeCase"
+        tables.append(("IMPORT_NODE_CASES", enum, cases(enum, [ty], {
+            "boolean": "Subtree", "ImportNodeOptions": "Options",
+        })))
+    if (ty := bound_type("HTMLElement.hidden", "set")) is not None:
+        enum = "HiddenCase"
+        require(ty["kind"] == "nullable", "hidden conversion requires an outer nullable type")
+        tables.append(("HIDDEN_CASES", enum, cases(enum, [ty["inner"]], {
+            "boolean": "Boolean", "unrestricted double": "Number", "DOMString": "String",
+        })))
+    return tables
+
+
+def lower_operation_converters(data, selection, arguments):
+    by_id = {argument["id"]: argument for argument in arguments}
+    operations = []
+    for owner, name in [("Document", "createElement"), ("Document", "createElementNS"),
+                        ("DOMTokenList", "toggle")]:
+        group = selection.groups.get((owner, "operation", name))
+        if group is None:
+            continue
+        native = [identifier for identifier in group.arguments
+                  if data["access_mappings"][identifier + "/call"]["kind"] == "native"]
+        if not native:
+            continue
+        label = owner + "." + name
+        require(len(group.arguments) == 1 and group.rows is not None,
+                f"expected a finite single-signature group: {label}")
+        identifier = native[0]
+        require(all(row.candidate_ids == (identifier,) for row in group.rows.values()),
+                f"unexpected candidates for {label}")
+        argument_ids = [identifier + "/" + arg["name"] for arg in group.arguments[identifier]]
+        require(all(key in by_id for key in argument_ids), f"unsupported argument conversion: {label}")
+        operations.append((label, group.maximum_arity, sorted(group.rows),
+                           [by_id[key] for key in argument_ids]))
+    return operations
+
+
+def preserves_omission(argument):
+    return argument["presence"] == "optional" and "default" not in argument
+
+
+def emit_operation_converter(label, maximum, arities, arguments):
+    stem = field_name(label.replace(".", "_"))
+    result_type = "".join(part.capitalize() for part in stem.split("_")) + "Arguments"
+    const_name = stem.upper() + "_MAX_ARGUMENTS"
+    result = ["/// Maximum argument capture for `" + label + "`.",
+              f"pub const {const_name}: u32 = {maximum};", "",
+              "/// Converted arguments for `" + label + "`.", f"pub struct {result_type} {{"]
+    fields = []
+    for lowered in arguments:
+        arg = lowered["argument"]
+        field = field_name(arg["name"])
+        output = lowered["info"][0]
+        omission = preserves_omission(arg)
+        if omission:
+            output = "ArgumentValue<" + output + ">"
+        fields.append((field, lowered, omission))
+        result.append(f"    pub {field}: Converted<{output}>,")
+    result += ["}", "", "/// Selects arity and converts arguments for `" + label + "`.",
+               f"pub fn convert_{stem}<'s>(", "    cx: &mut Conversion<'_, 's>,",
+               "    arguments: &crate::Arguments<'s>,", f") -> Result<{result_type}, Failure> {{",
+               "    cx.effective_arity(", f"        {json.dumps(label)},", "        arguments.len(),",
+               f"        {const_name} as usize,", f"        &{arities},", "    )?;"]
+    for field, lowered, omission in fields:
+        convert = "argument" if omission else "generated_required_argument"
+        result += [f"    let descriptor = {lowered['function']}();",
+                   f"    let {field} = cx.{convert}(&descriptor, arguments.get({lowered['index']}))?;"]
+    values = ", ".join(field for field, _, _ in fields)
+    if len(values) <= 18:
+        result.append(f"    Ok({result_type} {{ {values} }})")
+    else:
+        result += [f"    Ok({result_type} {{"]
+        result += [f"        {field}," for field, _, _ in fields]
+        result += ["    })"]
+    return result + ["}", ""]
+
+
+def emit_conversions(model, arguments=(), selected_setters=(), union_cases=(), operations=()):
     result = ["// Generated by tools/generate_bindings.py; do not edit.",
               "// Source-adapted WHATWG and W3C declarations: see the crate NOTICE.md.",
               "//! Closed scoped conversion descriptors from the retained declarations.", ""]
+    if any(preserves_omission(arg["argument"]) for _, _, _, args in operations for arg in args):
+        result.append("use super::ArgumentValue;")
     if (any("HiddenAttributeValue" in argument["info"][1] for argument in arguments)
             or any("HiddenAttributeValue" in info[1] for _, _, info in selected_setters)):
         result.append("use super::HiddenAttributeValue;")
+    if union_cases:
+        enums = ", ".join(sorted(enum for _, enum, _ in union_cases))
+        result += ["use super::composition::{" + enums + "};",
+                   "use super::selection::{Candidate, Category};"]
     result += ["use super::{",
                "    Argument, Conversion, Converted, Enumeration, Failure, IntegerType, Nullable, Type, types,", "};"]
     if any(a["info"][0] == "TrustedAttributeValue" for a in arguments):
@@ -1104,6 +1226,16 @@ def emit_conversions(model, arguments=(), selected_setters=()):
     for name in sorted(imports):
         result.append("use crate::declarations::" + name + ";")
     result += ["use crate::{DomString, IntegerKind, IntegerMode, IntegerValue, UsvString, Value};", ""]
+    for name, enum, cases in union_cases:
+        result.append(f"pub(super) static {name}: &[Candidate<{enum}>] = &[")
+        for tag, category in cases:
+            arguments_text = [f"{enum}::{tag}", f"&[Category::{category}]", "false", "false"]
+            combined = ", ".join(arguments_text)
+            if len(combined) <= 60:
+                result.append(f"    Candidate::new({combined}),")
+            else:
+                result += ["    Candidate::new("] + [f"        {entry}," for entry in arguments_text] + ["    ),"]
+        result += ["];", ""]
     for definition in model["enumerations"]:
         name = definition["name"]
         result += ["/// Scoped conversion for `" + name + "`.",
@@ -1242,6 +1374,8 @@ def emit_conversions(model, arguments=(), selected_setters=()):
         result += ["/// Selected setter conversion for `" + identifier + "`.",
                    "pub fn " + function + "_setter() -> " + descriptor_type + " {",
                    "    " + descriptor, "}", ""]
+    for operation in operations:
+        result += emit_operation_converter(*operation)
     return "\n".join(result)
 
 
@@ -1382,11 +1516,18 @@ def emit_dom_prototype_constants(definitions):
 
 
 def generate(data, root=ROOT):
-    definitions, _ = validate(data, root)
+    definitions, names = validate(data, root)
+    try:
+        selection = lower_selection_shapes(definitions, names)
+        union_cases = lower_union_cases(data, definitions, selection)
+    except SelectionShapeError as error:
+        raise DescriptionError(str(error)) from error
     model = lower_values(data)
+    arguments = lower_arguments(data, model)
+    operations = lower_operation_converters(data, selection, arguments)
     outputs = {VALUE_OUTPUT: emit_values(model),
-               CONVERSION_OUTPUT: emit_conversions(model, lower_arguments(data, model),
-                                                   lower_selected_setters(data, model))}
+               CONVERSION_OUTPUT: emit_conversions(model, arguments, lower_selected_setters(data, model),
+                                                   union_cases, operations)}
     if declaration := definitions.get("DOMException"):
         source = next(s for s in data["sources"] if "DOMException" in s["entries"])
         constants = {m["name"]: m["value"] for m in declaration["members"] if m["kind"] == "constant"}

@@ -223,6 +223,7 @@ pub surgeist_runtime::document_scripting::DocumentGuestWork::ConversionCodeUnit
 pub surgeist_runtime::document_scripting::DocumentGuestWork::ConversionDictionaryMember
 pub surgeist_runtime::document_scripting::DocumentGuestWork::ConversionEnumerationLookup
 pub surgeist_runtime::document_scripting::DocumentGuestWork::ConversionIteratorOperation
+pub surgeist_runtime::document_scripting::DocumentGuestWork::ConversionSelection
 pub surgeist_runtime::document_scripting::DocumentGuestWork::ConversionSequenceItem
 pub surgeist_runtime::document_scripting::DocumentGuestWork::ConversionSequenceMove
 pub surgeist_runtime::document_scripting::DocumentGuestWork::ConversionValue

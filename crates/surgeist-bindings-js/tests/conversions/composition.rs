@@ -244,6 +244,7 @@ fn dictionary_admission(short: bool, value_cut: bool) -> TestResult {
             IteratorOperation: 0,
             SequenceItem: 0,
             SequenceMove: 0,
+            Selection: 0,
         }),
         ResourceTable::new(ResourceFields { BufferBytes: 0 }),
     );
@@ -382,6 +383,7 @@ fn nullable_admission(short_storage: bool) -> TestResult {
             IteratorOperation: 0,
             SequenceItem: 0,
             SequenceMove: 0,
+            Selection: 0,
         }),
         ResourceTable::new(ResourceFields {
             BufferBytes: if short_storage { 5 } else { 6 },

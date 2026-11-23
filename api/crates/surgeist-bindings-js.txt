@@ -4,6 +4,19 @@
 pub mod surgeist_bindings_js
 pub mod surgeist_bindings_js::conversion
 pub mod surgeist_bindings_js::conversion::declarations
+pub struct surgeist_bindings_js::conversion::declarations::DocumentCreateElementArguments
+pub surgeist_bindings_js::conversion::declarations::DocumentCreateElementArguments::local_name: surgeist_bindings_js::conversion::Converted<surgeist_bindings_js::DomString>
+pub surgeist_bindings_js::conversion::declarations::DocumentCreateElementArguments::options: surgeist_bindings_js::conversion::Converted<surgeist_bindings_js::declarations::ElementCreationArgument>
+pub struct surgeist_bindings_js::conversion::declarations::DocumentCreateElementNsArguments
+pub surgeist_bindings_js::conversion::declarations::DocumentCreateElementNsArguments::namespace: surgeist_bindings_js::conversion::Converted<core::option::Option<surgeist_bindings_js::DomString>>
+pub surgeist_bindings_js::conversion::declarations::DocumentCreateElementNsArguments::options: surgeist_bindings_js::conversion::Converted<surgeist_bindings_js::declarations::ElementCreationArgument>
+pub surgeist_bindings_js::conversion::declarations::DocumentCreateElementNsArguments::qualified_name: surgeist_bindings_js::conversion::Converted<surgeist_bindings_js::DomString>
+pub struct surgeist_bindings_js::conversion::declarations::DomTokenListToggleArguments
+pub surgeist_bindings_js::conversion::declarations::DomTokenListToggleArguments::force: surgeist_bindings_js::conversion::Converted<surgeist_bindings_js::conversion::ArgumentValue<bool>>
+pub surgeist_bindings_js::conversion::declarations::DomTokenListToggleArguments::token: surgeist_bindings_js::conversion::Converted<surgeist_bindings_js::DomString>
+pub const surgeist_bindings_js::conversion::declarations::DOCUMENT_CREATE_ELEMENT_MAX_ARGUMENTS: u32
+pub const surgeist_bindings_js::conversion::declarations::DOCUMENT_CREATE_ELEMENT_NS_MAX_ARGUMENTS: u32
+pub const surgeist_bindings_js::conversion::declarations::DOM_TOKEN_LIST_TOGGLE_MAX_ARGUMENTS: u32
 pub fn surgeist_bindings_js::conversion::declarations::assigned_nodes_options() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::AssignedNodesOptions>
 pub fn surgeist_bindings_js::conversion::declarations::can_play_type_result() -> surgeist_bindings_js::conversion::Enumeration<surgeist_bindings_js::declarations::CanPlayTypeResult>
 pub fn surgeist_bindings_js::conversion::declarations::character_data_append_data_0_data() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
@@ -18,6 +31,9 @@ pub fn surgeist_bindings_js::conversion::declarations::character_data_replace_da
 pub fn surgeist_bindings_js::conversion::declarations::character_data_substring_data_0_count() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
 pub fn surgeist_bindings_js::conversion::declarations::character_data_substring_data_0_offset() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
 pub fn surgeist_bindings_js::conversion::declarations::comment_constructor_0_data() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::convert_document_create_element<'s>(cx: &mut surgeist_bindings_js::conversion::Conversion<'_, 's>, arguments: &surgeist_bindings_js::Arguments<'s>) -> core::result::Result<surgeist_bindings_js::conversion::declarations::DocumentCreateElementArguments, surgeist_bindings_js::conversion::Failure>
+pub fn surgeist_bindings_js::conversion::declarations::convert_document_create_element_ns<'s>(cx: &mut surgeist_bindings_js::conversion::Conversion<'_, 's>, arguments: &surgeist_bindings_js::Arguments<'s>) -> core::result::Result<surgeist_bindings_js::conversion::declarations::DocumentCreateElementNsArguments, surgeist_bindings_js::conversion::Failure>
+pub fn surgeist_bindings_js::conversion::declarations::convert_dom_token_list_toggle<'s>(cx: &mut surgeist_bindings_js::conversion::Conversion<'_, 's>, arguments: &surgeist_bindings_js::Arguments<'s>) -> core::result::Result<surgeist_bindings_js::conversion::declarations::DomTokenListToggleArguments, surgeist_bindings_js::conversion::Failure>
 pub fn surgeist_bindings_js::conversion::declarations::css_escape_0_ident() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::css_rule_list_item_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
 pub fn surgeist_bindings_js::conversion::declarations::css_style_sheet_delete_rule_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
@@ -329,9 +345,11 @@ pub surgeist_bindings_js::conversion::Rule::Enumeration(&'static str)
 pub surgeist_bindings_js::conversion::Rule::FloatingRange
 pub surgeist_bindings_js::conversion::Rule::IntegerRange
 pub surgeist_bindings_js::conversion::Rule::Interface(&'static str)
+pub surgeist_bindings_js::conversion::Rule::Overload(&'static str)
 pub surgeist_bindings_js::conversion::Rule::RequiredArgument(&'static str)
 pub surgeist_bindings_js::conversion::Rule::RequiredMember(&'static str)
 pub surgeist_bindings_js::conversion::Rule::Sequence
+pub surgeist_bindings_js::conversion::Rule::Union(&'static str)
 pub enum surgeist_bindings_js::conversion::SecurityPolicyViolationEventDisposition
 pub surgeist_bindings_js::conversion::SecurityPolicyViolationEventDisposition::Enforce
 pub surgeist_bindings_js::conversion::SecurityPolicyViolationEventDisposition::Report
@@ -341,6 +359,7 @@ pub surgeist_bindings_js::conversion::Work::CodeUnit
 pub surgeist_bindings_js::conversion::Work::DictionaryMember
 pub surgeist_bindings_js::conversion::Work::EnumerationLookup
 pub surgeist_bindings_js::conversion::Work::IteratorOperation
+pub surgeist_bindings_js::conversion::Work::Selection
 pub surgeist_bindings_js::conversion::Work::SequenceItem
 pub surgeist_bindings_js::conversion::Work::SequenceMove
 pub surgeist_bindings_js::conversion::Work::Value
@@ -515,6 +534,7 @@ pub surgeist_bindings_js::conversion::WorkFields::CodeUnit: T
 pub surgeist_bindings_js::conversion::WorkFields::DictionaryMember: T
 pub surgeist_bindings_js::conversion::WorkFields::EnumerationLookup: T
 pub surgeist_bindings_js::conversion::WorkFields::IteratorOperation: T
+pub surgeist_bindings_js::conversion::WorkFields::Selection: T
 pub surgeist_bindings_js::conversion::WorkFields::SequenceItem: T
 pub surgeist_bindings_js::conversion::WorkFields::SequenceMove: T
 pub surgeist_bindings_js::conversion::WorkFields::Value: T

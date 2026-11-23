@@ -7,6 +7,7 @@ Cargo, downloads, or the repository target directory. Run through pisct run.
 """
 
 import copy
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -328,6 +329,109 @@ class DescriptionTests(unittest.TestCase):
     def rejected(self, message):
         with self.assertRaisesRegex(g.DescriptionError, message):
             g.generate(self.data)
+
+    def test_source_matched_selection_rejects_indistinguishable_types(self):
+        definitions = [
+            ("""[Exposed=Window]
+interface Fixture {
+  undefined call((DOMString or USVString) value);
+};
+""", [("DOMString", "USVString")]),
+            ("""[Exposed=Window]
+interface Fixture {
+  undefined call(double value);
+  undefined call(long value);
+};
+""", [("double",), ("long",)]),
+        ]
+        revision = "1" * 40
+        source_url = f"https://example.invalid/{revision}/fixture"
+        for source, signatures in definitions:
+            with self.subTest(signatures=signatures), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "fixture.md").write_text(f"{revision}\n\n```webidl\n{source}```\n", encoding="utf-8")
+                members = []
+                mappings = {}
+                for ordinal, types in enumerate(signatures):
+                    named_types = [{"kind": "named", "name": name} for name in types]
+                    input_type = named_types[0] if len(named_types) == 1 else {
+                        "kind": "union", "members": named_types,
+                    }
+                    member_id = f"Fixture.call:{ordinal}"
+                    members.append({
+                        "id": member_id, "kind": "operation", "name": "call", "attributes": [],
+                        "type": {"kind": "named", "name": "undefined"},
+                        "arguments": [{"name": "value", "type": input_type, "presence": "required"}],
+                    })
+                    mappings[member_id + "/call"] = {
+                        "kind": "derived", "algorithm": "fixture.call", "owner": "surgeist-bindings-js",
+                        "contract": "Exercise declaration validation.", "source": source_url,
+                        "inputs": [], "requirements": [],
+                    }
+                data = {
+                    "schema": 1,
+                    "sources": [{
+                        "id": "Fixture.source", "path": "fixture.md", "anchor": "", "block": 0,
+                        "sha256": hashlib.sha256(source.encode()).hexdigest(), "revision": revision,
+                        "url": source_url, "entries": ["Fixture"],
+                    }],
+                    "declarations": [{
+                        "id": "Fixture", "name": "Fixture", "kind": "interface",
+                        "attributes": [{"name": "Exposed", "value": "Window"}], "members": members,
+                    }],
+                    "includes": [], "externals": [], "access_mappings": mappings,
+                    "semantics": self.data["semantics"],
+                }
+                with self.assertRaisesRegex(g.DescriptionError, "indistinguishable"):
+                    g.generate(data, root)
+
+    def test_installed_operations_use_authored_arity_and_union_categories(self):
+        definitions, names = g.validate(self.data)
+        selection = g.lower_selection_shapes(definitions, names)
+        for interface, operation, expected in [
+            ("Document", "createElement", (1, 2)),
+            ("Document", "createElementNS", (2, 3)),
+            ("DOMTokenList", "toggle", (1, 2)),
+        ]:
+            with self.subTest(interface=interface, operation=operation):
+                group = selection.groups[interface, "operation", operation]
+                self.assertEqual(tuple(sorted(group.rows)), expected)
+                self.assertEqual(group.maximum_arity, max(expected))
+                for row in group.rows.values():
+                    self.assertEqual(row.candidate_ids, (f"{interface}.{operation}:0",))
+                    self.assertIsNone(row.distinguishing_index)
+                if interface == "Document":
+                    options = group.arguments[f"{interface}.{operation}:0"][-1]
+                    self.assertEqual(options["default"], {"kind": "empty_dictionary"})
+                    shape = selection.flatten_type(options["type"])
+                    self.assertEqual([(atom.kind, atom.name) for atom in shape.atoms], [
+                        ("string", "DOMString"), ("dictionary", "ElementCreationOptions"),
+                    ])
+                else:
+                    force = group.arguments["DOMTokenList.toggle:0"][-1]
+                    self.assertEqual(force["presence"], "optional")
+                    self.assertNotIn("default", force)
+
+    def test_overloads_lower_competing_categories_after_the_common_prefix(self):
+        word = {"name": "prefix", "presence": "required", "type": {"kind": "named", "name": "DOMString"}}
+        values = {"name": "value", "presence": "required", "type": {
+            "kind": "sequence", "inner": {"kind": "named", "name": "DOMString"},
+        }}
+        options = {"name": "value", "presence": "required",
+                   "type": {"kind": "named", "name": "Options"}}
+        calls = [{"id": f"Fixture.call:{index}", "kind": "operation", "name": "call",
+                  "arguments": [word, argument]} for index, argument in enumerate([options, values])]
+        definitions = {
+            "Fixture": {"name": "Fixture", "kind": "interface", "attributes": [], "members": calls},
+            "Options": {"name": "Options", "kind": "dictionary", "attributes": [], "members": []},
+        }
+        selection = g.lower_selection_shapes(definitions, {"Fixture": "interface", "Options": "dictionary"})
+        group = selection.groups["Fixture", "operation", "call"]
+        self.assertEqual(tuple(group.rows), (2,))
+        row = group.rows[2]
+        self.assertEqual(row.candidate_ids, ("Fixture.call:0", "Fixture.call:1"))
+        self.assertEqual(row.distinguishing_index, 1)
+        self.assertEqual([shape.atoms[0].kind for shape in row.categories], ["dictionary", "sequence"])
 
     def test_actual_retained_blocks_and_generated_bytes_correspond(self):
         # This is an explicit generated-artifact contract. Source token equality

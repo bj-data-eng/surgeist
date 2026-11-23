@@ -23,6 +23,11 @@ pub(super) fn class_list_observes_and_edits_the_canonical_attribute() {
                 descriptor.set.name !== 'set classList' || descriptor.set.length !== 1 ||
                 !throws(() => new DOMTokenList(), 'TypeError') ||
                 !throws(() => list.supports('one'), 'TypeError')) return 'classList interface and descriptor';
+            const fresh = document.createElement('div').classList;
+            if (fresh.toggle.length !== 1 || !throws(() => fresh.toggle(), 'TypeError') ||
+                fresh.toggle('omitted') !== true || fresh.toggle('undefined', undefined) !== true ||
+                fresh.toggle('null', null) !== false || fresh.toggle('false', false) !== false ||
+                fresh.value !== 'omitted undefined') return 'toggle effective arities and nullish force';
             list.add();
             list.remove('absent');
             if (element.hasAttribute('class')) return 'empty update must leave absent attribute absent';

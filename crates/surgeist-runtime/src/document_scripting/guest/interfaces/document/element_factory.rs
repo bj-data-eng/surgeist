@@ -17,9 +17,19 @@ pub(super) fn install<'scope>(
     document: &Value<'scope>,
     capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
 ) -> Result<(), DocumentGuestEventError> {
-    for (name, namespaced, length) in [
-        (&ascii(b"createElement")[..], false, 1),
-        (&ascii(b"createElementNS")[..], true, 2),
+    for (name, namespaced, length, maximum) in [
+        (
+            &ascii(b"createElement")[..],
+            false,
+            1,
+            declarations::DOCUMENT_CREATE_ELEMENT_MAX_ARGUMENTS,
+        ),
+        (
+            &ascii(b"createElementNS")[..],
+            true,
+            2,
+            declarations::DOCUMENT_CREATE_ELEMENT_NS_MAX_ARGUMENTS,
+        ),
     ] {
         let factory = capture(size_of::<(Capture, bool)>())?;
         let method = scope.bounded_function(
@@ -27,7 +37,7 @@ pub(super) fn install<'scope>(
                 factory.create_element(scope, arguments, namespaced)
             }),
             FunctionMetadata { name, length },
-            length + 1,
+            maximum,
         )?;
         define_data(
             scope,
@@ -56,51 +66,37 @@ impl Capture {
                 scope.type_error(&ascii(b"Document required"))?,
             ));
         };
-        if arguments.len() < if namespaced { 2 } else { 1 } {
-            return Ok(Completion::Throw(
-                scope.type_error(&ascii(b"Missing element name"))?,
-            ));
-        }
         let (owner, events) = self.active(scope)?;
         let result = (|| -> Result<_, DocumentGuestEventError> {
             let (namespace, name, options) = self
                 .callbacks
                 .conversion
                 .run(scope, |conversion| {
-                    let (namespace, name) = if namespaced {
-                        let declaration = declarations::document_create_element_ns_0_namespace();
-                        (
-                            Some(
-                                conversion
-                                    .argument(&declaration, arguments.get(declaration.index()))?,
-                            ),
-                            declarations::document_create_element_ns_0_qualified_name(),
-                        )
+                    if namespaced {
+                        let converted = declarations::convert_document_create_element_ns(
+                            conversion, &arguments,
+                        )?;
+                        Ok((
+                            Some(converted.namespace),
+                            converted.qualified_name,
+                            converted.options,
+                        ))
                     } else {
-                        (None, declarations::document_create_element_0_local_name())
-                    };
-                    let name = conversion.argument(&name, arguments.get(name.index()))?;
-                    let options = if namespaced {
-                        declarations::document_create_element_ns_0_options()
-                    } else {
-                        declarations::document_create_element_0_options()
-                    };
-                    let options = conversion.argument(&options, arguments.get(options.index()))?;
-                    Ok((namespace, name, options))
+                        let converted =
+                            declarations::convert_document_create_element(conversion, &arguments)?;
+                        Ok((None, converted.local_name, converted.options))
+                    }
                 })
                 .map_err(Error::from)?;
             scope.check_active()?;
-            let ArgumentValue::Present(name) = name.get() else {
-                return Err(Error::BackendUnavailable.into());
-            };
-            let (name, _name_backing) = copy_native_data(&owner, &events, name.as_code_units())?;
-            let uri = match namespace.as_ref().map(|value| value.get()) {
-                Some(ArgumentValue::Present(Some(uri))) if !uri.as_code_units().is_empty() => {
-                    Some(copy_native_data(&owner, &events, uri.as_code_units())?)
-                }
-                Some(ArgumentValue::Missing) => return Err(Error::BackendUnavailable.into()),
-                _ => None,
-            };
+            let (name, _name_backing) =
+                copy_native_data(&owner, &events, name.get().as_code_units())?;
+            let uri = namespace
+                .as_ref()
+                .and_then(|value| value.get().as_ref())
+                .filter(|uri| !uri.as_code_units().is_empty())
+                .map(|uri| copy_native_data(&owner, &events, uri.as_code_units()))
+                .transpose()?;
             let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
             let name = if namespaced {
                 let namespace = uri
@@ -111,7 +107,7 @@ impl Capture {
                 DomElementCreationName::Local(name)
             };
             let (is, registry) = match options.get() {
-                ArgumentValue::Present(ElementCreationArgument::Options(options)) => (
+                ElementCreationArgument::Options(options) => (
                     options
                         .is
                         .as_ref()
@@ -119,8 +115,7 @@ impl Capture {
                         .transpose()?,
                     options.custom_element_registry,
                 ),
-                ArgumentValue::Present(ElementCreationArgument::String(_)) => (None, None),
-                ArgumentValue::Missing => return Err(Error::BackendUnavailable.into()),
+                ElementCreationArgument::String(_) => (None, None),
             };
             let (is, _is_backing) = is.map_or((None, None), |(value, backing)| {
                 (Some(value), Some(backing))

@@ -399,6 +399,7 @@ mod tests {
         assert_eq!(limits.work(Work::CodeUnit), 11);
         for work in [
             Work::EnumerationLookup,
+            Work::Selection,
             Work::DictionaryMember,
             Work::IteratorOperation,
             Work::SequenceItem,
