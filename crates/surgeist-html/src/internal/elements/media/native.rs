@@ -79,6 +79,15 @@ impl HtmlInitialMediaState {
         false
     }
 
+    /// Intrinsic dimensions in CSS pixels for a Video in the unloaded phase.
+    /// An unloaded Audio element has no Video dimensions.
+    pub const fn video_intrinsic_dimensions(self) -> Option<[u32; 2]> {
+        match self {
+            Self::Audio => None,
+            Self::Video => Some([0, 0]),
+        }
+    }
+
     /// Initial paused flag.
     pub const fn paused(self) -> bool {
         true

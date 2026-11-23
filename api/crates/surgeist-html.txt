@@ -5001,6 +5001,7 @@ pub const fn surgeist_html::elements::media::HtmlInitialMediaState::has_media_da
 pub const fn surgeist_html::elements::media::HtmlInitialMediaState::network_is_empty(self) -> bool
 pub const fn surgeist_html::elements::media::HtmlInitialMediaState::paused(self) -> bool
 pub const fn surgeist_html::elements::media::HtmlInitialMediaState::show_poster(self) -> bool
+pub const fn surgeist_html::elements::media::HtmlInitialMediaState::video_intrinsic_dimensions(self) -> core::option::Option<[u32; 2]>
 pub enum surgeist_html::elements::media::HtmlMediaCursorAction
 pub surgeist_html::elements::media::HtmlMediaCursorAction::Complete
 pub surgeist_html::elements::media::HtmlMediaCursorAction::Finish

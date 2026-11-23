@@ -593,6 +593,18 @@
       ]
     },
     {
+      "id": "HTMLVideoElement.source",
+      "path": "references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md",
+      "anchor": "htmlvideoelement",
+      "block": 0,
+      "sha256": "36d67eba705d2ad7c820c84b557bd20b1b7bcab215ebbf0216399d5cb6fd5677",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-video-element",
+      "entries": [
+        "HTMLVideoElement"
+      ]
+    },
+    {
       "id": "HTMLHeadElement.source",
       "path": "references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md",
       "anchor": "the&#45;head&#45;element",
@@ -7520,6 +7532,124 @@
         }
       ],
       "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLVideoElement",
+      "kind": "interface",
+      "name": "HTMLVideoElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLVideoElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "width",
+          "readonly": false,
+          "id": "HTMLVideoElement.width"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "height",
+          "readonly": false,
+          "id": "HTMLVideoElement.height"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "videoWidth",
+          "readonly": true,
+          "id": "HTMLVideoElement.videoWidth"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "videoHeight",
+          "readonly": true,
+          "id": "HTMLVideoElement.videoHeight"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectURL"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "poster",
+          "readonly": false,
+          "id": "HTMLVideoElement.poster"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "playsInline",
+          "readonly": false,
+          "id": "HTMLVideoElement.playsInline"
+        }
+      ],
+      "inherits": "HTMLMediaElement"
     },
     {
       "id": "HTMLHeadElement",
@@ -22180,6 +22310,207 @@
           "owner": "surgeist-dom",
           "path": "crates/surgeist-dom/src/internal/store/image.rs",
           "symbol": "image_attribute_change"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLVideoElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlvideoelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLVideoElement.width/get": {
+      "kind": "native",
+      "adapter": "htmlvideoelement.width.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "unsigned_long_reflection_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLVideoElement.width/set": {
+      "kind": "native",
+      "adapter": "htmlvideoelement.width.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "unsigned_long_setter_value"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLVideoElement.height/get": {
+      "kind": "native",
+      "adapter": "htmlvideoelement.height.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "unsigned_long_reflection_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLVideoElement.height/set": {
+      "kind": "native",
+      "adapter": "htmlvideoelement.height.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "unsigned_long_setter_value"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLVideoElement.videoWidth/get": {
+      "kind": "native",
+      "adapter": "htmlvideoelement.videowidth.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/media.rs",
+          "symbol": "read_media_status"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/element.rs",
+          "symbol": "initial_media_state"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/media/native.rs",
+          "symbol": "video_intrinsic_dimensions"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLVideoElement.videoHeight/get": {
+      "kind": "native",
+      "adapter": "htmlvideoelement.videoheight.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/media.rs",
+          "symbol": "read_media_status"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/element.rs",
+          "symbol": "initial_media_state"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/elements/media/native.rs",
+          "symbol": "video_intrinsic_dimensions"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLVideoElement.poster/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the paired Video poster getter using the current native Document URL evidence.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-video-poster",
+        "issue": 3277
+      }
+    },
+    "HTMLVideoElement.poster/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Apply the canonical Video poster edit and preserve the reached DeterminePoster effect.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-video-poster",
+        "issue": 3277
+      }
+    },
+    "HTMLVideoElement.playsInline/get": {
+      "kind": "native",
+      "adapter": "htmlvideoelement.playsinline.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLVideoElement.playsInline/set": {
+      "kind": "native",
+      "adapter": "htmlvideoelement.playsinline.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_attribute_ns"
         }
       ],
       "requirements": []

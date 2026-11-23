@@ -1,6 +1,9 @@
-//! Shared HTMLMediaElement readbacks from the canonical unloaded state.
+//! Shared media readbacks and local Video reflections.
 
-use super::{reflection::Receiver, *};
+use super::{
+    reflection::{self, Receiver, Reflection},
+    *,
+};
 
 const NETWORK_EMPTY: u16 = 0;
 const HAVE_NOTHING: u16 = 0;
@@ -22,6 +25,8 @@ enum MediaReadback {
     NetworkState,
     ReadyState,
     Paused,
+    VideoWidth,
+    VideoHeight,
 }
 
 type Accessor = (&'static [u16], &'static [u16], MediaReadback);
@@ -49,25 +54,51 @@ const ACCESSORS: &[Accessor] = &[
     ),
 ];
 
+const VIDEO_REFLECTED_SIZE: &[reflection::Member] = &[
+    (
+        &ascii(b"width"),
+        &ascii(b"get width"),
+        &ascii(b"set width"),
+        &ascii(b"width"),
+        Reflection::UnsignedLong,
+    ),
+    (
+        &ascii(b"height"),
+        &ascii(b"get height"),
+        &ascii(b"set height"),
+        &ascii(b"height"),
+        Reflection::UnsignedLong,
+    ),
+];
+
+const VIDEO_INTRINSIC_SIZE: &[Accessor] = &[
+    (
+        &ascii(b"videoWidth"),
+        &ascii(b"get videoWidth"),
+        MediaReadback::VideoWidth,
+    ),
+    (
+        &ascii(b"videoHeight"),
+        &ascii(b"get videoHeight"),
+        MediaReadback::VideoHeight,
+    ),
+];
+
+const PLAYS_INLINE: &[reflection::Member] = &[(
+    &ascii(b"playsInline"),
+    &ascii(b"get playsInline"),
+    &ascii(b"set playsInline"),
+    &ascii(b"playsinline"),
+    Reflection::Boolean,
+)];
+
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
     constructor: &Value<'scope>,
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
-    for &(name, getter, readback) in ACCESSORS {
-        let capture = capture(size_of::<(Capture, MediaReadback)>())?;
-        install_getter(
-            scope,
-            prototype,
-            name,
-            getter,
-            true,
-            Callback::new(move |scope, arguments| {
-                capture.read_media_status(scope, arguments, readback)
-            }),
-        )?;
-    }
+    install_readbacks(scope, prototype, capture, ACCESSORS)?;
     for &(name, code) in CONSTANTS {
         let value = scope.primitive(Primitive::Number(f64::from(code)))?;
         for target in [constructor, prototype] {
@@ -85,6 +116,44 @@ pub(super) fn install<'scope>(
     Ok(())
 }
 
+pub(super) fn install_video<'scope>(
+    scope: &mut Scope<'scope>,
+    prototype: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    reflection::install(
+        scope,
+        prototype,
+        capture,
+        Receiver::Video,
+        VIDEO_REFLECTED_SIZE,
+    )?;
+    install_readbacks(scope, prototype, capture, VIDEO_INTRINSIC_SIZE)?;
+    reflection::install(scope, prototype, capture, Receiver::Video, PLAYS_INLINE)
+}
+
+fn install_readbacks<'scope>(
+    scope: &mut Scope<'scope>,
+    prototype: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+    accessors: &[Accessor],
+) -> Result<(), DocumentGuestEventError> {
+    for &(name, getter, readback) in accessors {
+        let capture = capture(size_of::<(Capture, MediaReadback)>())?;
+        install_getter(
+            scope,
+            prototype,
+            name,
+            getter,
+            true,
+            Callback::new(move |scope, arguments| {
+                capture.read_media_status(scope, arguments, readback)
+            }),
+        )?;
+    }
+    Ok(())
+}
+
 impl Capture {
     fn read_media_status<'scope>(
         &self,
@@ -92,7 +161,10 @@ impl Capture {
         arguments: Arguments<'scope>,
         readback: MediaReadback,
     ) -> Result<Completion<'scope>, Error> {
-        let receiver = Receiver::Media;
+        let receiver = match readback {
+            MediaReadback::VideoWidth | MediaReadback::VideoHeight => Receiver::Video,
+            _ => Receiver::Media,
+        };
         let Some(GuestNode::Element(id)) = tree::projected_node(scope, arguments.receiver())?
         else {
             return Ok(Completion::Throw(
@@ -128,6 +200,17 @@ impl Capture {
                     scope.primitive(Primitive::Number(f64::from(HAVE_NOTHING)))?
                 }
                 MediaReadback::Paused => scope.primitive(Primitive::Boolean(state.paused()))?,
+                MediaReadback::VideoWidth | MediaReadback::VideoHeight => {
+                    let [width, height] = state
+                        .video_intrinsic_dimensions()
+                        .ok_or(DomError::WrongNodeKind)?;
+                    let dimension = if matches!(readback, MediaReadback::VideoWidth) {
+                        width
+                    } else {
+                        height
+                    };
+                    scope.primitive(Primitive::Number(f64::from(dimension)))?
+                }
                 _ => return Err(DomError::WrongNodeKind.into()),
             };
             Ok(Completion::Return(value))
