@@ -23,7 +23,7 @@ pub(in crate::document_scripting) mod document_default_view;
 pub(in crate::document_scripting) mod document_event_admission;
 pub(in crate::document_scripting) mod document_metadata_admission;
 pub(in crate::document_scripting) mod document_range_admission;
-mod image_request_admission;
+pub(in crate::document_scripting) mod image_request_admission;
 pub(in crate::document_scripting) mod member_collection_admission;
 pub(in crate::document_scripting) mod move_before;
 pub(in crate::document_scripting) mod node_iterator_admission;
@@ -1891,7 +1891,7 @@ fn enable_public_nodes(
                 // Semantic fixtures fund two full realm installations and
                 // their callback frames. Admission tests reserve against the
                 // measured costs of their specific operations.
-                storage_bytes: 1024 * 1024,
+                storage_bytes: 1280 * 1024,
                 work: 10_000,
                 pending_exception_reports,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),
@@ -1984,7 +1984,14 @@ pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creatio
         .unwrap();
     let mut host = attach_public_nodes(session, target, cancellation.clone(), 1_000, 20_000);
     let permit = host.permit().unwrap();
-    host.register_node_creation_realm(&permit, origin).unwrap();
+    host.register_node_creation_realm(&permit, origin)
+        .unwrap_or_else(|error| match error {
+            DocumentScriptError::Script(Error::HostFailure(failure)) => panic!(
+                "adoption fixture origin installation refused: {:?}",
+                failure.cause::<DocumentGuestEventError>()
+            ),
+            other => panic!("adoption fixture origin installation failed: {other:?}"),
+        });
     host.in_document(&permit, |scope| {
         scope
             .evaluate(&units("globalThis.destination = new Document()"))

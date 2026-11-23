@@ -4571,6 +4571,7 @@ impl core::fmt::Display for surgeist_html::elements::image::HtmlImageUpdateOrder
 pub fn surgeist_html::elements::image::HtmlImageUpdateOrderError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::elements::image::HtmlImgFreshState
 impl surgeist_html::elements::image::HtmlImgFreshState
+pub fn surgeist_html::elements::image::HtmlImgFreshState::complete_with_attributes(&self, src: core::option::Option<&[u16]>, has_srcset: bool) -> bool
 pub fn surgeist_html::elements::image::HtmlImgFreshState::current_request(&self) -> &surgeist_html::elements::image::HtmlImgUnavailableRequest
 pub const fn surgeist_html::elements::image::HtmlImgFreshState::dimension_attribute_source_is_self(&self) -> bool
 pub fn surgeist_html::elements::image::HtmlImgFreshState::fresh() -> Self
@@ -4583,6 +4584,7 @@ impl surgeist_html::elements::image::HtmlImgUnavailableRequest
 pub const fn surgeist_html::elements::image::HtmlImgUnavailableRequest::current_pixel_density(&self) -> u32
 pub fn surgeist_html::elements::image::HtmlImgUnavailableRequest::current_url(&self) -> &surgeist_html::values::DocumentString
 pub const fn surgeist_html::elements::image::HtmlImgUnavailableRequest::image_data_is_available(&self) -> bool
+pub const fn surgeist_html::elements::image::HtmlImgUnavailableRequest::natural_dimensions(&self) -> [u32; 2]
 pub const fn surgeist_html::elements::image::HtmlImgUnavailableRequest::preferred_dimensions_are_null(&self) -> bool
 pub const fn surgeist_html::elements::image::HtmlImgUnavailableRequest::state(&self) -> surgeist_html::elements::image::HtmlImgFreshRequestState
 pub fn surgeist_html::elements::image::image_attribute_effect(namespace: &surgeist_html::values::Namespace, attribute: surgeist_html::vocabulary::KnownHtmlAttribute, change: surgeist_html::elements::image::HtmlImageAttributeChange) -> surgeist_html::elements::image::HtmlImageAttributeEffect

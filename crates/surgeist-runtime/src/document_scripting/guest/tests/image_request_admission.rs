@@ -121,8 +121,8 @@ fn add_real_child_window(host: &mut DocumentScriptHost, permit: &DocumentScriptP
     );
 }
 
-#[test]
-fn image_getters_keep_the_child_creation_realm_and_refuse_retired_identity() {
+pub(in crate::document_scripting) fn image_getters_keep_the_child_creation_realm_and_refuse_retired_identity()
+ {
     let (mut host, permit) = fixture();
     add_real_child_window(&mut host, &permit);
     let id: NodeId = host
@@ -295,8 +295,7 @@ impl CompleteCall {
     }
 }
 
-#[test]
-fn image_complete_admits_exact_native_read_work() {
+pub(in crate::document_scripting) fn image_complete_admits_exact_native_read_work() {
     let (mut host, permit) = fixture();
     let call = CompleteCall::prepare(&mut host, &permit);
     let events = host.guest_events().unwrap();
