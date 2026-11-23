@@ -911,9 +911,7 @@ fn install_html_members<'scope>(
         }
         "HTMLMediaElement" => super::media::install(scope, constructor, prototype, capture)?,
         "HTMLAnchorElement" => super::anchor::install(scope, prototype, capture)?,
-        "HTMLAreaElement" => {
-            install_html_token_list(scope, prototype, capture, HtmlTokenListReflection::AreaRel)?;
-        }
+        "HTMLAreaElement" => super::area::install(scope, prototype, capture)?,
         "HTMLScriptElement" => super::script::install(scope, prototype, capture)?,
         "HTMLLinkElement" => {
             for reflection in [

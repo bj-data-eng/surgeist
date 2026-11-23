@@ -196,7 +196,7 @@ pub(super) fn area_attributes_follow_canonical_source_and_receivers() {
                 return 'native Area attribute reactions: ' + JSON.stringify(effects);
 
             area.setAttributeNS(null, 'data-area-reflection-probe', 'exact');
-            globalThis.areaReflection = {area, tokens, hosted};
+            globalThis.areaReflection = {area, tokens};
             return 'ok';
         })()"#,
     );
@@ -239,43 +239,12 @@ pub(super) fn area_attributes_follow_canonical_source_and_receivers() {
         "ok",
     );
 
-    for assignment in [
-        "areaReflection.hosted.rel = 'nofollow'",
-        "areaReflection.hosted.referrerPolicy = 'no-referrer'",
-    ] {
-        let before = host.snapshot().unwrap();
-        let result = host.in_document(&permit, |scope| {
-            scope
-                .evaluate(&assignment.encode_utf16().collect::<Vec<_>>())
-                .map(drop)
-        });
-        let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
-            panic!("expected original hosted Area refusal for {assignment}, got {result:?}");
-        };
-        assert!(
-            matches!(
-                failure.cause::<DomSourceDriveError>(),
-                Some(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
-                    DomError::HyperlinkProcessingUnavailable
-                )))
-            ),
-            "wrong refusal for {assignment}: {:?}",
-            std::error::Error::source(&failure)
-        );
-        assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
-        host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
-            .unwrap();
-    }
-
     window_length::edit(&mut host, DomSourceEdit::insert_before(frame, body, None));
     let result = observe(
         &mut host,
         &permit,
         r#"(() => {
-            const {area, hosted} = areaReflection;
-            if (hosted.hasAttributeNS(null, 'rel') ||
-                hosted.hasAttributeNS(null, 'referrerpolicy') || hosted.alt !== 'allowed')
-                return 'hosted refusal changed native attributes';
+            const {area} = areaReflection;
             const child = window[0];
             const childArea = child.document.createElement('area');
             const prototype = child.HTMLAreaElement.prototype;
@@ -300,4 +269,55 @@ pub(super) fn area_attributes_follow_canonical_source_and_receivers() {
     assert_eq!(result, "ok");
 
     host.stop().into_session().unwrap();
+    hosted_area_refusals_preserve_the_original_native_failure();
+}
+
+fn hosted_area_refusals_preserve_the_original_native_failure() {
+    for assignment in [
+        "hostedArea.rel = 'nofollow'",
+        "hostedArea.referrerPolicy = 'no-referrer'",
+    ] {
+        let (session, top) = setup();
+        let (mut host, _) =
+            attach_event_window_with_work(session, top, Arc::new(cancel()), 160_000, |_, _, _| {});
+        let permit = host.permit().unwrap();
+        assert_eq!(
+            observe(
+                &mut host,
+                &permit,
+                "(globalThis.hostedArea = document.createElement('area'), hostedArea.isConnected ? 'connected' : 'ok')",
+            ),
+            "ok",
+        );
+        let before = host.snapshot().unwrap();
+        let result = host.in_document(&permit, |scope| {
+            scope
+                .evaluate(&assignment.encode_utf16().collect::<Vec<_>>())
+                .map(drop)
+        });
+        let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+            panic!("expected original hosted Area refusal for {assignment}, got {result:?}");
+        };
+        assert!(
+            matches!(
+                failure.cause::<DomSourceDriveError>(),
+                Some(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+                    DomError::HyperlinkProcessingUnavailable
+                )))
+            ),
+            "wrong refusal for {assignment}: {:?}",
+            std::error::Error::source(&failure)
+        );
+        let Err(DocumentScriptError::Script(Error::HostFailure(retry))) = host.checkpoint() else {
+            panic!("checkpoint must report the first hosted Area refusal");
+        };
+        assert!(std::ptr::eq(
+            failure.cause::<DomSourceDriveError>().unwrap(),
+            retry.cause::<DomSourceDriveError>().unwrap(),
+        ));
+        assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
+        host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
+            .unwrap();
+        host.stop().into_session().unwrap();
+    }
 }
