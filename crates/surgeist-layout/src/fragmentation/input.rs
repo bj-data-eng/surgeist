@@ -45,7 +45,7 @@ impl FragmentationKind {
 /// An ordered context has one block-flow direction. Its parent, if any, is a
 /// context index in the same input; it is not another live source tree.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FragmentationContext {
+pub(crate) struct FragmentationContext {
     pub kind: FragmentationKind,
     pub parent: Option<usize>,
     /// Geometric axes of this flow; these do not resolve document progression.
@@ -53,7 +53,7 @@ pub struct FragmentationContext {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FragmentainerOf<S: LayoutScalar = DefaultScalar> {
+pub(crate) struct FragmentainerOf<S: LayoutScalar = DefaultScalar> {
     pub inline_size: S,
     pub block_size: S,
     /// Boundary crossed on entry. Noninitial frames cross at least one type.
@@ -65,7 +65,7 @@ pub struct FragmentainerOf<S: LayoutScalar = DefaultScalar> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FragmentationOccurrence<K> {
+pub(crate) struct FragmentationOccurrence<K> {
     pub key: K,
     /// Immutable source units, independent of layout width. Zero is valid:
     /// occurrence order still distinguishes and consumes a zero-source box.
@@ -75,7 +75,7 @@ pub struct FragmentationOccurrence<K> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FragmentationFlowOf<K, S: LayoutScalar = DefaultScalar> {
+pub(crate) struct FragmentationFlowOf<K, S: LayoutScalar = DefaultScalar> {
     pub context: usize,
     pub start_fragmentainer: usize,
     pub initial_block_offset: S,
@@ -83,7 +83,7 @@ pub struct FragmentationFlowOf<K, S: LayoutScalar = DefaultScalar> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FragmentationInputOf<K, S: LayoutScalar = DefaultScalar> {
+pub(crate) struct FragmentationInputOf<K, S: LayoutScalar = DefaultScalar> {
     pub contexts: Vec<FragmentationContext>,
     /// Flows advance independently, even when they share fragmentainers.
     pub flows: Vec<FragmentationFlowOf<K, S>>,
@@ -93,13 +93,13 @@ pub struct FragmentationInputOf<K, S: LayoutScalar = DefaultScalar> {
 /// offset is in occurrence source units; a boundary uses offset zero in the
 /// following occurrence. occurrences.len() with offset zero is the flow end.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct FragmentationPosition {
+pub(crate) struct FragmentationPosition {
     pub occurrence: usize,
     pub offset: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FragmentationStage {
+pub(crate) enum FragmentationStage {
     Strict,
     RelaxLineCounts,
     RelaxAvoidance,
@@ -132,16 +132,15 @@ pub enum FragmentationBreakInside {
     AvoidRegion,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FragmentationRole {
+pub(crate) enum FragmentationRole {
     Normal,
-    Float,
     Absolute,
 }
 
 /// Applicable before/after control after mode-owned boundary propagation.
 /// source_order is the actual flow order, never a geometric or key ordering.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct FragmentationBreakControl {
+pub(crate) struct FragmentationBreakControl {
     pub value: FragmentationBreak,
     pub role: FragmentationRole,
     pub source_order: usize,
@@ -149,14 +148,14 @@ pub struct FragmentationBreakControl {
 
 /// A mode-established boundary at which before/after controls can force a break.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FragmentationControlKind {
+pub(crate) enum FragmentationControlKind {
     Sibling,
     ModeSpecific,
 }
 
 /// Complete controls at the query's current source cursor, without measuring content.
 #[derive(Clone, Debug, PartialEq)]
-pub struct FragmentationBoundaryControls {
+pub(crate) struct FragmentationBoundaryControls {
     pub kind: FragmentationControlKind,
     pub before: Vec<FragmentationBreakControl>,
     pub after: Vec<FragmentationBreakControl>,
@@ -164,7 +163,7 @@ pub struct FragmentationBoundaryControls {
 
 /// Actual scheduling transition preceding the queried or accepted content.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FragmentationStart {
+pub(crate) enum FragmentationStart {
     /// Entry to this source flow, including a nonzero initial frame offset.
     FlowStart,
     /// Source or graphical content has already been accepted in this frame.
@@ -175,8 +174,15 @@ pub enum FragmentationStart {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum FragmentationOpportunityKindOf<S: LayoutScalar = DefaultScalar> {
+pub(crate) enum FragmentationOpportunityKindOf<S: LayoutScalar = DefaultScalar> {
     Sibling,
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "no production provider supplies line-count opportunities"
+        )
+    )]
     Lines {
         before: usize,
         after: usize,
@@ -187,13 +193,20 @@ pub enum FragmentationOpportunityKindOf<S: LayoutScalar = DefaultScalar> {
         gap: S,
     },
     /// A legal opportunity supplied by another formatting model.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "no production provider supplies mode-specific opportunities"
+        )
+    )]
     ModeSpecific,
 }
 
 /// A mode-qualified break cut. Geometric coverage advances independently of
 /// immutable source units; its anchor identifies the represented occurrence.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum FragmentationCutOf<S: LayoutScalar = DefaultScalar> {
+pub(crate) enum FragmentationCutOf<S: LayoutScalar = DefaultScalar> {
     Source(FragmentationPosition),
     /// A strict interior cut; completion uses the following source boundary.
     Graphical {
@@ -212,7 +225,7 @@ impl<S: LayoutScalar> FragmentationCutOf<S> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FragmentationOpportunityOf<S: LayoutScalar = DefaultScalar> {
+pub(crate) struct FragmentationOpportunityOf<S: LayoutScalar = DefaultScalar> {
     pub cut: FragmentationCutOf<S>,
     /// Used block coordinate relative to the query's original source cursor.
     pub block_offset: S,
@@ -223,7 +236,14 @@ pub struct FragmentationOpportunityOf<S: LayoutScalar = DefaultScalar> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FragmentationFallback {
+pub(crate) enum FragmentationFallback {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "no production provider supplies sliceable fallbacks"
+        )
+    )]
     Sliceable,
     Unsliceable,
 }
@@ -231,7 +251,7 @@ pub enum FragmentationFallback {
 /// Graphical coverage is independent of semantic source units and pixels.
 /// extent stays fixed for the current occurrence across layout width changes.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FragmentationGraphicalProgressOf<S: LayoutScalar = DefaultScalar> {
+pub(crate) struct FragmentationGraphicalProgressOf<S: LayoutScalar = DefaultScalar> {
     pub consumed: S,
     pub extent: S,
 }
@@ -239,21 +259,31 @@ pub struct FragmentationGraphicalProgressOf<S: LayoutScalar = DefaultScalar> {
 /// Explicit mode-owned progress. Graphical progress keeps the same semantic
 /// occurrence coverage until its final slice; it never manufactures a Text cut.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum FragmentationEmergencySliceOf<S: LayoutScalar = DefaultScalar> {
+pub(crate) enum FragmentationEmergencySliceOf<S: LayoutScalar = DefaultScalar> {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "no production provider supplies source emergency slices"
+        )
+    )]
     Source {
         end: FragmentationPosition,
         block_size: S,
     },
-    Graphical {
-        end: S,
-        extent: S,
-        block_size: S,
-    },
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "no production provider supplies graphical emergency slices"
+        )
+    )]
+    Graphical { end: S, extent: S, block_size: S },
 }
 
 /// The actual source endpoint covered by one complete from-origin measurement.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FragmentationWindowEnd {
+pub(crate) enum FragmentationWindowEnd {
     FlowEnd,
     /// The reply includes all controls at this terminal potential boundary.
     PotentialControl(FragmentationPosition),
@@ -263,7 +293,7 @@ pub enum FragmentationWindowEnd {
 /// trailing zero-source closures; internal opportunities and controls remain
 /// independently applicable even when this head is sliceable.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FragmentationMeasuredHeadOf<S: LayoutScalar = DefaultScalar> {
+pub(crate) struct FragmentationMeasuredHeadOf<S: LayoutScalar = DefaultScalar> {
     /// At least the first occurrence boundary (or the earlier window end).
     /// Extension can cover only zero-source occurrences. This does not make
     /// those occurrences invisible to legal cuts or forced-break controls.
@@ -273,7 +303,7 @@ pub struct FragmentationMeasuredHeadOf<S: LayoutScalar = DefaultScalar> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FragmentationWindowOf<S: LayoutScalar = DefaultScalar> {
+pub(crate) struct FragmentationWindowOf<S: LayoutScalar = DefaultScalar> {
     pub end: FragmentationWindowEnd,
     /// Extent of exactly the covered source span, excluding cloned edge budgets.
     pub block_size: S,
@@ -290,13 +320,13 @@ pub struct FragmentationWindowOf<S: LayoutScalar = DefaultScalar> {
 /// successor content. Replacements measure the whole span from the same origin;
 /// discovery alone neither consumes source nor commits a measured prefix.
 #[derive(Clone, Debug, PartialEq)]
-pub enum FragmentationReplyOf<S: LayoutScalar = DefaultScalar> {
+pub(crate) enum FragmentationReplyOf<S: LayoutScalar = DefaultScalar> {
     ControlAtStart(FragmentationBoundaryControls),
     Measured(FragmentationWindowOf<S>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FragmentationQueryOf<S: LayoutScalar = DefaultScalar> {
+pub(crate) struct FragmentationQueryOf<S: LayoutScalar = DefaultScalar> {
     pub flow: usize,
     pub context: usize,
     pub fragmentainer_index: usize,
@@ -321,7 +351,7 @@ pub struct FragmentationQueryOf<S: LayoutScalar = DefaultScalar> {
 /// A partial reply establishes a real terminal control boundary under those
 /// constraints. Every replacement includes all still-legal opportunities from
 /// the original query cursor; previously measured geometry is replaced, not added.
-pub trait FragmentationProvider<S: LayoutScalar> {
+pub(crate) trait FragmentationProvider<S: LayoutScalar> {
     type Error;
     fn fragmentainer(
         &mut self,

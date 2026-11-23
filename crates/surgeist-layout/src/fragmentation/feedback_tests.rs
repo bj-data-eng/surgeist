@@ -306,12 +306,13 @@ fn cut_identity<S: LayoutScalar>() {
         }],
     };
     for graphical_first in [false, true] {
-        let report = resolve_fragmentation(
+        let report = resolve_with_feedback(
             &input,
             &mut CutProvider {
                 graphical_first,
                 raw_offset: false,
             },
+            |_| Ok(()),
         )
         .unwrap();
         assert_eq!(
@@ -344,12 +345,13 @@ fn cut_identity<S: LayoutScalar>() {
     }
     // A source endpoint that normalizes to the following zero-source box is
     // not an authorized graphical anchor for that different occurrence.
-    let result = resolve_fragmentation(
+    let result = resolve_with_feedback(
         &input,
         &mut CutProvider {
             graphical_first: false,
             raw_offset: true,
         },
+        |_| Ok(()),
     );
     assert_eq!(
         result,

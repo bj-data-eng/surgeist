@@ -248,20 +248,25 @@ mod engine;
 mod error;
 mod flex;
 mod fragmentation;
+pub(crate) use fragmentation::{
+    FragmentainerOf, FragmentationBoundaryControls, FragmentationBreakControl,
+    FragmentationBreakReason, FragmentationContext, FragmentationControlKind, FragmentationCutOf,
+    FragmentationError, FragmentationFallback, FragmentationFlowOf,
+    FragmentationGraphicalProgressOf, FragmentationInputOf, FragmentationMeasuredHeadOf,
+    FragmentationOccurrence, FragmentationOpportunityKindOf, FragmentationOpportunityOf,
+    FragmentationPieceKindOf, FragmentationPosition, FragmentationProvider, FragmentationQueryOf,
+    FragmentationReplyOf, FragmentationRole, FragmentationStart, FragmentationWindowEnd,
+    FragmentationWindowOf,
+};
 pub use fragmentation::{
-    FragmentainerOf, FragmentationBoundaryControls, FragmentationBreak, FragmentationBreakControl,
-    FragmentationBreakInside, FragmentationBreakKinds, FragmentationBreakReason,
-    FragmentationBreakRecord, FragmentationContext, FragmentationControlKind,
-    FragmentationCoverage, FragmentationCutOf, FragmentationEmergencySliceOf, FragmentationError,
-    FragmentationFallback, FragmentationFlowOf, FragmentationForcedSide, FragmentationFrameOf,
-    FragmentationGraphicalCoverageOf, FragmentationGraphicalProgressOf, FragmentationInputError,
-    FragmentationInputOf, FragmentationKind, FragmentationLogicalPageSide,
-    FragmentationMeasuredHeadOf, FragmentationOccurrence, FragmentationOpportunityKindOf,
-    FragmentationOpportunityOf, FragmentationPageSide, FragmentationPhysicalPageSide,
-    FragmentationPieceKindOf, FragmentationPieceOf, FragmentationPosition, FragmentationProvider,
-    FragmentationQueryOf, FragmentationReplyOf, FragmentationReportOf, FragmentationRole,
-    FragmentationStage, FragmentationStart, FragmentationWindowEnd, FragmentationWindowOf,
-    PageProgression, resolve_fragmentation,
+    FragmentationBreak, FragmentationBreakInside, FragmentationBreakKinds,
+    FragmentationGraphicalCoverageOf, FragmentationInputError, FragmentationKind,
+    FragmentationLogicalPageSide, FragmentationPageSide, FragmentationPhysicalPageSide,
+    PageProgression,
+};
+#[cfg(test)]
+pub(crate) use fragmentation::{
+    FragmentationCoverage, FragmentationPieceOf, FragmentationReportOf, FragmentationStage,
 };
 mod geometry;
 mod grid;

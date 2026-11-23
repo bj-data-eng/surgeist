@@ -1127,10 +1127,10 @@ contributes to final scroll geometry.
 
 Source: [fragmentation](../src/fragmentation/mod.rs).
 
-`resolve_fragmentation` computes a complete schedule from caller-owned source
-occurrences, fragmentation contexts and a `FragmentationProvider`. The provider
-supplies fragmentainer constraints and measures the remaining source under the
-current frame. Opportunities must describe that frame; measurements made at a
+The crate-private scheduler computes a complete schedule from caller-owned
+source occurrences, fragmentation contexts and a `FragmentationProvider`. The
+provider supplies fragmentainer constraints and measures the remaining source
+under the current frame. Opportunities must describe that frame; measurements made at a
 different inline size cannot stand in for them.
 
 `FragmentationKind::Page { progression }` carries `PageProgression` separately

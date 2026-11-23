@@ -2,16 +2,6 @@ use super::{policy, validation, *};
 use crate::LayoutScalar;
 use std::sync::Arc;
 
-/// Schedule all independent flows or return a typed failure without a prefix.
-/// Source positions are caller-owned exact units. Only the mode provider may
-/// select a semantic cut or map graphical coverage to current-frame geometry.
-pub fn resolve_fragmentation<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>>(
-    input: &FragmentationInputOf<K, S>,
-    provider: &mut P,
-) -> Result<FragmentationReportOf<K, S>, FragmentationError<P::Error>> {
-    resolve_with_feedback(input, provider, |_| Ok(()))
-}
-
 /// A completed scheduler step. The mode may retain accepted production or fail
 /// the complete operation; it cannot rewrite the selected cuts or transitions.
 pub(crate) struct AcceptedStep<'a, K, S: LayoutScalar> {
@@ -52,6 +42,7 @@ impl<S: LayoutScalar> ScopeEndpointOf<S> {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn resolve_with_feedback<K, S, P, F>(
     input: &FragmentationInputOf<K, S>,
     provider: &mut P,
@@ -142,6 +133,7 @@ impl<K, S: LayoutScalar> CompletedExecution<K, S> {
             .copied()
             .unwrap_or(false)
     }
+    #[cfg(test)]
     pub(crate) fn into_report(self) -> FragmentationReportOf<K, S> {
         self.report
     }
@@ -3046,6 +3038,10 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "contract_tests.rs"]
+mod contract_tests;
 
 #[cfg(test)]
 #[path = "feedback_tests.rs"]

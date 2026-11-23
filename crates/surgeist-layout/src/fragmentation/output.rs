@@ -2,7 +2,7 @@ use super::input::*;
 use crate::{DefaultScalar, LayoutScalar};
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FragmentationCoverage<K> {
+pub(crate) struct FragmentationCoverage<K> {
     pub key: K,
     pub start: usize,
     pub end: usize,
@@ -14,7 +14,7 @@ pub struct FragmentationGraphicalCoverageOf<S: LayoutScalar = DefaultScalar> {
     pub extent: S,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum FragmentationPieceKindOf<S: LayoutScalar = DefaultScalar> {
+pub(crate) enum FragmentationPieceKindOf<S: LayoutScalar = DefaultScalar> {
     Content,
     /// Advances graphical coverage within the anchor. Source outside the
     /// anchor is consumed once; anchor coverage may repeat. Final coverage can
@@ -28,7 +28,7 @@ pub enum FragmentationPieceKindOf<S: LayoutScalar = DefaultScalar> {
     UnsliceableOverflow,
 }
 #[derive(Clone, Debug, PartialEq)]
-pub struct FragmentationPieceOf<K, S: LayoutScalar = DefaultScalar> {
+pub(crate) struct FragmentationPieceOf<K, S: LayoutScalar = DefaultScalar> {
     pub flow: usize,
     pub context: usize,
     pub fragmentainer: usize,
@@ -49,14 +49,14 @@ pub struct FragmentationPieceOf<K, S: LayoutScalar = DefaultScalar> {
     pub kind: FragmentationPieceKindOf<S>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FragmentationForcedSide {
+pub(crate) enum FragmentationForcedSide {
     Left,
     Right,
     Recto,
     Verso,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FragmentationBreakReason {
+pub(crate) enum FragmentationBreakReason {
     Forced {
         required: FragmentationBreakKinds,
         side: Option<FragmentationForcedSide>,
@@ -65,7 +65,7 @@ pub enum FragmentationBreakReason {
     Deferred,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FragmentationBreakRecord {
+pub(crate) struct FragmentationBreakRecord {
     pub flow: usize,
     pub context: usize,
     pub from_fragmentainer: usize,
@@ -76,7 +76,7 @@ pub struct FragmentationBreakRecord {
     pub stage: FragmentationStage,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FragmentationFrameOf<S: LayoutScalar = DefaultScalar> {
+pub(crate) struct FragmentationFrameOf<S: LayoutScalar = DefaultScalar> {
     pub context: usize,
     pub index: usize,
     pub frame: FragmentainerOf<S>,
@@ -84,7 +84,7 @@ pub struct FragmentationFrameOf<S: LayoutScalar = DefaultScalar> {
 /// A complete normalized scheduling result. It does not certify a native box,
 /// Text fragment, or CompletedLayoutBatch. Continuation state remains private.
 #[derive(Clone, Debug, PartialEq)]
-pub struct FragmentationReportOf<K, S: LayoutScalar = DefaultScalar> {
+pub(crate) struct FragmentationReportOf<K, S: LayoutScalar = DefaultScalar> {
     pub pieces: Vec<FragmentationPieceOf<K, S>>,
     pub breaks: Vec<FragmentationBreakRecord>,
     pub fragmentainers: Vec<FragmentationFrameOf<S>>,
@@ -105,7 +105,7 @@ pub enum FragmentationInputError {
     InvalidSlice,
 }
 #[derive(Clone, Debug, PartialEq)]
-pub enum FragmentationError<E> {
+pub(crate) enum FragmentationError<E> {
     InvalidInput(FragmentationInputError),
     Provider(E),
     MissingFragmentainer { context: usize, index: usize },
