@@ -2615,6 +2615,7 @@ fn main() {
             "textarea-values" => textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state(),
             "input-state" => input_state::attached_input_exposes_canonical_value_modes_and_checkedness(),
             "script-async" => script_async::script_async_keeps_native_flag_and_content_coherent(),
+            "script-keywords" => script_async::script_keyword_reflections_follow_exact_live_attributes(),
             "anchor-attributes" => anchor_attributes::anchor_text_and_scalar_attributes_use_live_native_source(),
             "input-list" => input_list::attached_input_list_follows_the_first_exact_id_in_its_tree(),
             "input-attributes" => input_attributes::attached_input_reflections_use_canonical_attributes(),
@@ -2791,6 +2792,7 @@ fn main() {
     input_state::attached_input_exposes_canonical_value_modes_and_checkedness();
     anchor_attributes::anchor_text_and_scalar_attributes_use_live_native_source();
     script_async::script_async_keeps_native_flag_and_content_coherent();
+    script_async::script_keyword_reflections_follow_exact_live_attributes();
     input_list::attached_input_list_follows_the_first_exact_id_in_its_tree();
     input_attributes::attached_input_reflections_use_canonical_attributes();
     numeric_control_attributes::attached_controls_reflect_native_integer_attributes();
