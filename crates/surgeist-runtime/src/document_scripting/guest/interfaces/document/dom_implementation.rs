@@ -28,7 +28,6 @@ enum Factory {
 
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
-    document: &Value<'scope>,
     funding: &OriginInterfaceFunding<'_>,
 ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
     let global = scope.global()?;
@@ -50,7 +49,29 @@ pub(super) fn install<'scope>(
             configurable: false,
         },
     )?;
-    install_interface(scope, &global, INTERFACE, &constructor, &prototype)?;
+    for (name, length, maximum_arguments, factory) in [
+        (&ascii(b"createDocumentType")[..], 3, 3, Factory::Doctype),
+        (&ascii(b"createDocument")[..], 2, 3, Factory::Xml),
+        (&ascii(b"createHTMLDocument")[..], 0, 1, Factory::Html),
+    ] {
+        let handler = (funding.capture)(size_of::<(Capture, Factory, u32)>())?;
+        let method = scope.bounded_function(
+            &Callback::new(move |scope, arguments| {
+                handler.create(scope, arguments, factory, length)
+            }),
+            FunctionMetadata { name, length },
+            maximum_arguments,
+        )?;
+        define_data(
+            scope,
+            &prototype,
+            PropertyKey::String(name),
+            &method,
+            true,
+            true,
+            true,
+        )?;
+    }
 
     let name = &ascii(b"hasFeature");
     let method = scope.fixed_arity_function(
@@ -79,32 +100,18 @@ pub(super) fn install<'scope>(
         true,
     )?;
 
-    for (name, length, maximum_arguments, factory) in [
-        (&ascii(b"createDocumentType")[..], 3, 3, Factory::Doctype),
-        (&ascii(b"createDocument")[..], 2, 3, Factory::Xml),
-        (&ascii(b"createHTMLDocument")[..], 0, 1, Factory::Html),
-    ] {
-        let handler = (funding.capture)(size_of::<(Capture, Factory, u32)>())?;
-        let method = scope.bounded_function(
-            &Callback::new(move |scope, arguments| {
-                handler.create(scope, arguments, factory, length)
-            }),
-            FunctionMetadata { name, length },
-            maximum_arguments,
-        )?;
-        define_data(
-            scope,
-            &prototype,
-            PropertyKey::String(name),
-            &method,
-            true,
-            true,
-            true,
-        )?;
-    }
+    install_interface(scope, &global, INTERFACE, &constructor, &prototype)?;
+    let observed = scope.callback_object(&prototype)?;
+    scope.retain_callback_object(observed, funding.retain)
+}
 
-    let handler = (funding.capture)(size_of::<Capture>())?;
-    install_getter(
+pub(super) fn install_getter<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    let handler = capture(size_of::<Capture>())?;
+    super::install_getter(
         scope,
         document,
         &ascii(b"implementation"),
@@ -112,8 +119,7 @@ pub(super) fn install<'scope>(
         true,
         Callback::new(move |scope, arguments| handler.document_implementation(scope, arguments)),
     )?;
-    let observed = scope.callback_object(&prototype)?;
-    scope.retain_callback_object(observed, funding.retain)
+    Ok(())
 }
 
 impl Capture {

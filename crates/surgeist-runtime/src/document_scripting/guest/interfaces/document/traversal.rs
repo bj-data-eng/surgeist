@@ -84,17 +84,24 @@ impl CursorKind {
 
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
-    document: &Value<'scope>,
     funding: &OriginInterfaceFunding<'_>,
 ) -> Result<Prototypes, DocumentGuestEventError> {
-    let iterator = install_node_iterator(scope, document, funding)?;
-    let walker = tree_walker::install(scope, document, funding)?;
+    let iterator = install_node_iterator(scope, funding)?;
+    let walker = tree_walker::install(scope, funding)?;
     Ok(Prototypes { iterator, walker })
+}
+
+pub(super) fn install_factories<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    install_node_iterator_factory(scope, document, capture)?;
+    tree_walker::install_factory(scope, document, capture)
 }
 
 fn install_node_iterator<'scope>(
     scope: &mut Scope<'scope>,
-    document: &Value<'scope>,
     funding: &OriginInterfaceFunding<'_>,
 ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
     let global = scope.global()?;
@@ -116,8 +123,6 @@ fn install_node_iterator<'scope>(
             configurable: false,
         },
     )?;
-    install_interface(scope, &global, NODE_ITERATOR, &constructor, &prototype)?;
-    install_filter_interface(scope, funding.capture)?;
     for (member, key, name) in [
         (Member::Root, &ascii(b"root")[..], &ascii(b"get root")[..]),
         (
@@ -190,7 +195,18 @@ fn install_node_iterator<'scope>(
         true,
         true,
     )?;
-    let handler = (funding.capture)(size_of::<Capture>())?;
+    install_interface(scope, &global, NODE_ITERATOR, &constructor, &prototype)?;
+    install_filter_interface(scope, funding.capture)?;
+    let observed = scope.callback_object(&prototype)?;
+    scope.retain_callback_object(observed, funding.retain)
+}
+
+fn install_node_iterator_factory<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    let handler = capture(size_of::<Capture>())?;
     let factory = &ascii(b"createNodeIterator");
     let method = scope.bounded_function(
         &Callback::new(move |scope, arguments| {
@@ -211,8 +227,7 @@ fn install_node_iterator<'scope>(
         true,
         true,
     )?;
-    let observed = scope.callback_object(&prototype)?;
-    scope.retain_callback_object(observed, funding.retain)
+    Ok(())
 }
 
 fn install_filter_interface<'scope>(

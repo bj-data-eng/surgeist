@@ -30,7 +30,7 @@ pub(super) fn core_idl_prototypes_follow_source_order() {
         &mut host,
         &permit,
         r#"(() => {
-          const verify = realm => {
+          const verify = (realm, topWindow) => {
             const {Node, Attr, Document, DocumentFragment, HTMLDocument, HTMLCollection,
                    HTMLAllCollection, NodeList, TreeWalker, NodeIterator, DOMImplementation,
                    DocumentType, CharacterData, Text, Comment, CDATASection, ProcessingInstruction,
@@ -101,13 +101,17 @@ pub(super) fn core_idl_prototypes_follow_source_order() {
                     'returnValue defaultPrevented composed timeStamp composedPath stopPropagation ' +
                     'stopImmediatePropagation preventDefault initEvent NONE CAPTURING_PHASE AT_TARGET ' +
                     'BUBBLING_PHASE constructor'),
-                exact(PageTransitionEvent, 'persisted constructor'),
-                exact(ToggleEvent, 'oldState newState source constructor'),
-                exact(SecurityPolicyViolationEvent, 'documentURI referrer blockedURI effectiveDirective ' +
-                    'violatedDirective originalPolicy sourceFile sample disposition statusCode lineNumber ' +
-                    'columnNumber constructor'),
                 exact(CustomElementRegistry, 'define get getName whenDefined upgrade initialize constructor'),
             ]) {
+                if (error !== null) return error;
+            }
+            // These specialized Event interfaces are installed on the top Window.
+            if (topWindow) {
+                const error = exact(PageTransitionEvent, 'persisted constructor') ??
+                    exact(ToggleEvent, 'oldState newState source constructor') ??
+                    exact(SecurityPolicyViolationEvent, 'documentURI referrer blockedURI effectiveDirective ' +
+                        'violatedDirective originalPolicy sourceFile sample disposition statusCode lineNumber ' +
+                        'columnNumber constructor');
                 if (error !== null) return error;
             }
             const index = Object.getOwnPropertyDescriptor(HTMLCollection.prototype, 'item');
@@ -131,7 +135,7 @@ pub(super) fn core_idl_prototypes_follow_source_order() {
                 return 'incorrect descriptor or original realm intrinsic';
             return null;
           };
-          return verify(globalThis) ?? verify(window[0]) ?? 'ok';
+          return verify(globalThis, true) ?? verify(window[0], false) ?? 'ok';
         })()"#,
     );
     assert_eq!(result, "ok");

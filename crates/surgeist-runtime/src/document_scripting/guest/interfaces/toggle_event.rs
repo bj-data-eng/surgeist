@@ -31,12 +31,13 @@ pub(super) fn install<'scope>(
         },
         move |scope, arguments| construct(scope, arguments, &constructor),
     );
-    let (_, prototype) = document::install_derived_interface(
+    let interface_name = &ascii(b"ToggleEvent");
+    let (constructor, prototype) = document::prepare_derived_interface(
         scope,
         event,
         &event_constructor,
         FunctionMetadata {
-            name: &ascii(b"ToggleEvent"),
+            name: interface_name,
             length: 1,
         },
         &callback,
@@ -65,6 +66,8 @@ pub(super) fn install<'scope>(
         )?;
         define_accessor(scope, &prototype, key, &getter, None, true)?;
     }
+    let global = scope.global()?;
+    document::install_interface(scope, &global, interface_name, &constructor, &prototype)?;
     Ok(prototype)
 }
 

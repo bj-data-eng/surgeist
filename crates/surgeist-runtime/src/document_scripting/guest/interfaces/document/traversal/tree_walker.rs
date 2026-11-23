@@ -8,7 +8,6 @@ const CURRENT_NODE: &[u16] = &ascii(b"currentNode");
 
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
-    document: &Value<'scope>,
     funding: &OriginInterfaceFunding<'_>,
 ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
     let global = scope.global()?;
@@ -30,8 +29,6 @@ pub(super) fn install<'scope>(
             configurable: false,
         },
     )?;
-    install_interface(scope, &global, TREE_WALKER, &constructor, &prototype)?;
-
     for (member, key, name) in [
         (Member::Root, &ascii(b"root")[..], &ascii(b"get root")[..]),
         (
@@ -121,7 +118,17 @@ pub(super) fn install<'scope>(
             true,
         )?;
     }
-    let handler = (funding.capture)(size_of::<Capture>())?;
+    install_interface(scope, &global, TREE_WALKER, &constructor, &prototype)?;
+    let observed = scope.callback_object(&prototype)?;
+    scope.retain_callback_object(observed, funding.retain)
+}
+
+pub(super) fn install_factory<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    let handler = capture(size_of::<Capture>())?;
     let factory = &ascii(b"createTreeWalker");
     let method = scope.bounded_function(
         &Callback::new(move |scope, arguments| {
@@ -142,8 +149,7 @@ pub(super) fn install<'scope>(
         true,
         true,
     )?;
-    let observed = scope.callback_object(&prototype)?;
-    scope.retain_callback_object(observed, funding.retain)
+    Ok(())
 }
 
 #[derive(Clone, Copy)]

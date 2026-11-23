@@ -11,14 +11,13 @@ const MOVE_BEFORE: &[u16] = &ascii(b"moveBefore");
 
 use super::tree_mutations::Receiver;
 
-pub(super) fn install<'scope>(
+pub(super) fn install_operations<'scope>(
     scope: &mut Scope<'scope>,
     prototype: &Value<'scope>,
     receiver: Receiver,
     names: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
-    super::element_collections::install_parent(scope, prototype, receiver, capture)?;
     super::tree_mutations::install_parent(scope, prototype, receiver, names, capture)?;
     let handler = capture(size_of::<(Capture, Receiver)>())?;
     let function = scope.fixed_arity_function(

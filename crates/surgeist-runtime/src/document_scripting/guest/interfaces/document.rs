@@ -48,6 +48,7 @@ mod fragment;
 mod frameset;
 mod html_document;
 mod input;
+mod interface_constants;
 mod label;
 mod legacy;
 mod legend;
@@ -403,7 +404,7 @@ impl DocumentPrototypes {
         funding: &OriginInterfaceFunding<'_>,
         constructors: Option<CaptureFunding<'_>>,
     ) -> Result<(Self, Value<'scope>), DocumentGuestEventError> {
-        let (document_constructor, document) = install_derived_interface(
+        let (document_constructor, document) = prepare_derived_interface(
             scope,
             node,
             constructor,
@@ -414,6 +415,7 @@ impl DocumentPrototypes {
             document_callback,
         )?;
         let global = scope.global()?;
+        publish_interface(scope, &global, DOCUMENT, &document_constructor)?;
         define_data(
             scope,
             &global,
@@ -433,7 +435,7 @@ impl DocumentPrototypes {
             },
             &illegal_constructor(funding.capture)?,
         )?;
-        let (fragment_constructor, fragment) = install_derived_interface(
+        let (fragment_constructor, fragment) = prepare_derived_interface(
             scope,
             node,
             constructor,
@@ -443,15 +445,9 @@ impl DocumentPrototypes {
             },
             fragment_callback,
         )?;
+        publish_interface(scope, &global, fragment::FRAGMENT, &fragment_constructor)?;
         let shadow = shadow::install(scope, &fragment_constructor, &fragment, &funding.capture)?;
-        non_element_parent::install(scope, &document, &fragment, funding.capture)?;
         let collections = tag_collection::install(scope, funding)?;
-        element_collections::install_queries(
-            scope,
-            &document,
-            element_collections::QueryTarget::Document,
-            funding.capture,
-        )?;
         if let Some(capture) = constructors {
             tag_collection::install_window(
                 scope,
@@ -460,59 +456,45 @@ impl DocumentPrototypes {
                 super::window_children::WindowSite::Attached,
             )?;
         }
-        custom_elements::install_node_getter(
-            scope,
-            &document,
-            custom_elements::Receiver::DocumentOrShadowRoot,
-            funding.capture,
-        )?;
-        fragment::install_factory(scope, &document, &funding.capture)?;
-        attr_factory::install(scope, &document, &funding.capture)?;
-        element_factory::install(scope, &document, &funding.capture)?;
-        event_factory::install(scope, &document, funding.capture)?;
-        tree::install_adoption(scope, &document, funding.capture)?;
-        tree::install_import(scope, &document, funding.capture)?;
-        metadata::install(scope, &document, funding.capture)?;
-        element::install_document_root(scope, &document, &funding.capture)?;
-        html_document::install(scope, &document, funding.capture)?;
-        tag_collection::install_document_element_collections(scope, &document, funding.capture)?;
-        title::install_document(scope, &document, funding.capture)?;
-        default_view::install(scope, &document, funding.capture)?;
-        html_document::install_obsolete_colors(scope, &document, funding.capture)?;
-        tag_collection::install_obsolete_document_collections(scope, &document, funding.capture)?;
-        legacy::install(scope, &document, funding.capture)?;
-        let all = all_collection::install(scope, &global, &document, funding)?;
-        let node_lists = node_list::install(scope, &global, &document, funding)?;
+        let all = all_collection::install(scope, &global, funding)?;
+        let node_lists = node_list::install(scope, &global, funding)?;
         let named = document_named::install(scope, funding)?;
-        let document_names = tree_mutations::unscopables(scope, &document)?;
-        parent_node::install(
+        let character_data = character_data::CharacterBindings::install(
             scope,
-            &document,
-            tree_mutations::Receiver::Document,
-            &document_names,
+            node,
+            constructor,
+            funding,
+            constructors,
+        )?;
+        let attr = attr::install(scope, node, constructor, funding)?;
+        let document_type = document_type::install(scope, node, constructor, funding)?;
+        let implementation = dom_implementation::install(scope, funding)?;
+        let range = range::install(scope, funding)?;
+        let traversal = traversal::install(scope, funding)?;
+
+        install_document_members(scope, &document, funding.capture)?;
+        finalize_interface_prototype(scope, DOCUMENT, &document_constructor, &document)?;
+        let fragment_names = tree_mutations::unscopables(scope, &fragment)?;
+        element_collections::install_parent(
+            scope,
+            &fragment,
+            tree_mutations::Receiver::Fragment,
             funding.capture,
         )?;
-        let fragment_names = tree_mutations::unscopables(scope, &fragment)?;
-        parent_node::install(
+        non_element_parent::install(
+            scope,
+            &fragment,
+            tree_mutations::Receiver::Fragment,
+            funding.capture,
+        )?;
+        parent_node::install_operations(
             scope,
             &fragment,
             tree_mutations::Receiver::Fragment,
             &fragment_names,
             funding.capture,
         )?;
-        let character_data = character_data::CharacterBindings::install(
-            scope,
-            node,
-            constructor,
-            &document,
-            funding,
-            constructors,
-        )?;
-        let attr = attr::install(scope, node, constructor, funding)?;
-        let document_type = document_type::install(scope, node, constructor, &document, funding)?;
-        let implementation = dom_implementation::install(scope, &document, funding)?;
-        let range = range::install(scope, &document, funding)?;
-        let traversal = traversal::install(scope, &document, funding)?;
+        finalize_interface_prototype(scope, fragment::FRAGMENT, &fragment_constructor, &fragment)?;
         let observed = scope.callback_object(&document)?;
         let retained_document = scope.retain_callback_object(observed, funding.retain)?;
         let observed = scope.callback_object(&xml_document)?;
@@ -541,6 +523,69 @@ impl DocumentPrototypes {
             document,
         ))
     }
+}
+
+fn install_document_members<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    let names = tree_mutations::unscopables(scope, document)?;
+    // Attributes in the primary interface, HTML partials and included mixins.
+    dom_implementation::install_getter(scope, document, capture)?;
+    metadata::install(scope, document, capture)?;
+    document_type::install_getter(scope, document, capture)?;
+    element::install_document_root(scope, document, &capture)?;
+    html_document::install_state(scope, document, capture)?;
+    title::install_document(scope, document, capture)?;
+    html_document::install_tree(scope, document, capture)?;
+    tag_collection::install_document_element_collections(scope, document, capture)?;
+    default_view::install(scope, document, capture)?;
+    html_document::install_obsolete_colors(scope, document, capture)?;
+    tag_collection::install_obsolete_document_collections(scope, document, capture)?;
+    all_collection::install_document_getter(scope, document, capture)?;
+    custom_elements::install_node_getter(
+        scope,
+        document,
+        custom_elements::Receiver::DocumentOrShadowRoot,
+        capture,
+    )?;
+    element_collections::install_parent(
+        scope,
+        document,
+        tree_mutations::Receiver::Document,
+        capture,
+    )?;
+
+    // Operations follow the same declaration sequence.
+    element_collections::install_queries(
+        scope,
+        document,
+        element_collections::QueryTarget::Document,
+        capture,
+    )?;
+    element_factory::install(scope, document, &capture)?;
+    fragment::install_factory(scope, document, &capture)?;
+    character_data::install_text_factory(scope, document, capture)?;
+    character_data::install_cdata_factory(scope, document, capture)?;
+    character_data::install_comment_factory(scope, document, capture)?;
+    processing_instruction::install_factory(scope, document, capture)?;
+    tree::install_import(scope, document, capture)?;
+    tree::install_adoption(scope, document, capture)?;
+    attr_factory::install(scope, document, &capture)?;
+    event_factory::install(scope, document, capture)?;
+    range::install_factory(scope, document, capture)?;
+    traversal::install_factories(scope, document, capture)?;
+    node_list::install_document_lookup(scope, document, capture)?;
+    legacy::install(scope, document, capture)?;
+    non_element_parent::install(scope, document, tree_mutations::Receiver::Document, capture)?;
+    parent_node::install_operations(
+        scope,
+        document,
+        tree_mutations::Receiver::Document,
+        &names,
+        capture,
+    )
 }
 
 impl Drop for DocumentBindings {
@@ -854,6 +899,11 @@ pub(super) fn install_node<'scope>(
             &ascii(b"parentElement")[..],
             &ascii(b"get parentElement")[..],
         ),
+    ] {
+        install_member(scope, member, key, name)?;
+    }
+    node_list::install_children(scope, &node, capture)?;
+    for (member, key, name) in [
         (
             NodeMember::FirstChild,
             &ascii(b"firstChild")[..],
@@ -877,27 +927,7 @@ pub(super) fn install_node<'scope>(
     ] {
         install_member(scope, member, key, name)?;
     }
-    node_list::install_children(scope, &node, capture)?;
-    let handler = capture(size_of::<Capture>())?;
-    let name = &ascii(b"hasChildNodes");
-    let method = scope.fixed_arity_function(
-        &Callback::new(move |scope, arguments| {
-            handler.node_member(scope, arguments, NodeMember::HasChildren)
-        }),
-        FunctionMetadata { name, length: 0 },
-    )?;
-    define_data(
-        scope,
-        &node,
-        PropertyKey::String(name),
-        &method,
-        true,
-        true,
-        true,
-    )?;
     text::install(scope, &node, capture)?;
-    tree::install(scope, &node, capture)?;
-    tree::install_position_constants(scope, &node_constructor, &node)?;
     let root = capture(size_of::<Capture>())?;
     let root_name = &ascii(b"getRootNode");
     let method = scope.bounded_function(
@@ -917,33 +947,25 @@ pub(super) fn install_node<'scope>(
         true,
         true,
     )?;
-    for (key, code) in [
-        (&ascii(b"ELEMENT_NODE")[..], 1.0),
-        (&ascii(b"ATTRIBUTE_NODE")[..], 2.0),
-        (&ascii(b"TEXT_NODE")[..], 3.0),
-        (&ascii(b"CDATA_SECTION_NODE")[..], 4.0),
-        (&ascii(b"ENTITY_REFERENCE_NODE")[..], 5.0),
-        (&ascii(b"ENTITY_NODE")[..], 6.0),
-        (&ascii(b"PROCESSING_INSTRUCTION_NODE")[..], 7.0),
-        (&ascii(b"COMMENT_NODE")[..], 8.0),
-        (&ascii(b"DOCUMENT_NODE")[..], 9.0),
-        (&ascii(b"DOCUMENT_TYPE_NODE")[..], 10.0),
-        (&ascii(b"DOCUMENT_FRAGMENT_NODE")[..], 11.0),
-        (&ascii(b"NOTATION_NODE")[..], 12.0),
-    ] {
-        let value = scope.primitive(Primitive::Number(code))?;
-        for recipient in [&node_constructor, &node] {
-            define_data(
-                scope,
-                recipient,
-                PropertyKey::String(key),
-                &value,
-                false,
-                true,
-                false,
-            )?;
-        }
-    }
+    let handler = capture(size_of::<Capture>())?;
+    let name = &ascii(b"hasChildNodes");
+    let method = scope.fixed_arity_function(
+        &Callback::new(move |scope, arguments| {
+            handler.node_member(scope, arguments, NodeMember::HasChildren)
+        }),
+        FunctionMetadata { name, length: 0 },
+    )?;
+    define_data(
+        scope,
+        &node,
+        PropertyKey::String(name),
+        &method,
+        true,
+        true,
+        true,
+    )?;
+    tree::install(scope, &node, capture)?;
+    install_constants(scope, &node_constructor, &node, interface_constants::NODE)?;
     let global = scope.global()?;
     install_interface(scope, &global, NODE, &node_constructor, &node)?;
     Ok((node_constructor, node))
@@ -968,9 +990,42 @@ fn cached_projection_admission<'fund>(
     })
 }
 
+fn install_constants<'scope>(
+    scope: &mut Scope<'scope>,
+    constructor: &Value<'scope>,
+    prototype: &Value<'scope>,
+    constants: &[(&[u16], u16)],
+) -> Result<(), Error> {
+    for &(name, code) in constants {
+        let value = scope.primitive(Primitive::Number(f64::from(code)))?;
+        for recipient in [constructor, prototype] {
+            define_data(
+                scope,
+                recipient,
+                PropertyKey::String(name),
+                &value,
+                false,
+                true,
+                false,
+            )?;
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn install_interface<'scope>(
     scope: &mut Scope<'scope>,
     global: &Value<'scope>,
+    name: &[u16],
+    interface: &Value<'scope>,
+    prototype: &Value<'scope>,
+) -> Result<(), Error> {
+    finalize_interface_prototype(scope, name, interface, prototype)?;
+    publish_interface(scope, global, name, interface)
+}
+
+pub(super) fn finalize_interface_prototype<'scope>(
+    scope: &mut Scope<'scope>,
     name: &[u16],
     interface: &Value<'scope>,
     prototype: &Value<'scope>,
@@ -994,7 +1049,15 @@ pub(super) fn install_interface<'scope>(
         false,
         false,
         true,
-    )?;
+    )
+}
+
+pub(super) fn publish_interface<'scope>(
+    scope: &mut Scope<'scope>,
+    global: &Value<'scope>,
+    name: &[u16],
+    interface: &Value<'scope>,
+) -> Result<(), Error> {
     define_data(
         scope,
         global,
@@ -1020,7 +1083,7 @@ pub(super) fn install_derived_interface<'scope>(
     Ok((constructor, prototype))
 }
 
-fn prepare_derived_interface<'scope>(
+pub(super) fn prepare_derived_interface<'scope>(
     scope: &mut Scope<'scope>,
     parent: &Value<'scope>,
     parent_constructor: &Value<'scope>,

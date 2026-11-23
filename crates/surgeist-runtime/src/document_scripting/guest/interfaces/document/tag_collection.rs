@@ -307,19 +307,6 @@ pub(super) fn install(
             configurable: false,
         },
     )?;
-    let global = scope.global()?;
-    install_interface(scope, &global, COLLECTION, &constructor, &prototype)?;
-    let iterator = scope.well_known_symbol(WellKnownSymbol::Iterator)?;
-    let values = scope.intrinsic(Intrinsic::ArrayValues)?;
-    define_data(
-        scope,
-        &prototype,
-        PropertyKey::Value(&iterator),
-        &values,
-        true,
-        false,
-        true,
-    )?;
     let length = (funding.capture)(size_of::<Capture>())?;
     install_getter(
         scope,
@@ -353,6 +340,19 @@ pub(super) fn install(
             named_getter = Some(method);
         }
     }
+    let iterator = scope.well_known_symbol(WellKnownSymbol::Iterator)?;
+    let values = scope.intrinsic(Intrinsic::ArrayValues)?;
+    define_data(
+        scope,
+        &prototype,
+        PropertyKey::Value(&iterator),
+        &values,
+        true,
+        false,
+        true,
+    )?;
+    let global = scope.global()?;
+    install_interface(scope, &global, COLLECTION, &constructor, &prototype)?;
 
     let read = (funding.capture)(size_of::<Capture>())?;
     let read = scope.fixed_arity_function(

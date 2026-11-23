@@ -57,7 +57,6 @@ pub(super) fn install_children<'scope>(
 pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
     global: &Value<'scope>,
-    document: &Value<'scope>,
     funding: &OriginInterfaceFunding<'_>,
 ) -> Result<Projection, DocumentGuestEventError> {
     let prototype = scope.object(ObjectPrototype::Default)?;
@@ -114,22 +113,6 @@ pub(super) fn install<'scope>(
     install_indexed_value_iteration(scope, &prototype)?;
     install_interface(scope, global, INTERFACE, &constructor, &prototype)?;
 
-    let name_handler = capture(size_of::<Capture>())?;
-    let name = &ascii(b"getElementsByName");
-    let query = scope.fixed_arity_function(
-        &Callback::new(move |scope, arguments| name_handler.elements_by_name(scope, arguments)),
-        FunctionMetadata { name, length: 1 },
-    )?;
-    define_data(
-        scope,
-        document,
-        PropertyKey::String(name),
-        &query,
-        true,
-        true,
-        true,
-    )?;
-
     let read = capture(size_of::<Capture>())?;
     let read = scope.fixed_arity_function(
         &Callback::new(move |scope, arguments| {
@@ -156,6 +139,29 @@ pub(super) fn install<'scope>(
         read: scope.retain_callback_object(read, funding.retain)?,
         keys: scope.retain_callback_object(keys, funding.retain)?,
     })
+}
+
+pub(super) fn install_document_lookup<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    let name_handler = capture(size_of::<Capture>())?;
+    let name = &ascii(b"getElementsByName");
+    let query = scope.fixed_arity_function(
+        &Callback::new(move |scope, arguments| name_handler.elements_by_name(scope, arguments)),
+        FunctionMetadata { name, length: 1 },
+    )?;
+    define_data(
+        scope,
+        document,
+        PropertyKey::String(name),
+        &query,
+        true,
+        true,
+        true,
+    )?;
+    Ok(())
 }
 
 pub(super) fn install_indexed_value_iteration<'scope>(

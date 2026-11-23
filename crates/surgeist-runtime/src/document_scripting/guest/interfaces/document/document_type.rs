@@ -13,19 +13,17 @@ pub(super) fn install<'scope>(
     scope: &mut Scope<'scope>,
     node: &Value<'scope>,
     node_constructor: &Value<'scope>,
-    document: &Value<'scope>,
     funding: &OriginInterfaceFunding<'_>,
 ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
-    let (_, prototype) = install_derived_interface(
+    let name = &ascii(b"DocumentType");
+    let (constructor, prototype) = prepare_derived_interface(
         scope,
         node,
         node_constructor,
-        FunctionMetadata {
-            name: &ascii(b"DocumentType"),
-            length: 0,
-        },
+        FunctionMetadata { name, length: 0 },
         &illegal_constructor(funding.capture)?,
     )?;
+    let names = tree_mutations::unscopables(scope, &prototype)?;
     for (field, key, name) in [
         (Field::Name, &ascii(b"name")[..], &ascii(b"get name")[..]),
         (
@@ -40,7 +38,7 @@ pub(super) fn install<'scope>(
         ),
     ] {
         let capture = (funding.capture)(size_of::<(Capture, Field)>())?;
-        install_getter(
+        super::install_getter(
             scope,
             &prototype,
             key,
@@ -49,7 +47,6 @@ pub(super) fn install<'scope>(
             Callback::new(move |scope, arguments| capture.doctype_field(scope, arguments, field)),
         )?;
     }
-    let names = tree_mutations::unscopables(scope, &prototype)?;
     tree_mutations::install_child(
         scope,
         &prototype,
@@ -57,8 +54,22 @@ pub(super) fn install<'scope>(
         &names,
         funding.capture,
     )?;
-    let capture = (funding.capture)(size_of::<Capture>())?;
-    install_getter(
+    {
+        let global = scope.global()?;
+        install_interface(scope, &global, name, &constructor, &prototype)?;
+    }
+    drop(constructor);
+    let observed = scope.callback_object(&prototype)?;
+    scope.retain_callback_object(observed, funding.retain)
+}
+
+pub(super) fn install_getter<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    let capture = capture(size_of::<Capture>())?;
+    super::install_getter(
         scope,
         document,
         &ascii(b"doctype"),
@@ -66,8 +77,7 @@ pub(super) fn install<'scope>(
         true,
         Callback::new(move |scope, arguments| capture.document_doctype(scope, arguments)),
     )?;
-    let observed = scope.callback_object(&prototype)?;
-    scope.retain_callback_object(observed, funding.retain)
+    Ok(())
 }
 
 impl Capture {

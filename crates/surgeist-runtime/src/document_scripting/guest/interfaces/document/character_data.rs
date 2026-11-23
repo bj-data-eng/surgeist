@@ -2,6 +2,7 @@
 
 use super::*;
 mod cdata_section;
+pub(super) use cdata_section::install_factory as install_cdata_factory;
 mod mutations;
 mod split_text;
 use surgeist_bindings_js::{
@@ -65,6 +66,46 @@ impl CharacterKind {
     }
 }
 
+pub(super) fn install_text_factory<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    install_factory(scope, document, capture, CharacterKind::Text)
+}
+
+pub(super) fn install_comment_factory<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+) -> Result<(), DocumentGuestEventError> {
+    install_factory(scope, document, capture, CharacterKind::Comment)
+}
+
+fn install_factory<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: CaptureFunding<'_>,
+    kind: CharacterKind,
+) -> Result<(), DocumentGuestEventError> {
+    let (name, _) = kind.factory();
+    let factory = capture(size_of::<(Capture, CharacterKind)>())?;
+    let function = scope.fixed_arity_function(
+        &Callback::new(move |scope, arguments| factory.create_character(scope, arguments, kind)),
+        FunctionMetadata { name, length: 1 },
+    )?;
+    define_data(
+        scope,
+        document,
+        PropertyKey::String(name),
+        &function,
+        true,
+        true,
+        true,
+    )?;
+    Ok(())
+}
+
 pub(super) struct CharacterBindings {
     text: RetainedCallbackObject,
     comment: RetainedCallbackObject,
@@ -77,11 +118,10 @@ impl CharacterBindings {
         scope: &mut Scope<'scope>,
         node: &Value<'scope>,
         node_constructor: &Value<'scope>,
-        document: &Value<'scope>,
         funding: &OriginInterfaceFunding<'_>,
         constructors: Option<CaptureFunding<'_>>,
     ) -> Result<Self, DocumentGuestEventError> {
-        let (interface, prototype) = install_derived_interface(
+        let (interface, prototype) = prepare_derived_interface(
             scope,
             node,
             node_constructor,
@@ -91,6 +131,7 @@ impl CharacterBindings {
             },
             &illegal_constructor(funding.capture)?,
         )?;
+        let names = tree_mutations::unscopables(scope, &prototype)?;
         for (length, key, name) in [
             (false, &ascii(b"data")[..], &ascii(b"get data")[..]),
             (true, &ascii(b"length")[..], &ascii(b"get length")[..]),
@@ -118,8 +159,13 @@ impl CharacterBindings {
                 },
             )?;
         }
+        super::element_collections::install_siblings(
+            scope,
+            &prototype,
+            tree_mutations::Receiver::CharacterData,
+            funding.capture,
+        )?;
         mutations::install_methods(scope, &prototype, &funding.capture)?;
-        let names = tree_mutations::unscopables(scope, &prototype)?;
         tree_mutations::install_child(
             scope,
             &prototype,
@@ -127,17 +173,14 @@ impl CharacterBindings {
             &names,
             funding.capture,
         )?;
-        super::element_collections::install_siblings(
-            scope,
-            &prototype,
-            tree_mutations::Receiver::CharacterData,
-            funding.capture,
-        )?;
+        {
+            let global = scope.global()?;
+            install_interface(scope, &global, CHARACTER_DATA, &interface, &prototype)?;
+        }
         let (text_constructor, text_prototype) = Self::install_kind(
             scope,
             &interface,
             &prototype,
-            document,
             CharacterKind::Text,
             funding,
             constructors,
@@ -148,32 +191,23 @@ impl CharacterBindings {
             scope,
             &interface,
             &prototype,
-            document,
             CharacterKind::Comment,
             funding,
             constructors,
         )?;
         let observed = scope.callback_object(&comment_prototype)?;
         let comment = scope.retain_callback_object(observed, funding.retain)?;
-        let cdata_section = cdata_section::install(
-            scope,
-            document,
-            (&text_constructor, &text_prototype),
-            funding,
-        )?;
-        let constructor = processing_instruction::constructor(funding.capture)?;
-        let (_, instruction) = install_derived_interface(
+        let cdata_section =
+            cdata_section::install(scope, (&text_constructor, &text_prototype), funding)?;
+        let name = &ascii(b"ProcessingInstruction");
+        let callback = processing_instruction::constructor(funding.capture)?;
+        let (constructor, instruction) = prepare_derived_interface(
             scope,
             &prototype,
             &interface,
-            FunctionMetadata {
-                name: &ascii(b"ProcessingInstruction"),
-                length: 1,
-            },
-            &constructor,
+            FunctionMetadata { name, length: 1 },
+            &callback,
         )?;
-        processing_instruction::install_factory(scope, document, funding.capture)?;
-        processing_instruction::install_pseudo_attributes(scope, &instruction, funding.capture)?;
         let capture = (funding.capture)(size_of::<Capture>())?;
         install_getter(
             scope,
@@ -185,6 +219,12 @@ impl CharacterBindings {
                 capture.processing_instruction_target(scope, arguments)
             }),
         )?;
+        processing_instruction::install_pseudo_attributes(scope, &instruction, funding.capture)?;
+        {
+            let global = scope.global()?;
+            install_interface(scope, &global, name, &constructor, &instruction)?;
+        }
+        drop(constructor);
         let observed = scope.callback_object(&instruction)?;
         let processing_instruction = scope.retain_callback_object(observed, funding.retain)?;
         Ok(Self {
@@ -199,7 +239,6 @@ impl CharacterBindings {
         scope: &mut Scope<'scope>,
         parent_constructor: &Value<'scope>,
         parent_prototype: &Value<'scope>,
-        document: &Value<'scope>,
         kind: CharacterKind,
         funding: &OriginInterfaceFunding<'_>,
         constructors: Option<CaptureFunding<'_>>,
@@ -221,7 +260,7 @@ impl CharacterBindings {
         } else {
             illegal_constructor(funding.capture)?
         };
-        let (constructor, prototype) = install_derived_interface(
+        let (constructor, prototype) = prepare_derived_interface(
             scope,
             parent_prototype,
             parent_constructor,
@@ -232,7 +271,6 @@ impl CharacterBindings {
             &callback,
         )?;
         if matches!(kind, CharacterKind::Text) {
-            split_text::install(scope, &prototype, funding.capture)?;
             text::install_whole_text(scope, &prototype, funding.capture)?;
             super::slot::install_slottable(
                 scope,
@@ -240,24 +278,10 @@ impl CharacterBindings {
                 funding.capture,
                 super::slot::SlottableReceiver::Text,
             )?;
+            split_text::install(scope, &prototype, funding.capture)?;
         }
-        let (name, _) = kind.factory();
-        let factory = (funding.capture)(size_of::<(Capture, CharacterKind)>())?;
-        let function = scope.fixed_arity_function(
-            &Callback::new(move |scope, arguments| {
-                factory.create_character(scope, arguments, kind)
-            }),
-            FunctionMetadata { name, length: 1 },
-        )?;
-        define_data(
-            scope,
-            document,
-            PropertyKey::String(name),
-            &function,
-            true,
-            true,
-            true,
-        )?;
+        let global = scope.global()?;
+        install_interface(scope, &global, kind.name(), &constructor, &prototype)?;
         Ok((constructor, prototype))
     }
 
