@@ -24,6 +24,7 @@ mod element_attributes;
 mod element_mixin;
 mod element_reflection;
 mod element_tasks;
+mod engine_measurements;
 mod fieldset_attributes;
 mod font_element;
 mod form_attributes;
@@ -307,6 +308,9 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
         2
     );
     drop(session);
+    engine_measurements::attached_measurements_cover_guest_realms_and_the_collector();
+    engine_measurements::attached_instruction_count_keeps_the_prefix_after_host_refusal();
+    engine_measurements::attached_measurements_require_the_original_live_permit();
     for assignment in [
         "conversionText.data = conversionInput",
         "conversionDocument.cookie = conversionInput",

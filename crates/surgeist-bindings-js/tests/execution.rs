@@ -6,6 +6,8 @@ mod capture;
 mod collection_visibility;
 #[path = "execution/dom_exception.rs"]
 mod dom_exception;
+#[path = "execution/engine_measurements.rs"]
+mod engine_measurements;
 #[path = "execution/guest_creation_realm.rs"]
 mod guest_creation_realm;
 #[path = "execution/holder_custody.rs"]
@@ -2555,6 +2557,9 @@ fn native_all_collection_refuses_invalid_call_custody(process: &mut Process) -> 
 }
 
 fn main() -> Result<(), Error> {
+    if std::env::args().nth(1).as_deref() == Some("engine-measurements") {
+        return engine_measurements::engine_measurements();
+    }
     if std::env::args().nth(1).as_deref() == Some("result-admission") {
         return result_admission::results_admit_before_backend_preparation();
     }
@@ -2592,6 +2597,9 @@ fn main() -> Result<(), Error> {
     }
     if std::env::args().nth(1).as_deref() == Some("native-reachability") {
         return native_reachability::native_references_follow_only_guest_reachability();
+    }
+    if std::env::args().nth(1).is_none() {
+        engine_measurements::engine_measurements()?;
     }
     let mut process = Process::bootstrap()?;
     if std::env::args().nth(1).as_deref() == Some("proxy-callback-object") {

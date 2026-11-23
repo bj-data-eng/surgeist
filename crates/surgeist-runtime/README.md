@@ -503,6 +503,11 @@ and the reserved guest allowance share the host storage cap. Source and native
 retirement also retain their domain work limits. Reports describe Rust adapter
 work and backing. Boa owns guest execution and heap behavior. Conversion policies
 installed during native setup join the original guest budget on activation.
+The attached host can enable and sample reached engine instructions across its
+owner's realms and observe the thread's shallow collector accounting separately.
+These measurements have their own basis outside the Rust guest adapter ledger.
+Enabling instruction counts and observing the collector require current native
+qualification.
 The `Text` and `Comment` constructors and Document factories use the same
 creation and retirement boundary. The factories use the receiver Document's
 registered creation realm, including borrowed calls. `createCDATASection`

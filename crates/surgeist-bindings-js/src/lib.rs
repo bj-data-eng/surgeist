@@ -191,6 +191,20 @@ impl Process {
         }
     }
 
+    /// Begin recording this owner's reached VM instruction dispatches.
+    /// Repeated calls preserve the original interval and count. Refuses if
+    /// this owner can no longer execute.
+    pub fn enable_instruction_counting(&mut self) -> Result<(), Error> {
+        self.engine.enable_instruction_counting()
+    }
+
+    /// Read the count across this owner's realms, including its reached prefix
+    /// after terminal refusal. This query enters neither the VM nor cleanup.
+    #[must_use]
+    pub fn instruction_count(&self) -> EngineInstructionCount {
+        self.engine.instruction_count()
+    }
+
     /// Whether Rust preparation has a caller admission policy. Without one,
     /// preparation is explicitly unaccounted. Profiling remains caller-owned.
     pub fn has_preparation_admission(&self) -> bool {
@@ -225,13 +239,35 @@ impl Process {
     }
 }
 
-/// A sample of Boa's thread-local garbage collector accounting.
+/// Reached VM instruction dispatches for one execution owner.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum EngineInstructionCount {
+    /// Counting has not been enabled.
+    Disabled,
+    /// Exact dispatches since enabling, including reentry, continuations and
+    /// handlers that end abruptly. Host and native engine work is excluded.
+    Exact(u64),
+    /// The cumulative count exceeded its representation.
+    Overflowed,
+    /// The backend cannot represent its observation through this interface.
+    Unavailable,
+}
+
+/// A sample of the current thread's garbage collector across all Boa contexts
+/// and successive execution owners on that thread.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct HeapObservation {
     /// Shallow bytes in garbage-collected boxes and ephemerons, including
     /// unreachable boxes awaiting collection.
     pub used_bytes: usize,
+    /// Collection cycles entered over the thread's collector lifetime.
+    /// `None` indicates counter overflow.
+    pub collections_entered: Option<u64>,
+    /// Shallow bytes registered over the thread's collector lifetime, before
+    /// any reclamation. `None` indicates counter overflow.
+    pub cumulative_shallow_bytes: Option<u64>,
 }
 
 /// Exclusive access to an execution owner's heap.
@@ -384,8 +420,8 @@ impl Execution<'_> {
     }
 
     /// Samples the thread-local collector without running a collection.
-    /// This counts shallow collector allocations across Boa contexts on the
-    /// thread. Separate buffers and process memory are outside the sample.
+    /// Separate buffers and process memory are outside the sample. Returns a
+    /// typed error if this owner is refused or the collector cannot be observed.
     pub fn observe_heap(&mut self) -> Result<HeapObservation, Error> {
         self.engine.observe_heap()
     }
