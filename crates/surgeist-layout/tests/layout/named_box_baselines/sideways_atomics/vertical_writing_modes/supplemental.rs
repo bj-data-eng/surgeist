@@ -4,16 +4,19 @@ use super::*;
 use std::cell::RefCell;
 use surgeist_text::font::FontBaseline;
 
-const MODES: [l::WritingMode; 2] = [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr];
-fn c(mode: l::WritingMode) -> f64 {
-    if mode == l::WritingMode::VerticalRl {
+const MODES: [l::geometry::WritingMode; 2] = [
+    l::geometry::WritingMode::VerticalRl,
+    l::geometry::WritingMode::VerticalLr,
+];
+fn c(mode: l::geometry::WritingMode) -> f64 {
+    if mode == l::geometry::WritingMode::VerticalRl {
         32.0
     } else {
         2.0
     }
 }
-fn length<S: l::LayoutScalar>(value: f64) -> l::LengthOf<S> {
-    l::LengthOf::value(l::LengthPercentageOf::px(n(value)).unwrap())
+fn length<S: l::scalar::LayoutScalar>(value: f64) -> l::length::LengthOf<S> {
+    l::length::LengthOf::value(l::length::LengthPercentageOf::px(n(value)).unwrap())
 }
 fn standalone(
     parent: &Captured,
@@ -91,53 +94,58 @@ fn standalone(
     );
     line
 }
-fn paragraph_binding<S: l::LayoutScalar>(
+fn paragraph_binding<S: l::scalar::LayoutScalar>(
     host: &mut Host<S>,
     container: u32,
     parent: &Captured,
-) -> l::TextParagraphBinding<u32> {
+) -> l::text_layout::TextParagraphBinding<u32> {
     let origin = parent.prepared.origin_views().next().unwrap().handle();
     let text = host.push(
         Some(container),
-        l::LayoutInputOf::inline_text(l::TextParticipation::new(origin.clone())),
+        l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(origin.clone())),
     );
-    l::TextParagraphBinding {
-        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+    l::text_layout::TextParagraphBinding {
+        inline_box_fragments:
+            surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: parent.prepared.clone(),
         container,
         nodes: vec![text],
-        origins: vec![l::TextOriginBinding { origin, node: text }],
+        origins: vec![l::text_layout::TextOriginBinding { origin, node: text }],
         atomics: vec![],
         controls: vec![],
         line_strut: None,
     }
 }
-fn paragraph_scene<S: l::LayoutScalar>(
+fn paragraph_scene<S: l::scalar::LayoutScalar>(
     parent: &Captured,
-    mode: l::WritingMode,
-    direction: l::Direction,
+    mode: l::geometry::WritingMode,
+    direction: l::geometry::Direction,
     height: f64,
-) -> (Host<S>, l::TextParagraphBinding<u32>) {
-    let mut input = root(mode, direction, l::InlineBaselineContext::Physical);
-    input.size = l::Size::new(px(40.0), px(height));
+) -> (Host<S>, l::text_layout::TextParagraphBinding<u32>) {
+    let mut input = root(
+        mode,
+        direction,
+        l::baseline::InlineBaselineContext::Physical,
+    );
+    input.size = l::geometry::Size::new(px(40.0), px(height));
     let mut host = Host::new(input);
     let binding = paragraph_binding(&mut host, 0, parent);
     (host, binding)
 }
-fn atomic_scene<S: l::LayoutScalar>(
+fn atomic_scene<S: l::scalar::LayoutScalar>(
     parent: &Captured,
     child: &Captured,
     kind: t::source::InlineBoxKind,
-    mode: l::WritingMode,
-    direction: l::Direction,
+    mode: l::geometry::WritingMode,
+    direction: l::geometry::Direction,
     height: f64,
-) -> (Host<S>, Vec<l::TextParagraphBinding<u32>>) {
+) -> (Host<S>, Vec<l::text_layout::TextParagraphBinding<u32>>) {
     let (mut host, bindings) = scene(parent, child, kind, direction, height);
     host.change(0, |input| input.writing_mode = mode);
     (host, bindings)
 }
 
-fn directions<S: l::LayoutScalar>() {
+fn directions<S: l::scalar::LayoutScalar>() {
     let bytes = rtl_font();
     for body in [
         t::paragraph::ParagraphBaseDirection::LeftToRight,
@@ -167,11 +175,11 @@ fn directions<S: l::LayoutScalar>() {
             if rtl { vec![36, 35] } else { vec![35, 36] }
         );
         for mode in MODES {
-            for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+            for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
                 let (host, binding) = paragraph_scene::<S>(&parent, mode, direction, 10.0);
                 let batch = run(&host, vec![binding], &[], available(40.0, 10.0)).unwrap();
                 let text = placed(&batch, 0);
-                let bs = if mode == l::WritingMode::VerticalRl {
+                let bs = if mode == l::geometry::WritingMode::VerticalRl {
                     [32.0, 22.0]
                 } else {
                     [2.0, 12.0]
@@ -213,7 +221,7 @@ fn directions<S: l::LayoutScalar>() {
                 );
                 let mut receipts = std::collections::BTreeMap::new();
                 for row in batch.unrounded_inline_fragments() {
-                    if matches!(row.owner(), l::InlineFragmentOwner::Node(1)) {
+                    if matches!(row.owner(), l::text_layout::InlineFragmentOwner::Node(1)) {
                         let fragment = row.fragment();
                         let line = fragment.finalized_fragment().finalized_line();
                         assert_eq!(
@@ -223,7 +231,7 @@ fn directions<S: l::LayoutScalar>() {
                         assert_eq!(line.selected_line().request().context.base_direction, body);
                         assert_eq!(
                             line.selected_line().request().context.line_box_direction,
-                            if direction == l::Direction::Ltr {
+                            if direction == l::geometry::Direction::Ltr {
                                 t::selection::LineBoxDirection::LeftToRight
                             } else {
                                 t::selection::LineBoxDirection::RightToLeft
@@ -240,20 +248,20 @@ fn directions<S: l::LayoutScalar>() {
     }
 }
 
-fn logical_alignment<S: l::LayoutScalar>() {
+fn logical_alignment<S: l::scalar::LayoutScalar>() {
     let bytes = rtl_font();
     for rtl in [false, true] {
         let (source, body, containing) = if rtl {
             (
                 "\u{5d0}\u{5d1}",
                 t::paragraph::ParagraphBaseDirection::RightToLeft,
-                l::Direction::Ltr,
+                l::geometry::Direction::Ltr,
             )
         } else {
             (
                 "AB",
                 t::paragraph::ParagraphBaseDirection::LeftToRight,
-                l::Direction::Rtl,
+                l::geometry::Direction::Rtl,
             )
         };
         let parent = capture(
@@ -266,20 +274,20 @@ fn logical_alignment<S: l::LayoutScalar>() {
         );
         for mode in MODES {
             for (policy, line_rtl) in [
-                (l::LineBoxDirectionPolicy::Normal, !rtl),
-                (l::LineBoxDirectionPolicy::Plaintext, rtl),
+                (l::text_flow::LineBoxDirectionPolicy::Normal, !rtl),
+                (l::text_flow::LineBoxDirectionPolicy::Plaintext, rtl),
             ] {
                 for content_height in [20.0, 40.0] {
                     let border_height = content_height + 10.0;
                     for (align, from_bottom) in [
-                        (l::TextAlign::Start, line_rtl),
-                        (l::TextAlign::End, !line_rtl),
+                        (l::text_flow::TextAlign::Start, line_rtl),
+                        (l::text_flow::TextAlign::End, !line_rtl),
                     ] {
                         let (mut host, binding) =
                             paragraph_scene::<S>(&parent, mode, containing, border_height);
                         host.change(0, |input| {
-                            input.box_sizing = l::BoxSizing::BorderBox;
-                            input.padding = l::Edges {
+                            input.box_sizing = l::box_model::BoxSizing::BorderBox;
+                            input.padding = l::geometry::Edges {
                                 left: length(0.0),
                                 right: length(0.0),
                                 top: length(7.0),
@@ -287,7 +295,7 @@ fn logical_alignment<S: l::LayoutScalar>() {
                             };
                             input.line_box_direction_policy = policy;
                             input.text_align = align;
-                            input.text_align_last = l::TextAlignLast::Auto;
+                            input.text_align_last = l::text_flow::TextAlignLast::Auto;
                         });
                         let batch =
                             run(&host, vec![binding], &[], available(40.0, border_height)).unwrap();
@@ -337,7 +345,7 @@ fn vertical_logical_alignment_uses_the_line_direction_and_padded_edges() {
     logical_alignment::<f64>();
 }
 
-fn atomics<S: l::LayoutScalar>() {
+fn atomics<S: l::scalar::LayoutScalar>() {
     let bytes = rtl_font();
     let child = capture(
         AHEM,
@@ -353,30 +361,30 @@ fn atomics<S: l::LayoutScalar>() {
     let rows = [
         (
             false,
-            l::Direction::Ltr,
-            l::VerticalAlignOf::Baseline,
-            l::TextAlign::Start,
+            l::geometry::Direction::Ltr,
+            l::inline::VerticalAlignOf::Baseline,
+            l::text_flow::TextAlign::Start,
             0.0,
         ),
         (
             true,
-            l::Direction::Ltr,
-            l::VerticalAlignOf::Top,
-            l::TextAlign::Center,
+            l::geometry::Direction::Ltr,
+            l::inline::VerticalAlignOf::Top,
+            l::text_flow::TextAlign::Center,
             2.0,
         ),
         (
             false,
-            l::Direction::Rtl,
-            l::VerticalAlignOf::Bottom,
-            l::TextAlign::End,
+            l::geometry::Direction::Rtl,
+            l::inline::VerticalAlignOf::Bottom,
+            l::text_flow::TextAlign::End,
             -2.0,
         ),
         (
             true,
-            l::Direction::Rtl,
-            l::VerticalAlignOf::Baseline,
-            l::TextAlign::Start,
+            l::geometry::Direction::Rtl,
+            l::inline::VerticalAlignOf::Baseline,
+            l::text_flow::TextAlign::Start,
             0.0,
         ),
     ];
@@ -404,7 +412,7 @@ fn atomics<S: l::LayoutScalar>() {
                     atomic_scene::<S>(&parent, &child, kind, mode, direction, 40.0);
                 host.change(0, |input| {
                     input.text_align = text_align;
-                    input.text_align_last = l::TextAlignLast::Auto;
+                    input.text_align_last = l::text_flow::TextAlignLast::Auto;
                 });
                 host.change(2, |input| input.vertical_align = alignment);
                 let batch = run(&host, bindings, &[], available(40.0, 40.0)).unwrap();
@@ -414,12 +422,14 @@ fn atomics<S: l::LayoutScalar>() {
                     20.0
                 };
                 let shift = match text_align {
-                    l::TextAlign::Center => (40.0 - advance) / 2.0,
-                    l::TextAlign::Start if direction == l::Direction::Rtl => 40.0 - advance,
+                    l::text_flow::TextAlign::Center => (40.0 - advance) / 2.0,
+                    l::text_flow::TextAlign::Start if direction == l::geometry::Direction::Rtl => {
+                        40.0 - advance
+                    }
                     _ => 0.0,
                 };
                 let x = if kind == t::source::InlineBoxKind::OutOfFlow {
-                    if mode == l::WritingMode::VerticalRl {
+                    if mode == l::geometry::WritingMode::VerticalRl {
                         34.0
                     } else {
                         0.0
@@ -432,7 +442,7 @@ fn atomics<S: l::LayoutScalar>() {
                 // physical child starts one child-height before its static slot.
                 let box_y = shift + 10.0
                     - if kind == t::source::InlineBoxKind::OutOfFlow
-                        && direction == l::Direction::Rtl
+                        && direction == l::geometry::Direction::Rtl
                     {
                         14.0
                     } else {
@@ -500,7 +510,7 @@ fn atomics<S: l::LayoutScalar>() {
     }
 }
 
-fn constraints<S: l::LayoutScalar>() {
+fn constraints<S: l::scalar::LayoutScalar>() {
     let parent = capture(
         AHEM,
         "AB",
@@ -512,43 +522,63 @@ fn constraints<S: l::LayoutScalar>() {
     standalone(&parent, None);
     for mode in MODES {
         for (inline, width, height, columns) in [
-            (surgeist_layout::SizingOperation::MinContent, 20.0, 10.0, 2),
-            (surgeist_layout::SizingOperation::MaxContent, 10.0, 20.0, 1),
+            (
+                surgeist_layout::constraint::SizingOperation::MinContent,
+                20.0,
+                10.0,
+                2,
+            ),
+            (
+                surgeist_layout::constraint::SizingOperation::MaxContent,
+                10.0,
+                20.0,
+                1,
+            ),
         ] {
-            let (mut host, binding) = paragraph_scene::<S>(&parent, mode, l::Direction::Ltr, 40.0);
+            let (mut host, binding) =
+                paragraph_scene::<S>(&parent, mode, l::geometry::Direction::Ltr, 40.0);
             host.change(0, |input| {
-                input.size = l::Size::new(l::PreferredSizeOf::AUTO, l::PreferredSizeOf::AUTO)
+                input.size = l::geometry::Size::new(
+                    l::sizing::PreferredSizeOf::AUTO,
+                    l::sizing::PreferredSizeOf::AUTO,
+                )
             });
             let batch = run(
                 &host,
                 vec![binding],
                 &[],
                 crate::layout::native_request::sizing(
-                    surgeist_layout::Size::new(None, None),
-                    surgeist_layout::Size::new(surgeist_layout::SizingOperation::Normal, inline),
+                    surgeist_layout::geometry::Size::new(None, None),
+                    surgeist_layout::geometry::Size::new(
+                        surgeist_layout::constraint::SizingOperation::Normal,
+                        inline,
+                    ),
                 ),
             )
             .unwrap();
             assert_eq!(
                 node(crate::layout::observation::phase(&batch, false), 0).size,
-                l::Size::new(n(width), n(height))
+                l::geometry::Size::new(n(width), n(height))
             );
             assert_eq!(placed(&batch, 0).lines().len(), columns);
             unknown(node(crate::layout::observation::phase(&batch, false), 0).named_baselines);
         }
         // Finite block space anchors an actual AUTO20-wide Vrl root at x20,
         // while the Vlr root starts at x0. No provisional frame is fabricated.
-        let (mut host, binding) = paragraph_scene::<S>(&parent, mode, l::Direction::Ltr, 10.0);
-        host.change(0, |input| input.size.width = l::PreferredSizeOf::AUTO);
+        let (mut host, binding) =
+            paragraph_scene::<S>(&parent, mode, l::geometry::Direction::Ltr, 10.0);
+        host.change(0, |input| {
+            input.size.width = l::sizing::PreferredSizeOf::AUTO
+        });
         let batch = run(&host, vec![binding], &[], available(40.0, 10.0)).unwrap();
         assert_eq!(
             node(crate::layout::observation::phase(&batch, false), 0).size,
-            l::Size::new(n(20.0), n(10.0))
+            l::geometry::Size::new(n(20.0), n(10.0))
         );
         assert_eq!(
             node(crate::layout::observation::phase(&batch, false), 0).location,
-            l::Point::new(
-                n(if mode == l::WritingMode::VerticalRl {
+            l::geometry::Point::new(
+                n(if mode == l::geometry::WritingMode::VerticalRl {
                     20.0
                 } else {
                     0.0
@@ -562,7 +592,7 @@ fn constraints<S: l::LayoutScalar>() {
                 .iter()
                 .map(|line| line.baseline())
                 .collect::<Vec<_>>(),
-            if mode == l::WritingMode::VerticalRl {
+            if mode == l::geometry::WritingMode::VerticalRl {
                 vec![32.0, 22.0]
             } else {
                 vec![2.0, 12.0]
@@ -571,7 +601,7 @@ fn constraints<S: l::LayoutScalar>() {
     }
 }
 
-fn completion<S: l::LayoutScalar>() {
+fn completion<S: l::scalar::LayoutScalar>() {
     let child = capture(
         AHEM,
         "A",
@@ -599,24 +629,32 @@ fn completion<S: l::LayoutScalar>() {
             kind == t::source::InlineBoxKind::InFlow
         );
         for mode in MODES {
-            let mut input = root(mode, l::Direction::Ltr, l::InlineBaselineContext::Physical);
-            input.size = l::Size::new(px(40.0), px(40.0));
+            let mut input = root(
+                mode,
+                l::geometry::Direction::Ltr,
+                l::baseline::InlineBaselineContext::Physical,
+            );
+            input.size = l::geometry::Size::new(px(40.0), px(40.0));
             let mut host = Host::<S>::new(input);
-            host.push(Some(0), l::LayoutInputOf::box_input(child_input(kind)));
+            host.push(
+                Some(0),
+                l::node::LayoutInputOf::box_input(child_input(kind)),
+            );
             let inner = child_binding(&child, 1, 2);
             host.push(
                 Some(1),
-                l::LayoutInputOf::inline_text(l::TextParticipation::new(
+                l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
                     inner.origins[0].origin.clone(),
                 )),
             );
-            let outer = l::TextParagraphBinding {
-                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+            let outer = l::text_layout::TextParagraphBinding {
+                inline_box_fragments:
+                    surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared: parent.prepared.clone(),
                 container: 0,
                 nodes: vec![1],
                 origins: vec![],
-                atomics: vec![l::TextAtomicBinding {
+                atomics: vec![l::text_layout::TextAtomicBinding {
                     occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
                     node: 1,
                 }],
@@ -627,14 +665,14 @@ fn completion<S: l::LayoutScalar>() {
             let text = placed(&batch, 0);
             let x = if kind == t::source::InlineBoxKind::InFlow {
                 c(mode)
-            } else if mode == l::WritingMode::VerticalRl {
+            } else if mode == l::geometry::WritingMode::VerticalRl {
                 34.0
             } else {
                 0.0
             };
             assert_eq!(
                 node(crate::layout::observation::phase(&batch, false), 1).location,
-                l::Point::new(n(x), n(0.0))
+                l::geometry::Point::new(n(x), n(0.0))
             );
             if kind == t::source::InlineBoxKind::InFlow {
                 assert_eq!(text.lines().len(), 1);
@@ -650,7 +688,7 @@ fn completion<S: l::LayoutScalar>() {
                 assert_eq!(
                     actual.origin,
                     t::geometry::Point::new(
-                        if mode == l::WritingMode::VerticalRl {
+                        if mode == l::geometry::WritingMode::VerticalRl {
                             40.0
                         } else {
                             0.0
@@ -669,28 +707,32 @@ fn completion<S: l::LayoutScalar>() {
     }
 }
 
-fn wrapped<S: l::LayoutScalar>(
+fn wrapped<S: l::scalar::LayoutScalar>(
     parent: &Captured,
     child: &Captured,
     kind: t::source::InlineBoxKind,
-    mode: l::WritingMode,
-) -> (Host<S>, Vec<l::TextParagraphBinding<u32>>) {
+    mode: l::geometry::WritingMode,
+) -> (Host<S>, Vec<l::text_layout::TextParagraphBinding<u32>>) {
     let mut input = root(
-        l::WritingMode::HorizontalTb,
-        l::Direction::Ltr,
-        l::InlineBaselineContext::Physical,
+        l::geometry::WritingMode::HorizontalTb,
+        l::geometry::Direction::Ltr,
+        l::baseline::InlineBaselineContext::Physical,
     );
-    input.size = l::Size::new(px(100.0), px(100.0));
+    input.size = l::geometry::Size::new(px(100.0), px(100.0));
     input.padding.left = length(7.25);
     input.padding.top = length(9.5);
     let mut host = Host::new(input);
-    let mut paragraph = root(mode, l::Direction::Ltr, l::InlineBaselineContext::Physical);
-    paragraph.size = l::Size::new(px(40.0), px(40.0));
-    let container = host.push(Some(0), l::LayoutInputOf::box_input(paragraph));
+    let mut paragraph = root(
+        mode,
+        l::geometry::Direction::Ltr,
+        l::baseline::InlineBaselineContext::Physical,
+    );
+    paragraph.size = l::geometry::Size::new(px(40.0), px(40.0));
+    let container = host.push(Some(0), l::node::LayoutInputOf::box_input(paragraph));
     let bindings = attach(&mut host, container, parent, child, kind);
     (host, bindings)
 }
-fn replay<S: l::LayoutScalar>() {
+fn replay<S: l::scalar::LayoutScalar>() {
     let child = capture(
         AHEM,
         "A",
@@ -718,9 +760,9 @@ fn replay<S: l::LayoutScalar>() {
             let old = run(&host, bindings.clone(), &[], available(100.0, 100.0)).unwrap();
             assert_eq!(
                 node(crate::layout::observation::phase(&old, false), 1).location,
-                l::Point::new(n(7.25), n(9.5))
+                l::geometry::Point::new(n(7.25), n(9.5))
             );
-            let (baseline, x) = if mode == l::WritingMode::VerticalRl {
+            let (baseline, x) = if mode == l::geometry::WritingMode::VerticalRl {
                 (
                     39.0,
                     if kind == t::source::InlineBoxKind::InFlow {
@@ -772,9 +814,11 @@ fn replay<S: l::LayoutScalar>() {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -784,9 +828,11 @@ fn replay<S: l::LayoutScalar>() {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -871,7 +917,7 @@ fn forced_line(
         })
         .unwrap()
 }
-fn forced<S: l::LayoutScalar>() {
+fn forced<S: l::scalar::LayoutScalar>() {
     let parent = capture(
         AHEM,
         "A\nB",
@@ -929,7 +975,8 @@ fn forced<S: l::LayoutScalar>() {
     assert_eq!(reference.source(), &parent.source);
     assert_eq!(reference.lines().len(), 2);
     for mode in MODES {
-        let (host, binding) = paragraph_scene::<S>(&parent, mode, l::Direction::Ltr, 40.0);
+        let (host, binding) =
+            paragraph_scene::<S>(&parent, mode, l::geometry::Direction::Ltr, 40.0);
         let batch = run(&host, vec![binding], &[], available(40.0, 40.0)).unwrap();
         let text = placed(&batch, 0);
         assert_eq!(
@@ -944,7 +991,7 @@ fn forced<S: l::LayoutScalar>() {
                 .iter()
                 .map(|line| line.baseline())
                 .collect::<Vec<_>>(),
-            if mode == l::WritingMode::VerticalRl {
+            if mode == l::geometry::WritingMode::VerticalRl {
                 vec![32.0, 22.0]
             } else {
                 vec![2.0, 12.0]
@@ -962,14 +1009,14 @@ fn forced<S: l::LayoutScalar>() {
 enum Refusal {
     LaterBand,
 }
-struct ShapeHost<S: l::LayoutScalar> {
+struct ShapeHost<S: l::scalar::LayoutScalar> {
     inner: Host<S>,
-    mode: l::WritingMode,
+    mode: l::geometry::WritingMode,
     capacity: f64,
     refuse: Cell<bool>,
-    queries: RefCell<Vec<(l::FloatExclusionQueryOf<S>, bool)>>,
+    queries: RefCell<Vec<(l::box_model::FloatExclusionQueryOf<S>, bool)>>,
 }
-impl<S: l::LayoutScalar> l::Traverse for ShapeHost<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for ShapeHost<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -977,54 +1024,54 @@ impl<S: l::LayoutScalar> l::Traverse for ShapeHost<S> {
     where
         Self: 'a;
     fn children(&self, node: u32) -> Self::Children<'_> {
-        l::Traverse::children(&self.inner, node)
+        l::tree::Traverse::children(&self.inner, node)
     }
     fn child_count(&self, node: u32) -> usize {
-        l::Traverse::child_count(&self.inner, node)
+        l::tree::Traverse::child_count(&self.inner, node)
     }
     fn child(&self, node: u32, index: usize) -> u32 {
-        l::Traverse::child(&self.inner, node, index)
+        l::tree::Traverse::child(&self.inner, node, index)
     }
 }
-impl<S: l::LayoutScalar> l::LayoutTree for ShapeHost<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for ShapeHost<S> {
     type MeasureError = Refusal;
-    fn node_input(&self, node: u32) -> &l::NodeInputOf<S> {
-        l::LayoutTree::node_input(&self.inner, node)
+    fn node_input(&self, node: u32) -> &l::node::NodeInputOf<S> {
+        l::tree::LayoutTree::node_input(&self.inner, node)
     }
-    fn layout_input(&self, node: u32) -> l::LayoutInputViewOf<'_, S> {
-        l::LayoutTree::layout_input(&self.inner, node)
+    fn layout_input(&self, node: u32) -> l::node::LayoutInputViewOf<'_, S> {
+        l::tree::LayoutTree::layout_input(&self.inner, node)
     }
     fn cache_get(
         &self,
         node: u32,
-        input: &l::ComputeInputOf<S>,
-        context: l::CacheKeyContext,
-    ) -> Option<l::ComputeOutputOf<S>> {
-        l::LayoutTree::cache_get(&self.inner, node, input, context)
+        input: &l::cache::ComputeInputOf<S>,
+        context: l::cache::CacheKeyContext,
+    ) -> Option<l::cache::ComputeOutputOf<S>> {
+        l::tree::LayoutTree::cache_get(&self.inner, node, input, context)
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
-        l::LayoutTree::unrounded_layout(&self.inner, node)
+    fn unrounded_layout(&self, node: u32) -> Option<l::batch::LayoutOutputEntryOf<u32, S>> {
+        l::tree::LayoutTree::unrounded_layout(&self.inner, node)
     }
     fn float_exclusion_interval(
         &self,
         node: u32,
-        query: l::FloatExclusionQueryOf<S>,
-    ) -> Option<Result<Option<l::FloatExclusionIntervalOf<S>>, Refusal>> {
+        query: l::box_model::FloatExclusionQueryOf<S>,
+    ) -> Option<Result<Option<l::box_model::FloatExclusionIntervalOf<S>>, Refusal>> {
         if node != 1 {
             return None;
         }
         assert_eq!(
             query.flow_axes(),
-            l::FlowAxes::new(self.mode, l::Direction::Ltr)
+            l::geometry::FlowAxes::new(self.mode, l::geometry::Direction::Ltr)
         );
-        assert_eq!(query.margin_box().origin(), l::Point::ZERO);
+        assert_eq!(query.margin_box().origin(), l::geometry::Point::ZERO);
         assert_eq!(
             query.margin_box().size(),
-            l::Size::new(n(40.0), n(self.capacity))
+            l::geometry::Size::new(n(40.0), n(self.capacity))
         );
         let nonempty = query.band_minimum() < query.band_maximum();
         let later = nonempty
-            && if self.mode == l::WritingMode::VerticalRl {
+            && if self.mode == l::geometry::WritingMode::VerticalRl {
                 query.band_maximum() <= n(30.0)
             } else {
                 query.band_minimum() >= n(10.0)
@@ -1040,17 +1087,18 @@ impl<S: l::LayoutScalar> l::LayoutTree for ShapeHost<S> {
         })
     }
 }
-impl<S: l::LayoutScalar> ShapeHost<S> {
+impl<S: l::scalar::LayoutScalar> ShapeHost<S> {
     fn compute(
         &self,
-        bindings: &[l::TextParagraphBinding<u32>],
+        bindings: &[l::text_layout::TextParagraphBinding<u32>],
         changed: &[u32],
-    ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S, Refusal>> {
-        let flow = l::LayoutFlowInput::try_new(
+    ) -> Result<l::batch::CompletedLayoutBatchOf<u32, S>, l::error::LayoutErrorOf<u32, S, Refusal>>
+    {
+        let flow = l::text_layout::LayoutFlowInput::try_new(
             self,
             0,
             bindings.to_vec(),
-            l::WrappingInput::default(),
+            l::inline_wrapping::WrappingInput::default(),
             Vec::new(),
         )
         .unwrap();
@@ -1059,11 +1107,11 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
             0,
             {
                 let sizing_request = available(40.0, self.capacity);
-                l::LayoutRootRequestOf::standalone(
+                l::request::LayoutRootRequestOf::standalone(
                     sizing_request,
-                    surgeist_layout::FlowAxes::new(
-                        surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
-                        surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                    surgeist_layout::geometry::FlowAxes::new(
+                        surgeist_layout::tree::LayoutTree::node_input(self, 0).writing_mode,
+                        surgeist_layout::tree::LayoutTree::node_input(self, 0).direction,
                     ),
                     sizing_request
                         .orthogonal_fallback()
@@ -1074,30 +1122,34 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
         )
     }
 }
-fn shape_scene<S: l::LayoutScalar>(
+fn shape_scene<S: l::scalar::LayoutScalar>(
     parent: &Captured,
     child: &Captured,
     kind: t::source::InlineBoxKind,
-    mode: l::WritingMode,
-) -> (ShapeHost<S>, Vec<l::TextParagraphBinding<u32>>) {
+    mode: l::geometry::WritingMode,
+) -> (ShapeHost<S>, Vec<l::text_layout::TextParagraphBinding<u32>>) {
     let capacity = if kind == t::source::InlineBoxKind::InFlow {
         24.0
     } else {
         10.0
     };
-    let mut input = root(mode, l::Direction::Ltr, l::InlineBaselineContext::Physical);
-    input.size = l::Size::new(px(40.0), px(capacity));
+    let mut input = root(
+        mode,
+        l::geometry::Direction::Ltr,
+        l::baseline::InlineBaselineContext::Physical,
+    );
+    input.size = l::geometry::Size::new(px(40.0), px(capacity));
     let mut inner = Host::<S>::new(input);
     assert_eq!(
         inner.push(
             Some(0),
-            l::LayoutInputOf::box_input(l::NodeInputOf {
-                display: l::Display::Block,
+            l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+                display: l::box_model::Display::Block,
                 writing_mode: mode,
-                float: l::Float::Left,
-                float_exclusion: l::FloatExclusion::Shape,
-                size: l::Size::new(px(40.0), px(capacity)),
-                ..l::NodeInputOf::default()
+                float: l::box_model::Float::Left,
+                float_exclusion: l::box_model::FloatExclusion::Shape,
+                size: l::geometry::Size::new(px(40.0), px(capacity)),
+                ..l::node::NodeInputOf::default()
             })
         ),
         1
@@ -1115,9 +1167,9 @@ fn shape_scene<S: l::LayoutScalar>(
         bindings,
     )
 }
-fn same_text<S: l::LayoutScalar>(
-    a: &l::CompletedLayoutBatchOf<u32, S>,
-    b: &l::CompletedLayoutBatchOf<u32, S>,
+fn same_text<S: l::scalar::LayoutScalar>(
+    a: &l::batch::CompletedLayoutBatchOf<u32, S>,
+    b: &l::batch::CompletedLayoutBatchOf<u32, S>,
 ) {
     assert_eq!(a.placed_text().len(), b.placed_text().len());
     for row in a.placed_text() {
@@ -1137,7 +1189,7 @@ fn same_text<S: l::LayoutScalar>(
         assert_eq!(positions(row.layout()), positions(actual));
     }
 }
-fn late_refusal<S: l::LayoutScalar>() {
+fn late_refusal<S: l::scalar::LayoutScalar>() {
     let child = capture(
         AHEM,
         "A",
@@ -1182,30 +1234,33 @@ fn late_refusal<S: l::LayoutScalar>() {
             host.queries.borrow_mut().clear();
             host.refuse.set(true);
             let error = host.compute(&bindings, &[0, 1]).unwrap_err();
-            assert_eq!(error.operation(), l::LayoutOperation::FloatExclusionQuery);
+            assert_eq!(
+                error.operation(),
+                l::error::LayoutOperation::FloatExclusionQuery
+            );
             assert_eq!(
                 error.site(),
-                l::LayoutErrorSiteOf::ContainerSubject {
+                l::error::LayoutErrorSiteOf::ContainerSubject {
                     container: 0,
                     subject: 1
                 }
             );
             assert!(matches!(
                 error.kind(),
-                l::LayoutErrorKindOf::Measurement(Refusal::LaterBand)
+                l::error::LayoutErrorKindOf::Measurement(Refusal::LaterBand)
             ));
             let queries = host.queries.borrow();
             let failed = queries.iter().position(|(_, fail)| *fail).unwrap();
             let q = &queries[failed].0;
             assert!(q.band_minimum() < q.band_maximum());
-            assert!(if mode == l::WritingMode::VerticalRl {
+            assert!(if mode == l::geometry::WritingMode::VerticalRl {
                 q.band_maximum() <= n(30.0)
             } else {
                 q.band_minimum() >= n(10.0)
             });
             assert!(queries[..failed].iter().any(|(q, fail)| !*fail
                 && q.band_minimum() < q.band_maximum()
-                && if mode == l::WritingMode::VerticalRl {
+                && if mode == l::geometry::WritingMode::VerticalRl {
                     q.band_maximum() > n(30.0)
                 } else {
                     q.band_minimum() < n(10.0)
@@ -1220,11 +1275,11 @@ fn late_refusal<S: l::LayoutScalar>() {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
                                 view.unrounded_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
                                 view.unrounded_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -1234,11 +1289,11 @@ fn late_refusal<S: l::LayoutScalar>() {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
                                 view.unrounded_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
                                 view.unrounded_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -1250,9 +1305,11 @@ fn late_refusal<S: l::LayoutScalar>() {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -1262,9 +1319,11 @@ fn late_refusal<S: l::LayoutScalar>() {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -1299,11 +1358,12 @@ fn late_refusal<S: l::LayoutScalar>() {
                         .map(|(node, view)| (
                             node,
                             match view {
-                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(
+                                    view,
+                                ) => view.final_entry(),
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
                                     view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
-                                    view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))
@@ -1313,11 +1373,12 @@ fn late_refusal<S: l::LayoutScalar>() {
                         .map(|(node, view)| (
                             node,
                             match view {
-                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(
+                                    view,
+                                ) => view.final_entry(),
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
                                     view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
-                                    view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))
@@ -1365,7 +1426,7 @@ fn clockwise_vertical_later_provider_refusal_preserves_all_applied_channels() {
     late_refusal::<f64>();
 }
 
-fn guards<S: l::LayoutScalar>() {
+fn guards<S: l::scalar::LayoutScalar>() {
     let cw = capture(
         AHEM,
         "AB",
@@ -1377,15 +1438,18 @@ fn guards<S: l::LayoutScalar>() {
     standalone(&cw, None);
     for mode in MODES {
         for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
-            let (mut host, binding) = paragraph_scene::<S>(&cw, mode, l::Direction::Ltr, 40.0);
+            let (mut host, binding) =
+                paragraph_scene::<S>(&cw, mode, l::geometry::Direction::Ltr, 40.0);
             host.change(0, |input| {
-                input.inline_baseline_context = l::InlineBaselineContext::Named(name)
+                input.inline_baseline_context = l::baseline::InlineBaselineContext::Named(name)
             });
             let error = run(&host, vec![binding], &[], available(40.0, 40.0)).unwrap_err();
-            assert_eq!(error.operation(), l::LayoutOperation::TextCapture);
+            assert_eq!(error.operation(), l::error::LayoutOperation::TextCapture);
             assert!(matches!(
                 error.kind(),
-                l::LayoutErrorKindOf::MissingContext(l::LayoutMissingContext::NamedInlineBaseline)
+                l::error::LayoutErrorKindOf::MissingContext(
+                    l::error::LayoutMissingContext::NamedInlineBaseline
+                )
             ));
         }
     }
@@ -1398,15 +1462,15 @@ fn guards<S: l::LayoutScalar>() {
         10.0,
     );
     for (parent, mode, unsupported) in [
-        (&horizontal, l::WritingMode::VerticalRl, true),
-        (&horizontal, l::WritingMode::VerticalLr, true),
-        (&cw, l::WritingMode::HorizontalTb, false),
-        (&horizontal, l::WritingMode::SidewaysRl, false),
+        (&horizontal, l::geometry::WritingMode::VerticalRl, true),
+        (&horizontal, l::geometry::WritingMode::VerticalLr, true),
+        (&cw, l::geometry::WritingMode::HorizontalTb, false),
+        (&horizontal, l::geometry::WritingMode::SidewaysRl, false),
     ] {
-        let (host, binding) = paragraph_scene::<S>(parent, mode, l::Direction::Ltr, 40.0);
+        let (host, binding) = paragraph_scene::<S>(parent, mode, l::geometry::Direction::Ltr, 40.0);
         let error = run(&host, vec![binding], &[], available(40.0, 40.0)).unwrap_err();
-        assert_eq!(error.operation(), l::LayoutOperation::TextSelection);
-        let l::LayoutErrorKindOf::Text(text) = error.kind() else {
+        assert_eq!(error.operation(), l::error::LayoutOperation::TextSelection);
+        let l::error::LayoutErrorKindOf::Text(text) = error.kind() else {
             panic!("expected actual orientation diagnostic: {error:?}")
         };
         let reason = if unsupported {
@@ -1423,14 +1487,20 @@ fn guards<S: l::LayoutScalar>() {
             Some(&t::ErrorDetail::InvalidTextProtocol { reason })
         );
     }
-    let (host, binding) =
-        paragraph_scene::<S>(&cw, l::WritingMode::SidewaysLr, l::Direction::Ltr, 40.0);
+    let (host, binding) = paragraph_scene::<S>(
+        &cw,
+        l::geometry::WritingMode::SidewaysLr,
+        l::geometry::Direction::Ltr,
+        40.0,
+    );
     let error = run(&host, vec![binding], &[], available(40.0, 40.0)).unwrap_err();
-    assert_eq!(error.operation(), l::LayoutOperation::TextCapture);
+    assert_eq!(error.operation(), l::error::LayoutOperation::TextCapture);
     assert!(matches!(
         error.kind(),
-        l::LayoutErrorKindOf::UnsupportedCapability(
-            l::LayoutUnsupportedCapability::TextWritingMode(l::WritingMode::SidewaysLr)
+        l::error::LayoutErrorKindOf::UnsupportedCapability(
+            l::error::LayoutUnsupportedCapability::TextWritingMode(
+                l::geometry::WritingMode::SidewaysLr
+            )
         )
     ));
 }

@@ -52,11 +52,11 @@ mod sideways_rl;
 mod sideways_atomics;
 
 struct Tree {
-    inputs: [layout::LayoutInput; 2],
-    non_box: layout::NodeInput,
+    inputs: [layout::node::LayoutInput; 2],
+    non_box: layout::node::NodeInput,
 }
 
-impl layout::Traverse for Tree {
+impl layout::tree::Traverse for Tree {
     type Node = usize;
     type Scalar = f32;
     type Children<'a> = std::iter::Copied<std::slice::Iter<'a, usize>>;
@@ -75,17 +75,17 @@ impl layout::Traverse for Tree {
     }
 }
 
-impl layout::LayoutTree for Tree {
+impl layout::tree::LayoutTree for Tree {
     type MeasureError = Infallible;
 
-    fn node_input(&self, node: usize) -> &layout::NodeInput {
+    fn node_input(&self, node: usize) -> &layout::node::NodeInput {
         self.inputs[node]
             .as_view()
             .as_box()
             .unwrap_or(&self.non_box)
     }
 
-    fn layout_input(&self, node: usize) -> layout::LayoutInputView<'_> {
+    fn layout_input(&self, node: usize) -> layout::node::LayoutInputView<'_> {
         self.inputs[node].as_view()
     }
 }
@@ -194,27 +194,31 @@ fn assert_css_tab_composition(tab_size: text::tabs::TabSize, block_spacing: f64,
     let origin = prepared.origin_views().next().unwrap().handle();
     let tree = Tree {
         inputs: [
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
-                size: layout::Size::new(
-                    layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(100.0).unwrap()),
-                    layout::PreferredSizeOf::AUTO,
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                size: layout::geometry::Size::new(
+                    layout::sizing::PreferredSizeOf::value(
+                        layout::length::LengthPercentageOf::px(100.0).unwrap(),
+                    ),
+                    layout::sizing::PreferredSizeOf::AUTO,
                 ),
-                ..layout::NodeInput::DEFAULT
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(origin.clone())),
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
+                origin.clone(),
+            )),
         ],
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let capture = layout::LayoutFlowInput::try_new(
+    let capture = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
-        vec![layout::TextParagraphBinding {
-            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+        vec![layout::text_layout::TextParagraphBinding {
+            inline_box_fragments: layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1],
-            origins: vec![layout::TextOriginBinding {
+            origins: vec![layout::text_layout::TextOriginBinding {
                 origin: origin.clone(),
                 node: 1,
             }],
@@ -222,7 +226,7 @@ fn assert_css_tab_composition(tab_size: text::tabs::TabSize, block_spacing: f64,
             controls: vec![],
             line_strut: None,
         }],
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -235,12 +239,15 @@ fn assert_css_tab_composition(tab_size: text::tabs::TabSize, block_spacing: f64,
         &capture,
         0,
         NativeViewport::new(
-            layout::Size::new(Some(100.0), None),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::geometry::Size::new(Some(100.0), None),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
         )
-        .request(layout::Size::new(
-            layout::SizingOperation::Normal,
-            layout::SizingOperation::Normal,
+        .request(layout::geometry::Size::new(
+            layout::constraint::SizingOperation::Normal,
+            layout::constraint::SizingOperation::Normal,
         )),
     )
     .unwrap();
@@ -433,42 +440,44 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
     let origin = prepared.origin_views().next().unwrap().handle();
     let tree = Tree {
         inputs: [
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
                 text_align: if expanded {
-                    layout::TextAlign::Justify
+                    layout::text_flow::TextAlign::Justify
                 } else {
-                    layout::TextAlign::Start
+                    layout::text_flow::TextAlign::Start
                 },
                 text_justification: if expanded {
-                    layout::TextJustification::Spaces
+                    layout::text_flow::TextJustification::Spaces
                 } else {
-                    layout::TextJustification::None
+                    layout::text_flow::TextJustification::None
                 },
-                text_indent: layout::TextIndent {
-                    amount: layout::LengthPercentageOf::px(indent).unwrap(),
-                    ..layout::TextIndent::ZERO
+                text_indent: layout::text_flow::TextIndent {
+                    amount: layout::length::LengthPercentageOf::px(indent).unwrap(),
+                    ..layout::text_flow::TextIndent::ZERO
                 },
-                ..layout::NodeInput::DEFAULT
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(origin.clone())),
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
+                origin.clone(),
+            )),
         ],
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let capture = layout::LayoutFlowInput::try_new(
+    let capture = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
-        vec![layout::TextParagraphBinding {
-            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+        vec![layout::text_layout::TextParagraphBinding {
+            inline_box_fragments: layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1],
-            origins: vec![layout::TextOriginBinding { origin, node: 1 }],
+            origins: vec![layout::text_layout::TextOriginBinding { origin, node: 1 }],
             atomics: vec![],
             controls: vec![],
             line_strut: None,
         }],
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -478,12 +487,15 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
     )
     .unwrap();
     let request = NativeViewport::new(
-        layout::Size::new(Some(if expanded { 65.0 } else { 45.0 }), None),
-        layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        layout::geometry::Size::new(Some(if expanded { 65.0 } else { 45.0 }), None),
+        layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
+            layout::geometry::Direction::Ltr,
+        ),
     )
-    .request(layout::Size::new(
-        layout::SizingOperation::Normal,
-        layout::SizingOperation::Normal,
+    .request(layout::geometry::Size::new(
+        layout::constraint::SizingOperation::Normal,
+        layout::constraint::SizingOperation::Normal,
     ));
     let batch = layout::compute_layout_with_flow(&capture, 0, request).unwrap();
     assert_eq!(batch.placed_text().len(), 1);
@@ -773,27 +785,31 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
     );
     let tree = Tree {
         inputs: [
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
-                size: layout::Size::new(
-                    layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(40.0).unwrap()),
-                    layout::PreferredSizeOf::AUTO,
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                size: layout::geometry::Size::new(
+                    layout::sizing::PreferredSizeOf::value(
+                        layout::length::LengthPercentageOf::px(40.0).unwrap(),
+                    ),
+                    layout::sizing::PreferredSizeOf::AUTO,
                 ),
-                ..layout::NodeInput::DEFAULT
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(origin.clone())),
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
+                origin.clone(),
+            )),
         ],
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let capture = layout::LayoutFlowInput::try_new(
+    let capture = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
-        vec![layout::TextParagraphBinding {
-            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+        vec![layout::text_layout::TextParagraphBinding {
+            inline_box_fragments: layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1],
-            origins: vec![layout::TextOriginBinding {
+            origins: vec![layout::text_layout::TextOriginBinding {
                 origin: origin.clone(),
                 node: 1,
             }],
@@ -801,7 +817,7 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             controls: vec![],
             line_strut: None,
         }],
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -814,12 +830,15 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
         &capture,
         0,
         NativeViewport::new(
-            layout::Size::new(Some(40.0), None),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::geometry::Size::new(Some(40.0), None),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
         )
-        .request(layout::Size::new(
-            layout::SizingOperation::Normal,
-            layout::SizingOperation::Normal,
+        .request(layout::geometry::Size::new(
+            layout::constraint::SizingOperation::Normal,
+            layout::constraint::SizingOperation::Normal,
         )),
     )
     .unwrap();
@@ -1114,9 +1133,9 @@ mod kana_transform {
         system: &mut text::System,
         enabled: bool,
         authored_width: Option<f32>,
-        request: layout::LayoutRootRequest,
+        request: layout::request::LayoutRootRequest,
     ) -> (
-        layout::CompletedLayoutBatch<usize>,
+        layout::batch::CompletedLayoutBatch<usize>,
         text::prepared::PreparedOrigin,
         text::source::Source,
     ) {
@@ -1198,32 +1217,35 @@ mod kana_transform {
 
         let tree = Tree {
             inputs: [
-                layout::LayoutInput::box_input(layout::NodeInput {
-                    display: layout::Display::Block,
-                    size: layout::Size::new(
+                layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                    display: layout::box_model::Display::Block,
+                    size: layout::geometry::Size::new(
                         match authored_width {
-                            Some(width) => layout::PreferredSizeOf::value(
-                                layout::LengthPercentageOf::px(width).unwrap(),
+                            Some(width) => layout::sizing::PreferredSizeOf::value(
+                                layout::length::LengthPercentageOf::px(width).unwrap(),
                             ),
-                            None => layout::PreferredSizeOf::AUTO,
+                            None => layout::sizing::PreferredSizeOf::AUTO,
                         },
-                        layout::PreferredSizeOf::AUTO,
+                        layout::sizing::PreferredSizeOf::AUTO,
                     ),
-                    ..layout::NodeInput::DEFAULT
+                    ..layout::node::NodeInput::DEFAULT
                 }),
-                layout::LayoutInput::InlineText(layout::TextParticipation::new(origin.clone())),
+                layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
+                    origin.clone(),
+                )),
             ],
-            non_box: layout::NodeInput::non_box(),
+            non_box: layout::node::NodeInput::non_box(),
         };
-        let capture = layout::LayoutFlowInput::try_new(
+        let capture = layout::text_layout::LayoutFlowInput::try_new(
             &tree,
             0,
-            vec![layout::TextParagraphBinding {
-                inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+            vec![layout::text_layout::TextParagraphBinding {
+                inline_box_fragments:
+                    layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: 0,
                 nodes: vec![1],
-                origins: vec![layout::TextOriginBinding {
+                origins: vec![layout::text_layout::TextOriginBinding {
                     origin: origin.clone(),
                     node: 1,
                 }],
@@ -1231,7 +1253,7 @@ mod kana_transform {
                 controls: vec![],
                 line_strut: None,
             }],
-            surgeist_layout::WrappingInput {
+            surgeist_layout::inline_wrapping::WrappingInput {
                 native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
@@ -1260,15 +1282,15 @@ mod kana_transform {
                 enabled,
                 Some(if enabled { 25.0 } else { 40.0 }),
                 NativeViewport::new(
-                    layout::Size::new(Some(if enabled { 25.0 } else { 40.0 }), None),
-                    layout::FlowAxes::new(
-                        layout::WritingMode::HorizontalTb,
-                        layout::Direction::Ltr,
+                    layout::geometry::Size::new(Some(if enabled { 25.0 } else { 40.0 }), None),
+                    layout::geometry::FlowAxes::new(
+                        layout::geometry::WritingMode::HorizontalTb,
+                        layout::geometry::Direction::Ltr,
                     ),
                 )
-                .request(layout::Size::new(
-                    layout::SizingOperation::Normal,
-                    layout::SizingOperation::Normal,
+                .request(layout::geometry::Size::new(
+                    layout::constraint::SizingOperation::Normal,
+                    layout::constraint::SizingOperation::Normal,
                 )),
             );
             let units = [0x41, 0xd82c, 0xdd32, 0x43];
@@ -1456,15 +1478,15 @@ mod kana_transform {
                 enabled,
                 Some(17.0),
                 NativeViewport::new(
-                    layout::Size::new(Some(17.0), None),
-                    layout::FlowAxes::new(
-                        layout::WritingMode::HorizontalTb,
-                        layout::Direction::Ltr,
+                    layout::geometry::Size::new(Some(17.0), None),
+                    layout::geometry::FlowAxes::new(
+                        layout::geometry::WritingMode::HorizontalTb,
+                        layout::geometry::Direction::Ltr,
                     ),
                 )
-                .request(layout::Size::new(
-                    layout::SizingOperation::Normal,
-                    layout::SizingOperation::Normal,
+                .request(layout::geometry::Size::new(
+                    layout::constraint::SizingOperation::Normal,
+                    layout::constraint::SizingOperation::Normal,
                 )),
             );
             let placed = batch.placed_text()[0].layout();
@@ -1529,9 +1551,9 @@ mod kana_transform {
                 }
             );
             for (operation, expected) in [
-                (layout::SizingOperation::MinContent, 10.0),
+                (layout::constraint::SizingOperation::MinContent, 10.0),
                 (
-                    layout::SizingOperation::MaxContent,
+                    layout::constraint::SizingOperation::MaxContent,
                     if enabled { 25.0 } else { 30.0 },
                 ),
             ] {
@@ -1540,15 +1562,15 @@ mod kana_transform {
                     enabled,
                     None,
                     NativeViewport::new(
-                        layout::Size::new(None, None),
-                        layout::FlowAxes::new(
-                            layout::WritingMode::HorizontalTb,
-                            layout::Direction::Ltr,
+                        layout::geometry::Size::new(None, None),
+                        layout::geometry::FlowAxes::new(
+                            layout::geometry::WritingMode::HorizontalTb,
+                            layout::geometry::Direction::Ltr,
                         ),
                     )
-                    .request(layout::Size::new(
+                    .request(layout::geometry::Size::new(
                         operation,
-                        layout::SizingOperation::Normal,
+                        layout::constraint::SizingOperation::Normal,
                     )),
                 );
                 assert_eq!(same_source.text().code_units(), source.text().code_units());

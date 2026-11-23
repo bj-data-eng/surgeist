@@ -1,5 +1,23 @@
 //! Hidden native slots cannot change a declared inline scope's break incidence.
-use surgeist_layout::*;
+use surgeist_layout::{
+    box_model::Display,
+    compute_layout_with_flow,
+    fragmentation::NonBoxKind,
+    geometry::{Point, Size},
+    inline::{
+        AtomicInlineParticipation, InlineBoundaryEdgeOf, InlineBoundaryInputOf, InlineBoundaryKind,
+        InlineMetricsOf,
+    },
+    inline_wrapping::{WrapEdges, WrapInside, WrappingInput, WrappingScopeInput},
+    length::LengthPercentageOf,
+    node::{LayoutInputOf, LayoutInputViewOf, NodeInputOf},
+    request::LayoutRootRequestOf,
+    scalar::LayoutScalar,
+    sizing::PreferredSizeOf,
+    text_flow::InlineBreakOpportunity,
+    text_layout::LayoutFlowInput,
+    tree::{LayoutTree, Traverse},
+};
 use surgeist_text::supplied_line::BidiLevel;
 
 struct NativeRun<S: LayoutScalar> {
@@ -66,7 +84,7 @@ fn fixture<S: LayoutScalar>(hidden: bool, width: f64) -> NativeRun<S> {
             InlineBoundaryInputOf::contribution(
                 kind,
                 InlineMetricsOf::from_line_height_and_baseline(
-                    surgeist_layout::InlineBaselineContext::Physical,
+                    surgeist_layout::baseline::InlineBaselineContext::Physical,
                     S::from_f64(10.0),
                     S::from_f64(10.0),
                 )
@@ -133,17 +151,17 @@ fn positions<S: LayoutScalar>(
     .unwrap();
     let request = {
         let sizing_request = crate::layout::native_request::sizing(
-            surgeist_layout::Size::new(Some(S::from_f64(width)), None),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(S::from_f64(width)), None),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         );
         LayoutRootRequestOf::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::LayoutTree::node_input(&tree, 0).writing_mode,
-                surgeist_layout::LayoutTree::node_input(&tree, 0).direction,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::tree::LayoutTree::node_input(&tree, 0).writing_mode,
+                surgeist_layout::tree::LayoutTree::node_input(&tree, 0).direction,
             ),
             sizing_request
                 .orthogonal_fallback()

@@ -1,11 +1,11 @@
 //! Direction-resolved capture, Paragraph-only grouping and nowrap.
 use super::*;
 
-fn direction_and_hard_groups<S: l::LayoutScalar>() {
-    with_style::<S>(l::TextWrapStyle::AvoidShortLastLine);
+fn direction_and_hard_groups<S: l::scalar::LayoutScalar>() {
+    with_style::<S>(l::text_flow::TextWrapStyle::AvoidShortLastLine);
 }
-pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+pub(super) fn with_style<S: l::scalar::LayoutScalar>(style: l::text_flow::TextWrapStyle) {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         for forced in [false, true] {
             let mut fixture = Fixture::<S>::new(direction, t::style::Wrap::Word, forced);
             let ordinary = fixture.compute();

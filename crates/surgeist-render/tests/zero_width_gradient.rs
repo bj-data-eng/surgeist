@@ -29,9 +29,9 @@ fn position(length: f64, fraction: f64) -> GradientPosition {
 
 fn field(repeating: bool, height: f64, center_y: f64) -> Paint {
     let geometry = resolve_radial_gradient(
-        layout::Size::new(16.0, 8.0),
-        Some(layout::Point::new(8.0, center_y)),
-        RadialGradientSize::EllipseRadii(layout::Size::new(
+        layout::geometry::Size::new(16.0, 8.0),
+        Some(layout::geometry::Point::new(8.0, center_y)),
+        RadialGradientSize::EllipseRadii(layout::geometry::Size::new(
             position(0.0, 0.0),
             position(height, 0.0),
         )),
@@ -40,7 +40,10 @@ fn field(repeating: bool, height: f64, center_y: f64) -> Paint {
     .result
     .expect("authentic Paint radial geometry preparation must succeed");
     assert_eq!(geometry.case(), RadialGradientCase::ZeroWidth);
-    assert_eq!(geometry.center(), layout::Point::new(8.0, center_y));
+    assert_eq!(
+        geometry.center(),
+        layout::geometry::Point::new(8.0, center_y)
+    );
     let (first, last) = if repeating { (1.0, 5.0) } else { (2.0, 6.0) };
     let red = Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap();
     let blue = Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap();
@@ -231,9 +234,12 @@ fn at(color: Color, length: f64, fraction: f64) -> GradientStopItem<Color> {
 
 fn geometry(origin: f64) -> RadialGradientGeometry {
     resolve_radial_gradient(
-        layout::Size::new(32.0, 16.0),
-        Some(layout::Point::new(origin, -100.0)),
-        RadialGradientSize::EllipseRadii(layout::Size::new(position(0.0, 0.0), position(8.0, 0.0))),
+        layout::geometry::Size::new(32.0, 16.0),
+        Some(layout::geometry::Point::new(origin, -100.0)),
+        RadialGradientSize::EllipseRadii(layout::geometry::Size::new(
+            position(0.0, 0.0),
+            position(8.0, 0.0),
+        )),
         options(),
     )
     .result
@@ -419,7 +425,7 @@ fn identity_conversion_preserves_exact_basis_and_existing_refusal_domains_with_r
     );
     for geometry in [
         resolve_radial_gradient(
-            layout::Size::new(16.0, 8.0),
+            layout::geometry::Size::new(16.0, 8.0),
             None,
             RadialGradientSize::CircleRadius(0.0),
             options(),
@@ -427,9 +433,9 @@ fn identity_conversion_preserves_exact_basis_and_existing_refusal_domains_with_r
         .result
         .unwrap(),
         resolve_radial_gradient(
-            layout::Size::new(16.0, 8.0),
+            layout::geometry::Size::new(16.0, 8.0),
             None,
-            RadialGradientSize::EllipseRadii(layout::Size::new(
+            RadialGradientSize::EllipseRadii(layout::geometry::Size::new(
                 position(8.0, 0.0),
                 position(0.0, 0.0),
             )),

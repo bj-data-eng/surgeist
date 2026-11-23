@@ -3,12 +3,12 @@
 use std::{convert::Infallible, slice};
 use surgeist_layout as l;
 
-struct Tree<S: l::LayoutScalar> {
-    inputs: [l::NodeInputOf<S>; 3],
+struct Tree<S: l::scalar::LayoutScalar> {
+    inputs: [l::node::NodeInputOf<S>; 3],
     children: [Vec<u32>; 3],
 }
 
-impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for Tree<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -29,42 +29,44 @@ impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
     }
 }
 
-impl<S: l::LayoutScalar> l::LayoutTree for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for Tree<S> {
     type MeasureError = Infallible;
 
-    fn node_input(&self, node: u32) -> &l::NodeInputOf<S> {
+    fn node_input(&self, node: u32) -> &l::node::NodeInputOf<S> {
         &self.inputs[node as usize]
     }
 
-    fn layout_input(&self, node: u32) -> l::LayoutInputViewOf<'_, S> {
-        l::LayoutInputViewOf::Box(&self.inputs[node as usize])
+    fn layout_input(&self, node: u32) -> l::node::LayoutInputViewOf<'_, S> {
+        l::node::LayoutInputViewOf::Box(&self.inputs[node as usize])
     }
 }
 
-fn px<S: l::LayoutScalar>(value: f64) -> l::PreferredSizeOf<S> {
-    l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(value)).unwrap())
+fn px<S: l::scalar::LayoutScalar>(value: f64) -> l::sizing::PreferredSizeOf<S> {
+    l::sizing::PreferredSizeOf::value(
+        l::length::LengthPercentageOf::px(S::from_f64(value)).unwrap(),
+    )
 }
 
-fn block<S: l::LayoutScalar>(width: f64) -> l::NodeInputOf<S> {
-    l::NodeInputOf {
-        display: l::Display::Block,
-        writing_mode: l::WritingMode::HorizontalTb,
-        direction: l::Direction::Ltr,
-        size: l::Size::new(px(width), l::PreferredSizeOf::AUTO),
-        ..l::NodeInputOf::default()
+fn block<S: l::scalar::LayoutScalar>(width: f64) -> l::node::NodeInputOf<S> {
+    l::node::NodeInputOf {
+        display: l::box_model::Display::Block,
+        writing_mode: l::geometry::WritingMode::HorizontalTb,
+        direction: l::geometry::Direction::Ltr,
+        size: l::geometry::Size::new(px(width), l::sizing::PreferredSizeOf::AUTO),
+        ..l::node::NodeInputOf::default()
     }
 }
 
-fn output<S: l::LayoutScalar>(
-    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+fn output<S: l::scalar::LayoutScalar>(
+    entries: (&l::batch::CompletedLayoutBatchOf<u32, S>, bool),
     node: u32,
 ) -> crate::layout::observation::Observation<S> {
     crate::layout::observation::observe(entries, node, crate::layout::observation::Kind::Box)
 }
 
-fn ordinary_block_excludes_its_float_but_root_contains_it<S: l::LayoutScalar>() {
+fn ordinary_block_excludes_its_float_but_root_contains_it<S: l::scalar::LayoutScalar>() {
     let mut float = block::<S>(20.0);
-    float.float = l::Float::Left;
+    float.float = l::box_model::Float::Left;
     float.size.height = px(30.0);
     let tree = Tree {
         inputs: [block(100.0), block(100.0), float],
@@ -72,17 +74,17 @@ fn ordinary_block_excludes_its_float_but_root_contains_it<S: l::LayoutScalar>() 
     };
     let request = {
         let sizing_request = crate::layout::native_request::sizing(
-            surgeist_layout::Size::new(Some(S::from_f64(100.0)), None),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(S::from_f64(100.0)), None),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         );
-        l::LayoutRootRequestOf::standalone(
+        l::request::LayoutRootRequestOf::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::WritingMode::HorizontalTb,
-                surgeist_layout::Direction::Ltr,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::geometry::WritingMode::HorizontalTb,
+                surgeist_layout::geometry::Direction::Ltr,
             ),
             sizing_request
                 .orthogonal_fallback()
@@ -100,7 +102,10 @@ fn ordinary_block_excludes_its_float_but_root_contains_it<S: l::LayoutScalar>() 
     ] {
         assert_eq!(entries.0.node_layouts().len(), 3);
         for node in 0..3 {
-            assert_eq!(output(entries, node).source_index, l::SourceIndex::ZERO);
+            assert_eq!(
+                output(entries, node).source_index,
+                l::node::SourceIndex::ZERO
+            );
         }
     }
 
@@ -109,13 +114,13 @@ fn ordinary_block_excludes_its_float_but_root_contains_it<S: l::LayoutScalar>() 
     // CSS2 10.6.3: this visible block has no normal-flow children or lines.
     assert_eq!(ordinary.size.height, S::ZERO);
     assert_eq!(ordinary.size.width, S::from_f64(100.0));
-    assert_eq!(ordinary.location, l::Point::ZERO);
+    assert_eq!(ordinary.location, l::geometry::Point::ZERO);
 
     let float = output(entries, 2);
-    assert_eq!(float.location, l::Point::ZERO);
+    assert_eq!(float.location, l::geometry::Point::ZERO);
     assert_eq!(
         float.size,
-        l::Size::new(S::from_f64(20.0), S::from_f64(30.0))
+        l::geometry::Size::new(S::from_f64(20.0), S::from_f64(30.0))
     );
     // CSS2 10.6.7: the root encloses floats participating in its context,
     // including this descendant reached through the ordinary zero-height block.

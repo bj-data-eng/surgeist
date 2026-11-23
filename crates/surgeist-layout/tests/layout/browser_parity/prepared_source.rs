@@ -634,7 +634,7 @@ impl Capture {
             )
         });
         if vertical
-            && (native.display != layout::Display::Block
+            && (native.display != layout::box_model::Display::Block
                 || attrs
                     .get("text-orientation")
                     .is_some_and(|value| value != "mixed"))
@@ -661,7 +661,7 @@ impl Capture {
                 "container font context differs from the actual captured default-font strut",
             ));
         }
-        let flow = layout::FlowAxes::new(mode, direction);
+        let flow = layout::geometry::FlowAxes::new(mode, direction);
         for (child, control) in &self.controls {
             if !matches!(
                 control.view().kind(),
@@ -686,7 +686,7 @@ impl Capture {
                 input.inset.left,
             ]
             .iter()
-            .all(|offset| offset.is_auto() || *offset == layout::LengthAuto::ZERO);
+            .all(|offset| offset.is_auto() || *offset == layout::length::LengthAuto::ZERO);
             let zero_box_edges = [
                 input.margin.top,
                 input.margin.right,
@@ -694,7 +694,7 @@ impl Capture {
                 input.margin.left,
             ]
             .iter()
-            .all(|edge| *edge == layout::LengthAuto::ZERO)
+            .all(|edge| *edge == layout::length::LengthAuto::ZERO)
                 && [
                     input.padding.top,
                     input.padding.right,
@@ -706,16 +706,16 @@ impl Capture {
                     input.border.left,
                 ]
                 .iter()
-                .all(|edge| *edge == layout::Length::ZERO);
+                .all(|edge| *edge == layout::length::Length::ZERO);
             if child.style.get("source-tag") != Some("br")
                 || child.style.get("display") != Some("inline")
                 || !child.children.is_empty()
                 || child.text.is_some()
                 || child.inline_boundary.is_some()
-                || input.position != layout::Position::Relative
+                || input.position != layout::box_model::Position::Relative
                 || !input.float.is_none()
-                || input.clear != layout::Clear::None
-                || input.vertical_align != layout::VerticalAlign::Baseline
+                || input.clear != layout::box_model::Clear::None
+                || input.vertical_align != layout::inline::VerticalAlign::Baseline
                 || !same_frame
                 || !unshifted
                 || !zero_box_edges
@@ -754,8 +754,8 @@ impl Capture {
                     .style
                     .get("height")
                     .ok_or_else(|| fail("vertical atomic needs authored fixed-px height"))?;
-                if input.display != layout::Display::InlineBlock
-                    || input.position != layout::Position::Relative
+                if input.display != layout::box_model::Display::InlineBlock
+                    || input.position != layout::box_model::Position::Relative
                     || !input.float.is_none()
                     || input.writing_mode != mode
                     || input.direction != direction
@@ -779,21 +779,21 @@ impl Capture {
         &self,
         container: usize,
         children: &[usize],
-    ) -> Result<layout::TextParagraphBinding<usize>, Error> {
+    ) -> Result<layout::text_layout::TextParagraphBinding<usize>, Error> {
         if children.len() != self.children {
             return Err(fail(
                 "actual tree child count changed after immutable capture",
             ));
         }
-        Ok(layout::TextParagraphBinding {
-            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+        Ok(layout::text_layout::TextParagraphBinding {
+            inline_box_fragments: layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: self.prepared.clone(),
             container,
             nodes: children.to_vec(),
             origins: self
                 .origins
                 .iter()
-                .map(|(child, origin)| layout::TextOriginBinding {
+                .map(|(child, origin)| layout::text_layout::TextOriginBinding {
                     node: children[*child],
                     origin: origin.clone(),
                 })
@@ -801,18 +801,22 @@ impl Capture {
             atomics: self
                 .atomics
                 .iter()
-                .map(|(child, occurrence)| layout::TextAtomicBinding {
-                    node: children[*child],
-                    occurrence: occurrence.clone(),
-                })
+                .map(
+                    |(child, occurrence)| layout::text_layout::TextAtomicBinding {
+                        node: children[*child],
+                        occurrence: occurrence.clone(),
+                    },
+                )
                 .collect(),
             controls: self
                 .controls
                 .iter()
-                .map(|(child, occurrence)| layout::TextControlBinding {
-                    node: children[*child],
-                    occurrence: occurrence.clone(),
-                })
+                .map(
+                    |(child, occurrence)| layout::text_layout::TextControlBinding {
+                        node: children[*child],
+                        occurrence: occurrence.clone(),
+                    },
+                )
                 .collect(),
             line_strut: None,
         })
@@ -976,11 +980,11 @@ mod tests {
                 .map(|view| view.handle())
                 .collect::<Vec<_>>();
             let tree = super::super::TestTree::from_golden(&golden.root, None).unwrap();
-            let capture = layout::LayoutFlowInput::try_new(
+            let capture = layout::text_layout::LayoutFlowInput::try_new(
                 &tree,
                 0,
                 tree.paragraphs.clone(),
-                layout::WrappingInput {
+                layout::inline_wrapping::WrappingInput {
                     native_inline_boxes: Vec::new(),
                     gaps: Vec::new(),
                     scopes: Vec::new(),
@@ -989,31 +993,36 @@ mod tests {
                 Vec::new(),
             )
             .unwrap();
-            let request = layout::LayoutRootRequest::standalone(
-                layout::SizingRequest::new(
-                    layout::Size::new(
-                        layout::AxisSizingRequest::new(
-                            layout::AvailableSpace::Definite(
-                                layout::NonNegativeFiniteOf::new(100.0).unwrap(),
+            let request = layout::request::LayoutRootRequest::standalone(
+                layout::constraint::SizingRequest::new(
+                    layout::geometry::Size::new(
+                        layout::constraint::AxisSizingRequest::new(
+                            layout::constraint::AvailableSpace::Definite(
+                                layout::length::NonNegativeFiniteOf::new(100.0).unwrap(),
                             ),
-                            layout::SizingOperation::Normal,
+                            layout::constraint::SizingOperation::Normal,
                         ),
-                        layout::AxisSizingRequest::new(
-                            layout::AvailableSpace::Indefinite,
-                            layout::SizingOperation::Normal,
+                        layout::constraint::AxisSizingRequest::new(
+                            layout::constraint::AvailableSpace::Indefinite,
+                            layout::constraint::SizingOperation::Normal,
                         ),
                     ),
-                    layout::OrthogonalFallbackOf::new(
-                        layout::Size::NONE,
-                        layout::NearestScrollportOf::Absent,
-                        layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                    layout::constraint::OrthogonalFallbackOf::new(
+                        layout::geometry::Size::NONE,
+                        layout::constraint::NearestScrollportOf::Absent,
+                        layout::geometry::Size::splat(
+                            layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                        ),
                     ),
                 ),
-                layout::FlowAxes::new(
+                layout::geometry::FlowAxes::new(
                     tree.box_node_input(0).writing_mode,
                     tree.box_node_input(0).direction,
                 ),
-                layout::Size::new(Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()), None),
+                layout::geometry::Size::new(
+                    Some(layout::length::NonNegativeFiniteOf::new(100.0).unwrap()),
+                    None,
+                ),
             );
             let batch = layout::compute_layout_with_flow(&capture, 0, request).unwrap();
             assert!(batch.unrounded_inline_fragments().is_empty());
@@ -1324,43 +1333,45 @@ mod tests {
             assert_eq!(binding.controls[0].node, 2);
             assert_eq!(binding.controls[0].occurrence, controls[0].handle());
 
-            let flow = layout::LayoutFlowInput::try_new(
+            let flow = layout::text_layout::LayoutFlowInput::try_new(
                 &tree,
                 0,
                 tree.paragraphs.clone(),
-                layout::WrappingInput::default(),
+                layout::inline_wrapping::WrappingInput::default(),
                 Vec::new(),
             )
             .unwrap();
-            let request = layout::LayoutRootRequest::standalone(
-                layout::SizingRequest::new(
-                    layout::Size::new(
-                        layout::AxisSizingRequest::new(
-                            layout::AvailableSpace::Definite(
-                                layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+            let request = layout::request::LayoutRootRequest::standalone(
+                layout::constraint::SizingRequest::new(
+                    layout::geometry::Size::new(
+                        layout::constraint::AxisSizingRequest::new(
+                            layout::constraint::AvailableSpace::Definite(
+                                layout::length::NonNegativeFiniteOf::new(120.0).unwrap(),
                             ),
-                            layout::SizingOperation::Normal,
+                            layout::constraint::SizingOperation::Normal,
                         ),
-                        layout::AxisSizingRequest::new(
-                            layout::AvailableSpace::Definite(
-                                layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+                        layout::constraint::AxisSizingRequest::new(
+                            layout::constraint::AvailableSpace::Definite(
+                                layout::length::NonNegativeFiniteOf::new(120.0).unwrap(),
                             ),
-                            layout::SizingOperation::Normal,
+                            layout::constraint::SizingOperation::Normal,
                         ),
                     ),
-                    layout::OrthogonalFallbackOf::new(
-                        layout::Size::NONE,
-                        layout::NearestScrollportOf::Absent,
-                        layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                    layout::constraint::OrthogonalFallbackOf::new(
+                        layout::geometry::Size::NONE,
+                        layout::constraint::NearestScrollportOf::Absent,
+                        layout::geometry::Size::splat(
+                            layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                        ),
                     ),
                 ),
-                layout::FlowAxes::new(
+                layout::geometry::FlowAxes::new(
                     tree.box_node_input(0).writing_mode,
                     tree.box_node_input(0).direction,
                 ),
-                layout::Size::new(
-                    Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
-                    Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
+                layout::geometry::Size::new(
+                    Some(layout::length::NonNegativeFiniteOf::new(120.0).unwrap()),
+                    Some(layout::length::NonNegativeFiniteOf::new(120.0).unwrap()),
                 ),
             );
             let batch = layout::compute_layout_with_flow(&flow, 0, request).unwrap();
@@ -1403,12 +1414,12 @@ mod tests {
                     f64::from(container_origin.y) + f64::from(native.location.y),
                     atomic.rect().origin.y
                 );
-                assert_eq!(native.size, layout::Size::new(10.0, 10.0));
+                assert_eq!(native.size, layout::geometry::Size::new(10.0, 10.0));
             }
             let control_fragment = batch
                 .final_inline_fragments()
                 .iter()
-                .find(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(2))
+                .find(|entry| entry.owner() == &layout::text_layout::InlineFragmentOwner::Node(2))
                 .unwrap();
             let line = control_fragment
                 .fragment()
@@ -1664,37 +1675,39 @@ mod tests {
                 assert_eq!((binding.origins[0].node, binding.origins[1].node), (1, 5));
                 assert_eq!((binding.atomics[0].node, binding.atomics[1].node), (2, 4));
                 assert_eq!(binding.controls[0].node, 3);
-                let flow = layout::LayoutFlowInput::try_new(
+                let flow = layout::text_layout::LayoutFlowInput::try_new(
                     &tree,
                     0,
                     tree.paragraphs.clone(),
-                    layout::WrappingInput::default(),
+                    layout::inline_wrapping::WrappingInput::default(),
                     Vec::new(),
                 )
                 .unwrap();
-                let request = layout::LayoutRootRequest::standalone(
-                    layout::SizingRequest::new(
-                        layout::Size::new(
-                            layout::AxisSizingRequest::new(
-                                layout::AvailableSpace::Indefinite,
-                                layout::SizingOperation::Normal,
+                let request = layout::request::LayoutRootRequest::standalone(
+                    layout::constraint::SizingRequest::new(
+                        layout::geometry::Size::new(
+                            layout::constraint::AxisSizingRequest::new(
+                                layout::constraint::AvailableSpace::Indefinite,
+                                layout::constraint::SizingOperation::Normal,
                             ),
-                            layout::AxisSizingRequest::new(
-                                layout::AvailableSpace::Indefinite,
-                                layout::SizingOperation::Normal,
+                            layout::constraint::AxisSizingRequest::new(
+                                layout::constraint::AvailableSpace::Indefinite,
+                                layout::constraint::SizingOperation::Normal,
                             ),
                         ),
-                        layout::OrthogonalFallbackOf::new(
-                            layout::Size::NONE,
-                            layout::NearestScrollportOf::Absent,
-                            layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                        layout::constraint::OrthogonalFallbackOf::new(
+                            layout::geometry::Size::NONE,
+                            layout::constraint::NearestScrollportOf::Absent,
+                            layout::geometry::Size::splat(
+                                layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                            ),
                         ),
                     ),
-                    layout::FlowAxes::new(
+                    layout::geometry::FlowAxes::new(
                         tree.box_node_input(0).writing_mode,
                         tree.box_node_input(0).direction,
                     ),
-                    layout::Size::new(None, None),
+                    layout::geometry::Size::new(None, None),
                 );
                 let batch = layout::compute_layout_with_flow(&flow, 0, request).unwrap();
                 let placed = batch.placed_text()[0].layout();
@@ -1704,7 +1717,9 @@ mod tests {
                 let control = batch
                     .final_inline_fragments()
                     .iter()
-                    .find(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(3))
+                    .find(|entry| {
+                        entry.owner() == &layout::text_layout::InlineFragmentOwner::Node(3)
+                    })
                     .unwrap();
                 let line = control.fragment().finalized_fragment().finalized_line();
                 assert_eq!(
@@ -1718,7 +1733,7 @@ mod tests {
                     .single_box()
                     .expect("fixture node produces one box")
                     .unrounded_output();
-                assert_eq!(root_output.size, layout::Size::new(80.0, 30.0));
+                assert_eq!(root_output.size, layout::geometry::Size::new(80.0, 30.0));
                 let expected_x = if mode == "vertical-lr" {
                     [0.0, 30.0]
                 } else {
@@ -1738,7 +1753,7 @@ mod tests {
                     };
                     assert_eq!(
                         actual.location,
-                        layout::Point::new(expected_x[index], expected_y)
+                        layout::geometry::Point::new(expected_x[index], expected_y)
                     );
                     assert_eq!(actual.size.width, 30.0);
                     assert_eq!(actual.size.height, if index == 0 { 30.0 } else { 16.0 });
@@ -1819,43 +1834,45 @@ mod tests {
         let golden =
             super::super::Golden::parse(&source_context_xml(&raw, root_attrs, &children)).unwrap();
         let tree = super::super::TestTree::from_golden(&golden.root, None).unwrap();
-        let flow = layout::LayoutFlowInput::try_new(
+        let flow = layout::text_layout::LayoutFlowInput::try_new(
             &tree,
             0,
             tree.paragraphs.clone(),
-            layout::WrappingInput::default(),
+            layout::inline_wrapping::WrappingInput::default(),
             Vec::new(),
         )
         .unwrap();
-        let request = layout::LayoutRootRequest::standalone(
-            layout::SizingRequest::new(
-                layout::Size::new(
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Definite(
-                            layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+        let request = layout::request::LayoutRootRequest::standalone(
+            layout::constraint::SizingRequest::new(
+                layout::geometry::Size::new(
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Definite(
+                            layout::length::NonNegativeFiniteOf::new(120.0).unwrap(),
                         ),
-                        layout::SizingOperation::Normal,
+                        layout::constraint::SizingOperation::Normal,
                     ),
-                    layout::AxisSizingRequest::new(
-                        layout::AvailableSpace::Definite(
-                            layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+                    layout::constraint::AxisSizingRequest::new(
+                        layout::constraint::AvailableSpace::Definite(
+                            layout::length::NonNegativeFiniteOf::new(120.0).unwrap(),
                         ),
-                        layout::SizingOperation::Normal,
+                        layout::constraint::SizingOperation::Normal,
                     ),
                 ),
-                layout::OrthogonalFallbackOf::new(
-                    layout::Size::NONE,
-                    layout::NearestScrollportOf::Absent,
-                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                layout::constraint::OrthogonalFallbackOf::new(
+                    layout::geometry::Size::NONE,
+                    layout::constraint::NearestScrollportOf::Absent,
+                    layout::geometry::Size::splat(
+                        layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
-            layout::FlowAxes::new(
+            layout::geometry::FlowAxes::new(
                 tree.box_node_input(0).writing_mode,
                 tree.box_node_input(0).direction,
             ),
-            layout::Size::new(
-                Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
-                Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
+            layout::geometry::Size::new(
+                Some(layout::length::NonNegativeFiniteOf::new(120.0).unwrap()),
+                Some(layout::length::NonNegativeFiniteOf::new(120.0).unwrap()),
             ),
         );
         let batch = layout::compute_layout_with_flow(&flow, 0, request).unwrap();
@@ -1863,7 +1880,7 @@ mod tests {
         let control = batch
             .final_inline_fragments()
             .iter()
-            .find(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(2))
+            .find(|entry| entry.owner() == &layout::text_layout::InlineFragmentOwner::Node(2))
             .unwrap();
         let line = control.fragment().finalized_fragment().finalized_line();
         assert_eq!(line.feedback().line_height, 30.0);
@@ -1912,26 +1929,31 @@ mod tests {
         .unwrap()
     }
 
-    fn opaque_break_observation_request() -> layout::LayoutRootRequest {
+    fn opaque_break_observation_request() -> layout::request::LayoutRootRequest {
         // Explicit Native query for this authored Source/font/control fixture:
         // 120px physical availability and percentage parents, not historical
         // XML root authority or a replacement for a captured browser request.
-        let extent = layout::NonNegativeFiniteOf::new(120.0).unwrap();
-        let normal = layout::AxisSizingRequest::new(
-            layout::AvailableSpace::Definite(extent),
-            layout::SizingOperation::Normal,
+        let extent = layout::length::NonNegativeFiniteOf::new(120.0).unwrap();
+        let normal = layout::constraint::AxisSizingRequest::new(
+            layout::constraint::AvailableSpace::Definite(extent),
+            layout::constraint::SizingOperation::Normal,
         );
-        layout::LayoutRootRequest::standalone(
-            layout::SizingRequest::new(
-                layout::Size::splat(normal),
-                layout::OrthogonalFallbackOf::new(
-                    layout::Size::NONE,
-                    layout::NearestScrollportOf::Absent,
-                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+        layout::request::LayoutRootRequest::standalone(
+            layout::constraint::SizingRequest::new(
+                layout::geometry::Size::splat(normal),
+                layout::constraint::OrthogonalFallbackOf::new(
+                    layout::geometry::Size::NONE,
+                    layout::constraint::NearestScrollportOf::Absent,
+                    layout::geometry::Size::splat(
+                        layout::constraint::OrthogonalFallbackLimitOf::Unbounded,
+                    ),
                 ),
             ),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
-            layout::Size::splat(Some(extent)),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
+            layout::geometry::Size::splat(Some(extent)),
         )
     }
 
@@ -1985,7 +2007,7 @@ mod tests {
         let fragment = batch
             .unrounded_inline_fragments()
             .iter()
-            .find(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(2))
+            .find(|entry| entry.owner() == &layout::text_layout::InlineFragmentOwner::Node(2))
             .unwrap()
             .fragment();
         assert_eq!(fragment.line_index(), 0);

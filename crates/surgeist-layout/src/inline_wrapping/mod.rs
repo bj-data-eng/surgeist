@@ -1,3 +1,5 @@
+//! Wrapping scopes, wrap edges, native inline-box families and the processing of wrapping sources.
+//!
 //! Layout-owned inline scope proof and ancestry-prefix break preference.
 
 use crate::error::{

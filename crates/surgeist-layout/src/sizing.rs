@@ -1,3 +1,5 @@
+//! Box-size properties and calc programs.
+
 use crate::{
     error::{
         CalcSizeBehaviorBasis, SizingAlgorithm, SizingBehavior, SizingProperty,
@@ -227,17 +229,17 @@ enum FlexBasisValue<S: LayoutScalar> {
 /// A closed preferred-size value.
 ///
 /// ```compile_fail
-/// use surgeist_layout::PreferredSize;
+/// use surgeist_layout::sizing::PreferredSize;
 /// let _ = PreferredSize::fr(1.0);
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::PreferredSize;
+/// use surgeist_layout::sizing::PreferredSize;
 /// let _ = PreferredSize::CONTENT;
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::{PercentageBasisOf, PreferredSize};
+/// use surgeist_layout::{length::PercentageBasisOf, sizing::PreferredSize};
 /// let _ = PreferredSize::AUTO.resolve_against(PercentageBasisOf::MISSING);
 /// ```
 ///
@@ -246,18 +248,13 @@ enum FlexBasisValue<S: LayoutScalar> {
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::PreferredSize;
+/// use surgeist_layout::sizing::PreferredSize;
 /// fn requires_copy<T: Copy>() {}
 /// requires_copy::<PreferredSize>();
 /// ```
 ///
 /// ```
-/// use surgeist_layout::{
-///     CalcSizeCalculation, FlexBasis, FlexBasisCalcBasis, LengthPercentageOf,
-///     MaxSize, MaxSizeCalcBasis, MaxTrackSizing, MinSize, MinSizeCalcBasis,
-///     MinTrackSizing, PreferredSize, PreferredSizeCalcBasis, SizingCalculation,
-///     TrackFlexFactor, TrackSizing,
-/// };
+/// use surgeist_layout::{grid::{MaxTrackSizing, MinTrackSizing, TrackFlexFactor, TrackSizing}, length::LengthPercentageOf, sizing::{CalcSizeCalculation, FlexBasis, FlexBasisCalcBasis, MaxSize, MaxSizeCalcBasis, MinSize, MinSizeCalcBasis, PreferredSize, PreferredSizeCalcBasis, SizingCalculation}};
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let px = |value| {
@@ -307,6 +304,13 @@ enum FlexBasisValue<S: LayoutScalar> {
 /// # Ok(())
 /// # }
 /// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::length::PercentageBasisOf;
+/// use surgeist_layout::sizing::PreferredSize;
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreferredSizeOf<S: LayoutScalar = DefaultScalar> {
     value: PreferredSizeValue<S>,
@@ -315,13 +319,19 @@ pub struct PreferredSizeOf<S: LayoutScalar = DefaultScalar> {
 /// A closed minimum-size value.
 ///
 /// ```compile_fail
-/// use surgeist_layout::MinSize;
+/// use surgeist_layout::sizing::MinSize;
 /// let _ = MinSize::fr(1.0);
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::MinSize;
+/// use surgeist_layout::sizing::MinSize;
 /// let _ = MinSize::CONTENT;
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::sizing::MinSize;
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct MinSizeOf<S: LayoutScalar = DefaultScalar> {
@@ -331,18 +341,24 @@ pub struct MinSizeOf<S: LayoutScalar = DefaultScalar> {
 /// A closed maximum-size value.
 ///
 /// ```compile_fail
-/// use surgeist_layout::MaxSize;
+/// use surgeist_layout::sizing::MaxSize;
 /// let _ = MaxSize::AUTO;
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::MaxSize;
+/// use surgeist_layout::sizing::MaxSize;
 /// let _ = MaxSize::fr(1.0);
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::MaxSize;
+/// use surgeist_layout::sizing::MaxSize;
 /// let _ = MaxSize::CONTENT;
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::sizing::MaxSize;
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct MaxSizeOf<S: LayoutScalar = DefaultScalar> {
@@ -352,13 +368,19 @@ pub struct MaxSizeOf<S: LayoutScalar = DefaultScalar> {
 /// A closed flex-basis value.
 ///
 /// ```compile_fail
-/// use surgeist_layout::{FlexBasis, PreferredSize};
+/// use surgeist_layout::sizing::{FlexBasis, PreferredSize};
 /// let _: PreferredSize = FlexBasis::AUTO.into();
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::FlexBasis;
+/// use surgeist_layout::sizing::FlexBasis;
 /// let _ = FlexBasis::fr(1.0);
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::sizing::{FlexBasis, PreferredSize};
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct FlexBasisOf<S: LayoutScalar = DefaultScalar> {

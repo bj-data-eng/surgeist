@@ -6,35 +6,44 @@
 use super::*;
 use std::cell::RefCell;
 
-fn px<S: l::LayoutScalar>(value: f64) -> l::PreferredSizeOf<S> {
-    l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(value)).unwrap())
+fn px<S: l::scalar::LayoutScalar>(value: f64) -> l::sizing::PreferredSizeOf<S> {
+    l::sizing::PreferredSizeOf::value(
+        l::length::LengthPercentageOf::px(S::from_f64(value)).unwrap(),
+    )
 }
 
-fn host<S: l::LayoutScalar>() -> Host<S> {
-    let mut host = Host::new(l::Direction::Ltr, l::TextGroupAlign::None);
+fn host<S: l::scalar::LayoutScalar>() -> Host<S> {
+    let mut host = Host::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     host.box_change(0, |root| {
-        root.writing_mode = l::WritingMode::SidewaysRl;
-        root.text_align = l::TextAlign::Start;
-        root.inline_baseline_context = l::InlineBaselineContext::Physical;
-        root.size = l::Size::new(px(40.0), px(15.0));
+        root.writing_mode = l::geometry::WritingMode::SidewaysRl;
+        root.text_align = l::text_flow::TextAlign::Start;
+        root.inline_baseline_context = l::baseline::InlineBaselineContext::Physical;
+        root.size = l::geometry::Size::new(px(40.0), px(15.0));
     });
     host
 }
 
-fn incoming<S: l::LayoutScalar>(host: &mut Host<S>, width: f64, height: f64) -> u32 {
+fn incoming<S: l::scalar::LayoutScalar>(host: &mut Host<S>, width: f64, height: f64) -> u32 {
     host.push(
         Some(0),
-        l::LayoutInputOf::box_input(l::NodeInputOf {
-            display: l::Display::Block,
-            writing_mode: l::WritingMode::SidewaysRl,
-            float: l::Float::Left,
-            size: l::Size::new(px(width), px(height)),
-            ..l::NodeInputOf::default()
+        l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+            display: l::box_model::Display::Block,
+            writing_mode: l::geometry::WritingMode::SidewaysRl,
+            float: l::box_model::Float::Left,
+            size: l::geometry::Size::new(px(width), px(height)),
+            ..l::node::NodeInputOf::default()
         }),
     )
 }
 
-fn paragraph<S: l::LayoutScalar>(host: &mut Host<S>, parts: &[Part<'_>], height: f64) -> Paragraph {
+fn paragraph<S: l::scalar::LayoutScalar>(
+    host: &mut Host<S>,
+    parts: &[Part<'_>],
+    height: f64,
+) -> Paragraph {
     Paragraph::with_preparation(
         host,
         0,
@@ -50,20 +59,20 @@ fn paragraph<S: l::LayoutScalar>(host: &mut Host<S>, parts: &[Part<'_>], height:
     )
 }
 
-fn request<S: l::LayoutScalar>(width: f64) -> l::LayoutRootRequestOf<S> {
+fn request<S: l::scalar::LayoutScalar>(width: f64) -> l::request::LayoutRootRequestOf<S> {
     {
         let sizing_request = crate::layout::native_request::sizing(
-            surgeist_layout::Size::new(Some(S::from_f64(width)), Some(S::from_f64(15.0))),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(S::from_f64(width)), Some(S::from_f64(15.0))),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         );
-        l::LayoutRootRequestOf::standalone(
+        l::request::LayoutRootRequestOf::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::WritingMode::SidewaysRl,
-                surgeist_layout::Direction::Ltr,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::geometry::WritingMode::SidewaysRl,
+                surgeist_layout::geometry::Direction::Ltr,
             ),
             sizing_request
                 .orthogonal_fallback()
@@ -72,26 +81,26 @@ fn request<S: l::LayoutScalar>(width: f64) -> l::LayoutRootRequestOf<S> {
     }
 }
 
-fn compute_float<S: l::LayoutScalar>(
+fn compute_float<S: l::scalar::LayoutScalar>(
     host: &Host<S>,
     paragraph: &Paragraph,
     changed: &[u32],
     viewport_width: f64,
-) -> l::CompletedLayoutBatchOf<u32, S> {
-    let flow = l::LayoutFlowInput::try_new(
+) -> l::batch::CompletedLayoutBatchOf<u32, S> {
+    let flow = l::text_layout::LayoutFlowInput::try_new(
         host,
         0,
         vec![paragraph.binding.clone()],
-        l::WrappingInput::default(),
+        l::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
     l::compute_layout_with_flow_invalidated(&flow, 0, request(viewport_width), changed).unwrap()
 }
 
-fn packets<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
-    fixture: &impl l::LayoutTree<Node = u32, Scalar = S>,
+fn packets<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
+    fixture: &impl l::tree::LayoutTree<Node = u32, Scalar = S>,
 ) -> Vec<(u32, crate::layout::observation::Observation<S>)> {
     let mut rows = batch
         .node_layouts()
@@ -102,7 +111,7 @@ fn packets<S: l::LayoutScalar>(
                     (batch, true),
                     node,
                     crate::layout::observation::expected_kind(
-                        l::LayoutTree::layout_input(fixture, node),
+                        l::tree::LayoutTree::layout_input(fixture, node),
                         false,
                     ),
                 ),
@@ -113,7 +122,12 @@ fn packets<S: l::LayoutScalar>(
     rows
 }
 
-fn qualify<S: l::LayoutScalar>(host: &Host<S>, paragraph: &Paragraph, float: u32, raw: &[u16]) {
+fn qualify<S: l::scalar::LayoutScalar>(
+    host: &Host<S>,
+    paragraph: &Paragraph,
+    float: u32,
+    raw: &[u16],
+) {
     assert_eq!(host.children[0][0], float);
     assert_eq!(&host.children[0][1..], paragraph.binding.nodes.as_slice());
     assert!(!paragraph.binding.nodes.contains(&float));
@@ -145,18 +159,21 @@ fn qualify<S: l::LayoutScalar>(host: &Host<S>, paragraph: &Paragraph, float: u32
         assert_eq!((unit.level().get(), unit.advance()), (0, 10.0));
     }
     let actual_float = host.inputs[float as usize].as_box().unwrap();
-    assert_eq!(actual_float.float, l::Float::Left);
-    assert_eq!(actual_float.writing_mode, l::WritingMode::SidewaysRl);
+    assert_eq!(actual_float.float, l::box_model::Float::Left);
+    assert_eq!(
+        actual_float.writing_mode,
+        l::geometry::WritingMode::SidewaysRl
+    );
 }
 
-fn assert_rows<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+fn assert_rows<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     paragraph: &Paragraph,
     capacity: &[f64],
     origins: &[(f64, f64)],
 ) {
     let root = node_output(batch, 0);
-    assert_eq!(root.location, l::Point::ZERO);
+    assert_eq!(root.location, l::geometry::Point::ZERO);
     let layout = placed(batch, paragraph);
     assert_eq!(
         layout.orientation(),
@@ -217,7 +234,7 @@ fn assert_rows<S: l::LayoutScalar>(
     assert_eq!(actual, origins);
 }
 
-fn margin_and_replay<S: l::LayoutScalar>() {
+fn margin_and_replay<S: l::scalar::LayoutScalar>() {
     for signed in [false, true] {
         let mut host = host::<S>();
         let float = incoming(&mut host, 10.0, 5.0);
@@ -225,10 +242,12 @@ fn margin_and_replay<S: l::LayoutScalar>() {
             // Signed inline margins keep the actual margin-box interval0..5,
             // while the border box moves to y−2. No nominal contour is guessed.
             host.box_change(float, |input| {
-                input.margin.top =
-                    l::LengthAutoOf::value(l::LengthPercentageOf::px(S::from_f64(-2.0)).unwrap());
-                input.margin.bottom =
-                    l::LengthAutoOf::value(l::LengthPercentageOf::px(S::from_f64(2.0)).unwrap());
+                input.margin.top = l::length::LengthAutoOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(-2.0)).unwrap(),
+                );
+                input.margin.bottom = l::length::LengthAutoOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(2.0)).unwrap(),
+                );
             });
         }
         let paragraph = paragraph(&mut host, &[Part::Text("AB")], 10.0);
@@ -238,24 +257,24 @@ fn margin_and_replay<S: l::LayoutScalar>() {
         let output = node_output(&old, float);
         assert_eq!(
             output.location,
-            l::Point::new(
+            l::geometry::Point::new(
                 S::from_f64(30.0),
                 S::from_f64(if signed { -2.0 } else { 0.0 })
             )
         );
         assert_eq!(
             output.size,
-            l::Size::new(S::from_f64(10.0), S::from_f64(5.0))
+            l::geometry::Size::new(S::from_f64(10.0), S::from_f64(5.0))
         );
-        assert_eq!(output.source_index, l::SourceIndex::new(0));
+        assert_eq!(output.source_index, l::node::SourceIndex::new(0));
         assert_eq!(
             node_output_of_kind(
                 &old,
                 paragraph.binding.nodes[0],
-                crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineText)
+                crate::layout::observation::Kind::NonBox(l::fragmentation::NonBoxKind::InlineText)
             )
             .source_index,
-            l::SourceIndex::new(1)
+            l::node::SourceIndex::new(1)
         );
         old.apply_to(&mut host).unwrap();
         let warm = compute_float(&host, &paragraph, &[], 40.0);
@@ -313,14 +332,14 @@ enum ShapeError {
     Refused,
 }
 
-struct ShapeHost<S: l::LayoutScalar> {
+struct ShapeHost<S: l::scalar::LayoutScalar> {
     inner: Host<S>,
     float: u32,
     fail: Cell<bool>,
-    queries: RefCell<Vec<l::FloatExclusionQueryOf<S>>>,
+    queries: RefCell<Vec<l::box_model::FloatExclusionQueryOf<S>>>,
 }
 
-impl<S: l::LayoutScalar> l::Traverse for ShapeHost<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for ShapeHost<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -328,53 +347,59 @@ impl<S: l::LayoutScalar> l::Traverse for ShapeHost<S> {
     where
         Self: 'a;
     fn children(&self, node: u32) -> Self::Children<'_> {
-        l::Traverse::children(&self.inner, node)
+        l::tree::Traverse::children(&self.inner, node)
     }
     fn child_count(&self, node: u32) -> usize {
-        l::Traverse::child_count(&self.inner, node)
+        l::tree::Traverse::child_count(&self.inner, node)
     }
     fn child(&self, node: u32, index: usize) -> u32 {
-        l::Traverse::child(&self.inner, node, index)
+        l::tree::Traverse::child(&self.inner, node, index)
     }
 }
 
-impl<S: l::LayoutScalar> l::LayoutTree for ShapeHost<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for ShapeHost<S> {
     type MeasureError = ShapeError;
-    fn node_input(&self, node: u32) -> &l::NodeInputOf<S> {
-        l::LayoutTree::node_input(&self.inner, node)
+    fn node_input(&self, node: u32) -> &l::node::NodeInputOf<S> {
+        l::tree::LayoutTree::node_input(&self.inner, node)
     }
-    fn layout_input(&self, node: u32) -> l::LayoutInputViewOf<'_, S> {
-        l::LayoutTree::layout_input(&self.inner, node)
+    fn layout_input(&self, node: u32) -> l::node::LayoutInputViewOf<'_, S> {
+        l::tree::LayoutTree::layout_input(&self.inner, node)
     }
     fn cache_get(
         &self,
         node: u32,
-        input: &l::ComputeInputOf<S>,
-        context: l::CacheKeyContext,
-    ) -> Option<l::ComputeOutputOf<S>> {
-        l::LayoutTree::cache_get(&self.inner, node, input, context)
+        input: &l::cache::ComputeInputOf<S>,
+        context: l::cache::CacheKeyContext,
+    ) -> Option<l::cache::ComputeOutputOf<S>> {
+        l::tree::LayoutTree::cache_get(&self.inner, node, input, context)
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
-        l::LayoutTree::unrounded_layout(&self.inner, node)
+    fn unrounded_layout(&self, node: u32) -> Option<l::batch::LayoutOutputEntryOf<u32, S>> {
+        l::tree::LayoutTree::unrounded_layout(&self.inner, node)
     }
     fn float_exclusion_interval(
         &self,
         node: u32,
-        query: l::FloatExclusionQueryOf<S>,
-    ) -> Option<Result<Option<l::FloatExclusionIntervalOf<S>>, ShapeError>> {
+        query: l::box_model::FloatExclusionQueryOf<S>,
+    ) -> Option<Result<Option<l::box_model::FloatExclusionIntervalOf<S>>, ShapeError>> {
         if node != self.float {
             return None;
         }
         self.queries.borrow_mut().push(query);
         assert_eq!(
             query.flow_axes(),
-            l::FlowAxes::new(l::WritingMode::SidewaysRl, l::Direction::Ltr)
+            l::geometry::FlowAxes::new(
+                l::geometry::WritingMode::SidewaysRl,
+                l::geometry::Direction::Ltr
+            )
         );
         let box_ = query.margin_box();
-        assert_eq!(box_.origin(), l::Point::new(S::from_f64(20.0), S::ZERO));
+        assert_eq!(
+            box_.origin(),
+            l::geometry::Point::new(S::from_f64(20.0), S::ZERO)
+        );
         assert_eq!(
             box_.size(),
-            l::Size::new(S::from_f64(20.0), S::from_f64(4.0))
+            l::geometry::Size::new(S::from_f64(20.0), S::from_f64(4.0))
         );
         if self.fail.get() {
             return Some(Err(ShapeError::Refused));
@@ -389,7 +414,7 @@ impl<S: l::LayoutScalar> l::LayoutTree for ShapeHost<S> {
             / S::from_f64(5.0))
         .max(S::ZERO)
         .min(S::from_f64(4.0));
-        Some(Ok(l::FloatExclusionIntervalOf::try_new(
+        Some(Ok(l::box_model::FloatExclusionIntervalOf::try_new(
             query,
             S::ZERO,
             height,
@@ -398,11 +423,11 @@ impl<S: l::LayoutScalar> l::LayoutTree for ShapeHost<S> {
     }
 }
 
-fn shape_and_error<S: l::LayoutScalar>() {
+fn shape_and_error<S: l::scalar::LayoutScalar>() {
     let mut inner = host::<S>();
     let float = incoming(&mut inner, 20.0, 4.0);
     inner.box_change(float, |input| {
-        input.float_exclusion = l::FloatExclusion::Shape
+        input.float_exclusion = l::box_model::FloatExclusion::Shape
     });
     let paragraph = paragraph(&mut inner, &[Part::Text("AB")], 10.0);
     qualify(&inner, &paragraph, float, &[65, 66]);
@@ -413,11 +438,11 @@ fn shape_and_error<S: l::LayoutScalar>() {
         queries: RefCell::new(Vec::new()),
     };
     let run = |host: &ShapeHost<S>| {
-        let flow = l::LayoutFlowInput::try_new(
+        let flow = l::text_layout::LayoutFlowInput::try_new(
             host,
             0,
             vec![paragraph.binding.clone()],
-            l::WrappingInput::default(),
+            l::inline_wrapping::WrappingInput::default(),
             Vec::new(),
         )
         .unwrap();
@@ -432,17 +457,20 @@ fn shape_and_error<S: l::LayoutScalar>() {
     host.fail.set(true);
     let error =
         run(&host).expect_err("actual shape refusal must not publish a partial Text packet");
-    assert_eq!(error.operation(), l::LayoutOperation::FloatExclusionQuery);
+    assert_eq!(
+        error.operation(),
+        l::error::LayoutOperation::FloatExclusionQuery
+    );
     assert_eq!(
         error.site(),
-        l::LayoutErrorSiteOf::ContainerSubject {
+        l::error::LayoutErrorSiteOf::ContainerSubject {
             container: 0,
             subject: float
         }
     );
     assert!(matches!(
         error.kind(),
-        l::LayoutErrorKindOf::Measurement(ShapeError::Refused)
+        l::error::LayoutErrorKindOf::Measurement(ShapeError::Refused)
     ));
     assert_eq!(
         packets(host.inner.published.batch.as_ref().unwrap(), &host),
@@ -457,7 +485,7 @@ fn clockwise_shape_queries_use_physical_x_bands_and_preserve_provider_error_atom
     shape_and_error::<f64>();
 }
 
-fn clear<S: l::LayoutScalar>() {
+fn clear<S: l::scalar::LayoutScalar>() {
     for clears in [false, true] {
         let mut host = host::<S>();
         let float = incoming(&mut host, 30.0, 5.0);
@@ -471,13 +499,13 @@ fn clear<S: l::LayoutScalar>() {
         let input = host.inputs[control as usize]
             .as_line_break()
             .unwrap()
-            .with_writing_mode(l::WritingMode::SidewaysRl)
+            .with_writing_mode(l::geometry::WritingMode::SidewaysRl)
             .with_clear(if clears {
-                l::Clear::Left
+                l::box_model::Clear::Left
             } else {
-                l::Clear::None
+                l::box_model::Clear::None
             });
-        host.inputs[control as usize] = l::LayoutInputOf::line_break(input);
+        host.inputs[control as usize] = l::node::LayoutInputOf::line_break(input);
         let batch = compute_float(&host, &paragraph, &[], 40.0);
         let lines = receipts(&batch, &paragraph);
         assert_eq!(lines.len(), 2);
@@ -514,7 +542,7 @@ fn clear<S: l::LayoutScalar>() {
         assert_eq!(layout.nonformatted_lines().count(), 0);
         assert_eq!(
             node_output(&batch, float).location,
-            l::Point::new(S::from_f64(10.0), S::ZERO)
+            l::geometry::Point::new(S::from_f64(10.0), S::ZERO)
         );
     }
 }
@@ -525,7 +553,7 @@ fn actual_forced_clear_advances_clockwise_block_to_float_expiry_without_changing
     clear::<f64>();
 }
 
-fn fractional_minimum<S: l::LayoutScalar>() {
+fn fractional_minimum<S: l::scalar::LayoutScalar>() {
     for constrained in [false, true] {
         let mut host = host::<S>();
         if constrained {
@@ -571,7 +599,7 @@ fn fractional_minimum<S: l::LayoutScalar>() {
         if constrained {
             assert_eq!(
                 node_output(&batch, 1).location,
-                l::Point::new(S::from_f64(30.0), S::ZERO)
+                l::geometry::Point::new(S::from_f64(30.0), S::ZERO)
             );
             assert!(
                 layout.lines()[0].bounds().origin.x + layout.lines()[0].bounds().size.width <= 30.0,

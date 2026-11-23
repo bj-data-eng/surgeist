@@ -1,11 +1,15 @@
+//! Cache storage and the compute request and answer it is keyed by.
+
 use crate::output::ContainingLayoutContext;
 use crate::scroll::SettledAutoScrollbarState;
 use crate::{
     geometry::Size,
-    output::{ComputeInputOf, ComputeOutputOf, RequestedAxis, RunMode, SizingMode},
+    output::{RequestedAxis, RunMode, SizingMode},
     scalar::{DefaultScalar, LayoutScalar},
     value::{SizingOperation, SizingRequestOf},
 };
+
+pub use crate::output::{ComputeInput, ComputeInputOf, ComputeOutput, ComputeOutputOf};
 
 const CACHE_SIZE: usize = 9;
 

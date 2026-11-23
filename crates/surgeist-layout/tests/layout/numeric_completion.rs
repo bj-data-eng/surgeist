@@ -3,12 +3,12 @@ use std::{convert::Infallible, slice};
 use surgeist_layout as l;
 use surgeist_text::supplied_line::BidiLevel;
 
-struct NumericTree<S: l::LayoutScalar> {
-    inputs: Vec<l::LayoutInputOf<S>>,
+struct NumericTree<S: l::scalar::LayoutScalar> {
+    inputs: Vec<l::node::LayoutInputOf<S>>,
     children: Vec<Vec<u32>>,
-    non_box: l::NodeInputOf<S>,
+    non_box: l::node::NodeInputOf<S>,
 }
-impl<S: l::LayoutScalar> l::Traverse for NumericTree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for NumericTree<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -25,28 +25,33 @@ impl<S: l::LayoutScalar> l::Traverse for NumericTree<S> {
         self.children[node as usize][index]
     }
 }
-impl<S: l::LayoutScalar> l::LayoutTree for NumericTree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for NumericTree<S> {
     type MeasureError = Infallible;
-    fn node_input(&self, node: u32) -> &l::NodeInputOf<S> {
+    fn node_input(&self, node: u32) -> &l::node::NodeInputOf<S> {
         self.inputs[node as usize].as_box().unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, node: u32) -> l::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: u32) -> l::node::LayoutInputViewOf<'_, S> {
         self.inputs[node as usize].as_view()
     }
 }
-impl<S: l::LayoutScalar> NumericTree<S> {
-    fn new(direction: l::Direction, participants: Vec<l::LayoutInputOf<S>>) -> Self {
+impl<S: l::scalar::LayoutScalar> NumericTree<S> {
+    fn new(
+        direction: l::geometry::Direction,
+        participants: Vec<l::node::LayoutInputOf<S>>,
+    ) -> Self {
         let count = participants.len();
-        let mut inputs = vec![l::LayoutInputOf::box_input(l::NodeInputOf {
-            display: l::Display::Block,
+        let mut inputs = vec![l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+            display: l::box_model::Display::Block,
             direction,
-            text_align: l::TextAlign::Start,
-            text_align_last: l::TextAlignLast::Start,
-            size: l::Size::new(
-                l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(60.0)).unwrap()),
-                l::PreferredSizeOf::AUTO,
+            text_align: l::text_flow::TextAlign::Start,
+            text_align_last: l::text_flow::TextAlignLast::Start,
+            size: l::geometry::Size::new(
+                l::sizing::PreferredSizeOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
+                ),
+                l::sizing::PreferredSizeOf::AUTO,
             ),
-            ..l::NodeInputOf::default()
+            ..l::node::NodeInputOf::default()
         })];
         inputs.extend(participants);
         let mut children = vec![vec![]; count + 1];
@@ -54,23 +59,23 @@ impl<S: l::LayoutScalar> NumericTree<S> {
         Self {
             inputs,
             children,
-            non_box: l::NodeInputOf::non_box(),
+            non_box: l::node::NodeInputOf::non_box(),
         }
     }
-    fn compute(&self) -> l::CompletedLayoutBatchOf<u32, S> {
+    fn compute(&self) -> l::batch::CompletedLayoutBatchOf<u32, S> {
         let request = {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(S::from_f64(60.0)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
-                    surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::tree::LayoutTree::node_input(self, 0).writing_mode,
+                    surgeist_layout::tree::LayoutTree::node_input(self, 0).direction,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -80,54 +85,65 @@ impl<S: l::LayoutScalar> NumericTree<S> {
         l::compute_layout(self, 0, request).unwrap()
     }
 }
-fn atomic<S: l::LayoutScalar>(
-    direction: l::Direction,
+fn atomic<S: l::scalar::LayoutScalar>(
+    direction: l::geometry::Direction,
     width: f64,
     height: f64,
-) -> l::LayoutInputOf<S> {
-    l::LayoutInputOf::box_input(l::NodeInputOf {
-        display: l::Display::InlineBlock,
+) -> l::node::LayoutInputOf<S> {
+    l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+        display: l::box_model::Display::InlineBlock,
         direction,
-        vertical_align: l::VerticalAlignOf::Baseline,
-        atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
-            BidiLevel::try_new(if direction == l::Direction::Ltr { 0 } else { 1 }).unwrap(),
-            l::InlineBreakOpportunity::Allowed,
+        vertical_align: l::inline::VerticalAlignOf::Baseline,
+        atomic_inline_participation: Some(l::inline::AtomicInlineParticipation::new(
+            BidiLevel::try_new(if direction == l::geometry::Direction::Ltr {
+                0
+            } else {
+                1
+            })
+            .unwrap(),
+            l::text_flow::InlineBreakOpportunity::Allowed,
         )),
-        size: l::Size::new(
-            l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(width)).unwrap()),
-            l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(height)).unwrap()),
+        size: l::geometry::Size::new(
+            l::sizing::PreferredSizeOf::value(
+                l::length::LengthPercentageOf::px(S::from_f64(width)).unwrap(),
+            ),
+            l::sizing::PreferredSizeOf::value(
+                l::length::LengthPercentageOf::px(S::from_f64(height)).unwrap(),
+            ),
         ),
-        ..l::NodeInputOf::default()
+        ..l::node::NodeInputOf::default()
     })
 }
-fn boundary<S: l::LayoutScalar>(
-    direction: l::Direction,
-    kind: l::InlineBoundaryKind,
-) -> l::LayoutInputOf<S> {
+fn boundary<S: l::scalar::LayoutScalar>(
+    direction: l::geometry::Direction,
+    kind: l::inline::InlineBoundaryKind,
+) -> l::node::LayoutInputOf<S> {
     // Both endpoints are the SAME actual native box's8/10 baseline metrics.
     // Its individual inline margin, border and padding are zero.
-    l::LayoutInputOf::inline_boundary(
-        l::InlineBoundaryInputOf::contribution(
+    l::node::LayoutInputOf::inline_boundary(
+        l::inline::InlineBoundaryInputOf::contribution(
             kind,
-            l::InlineMetricsOf::try_new(
-                surgeist_layout::InlineBaselineContext::Physical,
+            l::inline::InlineMetricsOf::try_new(
+                surgeist_layout::baseline::InlineBaselineContext::Physical,
                 S::from_f64(8.0),
                 S::from_f64(10.0),
             )
             .unwrap(),
-            l::InlineBoundaryEdgeOf::ZERO,
+            l::inline::InlineBoundaryEdgeOf::ZERO,
         )
         .unwrap()
         .with_direction(direction),
     )
 }
-fn forced<S: l::LayoutScalar>(direction: l::Direction) -> l::LayoutInputOf<S> {
-    l::LayoutInputOf::line_break(
-        l::LineBreakInputOf::new()
+fn forced<S: l::scalar::LayoutScalar>(
+    direction: l::geometry::Direction,
+) -> l::node::LayoutInputOf<S> {
+    l::node::LayoutInputOf::line_break(
+        l::text_flow::LineBreakInputOf::new()
             .with_direction(direction)
             .with_metrics(
-                l::InlineMetricsOf::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
+                l::inline::InlineMetricsOf::try_new(
+                    surgeist_layout::baseline::InlineBaselineContext::Physical,
                     S::from_f64(16.0),
                     S::from_f64(20.0),
                 )
@@ -135,25 +151,27 @@ fn forced<S: l::LayoutScalar>(direction: l::Direction) -> l::LayoutInputOf<S> {
             ),
     )
 }
-fn node<S: l::LayoutScalar>(
-    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+fn node<S: l::scalar::LayoutScalar>(
+    entries: (&l::batch::CompletedLayoutBatchOf<u32, S>, bool),
     id: u32,
 ) -> crate::layout::observation::Observation<S> {
     crate::layout::observation::observe(entries, id, crate::layout::observation::Kind::Box)
 }
-fn node_of_kind<S: l::LayoutScalar>(
-    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+fn node_of_kind<S: l::scalar::LayoutScalar>(
+    entries: (&l::batch::CompletedLayoutBatchOf<u32, S>, bool),
     id: u32,
     expected_kind: crate::layout::observation::Kind,
 ) -> crate::layout::observation::Observation<S> {
     crate::layout::observation::observe(entries, id, expected_kind)
 }
-fn assert_numeric_only<S: l::LayoutScalar>(batch: &l::CompletedLayoutBatchOf<u32, S>) {
+fn assert_numeric_only<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
+) {
     // Actual numeric child geometry is the oracle below, not a Text surrogate.
     assert!(batch.placed_text().is_empty());
     assert!(batch.final_inline_fragments().is_empty());
 }
-fn ordinary_atoms<S: l::LayoutScalar>(direction: l::Direction) {
+fn ordinary_atoms<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     let tree = NumericTree::<S>::new(
         direction,
         vec![
@@ -171,14 +189,14 @@ fn ordinary_atoms<S: l::LayoutScalar>(direction: l::Direction) {
         let root = node(entries, 0);
         assert_eq!(
             root.size,
-            l::Size::new(S::from_f64(60.0), S::from_f64(20.0))
+            l::geometry::Size::new(S::from_f64(60.0), S::from_f64(20.0))
         );
         let [a, b, c] = [1, 2, 3].map(|id| {
             node_of_kind(
                 entries,
                 id,
                 crate::layout::observation::expected_kind(
-                    l::LayoutTree::layout_input(&tree, id),
+                    l::tree::LayoutTree::layout_input(&tree, id),
                     false,
                 ),
             )
@@ -186,17 +204,17 @@ fn ordinary_atoms<S: l::LayoutScalar>(direction: l::Direction) {
         assert_eq!(
             [a.source_index, b.source_index, c.source_index],
             [
-                l::SourceIndex::new(0),
-                l::SourceIndex::new(1),
-                l::SourceIndex::new(2)
+                l::node::SourceIndex::new(0),
+                l::node::SourceIndex::new(1),
+                l::node::SourceIndex::new(2)
             ]
         );
         assert_eq!(
             [a.size, b.size, c.size],
             [
-                l::Size::new(S::from_f64(30.0), S::from_f64(10.0)),
-                l::Size::new(S::from_f64(30.0), S::from_f64(10.0)),
-                l::Size::splat(S::from_f64(10.0))
+                l::geometry::Size::new(S::from_f64(30.0), S::from_f64(10.0)),
+                l::geometry::Size::new(S::from_f64(30.0), S::from_f64(10.0)),
+                l::geometry::Size::splat(S::from_f64(10.0))
             ]
         );
         // The last-fitting permitted first line owns both30px boxes. The
@@ -216,7 +234,7 @@ fn ordinary_atoms<S: l::LayoutScalar>(direction: l::Direction) {
         );
         assert_eq!(
             c.location.x,
-            S::from_f64(if direction == l::Direction::Ltr {
+            S::from_f64(if direction == l::geometry::Direction::Ltr {
                 0.0
             } else {
                 50.0
@@ -230,17 +248,17 @@ fn ordinary_atoms<S: l::LayoutScalar>(direction: l::Direction) {
 }
 #[test]
 fn current_numeric_atomic_wrapping_keeps_full_fitting_prefix_then_remainder() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         ordinary_atoms::<f32>(direction);
         ordinary_atoms::<f64>(direction);
     }
 }
-fn pure_endpoints<S: l::LayoutScalar>(direction: l::Direction) {
+fn pure_endpoints<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     for participants in [
         vec![],
         vec![
-            boundary(direction, l::InlineBoundaryKind::Start),
-            boundary(direction, l::InlineBoundaryKind::End),
+            boundary(direction, l::inline::InlineBoundaryKind::Start),
+            boundary(direction, l::inline::InlineBoundaryKind::End),
         ],
     ] {
         let tree = NumericTree::<S>::new(direction, participants);
@@ -252,7 +270,7 @@ fn pure_endpoints<S: l::LayoutScalar>(direction: l::Direction) {
         ] {
             assert_eq!(
                 node(entries, 0).size,
-                l::Size::new(S::from_f64(60.0), S::ZERO)
+                l::geometry::Size::new(S::from_f64(60.0), S::ZERO)
             );
         }
         // A nonempty actual host inventory must not vanish to obtain zero
@@ -268,25 +286,25 @@ fn pure_endpoints<S: l::LayoutScalar>(direction: l::Direction) {
                     )
                 )
                 .source_index,
-                l::SourceIndex::new(index)
+                l::node::SourceIndex::new(index)
             );
         }
     }
 }
 #[test]
 fn pure_zero_decoration_numeric_endpoints_do_not_create_css_line_extent() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         pure_endpoints::<f32>(direction);
         pure_endpoints::<f64>(direction);
     }
 }
-fn zero_atomic_is_real<S: l::LayoutScalar>(direction: l::Direction) {
+fn zero_atomic_is_real<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     let tree = NumericTree::<S>::new(
         direction,
         vec![
-            boundary(direction, l::InlineBoundaryKind::Start),
+            boundary(direction, l::inline::InlineBoundaryKind::Start),
             atomic(direction, 0.0, 0.0),
-            boundary(direction, l::InlineBoundaryKind::End),
+            boundary(direction, l::inline::InlineBoundaryKind::End),
         ],
     );
     let batch = tree.compute();
@@ -297,17 +315,17 @@ fn zero_atomic_is_real<S: l::LayoutScalar>(direction: l::Direction) {
     ] {
         assert_eq!(
             node(entries, 0).size,
-            l::Size::new(S::from_f64(60.0), S::from_f64(10.0))
+            l::geometry::Size::new(S::from_f64(60.0), S::from_f64(10.0))
         );
         let actual = node(entries, 2);
-        assert_eq!(actual.source_index, l::SourceIndex::new(1));
-        assert_eq!(actual.size, l::Size::ZERO);
+        assert_eq!(actual.source_index, l::node::SourceIndex::new(1));
+        assert_eq!(actual.size, l::geometry::Size::ZERO);
         // A zero-height atomic has fallback baseline0. Its actual y8 therefore
         // observes the real8/10 line baseline from the supplied endpoint box.
         assert_eq!(
             actual.location,
-            l::Point::new(
-                S::from_f64(if direction == l::Direction::Ltr {
+            l::geometry::Point::new(
+                S::from_f64(if direction == l::geometry::Direction::Ltr {
                     0.0
                 } else {
                     60.0
@@ -319,18 +337,18 @@ fn zero_atomic_is_real<S: l::LayoutScalar>(direction: l::Direction) {
 }
 #[test]
 fn actual_zero_sized_in_flow_atomic_keeps_positive_endpoint_line_real() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         zero_atomic_is_real::<f32>(direction);
         zero_atomic_is_real::<f64>(direction);
     }
 }
-fn forced_is_real<S: l::LayoutScalar>(direction: l::Direction) {
+fn forced_is_real<S: l::scalar::LayoutScalar>(direction: l::geometry::Direction) {
     let tree = NumericTree::<S>::new(
         direction,
         vec![
-            boundary(direction, l::InlineBoundaryKind::Start),
+            boundary(direction, l::inline::InlineBoundaryKind::Start),
             forced(direction),
-            boundary(direction, l::InlineBoundaryKind::End),
+            boundary(direction, l::inline::InlineBoundaryKind::End),
         ],
     );
     let batch = tree.compute();
@@ -343,14 +361,14 @@ fn forced_is_real<S: l::LayoutScalar>(direction: l::Direction) {
         // The strut-only Paragraph receiver adds no used line extent.
         assert_eq!(
             node(entries, 0).size,
-            l::Size::new(S::from_f64(60.0), S::from_f64(20.0))
+            l::geometry::Size::new(S::from_f64(60.0), S::from_f64(20.0))
         );
         let actual = node_of_kind(
             entries,
             2,
-            crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak),
+            crate::layout::observation::Kind::NonBox(l::fragmentation::NonBoxKind::LineBreak),
         );
-        assert_eq!(actual.source_index, l::SourceIndex::new(1));
+        assert_eq!(actual.source_index, l::node::SourceIndex::new(1));
         // This real Forced control is Baseline-aligned at the actual16px
         // baseline of its20px line, independent of the phantom receiver.
         assert_eq!(actual.location.y, S::from_f64(16.0));
@@ -358,38 +376,48 @@ fn forced_is_real<S: l::LayoutScalar>(direction: l::Direction) {
 }
 #[test]
 fn actual_forced_numeric_control_keeps_its_line_without_phantom_receiver_extent() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         forced_is_real::<f32>(direction);
         forced_is_real::<f64>(direction);
     }
 }
 
-fn phantom_gap_preserves_block_margins<S: l::LayoutScalar>(direction: l::Direction) {
-    let a = l::LayoutInputOf::box_input(l::NodeInputOf {
-        display: l::Display::Block,
+fn phantom_gap_preserves_block_margins<S: l::scalar::LayoutScalar>(
+    direction: l::geometry::Direction,
+) {
+    let a = l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+        display: l::box_model::Display::Block,
         direction,
-        size: l::Size::new(
-            l::PreferredSizeOf::AUTO,
-            l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(5.0)).unwrap()),
+        size: l::geometry::Size::new(
+            l::sizing::PreferredSizeOf::AUTO,
+            l::sizing::PreferredSizeOf::value(
+                l::length::LengthPercentageOf::px(S::from_f64(5.0)).unwrap(),
+            ),
         ),
-        margin: l::Edges {
-            bottom: l::LengthAutoOf::value(l::LengthPercentageOf::px(S::from_f64(10.0)).unwrap()),
-            ..l::Edges::all(l::LengthAutoOf::ZERO)
+        margin: l::geometry::Edges {
+            bottom: l::length::LengthAutoOf::value(
+                l::length::LengthPercentageOf::px(S::from_f64(10.0)).unwrap(),
+            ),
+            ..l::geometry::Edges::all(l::length::LengthAutoOf::ZERO)
         },
-        ..l::NodeInputOf::default()
+        ..l::node::NodeInputOf::default()
     });
-    let b = l::LayoutInputOf::box_input(l::NodeInputOf {
-        display: l::Display::Block,
+    let b = l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+        display: l::box_model::Display::Block,
         direction,
-        size: l::Size::new(
-            l::PreferredSizeOf::AUTO,
-            l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(7.0)).unwrap()),
+        size: l::geometry::Size::new(
+            l::sizing::PreferredSizeOf::AUTO,
+            l::sizing::PreferredSizeOf::value(
+                l::length::LengthPercentageOf::px(S::from_f64(7.0)).unwrap(),
+            ),
         ),
-        margin: l::Edges {
-            top: l::LengthAutoOf::value(l::LengthPercentageOf::px(S::from_f64(20.0)).unwrap()),
-            ..l::Edges::all(l::LengthAutoOf::ZERO)
+        margin: l::geometry::Edges {
+            top: l::length::LengthAutoOf::value(
+                l::length::LengthPercentageOf::px(S::from_f64(20.0)).unwrap(),
+            ),
+            ..l::geometry::Edges::all(l::length::LengthAutoOf::ZERO)
         },
-        ..l::NodeInputOf::default()
+        ..l::node::NodeInputOf::default()
     });
     let mut control = None;
     for endpoints in [false, true] {
@@ -397,8 +425,8 @@ fn phantom_gap_preserves_block_margins<S: l::LayoutScalar>(direction: l::Directi
             direction,
             vec![
                 a.clone(),
-                boundary(direction, l::InlineBoundaryKind::Start),
-                boundary(direction, l::InlineBoundaryKind::End),
+                boundary(direction, l::inline::InlineBoundaryKind::Start),
+                boundary(direction, l::inline::InlineBoundaryKind::End),
                 b.clone(),
             ],
         );
@@ -420,16 +448,25 @@ fn phantom_gap_preserves_block_margins<S: l::LayoutScalar>(direction: l::Directi
             let b = node(entries, 4);
             assert_eq!(
                 root.size,
-                l::Size::new(S::from_f64(60.0), S::from_f64(32.0))
+                l::geometry::Size::new(S::from_f64(60.0), S::from_f64(32.0))
             );
-            assert_eq!(a.location, l::Point::ZERO);
-            assert_eq!(a.size, l::Size::new(S::from_f64(60.0), S::from_f64(5.0)));
-            assert_eq!(b.location, l::Point::new(S::ZERO, S::from_f64(25.0)));
-            assert_eq!(b.size, l::Size::new(S::from_f64(60.0), S::from_f64(7.0)));
-            assert_eq!(a.source_index, l::SourceIndex::new(0));
+            assert_eq!(a.location, l::geometry::Point::ZERO);
+            assert_eq!(
+                a.size,
+                l::geometry::Size::new(S::from_f64(60.0), S::from_f64(5.0))
+            );
+            assert_eq!(
+                b.location,
+                l::geometry::Point::new(S::ZERO, S::from_f64(25.0))
+            );
+            assert_eq!(
+                b.size,
+                l::geometry::Size::new(S::from_f64(60.0), S::from_f64(7.0))
+            );
+            assert_eq!(a.source_index, l::node::SourceIndex::new(0));
             assert_eq!(
                 b.source_index,
-                l::SourceIndex::new(if endpoints { 3 } else { 1 })
+                l::node::SourceIndex::new(if endpoints { 3 } else { 1 })
             );
             (root.size, a.location, a.size, b.location, b.size)
         });
@@ -442,7 +479,7 @@ fn phantom_gap_preserves_block_margins<S: l::LayoutScalar>(direction: l::Directi
 }
 #[test]
 fn phantom_numeric_endpoint_run_preserves_adjoining_real_block_margins() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         phantom_gap_preserves_block_margins::<f32>(direction);
         phantom_gap_preserves_block_margins::<f64>(direction);
     }

@@ -154,7 +154,13 @@ fn select_line(
     offer: t::prepared::PreparedOpportunity,
     available: Option<f64>,
 ) -> t::finalized::FinalizedLine {
-    select_line_in_direction(prepared, start, offer, available, l::Direction::Ltr)
+    select_line_in_direction(
+        prepared,
+        start,
+        offer,
+        available,
+        l::geometry::Direction::Ltr,
+    )
 }
 
 fn select_line_in_direction(
@@ -162,7 +168,7 @@ fn select_line_in_direction(
     start: t::prepared::PreparedBoundary,
     offer: t::prepared::PreparedOpportunity,
     available: Option<f64>,
-    direction: l::Direction,
+    direction: l::geometry::Direction,
 ) -> t::finalized::FinalizedLine {
     let from = start.view().participant_offset();
     let end = offer.view().boundary();
@@ -187,7 +193,7 @@ fn select_line_in_direction(
                 alignment_insets: t::allocation::LineAlignmentInsets::ZERO,
                 formatted_line: t::selection::FormattedLineContext::default(),
                 base_direction: t::paragraph::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: if direction == l::Direction::Ltr {
+                line_box_direction: if direction == l::geometry::Direction::Ltr {
                     t::selection::LineBoxDirection::LeftToRight
                 } else {
                     t::selection::LineBoxDirection::RightToLeft
@@ -225,10 +231,10 @@ struct Fixture {
 }
 
 fn fixture() -> Fixture {
-    fixture_in_direction(l::Direction::Ltr)
+    fixture_in_direction(l::geometry::Direction::Ltr)
 }
 
-fn fixture_in_direction(direction: l::Direction) -> Fixture {
+fn fixture_in_direction(direction: l::geometry::Direction) -> Fixture {
     let bytes = chi_font();
     qualify_font(&bytes);
     let mut system = t::System::default();
@@ -302,7 +308,7 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
                 topology: t::capture::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
-                used_direction: if direction == l::Direction::Ltr {
+                used_direction: if direction == l::geometry::Direction::Ltr {
                     t::paragraph::ParagraphBaseDirection::LeftToRight
                 } else {
                     t::paragraph::ParagraphBaseDirection::RightToLeft
@@ -368,7 +374,7 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
         .find(|o| o.kind() == t::prepared::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
-    let whole = if direction == l::Direction::Ltr {
+    let whole = if direction == l::geometry::Direction::Ltr {
         select_line(&prepared, first.clone(), terminal.clone(), None)
     } else {
         select_line_in_direction(&prepared, first.clone(), terminal.clone(), None, direction)
@@ -440,53 +446,56 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
     }
 }
 
-fn compute<S: l::LayoutScalar>(
+fn compute<S: l::scalar::LayoutScalar>(
     fixture: &Fixture,
-    mode: l::WritingMode,
-    context: l::InlineBaselineContext,
-) -> l::CompletedLayoutBatchOf<u32, S> {
-    let mut input = root(mode, l::Direction::Ltr, context);
-    input.size = l::Size::new(px(40.0), px(4.0));
+    mode: l::geometry::WritingMode,
+    context: l::baseline::InlineBaselineContext,
+) -> l::batch::CompletedLayoutBatchOf<u32, S> {
+    let mut input = root(mode, l::geometry::Direction::Ltr, context);
+    input.size = l::geometry::Size::new(px(40.0), px(4.0));
     let mut host = Host::<S>::new(input);
     let origin = fixture.prepared.origin_views().next().unwrap().handle();
     assert_eq!(
         host.push(
             Some(0),
-            l::LayoutInputOf::inline_text(l::TextParticipation::new(origin.clone()))
+            l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+                origin.clone()
+            ))
         ),
         1
     );
-    let binding = l::TextParagraphBinding {
-        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+    let binding = l::text_layout::TextParagraphBinding {
+        inline_box_fragments:
+            surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: fixture.prepared.clone(),
         container: 0,
         nodes: vec![1],
-        origins: vec![l::TextOriginBinding { origin, node: 1 }],
+        origins: vec![l::text_layout::TextOriginBinding { origin, node: 1 }],
         controls: vec![],
         atomics: vec![],
         line_strut: Some(STRUT),
     };
-    let flow = l::LayoutFlowInput::try_new(
+    let flow = l::text_layout::LayoutFlowInput::try_new(
         &host,
         0,
         vec![binding],
-        l::WrappingInput::default(),
+        l::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .expect("processed capture and issued origin must bind to the actual host");
     let viewport = {
         let sizing_request = crate::layout::native_request::sizing(
-            surgeist_layout::Size::new(Some(n(40.0)), Some(n(4.0))),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(n(40.0)), Some(n(4.0))),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         );
-        l::LayoutRootRequestOf::standalone(
+        l::request::LayoutRootRequestOf::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::LayoutTree::node_input(&host, 0).writing_mode,
-                surgeist_layout::LayoutTree::node_input(&host, 0).direction,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::tree::LayoutTree::node_input(&host, 0).writing_mode,
+                surgeist_layout::tree::LayoutTree::node_input(&host, 0).direction,
             ),
             sizing_request
                 .orthogonal_fallback()
@@ -497,14 +506,14 @@ fn compute<S: l::LayoutScalar>(
         .expect("qualified native upright Central cells must reach completed Layout output")
 }
 
-fn geometry<S: l::LayoutScalar>(
+fn geometry<S: l::scalar::LayoutScalar>(
     fixture: &Fixture,
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     centers: [f64; 2],
 ) {
     assert_eq!(
         node(crate::layout::observation::phase(batch, false), 0).size,
-        l::Size::new(n(40.0), n(4.0))
+        l::geometry::Size::new(n(40.0), n(4.0))
     );
     assert_eq!(batch.placed_text().len(), 1);
     let placed = &batch.placed_text()[0];
@@ -565,7 +574,7 @@ fn geometry<S: l::LayoutScalar>(
     let fragments = batch
         .unrounded_inline_fragments()
         .iter()
-        .filter(|row| matches!(row.owner(), l::InlineFragmentOwner::Node(1)))
+        .filter(|row| matches!(row.owner(), l::text_layout::InlineFragmentOwner::Node(1)))
         .collect::<Vec<_>>();
     assert_eq!(fragments.len(), 2);
     for (index, row) in fragments.iter().enumerate() {
@@ -573,11 +582,11 @@ fn geometry<S: l::LayoutScalar>(
         assert_eq!(fragment.line_index(), index);
         assert_eq!(
             fragment.baseline(),
-            l::Point::new(n(centers[index]), n(0.0))
+            l::geometry::Point::new(n(centers[index]), n(0.0))
         );
-        let rect = l::ScrollRectOf::try_new(
-            l::Point::new(n(centers[index] - 2.0), n(0.0)),
-            l::Size::new(n(4.0), n(4.0)),
+        let rect = l::scroll::ScrollRectOf::try_new(
+            l::geometry::Point::new(n(centers[index] - 2.0), n(0.0)),
+            l::geometry::Size::new(n(4.0), n(4.0)),
         )
         .unwrap();
         assert_eq!(fragment.rect(), Some(rect));
@@ -601,45 +610,51 @@ fn geometry<S: l::LayoutScalar>(
     }
 }
 
-fn named_columns<S: l::LayoutScalar>() {
+fn named_columns<S: l::scalar::LayoutScalar>() {
     let fixture = fixture();
     for (mode, centers) in [
-        (l::WritingMode::VerticalRl, [32.0, 22.0]),
-        (l::WritingMode::VerticalLr, [2.0, 12.0]),
+        (l::geometry::WritingMode::VerticalRl, [32.0, 22.0]),
+        (l::geometry::WritingMode::VerticalLr, [2.0, 12.0]),
     ] {
         // Allocation H10/B8: Vrl C=40-k-8; Vlr C=k+(10-8), k=0/10.
         let batch = compute::<S>(
             &fixture,
             mode,
-            l::InlineBaselineContext::Named(FontBaseline::Central),
+            l::baseline::InlineBaselineContext::Named(FontBaseline::Central),
         );
         geometry(&fixture, &batch, centers);
         let facts = node(crate::layout::observation::phase(&batch, false), 0).named_baselines;
         let pair = facts.get(FontBaseline::Central);
         for (fact, c) in [(pair.first(), centers[0]), (pair.last(), centers[1])] {
-            let coordinate =
-                l::BaselineCoordinateOf::try_new(l::PhysicalAxis::Horizontal, n(c)).unwrap();
-            assert_eq!(fact, l::BaselineFactOf::Available(coordinate));
+            let coordinate = l::baseline::BaselineCoordinateOf::try_new(
+                l::geometry::PhysicalAxis::Horizontal,
+                n(c),
+            )
+            .unwrap();
+            assert_eq!(fact, l::baseline::BaselineFactOf::Available(coordinate));
         }
         let alpha = facts.get(FontBaseline::Alphabetic);
         assert_eq!(
             (alpha.first(), alpha.last()),
-            (l::BaselineFactOf::Unknown, l::BaselineFactOf::Unknown)
+            (
+                l::baseline::BaselineFactOf::Unknown,
+                l::baseline::BaselineFactOf::Unknown
+            )
         );
     }
 }
 
-fn physical_columns<S: l::LayoutScalar>() {
+fn physical_columns<S: l::scalar::LayoutScalar>() {
     let fixture = fixture();
     for (mode, centers) in [
-        (l::WritingMode::VerticalRl, [32.0, 22.0]),
-        (l::WritingMode::VerticalLr, [2.0, 12.0]),
+        (l::geometry::WritingMode::VerticalRl, [32.0, 22.0]),
+        (l::geometry::WritingMode::VerticalLr, [2.0, 12.0]),
     ] {
-        let batch = compute::<S>(&fixture, mode, l::InlineBaselineContext::Physical);
+        let batch = compute::<S>(&fixture, mode, l::baseline::InlineBaselineContext::Physical);
         geometry(&fixture, &batch, centers);
         assert_eq!(
             node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
-            l::NamedBaselinesOf::unknown()
+            l::baseline::NamedBaselinesOf::unknown()
         );
     }
 }

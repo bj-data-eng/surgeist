@@ -1,5 +1,15 @@
 //! Actual child Deferred metadata remains distinct from parent legality.
 use super::*;
+use crate::fragmentation::{
+    input::{
+        FragmentainerOf, FragmentationBreakInside, FragmentationCutOf, FragmentationFallback,
+        FragmentationFlowOf, FragmentationInputOf, FragmentationMeasuredHeadOf,
+        FragmentationOccurrence, FragmentationOpportunityKindOf, FragmentationOpportunityOf,
+        FragmentationProvider, FragmentationQueryOf, FragmentationReplyOf, FragmentationStage,
+        FragmentationWindowEnd, FragmentationWindowOf,
+    },
+    output::{FragmentationBreakReason, FragmentationError},
+};
 
 struct DeferredChildren {
     avoid: bool,

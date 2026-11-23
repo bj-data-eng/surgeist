@@ -2,7 +2,7 @@ use super::{
     Golden, TestTree, capture_authority::sha256, compute_actual_batch, flex_composition, layout,
     root_request,
 };
-use layout::LayoutTree as _;
+use layout::tree::LayoutTree as _;
 
 const SOURCE: &str = "html/flex/fri07_flex_composition.html";
 const SOURCE_BYTES: &[u8] = include_bytes!("html/flex/fri07_flex_composition.html");
@@ -179,8 +179,8 @@ fn visible_sideways_scroller_reserves_its_logical_end_gutter_with_or_without_col
             if disable_collapse {
                 for node in [collapsed, hidden_descendant] {
                     let mut input = tree.nodes[node].layout_input.as_box().unwrap().clone();
-                    input.flex_item_collapse = layout::FlexItemCollapse::Normal;
-                    tree.nodes[node].layout_input = layout::LayoutInput::box_input(input);
+                    input.flex_item_collapse = layout::flex::FlexItemCollapse::Normal;
+                    tree.nodes[node].layout_input = layout::node::LayoutInput::box_input(input);
                 }
             }
 
@@ -204,31 +204,34 @@ fn visible_sideways_scroller_reserves_its_logical_end_gutter_with_or_without_col
                 let packet =
                     |id| super::observation::observe(phase, id, tree.expected_publication_kind(id));
                 let collapsed_size = if disable_collapse {
-                    layout::Size::new(100.0, 30.0)
+                    layout::geometry::Size::new(100.0, 30.0)
                 } else {
-                    layout::Size::new(0.0, 0.0)
+                    layout::geometry::Size::new(0.0, 0.0)
                 };
                 assert_eq!(packet(collapsed).size, collapsed_size);
                 // Authored 40×80 remains the layout size even with the natural ratio 2.
-                assert_eq!(packet(image).size, layout::Size::new(40.0, 80.0));
+                assert_eq!(packet(image).size, layout::geometry::Size::new(40.0, 80.0));
 
                 let visible = packet(scroller);
-                assert_eq!(visible.size, layout::Size::new(70.0, 60.0));
+                assert_eq!(visible.size, layout::geometry::Size::new(70.0, 60.0));
                 let scroll = visible.scroll_geometry.unwrap();
-                let content_origin = layout::Point::new(0.0, content_top);
-                let client_size = layout::Size::new(70.0, 45.0);
+                let content_origin = layout::geometry::Point::new(0.0, content_top);
+                let client_size = layout::geometry::Size::new(70.0, 45.0);
                 assert_eq!(scroll.content_box().origin(), content_origin);
                 assert_eq!(scroll.content_box().size(), client_size);
                 assert_eq!(scroll.scrollport().origin(), content_origin);
                 assert_eq!(scroll.scrollport().size(), client_size);
-                assert_eq!(scroll.scrollbar_size(), layout::Size::new(0.0, 15.0));
+                assert_eq!(
+                    scroll.scrollbar_size(),
+                    layout::geometry::Size::new(0.0, 15.0)
+                );
                 let gutters = scroll.gutters();
                 let gutter = if rtl { gutters.top() } else { gutters.bottom() }.unwrap();
                 assert_eq!(
                     gutter.origin(),
-                    layout::Point::new(0.0, if rtl { 0.0 } else { 45.0 })
+                    layout::geometry::Point::new(0.0, if rtl { 0.0 } else { 45.0 })
                 );
-                assert_eq!(gutter.size(), layout::Size::new(70.0, 15.0));
+                assert_eq!(gutter.size(), layout::geometry::Size::new(70.0, 15.0));
                 assert!(gutters.left().is_none() && gutters.right().is_none());
                 assert!(if rtl {
                     gutters.bottom().is_none()
@@ -239,8 +242,11 @@ fn visible_sideways_scroller_reserves_its_logical_end_gutter_with_or_without_col
                 assert_eq!((ranges.x().minimum(), ranges.x().maximum()), (-50.0, 0.0));
                 assert_eq!((ranges.y().minimum(), ranges.y().maximum()), (0.0, 0.0));
                 let packet = packet(child);
-                assert_eq!(packet.location, layout::Point::new(-50.0, content_top));
-                assert_eq!(packet.size, layout::Size::new(120.0, 45.0));
+                assert_eq!(
+                    packet.location,
+                    layout::geometry::Point::new(-50.0, content_top)
+                );
+                assert_eq!(packet.size, layout::geometry::Size::new(120.0, 45.0));
             }
         }
     }

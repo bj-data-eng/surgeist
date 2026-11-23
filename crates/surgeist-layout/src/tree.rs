@@ -1,4 +1,5 @@
-use crate::measurement::LeafMeasureInputOf;
+//! Host contracts for traversal, measurement and batch publication, and direct leaf measurement.
+
 use crate::{
     cache::CacheKeyContext,
     geometry::Size,
@@ -6,6 +7,9 @@ use crate::{
     output::{ComputeInputOf, ComputeOutputOf},
     scalar::LayoutScalar,
 };
+
+pub use crate::engine::measure_definite_inline_atomic_size;
+pub use crate::measurement::{LeafMeasureInput, LeafMeasureInputOf, compute_leaf};
 
 type FloatExclusionProviderResultOf<S, M> = Result<Option<FloatExclusionIntervalOf<S>>, M>;
 

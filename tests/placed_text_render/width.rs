@@ -100,9 +100,9 @@ fn capture(
     white_space: text::style::WhiteSpace,
     word_break: text::style::WordBreak,
     authored_width: Option<f32>,
-    request: layout::LayoutRootRequest,
+    request: layout::request::LayoutRootRequest,
 ) -> (
-    layout::CompletedLayoutBatch<usize>,
+    layout::batch::CompletedLayoutBatch<usize>,
     text::prepared::PreparedOrigin,
     text::source::Source,
 ) {
@@ -164,32 +164,34 @@ fn capture(
     let origin = prepared.origin_views().next().unwrap().handle();
     let tree = Tree {
         inputs: [
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
-                size: layout::Size::new(
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                size: layout::geometry::Size::new(
                     match authored_width {
-                        Some(width) => layout::PreferredSizeOf::value(
-                            layout::LengthPercentageOf::px(width).unwrap(),
+                        Some(width) => layout::sizing::PreferredSizeOf::value(
+                            layout::length::LengthPercentageOf::px(width).unwrap(),
                         ),
-                        None => layout::PreferredSizeOf::AUTO,
+                        None => layout::sizing::PreferredSizeOf::AUTO,
                     },
-                    layout::PreferredSizeOf::AUTO,
+                    layout::sizing::PreferredSizeOf::AUTO,
                 ),
-                ..layout::NodeInput::DEFAULT
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(origin.clone())),
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
+                origin.clone(),
+            )),
         ],
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let capture = layout::LayoutFlowInput::try_new(
+    let capture = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
-        vec![layout::TextParagraphBinding {
-            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+        vec![layout::text_layout::TextParagraphBinding {
+            inline_box_fragments: layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1],
-            origins: vec![layout::TextOriginBinding {
+            origins: vec![layout::text_layout::TextOriginBinding {
                 origin: origin.clone(),
                 node: 1,
             }],
@@ -197,7 +199,7 @@ fn capture(
             controls: vec![],
             line_strut: None,
         }],
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -223,7 +225,7 @@ fn glyphs(placed: &text::layout::Layout, bytes: &[u8]) -> Vec<(u32, f32)> {
         .collect()
 }
 
-fn advances(batch: &layout::CompletedLayoutBatch<usize>) -> Vec<f64> {
+fn advances(batch: &layout::batch::CompletedLayoutBatch<usize>) -> Vec<f64> {
     batch
         .final_inline_fragments()
         .iter()
@@ -243,7 +245,7 @@ fn advances(batch: &layout::CompletedLayoutBatch<usize>) -> Vec<f64> {
         .collect()
 }
 
-fn intrinsic_width(batch: &layout::CompletedLayoutBatch<usize>) -> f32 {
+fn intrinsic_width(batch: &layout::batch::CompletedLayoutBatch<usize>) -> f32 {
     batch
         .node_layout(0)
         .unwrap()
@@ -269,12 +271,15 @@ fn width_maps_real_glyph_advance_without_expanding_ink_or_original_selection() {
             text::style::WordBreak::Normal,
             Some(30.0),
             NativeViewport::new(
-                layout::Size::new(Some(30.0), None),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::geometry::Size::new(Some(30.0), None),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
             )
-            .request(layout::Size::new(
-                layout::SizingOperation::Normal,
-                layout::SizingOperation::Normal,
+            .request(layout::geometry::Size::new(
+                layout::constraint::SizingOperation::Normal,
+                layout::constraint::SizingOperation::Normal,
             )),
         );
         let placed = batch.placed_text()[0].layout();
@@ -424,12 +429,15 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
             text::style::WordBreak::BreakAll,
             Some(16.0),
             NativeViewport::new(
-                layout::Size::new(Some(16.0), None),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::geometry::Size::new(Some(16.0), None),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
             )
-            .request(layout::Size::new(
-                layout::SizingOperation::Normal,
-                layout::SizingOperation::Normal,
+            .request(layout::geometry::Size::new(
+                layout::constraint::SizingOperation::Normal,
+                layout::constraint::SizingOperation::Normal,
             )),
         );
         let placed = batch.placed_text()[0].layout();
@@ -486,8 +494,8 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
             );
         }
         for (purpose, expected) in [
-            (layout::SizingOperation::MinContent, min),
-            (layout::SizingOperation::MaxContent, max),
+            (layout::constraint::SizingOperation::MinContent, min),
+            (layout::constraint::SizingOperation::MaxContent, max),
         ] {
             let (intrinsic, _, _) = capture(
                 &mut system,
@@ -497,13 +505,16 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
                 text::style::WordBreak::BreakAll,
                 None,
                 NativeViewport::new(
-                    layout::Size::new(None, None),
-                    layout::FlowAxes::new(
-                        layout::WritingMode::HorizontalTb,
-                        layout::Direction::Ltr,
+                    layout::geometry::Size::new(None, None),
+                    layout::geometry::FlowAxes::new(
+                        layout::geometry::WritingMode::HorizontalTb,
+                        layout::geometry::Direction::Ltr,
                     ),
                 )
-                .request(layout::Size::new(purpose, layout::SizingOperation::Normal)),
+                .request(layout::geometry::Size::new(
+                    purpose,
+                    layout::constraint::SizingOperation::Normal,
+                )),
             );
             assert_eq!(intrinsic_width(&intrinsic), expected);
         }
@@ -528,12 +539,15 @@ fn normal_wrap_uses_mapped_character_opportunities_and_real_twenty_pixel_advance
             text::style::WordBreak::Normal,
             Some(25.0),
             NativeViewport::new(
-                layout::Size::new(Some(25.0), None),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::geometry::Size::new(Some(25.0), None),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
             )
-            .request(layout::Size::new(
-                layout::SizingOperation::Normal,
-                layout::SizingOperation::Normal,
+            .request(layout::geometry::Size::new(
+                layout::constraint::SizingOperation::Normal,
+                layout::constraint::SizingOperation::Normal,
             )),
         );
         let placed = batch.placed_text()[0].layout();
@@ -562,9 +576,9 @@ fn normal_wrap_uses_mapped_character_opportunities_and_real_twenty_pixel_advance
         );
         assert_eq!(placed.source(), &source);
         for (purpose, expected) in [
-            (layout::SizingOperation::MinContent, 20.0),
+            (layout::constraint::SizingOperation::MinContent, 20.0),
             (
-                layout::SizingOperation::MaxContent,
+                layout::constraint::SizingOperation::MaxContent,
                 if enabled { 40.0 } else { 20.0 },
             ),
         ] {
@@ -576,13 +590,16 @@ fn normal_wrap_uses_mapped_character_opportunities_and_real_twenty_pixel_advance
                 text::style::WordBreak::Normal,
                 None,
                 NativeViewport::new(
-                    layout::Size::new(None, None),
-                    layout::FlowAxes::new(
-                        layout::WritingMode::HorizontalTb,
-                        layout::Direction::Ltr,
+                    layout::geometry::Size::new(None, None),
+                    layout::geometry::FlowAxes::new(
+                        layout::geometry::WritingMode::HorizontalTb,
+                        layout::geometry::Direction::Ltr,
                     ),
                 )
-                .request(layout::Size::new(purpose, layout::SizingOperation::Normal)),
+                .request(layout::geometry::Size::new(
+                    purpose,
+                    layout::constraint::SizingOperation::Normal,
+                )),
             );
             assert_eq!(intrinsic_width(&intrinsic), expected);
         }
@@ -634,12 +651,15 @@ fn preserved_space_maps_but_surviving_collapsed_space_stays_narrow() {
             text::style::WordBreak::Normal,
             Some(100.0),
             NativeViewport::new(
-                layout::Size::new(Some(100.0), None),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::geometry::Size::new(Some(100.0), None),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
             )
-            .request(layout::Size::new(
-                layout::SizingOperation::Normal,
-                layout::SizingOperation::Normal,
+            .request(layout::geometry::Size::new(
+                layout::constraint::SizingOperation::Normal,
+                layout::constraint::SizingOperation::Normal,
             )),
         );
         let placed = batch.placed_text()[0].layout();
@@ -734,12 +754,15 @@ fn width_accessibility_keeps_original_sharp_s_with_actual_thirty_pixel_geometry(
         text::style::WordBreak::Normal,
         Some(40.0),
         NativeViewport::new(
-            layout::Size::new(Some(40.0), None),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::geometry::Size::new(Some(40.0), None),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
         )
-        .request(layout::Size::new(
-            layout::SizingOperation::Normal,
-            layout::SizingOperation::Normal,
+        .request(layout::geometry::Size::new(
+            layout::constraint::SizingOperation::Normal,
+            layout::constraint::SizingOperation::Normal,
         )),
     );
     let placed = batch.placed_text()[0].layout();

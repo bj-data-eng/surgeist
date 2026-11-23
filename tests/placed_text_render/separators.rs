@@ -9,9 +9,9 @@ fn capture(
     mode: text::style::WhiteSpace,
     full_width: bool,
     authored_width: Option<f32>,
-    request: layout::LayoutRootRequest,
+    request: layout::request::LayoutRootRequest,
 ) -> (
-    layout::CompletedLayoutBatch<usize>,
+    layout::batch::CompletedLayoutBatch<usize>,
     text::prepared::PreparedOrigin,
     text::source::Source,
 ) {
@@ -75,32 +75,34 @@ fn capture(
     let origin = prepared.origin_views().next().unwrap().handle();
     let tree = Tree {
         inputs: [
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
-                size: layout::Size::new(
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                size: layout::geometry::Size::new(
                     match authored_width {
-                        Some(width) => layout::PreferredSizeOf::value(
-                            layout::LengthPercentageOf::px(width).unwrap(),
+                        Some(width) => layout::sizing::PreferredSizeOf::value(
+                            layout::length::LengthPercentageOf::px(width).unwrap(),
                         ),
-                        None => layout::PreferredSizeOf::AUTO,
+                        None => layout::sizing::PreferredSizeOf::AUTO,
                     },
-                    layout::PreferredSizeOf::AUTO,
+                    layout::sizing::PreferredSizeOf::AUTO,
                 ),
-                ..layout::NodeInput::DEFAULT
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(origin.clone())),
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
+                origin.clone(),
+            )),
         ],
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let captured = layout::LayoutFlowInput::try_new(
+    let captured = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
-        vec![layout::TextParagraphBinding {
-            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+        vec![layout::text_layout::TextParagraphBinding {
+            inline_box_fragments: layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1],
-            origins: vec![layout::TextOriginBinding {
+            origins: vec![layout::text_layout::TextOriginBinding {
                 origin: origin.clone(),
                 node: 1,
             }],
@@ -108,7 +110,7 @@ fn capture(
             controls: vec![],
             line_strut: None,
         }],
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -182,12 +184,15 @@ fn explicit_separator_replacement_keeps_original_range_selection_and_blank_paint
             width,
             Some(100.0),
             NativeViewport::new(
-                layout::Size::new(Some(100.0), None),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::geometry::Size::new(Some(100.0), None),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
             )
-            .request(layout::Size::new(
-                layout::SizingOperation::Normal,
-                layout::SizingOperation::Normal,
+            .request(layout::geometry::Size::new(
+                layout::constraint::SizingOperation::Normal,
+                layout::constraint::SizingOperation::Normal,
             )),
         );
         let placed = batch.placed_text()[0].layout();
@@ -361,12 +366,15 @@ fn separator_accessibility_keeps_original_zwsp_with_actual_replacement_geometry(
             width,
             Some(100.0),
             NativeViewport::new(
-                layout::Size::new(Some(100.0), None),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::geometry::Size::new(Some(100.0), None),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
             )
-            .request(layout::Size::new(
-                layout::SizingOperation::Normal,
-                layout::SizingOperation::Normal,
+            .request(layout::geometry::Size::new(
+                layout::constraint::SizingOperation::Normal,
+                layout::constraint::SizingOperation::Normal,
             )),
         );
         let placed = batch.placed_text()[0].layout();
@@ -461,12 +469,15 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
             width,
             Some(10.0),
             NativeViewport::new(
-                layout::Size::new(Some(10.0), None),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::geometry::Size::new(Some(10.0), None),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
             )
-            .request(layout::Size::new(
-                layout::SizingOperation::Normal,
-                layout::SizingOperation::Normal,
+            .request(layout::geometry::Size::new(
+                layout::constraint::SizingOperation::Normal,
+                layout::constraint::SizingOperation::Normal,
             )),
         );
         let placed = batch.placed_text()[0].layout();
@@ -575,8 +586,8 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
         // there is no earlier word or emergency opportunity in these inputs.
         // Min/max therefore each consume the entire ordinary15/30/40px line.
         for purpose in [
-            layout::SizingOperation::MinContent,
-            layout::SizingOperation::MaxContent,
+            layout::constraint::SizingOperation::MinContent,
+            layout::constraint::SizingOperation::MaxContent,
         ] {
             let (intrinsic, _, _) = capture(
                 &mut system,
@@ -586,13 +597,16 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
                 width,
                 None,
                 NativeViewport::new(
-                    layout::Size::new(None, None),
-                    layout::FlowAxes::new(
-                        layout::WritingMode::HorizontalTb,
-                        layout::Direction::Ltr,
+                    layout::geometry::Size::new(None, None),
+                    layout::geometry::FlowAxes::new(
+                        layout::geometry::WritingMode::HorizontalTb,
+                        layout::geometry::Direction::Ltr,
                     ),
                 )
-                .request(layout::Size::new(purpose, layout::SizingOperation::Normal)),
+                .request(layout::geometry::Size::new(
+                    purpose,
+                    layout::constraint::SizingOperation::Normal,
+                )),
             );
             let root = intrinsic
                 .node_layout(0)

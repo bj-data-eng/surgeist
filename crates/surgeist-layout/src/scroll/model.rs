@@ -15,8 +15,14 @@ use crate::{
 /// overflowed.
 ///
 /// ```compile_fail
-/// use surgeist_layout::ScrollRectError;
+/// use surgeist_layout::scroll::ScrollRectError;
 /// let _ = ScrollRectError::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::scroll::ScrollRectError;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ScrollRectErrorOf<S: LayoutScalar = DefaultScalar> {
@@ -154,23 +160,29 @@ impl<S: LayoutScalar> ScrollRectOf<S> {
 /// interval that violates its ordering or finite-value invariant.
 ///
 /// ```compile_fail
-/// use surgeist_layout::PhysicalClipAxis;
+/// use surgeist_layout::scroll::PhysicalClipAxis;
 /// let _ = PhysicalClipAxis { range: todo!() };
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::PhysicalClipAxis;
+/// use surgeist_layout::scroll::PhysicalClipAxis;
 /// fn mutate(mut value: PhysicalClipAxis) { value.range = todo!(); }
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::PhysicalClipAxis;
+/// use surgeist_layout::scroll::PhysicalClipAxis;
 /// let _ = PhysicalClipAxis::try_new(0.0, 1.0);
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::PhysicalClipAxis;
+/// use surgeist_layout::scroll::PhysicalClipAxis;
 /// let _ = PhysicalClipAxis::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::scroll::PhysicalClipAxis;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PhysicalClipAxisOf<S: LayoutScalar = DefaultScalar> {
@@ -194,23 +206,29 @@ impl<S: LayoutScalar> PhysicalClipAxisOf<S> {
 /// Independent optional finite clip intervals for physical x and y axes.
 ///
 /// ```compile_fail
-/// use surgeist_layout::OverflowClip;
+/// use surgeist_layout::scroll::OverflowClip;
 /// let _ = OverflowClip { x: None, y: None };
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::OverflowClip;
+/// use surgeist_layout::scroll::OverflowClip;
 /// fn mutate(mut value: OverflowClip) { value.x = None; }
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::OverflowClip;
+/// use surgeist_layout::scroll::OverflowClip;
 /// let _ = OverflowClip::new(None, None);
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::OverflowClip;
+/// use surgeist_layout::scroll::OverflowClip;
 /// let _ = OverflowClip::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::scroll::OverflowClip;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OverflowClipOf<S: LayoutScalar = DefaultScalar> {
@@ -259,7 +277,7 @@ impl<S: LayoutScalar> PartialEq<Option<ScrollRectOf<S>>> for OverflowClipOf<S> {
 /// inputs and the scrolling consumer selects the live destination.
 ///
 /// ```compile_fail
-/// use surgeist_layout::ScrollTargetGeometry;
+/// use surgeist_layout::scroll::ScrollTargetGeometry;
 /// let _ = ScrollTargetGeometry {
 ///     border_box: todo!(),
 ///     scroll_margin: todo!(),
@@ -270,18 +288,25 @@ impl<S: LayoutScalar> PartialEq<Option<ScrollRectOf<S>>> for OverflowClipOf<S> {
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::{FlowAxes, ScrollTargetGeometry};
+/// use surgeist_layout::{geometry::FlowAxes, scroll::ScrollTargetGeometry};
 /// fn mutate(mut value: ScrollTargetGeometry, axes: FlowAxes) { value.flow_axes = axes; }
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::ScrollTargetGeometry;
+/// use surgeist_layout::scroll::ScrollTargetGeometry;
 /// let _ = ScrollTargetGeometry::new();
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::ScrollTargetGeometry;
+/// use surgeist_layout::scroll::ScrollTargetGeometry;
 /// let _ = ScrollTargetGeometry::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::geometry::FlowAxes;
+/// use surgeist_layout::scroll::ScrollTargetGeometry;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScrollTargetGeometryOf<S: LayoutScalar = DefaultScalar> {
@@ -374,8 +399,14 @@ impl<S: LayoutScalar> ScrollbarGutterRectsOf<S> {
 /// axis, and finite value or endpoint that failed validation.
 ///
 /// ```compile_fail
-/// use surgeist_layout::ScrollCoordinateErrorOf;
+/// use surgeist_layout::scroll::ScrollCoordinateErrorOf;
 /// let _ = ScrollCoordinateErrorOf::<f32>::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::scroll::ScrollCoordinateErrorOf;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ScrollCoordinateErrorOf<S: LayoutScalar = DefaultScalar> {
@@ -488,8 +519,14 @@ impl<S: LayoutScalar> std::error::Error for ScrollCoordinateErrorOf<S> {}
 /// Finite physical x/y scroll offset. Positive x is rightward and positive y is downward.
 ///
 /// ```compile_fail
-/// use surgeist_layout::PhysicalScrollOffset;
+/// use surgeist_layout::scroll::PhysicalScrollOffset;
 /// let _ = PhysicalScrollOffset::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::scroll::PhysicalScrollOffset;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PhysicalScrollOffsetOf<S: LayoutScalar = DefaultScalar> {
@@ -534,8 +571,14 @@ impl<S: LayoutScalar> PhysicalScrollOffsetOf<S> {
 /// Finite flow-relative inline/block scroll offset.
 ///
 /// ```compile_fail
-/// use surgeist_layout::FlowRelativeScrollOffset;
+/// use surgeist_layout::scroll::FlowRelativeScrollOffset;
 /// let _ = FlowRelativeScrollOffset::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::scroll::FlowRelativeScrollOffset;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FlowRelativeScrollOffsetOf<S: LayoutScalar = DefaultScalar> {
@@ -580,8 +623,14 @@ impl<S: LayoutScalar> FlowRelativeScrollOffsetOf<S> {
 /// Finite closed physical-axis scroll interval.
 ///
 /// ```compile_fail
-/// use surgeist_layout::PhysicalScrollAxisRange;
+/// use surgeist_layout::scroll::PhysicalScrollAxisRange;
 /// let _ = PhysicalScrollAxisRange::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::scroll::PhysicalScrollAxisRange;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PhysicalScrollAxisRangeOf<S: LayoutScalar = DefaultScalar> {
@@ -615,8 +664,14 @@ impl<S: LayoutScalar> PhysicalScrollAxisRangeOf<S> {
 /// Finite closed flow-relative-axis scroll interval.
 ///
 /// ```compile_fail
-/// use surgeist_layout::FlowRelativeScrollAxisRange;
+/// use surgeist_layout::scroll::FlowRelativeScrollAxisRange;
 /// let _ = FlowRelativeScrollAxisRange::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::scroll::FlowRelativeScrollAxisRange;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FlowRelativeScrollAxisRangeOf<S: LayoutScalar = DefaultScalar> {
@@ -655,8 +710,14 @@ impl<S: LayoutScalar> FlowRelativeScrollAxisRangeOf<S> {
 /// and `y.maximum() - y.minimum()`, including zero for a non-scrollable axis.
 ///
 /// ```compile_fail
-/// use surgeist_layout::PhysicalScrollRange;
+/// use surgeist_layout::scroll::PhysicalScrollRange;
 /// let _ = PhysicalScrollRange::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::scroll::PhysicalScrollRange;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PhysicalScrollRangeOf<S: LayoutScalar = DefaultScalar> {
@@ -704,8 +765,14 @@ impl<S: LayoutScalar> PhysicalScrollRangeOf<S> {
 /// Finite closed inline/block scroll intervals in flow-relative coordinates.
 ///
 /// ```compile_fail
-/// use surgeist_layout::FlowRelativeScrollRange;
+/// use surgeist_layout::scroll::FlowRelativeScrollRange;
 /// let _ = FlowRelativeScrollRange::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::scroll::FlowRelativeScrollRange;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FlowRelativeScrollRangeOf<S: LayoutScalar = DefaultScalar> {

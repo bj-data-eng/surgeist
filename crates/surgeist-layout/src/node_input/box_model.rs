@@ -181,8 +181,14 @@ impl<S: LayoutScalar> std::error::Error for FloatExclusionIntervalErrorOf<S> {}
 /// state and intentionally carries no cache revision.
 ///
 /// ```compile_fail
-/// use surgeist_layout::FloatExclusionQuery;
+/// use surgeist_layout::box_model::FloatExclusionQuery;
 /// let _ = FloatExclusionQuery::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::box_model::FloatExclusionQuery;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FloatExclusionQueryOf<S: LayoutScalar = DefaultScalar> {
@@ -255,8 +261,14 @@ impl<S: LayoutScalar> FloatExclusionQueryOf<S> {
 /// A disjoint or zero-length intersection is returned as `None`.
 ///
 /// ```compile_fail
-/// use surgeist_layout::FloatExclusionInterval;
+/// use surgeist_layout::box_model::FloatExclusionInterval;
 /// let _ = FloatExclusionInterval::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::box_model::FloatExclusionInterval;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FloatExclusionIntervalOf<S: LayoutScalar = DefaultScalar> {

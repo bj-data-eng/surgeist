@@ -2,32 +2,35 @@
 use super::*;
 use surgeist_text::font::FontBaseline;
 
-fn receiver_tree<S: l::LayoutScalar>(native_edge: bool, tail: bool) -> Host<S> {
-    let mode = l::WritingMode::HorizontalTb;
-    let direction = l::Direction::Ltr;
-    let central = l::InlineBaselineContext::Named(FontBaseline::Central);
+fn receiver_tree<S: l::scalar::LayoutScalar>(native_edge: bool, tail: bool) -> Host<S> {
+    let mode = l::geometry::WritingMode::HorizontalTb;
+    let direction = l::geometry::Direction::Ltr;
+    let central = l::baseline::InlineBaselineContext::Named(FontBaseline::Central);
     let mut host = Host::<S>::new(root(mode, direction, central));
     let mut first = atomic(mode, direction, 10.0, (0.0, 0.0));
-    first.vertical_align = l::VerticalAlignOf::Top;
-    first.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
+    first.vertical_align = l::inline::VerticalAlignOf::Top;
+    first.atomic_inline_participation = Some(l::inline::AtomicInlineParticipation::new(
         t::supplied_line::BidiLevel::try_new(0).unwrap(),
         if native_edge {
-            l::InlineBreakOpportunity::Prohibited
+            l::text_flow::InlineBreakOpportunity::Prohibited
         } else {
-            l::InlineBreakOpportunity::Mandatory
+            l::text_flow::InlineBreakOpportunity::Mandatory
         },
     ));
     if native_edge {
         // This actual leaf box's native exterior is the sole hard cause.
         // No allocated LineBreakInput or fabricated scope supplies its strut.
-        first.wrap_edges.after = l::WrapEdge::Line;
+        first.wrap_edges.after = l::inline_wrapping::WrapEdge::Line;
     }
-    assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(first)), 1);
+    assert_eq!(
+        host.push(Some(0), l::node::LayoutInputOf::box_input(first)),
+        1
+    );
     if tail {
         assert_eq!(
             host.push(
                 Some(0),
-                l::LayoutInputOf::box_input(atomic(mode, direction, 6.0, (0.0, 0.0)))
+                l::node::LayoutInputOf::box_input(atomic(mode, direction, 6.0, (0.0, 0.0)))
             ),
             2
         );
@@ -35,8 +38,8 @@ fn receiver_tree<S: l::LayoutScalar>(native_edge: bool, tail: bool) -> Host<S> {
     host
 }
 
-fn actual_atomic_central_receiver<S: l::LayoutScalar>(native_edge: bool) {
-    let mode = l::WritingMode::HorizontalTb;
+fn actual_atomic_central_receiver<S: l::scalar::LayoutScalar>(native_edge: bool) {
+    let mode = l::geometry::WritingMode::HorizontalTb;
     // First qualify the real producer without a receiving contributor. The
     // actual10-high Top atom owns only extent; phantom completion cannot demand
     // its absent Central fact or create another formatted/named line.
@@ -48,15 +51,21 @@ fn actual_atomic_central_receiver<S: l::LayoutScalar>(native_edge: bool) {
         crate::layout::observation::phase(&no_tail, true),
     ] {
         assert_eq!(entries.0.node_layouts().len(), 2);
-        assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(10.0)));
-        assert_eq!(node(entries, 1).location, l::Point::ZERO);
-        assert_eq!(node(entries, 1).size, l::Size::new(n(20.0), n(10.0)));
-        assert_eq!(node(entries, 0).source_index, l::SourceIndex::new(0));
-        assert_eq!(node(entries, 1).source_index, l::SourceIndex::new(0));
+        assert_eq!(
+            node(entries, 0).size,
+            l::geometry::Size::new(n(100.0), n(10.0))
+        );
+        assert_eq!(node(entries, 1).location, l::geometry::Point::ZERO);
+        assert_eq!(
+            node(entries, 1).size,
+            l::geometry::Size::new(n(20.0), n(10.0))
+        );
+        assert_eq!(node(entries, 0).source_index, l::node::SourceIndex::new(0));
+        assert_eq!(node(entries, 1).source_index, l::node::SourceIndex::new(0));
         absent(node(entries, 1).named_baselines);
         let pair = node(entries, 0).named_baselines.get(FontBaseline::Central);
-        assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
-        assert_eq!(pair.last(), l::BaselineFactOf::Unknown);
+        assert_eq!(pair.first(), l::baseline::BaselineFactOf::Unknown);
+        assert_eq!(pair.last(), l::baseline::BaselineFactOf::Unknown);
     }
     assert!(no_tail.placed_text().is_empty());
     assert!(no_tail.final_inline_fragments().is_empty());
@@ -74,20 +83,35 @@ fn actual_atomic_central_receiver<S: l::LayoutScalar>(native_edge: bool) {
         crate::layout::observation::phase(&full, true),
     ] {
         assert_eq!(entries.0.node_layouts().len(), 3);
-        assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(20.0)));
-        assert_eq!(node(entries, 1).location, l::Point::ZERO);
-        assert_eq!(node(entries, 1).size, l::Size::new(n(20.0), n(10.0)));
-        assert_eq!(node(entries, 2).location, l::Point::new(S::ZERO, n(12.0)));
-        assert_eq!(node(entries, 2).size, l::Size::new(n(20.0), n(6.0)));
+        assert_eq!(
+            node(entries, 0).size,
+            l::geometry::Size::new(n(100.0), n(20.0))
+        );
+        assert_eq!(node(entries, 1).location, l::geometry::Point::ZERO);
+        assert_eq!(
+            node(entries, 1).size,
+            l::geometry::Size::new(n(20.0), n(10.0))
+        );
+        assert_eq!(
+            node(entries, 2).location,
+            l::geometry::Point::new(S::ZERO, n(12.0))
+        );
+        assert_eq!(
+            node(entries, 2).size,
+            l::geometry::Size::new(n(20.0), n(6.0))
+        );
         for (id, source) in [(0, 0), (1, 0), (2, 1)] {
-            assert_eq!(node(entries, id).source_index, l::SourceIndex::new(source));
+            assert_eq!(
+                node(entries, id).source_index,
+                l::node::SourceIndex::new(source)
+            );
         }
         // Synthesis belongs to the parent receiver, not the child's own table.
         absent(node(entries, 1).named_baselines);
         absent(node(entries, 2).named_baselines);
         let pair = node(entries, 0).named_baselines.get(FontBaseline::Central);
-        assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
-        source_fact(pair.last(), l::PhysicalAxis::Vertical, 15.0);
+        assert_eq!(pair.first(), l::baseline::BaselineFactOf::Unknown);
+        source_fact(pair.last(), l::geometry::PhysicalAxis::Vertical, 15.0);
     }
     assert!(full.placed_text().is_empty());
     assert!(full.final_inline_fragments().is_empty());
@@ -111,19 +135,19 @@ fn actual_atomic_native_after_line_receiver_uses_central_margin_baseline_f64() {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct ReceiverSpec<S: l::LayoutScalar> {
-    mode: l::WritingMode,
-    direction: l::Direction,
+struct ReceiverSpec<S: l::scalar::LayoutScalar> {
+    mode: l::geometry::WritingMode,
+    direction: l::geometry::Direction,
     name: FontBaseline,
-    alignment: l::VerticalAlignOf<S>,
+    alignment: l::inline::VerticalAlignOf<S>,
     native_edge: bool,
     signed: bool,
 }
-fn matrix_tree<S: l::LayoutScalar>(spec: ReceiverSpec<S>, tail: bool) -> Host<S> {
+fn matrix_tree<S: l::scalar::LayoutScalar>(spec: ReceiverSpec<S>, tail: bool) -> Host<S> {
     let mut host = Host::<S>::new(root(
         spec.mode,
         spec.direction,
-        l::InlineBaselineContext::Named(spec.name),
+        l::baseline::InlineBaselineContext::Named(spec.name),
     ));
     let mut first = atomic(
         spec.mode,
@@ -132,75 +156,84 @@ fn matrix_tree<S: l::LayoutScalar>(spec: ReceiverSpec<S>, tail: bool) -> Host<S>
         if spec.signed { (-2.0, 6.0) } else { (0.0, 0.0) },
     );
     first.vertical_align = spec.alignment;
-    first.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
-        t::supplied_line::BidiLevel::try_new(u8::from(spec.direction == l::Direction::Rtl))
-            .unwrap(),
+    first.atomic_inline_participation = Some(l::inline::AtomicInlineParticipation::new(
+        t::supplied_line::BidiLevel::try_new(u8::from(
+            spec.direction == l::geometry::Direction::Rtl,
+        ))
+        .unwrap(),
         if spec.native_edge {
-            l::InlineBreakOpportunity::Prohibited
+            l::text_flow::InlineBreakOpportunity::Prohibited
         } else {
-            l::InlineBreakOpportunity::Mandatory
+            l::text_flow::InlineBreakOpportunity::Mandatory
         },
     ));
     if spec.native_edge {
-        first.wrap_edges.after = l::WrapEdge::Line;
+        first.wrap_edges.after = l::inline_wrapping::WrapEdge::Line;
     }
-    host.push(Some(0), l::LayoutInputOf::box_input(first));
+    host.push(Some(0), l::node::LayoutInputOf::box_input(first));
     if tail {
         host.push(
             Some(0),
-            l::LayoutInputOf::box_input(atomic(spec.mode, spec.direction, 6.0, (0.0, 0.0))),
+            l::node::LayoutInputOf::box_input(atomic(spec.mode, spec.direction, 6.0, (0.0, 0.0))),
         );
     }
     host
 }
-fn literal_point<S: l::LayoutScalar>(mode: l::WritingMode, inline: f64, cross: f64) -> l::Point<S> {
+fn literal_point<S: l::scalar::LayoutScalar>(
+    mode: l::geometry::WritingMode,
+    inline: f64,
+    cross: f64,
+) -> l::geometry::Point<S> {
     // Only the literal table's physical-coordinate notation is expanded here;
     // expected sides/anchors never come from production FlowAxes.
-    if mode == l::WritingMode::HorizontalTb {
-        l::Point::new(n(inline), n(cross))
+    if mode == l::geometry::WritingMode::HorizontalTb {
+        l::geometry::Point::new(n(inline), n(cross))
     } else {
-        l::Point::new(n(cross), n(inline))
+        l::geometry::Point::new(n(cross), n(inline))
     }
 }
-fn empty_receiver_matrix<S: l::LayoutScalar>() {
+fn empty_receiver_matrix<S: l::scalar::LayoutScalar>() {
     // Physical cross: full A, tailAlpha/Central, lastAlpha/Central, no-tail A.
     // These literal rows follow WM4 Table11 plus the actual signed margin box.
     for (mode, plain, signed) in [
         (
-            l::WritingMode::HorizontalTb,
+            l::geometry::WritingMode::HorizontalTb,
             [0.0, 14.0, 12.0, 20.0, 15.0, 0.0],
             [-2.0, 22.0, 18.0, 28.0, 21.0, -2.0],
         ),
         (
-            l::WritingMode::VerticalRl,
+            l::geometry::WritingMode::VerticalRl,
             [10.0, 0.0, 2.0, 0.0, 5.0, 0.0],
             [20.0, 0.0, 4.0, 0.0, 7.0, 6.0],
         ),
         (
-            l::WritingMode::VerticalLr,
+            l::geometry::WritingMode::VerticalLr,
             [0.0, 10.0, 12.0, 10.0, 15.0, 0.0],
             [6.0, 14.0, 18.0, 14.0, 21.0, 6.0],
         ),
         (
-            l::WritingMode::SidewaysRl,
+            l::geometry::WritingMode::SidewaysRl,
             [10.0, 0.0, 2.0, 0.0, 5.0, 0.0],
             [20.0, 0.0, 4.0, 0.0, 7.0, 6.0],
         ),
         (
-            l::WritingMode::SidewaysLr,
+            l::geometry::WritingMode::SidewaysLr,
             [0.0, 14.0, 12.0, 20.0, 15.0, 0.0],
             [-2.0, 22.0, 18.0, 28.0, 21.0, -2.0],
         ),
     ] {
-        for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
             let inline = match (mode, direction) {
-                (l::WritingMode::SidewaysLr, l::Direction::Ltr) => 80.0,
-                (l::WritingMode::SidewaysLr, l::Direction::Rtl) => 0.0,
-                (_, l::Direction::Ltr) => 0.0,
-                (_, l::Direction::Rtl) => 80.0,
+                (l::geometry::WritingMode::SidewaysLr, l::geometry::Direction::Ltr) => 80.0,
+                (l::geometry::WritingMode::SidewaysLr, l::geometry::Direction::Rtl) => 0.0,
+                (_, l::geometry::Direction::Ltr) => 0.0,
+                (_, l::geometry::Direction::Rtl) => 80.0,
             };
             for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
-                for alignment in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
+                for alignment in [
+                    l::inline::VerticalAlignOf::Top,
+                    l::inline::VerticalAlignOf::Bottom,
+                ] {
                     for native_edge in [false, true] {
                         for signed_margins in [false, true] {
                             let spec = ReceiverSpec {
@@ -214,12 +247,12 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                             let values = if signed_margins { signed } else { plain };
                             let extent = if signed_margins { 14.0 } else { 10.0 };
                             let preserve_signed_top =
-                                signed_margins && alignment == l::VerticalAlignOf::Top;
+                                signed_margins && alignment == l::inline::VerticalAlignOf::Top;
                             let physical_control = |tail| {
                                 let mut control = matrix_tree::<S>(spec, tail);
                                 control.change(0, |input| {
                                     input.inline_baseline_context =
-                                        l::InlineBaselineContext::Physical
+                                        l::baseline::InlineBaselineContext::Physical
                                 });
                                 control.compute(mode, &[]).unwrap()
                             };
@@ -233,10 +266,10 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                                 assert_eq!(entries.0.node_layouts().len(), 2);
                                 assert_eq!(
                                     node(entries, 0).size,
-                                    if mode == l::WritingMode::HorizontalTb {
-                                        l::Size::new(n(100.0), n(extent))
+                                    if mode == l::geometry::WritingMode::HorizontalTb {
+                                        l::geometry::Size::new(n(100.0), n(extent))
                                     } else {
-                                        l::Size::new(n(extent), n(100.0))
+                                        l::geometry::Size::new(n(extent), n(100.0))
                                     }
                                 );
                                 if !preserve_signed_top {
@@ -247,8 +280,8 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                                     );
                                 }
                                 let pair = node(entries, 0).named_baselines.get(name);
-                                assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
-                                assert_eq!(pair.last(), l::BaselineFactOf::Unknown);
+                                assert_eq!(pair.first(), l::baseline::BaselineFactOf::Unknown);
+                                assert_eq!(pair.last(), l::baseline::BaselineFactOf::Unknown);
                                 absent(node(entries, 1).named_baselines);
                             }
                             if preserve_signed_top {
@@ -267,10 +300,10 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                                 ]) {
                                     assert_eq!(
                                         node(physical, 0).size,
-                                        if mode == l::WritingMode::HorizontalTb {
-                                            l::Size::new(n(100.0), n(14.0))
+                                        if mode == l::geometry::WritingMode::HorizontalTb {
+                                            l::geometry::Size::new(n(100.0), n(14.0))
                                         } else {
-                                            l::Size::new(n(14.0), n(100.0))
+                                            l::geometry::Size::new(n(14.0), n(100.0))
                                         }
                                     );
                                     assert_eq!(
@@ -295,10 +328,10 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                                 assert_eq!(entries.0.node_layouts().len(), 3);
                                 assert_eq!(
                                     node(entries, 0).size,
-                                    if mode == l::WritingMode::HorizontalTb {
-                                        l::Size::new(n(100.0), n(extent * 2.0))
+                                    if mode == l::geometry::WritingMode::HorizontalTb {
+                                        l::geometry::Size::new(n(100.0), n(extent * 2.0))
                                     } else {
-                                        l::Size::new(n(extent * 2.0), n(100.0))
+                                        l::geometry::Size::new(n(extent * 2.0), n(100.0))
                                     },
                                     "{spec:?}"
                                 );
@@ -316,36 +349,36 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                                 );
                                 assert_eq!(
                                     node(entries, 1).size,
-                                    if mode == l::WritingMode::HorizontalTb {
-                                        l::Size::new(n(20.0), n(10.0))
+                                    if mode == l::geometry::WritingMode::HorizontalTb {
+                                        l::geometry::Size::new(n(20.0), n(10.0))
                                     } else {
-                                        l::Size::new(n(10.0), n(20.0))
+                                        l::geometry::Size::new(n(10.0), n(20.0))
                                     }
                                 );
                                 assert_eq!(
                                     node(entries, 2).size,
-                                    if mode == l::WritingMode::HorizontalTb {
-                                        l::Size::new(n(20.0), n(6.0))
+                                    if mode == l::geometry::WritingMode::HorizontalTb {
+                                        l::geometry::Size::new(n(20.0), n(6.0))
                                     } else {
-                                        l::Size::new(n(6.0), n(20.0))
+                                        l::geometry::Size::new(n(6.0), n(20.0))
                                     }
                                 );
                                 for (id, source) in [(0, 0), (1, 0), (2, 1)] {
                                     assert_eq!(
                                         node(entries, id).source_index,
-                                        l::SourceIndex::new(source)
+                                        l::node::SourceIndex::new(source)
                                     );
                                 }
                                 absent(node(entries, 1).named_baselines);
                                 absent(node(entries, 2).named_baselines);
                                 let pair = node(entries, 0).named_baselines.get(name);
-                                assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
+                                assert_eq!(pair.first(), l::baseline::BaselineFactOf::Unknown);
                                 source_fact(
                                     pair.last(),
-                                    if mode == l::WritingMode::HorizontalTb {
-                                        l::PhysicalAxis::Vertical
+                                    if mode == l::geometry::WritingMode::HorizontalTb {
+                                        l::geometry::PhysicalAxis::Vertical
                                     } else {
-                                        l::PhysicalAxis::Horizontal
+                                        l::geometry::PhysicalAxis::Horizontal
                                     },
                                     anchor,
                                 );
@@ -363,10 +396,10 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                                 ]) {
                                     assert_eq!(
                                         node(physical, 0).size,
-                                        if mode == l::WritingMode::HorizontalTb {
-                                            l::Size::new(n(100.0), n(28.0))
+                                        if mode == l::geometry::WritingMode::HorizontalTb {
+                                            l::geometry::Size::new(n(100.0), n(28.0))
                                         } else {
-                                            l::Size::new(n(28.0), n(100.0))
+                                            l::geometry::Size::new(n(28.0), n(100.0))
                                         }
                                     );
                                     assert_eq!(
@@ -394,12 +427,12 @@ fn atomic_receivers_use_literal_named_margin_geometry_all_modes_f64() {
     empty_receiver_matrix::<f64>();
 }
 
-fn receiver_incoming_authority<S: l::LayoutScalar>() {
-    let mode = l::WritingMode::HorizontalTb;
+fn receiver_incoming_authority<S: l::scalar::LayoutScalar>() {
+    let mode = l::geometry::WritingMode::HorizontalTb;
     for native_edge in [false, true] {
         for (alignment, y) in [
-            (l::VerticalAlignOf::Top, 10.0),
-            (l::VerticalAlignOf::Bottom, 14.0),
+            (l::inline::VerticalAlignOf::Top, 10.0),
+            (l::inline::VerticalAlignOf::Bottom, 14.0),
         ] {
             let mut host = receiver_tree::<S>(native_edge, true);
             host.change(2, |input| input.vertical_align = alignment);
@@ -408,16 +441,22 @@ fn receiver_incoming_authority<S: l::LayoutScalar>() {
                 crate::layout::observation::phase(&batch, false),
                 crate::layout::observation::phase(&batch, true),
             ] {
-                assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(20.0)));
-                assert_eq!(node(entries, 1).location, l::Point::ZERO);
-                assert_eq!(node(entries, 2).location, l::Point::new(S::ZERO, n(y)));
+                assert_eq!(
+                    node(entries, 0).size,
+                    l::geometry::Size::new(n(100.0), n(20.0))
+                );
+                assert_eq!(node(entries, 1).location, l::geometry::Point::ZERO);
+                assert_eq!(
+                    node(entries, 2).location,
+                    l::geometry::Point::new(S::ZERO, n(y))
+                );
                 absent(node(entries, 1).named_baselines);
                 absent(node(entries, 2).named_baselines);
                 // T contributes only Top/Bottom extent6. Incoming source A's
                 // resolved5/5 is the ONLY authority for receiving Central15.
                 let pair = node(entries, 0).named_baselines.get(FontBaseline::Central);
-                assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
-                source_fact(pair.last(), l::PhysicalAxis::Vertical, 15.0);
+                assert_eq!(pair.first(), l::baseline::BaselineFactOf::Unknown);
+                source_fact(pair.last(), l::geometry::PhysicalAxis::Vertical, 15.0);
             }
         }
     }
@@ -431,14 +470,14 @@ fn incoming_atomic_receiver_is_the_only_named_anchor_f64() {
     receiver_incoming_authority::<f64>();
 }
 
-fn available_tree<S: l::LayoutScalar>(
+fn available_tree<S: l::scalar::LayoutScalar>(
     spec: ReceiverSpec<S>,
-    preference: l::BaselineSource,
+    preference: l::baseline::BaselineSource,
     tail: bool,
 ) -> Host<S> {
     let mut host = matrix_tree::<S>(spec, tail);
     host.change(1, |input| {
-        input.inline_baseline_context = l::InlineBaselineContext::Named(spec.name);
+        input.inline_baseline_context = l::baseline::InlineBaselineContext::Named(spec.name);
         input.baseline_source = preference;
     });
     // Ordinary Block lines establish first2/last8. The Central
@@ -452,57 +491,60 @@ fn available_tree<S: l::LayoutScalar>(
     source_line(&mut host, 1, spec.name, heights.1);
     host
 }
-fn receiver_available_preferences<S: l::LayoutScalar>() {
-    let mode = l::WritingMode::HorizontalTb;
+fn receiver_available_preferences<S: l::scalar::LayoutScalar>() {
+    let mode = l::geometry::WritingMode::HorizontalTb;
     for (name, preference, height, last, tail_y) in [
         (
             FontBaseline::Alphabetic,
-            l::BaselineSource::First,
+            l::baseline::BaselineSource::First,
             24.0,
             16.0,
             10.0,
         ),
         (
             FontBaseline::Alphabetic,
-            l::BaselineSource::Last,
+            l::baseline::BaselineSource::Last,
             20.0,
             18.0,
             12.0,
         ),
         (
             FontBaseline::Alphabetic,
-            l::BaselineSource::Auto,
+            l::baseline::BaselineSource::Auto,
             20.0,
             18.0,
             12.0,
         ),
         (
             FontBaseline::Central,
-            l::BaselineSource::First,
+            l::baseline::BaselineSource::First,
             21.0,
             13.0,
             10.0,
         ),
         (
             FontBaseline::Central,
-            l::BaselineSource::Last,
+            l::baseline::BaselineSource::Last,
             21.0,
             18.0,
             15.0,
         ),
         (
             FontBaseline::Central,
-            l::BaselineSource::Auto,
+            l::baseline::BaselineSource::Auto,
             21.0,
             18.0,
             15.0,
         ),
     ] {
-        for alignment in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
+        for alignment in [
+            l::inline::VerticalAlignOf::Top,
+            l::inline::VerticalAlignOf::Bottom,
+        ] {
             for native_edge in [false, true] {
                 let spec = ReceiverSpec {
                     mode,
-                    direction: l::Direction::Ltr,
+                    direction: l::geometry::Direction::Ltr,
                     name,
                     alignment,
                     native_edge,
@@ -517,11 +559,11 @@ fn receiver_available_preferences<S: l::LayoutScalar>() {
                 ] {
                     assert_eq!(node(entries, 0).size.height, n(10.0));
                     let own = node(entries, 1).named_baselines.get(name);
-                    source_fact(own.first(), l::PhysicalAxis::Vertical, 2.0);
-                    source_fact(own.last(), l::PhysicalAxis::Vertical, 8.0);
+                    source_fact(own.first(), l::geometry::PhysicalAxis::Vertical, 2.0);
+                    source_fact(own.last(), l::geometry::PhysicalAxis::Vertical, 8.0);
                     let root_pair = node(entries, 0).named_baselines.get(name);
-                    assert_eq!(root_pair.first(), l::BaselineFactOf::Unknown);
-                    assert_eq!(root_pair.last(), l::BaselineFactOf::Unknown);
+                    assert_eq!(root_pair.first(), l::baseline::BaselineFactOf::Unknown);
+                    assert_eq!(root_pair.last(), l::baseline::BaselineFactOf::Unknown);
                 }
                 let full = available_tree::<S>(spec, preference, true)
                     .compute(mode, &[])
@@ -530,18 +572,30 @@ fn receiver_available_preferences<S: l::LayoutScalar>() {
                     crate::layout::observation::phase(&full, false),
                     crate::layout::observation::phase(&full, true),
                 ] {
-                    assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(height)));
-                    assert_eq!(node(entries, 1).location, l::Point::ZERO);
-                    assert_eq!(node(entries, 1).size, l::Size::new(n(20.0), n(10.0)));
-                    assert_eq!(node(entries, 2).location, l::Point::new(S::ZERO, n(tail_y)));
+                    assert_eq!(
+                        node(entries, 0).size,
+                        l::geometry::Size::new(n(100.0), n(height))
+                    );
+                    assert_eq!(node(entries, 1).location, l::geometry::Point::ZERO);
+                    assert_eq!(
+                        node(entries, 1).size,
+                        l::geometry::Size::new(n(20.0), n(10.0))
+                    );
+                    assert_eq!(
+                        node(entries, 2).location,
+                        l::geometry::Point::new(S::ZERO, n(tail_y))
+                    );
                     let own = node(entries, 1).named_baselines.get(name);
-                    source_fact(own.first(), l::PhysicalAxis::Vertical, 2.0);
-                    source_fact(own.last(), l::PhysicalAxis::Vertical, 8.0);
+                    source_fact(own.first(), l::geometry::PhysicalAxis::Vertical, 2.0);
+                    source_fact(own.last(), l::geometry::PhysicalAxis::Vertical, 8.0);
                     let root_pair = node(entries, 0).named_baselines.get(name);
-                    assert_eq!(root_pair.first(), l::BaselineFactOf::Unknown);
-                    source_fact(root_pair.last(), l::PhysicalAxis::Vertical, last);
+                    assert_eq!(root_pair.first(), l::baseline::BaselineFactOf::Unknown);
+                    source_fact(root_pair.last(), l::geometry::PhysicalAxis::Vertical, last);
                     for (id, index) in [(0, 0), (1, 0), (2, 1), (3, 0), (4, 0), (5, 1), (6, 0)] {
-                        assert_eq!(node(entries, id).source_index, l::SourceIndex::new(index));
+                        assert_eq!(
+                            node(entries, id).source_index,
+                            l::node::SourceIndex::new(index)
+                        );
                     }
                     assert_eq!(entries.0.node_layouts().len(), 7);
                 }
@@ -552,17 +606,18 @@ fn receiver_available_preferences<S: l::LayoutScalar>() {
     // it is neither absent-under synthesis nor a double addition of margins.
     let spec = ReceiverSpec {
         mode,
-        direction: l::Direction::Ltr,
+        direction: l::geometry::Direction::Ltr,
         name: FontBaseline::Alphabetic,
-        alignment: l::VerticalAlignOf::Bottom,
+        alignment: l::inline::VerticalAlignOf::Bottom,
         native_edge: true,
         signed: true,
     };
-    let mut host = available_tree::<S>(spec, l::BaselineSource::Last, true);
+    let mut host = available_tree::<S>(spec, l::baseline::BaselineSource::Last, true);
     // A's own dominant name differs; its actual ordinary children still export
     // the requested Alpha facts. The receiver must not substitute A's own name.
     host.change(1, |input| {
-        input.inline_baseline_context = l::InlineBaselineContext::Named(FontBaseline::Central)
+        input.inline_baseline_context =
+            l::baseline::InlineBaselineContext::Named(FontBaseline::Central)
     });
     let batch = host.compute(mode, &[]).unwrap();
     for entries in [
@@ -575,8 +630,8 @@ fn receiver_available_preferences<S: l::LayoutScalar>() {
         let pair = node(entries, 0)
             .named_baselines
             .get(FontBaseline::Alphabetic);
-        assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
-        source_fact(pair.last(), l::PhysicalAxis::Vertical, 20.0);
+        assert_eq!(pair.first(), l::baseline::BaselineFactOf::Unknown);
+        source_fact(pair.last(), l::geometry::PhysicalAxis::Vertical, 20.0);
     }
 }
 #[test]
@@ -588,36 +643,36 @@ fn atomic_receiver_retains_real_nested_name_source_preference_f64() {
     receiver_available_preferences::<f64>();
 }
 
-fn barrier_tree<S: l::LayoutScalar>(
+fn barrier_tree<S: l::scalar::LayoutScalar>(
     spec: ReceiverSpec<S>,
-    preference: l::BaselineSource,
+    preference: l::baseline::BaselineSource,
     unknown_first: bool,
     tail: bool,
 ) -> Host<S> {
     let mut host = matrix_tree::<S>(spec, tail);
     host.change(1, |input| {
         input.size.height = px(20.0);
-        input.inline_baseline_context = l::InlineBaselineContext::Named(spec.name);
+        input.inline_baseline_context = l::baseline::InlineBaselineContext::Named(spec.name);
         input.baseline_source = preference;
     });
     let top_only = |host: &mut Host<S>| {
         let child = host.push(
             Some(1),
-            l::LayoutInputOf::box_input(source_block(spec.name, None)),
+            l::node::LayoutInputOf::box_input(source_block(spec.name, None)),
         );
         host.push(
             Some(child),
-            l::LayoutInputOf::line_break(
-                l::LineBreakInputOf::new()
+            l::node::LayoutInputOf::line_break(
+                l::text_flow::LineBreakInputOf::new()
                     .with_metrics(
-                        l::InlineMetricsOf::try_new(
-                            l::InlineBaselineContext::Physical,
+                        l::inline::InlineMetricsOf::try_new(
+                            l::baseline::InlineBaselineContext::Physical,
                             n(8.0),
                             n(10.0),
                         )
                         .unwrap(),
                     )
-                    .with_vertical_align(l::VerticalAlignOf::Top),
+                    .with_vertical_align(l::inline::VerticalAlignOf::Top),
             ),
         );
     };
@@ -630,23 +685,23 @@ fn barrier_tree<S: l::LayoutScalar>(
     }
     host
 }
-fn receiver_source_barriers<S: l::LayoutScalar>() {
-    let mode = l::WritingMode::HorizontalTb;
+fn receiver_source_barriers<S: l::scalar::LayoutScalar>() {
+    let mode = l::geometry::WritingMode::HorizontalTb;
     for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         for native_edge in [false, true] {
             let spec = ReceiverSpec {
                 mode,
-                direction: l::Direction::Ltr,
+                direction: l::geometry::Direction::Ltr,
                 name,
-                alignment: l::VerticalAlignOf::Top,
+                alignment: l::inline::VerticalAlignOf::Top,
                 native_edge,
                 signed: false,
             };
             for unknown_first in [false, true] {
                 for preference in [
-                    l::BaselineSource::Auto,
-                    l::BaselineSource::First,
-                    l::BaselineSource::Last,
+                    l::baseline::BaselineSource::Auto,
+                    l::baseline::BaselineSource::First,
+                    l::baseline::BaselineSource::Last,
                 ] {
                     let no_tail = barrier_tree::<S>(spec, preference, unknown_first, false)
                         .compute(mode, &[])
@@ -663,26 +718,26 @@ fn receiver_source_barriers<S: l::LayoutScalar>() {
                             3.0
                         };
                         if unknown_first {
-                            assert_eq!(own.first(), l::BaselineFactOf::Unknown);
-                            source_fact(own.last(), l::PhysicalAxis::Vertical, 10.0 + q);
+                            assert_eq!(own.first(), l::baseline::BaselineFactOf::Unknown);
+                            source_fact(own.last(), l::geometry::PhysicalAxis::Vertical, 10.0 + q);
                         } else {
-                            source_fact(own.first(), l::PhysicalAxis::Vertical, q);
-                            assert_eq!(own.last(), l::BaselineFactOf::Unknown);
+                            source_fact(own.first(), l::geometry::PhysicalAxis::Vertical, q);
+                            assert_eq!(own.last(), l::baseline::BaselineFactOf::Unknown);
                         }
                         let pair = node(entries, 0).named_baselines.get(name);
-                        assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
-                        assert_eq!(pair.last(), l::BaselineFactOf::Unknown);
+                        assert_eq!(pair.first(), l::baseline::BaselineFactOf::Unknown);
+                        assert_eq!(pair.last(), l::baseline::BaselineFactOf::Unknown);
                     }
-                    let selects_first = preference == l::BaselineSource::First;
+                    let selects_first = preference == l::baseline::BaselineSource::First;
                     let mut full_host = barrier_tree::<S>(spec, preference, unknown_first, true);
                     if selects_first == unknown_first {
                         // First publish the actual supported opposite preference;
                         // the refused mutation may not replace any completed packet.
                         full_host.change(1, |input| {
                             input.baseline_source = if unknown_first {
-                                l::BaselineSource::Last
+                                l::baseline::BaselineSource::Last
                             } else {
-                                l::BaselineSource::First
+                                l::baseline::BaselineSource::First
                             }
                         });
                         let prior = full_host.compute(mode, &[]).unwrap();
@@ -712,8 +767,8 @@ fn receiver_source_barriers<S: l::LayoutScalar>() {
                             assert_eq!(node(entries, 0).size.height, n(40.0));
                             assert_eq!(node(entries, 2).location.y, n(y));
                             let pair = node(entries, 0).named_baselines.get(name);
-                            assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
-                            source_fact(pair.last(), l::PhysicalAxis::Vertical, last);
+                            assert_eq!(pair.first(), l::baseline::BaselineFactOf::Unknown);
+                            source_fact(pair.last(), l::geometry::PhysicalAxis::Vertical, last);
                         }
                     }
                 }
@@ -736,16 +791,16 @@ enum RefusedSource {
     OtherName,
     Orthogonal,
 }
-fn refused_tree<S: l::LayoutScalar>(spec: ReceiverSpec<S>, kind: RefusedSource) -> Host<S> {
+fn refused_tree<S: l::scalar::LayoutScalar>(spec: ReceiverSpec<S>, kind: RefusedSource) -> Host<S> {
     let mut host = matrix_tree::<S>(spec, false);
     match kind {
         RefusedSource::Unknown => {
             host.push(
                 Some(1),
-                l::LayoutInputOf::box_input(l::NodeInputOf {
-                    display: l::Display::Grid,
-                    size: l::Size::new(px(10.0), px(10.0)),
-                    ..l::NodeInputOf::default()
+                l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+                    display: l::box_model::Display::Grid,
+                    size: l::geometry::Size::new(px(10.0), px(10.0)),
+                    ..l::node::NodeInputOf::default()
                 }),
             );
         }
@@ -756,40 +811,49 @@ fn refused_tree<S: l::LayoutScalar>(spec: ReceiverSpec<S>, kind: RefusedSource) 
                 FontBaseline::Alphabetic
             };
             host.change(1, |input| {
-                input.inline_baseline_context = l::InlineBaselineContext::Named(other)
+                input.inline_baseline_context = l::baseline::InlineBaselineContext::Named(other)
             });
             host.push(
                 Some(1),
-                l::LayoutInputOf::box_input(atomic(spec.mode, spec.direction, 10.0, (0.0, 0.0))),
+                l::node::LayoutInputOf::box_input(atomic(
+                    spec.mode,
+                    spec.direction,
+                    10.0,
+                    (0.0, 0.0),
+                )),
             );
         }
         RefusedSource::Orthogonal => {
             // A has actual physical20x10 geometry but owns a vertical-rl
             // formatting context with a real6x10 child: AlphaX14/CentralX17.
             host.change(1, |input| {
-                input.writing_mode = l::WritingMode::VerticalRl;
-                input.inline_baseline_context = l::InlineBaselineContext::Named(spec.name);
+                input.writing_mode = l::geometry::WritingMode::VerticalRl;
+                input.inline_baseline_context =
+                    l::baseline::InlineBaselineContext::Named(spec.name);
             });
             let mut inner = atomic(
-                l::WritingMode::VerticalRl,
-                l::Direction::Ltr,
+                l::geometry::WritingMode::VerticalRl,
+                l::geometry::Direction::Ltr,
                 6.0,
                 (0.0, 0.0),
             );
             inner.size.height = px(10.0);
-            host.push(Some(1), l::LayoutInputOf::box_input(inner));
+            host.push(Some(1), l::node::LayoutInputOf::box_input(inner));
         }
     }
     host
 }
-fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
-    let mode = l::WritingMode::HorizontalTb;
+fn receiver_refusals_and_lazy_completion<S: l::scalar::LayoutScalar>() {
+    let mode = l::geometry::WritingMode::HorizontalTb;
     for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
-        for alignment in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
+        for alignment in [
+            l::inline::VerticalAlignOf::Top,
+            l::inline::VerticalAlignOf::Bottom,
+        ] {
             for native_edge in [false, true] {
                 let spec = ReceiverSpec {
                     mode,
-                    direction: l::Direction::Ltr,
+                    direction: l::geometry::Direction::Ltr,
                     name,
                     alignment,
                     native_edge,
@@ -808,18 +872,24 @@ fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
                         crate::layout::observation::phase(&prior, false),
                         crate::layout::observation::phase(&prior, true),
                     ] {
-                        assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(10.0)));
-                        assert_eq!(node(entries, 1).location, l::Point::ZERO);
-                        assert_eq!(node(entries, 1).size, l::Size::new(n(20.0), n(10.0)));
+                        assert_eq!(
+                            node(entries, 0).size,
+                            l::geometry::Size::new(n(100.0), n(10.0))
+                        );
+                        assert_eq!(node(entries, 1).location, l::geometry::Point::ZERO);
+                        assert_eq!(
+                            node(entries, 1).size,
+                            l::geometry::Size::new(n(20.0), n(10.0))
+                        );
                         let root_pair = node(entries, 0).named_baselines.get(name);
-                        assert_eq!(root_pair.first(), l::BaselineFactOf::Unknown);
-                        assert_eq!(root_pair.last(), l::BaselineFactOf::Unknown);
+                        assert_eq!(root_pair.first(), l::baseline::BaselineFactOf::Unknown);
+                        assert_eq!(root_pair.last(), l::baseline::BaselineFactOf::Unknown);
                         let own = node(entries, 1).named_baselines.get(name);
                         if matches!(kind, RefusedSource::Orthogonal) {
                             for fact in [own.first(), own.last()] {
                                 source_fact(
                                     fact,
-                                    l::PhysicalAxis::Horizontal,
+                                    l::geometry::PhysicalAxis::Horizontal,
                                     if name == FontBaseline::Alphabetic {
                                         14.0
                                     } else {
@@ -828,8 +898,8 @@ fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
                                 );
                             }
                         } else {
-                            assert_eq!(own.first(), l::BaselineFactOf::Unknown);
-                            assert_eq!(own.last(), l::BaselineFactOf::Unknown);
+                            assert_eq!(own.first(), l::baseline::BaselineFactOf::Unknown);
+                            assert_eq!(own.last(), l::baseline::BaselineFactOf::Unknown);
                         }
                         if matches!(kind, RefusedSource::OtherName) {
                             let other = if name == FontBaseline::Alphabetic {
@@ -840,7 +910,7 @@ fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
                             named(
                                 node(entries, 1).named_baselines,
                                 other,
-                                l::PhysicalAxis::Vertical,
+                                l::geometry::PhysicalAxis::Vertical,
                                 if other == FontBaseline::Alphabetic {
                                     10.0
                                 } else {
@@ -856,9 +926,9 @@ fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
                     // unchanged source's previously unused facts are now needed.
                     host.push(
                         Some(0),
-                        l::LayoutInputOf::box_input(atomic(
+                        l::node::LayoutInputOf::box_input(atomic(
                             mode,
-                            l::Direction::Ltr,
+                            l::geometry::Direction::Ltr,
                             6.0,
                             (0.0, 0.0),
                         )),
@@ -868,11 +938,11 @@ fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
                         assert!(
                             matches!(
                                 error.kind(),
-                                l::LayoutErrorKindOf::InvalidInput(
-                                    l::LayoutInvalidInputOf::InlineBaseline(
-                                        l::InlineBaselineError::AxisMismatch {
-                                            expected: l::PhysicalAxis::Vertical,
-                                            actual: l::PhysicalAxis::Horizontal
+                                l::error::LayoutErrorKindOf::InvalidInput(
+                                    l::error::LayoutInvalidInputOf::InlineBaseline(
+                                        l::baseline::InlineBaselineError::AxisMismatch {
+                                            expected: l::geometry::PhysicalAxis::Vertical,
+                                            actual: l::geometry::PhysicalAxis::Horizontal
                                         }
                                     )
                                 )
@@ -883,8 +953,8 @@ fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
                         assert!(
                             matches!(
                                 error.kind(),
-                                l::LayoutErrorKindOf::MissingContext(
-                                    l::LayoutMissingContext::NamedInlineBaseline
+                                l::error::LayoutErrorKindOf::MissingContext(
+                                    l::error::LayoutMissingContext::NamedInlineBaseline
                                 )
                             ),
                             "{error:?}"
@@ -898,15 +968,16 @@ fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
                     assert_eq!(semantic(&prior, &host), snapshot);
                 }
             }
-            let reference = l::InlineBaselineContext::Named(name);
-            let mut control_host = Host::<S>::new(root(mode, l::Direction::Ltr, reference));
+            let reference = l::baseline::InlineBaselineContext::Named(name);
+            let mut control_host =
+                Host::<S>::new(root(mode, l::geometry::Direction::Ltr, reference));
             control_host.push(
                 Some(0),
-                l::LayoutInputOf::line_break(
-                    l::LineBreakInputOf::new()
+                l::node::LayoutInputOf::line_break(
+                    l::text_flow::LineBreakInputOf::new()
                         .with_metrics(
-                            l::InlineMetricsOf::try_new(
-                                l::InlineBaselineContext::Physical,
+                            l::inline::InlineMetricsOf::try_new(
+                                l::baseline::InlineBaselineContext::Physical,
                                 n(8.0),
                                 n(10.0),
                             )
@@ -924,12 +995,17 @@ fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
             );
             control_host.push(
                 Some(0),
-                l::LayoutInputOf::box_input(atomic(mode, l::Direction::Ltr, 6.0, (0.0, 0.0))),
+                l::node::LayoutInputOf::box_input(atomic(
+                    mode,
+                    l::geometry::Direction::Ltr,
+                    6.0,
+                    (0.0, 0.0),
+                )),
             );
             let error = control_host.compute(mode, &[]).unwrap_err();
             // Explicit controls have no atomic box provenance to requalify.
             assert!(
-                matches!(error.kind(), l::LayoutErrorKindOf::InvalidInput(l::LayoutInvalidInputOf::InlineBaseline(l::InlineBaselineError::ReferenceMismatch { expected, actual })) if *expected == reference && *actual == l::InlineBaselineContext::Physical),
+                matches!(error.kind(), l::error::LayoutErrorKindOf::InvalidInput(l::error::LayoutInvalidInputOf::InlineBaseline(l::baseline::InlineBaselineError::ReferenceMismatch { expected, actual })) if *expected == reference && *actual == l::baseline::InlineBaselineContext::Physical),
                 "{error:?}"
             );
         }
@@ -944,39 +1020,54 @@ fn atomic_receiver_refuses_unknown_other_name_axis_and_keeps_control_refs_f64() 
     receiver_refusals_and_lazy_completion::<f64>();
 }
 
-fn sizing_receiver_tree<S: l::LayoutScalar>(name: FontBaseline, native_edge: bool) -> Host<S> {
-    let mode = l::WritingMode::HorizontalTb;
-    let reference = l::InlineBaselineContext::Named(name);
-    let mut outside = root(mode, l::Direction::Ltr, l::InlineBaselineContext::Physical);
-    outside.display = l::Display::Flex;
-    outside.align_items = Some(l::AlignItems::Start);
+fn sizing_receiver_tree<S: l::scalar::LayoutScalar>(
+    name: FontBaseline,
+    native_edge: bool,
+) -> Host<S> {
+    let mode = l::geometry::WritingMode::HorizontalTb;
+    let reference = l::baseline::InlineBaselineContext::Named(name);
+    let mut outside = root(
+        mode,
+        l::geometry::Direction::Ltr,
+        l::baseline::InlineBaselineContext::Physical,
+    );
+    outside.display = l::box_model::Display::Flex;
+    outside.align_items = Some(l::box_model::AlignItems::Start);
     let mut host = Host::<S>::new(outside);
     assert_eq!(
         host.push(
             Some(0),
-            l::LayoutInputOf::box_input(root(mode, l::Direction::Ltr, reference))
+            l::node::LayoutInputOf::box_input(root(mode, l::geometry::Direction::Ltr, reference))
         ),
         1
     );
-    let mut source = atomic(mode, l::Direction::Ltr, 20.0, (0.0, 0.0));
-    source.vertical_align = l::VerticalAlignOf::Top;
+    let mut source = atomic(mode, l::geometry::Direction::Ltr, 20.0, (0.0, 0.0));
+    source.vertical_align = l::inline::VerticalAlignOf::Top;
     source.inline_baseline_context = reference;
-    source.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
+    source.atomic_inline_participation = Some(l::inline::AtomicInlineParticipation::new(
         t::supplied_line::BidiLevel::try_new(0).unwrap(),
         if native_edge {
-            l::InlineBreakOpportunity::Prohibited
+            l::text_flow::InlineBreakOpportunity::Prohibited
         } else {
-            l::InlineBreakOpportunity::Mandatory
+            l::text_flow::InlineBreakOpportunity::Mandatory
         },
     ));
     if native_edge {
-        source.wrap_edges.after = l::WrapEdge::Line;
+        source.wrap_edges.after = l::inline_wrapping::WrapEdge::Line;
     }
-    assert_eq!(host.push(Some(1), l::LayoutInputOf::box_input(source)), 2);
+    assert_eq!(
+        host.push(Some(1), l::node::LayoutInputOf::box_input(source)),
+        2
+    );
     assert_eq!(
         host.push(
             Some(1),
-            l::LayoutInputOf::box_input(atomic(mode, l::Direction::Ltr, 6.0, (0.0, 0.0)))
+            l::node::LayoutInputOf::box_input(atomic(
+                mode,
+                l::geometry::Direction::Ltr,
+                6.0,
+                (0.0, 0.0)
+            ))
         ),
         3
     );
@@ -986,18 +1077,16 @@ fn sizing_receiver_tree<S: l::LayoutScalar>(name: FontBaseline, native_edge: boo
     assert_eq!(
         host.push(
             Some(2),
-            l::LayoutInputOf::line_break(
-                l::LineBreakInputOf::new().with_metrics(
-                    l::InlineMetricsOf::try_new(reference, S::ZERO, S::ZERO).unwrap()
-                )
-            )
+            l::node::LayoutInputOf::line_break(l::text_flow::LineBreakInputOf::new().with_metrics(
+                l::inline::InlineMetricsOf::try_new(reference, S::ZERO, S::ZERO).unwrap()
+            ))
         ),
         4
     );
     host
 }
-fn receiver_sizing_cache<S: l::LayoutScalar>() {
-    let mode = l::WritingMode::HorizontalTb;
+fn receiver_sizing_cache<S: l::scalar::LayoutScalar>() {
+    let mode = l::geometry::WritingMode::HorizontalTb;
     for native_edge in [false, true] {
         for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
             let mut host = sizing_receiver_tree::<S>(name, native_edge);
@@ -1011,33 +1100,45 @@ fn receiver_sizing_cache<S: l::LayoutScalar>() {
                 crate::layout::observation::phase(&cold, false),
                 crate::layout::observation::phase(&cold, true),
             ] {
-                assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(height)));
-                assert_eq!(node(entries, 1).size, l::Size::new(n(100.0), n(height)));
-                assert_eq!(node(entries, 1).location, l::Point::ZERO);
-                assert_eq!(node(entries, 2).size, l::Size::new(n(20.0), n(20.0)));
-                assert_eq!(node(entries, 2).location, l::Point::ZERO);
-                assert_eq!(node(entries, 3).location, l::Point::new(S::ZERO, n(20.0)));
+                assert_eq!(
+                    node(entries, 0).size,
+                    l::geometry::Size::new(n(100.0), n(height))
+                );
+                assert_eq!(
+                    node(entries, 1).size,
+                    l::geometry::Size::new(n(100.0), n(height))
+                );
+                assert_eq!(node(entries, 1).location, l::geometry::Point::ZERO);
+                assert_eq!(
+                    node(entries, 2).size,
+                    l::geometry::Size::new(n(20.0), n(20.0))
+                );
+                assert_eq!(node(entries, 2).location, l::geometry::Point::ZERO);
+                assert_eq!(
+                    node(entries, 3).location,
+                    l::geometry::Point::new(S::ZERO, n(20.0))
+                );
                 named(
                     node(entries, 2).named_baselines,
                     name,
-                    l::PhysicalAxis::Vertical,
+                    l::geometry::PhysicalAxis::Vertical,
                     0.0,
                 );
                 let pair = node(entries, 1).named_baselines.get(name);
-                assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
-                source_fact(pair.last(), l::PhysicalAxis::Vertical, last);
+                assert_eq!(pair.first(), l::baseline::BaselineFactOf::Unknown);
+                source_fact(pair.last(), l::geometry::PhysicalAxis::Vertical, last);
                 for (id, index) in [(0, 0), (1, 0), (2, 0), (3, 1), (4, 0)] {
                     assert_eq!(
                         node_of_kind(
                             entries,
                             id,
                             crate::layout::observation::expected_kind(
-                                l::LayoutTree::layout_input(&host, id),
+                                l::tree::LayoutTree::layout_input(&host, id),
                                 false
                             )
                         )
                         .source_index,
-                        l::SourceIndex::new(index)
+                        l::node::SourceIndex::new(index)
                     );
                 }
                 assert_eq!(entries.0.node_layouts().len(), 5);
@@ -1052,18 +1153,18 @@ fn receiver_sizing_cache<S: l::LayoutScalar>() {
                 let pair = row.output().named_baselines.get(name);
                 for fact in [pair.first(), pair.last()] {
                     match fact {
-                        l::BaselineFactOf::Unknown => {}
-                        l::BaselineFactOf::Available(_) => {
-                            source_fact(fact, l::PhysicalAxis::Vertical, 0.0)
+                        l::baseline::BaselineFactOf::Unknown => {}
+                        l::baseline::BaselineFactOf::Available(_) => {
+                            source_fact(fact, l::geometry::PhysicalAxis::Vertical, 0.0)
                         }
-                        l::BaselineFactOf::Absent => panic!(
+                        l::baseline::BaselineFactOf::Absent => panic!(
                             "actual zero Forced is not absent; request={:?}",
                             row.input()
                         ),
                     }
                 }
                 let key = (*row.input(), row.context());
-                let keys = if matches!(pair.last(), l::BaselineFactOf::Available(_)) {
+                let keys = if matches!(pair.last(), l::baseline::BaselineFactOf::Available(_)) {
                     &mut available_keys
                 } else {
                     &mut unknown_keys
@@ -1088,9 +1189,11 @@ fn receiver_sizing_cache<S: l::LayoutScalar>() {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -1099,9 +1202,11 @@ fn receiver_sizing_cache<S: l::LayoutScalar>() {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -1120,7 +1225,7 @@ fn receiver_sizing_cache<S: l::LayoutScalar>() {
                 FontBaseline::Alphabetic
             };
             host.change(1, |input| {
-                input.inline_baseline_context = l::InlineBaselineContext::Named(other)
+                input.inline_baseline_context = l::baseline::InlineBaselineContext::Named(other)
             });
             // Source A owns only the old requested name: the new real receiver
             // must refuse, retaining the accepted packet rather than borrowing it.
@@ -1132,7 +1237,7 @@ fn receiver_sizing_cache<S: l::LayoutScalar>() {
                 snapshot
             );
             host.change(1, |input| {
-                input.inline_baseline_context = l::InlineBaselineContext::Named(name)
+                input.inline_baseline_context = l::baseline::InlineBaselineContext::Named(name)
             });
             let restored = host.compute(mode, &[1]).unwrap();
             let fresh = sizing_receiver_tree::<S>(name, native_edge)
@@ -1152,16 +1257,19 @@ fn deferred_atomic_receiver_qualifies_size_only_source_and_warm_cache_f64() {
     receiver_sizing_cache::<f64>();
 }
 
-fn receiver_balance_replay<S: l::LayoutScalar>() {
-    let mode = l::WritingMode::HorizontalTb;
+fn receiver_balance_replay<S: l::scalar::LayoutScalar>() {
+    let mode = l::geometry::WritingMode::HorizontalTb;
     for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         for native_edge in [false, true] {
-            for style in [l::TextWrapStyle::Auto, l::TextWrapStyle::Balance] {
+            for style in [
+                l::text_flow::TextWrapStyle::Auto,
+                l::text_flow::TextWrapStyle::Balance,
+            ] {
                 let spec = ReceiverSpec {
                     mode,
-                    direction: l::Direction::Ltr,
+                    direction: l::geometry::Direction::Ltr,
                     name,
-                    alignment: l::VerticalAlignOf::Top,
+                    alignment: l::inline::VerticalAlignOf::Top,
                     native_edge,
                     signed: false,
                 };
@@ -1169,9 +1277,9 @@ fn receiver_balance_replay<S: l::LayoutScalar>() {
                 host.change(0, |input| input.text_wrap_style = style);
                 host.change(2, |input| input.size.width = px(60.0));
                 for _ in 0..2 {
-                    let mut next = atomic(mode, l::Direction::Ltr, 6.0, (0.0, 0.0));
+                    let mut next = atomic(mode, l::geometry::Direction::Ltr, 6.0, (0.0, 0.0));
                     next.size.width = px(40.0);
-                    host.push(Some(0), l::LayoutInputOf::box_input(next));
+                    host.push(Some(0), l::node::LayoutInputOf::box_input(next));
                 }
                 let batch = host.compute(mode, &[]).unwrap();
                 let (alpha, last, first_y, second_y) = if name == FontBaseline::Alphabetic {
@@ -1184,34 +1292,43 @@ fn receiver_balance_replay<S: l::LayoutScalar>() {
                     crate::layout::observation::phase(&batch, true),
                 ] {
                     assert_eq!(entries.0.node_layouts().len(), 5);
-                    assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(26.0)));
-                    assert_eq!(node(entries, 1).location, l::Point::ZERO);
+                    assert_eq!(
+                        node(entries, 0).size,
+                        l::geometry::Size::new(n(100.0), n(26.0))
+                    );
+                    assert_eq!(node(entries, 1).location, l::geometry::Point::ZERO);
                     assert_eq!(
                         node(entries, 2).location,
-                        l::Point::new(S::ZERO, n(first_y))
+                        l::geometry::Point::new(S::ZERO, n(first_y))
                     );
                     // The actual Forced group is frozen. For remaining widths
                     //60/40/40, Auto's100/40 variance900 improves uniquely to
                     // Balance's60/80 variance100 with the SAME2 receiving rows.
-                    let (ux, uy, vx) = if style == l::TextWrapStyle::Auto {
+                    let (ux, uy, vx) = if style == l::text_flow::TextWrapStyle::Auto {
                         (60.0, first_y, 0.0)
                     } else {
                         (0.0, second_y, 40.0)
                     };
-                    assert_eq!(node(entries, 3).location, l::Point::new(n(ux), n(uy)));
-                    assert_eq!(node(entries, 4).location, l::Point::new(n(vx), n(second_y)));
+                    assert_eq!(
+                        node(entries, 3).location,
+                        l::geometry::Point::new(n(ux), n(uy))
+                    );
+                    assert_eq!(
+                        node(entries, 4).location,
+                        l::geometry::Point::new(n(vx), n(second_y))
+                    );
                     for (id, index) in [(0, 0), (1, 0), (2, 1), (3, 2), (4, 3)] {
                         assert_eq!(
                             node_of_kind(
                                 entries,
                                 id,
                                 crate::layout::observation::expected_kind(
-                                    l::LayoutTree::layout_input(&host, id),
+                                    l::tree::LayoutTree::layout_input(&host, id),
                                     false
                                 )
                             )
                             .source_index,
-                            l::SourceIndex::new(index)
+                            l::node::SourceIndex::new(index)
                         );
                     }
                     let pair = node(entries, 0).named_baselines.get(if alpha {
@@ -1219,8 +1336,8 @@ fn receiver_balance_replay<S: l::LayoutScalar>() {
                     } else {
                         FontBaseline::Central
                     });
-                    assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
-                    source_fact(pair.last(), l::PhysicalAxis::Vertical, last);
+                    assert_eq!(pair.first(), l::baseline::BaselineFactOf::Unknown);
+                    source_fact(pair.last(), l::geometry::PhysicalAxis::Vertical, last);
                 }
                 let snapshot = semantic(&batch, &host);
                 batch.apply_to(&mut host).unwrap();
@@ -1232,11 +1349,12 @@ fn receiver_balance_replay<S: l::LayoutScalar>() {
                         .map(|(node, view)| (
                             node,
                             match view {
-                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(
+                                    view,
+                                ) => view.final_entry(),
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
                                     view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
-                                    view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))
@@ -1246,11 +1364,12 @@ fn receiver_balance_replay<S: l::LayoutScalar>() {
                         .map(|(node, view)| (
                             node,
                             match view {
-                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(
+                                    view,
+                                ) => view.final_entry(),
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
                                     view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
-                                    view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                                surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))

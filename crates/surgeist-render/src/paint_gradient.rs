@@ -722,8 +722,8 @@ mod tests {
     fn zero_width_geometry(origin_x: f64, center_y: f64, height: f64) -> RadialGradientGeometry {
         resolve_radial_gradient(
             Default::default(),
-            Some(surgeist_layout::Point::new(origin_x, center_y)),
-            RadialGradientSize::EllipseRadii(surgeist_layout::Size::new(
+            Some(surgeist_layout::geometry::Point::new(origin_x, center_y)),
+            RadialGradientSize::EllipseRadii(surgeist_layout::geometry::Size::new(
                 GradientPosition {
                     length: 0.0,
                     fraction: 0.0,
@@ -938,7 +938,7 @@ mod tests {
         resolve_radial_gradient(
             Default::default(),
             None,
-            RadialGradientSize::EllipseRadii(surgeist_layout::Size::new(
+            RadialGradientSize::EllipseRadii(surgeist_layout::geometry::Size::new(
                 GradientPosition {
                     length: 20.0,
                     fraction: 0.0,

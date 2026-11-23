@@ -25,7 +25,7 @@ mod pending_tests {
     use super::*;
     use crate::accounting::{OperationKind, PaintChange, PaintLimits, PaintOptions, PaintPhase};
     use crate::stacking::{BoxFacts, ChildOrder, ContextEffect, ZIndex};
-    use surgeist_layout::SourceIndex;
+    use surgeist_layout::node::SourceIndex;
     use surgeist_ledger::{Limits, ProfileMode, Tariffs};
 
     #[test]
@@ -135,7 +135,7 @@ mod growth_tests {
     };
     use crate::stacking::{BoxFacts, ChildOrder, ContextEffect, ZIndex};
     use std::mem::size_of;
-    use surgeist_layout::SourceIndex;
+    use surgeist_layout::node::SourceIndex;
     use surgeist_ledger::{EventFilter, ProfileMode, RefusalReason};
 
     fn exercise(work_limit: u64, resource_limit: u64) -> (bool, u64, u64, PaintReport) {

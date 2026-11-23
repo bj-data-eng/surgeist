@@ -1,3 +1,5 @@
+//! Binding prepared Text to layout and the placed Text output.
+//!
 //! The concrete immutable Text capture and its Layout-owned consuming adapter.
 
 use crate::{
@@ -5,6 +7,11 @@ use crate::{
     error::LayoutResultOf,
     inline_wrapping::WrappingInput,
     node_input::{Display, LayoutInputViewOf, Position},
+};
+
+pub use crate::output::{
+    InlineFragmentOutput, InlineFragmentOutputOf, InlineFragmentOwner, PlacedInlineBoxFragments,
+    PlacedTextOutput,
 };
 
 pub(crate) mod boxes;

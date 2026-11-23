@@ -17,9 +17,12 @@ fn a_contrary_generated_order_prints_the_wrapping_scope_chain() {
     // The source canonically contains A in S, while the borrowed producer
     // claims A followed by S containing B, so the source association is
     // refused after Text has processed the independently valid source.
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
-        let host = Host::<f32>::new(true, layout::WrapEdge::Line, direction);
-        let error = match layout::process_wrapping_source(
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
+        let host = Host::<f32>::new(true, layout::inline_wrapping::WrapEdge::Line, direction);
+        let error = match layout::inline_wrapping::process_wrapping_source(
             &Early(&host),
             0,
             source(false, direction),

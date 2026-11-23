@@ -1,3 +1,5 @@
+//! Scroll-anchor selection and its request.
+
 use core::fmt;
 use core::hash::Hash;
 use core::slice;

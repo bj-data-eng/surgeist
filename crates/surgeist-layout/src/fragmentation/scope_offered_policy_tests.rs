@@ -1,5 +1,12 @@
 //! Equal checkpoint/geometry does not erase an offered site's policy identity.
 use super::*;
+use crate::fragmentation::{
+    input::{
+        FragmentainerOf, FragmentationBreak, FragmentationBreakControl, FragmentationProvider,
+        FragmentationQueryOf, FragmentationReplyOf, FragmentationRole, FragmentationStage,
+    },
+    output::{FragmentationBreakReason, FragmentationError, FragmentationPieceKindOf},
+};
 
 struct DuplicateOffered<S: LayoutScalar> {
     parent: ParentProvider<S>,

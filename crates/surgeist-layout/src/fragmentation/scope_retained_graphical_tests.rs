@@ -1,5 +1,15 @@
 //! A real zero-height child advances source between equal graphical checkpoints.
 use super::*;
+use crate::fragmentation::{
+    input::{
+        FragmentainerOf, FragmentationBreak, FragmentationBreakControl, FragmentationBreakKinds,
+        FragmentationCutOf, FragmentationFallback, FragmentationFlowOf, FragmentationInputOf,
+        FragmentationMeasuredHeadOf, FragmentationOccurrence, FragmentationOpportunityKindOf,
+        FragmentationOpportunityOf, FragmentationProvider, FragmentationQueryOf,
+        FragmentationReplyOf, FragmentationRole, FragmentationWindowEnd, FragmentationWindowOf,
+    },
+    output::FragmentationBreakReason,
+};
 
 struct PlateauChildren;
 impl<S: LayoutScalar> FragmentationProvider<S> for PlateauChildren {

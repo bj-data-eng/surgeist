@@ -5,7 +5,31 @@
 //! Source inspected at 7ab12bfe9a0acf94853605d7a64cee7e2337a560 plus the
 //! functional metric-contribution candidate present in the shared workspace.
 //! No execution or historical RED is claimed. Only public API is used.
-use surgeist_layout::*;
+use surgeist_layout::{
+    baseline::BaselineOffsetOf,
+    batch::CompletedLayoutBatchOf,
+    box_model::Display,
+    compute_layout_with_flow,
+    error::{LayoutErrorKindOf, LayoutErrorOf, LayoutInvalidInputOf, LayoutTextNumericError},
+    fragmentation::NonBoxKind,
+    geometry::{Direction, Edges, FlowAxes, Point, Size, WritingMode},
+    inline::{
+        AtomicInlineParticipation, InlineBoundaryEdgeErrorOf, InlineBoundaryEdgeOf,
+        InlineBoundaryInputOf, InlineBoundaryKind, InlineMetricsOf, VerticalAlignOf,
+    },
+    inline_wrapping::{
+        InlineBoxMetricContribution, WrapEdges, WrapInside, WrappingInput, WrappingScopeError,
+        WrappingScopeInput,
+    },
+    length::LengthPercentageOf,
+    node::{LayoutInputOf, LayoutInputViewOf, NodeInputOf},
+    request::LayoutRootRequestOf,
+    scalar::LayoutScalar,
+    sizing::PreferredSizeOf,
+    text_flow::InlineBreakOpportunity,
+    text_layout::LayoutFlowInput,
+    tree::{LayoutTree, Traverse},
+};
 use surgeist_text::{
     allocation::{LineBoxAlignment, LineBoxStrut, LineStrut},
     supplied_line::BidiLevel,
@@ -105,7 +129,7 @@ impl<S: LayoutScalar> NumericTree<S> {
             InlineBoundaryInputOf::contribution(
                 kind,
                 InlineMetricsOf::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
+                    surgeist_layout::baseline::InlineBaselineContext::Physical,
                     S::from_f64(actual.metrics.baseline),
                     S::from_f64(actual.metrics.line_extent),
                 )
@@ -170,17 +194,17 @@ impl<S: LayoutScalar> NumericTree<S> {
         )?;
         let request = {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(width)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(S::from_f64(width)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
             LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
-                    surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::tree::LayoutTree::node_input(self, 0).writing_mode,
+                    surgeist_layout::tree::LayoutTree::node_input(self, 0).direction,
                 ),
                 sizing_request
                     .orthogonal_fallback()

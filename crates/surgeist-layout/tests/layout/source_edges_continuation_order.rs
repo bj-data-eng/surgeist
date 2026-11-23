@@ -8,12 +8,12 @@ const AHEM: &[u8] = include_bytes!(concat!(
     "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
 ));
 
-struct Tree<S: l::LayoutScalar> {
-    inputs: Vec<l::LayoutInputOf<S>>,
-    non_box: l::NodeInputOf<S>,
+struct Tree<S: l::scalar::LayoutScalar> {
+    inputs: Vec<l::node::LayoutInputOf<S>>,
+    non_box: l::node::NodeInputOf<S>,
     children: [Vec<u32>; 7],
 }
-impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for Tree<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -30,12 +30,12 @@ impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
         self.children[n as usize][i]
     }
 }
-impl<S: l::LayoutScalar> l::LayoutTree for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for Tree<S> {
     type MeasureError = Infallible;
-    fn node_input(&self, n: u32) -> &l::NodeInputOf<S> {
+    fn node_input(&self, n: u32) -> &l::node::NodeInputOf<S> {
         self.inputs[n as usize].as_box().unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, n: u32) -> l::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, n: u32) -> l::node::LayoutInputViewOf<'_, S> {
         self.inputs[n as usize].as_view()
     }
 }
@@ -146,9 +146,9 @@ fn processed() -> Arc<t::processing::ProcessedSource> {
     )
 }
 
-fn fixture<S: l::LayoutScalar>() -> (
+fn fixture<S: l::scalar::LayoutScalar>() -> (
     Tree<S>,
-    Vec<l::TextParagraphBinding<u32>>,
+    Vec<l::text_layout::TextParagraphBinding<u32>>,
     Arc<t::processing::ProcessedSource>,
 ) {
     let capture = processed();
@@ -181,34 +181,36 @@ fn fixture<S: l::LayoutScalar>() -> (
         .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
         .unwrap();
     let mut inputs: Vec<_> = (0..7)
-        .map(|_| l::LayoutInputOf::box_input(l::NodeInputOf::default()))
+        .map(|_| l::node::LayoutInputOf::box_input(l::node::NodeInputOf::default()))
         .collect();
-    inputs[0] = l::LayoutInputOf::box_input(l::NodeInputOf {
-        display: l::Display::Block,
-        size: l::Size::new(
-            l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(100.0)).unwrap()),
-            l::PreferredSizeOf::AUTO,
+    inputs[0] = l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+        display: l::box_model::Display::Block,
+        size: l::geometry::Size::new(
+            l::sizing::PreferredSizeOf::value(
+                l::length::LengthPercentageOf::px(S::from_f64(100.0)).unwrap(),
+            ),
+            l::sizing::PreferredSizeOf::AUTO,
         ),
-        ..l::NodeInputOf::default()
+        ..l::node::NodeInputOf::default()
     });
-    inputs[3] = l::LayoutInputOf::box_input(l::NodeInputOf {
-        display: l::Display::Block,
-        ..l::NodeInputOf::default()
+    inputs[3] = l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+        display: l::box_model::Display::Block,
+        ..l::node::NodeInputOf::default()
     });
     for (node, kind) in [
-        (1, l::InlineBoundaryKind::Start),
-        (5, l::InlineBoundaryKind::End),
+        (1, l::inline::InlineBoundaryKind::Start),
+        (5, l::inline::InlineBoundaryKind::End),
     ] {
-        inputs[node] = l::LayoutInputOf::inline_boundary(
-            l::InlineBoundaryInputOf::contribution(
+        inputs[node] = l::node::LayoutInputOf::inline_boundary(
+            l::inline::InlineBoundaryInputOf::contribution(
                 kind,
-                l::InlineMetricsOf::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
+                l::inline::InlineMetricsOf::try_new(
+                    surgeist_layout::baseline::InlineBaselineContext::Physical,
                     S::from_f64(8.0),
                     S::from_f64(10.0),
                 )
                 .unwrap(),
-                l::InlineBoundaryEdgeOf::ZERO,
+                l::inline::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap(),
         );
@@ -253,8 +255,9 @@ fn fixture<S: l::LayoutScalar>() -> (
             assert_eq!(origin.aggregate_range(), t::source::Range::new(i, i + 1));
             assert_eq!(origin.local_range(), t::source::Range::new(i, i + 1));
             let origin = origin.handle();
-            inputs[origin_node as usize] =
-                l::LayoutInputOf::inline_text(l::TextParticipation::new(origin.clone()));
+            inputs[origin_node as usize] = l::node::LayoutInputOf::inline_text(
+                l::text_layout::TextParticipation::new(origin.clone()),
+            );
             let controls = prepared
                 .control_views()
                 .map(|c| {
@@ -266,15 +269,16 @@ fn fixture<S: l::LayoutScalar>() -> (
                         assert_eq!(Some(actual), capture.captured_control(1));
                         5
                     };
-                    l::TextControlBinding { occurrence, node }
+                    l::text_layout::TextControlBinding { occurrence, node }
                 })
                 .collect();
-            l::TextParagraphBinding {
-                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+            l::text_layout::TextParagraphBinding {
+                inline_box_fragments:
+                    surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container,
                 nodes,
-                origins: vec![l::TextOriginBinding {
+                origins: vec![l::text_layout::TextOriginBinding {
                     origin,
                     node: origin_node,
                 }],
@@ -293,57 +297,60 @@ fn fixture<S: l::LayoutScalar>() -> (
         Tree {
             inputs,
             children,
-            non_box: l::NodeInputOf::non_box(),
+            non_box: l::node::NodeInputOf::non_box(),
         },
         bindings,
         capture,
     )
 }
 
-fn wrapping(reverse: bool, captured: Option<t::capture::CapturedScope>) -> l::WrappingInput<u32> {
+fn wrapping(
+    reverse: bool,
+    captured: Option<t::capture::CapturedScope>,
+) -> l::inline_wrapping::WrappingInput<u32> {
     let children = if reverse { [4, 3, 2] } else { [2, 3, 4] }
         .into_iter()
-        .map(|node| l::GeneratedChildBoxInput {
-            box_: l::GeneratedBoxRef::Node(node),
-            participation: l::GeneratedBoxParticipation::InFlow,
+        .map(|node| l::inline_wrapping::GeneratedChildBoxInput {
+            box_: l::inline_wrapping::GeneratedBoxRef::Node(node),
+            participation: l::inline_wrapping::GeneratedBoxParticipation::InFlow,
         })
         .collect();
-    l::WrappingInput {
+    l::inline_wrapping::WrappingInput {
         native_inline_boxes: Vec::new(),
         gaps: Vec::new(),
-        scopes: vec![l::WrappingScopeInput::NativePair {
+        scopes: vec![l::inline_wrapping::WrappingScopeInput::NativePair {
             start: 1,
             end: 5,
-            wrap_inside: l::WrapInside::Auto,
-            edges: l::WrapEdges::AUTO,
+            wrap_inside: l::inline_wrapping::WrapInside::Auto,
+            edges: l::inline_wrapping::WrapEdges::AUTO,
             metric_contribution: None,
         }],
-        child_order: vec![l::InlineChildOrderInput {
-            parent: l::GeneratedBoxRef::Inline(captured.map_or(
-                l::InlineBoxRef::NativePair { start: 1, end: 5 },
-                l::InlineBoxRef::Scope,
+        child_order: vec![l::inline_wrapping::InlineChildOrderInput {
+            parent: l::inline_wrapping::GeneratedBoxRef::Inline(captured.map_or(
+                l::inline_wrapping::InlineBoxRef::NativePair { start: 1, end: 5 },
+                l::inline_wrapping::InlineBoxRef::Scope,
             )),
             children,
-            prefix: l::ChildOrderCompleteness::Complete,
-            suffix: l::ChildOrderCompleteness::Complete,
+            prefix: l::inline_wrapping::ChildOrderCompleteness::Complete,
+            suffix: l::inline_wrapping::ChildOrderCompleteness::Complete,
             formatting_context: 0,
         }],
     }
 }
-fn request<S: l::LayoutScalar>() -> l::LayoutRootRequestOf<S> {
+fn request<S: l::scalar::LayoutScalar>() -> l::request::LayoutRootRequestOf<S> {
     {
         let sizing_request = crate::layout::native_request::sizing(
-            surgeist_layout::Size::new(Some(S::from_f64(100.0)), None),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(S::from_f64(100.0)), None),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         );
-        l::LayoutRootRequestOf::standalone(
+        l::request::LayoutRootRequestOf::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::WritingMode::HorizontalTb,
-                surgeist_layout::Direction::Ltr,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::geometry::WritingMode::HorizontalTb,
+                surgeist_layout::geometry::Direction::Ltr,
             ),
             sizing_request
                 .orthogonal_fallback()
@@ -352,10 +359,10 @@ fn request<S: l::LayoutScalar>() -> l::LayoutRootRequestOf<S> {
     }
 }
 
-fn full<S: l::LayoutScalar>(captured_order: bool) {
+fn full<S: l::scalar::LayoutScalar>(captured_order: bool) {
     let (tree, bindings, capture) = fixture::<S>();
     let scope = captured_order.then(|| capture.captured_scope(1).unwrap());
-    let flow=l::LayoutFlowInput::try_new(&tree,0,bindings.clone(),wrapping(false, scope), Vec::new()).expect("all real parent paragraphs plus actual child block must cover S's complete continued extent");
+    let flow=l::text_layout::LayoutFlowInput::try_new(&tree,0,bindings.clone(),wrapping(false, scope), Vec::new()).expect("all real parent paragraphs plus actual child block must cover S's complete continued extent");
     let batch = l::compute_layout_with_flow(&flow, 0, request()).unwrap();
     let output = |node| {
         batch
@@ -367,15 +374,15 @@ fn full<S: l::LayoutScalar>(captured_order: bool) {
     };
     assert_eq!(
         output(0).size,
-        l::Size::new(S::from_f64(100.0), S::from_f64(30.0))
+        l::geometry::Size::new(S::from_f64(100.0), S::from_f64(30.0))
     );
     assert_eq!(
         output(3).location,
-        l::Point::new(S::ZERO, S::from_f64(10.0))
+        l::geometry::Point::new(S::ZERO, S::from_f64(10.0))
     );
     assert_eq!(
         output(3).size,
-        l::Size::new(S::from_f64(100.0), S::from_f64(10.0))
+        l::geometry::Size::new(S::from_f64(100.0), S::from_f64(10.0))
     );
     assert_eq!(batch.placed_text().len(), 3);
     for (i, nodes, container, gid, baseline) in [
@@ -433,7 +440,7 @@ fn full<S: l::LayoutScalar>(captured_order: bool) {
     );
     let mut sourced = vec![];
     for entry in batch.final_inline_fragments() {
-        let l::InlineFragmentOwner::Node(node) = entry.owner() else {
+        let l::text_layout::InlineFragmentOwner::Node(node) = entry.owner() else {
             panic!("no generated source was requested")
         };
         if ![2, 4, 6].contains(node) {
@@ -457,10 +464,10 @@ fn full<S: l::LayoutScalar>(captured_order: bool) {
     );
 }
 
-fn partial<S: l::LayoutScalar>() {
+fn partial<S: l::scalar::LayoutScalar>() {
     let (tree, mut bindings, capture) = fixture::<S>();
     bindings.remove(2);
-    let error = l::LayoutFlowInput::try_new(
+    let error = l::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         bindings,
@@ -474,17 +481,17 @@ fn partial<S: l::LayoutScalar>() {
     assert!(
         matches!(
             error.kind(),
-            l::LayoutErrorKindOf::InvalidInput(l::LayoutInvalidInputOf::TextBinding(
-                l::TextBindingError::MissingParagraph
+            l::error::LayoutErrorKindOf::InvalidInput(l::error::LayoutInvalidInputOf::TextBinding(
+                l::text_layout::TextBindingError::MissingParagraph
             ))
         ),
         "{error:?}"
     );
 }
 
-fn contradictory<S: l::LayoutScalar>() {
+fn contradictory<S: l::scalar::LayoutScalar>() {
     let (tree, bindings, capture) = fixture::<S>();
-    let error = l::LayoutFlowInput::try_new(
+    let error = l::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         bindings,
@@ -496,9 +503,11 @@ fn contradictory<S: l::LayoutScalar>() {
     assert!(
         matches!(
             error.kind(),
-            l::LayoutErrorKindOf::InvalidInput(l::LayoutInvalidInputOf::WrappingScope(
-                l::WrappingScopeError::ChildOrder
-            ))
+            l::error::LayoutErrorKindOf::InvalidInput(
+                l::error::LayoutInvalidInputOf::WrappingScope(
+                    l::inline_wrapping::WrappingScopeError::ChildOrder
+                )
+            )
         ),
         "{error:?}"
     );

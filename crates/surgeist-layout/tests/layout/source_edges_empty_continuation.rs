@@ -8,12 +8,12 @@ const AHEM: &[u8] = include_bytes!(concat!(
     "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
 ));
 
-struct Tree<S: l::LayoutScalar> {
-    inputs: Vec<l::LayoutInputOf<S>>,
-    non_box: l::NodeInputOf<S>,
+struct Tree<S: l::scalar::LayoutScalar> {
+    inputs: Vec<l::node::LayoutInputOf<S>>,
+    non_box: l::node::NodeInputOf<S>,
     children: [Vec<u32>; 4],
 }
-impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for Tree<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -30,19 +30,19 @@ impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
         self.children[n as usize][i]
     }
 }
-impl<S: l::LayoutScalar> l::LayoutTree for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for Tree<S> {
     type MeasureError = Infallible;
-    fn node_input(&self, n: u32) -> &l::NodeInputOf<S> {
+    fn node_input(&self, n: u32) -> &l::node::NodeInputOf<S> {
         self.inputs[n as usize].as_box().unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, n: u32) -> l::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, n: u32) -> l::node::LayoutInputViewOf<'_, S> {
         self.inputs[n as usize].as_view()
     }
 }
 
-fn fixture_empty<S: l::LayoutScalar>() -> (
+fn fixture_empty<S: l::scalar::LayoutScalar>() -> (
     Tree<S>,
-    Vec<l::TextParagraphBinding<u32>>,
+    Vec<l::text_layout::TextParagraphBinding<u32>>,
     t::capture::CapturedScope,
 ) {
     use t::capture::SourceProcessingEvent as E;
@@ -148,20 +148,22 @@ fn fixture_empty<S: l::LayoutScalar>() -> (
         .unwrap();
     // Root0 -> A1, block2; block2 -> X3. There is no host node for p2.
     let mut inputs = vec![
-        l::LayoutInputOf::box_input(l::NodeInputOf {
-            display: l::Display::Block,
-            size: l::Size::new(
-                l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(100.0)).unwrap()),
-                l::PreferredSizeOf::AUTO,
+        l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+            display: l::box_model::Display::Block,
+            size: l::geometry::Size::new(
+                l::sizing::PreferredSizeOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(100.0)).unwrap(),
+                ),
+                l::sizing::PreferredSizeOf::AUTO,
             ),
-            ..l::NodeInputOf::default()
+            ..l::node::NodeInputOf::default()
         }),
-        l::LayoutInputOf::box_input(l::NodeInputOf::default()),
-        l::LayoutInputOf::box_input(l::NodeInputOf {
-            display: l::Display::Block,
-            ..l::NodeInputOf::default()
+        l::node::LayoutInputOf::box_input(l::node::NodeInputOf::default()),
+        l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+            display: l::box_model::Display::Block,
+            ..l::node::NodeInputOf::default()
         }),
-        l::LayoutInputOf::box_input(l::NodeInputOf::default()),
+        l::node::LayoutInputOf::box_input(l::node::NodeInputOf::default()),
     ];
     let bindings = capture
         .paragraphs()
@@ -208,12 +210,13 @@ fn fixture_empty<S: l::LayoutScalar>() -> (
                     origin.view().aggregate_range(),
                     t::source::Range::new(i, i + 1)
                 );
-                inputs[node as usize] =
-                    l::LayoutInputOf::inline_text(l::TextParticipation::new(origin.clone()));
+                inputs[node as usize] = l::node::LayoutInputOf::inline_text(
+                    l::text_layout::TextParticipation::new(origin.clone()),
+                );
                 (
                     if i == 0 { 0 } else { 2 },
                     vec![node],
-                    vec![l::TextOriginBinding { origin, node }],
+                    vec![l::text_layout::TextOriginBinding { origin, node }],
                 )
             } else {
                 // These observations establish the actual AssociationOnly profile;
@@ -226,8 +229,9 @@ fn fixture_empty<S: l::LayoutScalar>() -> (
                 assert_eq!(prepared.virtual_separators().count(), 0);
                 (0, vec![], vec![])
             };
-            l::TextParagraphBinding {
-                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+            l::text_layout::TextParagraphBinding {
+                inline_box_fragments:
+                    surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container,
                 nodes,
@@ -246,7 +250,7 @@ fn fixture_empty<S: l::LayoutScalar>() -> (
     (
         Tree {
             inputs,
-            non_box: l::NodeInputOf::non_box(),
+            non_box: l::node::NodeInputOf::non_box(),
             children,
         },
         bindings,
@@ -254,43 +258,50 @@ fn fixture_empty<S: l::LayoutScalar>() -> (
     )
 }
 
-fn captured_wrapping(scope: t::capture::CapturedScope) -> l::WrappingInput<u32> {
-    l::WrappingInput {
+fn captured_wrapping(scope: t::capture::CapturedScope) -> l::inline_wrapping::WrappingInput<u32> {
+    l::inline_wrapping::WrappingInput {
         native_inline_boxes: Vec::new(),
         gaps: Vec::new(),
-        scopes: vec![l::WrappingScopeInput::Captured {
+        scopes: vec![l::inline_wrapping::WrappingScopeInput::Captured {
             scope: scope.clone(),
-            wrap_inside: l::WrapInside::Auto,
-            edges: l::WrapEdges::AUTO,
+            wrap_inside: l::inline_wrapping::WrapInside::Auto,
+            edges: l::inline_wrapping::WrapEdges::AUTO,
             metric_contribution: None,
         }],
-        child_order: vec![l::InlineChildOrderInput {
-            parent: l::GeneratedBoxRef::Inline(l::InlineBoxRef::Scope(scope)),
+        child_order: vec![l::inline_wrapping::InlineChildOrderInput {
+            parent: l::inline_wrapping::GeneratedBoxRef::Inline(
+                l::inline_wrapping::InlineBoxRef::Scope(scope),
+            ),
             children: [1, 2]
                 .into_iter()
-                .map(|node| l::GeneratedChildBoxInput {
-                    box_: l::GeneratedBoxRef::Node(node),
-                    participation: l::GeneratedBoxParticipation::InFlow,
+                .map(|node| l::inline_wrapping::GeneratedChildBoxInput {
+                    box_: l::inline_wrapping::GeneratedBoxRef::Node(node),
+                    participation: l::inline_wrapping::GeneratedBoxParticipation::InFlow,
                 })
                 .collect(),
-            prefix: l::ChildOrderCompleteness::Complete,
-            suffix: l::ChildOrderCompleteness::Complete,
+            prefix: l::inline_wrapping::ChildOrderCompleteness::Complete,
+            suffix: l::inline_wrapping::ChildOrderCompleteness::Complete,
             formatting_context: 0,
         }],
     }
 }
 
-fn full_empty<S: l::LayoutScalar>() {
+fn full_empty<S: l::scalar::LayoutScalar>() {
     let (tree, bindings, scope) = fixture_empty::<S>();
-    let flow =
-        l::LayoutFlowInput::try_new(&tree, 0, bindings, captured_wrapping(scope), Vec::new())
-            .expect("the supplied real itemless ending paragraph authenticates S's closure");
+    let flow = l::text_layout::LayoutFlowInput::try_new(
+        &tree,
+        0,
+        bindings,
+        captured_wrapping(scope),
+        Vec::new(),
+    )
+    .expect("the supplied real itemless ending paragraph authenticates S's closure");
     // This is admission only: absence of a supplied box strut makes no zero
     // geometry promise, and no selected line/fit is requested.
     drop(flow);
 }
 
-fn missing_empty<S: l::LayoutScalar>() {
+fn missing_empty<S: l::scalar::LayoutScalar>() {
     let (tree, mut bindings, scope) = fixture_empty::<S>();
     let omitted = bindings.pop().unwrap();
     assert!(omitted.nodes.is_empty());
@@ -300,16 +311,23 @@ fn missing_empty<S: l::LayoutScalar>() {
     // A1/X3 are still covered by the first two bindings in the unchanged tree.
     // Complete S order still claims its real original after edge; without p2
     // that needed captured region is unavailable, rather than implied by glyphs.
-    let error =
-        l::LayoutFlowInput::try_new(&tree, 0, bindings, captured_wrapping(scope), Vec::new())
-            .err()
-            .expect("all text covered is insufficient without S's real ending paragraph");
+    let error = l::text_layout::LayoutFlowInput::try_new(
+        &tree,
+        0,
+        bindings,
+        captured_wrapping(scope),
+        Vec::new(),
+    )
+    .err()
+    .expect("all text covered is insufficient without S's real ending paragraph");
     assert!(
         matches!(
             error.kind(),
-            l::LayoutErrorKindOf::InvalidInput(l::LayoutInvalidInputOf::WrappingScope(
-                l::WrappingScopeError::UnsupportedIncidence
-            ))
+            l::error::LayoutErrorKindOf::InvalidInput(
+                l::error::LayoutInvalidInputOf::WrappingScope(
+                    l::inline_wrapping::WrappingScopeError::UnsupportedIncidence
+                )
+            )
         ),
         "{error:?}"
     );

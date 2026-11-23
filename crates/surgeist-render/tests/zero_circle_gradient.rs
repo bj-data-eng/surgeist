@@ -48,12 +48,15 @@ fn hint(length: f64, fraction: f64) -> GradientStopItem<Color> {
 }
 
 fn geometry() -> RadialGradientGeometry {
-    geometry_at(layout::Point::new(f64::from(CENTER_X), f64::from(CENTER_Y)))
+    geometry_at(layout::geometry::Point::new(
+        f64::from(CENTER_X),
+        f64::from(CENTER_Y),
+    ))
 }
 
-fn geometry_at(center: layout::Point<f64>) -> RadialGradientGeometry {
+fn geometry_at(center: layout::geometry::Point<f64>) -> RadialGradientGeometry {
     resolve_radial_gradient(
-        layout::Size::new(f64::from(WIDTH), f64::from(HEIGHT)),
+        layout::geometry::Size::new(f64::from(WIDTH), f64::from(HEIGHT)),
         Some(center),
         RadialGradientSize::CircleRadius(0.0),
         options(),
@@ -253,7 +256,7 @@ fn zero_circle_preserves_percentage_blend_at_the_native_center_and_ring() {
 #[test]
 fn zero_circle_preserves_the_nonzero_radius_when_its_unscaled_square_is_subnormal() {
     let paint = paint_for(
-        &geometry_at(layout::Point::new(2.0_f64.powi(-64), 0.0)),
+        &geometry_at(layout::geometry::Point::new(2.0_f64.powi(-64), 0.0)),
         &[stop(RED, 0.0, -1.0), stop(BLUE, 0.0, 1.0)],
         false,
     );
@@ -268,7 +271,7 @@ fn zero_circle_preserves_the_nonzero_radius_when_its_unscaled_square_is_subnorma
 fn zero_circle_refuses_a_native_carrier_that_could_invent_center_coincidence() {
     let subnormal = 3.0 * 2.0_f64.powi(-128);
     let paint = paint_for(
-        &geometry_at(layout::Point::new(subnormal, subnormal)),
+        &geometry_at(layout::geometry::Point::new(subnormal, subnormal)),
         &[stop(RED, 0.0, -1.0), stop(BLUE, 0.0, 1.0)],
         false,
     );
@@ -288,7 +291,7 @@ fn zero_circle_refuses_a_native_carrier_that_could_invent_center_coincidence() {
 fn zero_circle_does_not_invent_a_center_sample_after_surface_scaling() {
     let subnormal = 3.0 * 2.0_f64.powi(-128);
     let paint = paint_for(
-        &geometry_at(layout::Point::new(subnormal, subnormal)),
+        &geometry_at(layout::geometry::Point::new(subnormal, subnormal)),
         &[stop(RED, 0.0, -1.0), stop(BLUE, 0.0, 1.0)],
         false,
     );
@@ -425,7 +428,10 @@ fn repeating_zero_circle_uses_the_thin_axis_of_an_almost_circular_transform() {
 #[test]
 fn repeating_zero_circle_preserves_the_side_of_a_seam_after_large_phase_cancellation() {
     let paint = paint_for(
-        &geometry_at(layout::Point::new(2.0_f64.powi(-14), f64::from(CENTER_Y))),
+        &geometry_at(layout::geometry::Point::new(
+            2.0_f64.powi(-14),
+            f64::from(CENTER_Y),
+        )),
         &[stop(RED, -4092.0, 0.0), stop(BLUE, -4088.0, 0.0)],
         true,
     );
@@ -439,7 +445,7 @@ fn repeating_zero_circle_preserves_the_side_of_a_seam_after_large_phase_cancella
 
 #[test]
 fn repeating_zero_circle_keeps_exact_ring_and_fraction_sides_under_cancellation() {
-    let center = layout::Point::new(2.0_f64.powi(-14), f64::from(CENTER_Y));
+    let center = layout::geometry::Point::new(2.0_f64.powi(-14), f64::from(CENTER_Y));
     let ring = paint_for(
         &geometry_at(center),
         &[
@@ -484,7 +490,11 @@ fn zero_circle_center_survives_stroke_and_both_glyph_routes() {
 
     let source = [stop(RED, 0.0, -1.0), stop(BLUE, 0.0, 1.0)];
     let stroke = field(&source, false);
-    let glyph = paint_for(&geometry_at(layout::Point::new(0.5, 0.5)), &source, false);
+    let glyph = paint_for(
+        &geometry_at(layout::geometry::Point::new(0.5, 0.5)),
+        &source,
+        false,
+    );
     let font = FontData::try_from_bytes(
         include_bytes!("fixtures/fonts/ahem/Ahem.ttf").to_vec(),
         0,

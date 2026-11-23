@@ -1,7 +1,7 @@
 use super::*;
 use crate::accounting::{PaintChange, PaintEvent, PaintLimits};
 use crate::stacking::{ContextEffect, ContextView, Position, ZIndex};
-use surgeist_layout::{ItemOrder, SourceIndex};
+use surgeist_layout::node::{ItemOrder, SourceIndex};
 use surgeist_ledger::{EventFilter, ProfileMode, RefusalReason};
 
 const STACKING_WORK_KINDS: [WorkKind; 8] = [

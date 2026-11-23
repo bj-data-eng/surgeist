@@ -22,7 +22,7 @@ mod text;
 use std::hint::black_box;
 
 use harness::{Document, Family};
-use surgeist_layout::TextWrapStyle;
+use surgeist_layout::text_flow::TextWrapStyle;
 use text::Paragraphs;
 
 const WIDTH: f32 = 400.0;

@@ -1,4 +1,23 @@
 use super::*;
+use crate::fragmentation::{
+    input::{
+        FragmentainerOf, FragmentationBoundaryControls, FragmentationBreak,
+        FragmentationBreakControl, FragmentationBreakInside, FragmentationBreakKinds,
+        FragmentationContext, FragmentationControlKind, FragmentationCutOf,
+        FragmentationEmergencySliceOf, FragmentationFallback, FragmentationFlowOf,
+        FragmentationGraphicalProgressOf, FragmentationInputOf, FragmentationKind,
+        FragmentationMeasuredHeadOf, FragmentationOccurrence, FragmentationOpportunityKindOf,
+        FragmentationOpportunityOf, FragmentationPosition, FragmentationProvider,
+        FragmentationQueryOf, FragmentationReplyOf, FragmentationRole, FragmentationStage,
+        FragmentationStart, FragmentationWindowEnd, FragmentationWindowOf,
+    },
+    output::{
+        FragmentationBreakReason, FragmentationCoverage, FragmentationError,
+        FragmentationGraphicalCoverageOf, FragmentationInputError, FragmentationPieceKindOf,
+        FragmentationReportOf,
+    },
+    page::PageProgression,
+};
 use crate::{
     geometry::FlowAxes,
     node_input::{Direction, WritingMode},

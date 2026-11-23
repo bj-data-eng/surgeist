@@ -1,27 +1,29 @@
 //! Physical frames are literal WM4/CW projections of real Ahem line receipts.
 use super::*;
 
-pub(super) fn px<S: l::LayoutScalar>(value: f64) -> l::PreferredSizeOf<S> {
-    l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(value)).unwrap())
+pub(super) fn px<S: l::scalar::LayoutScalar>(value: f64) -> l::sizing::PreferredSizeOf<S> {
+    l::sizing::PreferredSizeOf::value(
+        l::length::LengthPercentageOf::px(S::from_f64(value)).unwrap(),
+    )
 }
-pub(super) fn fixture<S: l::LayoutScalar>(
-    direction: l::Direction,
+pub(super) fn fixture<S: l::scalar::LayoutScalar>(
+    direction: l::geometry::Direction,
     width: Option<f64>,
     height: Option<f64>,
 ) -> Host<S> {
-    let mut host = Host::new(direction, l::TextGroupAlign::None);
+    let mut host = Host::new(direction, l::text_flow::TextGroupAlign::None);
     host.box_change(0, |root| {
-        root.writing_mode = l::WritingMode::SidewaysRl;
-        root.text_align = l::TextAlign::Start;
-        root.inline_baseline_context = l::InlineBaselineContext::Physical;
-        root.size = l::Size::new(
-            width.map_or(l::PreferredSizeOf::AUTO, px),
-            height.map_or(l::PreferredSizeOf::AUTO, px),
+        root.writing_mode = l::geometry::WritingMode::SidewaysRl;
+        root.text_align = l::text_flow::TextAlign::Start;
+        root.inline_baseline_context = l::baseline::InlineBaselineContext::Physical;
+        root.size = l::geometry::Size::new(
+            width.map_or(l::sizing::PreferredSizeOf::AUTO, px),
+            height.map_or(l::sizing::PreferredSizeOf::AUTO, px),
         );
     });
     host
 }
-pub(super) fn paragraph<S: l::LayoutScalar>(
+pub(super) fn paragraph<S: l::scalar::LayoutScalar>(
     host: &mut Host<S>,
     container: u32,
     parts: &[Part<'_>],
@@ -38,39 +40,39 @@ pub(super) fn paragraph<S: l::LayoutScalar>(
             .with_orientation(t::selection::LineOrientation::SidewaysClockwise),
     )
 }
-pub(super) fn available<S: l::LayoutScalar>(
+pub(super) fn available<S: l::scalar::LayoutScalar>(
     width: f64,
     height: f64,
-) -> surgeist_layout::SizingRequestOf<S> {
+) -> surgeist_layout::constraint::SizingRequestOf<S> {
     crate::layout::native_request::sizing(
-        surgeist_layout::Size::new(Some(S::from_f64(width)), Some(S::from_f64(height))),
-        surgeist_layout::Size::new(
-            surgeist_layout::SizingOperation::Normal,
-            surgeist_layout::SizingOperation::Normal,
+        surgeist_layout::geometry::Size::new(Some(S::from_f64(width)), Some(S::from_f64(height))),
+        surgeist_layout::geometry::Size::new(
+            surgeist_layout::constraint::SizingOperation::Normal,
+            surgeist_layout::constraint::SizingOperation::Normal,
         ),
     )
 }
-pub(super) fn run<S: l::LayoutScalar>(
+pub(super) fn run<S: l::scalar::LayoutScalar>(
     host: &Host<S>,
     paragraphs: &[&Paragraph],
-    available: surgeist_layout::SizingRequestOf<S>,
+    available: surgeist_layout::constraint::SizingRequestOf<S>,
     changed: &[u32],
-) -> l::CompletedLayoutBatchOf<u32, S> {
-    let flow = l::LayoutFlowInput::try_new(
+) -> l::batch::CompletedLayoutBatchOf<u32, S> {
+    let flow = l::text_layout::LayoutFlowInput::try_new(
         host,
         0,
         paragraphs.iter().map(|p| p.binding.clone()).collect(),
-        l::WrappingInput::default(),
+        l::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
     let request = {
         let sizing_request = available;
-        l::LayoutRootRequestOf::standalone(
+        l::request::LayoutRootRequestOf::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
-                surgeist_layout::LayoutTree::node_input(host, 0).direction,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::tree::LayoutTree::node_input(host, 0).writing_mode,
+                surgeist_layout::tree::LayoutTree::node_input(host, 0).direction,
             ),
             sizing_request
                 .orthogonal_fallback()
@@ -85,7 +87,7 @@ pub(super) fn run<S: l::LayoutScalar>(
             (&batch, false),
             node,
             crate::layout::observation::expected_kind(
-                l::LayoutTree::layout_input(host, node),
+                l::tree::LayoutTree::layout_input(host, node),
                 false,
             ),
         );
@@ -93,7 +95,7 @@ pub(super) fn run<S: l::LayoutScalar>(
             (&batch, true),
             node,
             crate::layout::observation::expected_kind(
-                l::LayoutTree::layout_input(host, node),
+                l::tree::LayoutTree::layout_input(host, node),
                 false,
             ),
         );
@@ -117,8 +119,8 @@ pub(super) fn break_all() -> t::style::Style {
     }
 }
 
-fn two_columns<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+fn two_columns<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     p: &Paragraph,
     right: f64,
     top: f64,
@@ -207,12 +209,12 @@ fn two_columns<S: l::LayoutScalar>(
     assert_eq!(layout.metrics().size(), t::geometry::Size::new(20.0, 10.0));
 }
 
-fn auto_and_intrinsic<S: l::LayoutScalar>() {
+fn auto_and_intrinsic<S: l::scalar::LayoutScalar>() {
     // A finite outer40-wide Srl frame anchors an AUTO20-wide root at GX20.
     // A nonfinite block request instead anchors it at GX0. Both are actual
     // root requests; no provisional-width frame is supplied by the test.
     for (block_space, gx, right) in [(Some(S::from_f64(40.0)), 20.0, 40.0), (None, 0.0, 20.0)] {
-        let mut host = fixture::<S>(l::Direction::Ltr, None, Some(15.0));
+        let mut host = fixture::<S>(l::geometry::Direction::Ltr, None, Some(15.0));
         let p = paragraph(
             &mut host,
             0,
@@ -224,29 +226,40 @@ fn auto_and_intrinsic<S: l::LayoutScalar>() {
             &host,
             &[&p],
             crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(block_space, Some(S::from_f64(15.0))),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(block_space, Some(S::from_f64(15.0))),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             ),
             &[],
         );
         let root = node_output(&batch, 0);
-        assert_eq!(root.location, l::Point::new(S::from_f64(gx), S::ZERO));
+        assert_eq!(
+            root.location,
+            l::geometry::Point::new(S::from_f64(gx), S::ZERO)
+        );
         assert_eq!(
             root.size,
-            l::Size::new(S::from_f64(20.0), S::from_f64(15.0))
+            l::geometry::Size::new(S::from_f64(20.0), S::from_f64(15.0))
         );
         two_columns(&batch, &p, right, 0.0, 0.0, 15.0, Some(15.0));
     }
     // These are real Layout MIN/MAX_CONTENT requests along physical height
     // (Srl inline), not a claim that one whole-line measurement is global min.
     for (inline_space, width, height) in [
-        (surgeist_layout::SizingOperation::MinContent, 20.0, 10.0),
-        (surgeist_layout::SizingOperation::MaxContent, 10.0, 20.0),
+        (
+            surgeist_layout::constraint::SizingOperation::MinContent,
+            20.0,
+            10.0,
+        ),
+        (
+            surgeist_layout::constraint::SizingOperation::MaxContent,
+            10.0,
+            20.0,
+        ),
     ] {
-        let mut host = fixture::<S>(l::Direction::Ltr, None, None);
+        let mut host = fixture::<S>(l::geometry::Direction::Ltr, None, None);
         let p = paragraph(
             &mut host,
             0,
@@ -258,16 +271,19 @@ fn auto_and_intrinsic<S: l::LayoutScalar>() {
             &host,
             &[&p],
             crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(None, None),
-                surgeist_layout::Size::new(surgeist_layout::SizingOperation::Normal, inline_space),
+                surgeist_layout::geometry::Size::new(None, None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    inline_space,
+                ),
             ),
             &[],
         );
         let root = node_output(&batch, 0);
-        assert_eq!(root.location, l::Point::ZERO);
+        assert_eq!(root.location, l::geometry::Point::ZERO);
         assert_eq!(
             root.size,
-            l::Size::new(S::from_f64(width), S::from_f64(height))
+            l::geometry::Size::new(S::from_f64(width), S::from_f64(height))
         );
         if width == 20.0 {
             // The initial MIN_CONTENT measurement has no finite allocation.
@@ -337,23 +353,27 @@ fn auto_root_origin_and_actual_intrinsic_requests_f64() {
     auto_and_intrinsic::<f64>();
 }
 
-fn insets_and_ancestor<S: l::LayoutScalar>() {
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+fn insets_and_ancestor<S: l::scalar::LayoutScalar>() {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         for body in [
             t::paragraph::ParagraphBaseDirection::LeftToRight,
             t::paragraph::ParagraphBaseDirection::RightToLeft,
         ] {
             let mut host = fixture::<S>(direction, Some(50.0), Some(25.0));
             host.box_change(0, |root| {
-                root.box_sizing = l::BoxSizing::BorderBox;
-                root.padding.left =
-                    l::LengthOf::value(l::LengthPercentageOf::px(S::from_f64(3.0)).unwrap());
-                root.padding.right =
-                    l::LengthOf::value(l::LengthPercentageOf::px(S::from_f64(7.0)).unwrap());
-                root.padding.top =
-                    l::LengthOf::value(l::LengthPercentageOf::px(S::from_f64(4.0)).unwrap());
-                root.padding.bottom =
-                    l::LengthOf::value(l::LengthPercentageOf::px(S::from_f64(6.0)).unwrap());
+                root.box_sizing = l::box_model::BoxSizing::BorderBox;
+                root.padding.left = l::length::LengthOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(3.0)).unwrap(),
+                );
+                root.padding.right = l::length::LengthOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(7.0)).unwrap(),
+                );
+                root.padding.top = l::length::LengthOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(4.0)).unwrap(),
+                );
+                root.padding.bottom = l::length::LengthOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(6.0)).unwrap(),
+                );
             });
             let p = paragraph(&mut host, 0, &[Part::Text("AB")], break_all(), body);
             let expected_level = if body == t::paragraph::ParagraphBaseDirection::LeftToRight {
@@ -369,7 +389,7 @@ fn insets_and_ancestor<S: l::LayoutScalar>() {
             let batch = run(&host, &[&p], available(50.0, 25.0), &[]);
             assert_eq!(
                 node_output(&batch, 0).size,
-                l::Size::new(S::from_f64(50.0), S::from_f64(25.0))
+                l::geometry::Size::new(S::from_f64(50.0), S::from_f64(25.0))
             );
             // Content is x3..43/y4..19. RTL Start shifts the10-unit glyph
             // down5; it neither changes Latin's actual UBA order nor the band.
@@ -378,7 +398,7 @@ fn insets_and_ancestor<S: l::LayoutScalar>() {
                 &p,
                 43.0,
                 4.0,
-                if direction == l::Direction::Ltr {
+                if direction == l::geometry::Direction::Ltr {
                     4.0
                 } else {
                     9.0
@@ -390,7 +410,7 @@ fn insets_and_ancestor<S: l::LayoutScalar>() {
                 assert_eq!(row.selected_line().request().context.base_direction, body);
                 assert_eq!(
                     row.selected_line().request().context.line_box_direction,
-                    if direction == l::Direction::Ltr {
+                    if direction == l::geometry::Direction::Ltr {
                         t::selection::LineBoxDirection::LeftToRight
                     } else {
                         t::selection::LineBoxDirection::RightToLeft
@@ -399,16 +419,26 @@ fn insets_and_ancestor<S: l::LayoutScalar>() {
             }
         }
     }
-    let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::None);
+    let mut host = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     host.box_change(0, |root| {
-        root.padding.left =
-            l::LengthOf::value(l::LengthPercentageOf::px(S::from_f64(7.0)).unwrap());
-        root.padding.top = l::LengthOf::value(l::LengthPercentageOf::px(S::from_f64(9.0)).unwrap());
+        root.padding.left = l::length::LengthOf::value(
+            l::length::LengthPercentageOf::px(S::from_f64(7.0)).unwrap(),
+        );
+        root.padding.top = l::length::LengthOf::value(
+            l::length::LengthPercentageOf::px(S::from_f64(9.0)).unwrap(),
+        );
     });
-    let child = host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
+    let child = host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     host.box_change(child, |input| {
-        input.writing_mode = l::WritingMode::SidewaysRl;
-        input.size = l::Size::new(px(40.0), px(15.0));
+        input.writing_mode = l::geometry::WritingMode::SidewaysRl;
+        input.size = l::geometry::Size::new(px(40.0), px(15.0));
     });
     let p = paragraph(
         &mut host,
@@ -420,7 +450,7 @@ fn insets_and_ancestor<S: l::LayoutScalar>() {
     let batch = run(&host, &[&p], available(100.0, 100.0), &[]);
     assert_eq!(
         node_output(&batch, child).location,
-        l::Point::new(S::from_f64(7.0), S::from_f64(9.0))
+        l::geometry::Point::new(S::from_f64(7.0), S::from_f64(9.0))
     );
     two_columns(&batch, &p, 47.0, 9.0, 9.0, 15.0, Some(15.0));
 }
@@ -433,15 +463,19 @@ fn actual_insets_ancestor_and_independent_linebox_direction_f64() {
     insets_and_ancestor::<f64>();
 }
 
-fn cache_and_change<S: l::LayoutScalar>() {
-    let mut host = fixture::<S>(l::Direction::Ltr, Some(40.0), Some(15.0));
+fn cache_and_change<S: l::scalar::LayoutScalar>() {
+    let mut host = fixture::<S>(l::geometry::Direction::Ltr, Some(40.0), Some(15.0));
     // Complete BlockEnd belongs to this real paragraph container only. The
     // eligible cache leaf is a separate normal block under the outer root,
     // never an omitted out-of-flow member of the captured native inline run.
-    let text_box = host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
+    let text_box = host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     host.box_change(text_box, |input| {
-        input.writing_mode = l::WritingMode::SidewaysRl;
-        input.size = l::Size::new(l::PreferredSizeOf::AUTO, px(15.0));
+        input.writing_mode = l::geometry::WritingMode::SidewaysRl;
+        input.size = l::geometry::Size::new(l::sizing::PreferredSizeOf::AUTO, px(15.0));
     });
     let p = paragraph(
         &mut host,
@@ -450,11 +484,15 @@ fn cache_and_change<S: l::LayoutScalar>() {
         break_all(),
         t::paragraph::ParagraphBaseDirection::LeftToRight,
     );
-    let leaf = host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
+    let leaf = host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     host.box_change(leaf, |input| {
-        input.writing_mode = l::WritingMode::SidewaysRl;
-        input.block_flow_context = l::BlockFlowContext::Independent;
-        input.size = l::Size::new(px(5.0), px(15.0));
+        input.writing_mode = l::geometry::WritingMode::SidewaysRl;
+        input.block_flow_context = l::box_model::BlockFlowContext::Independent;
+        input.size = l::geometry::Size::new(px(5.0), px(15.0));
     });
     assert_eq!(host.children[0], [text_box, leaf]);
     assert_eq!(host.children[text_box as usize], p.binding.nodes);
@@ -463,20 +501,20 @@ fn cache_and_change<S: l::LayoutScalar>() {
     // their actual container is x20..40; its next5-unit sibling is x15..20.
     assert_eq!(
         node_output(&cold, text_box).location,
-        l::Point::new(S::from_f64(20.0), S::ZERO)
+        l::geometry::Point::new(S::from_f64(20.0), S::ZERO)
     );
     assert_eq!(
         node_output(&cold, text_box).size,
-        l::Size::new(S::from_f64(20.0), S::from_f64(15.0))
+        l::geometry::Size::new(S::from_f64(20.0), S::from_f64(15.0))
     );
     assert_eq!(
         node_output(&cold, leaf).size,
-        l::Size::new(S::from_f64(5.0), S::from_f64(15.0))
+        l::geometry::Size::new(S::from_f64(5.0), S::from_f64(15.0))
     );
     two_columns(&cold, &p, 40.0, 0.0, 0.0, 15.0, Some(15.0));
     assert_eq!(
         node_output(&cold, leaf).location,
-        l::Point::new(S::from_f64(15.0), S::ZERO)
+        l::geometry::Point::new(S::from_f64(15.0), S::ZERO)
     );
     cold.apply_to(&mut host).unwrap();
     let before = host.hits[leaf as usize].get();
@@ -491,16 +529,16 @@ fn cache_and_change<S: l::LayoutScalar>() {
     let changed = run(&host, &[&p], available(50.0, 15.0), &[0]);
     assert_eq!(
         node_output(&changed, text_box).location,
-        l::Point::new(S::from_f64(30.0), S::ZERO)
+        l::geometry::Point::new(S::from_f64(30.0), S::ZERO)
     );
     assert_eq!(
         node_output(&changed, text_box).size,
-        l::Size::new(S::from_f64(20.0), S::from_f64(15.0))
+        l::geometry::Size::new(S::from_f64(20.0), S::from_f64(15.0))
     );
     two_columns(&changed, &p, 50.0, 0.0, 0.0, 15.0, Some(15.0));
     assert_eq!(
         node_output(&changed, leaf).location,
-        l::Point::new(S::from_f64(25.0), S::ZERO)
+        l::geometry::Point::new(S::from_f64(25.0), S::ZERO)
     );
     changed.apply_to(&mut host).unwrap();
     let current = run(&host, &[&p], available(50.0, 15.0), &[]);
@@ -508,11 +546,15 @@ fn cache_and_change<S: l::LayoutScalar>() {
     // Both previously published packets retain their original global frame.
     two_columns(&cold, &p, 40.0, 0.0, 0.0, 15.0, Some(15.0));
     two_columns(&warm, &p, 40.0, 0.0, 0.0, 15.0, Some(15.0));
-    let mut fresh = fixture::<S>(l::Direction::Ltr, Some(50.0), Some(15.0));
-    let fresh_text_box = fresh.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
+    let mut fresh = fixture::<S>(l::geometry::Direction::Ltr, Some(50.0), Some(15.0));
+    let fresh_text_box = fresh.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     fresh.box_change(fresh_text_box, |input| {
-        input.writing_mode = l::WritingMode::SidewaysRl;
-        input.size = l::Size::new(l::PreferredSizeOf::AUTO, px(15.0));
+        input.writing_mode = l::geometry::WritingMode::SidewaysRl;
+        input.size = l::geometry::Size::new(l::sizing::PreferredSizeOf::AUTO, px(15.0));
     });
     let fresh_p = paragraph(
         &mut fresh,
@@ -521,11 +563,15 @@ fn cache_and_change<S: l::LayoutScalar>() {
         break_all(),
         t::paragraph::ParagraphBaseDirection::LeftToRight,
     );
-    let fresh_leaf = fresh.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
+    let fresh_leaf = fresh.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     fresh.box_change(fresh_leaf, |input| {
-        input.writing_mode = l::WritingMode::SidewaysRl;
-        input.block_flow_context = l::BlockFlowContext::Independent;
-        input.size = l::Size::new(px(5.0), px(15.0));
+        input.writing_mode = l::geometry::WritingMode::SidewaysRl;
+        input.block_flow_context = l::box_model::BlockFlowContext::Independent;
+        input.size = l::geometry::Size::new(px(5.0), px(15.0));
     });
     let fresh_batch = run(&fresh, &[&fresh_p], available(50.0, 15.0), &[]);
     two_columns(&fresh_batch, &fresh_p, 50.0, 0.0, 0.0, 15.0, Some(15.0));
@@ -543,8 +589,8 @@ fn real_eligible_leaf_cache_replay_width_invalidation_and_old_packets_f64() {
     cache_and_change::<f64>();
 }
 
-fn quality_continuation<S: l::LayoutScalar>() {
-    let mut host = fixture::<S>(l::Direction::Ltr, Some(40.0), Some(60.0));
+fn quality_continuation<S: l::scalar::LayoutScalar>() {
+    let mut host = fixture::<S>(l::geometry::Direction::Ltr, Some(40.0), Some(60.0));
     let p = paragraph(
         &mut host,
         0,
@@ -554,11 +600,15 @@ fn quality_continuation<S: l::LayoutScalar>() {
     );
     let mut retained = Vec::new();
     for (mode, cuts, advances) in [
-        (l::TextWrapStyle::Auto, [7, 8], [60.0, 10.0]),
-        (l::TextWrapStyle::Stable, [7, 8], [60.0, 10.0]),
-        (l::TextWrapStyle::Balance, [4, 8], [30.0, 40.0]),
-        (l::TextWrapStyle::AvoidShortLastLine, [4, 8], [30.0, 40.0]),
-        (l::TextWrapStyle::Pretty, [4, 8], [30.0, 40.0]),
+        (l::text_flow::TextWrapStyle::Auto, [7, 8], [60.0, 10.0]),
+        (l::text_flow::TextWrapStyle::Stable, [7, 8], [60.0, 10.0]),
+        (l::text_flow::TextWrapStyle::Balance, [4, 8], [30.0, 40.0]),
+        (
+            l::text_flow::TextWrapStyle::AvoidShortLastLine,
+            [4, 8],
+            [30.0, 40.0],
+        ),
+        (l::text_flow::TextWrapStyle::Pretty, [4, 8], [30.0, 40.0]),
     ] {
         host.box_change(0, |root| root.text_wrap_style = mode);
         let batch = run(&host, &[&p], available(40.0, 60.0), &[0]);

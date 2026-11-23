@@ -250,8 +250,8 @@ fn verify_native_control(
             .as_box()
             .ok_or_else(|| unsupported("/2", "collapse control source box"))?
             .clone();
-        input.flex_item_collapse = layout::FlexItemCollapse::Normal;
-        node.layout_input = layout::LayoutInput::box_input(input);
+        input.flex_item_collapse = layout::flex::FlexItemCollapse::Normal;
+        node.layout_input = layout::node::LayoutInput::box_input(input);
     }
     let request = root_request(&golden.viewport.root_context).map_err(map_error)?;
     let batch = compute_actual_batch(&tree, &golden.name, request).map_err(map_error)?;
@@ -286,7 +286,7 @@ fn verify_native_control(
                 "collapse control requires both visible packets",
             ));
         };
-        if restored.size != extent(layout::Size::new(100.0, 30.0))?
+        if restored.size != extent(layout::geometry::Size::new(100.0, 30.0))?
             || scroller.size != expected.size
             || scroller.content_size != expected.content_size
             || scroller.scroll != expected.scroll

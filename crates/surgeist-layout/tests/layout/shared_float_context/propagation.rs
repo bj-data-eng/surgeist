@@ -4,12 +4,12 @@ use super::{block, l, output, px};
 use std::{convert::Infallible, slice};
 use surgeist_text::supplied_line::BidiLevel;
 
-struct FlowTree<S: l::LayoutScalar> {
-    inputs: Vec<l::NodeInputOf<S>>,
+struct FlowTree<S: l::scalar::LayoutScalar> {
+    inputs: Vec<l::node::NodeInputOf<S>>,
     children: Vec<Vec<u32>>,
 }
 
-impl<S: l::LayoutScalar> l::Traverse for FlowTree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for FlowTree<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -30,20 +30,20 @@ impl<S: l::LayoutScalar> l::Traverse for FlowTree<S> {
     }
 }
 
-impl<S: l::LayoutScalar> l::LayoutTree for FlowTree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for FlowTree<S> {
     type MeasureError = Infallible;
 
-    fn node_input(&self, node: u32) -> &l::NodeInputOf<S> {
+    fn node_input(&self, node: u32) -> &l::node::NodeInputOf<S> {
         &self.inputs[node as usize]
     }
 
-    fn layout_input(&self, node: u32) -> l::LayoutInputViewOf<'_, S> {
-        l::LayoutInputViewOf::Box(&self.inputs[node as usize])
+    fn layout_input(&self, node: u32) -> l::node::LayoutInputViewOf<'_, S> {
+        l::node::LayoutInputViewOf::Box(&self.inputs[node as usize])
     }
 }
 
-impl<S: l::LayoutScalar> FlowTree<S> {
-    fn new(inputs: Vec<l::NodeInputOf<S>>, edges: &[(u32, &[u32])]) -> Self {
+impl<S: l::scalar::LayoutScalar> FlowTree<S> {
+    fn new(inputs: Vec<l::node::NodeInputOf<S>>, edges: &[(u32, &[u32])]) -> Self {
         let mut children = vec![vec![]; inputs.len()];
         for &(parent, list) in edges {
             children[parent as usize] = list.to_vec();
@@ -51,20 +51,20 @@ impl<S: l::LayoutScalar> FlowTree<S> {
         Self { inputs, children }
     }
 
-    fn compute(&self, source_indices: &[usize]) -> l::CompletedLayoutBatchOf<u32, S> {
+    fn compute(&self, source_indices: &[usize]) -> l::batch::CompletedLayoutBatchOf<u32, S> {
         let request = {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(100.0)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(S::from_f64(100.0)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::WritingMode::HorizontalTb,
-                    surgeist_layout::Direction::Ltr,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::geometry::WritingMode::HorizontalTb,
+                    surgeist_layout::geometry::Direction::Ltr,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -83,7 +83,7 @@ impl<S: l::LayoutScalar> FlowTree<S> {
             for (node, &index) in source_indices.iter().enumerate() {
                 assert_eq!(
                     output(entries, u32::try_from(node).unwrap()).source_index,
-                    l::SourceIndex::new(index)
+                    l::node::SourceIndex::new(index)
                 );
             }
         }
@@ -91,42 +91,46 @@ impl<S: l::LayoutScalar> FlowTree<S> {
     }
 }
 
-fn float<S: l::LayoutScalar>(side: l::Float, width: f64, height: f64) -> l::NodeInputOf<S> {
+fn float<S: l::scalar::LayoutScalar>(
+    side: l::box_model::Float,
+    width: f64,
+    height: f64,
+) -> l::node::NodeInputOf<S> {
     let mut input = block(width);
     input.float = side;
     input.size.height = px(height);
     input
 }
 
-fn atomic<S: l::LayoutScalar>() -> l::NodeInputOf<S> {
-    l::NodeInputOf {
-        display: l::Display::InlineBlock,
-        writing_mode: l::WritingMode::HorizontalTb,
-        direction: l::Direction::Ltr,
-        text_align: l::TextAlign::Start,
-        vertical_align: l::VerticalAlignOf::Baseline,
-        atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
+fn atomic<S: l::scalar::LayoutScalar>() -> l::node::NodeInputOf<S> {
+    l::node::NodeInputOf {
+        display: l::box_model::Display::InlineBlock,
+        writing_mode: l::geometry::WritingMode::HorizontalTb,
+        direction: l::geometry::Direction::Ltr,
+        text_align: l::text_flow::TextAlign::Start,
+        vertical_align: l::inline::VerticalAlignOf::Baseline,
+        atomic_inline_participation: Some(l::inline::AtomicInlineParticipation::new(
             BidiLevel::try_new(0).unwrap(),
-            l::InlineBreakOpportunity::Allowed,
+            l::text_flow::InlineBreakOpportunity::Allowed,
         )),
-        size: l::Size::new(px(10.0), px(10.0)),
-        ..l::NodeInputOf::default()
+        size: l::geometry::Size::new(px(10.0), px(10.0)),
+        ..l::node::NodeInputOf::default()
     }
 }
 
-fn later_line_and_clearance<S: l::LayoutScalar>() {
+fn later_line_and_clearance<S: l::scalar::LayoutScalar>() {
     for clear in [false, true] {
         let mut later = block(100.0);
         later.clear = if clear {
-            l::Clear::Both
+            l::box_model::Clear::Both
         } else {
-            l::Clear::None
+            l::box_model::Clear::None
         };
         let tree = FlowTree::<S>::new(
             vec![
                 block(100.0),
                 block(100.0),
-                float(l::Float::Left, 20.0, 30.0),
+                float(l::box_model::Float::Left, 20.0, 30.0),
                 later,
                 atomic(),
             ],
@@ -135,27 +139,27 @@ fn later_line_and_clearance<S: l::LayoutScalar>() {
         let batch = tree.compute(&[0, 0, 0, 1, 0]);
         let entries = crate::layout::observation::phase(&batch, false);
         assert_eq!(output(entries, 1).size.height, S::ZERO);
-        assert_eq!(output(entries, 1).location, l::Point::ZERO);
-        assert_eq!(output(entries, 2).location, l::Point::ZERO);
+        assert_eq!(output(entries, 1).location, l::geometry::Point::ZERO);
+        assert_eq!(output(entries, 2).location, l::geometry::Point::ZERO);
         assert_eq!(
             output(entries, 2).size,
-            l::Size::new(S::from_f64(20.0), S::from_f64(30.0))
+            l::geometry::Size::new(S::from_f64(20.0), S::from_f64(30.0))
         );
         // Without clear, only the line is shortened by the float; the later
         // ordinary block remains at the nominal block origin. Clear moves it
         // below the 30-unit float, so its local line starts at inline zero.
         assert_eq!(
             output(entries, 3).location,
-            l::Point::new(S::ZERO, S::from_f64(if clear { 30.0 } else { 0.0 }))
+            l::geometry::Point::new(S::ZERO, S::from_f64(if clear { 30.0 } else { 0.0 }))
         );
         assert_eq!(output(entries, 3).size.height, S::from_f64(10.0));
         assert_eq!(
             output(entries, 4).location,
-            l::Point::new(S::from_f64(if clear { 0.0 } else { 20.0 }), S::ZERO)
+            l::geometry::Point::new(S::from_f64(if clear { 0.0 } else { 20.0 }), S::ZERO)
         );
         assert_eq!(
             output(entries, 4).size,
-            l::Size::new(S::from_f64(10.0), S::from_f64(10.0))
+            l::geometry::Size::new(S::from_f64(10.0), S::from_f64(10.0))
         );
         assert_eq!(
             output(entries, 0).size.height,
@@ -170,13 +174,13 @@ fn descendant_float_shortens_later_real_line_and_clear_moves_the_block_below_it(
     later_line_and_clearance::<f64>();
 }
 
-fn nested_shared_blocks<S: l::LayoutScalar>() {
+fn nested_shared_blocks<S: l::scalar::LayoutScalar>() {
     let tree = FlowTree::<S>::new(
         vec![
             block(100.0),
             block(100.0),
             block(100.0),
-            float(l::Float::Left, 20.0, 30.0),
+            float(l::box_model::Float::Left, 20.0, 30.0),
             block(100.0),
             atomic(),
         ],
@@ -186,14 +190,14 @@ fn nested_shared_blocks<S: l::LayoutScalar>() {
     let entries = crate::layout::observation::phase(&batch, false);
     for node in [1, 2] {
         assert_eq!(output(entries, node).size.height, S::ZERO);
-        assert_eq!(output(entries, node).location, l::Point::ZERO);
+        assert_eq!(output(entries, node).location, l::geometry::Point::ZERO);
     }
-    assert_eq!(output(entries, 3).location, l::Point::ZERO);
-    assert_eq!(output(entries, 4).location, l::Point::ZERO);
+    assert_eq!(output(entries, 3).location, l::geometry::Point::ZERO);
+    assert_eq!(output(entries, 4).location, l::geometry::Point::ZERO);
     assert_eq!(output(entries, 4).size.height, S::from_f64(10.0));
     assert_eq!(
         output(entries, 5).location,
-        l::Point::new(S::from_f64(20.0), S::ZERO)
+        l::geometry::Point::new(S::from_f64(20.0), S::ZERO)
     );
     assert_eq!(output(entries, 0).size.height, S::from_f64(30.0));
 }
@@ -204,17 +208,19 @@ fn descendant_float_crosses_two_ordinary_ancestors_without_enlarging_either() {
     nested_shared_blocks::<f64>();
 }
 
-fn relative_visual_offset<S: l::LayoutScalar>() {
+fn relative_visual_offset<S: l::scalar::LayoutScalar>() {
     let mut shared = block(100.0);
-    shared.inset.left =
-        l::LengthAutoOf::value(l::LengthPercentageOf::px(S::from_f64(7.0)).unwrap());
-    shared.inset.top =
-        l::LengthAutoOf::value(l::LengthPercentageOf::px(S::from_f64(11.0)).unwrap());
+    shared.inset.left = l::length::LengthAutoOf::value(
+        l::length::LengthPercentageOf::px(S::from_f64(7.0)).unwrap(),
+    );
+    shared.inset.top = l::length::LengthAutoOf::value(
+        l::length::LengthPercentageOf::px(S::from_f64(11.0)).unwrap(),
+    );
     let tree = FlowTree::<S>::new(
         vec![
             block(100.0),
             shared,
-            float(l::Float::Left, 20.0, 30.0),
+            float(l::box_model::Float::Left, 20.0, 30.0),
             block(100.0),
             atomic(),
         ],
@@ -225,13 +231,13 @@ fn relative_visual_offset<S: l::LayoutScalar>() {
     assert_eq!(output(entries, 1).size.height, S::ZERO);
     assert_eq!(
         output(entries, 1).location,
-        l::Point::new(S::from_f64(7.0), S::from_f64(11.0))
+        l::geometry::Point::new(S::from_f64(7.0), S::from_f64(11.0))
     );
-    assert_eq!(output(entries, 2).location, l::Point::ZERO);
-    assert_eq!(output(entries, 3).location, l::Point::ZERO);
+    assert_eq!(output(entries, 2).location, l::geometry::Point::ZERO);
+    assert_eq!(output(entries, 3).location, l::geometry::Point::ZERO);
     assert_eq!(
         output(entries, 4).location,
-        l::Point::new(S::from_f64(20.0), S::ZERO)
+        l::geometry::Point::new(S::from_f64(20.0), S::ZERO)
     );
     // Relative visual displacement changes neither normal flow nor used height.
     // Scroll/overflow bounds may still include the displaced descendant.
@@ -244,13 +250,13 @@ fn relative_visual_offset_does_not_move_exported_nominal_float_exclusion() {
     relative_visual_offset::<f64>();
 }
 
-fn incoming_and_outgoing_floats<S: l::LayoutScalar>() {
+fn incoming_and_outgoing_floats<S: l::scalar::LayoutScalar>() {
     let tree = FlowTree::<S>::new(
         vec![
             block(100.0),
-            float(l::Float::Left, 20.0, 30.0),
+            float(l::box_model::Float::Left, 20.0, 30.0),
             block(100.0),
-            float(l::Float::Right, 10.0, 20.0),
+            float(l::box_model::Float::Right, 10.0, 20.0),
             block(100.0),
             atomic(),
         ],
@@ -258,17 +264,17 @@ fn incoming_and_outgoing_floats<S: l::LayoutScalar>() {
     );
     let batch = tree.compute(&[0, 0, 1, 0, 2, 0]);
     let entries = crate::layout::observation::phase(&batch, false);
-    assert_eq!(output(entries, 1).location, l::Point::ZERO);
-    assert_eq!(output(entries, 2).location, l::Point::ZERO);
+    assert_eq!(output(entries, 1).location, l::geometry::Point::ZERO);
+    assert_eq!(output(entries, 2).location, l::geometry::Point::ZERO);
     assert_eq!(output(entries, 2).size.height, S::ZERO);
     assert_eq!(
         output(entries, 3).location,
-        l::Point::new(S::from_f64(90.0), S::ZERO)
+        l::geometry::Point::new(S::from_f64(90.0), S::ZERO)
     );
-    assert_eq!(output(entries, 4).location, l::Point::ZERO);
+    assert_eq!(output(entries, 4).location, l::geometry::Point::ZERO);
     assert_eq!(
         output(entries, 5).location,
-        l::Point::new(S::from_f64(20.0), S::ZERO)
+        l::geometry::Point::new(S::from_f64(20.0), S::ZERO)
     );
     assert_eq!(output(entries, 0).size.height, S::from_f64(30.0));
 }

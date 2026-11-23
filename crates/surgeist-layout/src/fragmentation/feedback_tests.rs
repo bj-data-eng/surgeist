@@ -1,5 +1,21 @@
-use super::scheduler::resolve_with_feedback;
 use super::*;
+use crate::fragmentation::scheduler::resolve_with_feedback;
+use crate::fragmentation::{
+    input::{
+        FragmentainerOf, FragmentationBoundaryControls, FragmentationBreak,
+        FragmentationBreakControl, FragmentationBreakKinds, FragmentationContext,
+        FragmentationControlKind, FragmentationCutOf, FragmentationFallback, FragmentationFlowOf,
+        FragmentationGraphicalProgressOf, FragmentationInputOf, FragmentationKind,
+        FragmentationMeasuredHeadOf, FragmentationOccurrence, FragmentationOpportunityKindOf,
+        FragmentationOpportunityOf, FragmentationPosition, FragmentationProvider,
+        FragmentationQueryOf, FragmentationReplyOf, FragmentationRole, FragmentationStage,
+        FragmentationWindowEnd, FragmentationWindowOf,
+    },
+    output::{
+        FragmentationBreakReason, FragmentationError, FragmentationInputError,
+        FragmentationPieceKindOf,
+    },
+};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 

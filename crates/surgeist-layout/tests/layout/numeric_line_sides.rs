@@ -4,12 +4,12 @@ use std::{convert::Infallible, slice};
 use surgeist_layout as l;
 use surgeist_text::supplied_line::BidiLevel;
 
-struct Tree<S: l::LayoutScalar> {
-    inputs: [l::NodeInputOf<S>; 2],
+struct Tree<S: l::scalar::LayoutScalar> {
+    inputs: [l::node::NodeInputOf<S>; 2],
     children: [Vec<u32>; 2],
 }
 
-impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for Tree<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -30,30 +30,30 @@ impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
     }
 }
 
-impl<S: l::LayoutScalar> l::LayoutTree for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for Tree<S> {
     type MeasureError = Infallible;
 
-    fn node_input(&self, node: u32) -> &l::NodeInputOf<S> {
+    fn node_input(&self, node: u32) -> &l::node::NodeInputOf<S> {
         &self.inputs[node as usize]
     }
 
-    fn layout_input(&self, node: u32) -> l::LayoutInputViewOf<'_, S> {
-        l::LayoutInputViewOf::Box(&self.inputs[node as usize])
+    fn layout_input(&self, node: u32) -> l::node::LayoutInputViewOf<'_, S> {
+        l::node::LayoutInputViewOf::Box(&self.inputs[node as usize])
     }
 }
 
-fn node<S: l::LayoutScalar>(
-    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+fn node<S: l::scalar::LayoutScalar>(
+    entries: (&l::batch::CompletedLayoutBatchOf<u32, S>, bool),
     id: u32,
 ) -> crate::layout::observation::Observation<S> {
     crate::layout::observation::observe(entries, id, crate::layout::observation::Kind::Box)
 }
 
-fn assert_geometry<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
-    root_size: l::Size<S>,
-    child_size: l::Size<S>,
-    location: l::Point<S>,
+fn assert_geometry<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
+    root_size: l::geometry::Size<S>,
+    child_size: l::geometry::Size<S>,
+    location: l::geometry::Point<S>,
     context: &str,
 ) {
     // Keep semantic physical geometry first, ahead of auxiliary custody checks.
@@ -69,12 +69,16 @@ fn assert_geometry<S: l::LayoutScalar>(
         assert_eq!(node(entries, 1).location, location, "{context}");
         assert_eq!(node(entries, 1).size, child_size, "{context}");
         assert_eq!(node(entries, 0).size, root_size, "{context}");
-        assert_eq!(node(entries, 0).location, l::Point::ZERO, "{context}");
+        assert_eq!(
+            node(entries, 0).location,
+            l::geometry::Point::ZERO,
+            "{context}"
+        );
         assert_eq!(entries.0.node_layouts().len(), 2, "{context}");
         for id in [0, 1] {
             assert_eq!(
                 node(entries, id).source_index,
-                l::SourceIndex::ZERO,
+                l::node::SourceIndex::ZERO,
                 "{context}"
             );
         }
@@ -84,91 +88,114 @@ fn assert_geometry<S: l::LayoutScalar>(
     assert!(batch.final_inline_fragments().is_empty(), "{context}");
 }
 
-fn line_sides<S: l::LayoutScalar>(explicit_last: bool) {
+fn line_sides<S: l::scalar::LayoutScalar>(explicit_last: bool) {
     let n = S::from_f64;
-    let px = |value| l::PreferredSizeOf::value(l::LengthPercentageOf::px(n(value)).unwrap());
+    let px = |value| {
+        l::sizing::PreferredSizeOf::value(l::length::LengthPercentageOf::px(n(value)).unwrap())
+    };
     // WM4 Table 11: line-left/right are left/right in HorizontalTb,
     // top/bottom in VerticalRl/Lr and SidewaysRl, bottom/top in SidewaysLr.
     // Direction changes inline-start, but never changes these line sides.
     for (mode, root_size, child_size, left, right) in [
         (
-            l::WritingMode::HorizontalTb,
+            l::geometry::WritingMode::HorizontalTb,
             (100.0, 10.0),
             (30.0, 10.0),
             (0.0, 0.0),
             (70.0, 0.0),
         ),
         (
-            l::WritingMode::VerticalRl,
+            l::geometry::WritingMode::VerticalRl,
             (10.0, 100.0),
             (10.0, 30.0),
             (0.0, 0.0),
             (0.0, 70.0),
         ),
         (
-            l::WritingMode::VerticalLr,
+            l::geometry::WritingMode::VerticalLr,
             (10.0, 100.0),
             (10.0, 30.0),
             (0.0, 0.0),
             (0.0, 70.0),
         ),
         (
-            l::WritingMode::SidewaysRl,
+            l::geometry::WritingMode::SidewaysRl,
             (10.0, 100.0),
             (10.0, 30.0),
             (0.0, 0.0),
             (0.0, 70.0),
         ),
         (
-            l::WritingMode::SidewaysLr,
+            l::geometry::WritingMode::SidewaysLr,
             (10.0, 100.0),
             (10.0, 30.0),
             (0.0, 70.0),
             (0.0, 0.0),
         ),
     ] {
-        let horizontal = mode == l::WritingMode::HorizontalTb;
-        for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        let horizontal = mode == l::geometry::WritingMode::HorizontalTb;
+        for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
             let cases = if explicit_last {
                 [
-                    (l::TextAlign::Left, l::TextAlignLast::Right, right, left),
-                    (l::TextAlign::Right, l::TextAlignLast::Left, left, right),
+                    (
+                        l::text_flow::TextAlign::Left,
+                        l::text_flow::TextAlignLast::Right,
+                        right,
+                        left,
+                    ),
+                    (
+                        l::text_flow::TextAlign::Right,
+                        l::text_flow::TextAlignLast::Left,
+                        left,
+                        right,
+                    ),
                 ]
             } else {
                 [
-                    (l::TextAlign::Left, l::TextAlignLast::Auto, left, right),
-                    (l::TextAlign::Right, l::TextAlignLast::Auto, right, left),
+                    (
+                        l::text_flow::TextAlign::Left,
+                        l::text_flow::TextAlignLast::Auto,
+                        left,
+                        right,
+                    ),
+                    (
+                        l::text_flow::TextAlign::Right,
+                        l::text_flow::TextAlignLast::Auto,
+                        right,
+                        left,
+                    ),
                 ]
             };
             for (align, last, expected, changed_expected) in cases {
-                let root = l::NodeInputOf {
-                    display: l::Display::Block,
+                let root = l::node::NodeInputOf {
+                    display: l::box_model::Display::Block,
                     writing_mode: mode,
                     direction,
                     text_align: align,
                     text_align_last: last,
                     size: if horizontal {
-                        l::Size::new(px(100.0), l::PreferredSizeOf::AUTO)
+                        l::geometry::Size::new(px(100.0), l::sizing::PreferredSizeOf::AUTO)
                     } else {
-                        l::Size::new(l::PreferredSizeOf::AUTO, px(100.0))
+                        l::geometry::Size::new(l::sizing::PreferredSizeOf::AUTO, px(100.0))
                     },
-                    ..l::NodeInputOf::default()
+                    ..l::node::NodeInputOf::default()
                 };
-                let child = l::NodeInputOf {
-                    display: l::Display::InlineBlock,
+                let child = l::node::NodeInputOf {
+                    display: l::box_model::Display::InlineBlock,
                     writing_mode: mode,
                     direction,
-                    vertical_align: l::VerticalAlignOf::Baseline,
-                    atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
-                        BidiLevel::try_new(u8::from(direction == l::Direction::Rtl)).unwrap(),
-                        l::InlineBreakOpportunity::Allowed,
+                    vertical_align: l::inline::VerticalAlignOf::Baseline,
+                    atomic_inline_participation: Some(l::inline::AtomicInlineParticipation::new(
+                        BidiLevel::try_new(u8::from(direction == l::geometry::Direction::Rtl))
+                            .unwrap(),
+                        l::text_flow::InlineBreakOpportunity::Allowed,
                     )),
                     size: if horizontal {
-                        l::Size::new(px(30.0), px(10.0))
+                        l::geometry::Size::new(px(30.0), px(10.0))
                     } else {
-                        l::Size::new(px(10.0), px(30.0))
+                        l::geometry::Size::new(px(10.0), px(30.0))
                     },
-                    ..l::NodeInputOf::default()
+                    ..l::node::NodeInputOf::default()
                 };
                 let mut tree = Tree {
                     inputs: [root, child],
@@ -176,26 +203,26 @@ fn line_sides<S: l::LayoutScalar>(explicit_last: bool) {
                 };
                 let available = if horizontal {
                     crate::layout::native_request::sizing(
-                        surgeist_layout::Size::new(Some(n(100.0)), None),
-                        surgeist_layout::Size::new(
-                            surgeist_layout::SizingOperation::Normal,
-                            surgeist_layout::SizingOperation::Normal,
+                        surgeist_layout::geometry::Size::new(Some(n(100.0)), None),
+                        surgeist_layout::geometry::Size::new(
+                            surgeist_layout::constraint::SizingOperation::Normal,
+                            surgeist_layout::constraint::SizingOperation::Normal,
                         ),
                     )
                 } else {
                     crate::layout::native_request::sizing(
-                        surgeist_layout::Size::new(None, Some(n(100.0))),
-                        surgeist_layout::Size::new(
-                            surgeist_layout::SizingOperation::Normal,
-                            surgeist_layout::SizingOperation::Normal,
+                        surgeist_layout::geometry::Size::new(None, Some(n(100.0))),
+                        surgeist_layout::geometry::Size::new(
+                            surgeist_layout::constraint::SizingOperation::Normal,
+                            surgeist_layout::constraint::SizingOperation::Normal,
                         ),
                     )
                 };
                 let request = {
                     let sizing_request = available;
-                    l::LayoutRootRequestOf::standalone(
+                    l::request::LayoutRootRequestOf::standalone(
                         sizing_request,
-                        surgeist_layout::FlowAxes::new(mode, direction),
+                        surgeist_layout::geometry::FlowAxes::new(mode, direction),
                         sizing_request
                             .orthogonal_fallback()
                             .initial_containing_block(),
@@ -204,9 +231,9 @@ fn line_sides<S: l::LayoutScalar>(explicit_last: bool) {
                 let context = format!(
                     "mode={mode:?}, direction={direction:?}, align={align:?}, last={last:?}"
                 );
-                let root_size = l::Size::new(n(root_size.0), n(root_size.1));
-                let child_size = l::Size::new(n(child_size.0), n(child_size.1));
-                let location = l::Point::new(n(expected.0), n(expected.1));
+                let root_size = l::geometry::Size::new(n(root_size.0), n(root_size.1));
+                let child_size = l::geometry::Size::new(n(child_size.0), n(child_size.1));
+                let location = l::geometry::Point::new(n(expected.0), n(expected.1));
                 let original = l::compute_layout(&tree, 0, request).unwrap();
                 assert_geometry(&original, root_size, child_size, location, &context);
 
@@ -214,16 +241,16 @@ fn line_sides<S: l::LayoutScalar>(explicit_last: bool) {
                 // the first owned output batch must remain immutable. This host
                 // supplies no cache, so no warm-cache result is claimed.
                 if explicit_last {
-                    tree.inputs[0].text_align_last = if last == l::TextAlignLast::Left {
-                        l::TextAlignLast::Right
+                    tree.inputs[0].text_align_last = if last == l::text_flow::TextAlignLast::Left {
+                        l::text_flow::TextAlignLast::Right
                     } else {
-                        l::TextAlignLast::Left
+                        l::text_flow::TextAlignLast::Left
                     };
                 } else {
-                    tree.inputs[0].text_align = if align == l::TextAlign::Left {
-                        l::TextAlign::Right
+                    tree.inputs[0].text_align = if align == l::text_flow::TextAlign::Left {
+                        l::text_flow::TextAlign::Right
                     } else {
-                        l::TextAlign::Left
+                        l::text_flow::TextAlign::Left
                     };
                 }
                 let changed = l::compute_layout(&tree, 0, request).unwrap();
@@ -231,7 +258,7 @@ fn line_sides<S: l::LayoutScalar>(explicit_last: bool) {
                     &changed,
                     root_size,
                     child_size,
-                    l::Point::new(n(changed_expected.0), n(changed_expected.1)),
+                    l::geometry::Point::new(n(changed_expected.0), n(changed_expected.1)),
                     &format!("changed host input from {context}"),
                 );
                 assert_geometry(&original, root_size, child_size, location, &context);

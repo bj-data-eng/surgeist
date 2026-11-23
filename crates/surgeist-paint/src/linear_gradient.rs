@@ -18,7 +18,7 @@ use crate::accounting::{
 };
 use core::error::Error;
 use std::fmt;
-use surgeist_layout::{Point, Size};
+use surgeist_layout::geometry::{Point, Size};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
 /// Physical direction of a linear gradient in a box whose y axis points down.

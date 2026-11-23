@@ -2,39 +2,45 @@
 //! against captured empty boxes, without inventing source scope owners.
 use super::*;
 
-struct DirectPairFixture<S: layout::LayoutScalar> {
+struct DirectPairFixture<S: layout::scalar::LayoutScalar> {
     host: PairedEarly<S>,
-    binding: layout::TextParagraphBinding<u32>,
-    installed: Vec<Option<layout::LayoutInputOf<S>>>,
+    binding: layout::text_layout::TextParagraphBinding<u32>,
+    installed: Vec<Option<layout::node::LayoutInputOf<S>>>,
 }
 fn native_order<Scope>(
-    prefix: layout::ChildOrderCompleteness,
-) -> Vec<layout::InlineChildOrderInput<u32, Scope>> {
-    let child = |box_| layout::GeneratedChildBoxInput {
+    prefix: layout::inline_wrapping::ChildOrderCompleteness,
+) -> Vec<layout::inline_wrapping::InlineChildOrderInput<u32, Scope>> {
+    let child = |box_| layout::inline_wrapping::GeneratedChildBoxInput {
         box_,
-        participation: layout::GeneratedBoxParticipation::InFlow,
+        participation: layout::inline_wrapping::GeneratedBoxParticipation::InFlow,
     };
-    let pair =
-        || layout::GeneratedBoxRef::Inline(layout::InlineBoxRef::NativePair { start: 3, end: 4 });
+    let pair = || {
+        layout::inline_wrapping::GeneratedBoxRef::Inline(
+            layout::inline_wrapping::InlineBoxRef::NativePair { start: 3, end: 4 },
+        )
+    };
     vec![
-        layout::InlineChildOrderInput {
-            parent: layout::GeneratedBoxRef::Node(0),
-            children: vec![child(layout::GeneratedBoxRef::Node(1)), child(pair())],
-            prefix: layout::ChildOrderCompleteness::Complete,
-            suffix: layout::ChildOrderCompleteness::Complete,
+        layout::inline_wrapping::InlineChildOrderInput {
+            parent: layout::inline_wrapping::GeneratedBoxRef::Node(0),
+            children: vec![
+                child(layout::inline_wrapping::GeneratedBoxRef::Node(1)),
+                child(pair()),
+            ],
+            prefix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
+            suffix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
             formatting_context: 0,
         },
-        layout::InlineChildOrderInput {
+        layout::inline_wrapping::InlineChildOrderInput {
             parent: pair(),
-            children: vec![child(layout::GeneratedBoxRef::Node(2))],
+            children: vec![child(layout::inline_wrapping::GeneratedBoxRef::Node(2))],
             prefix,
-            suffix: layout::ChildOrderCompleteness::Complete,
+            suffix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
             formatting_context: 0,
         },
     ]
 }
 fn native_only_input(
-    direction: layout::Direction,
+    direction: layout::geometry::Direction,
     empty: bool,
 ) -> text::capture::ContextualSourceInput {
     use text::capture::SourceProcessingEvent as E;
@@ -85,15 +91,19 @@ fn native_only_input(
     raw.events = events;
     raw
 }
-fn direct_pair_fixture<S: layout::LayoutScalar>(
-    direction: layout::Direction,
+fn direct_pair_fixture<S: layout::scalar::LayoutScalar>(
+    direction: layout::geometry::Direction,
     empty: bool,
-    prefix: layout::ChildOrderCompleteness,
+    prefix: layout::inline_wrapping::ChildOrderCompleteness,
 ) -> DirectPairFixture<S> {
     let mut host = PairedEarly::<S>::new(direction, false);
-    host.declarations
-        .retain(|row| matches!(&row.box_, layout::InlineBoxRef::NativePair { .. }));
-    host.declarations[0].edges = layout::WrapEdges::AUTO;
+    host.declarations.retain(|row| {
+        matches!(
+            &row.box_,
+            layout::inline_wrapping::InlineBoxRef::NativePair { .. }
+        )
+    });
+    host.declarations[0].edges = layout::inline_wrapping::WrapEdges::AUTO;
     host.scopes.clear();
     host.base.orders = native_order(prefix);
     // This is direct lower Text processing: no source-wrapper receipt or
@@ -158,11 +168,13 @@ fn direct_pair_fixture<S: layout::LayoutScalar>(
         };
         assert_eq!(input.metrics().baseline(), S::ZERO);
         assert_eq!(input.metrics().line_extent(), S::ZERO);
-        installed[node as usize] = Some(layout::LayoutInputOf::inline_boundary(input));
-        binding.controls.push(layout::TextControlBinding {
-            occurrence: handle,
-            node,
-        });
+        installed[node as usize] = Some(layout::node::LayoutInputOf::inline_boundary(input));
+        binding
+            .controls
+            .push(layout::text_layout::TextControlBinding {
+                occurrence: handle,
+                node,
+            });
     }
     assert_eq!(binding.controls.len(), 2);
     DirectPairFixture {
@@ -171,12 +183,15 @@ fn direct_pair_fixture<S: layout::LayoutScalar>(
         installed,
     }
 }
-fn admit_native_order<S: layout::LayoutScalar>(
+fn admit_native_order<S: layout::scalar::LayoutScalar>(
     empty: bool,
-    prefix: layout::ChildOrderCompleteness,
+    prefix: layout::inline_wrapping::ChildOrderCompleteness,
     should_admit: bool,
 ) {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         let fixture = direct_pair_fixture::<S>(direction, empty, prefix);
         let tree = FinalUnscopedPair {
             host: &fixture.host,
@@ -186,11 +201,16 @@ fn admit_native_order<S: layout::LayoutScalar>(
         assert_eq!(wrapping.scopes.len(), 1);
         assert!(matches!(
             wrapping.scopes[0],
-            layout::WrappingScopeInput::NativePair { .. }
+            layout::inline_wrapping::WrappingScopeInput::NativePair { .. }
         ));
         wrapping.child_order = native_order(prefix);
-        let result =
-            layout::LayoutFlowInput::try_new(&tree, 0, vec![fixture.binding], wrapping, Vec::new());
+        let result = layout::text_layout::LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![fixture.binding],
+            wrapping,
+            Vec::new(),
+        );
         if should_admit {
             match result {
                 Ok(_flow) => {}
@@ -206,9 +226,9 @@ fn admit_native_order<S: layout::LayoutScalar>(
             assert!(
                 matches!(
                     error.kind(),
-                    layout::LayoutErrorKindOf::InvalidInput(
-                        layout::LayoutInvalidInputOf::WrappingScope(
-                            layout::WrappingScopeError::ChildOrder
+                    layout::error::LayoutErrorKindOf::InvalidInput(
+                        layout::error::LayoutInvalidInputOf::WrappingScope(
+                            layout::inline_wrapping::WrappingScopeError::ChildOrder
                         )
                     )
                 ),
@@ -219,16 +239,40 @@ fn admit_native_order<S: layout::LayoutScalar>(
 }
 #[test]
 fn native_only_complete_child_order_admits_without_any_source_inline_scope() {
-    admit_native_order::<f32>(false, layout::ChildOrderCompleteness::Complete, true);
-    admit_native_order::<f64>(false, layout::ChildOrderCompleteness::Complete, true);
+    admit_native_order::<f32>(
+        false,
+        layout::inline_wrapping::ChildOrderCompleteness::Complete,
+        true,
+    );
+    admit_native_order::<f64>(
+        false,
+        layout::inline_wrapping::ChildOrderCompleteness::Complete,
+        true,
+    );
 }
 #[test]
 fn native_only_complete_prefix_refuses_omitted_real_empty_captured_child() {
-    admit_native_order::<f32>(true, layout::ChildOrderCompleteness::Complete, false);
-    admit_native_order::<f64>(true, layout::ChildOrderCompleteness::Complete, false);
+    admit_native_order::<f32>(
+        true,
+        layout::inline_wrapping::ChildOrderCompleteness::Complete,
+        false,
+    );
+    admit_native_order::<f64>(
+        true,
+        layout::inline_wrapping::ChildOrderCompleteness::Complete,
+        false,
+    );
 }
 #[test]
 fn native_only_unknown_prefix_permits_unclaimed_empty_child_with_complete_suffix() {
-    admit_native_order::<f32>(true, layout::ChildOrderCompleteness::Unknown, true);
-    admit_native_order::<f64>(true, layout::ChildOrderCompleteness::Unknown, true);
+    admit_native_order::<f32>(
+        true,
+        layout::inline_wrapping::ChildOrderCompleteness::Unknown,
+        true,
+    );
+    admit_native_order::<f64>(
+        true,
+        layout::inline_wrapping::ChildOrderCompleteness::Unknown,
+        true,
+    );
 }

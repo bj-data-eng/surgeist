@@ -1,19 +1,21 @@
 //! Ordinary shared-BFC float custody through a Text consumer.
 use super::*;
 
-fn px<S: l::LayoutScalar>(value: f64) -> l::PreferredSizeOf<S> {
-    l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(value)).unwrap())
+fn px<S: l::scalar::LayoutScalar>(value: f64) -> l::sizing::PreferredSizeOf<S> {
+    l::sizing::PreferredSizeOf::value(
+        l::length::LengthPercentageOf::px(S::from_f64(value)).unwrap(),
+    )
 }
 
-fn unique_output<S: l::LayoutScalar>(
-    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+fn unique_output<S: l::scalar::LayoutScalar>(
+    entries: (&l::batch::CompletedLayoutBatchOf<u32, S>, bool),
     node: u32,
 ) -> crate::layout::observation::Observation<S> {
     crate::layout::observation::observe(entries, node, crate::layout::observation::Kind::Box)
 }
 
-fn assert_shared_text_packet<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+fn assert_shared_text_packet<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     paragraph: &Paragraph,
     ordinary: u32,
     float: u32,
@@ -32,17 +34,20 @@ fn assert_shared_text_packet<S: l::LayoutScalar>(
         // 10.6.7 includes its nominal bottom30 in the actual root BFC.
         assert_eq!(
             root.size,
-            l::Size::new(S::from_f64(100.0), S::from_f64(30.0))
+            l::geometry::Size::new(S::from_f64(100.0), S::from_f64(30.0))
         );
-        assert_eq!(shared.size, l::Size::new(S::from_f64(100.0), S::ZERO));
+        assert_eq!(
+            shared.size,
+            l::geometry::Size::new(S::from_f64(100.0), S::ZERO)
+        );
         assert_eq!(
             shared.location,
-            l::Point::new(S::from_f64(offset.0), S::from_f64(offset.1))
+            l::geometry::Point::new(S::from_f64(offset.0), S::from_f64(offset.1))
         );
-        assert_eq!(actual_float.location, l::Point::ZERO);
+        assert_eq!(actual_float.location, l::geometry::Point::ZERO);
         assert_eq!(
             actual_float.size,
-            l::Size::new(S::from_f64(20.0), S::from_f64(30.0))
+            l::geometry::Size::new(S::from_f64(20.0), S::from_f64(30.0))
         );
         // Its visible global position moves with the relative ancestor, while
         // later normal-flow lines use the original exclusion, not that shift.
@@ -54,15 +59,15 @@ fn assert_shared_text_packet<S: l::LayoutScalar>(
             shared.location.y + actual_float.location.y,
             S::from_f64(offset.1)
         );
-        assert_eq!(text_block.location, l::Point::ZERO);
+        assert_eq!(text_block.location, l::geometry::Point::ZERO);
         assert_eq!(
             text_block.size,
-            l::Size::new(S::from_f64(100.0), S::from_f64(10.0))
+            l::geometry::Size::new(S::from_f64(100.0), S::from_f64(10.0))
         );
         for (node, index) in [(0, 0), (ordinary, 0), (float, 0), (later, 1)] {
             assert_eq!(
                 unique_output(entries, node).source_index,
-                l::SourceIndex::new(index)
+                l::node::SourceIndex::new(index)
             );
         }
     }
@@ -151,19 +156,30 @@ fn assert_shared_text_packet<S: l::LayoutScalar>(
     );
 }
 
-fn shared_relative_float_text<S: l::LayoutScalar>() {
-    let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::None);
-    let ordinary = host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
+fn shared_relative_float_text<S: l::scalar::LayoutScalar>() {
+    let mut host = Host::<S>::new(
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
+    let ordinary = host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     let float = host.push(
         Some(ordinary),
-        l::LayoutInputOf::box_input(l::NodeInputOf {
-            display: l::Display::Block,
-            float: l::Float::Left,
-            size: l::Size::new(px(20.0), px(30.0)),
-            ..l::NodeInputOf::default()
+        l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+            display: l::box_model::Display::Block,
+            float: l::box_model::Float::Left,
+            size: l::geometry::Size::new(px(20.0), px(30.0)),
+            ..l::node::NodeInputOf::default()
         }),
     );
-    let later = host.child_block(0, l::Direction::Ltr, l::TextGroupAlign::None);
+    let later = host.child_block(
+        0,
+        l::geometry::Direction::Ltr,
+        l::text_flow::TextGroupAlign::None,
+    );
     let paragraph = Paragraph::new(
         &mut host,
         later,
@@ -177,11 +193,13 @@ fn shared_relative_float_text<S: l::LayoutScalar>() {
     old.apply_to(&mut host).unwrap();
 
     host.box_change(ordinary, |input| {
-        input.position = l::Position::Relative;
-        input.inset.left =
-            l::LengthAutoOf::value(l::LengthPercentageOf::px(S::from_f64(7.0)).unwrap());
-        input.inset.top =
-            l::LengthAutoOf::value(l::LengthPercentageOf::px(S::from_f64(11.0)).unwrap());
+        input.position = l::box_model::Position::Relative;
+        input.inset.left = l::length::LengthAutoOf::value(
+            l::length::LengthPercentageOf::px(S::from_f64(7.0)).unwrap(),
+        );
+        input.inset.top = l::length::LengthAutoOf::value(
+            l::length::LengthPercentageOf::px(S::from_f64(11.0)).unwrap(),
+        );
     });
     let shifted = compute(&host, &[&paragraph], &[ordinary]);
     assert_shared_text_packet(&shifted, &paragraph, ordinary, float, later, (7.0, 11.0));
@@ -198,7 +216,7 @@ fn shared_relative_float_text<S: l::LayoutScalar>() {
                     (&shifted, true),
                     node,
                     crate::layout::observation::expected_kind(
-                        l::LayoutTree::layout_input(&host, node),
+                        l::tree::LayoutTree::layout_input(&host, node),
                         false,
                     ),
                 ),
@@ -214,7 +232,7 @@ fn shared_relative_float_text<S: l::LayoutScalar>() {
                     (&replay, true),
                     node,
                     crate::layout::observation::expected_kind(
-                        l::LayoutTree::layout_input(&host, node),
+                        l::tree::LayoutTree::layout_input(&host, node),
                         false,
                     ),
                 ),

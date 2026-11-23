@@ -1066,14 +1066,21 @@ impl<S: LayoutScalar> Default for TrackFlexFactorOf<S> {
 /// A minimum track breadth.
 ///
 /// ```compile_fail
-/// use surgeist_layout::{MinTrackSizing, TrackFlexFactor};
+/// use surgeist_layout::grid::{MinTrackSizing, TrackFlexFactor};
 /// let factor = TrackFlexFactor::try_new(1.0).unwrap();
 /// let _ = MinTrackSizing::Flex(factor);
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::{Length, MinTrackSizing};
+/// use surgeist_layout::{grid::MinTrackSizing, length::Length};
 /// let _: MinTrackSizing = Length::Normal.into();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::grid::{MinTrackSizing, TrackFlexFactor};
+/// use surgeist_layout::length::Length;
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum MinTrackSizingOf<S: LayoutScalar = DefaultScalar> {
@@ -1137,8 +1144,14 @@ impl<S: LayoutScalar> From<LengthPercentageOf<S>> for MinTrackSizingOf<S> {
 /// A maximum track breadth.
 ///
 /// ```compile_fail
-/// use surgeist_layout::MaxTrackSizing;
+/// use surgeist_layout::grid::MaxTrackSizing;
 /// let _ = MaxTrackSizing::fr(1.0);
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::grid::MaxTrackSizing;
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum MaxTrackSizingOf<S: LayoutScalar = DefaultScalar> {
@@ -1228,13 +1241,20 @@ impl<S: LayoutScalar> From<LengthPercentageOf<S>> for MaxTrackSizingOf<S> {
 /// A complete track sizing pair.
 ///
 /// ```compile_fail
-/// use surgeist_layout::TrackSizing;
+/// use surgeist_layout::grid::TrackSizing;
 /// let _ = TrackSizing::fr(1.0);
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::{PreferredSize, TrackSizing};
+/// use surgeist_layout::{grid::TrackSizing, sizing::PreferredSize};
 /// let _: TrackSizing = PreferredSize::AUTO.into();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::grid::TrackSizing;
+/// use surgeist_layout::sizing::PreferredSize;
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct TrackSizingOf<S: LayoutScalar = DefaultScalar> {

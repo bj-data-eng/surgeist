@@ -11,32 +11,34 @@ enum Proof {
     Complete,
     IncompleteSide,
 }
-struct AtomicHost<S: layout::LayoutScalar> {
-    root: layout::NodeInputOf<S>,
-    atomic: layout::NodeInputOf<S>,
+struct AtomicHost<S: layout::scalar::LayoutScalar> {
+    root: layout::node::NodeInputOf<S>,
+    atomic: layout::node::NodeInputOf<S>,
     children: [Vec<u32>; 4],
-    associations: Vec<layout::SourceScopeAssociation<u32>>,
-    orders: Vec<layout::InlineChildOrderInput<u32, usize>>,
+    associations: Vec<layout::inline_wrapping::SourceScopeAssociation<u32>>,
+    orders: Vec<layout::inline_wrapping::InlineChildOrderInput<u32, usize>>,
 }
-impl<S: layout::LayoutScalar> AtomicHost<S> {
+impl<S: layout::scalar::LayoutScalar> AtomicHost<S> {
     fn new(
         side: text::capture::SourceBoxSide,
         proof: Proof,
         siblings_inside: bool,
-        direction: layout::Direction,
+        direction: layout::geometry::Direction,
         forced: bool,
     ) -> Self {
-        let child = |box_| layout::GeneratedChildBoxInput {
+        let child = |box_| layout::inline_wrapping::GeneratedChildBoxInput {
             box_,
-            participation: layout::GeneratedBoxParticipation::InFlow,
+            participation: layout::inline_wrapping::GeneratedBoxParticipation::InFlow,
         };
-        let node = |n| layout::GeneratedBoxRef::Node(n);
-        let scope = layout::GeneratedBoxRef::Inline(layout::InlineBoxRef::Scope(1));
-        let row = |parent, children| layout::InlineChildOrderInput {
+        let node = |n| layout::inline_wrapping::GeneratedBoxRef::Node(n);
+        let scope = layout::inline_wrapping::GeneratedBoxRef::Inline(
+            layout::inline_wrapping::InlineBoxRef::Scope(1),
+        );
+        let row = |parent, children| layout::inline_wrapping::InlineChildOrderInput {
             parent,
             children,
-            prefix: layout::ChildOrderCompleteness::Complete,
-            suffix: layout::ChildOrderCompleteness::Complete,
+            prefix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
+            suffix: layout::inline_wrapping::ChildOrderCompleteness::Complete,
             formatting_context: 0,
         };
         let mut orders = if matches!(proof, Proof::Complete | Proof::IncompleteSide) {
@@ -60,43 +62,47 @@ impl<S: layout::LayoutScalar> AtomicHost<S> {
         if matches!(proof, Proof::IncompleteSide) {
             match side {
                 text::capture::SourceBoxSide::Before => {
-                    orders[1].prefix = layout::ChildOrderCompleteness::Unknown
+                    orders[1].prefix = layout::inline_wrapping::ChildOrderCompleteness::Unknown
                 }
                 text::capture::SourceBoxSide::After => {
-                    orders[1].suffix = layout::ChildOrderCompleteness::Unknown
+                    orders[1].suffix = layout::inline_wrapping::ChildOrderCompleteness::Unknown
                 }
             }
         }
-        let mut edges = layout::WrapEdges::AUTO;
+        let mut edges = layout::inline_wrapping::WrapEdges::AUTO;
         if forced {
             match side {
-                text::capture::SourceBoxSide::Before => edges.before = layout::WrapEdge::Line,
-                text::capture::SourceBoxSide::After => edges.after = layout::WrapEdge::Line,
+                text::capture::SourceBoxSide::Before => {
+                    edges.before = layout::inline_wrapping::WrapEdge::Line
+                }
+                text::capture::SourceBoxSide::After => {
+                    edges.after = layout::inline_wrapping::WrapEdge::Line
+                }
             }
         }
         let px = || {
-            layout::PreferredSizeOf::value(
-                layout::LengthPercentageOf::px(S::from_f64(10.0)).unwrap(),
+            layout::sizing::PreferredSizeOf::value(
+                layout::length::LengthPercentageOf::px(S::from_f64(10.0)).unwrap(),
             )
         };
         Self {
-            root: layout::NodeInputOf {
-                display: layout::Display::Block,
+            root: layout::node::NodeInputOf {
+                display: layout::box_model::Display::Block,
                 direction,
-                ..layout::NodeInputOf::default()
+                ..layout::node::NodeInputOf::default()
             },
-            atomic: layout::NodeInputOf {
-                display: layout::Display::InlineBlock,
+            atomic: layout::node::NodeInputOf {
+                display: layout::box_model::Display::InlineBlock,
                 direction,
-                size: layout::Size::new(px(), px()),
+                size: layout::geometry::Size::new(px(), px()),
                 wrap_edges: edges,
-                ..layout::NodeInputOf::default()
+                ..layout::node::NodeInputOf::default()
             },
             children: [vec![1, 2, 3], vec![], vec![], vec![]],
             associations: if matches!(proof, Proof::Absent) {
                 vec![]
             } else {
-                vec![layout::SourceScopeAssociation {
+                vec![layout::inline_wrapping::SourceScopeAssociation {
                     scope: 1,
                     flow: 0,
                     pair: None,
@@ -105,15 +111,15 @@ impl<S: layout::LayoutScalar> AtomicHost<S> {
             orders,
         }
     }
-    fn occurrences(&self) -> layout::SourceOccurrenceAssociations<u32> {
-        layout::SourceOccurrenceAssociations {
+    fn occurrences(&self) -> layout::inline_wrapping::SourceOccurrenceAssociations<u32> {
+        layout::inline_wrapping::SourceOccurrenceAssociations {
             origins: vec![(0, 1), (1, 3)],
             controls: vec![],
             atomics: vec![(0, 2)],
         }
     }
 }
-impl<S: layout::LayoutScalar> layout::Traverse for AtomicHost<S> {
+impl<S: layout::scalar::LayoutScalar> layout::tree::Traverse for AtomicHost<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -130,32 +136,37 @@ impl<S: layout::LayoutScalar> layout::Traverse for AtomicHost<S> {
         self.children[node as usize][index]
     }
 }
-impl<S: layout::LayoutScalar> layout::WrapEdgeSource for AtomicHost<S> {
-    fn wrap_edge_source_node(&self, node: u32) -> layout::WrapEdgeSourceNodeView<'_, S> {
+impl<S: layout::scalar::LayoutScalar> layout::inline_wrapping::WrapEdgeSource for AtomicHost<S> {
+    fn wrap_edge_source_node(
+        &self,
+        node: u32,
+    ) -> layout::inline_wrapping::WrapEdgeSourceNodeView<'_, S> {
         match node {
-            0 => layout::WrapEdgeSourceNodeView::Box(&self.root),
-            1 => layout::WrapEdgeSourceNodeView::SourceOrigin { origin: 0 },
-            2 => layout::WrapEdgeSourceNodeView::Box(&self.atomic),
-            3 => layout::WrapEdgeSourceNodeView::SourceOrigin { origin: 1 },
+            0 => layout::inline_wrapping::WrapEdgeSourceNodeView::Box(&self.root),
+            1 => layout::inline_wrapping::WrapEdgeSourceNodeView::SourceOrigin { origin: 0 },
+            2 => layout::inline_wrapping::WrapEdgeSourceNodeView::Box(&self.atomic),
+            3 => layout::inline_wrapping::WrapEdgeSourceNodeView::SourceOrigin { origin: 1 },
             _ => unreachable!("four nodes"),
         }
     }
-    fn source_wrapping_scopes(&self) -> &[layout::SourceWrappingScopeInput<u32>] {
+    fn source_wrapping_scopes(&self) -> &[layout::inline_wrapping::SourceWrappingScopeInput<u32>] {
         &[]
     }
-    fn source_scope_associations(&self) -> &[layout::SourceScopeAssociation<u32>] {
+    fn source_scope_associations(&self) -> &[layout::inline_wrapping::SourceScopeAssociation<u32>] {
         &self.associations
     }
-    fn generated_child_order(&self) -> &[layout::InlineChildOrderInput<u32, usize>] {
+    fn generated_child_order(
+        &self,
+    ) -> &[layout::inline_wrapping::InlineChildOrderInput<u32, usize>] {
         &self.orders
     }
 }
 fn source(
     siblings_inside: bool,
-    direction: layout::Direction,
+    direction: layout::geometry::Direction,
 ) -> text::capture::ContextualSourceInput {
     use text::capture::SourceProcessingEvent as E;
-    let base = if direction == layout::Direction::Ltr {
+    let base = if direction == layout::geometry::Direction::Ltr {
         text::paragraph::ParagraphBaseDirection::LeftToRight
     } else {
         text::paragraph::ParagraphBaseDirection::RightToLeft
@@ -291,8 +302,11 @@ fn qualify_raw(input: text::capture::ContextualSourceInput, siblings_inside: boo
     assert!(processed.captured_control(0).is_none());
     assert!(processed.captured_computed_line_boundary(0).is_none());
 }
-fn unproved_parent<S: layout::LayoutScalar>(proof: Proof) {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+fn unproved_parent<S: layout::scalar::LayoutScalar>(proof: Proof) {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         for side in [
             text::capture::SourceBoxSide::Before,
             text::capture::SourceBoxSide::After,
@@ -301,7 +315,7 @@ fn unproved_parent<S: layout::LayoutScalar>(proof: Proof) {
             // Neutral declarations need no propagation proof, and establish
             // that these real source/occurrence bindings are admissible.
             let neutral = AtomicHost::<S>::new(side, proof, false, direction, false);
-            let (processed, _) = layout::process_wrapping_source(
+            let (processed, _) = layout::inline_wrapping::process_wrapping_source(
                 &neutral,
                 0,
                 source(false, direction),
@@ -311,7 +325,7 @@ fn unproved_parent<S: layout::LayoutScalar>(proof: Proof) {
             .into_parts();
             assert!(processed.captured_computed_line_boundary(0).is_none());
             let host = AtomicHost::<S>::new(side, proof, false, direction, true);
-            let result = layout::process_wrapping_source(
+            let result = layout::inline_wrapping::process_wrapping_source(
                 &host,
                 0,
                 source(false, direction),
@@ -326,10 +340,10 @@ fn unproved_parent<S: layout::LayoutScalar>(proof: Proof) {
             assert!(
                 matches!(
                     error.kind(),
-                    layout::LayoutErrorKindOf::InvalidInput(
-                        layout::LayoutInvalidInputOf::WrappingScope(
-                            layout::WrappingScopeError::MissingChildOrder
-                                | layout::WrappingScopeError::SourceAssociation
+                    layout::error::LayoutErrorKindOf::InvalidInput(
+                        layout::error::LayoutInvalidInputOf::WrappingScope(
+                            layout::inline_wrapping::WrappingScopeError::MissingChildOrder
+                                | layout::inline_wrapping::WrappingScopeError::SourceAssociation
                         )
                     )
                 ),
@@ -353,8 +367,11 @@ fn incomplete_relevant_parent_side_refuses_even_when_parent_identity_is_supplied
     unproved_parent::<f32>(Proof::IncompleteSide);
     unproved_parent::<f64>(Proof::IncompleteSide);
 }
-fn complete_parent<S: layout::LayoutScalar>() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+fn complete_parent<S: layout::scalar::LayoutScalar>() {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         for side in [
             text::capture::SourceBoxSide::Before,
             text::capture::SourceBoxSide::After,
@@ -363,7 +380,7 @@ fn complete_parent<S: layout::LayoutScalar>() {
                 qualify_raw(source(siblings_inside, direction), siblings_inside);
                 let host =
                     AtomicHost::<S>::new(side, Proof::Complete, siblings_inside, direction, true);
-                let (processed, _receipt) = layout::process_wrapping_source(
+                let (processed, _receipt) = layout::inline_wrapping::process_wrapping_source(
                     &host,
                     0,
                     source(siblings_inside, direction),

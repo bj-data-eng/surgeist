@@ -3,12 +3,12 @@
 use std::{convert::Infallible, slice};
 use surgeist_layout as l;
 
-struct Tree<S: l::LayoutScalar> {
-    inputs: [l::NodeInputOf<S>; 4],
+struct Tree<S: l::scalar::LayoutScalar> {
+    inputs: [l::node::NodeInputOf<S>; 4],
     children: [Vec<u32>; 4],
 }
 
-impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for Tree<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -29,73 +29,78 @@ impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
     }
 }
 
-impl<S: l::LayoutScalar> l::LayoutTree for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for Tree<S> {
     type MeasureError = Infallible;
 
-    fn node_input(&self, node: u32) -> &l::NodeInputOf<S> {
+    fn node_input(&self, node: u32) -> &l::node::NodeInputOf<S> {
         &self.inputs[node as usize]
     }
 
-    fn layout_input(&self, node: u32) -> l::LayoutInputViewOf<'_, S> {
-        l::LayoutInputViewOf::Box(&self.inputs[node as usize])
+    fn layout_input(&self, node: u32) -> l::node::LayoutInputViewOf<'_, S> {
+        l::node::LayoutInputViewOf::Box(&self.inputs[node as usize])
     }
 }
 
-fn px<S: l::LayoutScalar>(value: f64) -> l::PreferredSizeOf<S> {
-    l::PreferredSizeOf::value(l::LengthPercentageOf::px(S::from_f64(value)).unwrap())
+fn px<S: l::scalar::LayoutScalar>(value: f64) -> l::sizing::PreferredSizeOf<S> {
+    l::sizing::PreferredSizeOf::value(
+        l::length::LengthPercentageOf::px(S::from_f64(value)).unwrap(),
+    )
 }
 
-fn block<S: l::LayoutScalar>() -> l::NodeInputOf<S> {
-    l::NodeInputOf {
-        display: l::Display::Block,
-        writing_mode: l::WritingMode::HorizontalTb,
-        direction: l::Direction::Ltr,
-        size: l::Size::new(px(100.0), l::PreferredSizeOf::AUTO),
-        ..l::NodeInputOf::default()
+fn block<S: l::scalar::LayoutScalar>() -> l::node::NodeInputOf<S> {
+    l::node::NodeInputOf {
+        display: l::box_model::Display::Block,
+        writing_mode: l::geometry::WritingMode::HorizontalTb,
+        direction: l::geometry::Direction::Ltr,
+        size: l::geometry::Size::new(px(100.0), l::sizing::PreferredSizeOf::AUTO),
+        ..l::node::NodeInputOf::default()
     }
 }
 
-fn output<S: l::LayoutScalar>(
-    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+fn output<S: l::scalar::LayoutScalar>(
+    entries: (&l::batch::CompletedLayoutBatchOf<u32, S>, bool),
     node: u32,
 ) -> crate::layout::observation::Observation<S> {
     crate::layout::observation::observe(entries, node, crate::layout::observation::Kind::Box)
 }
 
-fn auto_height_bfc_respects_actual_float_band<S: l::LayoutScalar>() {
+fn auto_height_bfc_respects_actual_float_band<S: l::scalar::LayoutScalar>() {
     // The authored-height neighbour qualifies the same real float/BFC setup
     // before the auto-height profile exercises float-containing size discovery.
     for authored_height in [true, false] {
         let mut incoming = block::<S>();
-        incoming.float = l::Float::Left;
-        incoming.size = l::Size::new(px(20.0), px(30.0));
+        incoming.float = l::box_model::Float::Left;
+        incoming.size = l::geometry::Size::new(px(20.0), px(30.0));
         let mut bfc = block::<S>();
-        bfc.size.width = l::PreferredSizeOf::AUTO;
+        bfc.size.width = l::sizing::PreferredSizeOf::AUTO;
         if authored_height {
             bfc.size.height = px(20.0);
         }
-        bfc.overflow =
-            l::ComputedOverflow::try_new(l::Overflow::Hidden, l::Overflow::Hidden).unwrap();
+        bfc.overflow = l::overflow::ComputedOverflow::try_new(
+            l::overflow::Overflow::Hidden,
+            l::overflow::Overflow::Hidden,
+        )
+        .unwrap();
         let mut internal = block::<S>();
-        internal.float = l::Float::Left;
-        internal.size = l::Size::new(px(10.0), px(20.0));
+        internal.float = l::box_model::Float::Left;
+        internal.size = l::geometry::Size::new(px(10.0), px(20.0));
         let tree = Tree {
             inputs: [block(), incoming, bfc, internal],
             children: [vec![1, 2], vec![], vec![3], vec![]],
         };
         let request = {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(100.0)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(S::from_f64(100.0)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::WritingMode::HorizontalTb,
-                    surgeist_layout::Direction::Ltr,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::geometry::WritingMode::HorizontalTb,
+                    surgeist_layout::geometry::Direction::Ltr,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -109,15 +114,15 @@ fn auto_height_bfc_respects_actual_float_band<S: l::LayoutScalar>() {
         let bfc = output(entries, 2);
         let internal = output(entries, 3);
         assert_eq!(root.size.width, S::from_f64(100.0));
-        assert_eq!(incoming.location, l::Point::ZERO);
+        assert_eq!(incoming.location, l::geometry::Point::ZERO);
         assert_eq!(
             incoming.size,
-            l::Size::new(S::from_f64(20.0), S::from_f64(30.0))
+            l::geometry::Size::new(S::from_f64(20.0), S::from_f64(30.0))
         );
-        assert_eq!(internal.location, l::Point::ZERO);
+        assert_eq!(internal.location, l::geometry::Point::ZERO);
         assert_eq!(
             internal.size,
-            l::Size::new(S::from_f64(10.0), S::from_f64(20.0))
+            l::geometry::Size::new(S::from_f64(10.0), S::from_f64(20.0))
         );
         assert_eq!(bfc.size.height, S::from_f64(20.0));
         assert!(bfc.size.width >= S::from_f64(10.0));
@@ -154,7 +159,7 @@ fn auto_height_bfc_respects_actual_float_band<S: l::LayoutScalar>() {
             for (node, index) in [(0, 0), (1, 0), (2, 1), (3, 0)] {
                 assert_eq!(
                     output(entries, node).source_index,
-                    l::SourceIndex::new(index)
+                    l::node::SourceIndex::new(index)
                 );
             }
         }

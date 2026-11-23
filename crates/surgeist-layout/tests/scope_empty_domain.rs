@@ -12,11 +12,11 @@ use surgeist_text as text;
 const JAPANESE: &str = "今日は天気です。";
 
 struct Tree {
-    inputs: Vec<layout::LayoutInput>,
-    non_box: layout::NodeInput,
+    inputs: Vec<layout::node::LayoutInput>,
+    non_box: layout::node::NodeInput,
 }
 
-impl layout::Traverse for Tree {
+impl layout::tree::Traverse for Tree {
     type Node = usize;
     type Scalar = f32;
     type Children<'a> = std::ops::Range<usize>;
@@ -35,15 +35,15 @@ impl layout::Traverse for Tree {
     }
 }
 
-impl layout::LayoutTree for Tree {
+impl layout::tree::LayoutTree for Tree {
     type MeasureError = Infallible;
-    fn node_input(&self, node: usize) -> &layout::NodeInput {
+    fn node_input(&self, node: usize) -> &layout::node::NodeInput {
         self.inputs[node]
             .as_view()
             .as_box()
             .unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, node: usize) -> layout::LayoutInputView<'_> {
+    fn layout_input(&self, node: usize) -> layout::node::LayoutInputView<'_> {
         self.inputs[node].as_view()
     }
 }
@@ -186,69 +186,70 @@ fn prepare() -> Vec<text::prepared::PreparedText> {
 
 fn fixture() -> (
     Tree,
-    Vec<layout::TextParagraphBinding<usize>>,
-    layout::TextParagraphBinding<usize>,
+    Vec<layout::text_layout::TextParagraphBinding<usize>>,
+    layout::text_layout::TextParagraphBinding<usize>,
 ) {
     let all = prepare();
     let tree = Tree {
         inputs: vec![
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
-                ..layout::NodeInput::DEFAULT
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineBoundary(
-                layout::InlineBoundaryInput::contribution(
-                    layout::InlineBoundaryKind::Start,
-                    layout::InlineMetrics::try_new(
-                        surgeist_layout::InlineBaselineContext::Physical,
+            layout::node::LayoutInput::InlineBoundary(
+                layout::inline::InlineBoundaryInput::contribution(
+                    layout::inline::InlineBoundaryKind::Start,
+                    layout::inline::InlineMetrics::try_new(
+                        surgeist_layout::baseline::InlineBaselineContext::Physical,
                         8.0,
                         10.0,
                     )
                     .unwrap(),
-                    layout::InlineBoundaryEdgeOf::ZERO,
+                    layout::inline::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
             ),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
                 all[0].origin_views().next().unwrap().handle(),
             )),
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
-                ..layout::NodeInput::DEFAULT
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineText(layout::TextParticipation::new(
+            layout::node::LayoutInput::InlineText(layout::text_layout::TextParticipation::new(
                 all[2].origin_views().next().unwrap().handle(),
             )),
-            layout::LayoutInput::InlineBoundary(
-                layout::InlineBoundaryInput::contribution(
-                    layout::InlineBoundaryKind::End,
-                    layout::InlineMetrics::try_new(
-                        surgeist_layout::InlineBaselineContext::Physical,
+            layout::node::LayoutInput::InlineBoundary(
+                layout::inline::InlineBoundaryInput::contribution(
+                    layout::inline::InlineBoundaryKind::End,
+                    layout::inline::InlineMetrics::try_new(
+                        surgeist_layout::baseline::InlineBaselineContext::Physical,
                         8.0,
                         10.0,
                     )
                     .unwrap(),
-                    layout::InlineBoundaryEdgeOf::ZERO,
+                    layout::inline::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
             ),
         ],
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
     let bindings: Vec<_> = [(0, vec![1, 2], 2, 1), (2, vec![4, 5], 4, 5)]
         .into_iter()
         .map(|(index, nodes, origin_node, control_node)| {
             let prepared = all[index].clone();
             let origin = prepared.origin_views().next().unwrap().handle();
-            layout::TextParagraphBinding {
-                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
-                origins: vec![layout::TextOriginBinding {
+            layout::text_layout::TextParagraphBinding {
+                inline_box_fragments:
+                    surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
+                origins: vec![layout::text_layout::TextOriginBinding {
                     origin,
                     node: origin_node,
                 }],
                 controls: prepared
                     .control_views()
-                    .map(|view| layout::TextControlBinding {
+                    .map(|view| layout::text_layout::TextControlBinding {
                         occurrence: view.handle(),
                         node: control_node,
                     })
@@ -261,8 +262,9 @@ fn fixture() -> (
             }
         })
         .collect();
-    let empty = layout::TextParagraphBinding {
-        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+    let empty = layout::text_layout::TextParagraphBinding {
+        inline_box_fragments:
+            surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: all[1].clone(),
         container: 3,
         nodes: vec![],
@@ -274,20 +276,20 @@ fn fixture() -> (
     (tree, bindings, empty)
 }
 
-fn request() -> layout::LayoutRootRequest {
+fn request() -> layout::request::LayoutRootRequest {
     {
         let sizing_request = crate::native_request::sizing(
-            surgeist_layout::Size::new(Some(500.0), None),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(500.0), None),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         );
-        layout::LayoutRootRequest::standalone(
+        layout::request::LayoutRootRequest::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::WritingMode::HorizontalTb,
-                surgeist_layout::Direction::Ltr,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::geometry::WritingMode::HorizontalTb,
+                surgeist_layout::geometry::Direction::Ltr,
             ),
             sizing_request
                 .orthogonal_fallback()
@@ -308,11 +310,11 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
     assert!(empty.line_strut.is_none());
 
     // The real empty block already computes normally without a text run.
-    let capture = layout::LayoutFlowInput::try_new(
+    let capture = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         parents.clone(),
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -329,8 +331,8 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
         .single_box()
         .expect("fixture node produces one box")
         .final_output();
-    assert_eq!(box3.location, layout::Point::new(0.0, 10.0));
-    assert_eq!(box3.size, layout::Size::new(500.0, 0.0));
+    assert_eq!(box3.location, layout::geometry::Point::new(0.0, 10.0));
+    assert_eq!(box3.size, layout::geometry::Size::new(500.0, 0.0));
     assert_eq!(
         baseline
             .placed_text()
@@ -344,11 +346,11 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
     // it must add no strut, line, placed Text result or generated geometry.
     let mut complete = parents;
     complete.insert(1, empty);
-    let capture = layout::LayoutFlowInput::try_new(
+    let capture = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         complete,
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -366,9 +368,11 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
             .map(|(node, view)| (
                 node,
                 match view {
-                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                    surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                        view.final_entry(),
+                    surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                        view.final_entry(),
+                    surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 }
             ))
@@ -378,9 +382,11 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
             .map(|(node, view)| (
                 node,
                 match view {
-                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                    surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                        view.final_entry(),
+                    surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                        view.final_entry(),
+                    surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 }
             ))
@@ -396,7 +402,7 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
         );
         assert_eq!(actual.layout().lines(), expected.layout().lines());
     }
-    let fragments = |batch: &layout::CompletedLayoutBatch<usize>| {
+    let fragments = |batch: &layout::batch::CompletedLayoutBatch<usize>| {
         batch
             .final_inline_fragments()
             .iter()
@@ -425,11 +431,11 @@ fn source_bearing_paragraph_with_empty_nodes_is_not_association_only() {
     parents[0].origins.clear();
     parents[0].controls.clear();
     parents[0].atomics.clear();
-    let Err(error) = layout::LayoutFlowInput::try_new(
+    let Err(error) = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         parents,
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -442,9 +448,11 @@ fn source_bearing_paragraph_with_empty_nodes_is_not_association_only() {
     assert!(
         matches!(
             error.kind(),
-            layout::LayoutErrorKind::InvalidInput(layout::LayoutInvalidInput::TextBinding(
-                layout::TextBindingError::EmptyRun
-            ))
+            layout::error::LayoutErrorKind::InvalidInput(
+                layout::error::LayoutInvalidInput::TextBinding(
+                    layout::text_layout::TextBindingError::EmptyRun
+                )
+            )
         ),
         "{error:?}"
     );
@@ -526,8 +534,9 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
         .unwrap();
     // Output emptiness does not erase the original occurrence.
     assert_eq!(prepared.origin_views().count(), 1);
-    let binding = layout::TextParagraphBinding {
-        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+    let binding = layout::text_layout::TextParagraphBinding {
+        inline_box_fragments:
+            surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes: vec![],
@@ -537,17 +546,19 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
         line_strut: None,
     };
     let tree = Tree {
-        inputs: vec![layout::LayoutInput::box_input(layout::NodeInput {
-            display: layout::Display::Block,
-            ..layout::NodeInput::DEFAULT
-        })],
-        non_box: layout::NodeInput::non_box(),
+        inputs: vec![layout::node::LayoutInput::box_input(
+            layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                ..layout::node::NodeInput::DEFAULT
+            },
+        )],
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let Err(error) = layout::LayoutFlowInput::try_new(
+    let Err(error) = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
         vec![binding],
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -560,9 +571,11 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
     assert!(
         matches!(
             error.kind(),
-            layout::LayoutErrorKind::InvalidInput(layout::LayoutInvalidInput::TextBinding(
-                layout::TextBindingError::EmptyRun
-            ))
+            layout::error::LayoutErrorKind::InvalidInput(
+                layout::error::LayoutInvalidInput::TextBinding(
+                    layout::text_layout::TextBindingError::EmptyRun
+                )
+            )
         ),
         "{error:?}"
     );

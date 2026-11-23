@@ -4,26 +4,26 @@ use super::layout as l;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Kind {
     Box,
-    NonBox(l::NonBoxKind),
+    NonBox(l::fragmentation::NonBoxKind),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Observation<S: l::LayoutScalar> {
+pub(crate) struct Observation<S: l::scalar::LayoutScalar> {
     pub kind: Kind,
-    pub box_output: Option<l::NodeOutputOf<S>>,
-    pub named_baselines: l::NamedBaselinesOf<S>,
-    pub source_index: l::SourceIndex,
-    pub location: l::Point<S>,
-    pub size: l::Size<S>,
-    pub content_size: l::Size<S>,
-    pub scroll_geometry: Option<l::ScrollGeometryOf<S>>,
-    pub border: l::Edges<S>,
-    pub padding: l::Edges<S>,
-    pub margin: l::Edges<S>,
+    pub box_output: Option<l::node::NodeOutputOf<S>>,
+    pub named_baselines: l::baseline::NamedBaselinesOf<S>,
+    pub source_index: l::node::SourceIndex,
+    pub location: l::geometry::Point<S>,
+    pub size: l::geometry::Size<S>,
+    pub content_size: l::geometry::Size<S>,
+    pub scroll_geometry: Option<l::scroll::ScrollGeometryOf<S>>,
+    pub border: l::geometry::Edges<S>,
+    pub padding: l::geometry::Edges<S>,
+    pub margin: l::geometry::Edges<S>,
 }
 
-impl<S: l::LayoutScalar> From<l::NodeOutputOf<S>> for Observation<S> {
-    fn from(output: l::NodeOutputOf<S>) -> Self {
+impl<S: l::scalar::LayoutScalar> From<l::node::NodeOutputOf<S>> for Observation<S> {
+    fn from(output: l::node::NodeOutputOf<S>) -> Self {
         Self {
             kind: Kind::Box,
             box_output: Some(output),
@@ -40,8 +40,8 @@ impl<S: l::LayoutScalar> From<l::NodeOutputOf<S>> for Observation<S> {
     }
 }
 
-pub(crate) fn observe<Node: Copy + Eq, S: l::LayoutScalar>(
-    phase: (&l::CompletedLayoutBatchOf<Node, S>, bool),
+pub(crate) fn observe<Node: Copy + Eq, S: l::scalar::LayoutScalar>(
+    phase: (&l::batch::CompletedLayoutBatchOf<Node, S>, bool),
     node: Node,
     expected_kind: Kind,
 ) -> Observation<S> {
@@ -50,9 +50,9 @@ pub(crate) fn observe<Node: Copy + Eq, S: l::LayoutScalar>(
         .node_layout(node)
         .expect("fixture node is published");
     let actual_kind = match view {
-        l::NodeLayoutRefOf::SingleBox(_) => Kind::Box,
-        l::NodeLayoutRefOf::NonBox(view) => Kind::NonBox(view.kind()),
-        l::NodeLayoutRefOf::Fragments(_) => {
+        l::fragmentation::NodeLayoutRefOf::SingleBox(_) => Kind::Box,
+        l::fragmentation::NodeLayoutRefOf::NonBox(view) => Kind::NonBox(view.kind()),
+        l::fragmentation::NodeLayoutRefOf::Fragments(_) => {
             panic!("continuous fixture unexpectedly fragmented")
         }
     };
@@ -61,13 +61,13 @@ pub(crate) fn observe<Node: Copy + Eq, S: l::LayoutScalar>(
         "fixture publication classification"
     );
     match view {
-        l::NodeLayoutRefOf::SingleBox(view) => if phase.1 {
+        l::fragmentation::NodeLayoutRefOf::SingleBox(view) => if phase.1 {
             view.final_output()
         } else {
             view.unrounded_output()
         }
         .into(),
-        l::NodeLayoutRefOf::NonBox(view) => {
+        l::fragmentation::NodeLayoutRefOf::NonBox(view) => {
             let geometry = if phase.1 {
                 view.final_geometry()
             } else {
@@ -87,37 +87,45 @@ pub(crate) fn observe<Node: Copy + Eq, S: l::LayoutScalar>(
                 margin: geometry.margin,
             }
         }
-        l::NodeLayoutRefOf::Fragments(_) => {
+        l::fragmentation::NodeLayoutRefOf::Fragments(_) => {
             panic!("continuous fixture unexpectedly fragmented")
         }
     }
 }
 
 /// Select a readback phase without erasing node classification.
-pub(crate) fn phase<Node, S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<Node, S>,
+pub(crate) fn phase<Node, S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<Node, S>,
     final_phase: bool,
-) -> (&l::CompletedLayoutBatchOf<Node, S>, bool) {
+) -> (&l::batch::CompletedLayoutBatchOf<Node, S>, bool) {
     (batch, final_phase)
 }
 
 /// Authored normalized fixture input supplies the expected publication role.
 /// Ancestor suppression is supplied by the owning fixture traversal.
-pub(crate) fn expected_kind<S: l::LayoutScalar>(
-    input: l::LayoutInputViewOf<'_, S>,
+pub(crate) fn expected_kind<S: l::scalar::LayoutScalar>(
+    input: l::node::LayoutInputViewOf<'_, S>,
     suppressed: bool,
 ) -> Kind {
     if suppressed {
-        return Kind::NonBox(l::NonBoxKind::Hidden);
+        return Kind::NonBox(l::fragmentation::NonBoxKind::Hidden);
     }
     match input {
-        l::LayoutInputViewOf::Box(input) if input.display == l::Display::None => {
-            Kind::NonBox(l::NonBoxKind::Hidden)
+        l::node::LayoutInputViewOf::Box(input) if input.display == l::box_model::Display::None => {
+            Kind::NonBox(l::fragmentation::NonBoxKind::Hidden)
         }
-        l::LayoutInputViewOf::Box(_) => Kind::Box,
-        l::LayoutInputViewOf::InlineText(_) => Kind::NonBox(l::NonBoxKind::InlineText),
-        l::LayoutInputViewOf::TextControl(_) => Kind::NonBox(l::NonBoxKind::TextControl),
-        l::LayoutInputViewOf::LineBreak(_) => Kind::NonBox(l::NonBoxKind::LineBreak),
-        l::LayoutInputViewOf::InlineBoundary(_) => Kind::NonBox(l::NonBoxKind::InlineBoundary),
+        l::node::LayoutInputViewOf::Box(_) => Kind::Box,
+        l::node::LayoutInputViewOf::InlineText(_) => {
+            Kind::NonBox(l::fragmentation::NonBoxKind::InlineText)
+        }
+        l::node::LayoutInputViewOf::TextControl(_) => {
+            Kind::NonBox(l::fragmentation::NonBoxKind::TextControl)
+        }
+        l::node::LayoutInputViewOf::LineBreak(_) => {
+            Kind::NonBox(l::fragmentation::NonBoxKind::LineBreak)
+        }
+        l::node::LayoutInputViewOf::InlineBoundary(_) => {
+            Kind::NonBox(l::fragmentation::NonBoxKind::InlineBoundary)
+        }
     }
 }

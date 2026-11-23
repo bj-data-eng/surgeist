@@ -8,12 +8,12 @@ const AHEM: &[u8] = include_bytes!(concat!(
     "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
 ));
 
-struct Tree<S: l::LayoutScalar> {
-    inputs: Vec<l::LayoutInputOf<S>>,
-    non_box: l::NodeInputOf<S>,
+struct Tree<S: l::scalar::LayoutScalar> {
+    inputs: Vec<l::node::LayoutInputOf<S>>,
+    non_box: l::node::NodeInputOf<S>,
     children: Vec<Vec<u32>>,
 }
-impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for Tree<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -30,30 +30,30 @@ impl<S: l::LayoutScalar> l::Traverse for Tree<S> {
         self.children[n as usize][i]
     }
 }
-impl<S: l::LayoutScalar> l::LayoutTree for Tree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for Tree<S> {
     type MeasureError = Infallible;
-    fn node_input(&self, n: u32) -> &l::NodeInputOf<S> {
+    fn node_input(&self, n: u32) -> &l::node::NodeInputOf<S> {
         self.inputs[n as usize].as_box().unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, n: u32) -> l::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, n: u32) -> l::node::LayoutInputViewOf<'_, S> {
         self.inputs[n as usize].as_view()
     }
 }
-struct Fixture<S: l::LayoutScalar> {
+struct Fixture<S: l::scalar::LayoutScalar> {
     capture: Arc<t::processing::ProcessedSource>,
     prepared: t::prepared::PreparedText,
-    binding: l::TextParagraphBinding<u32>,
+    binding: l::text_layout::TextParagraphBinding<u32>,
     tree: Tree<S>,
 }
-impl<S: l::LayoutScalar> Fixture<S> {
-    fn new(direction: l::Direction, wrap: t::style::Wrap, forced_groups: bool) -> Self {
+impl<S: l::scalar::LayoutScalar> Fixture<S> {
+    fn new(direction: l::geometry::Direction, wrap: t::style::Wrap, forced_groups: bool) -> Self {
         use t::capture::SourceProcessingEvent as E;
         let raw = if forced_groups {
             "AAA BB CAAA BB C"
         } else {
             "AAA BB C"
         };
-        let base = if direction == l::Direction::Ltr {
+        let base = if direction == l::geometry::Direction::Ltr {
             t::paragraph::ParagraphBaseDirection::LeftToRight
         } else {
             t::paragraph::ParagraphBaseDirection::RightToLeft
@@ -215,20 +215,22 @@ impl<S: l::LayoutScalar> Fixture<S> {
             .map(|view| view.handle())
             .collect::<Vec<_>>();
         let mut inputs = vec![
-            l::LayoutInputOf::box_input(l::NodeInputOf {
-                display: l::Display::Block,
+            l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+                display: l::box_model::Display::Block,
                 direction,
-                size: l::Size::new(
-                    l::PreferredSizeOf::value(
-                        l::LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
+                size: l::geometry::Size::new(
+                    l::sizing::PreferredSizeOf::value(
+                        l::length::LengthPercentageOf::px(S::from_f64(60.0)).unwrap(),
                     ),
-                    l::PreferredSizeOf::AUTO,
+                    l::sizing::PreferredSizeOf::AUTO,
                 ),
-                ..l::NodeInputOf::default()
+                ..l::node::NodeInputOf::default()
             }),
-            l::LayoutInputOf::inline_text(l::TextParticipation::new(origin_handles[0].clone())),
+            l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+                origin_handles[0].clone(),
+            )),
         ];
-        let mut origins = vec![l::TextOriginBinding {
+        let mut origins = vec![l::text_layout::TextOriginBinding {
             origin: origin_handles[0].clone(),
             node: 1,
         }];
@@ -240,26 +242,26 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 t::paragraph::ParagraphControlKind::ForcedBreak
             ));
             assert_eq!(control.captured_control(), capture.captured_control(0));
-            inputs.push(l::LayoutInputOf::line_break(
-                l::LineBreakInputOf::new()
+            inputs.push(l::node::LayoutInputOf::line_break(
+                l::text_flow::LineBreakInputOf::new()
                     .with_direction(direction)
                     .with_metrics(
-                        l::InlineMetricsOf::try_new(
-                            surgeist_layout::InlineBaselineContext::Physical,
+                        l::inline::InlineMetricsOf::try_new(
+                            surgeist_layout::baseline::InlineBaselineContext::Physical,
                             S::from_f64(8.0),
                             S::from_f64(10.0),
                         )
                         .unwrap(),
                     ),
             ));
-            inputs.push(l::LayoutInputOf::inline_text(l::TextParticipation::new(
-                origin_handles[1].clone(),
-            )));
-            origins.push(l::TextOriginBinding {
+            inputs.push(l::node::LayoutInputOf::inline_text(
+                l::text_layout::TextParticipation::new(origin_handles[1].clone()),
+            ));
+            origins.push(l::text_layout::TextOriginBinding {
                 origin: origin_handles[1].clone(),
                 node: 3,
             });
-            controls.push(l::TextControlBinding {
+            controls.push(l::text_layout::TextControlBinding {
                 occurrence: control,
                 node: 2,
             });
@@ -271,8 +273,9 @@ impl<S: l::LayoutScalar> Fixture<S> {
         };
         let mut children = vec![vec![]; inputs.len()];
         children[0] = nodes.clone();
-        let binding = l::TextParagraphBinding {
-            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+        let binding = l::text_layout::TextParagraphBinding {
+            inline_box_fragments:
+                surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 0,
             nodes,
@@ -287,33 +290,33 @@ impl<S: l::LayoutScalar> Fixture<S> {
             binding,
             tree: Tree {
                 inputs,
-                non_box: l::NodeInputOf::non_box(),
+                non_box: l::node::NodeInputOf::non_box(),
                 children,
             },
         }
     }
-    fn compute(&self) -> l::CompletedLayoutBatchOf<u32, S> {
-        let flow = l::LayoutFlowInput::try_new(
+    fn compute(&self) -> l::batch::CompletedLayoutBatchOf<u32, S> {
+        let flow = l::text_layout::LayoutFlowInput::try_new(
             &self.tree,
             0,
             vec![self.binding.clone()],
-            l::WrappingInput::default(),
+            l::inline_wrapping::WrappingInput::default(),
             Vec::new(),
         )
         .unwrap();
         let request = {
             let sizing_request = crate::layout::native_request::sizing(
-                surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
-                surgeist_layout::Size::new(
-                    surgeist_layout::SizingOperation::Normal,
-                    surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::geometry::Size::new(Some(S::from_f64(60.0)), None),
+                surgeist_layout::geometry::Size::new(
+                    surgeist_layout::constraint::SizingOperation::Normal,
+                    surgeist_layout::constraint::SizingOperation::Normal,
                 ),
             );
-            l::LayoutRootRequestOf::standalone(
+            l::request::LayoutRootRequestOf::standalone(
                 sizing_request,
-                surgeist_layout::FlowAxes::new(
-                    surgeist_layout::LayoutTree::node_input(&self.tree, 0).writing_mode,
-                    surgeist_layout::LayoutTree::node_input(&self.tree, 0).direction,
+                surgeist_layout::geometry::FlowAxes::new(
+                    surgeist_layout::tree::LayoutTree::node_input(&self.tree, 0).writing_mode,
+                    surgeist_layout::tree::LayoutTree::node_input(&self.tree, 0).direction,
                 ),
                 sizing_request
                     .orthogonal_fallback()
@@ -324,9 +327,9 @@ impl<S: l::LayoutScalar> Fixture<S> {
     }
     fn assert_lines(
         &self,
-        batch: &l::CompletedLayoutBatchOf<u32, S>,
+        batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
         expected: &[(t::source::Range, f64, t::selection::LineEnd)],
-        direction: l::Direction,
+        direction: l::geometry::Direction,
     ) {
         assert_eq!(batch.placed_text().len(), 1);
         let entry = &batch.placed_text()[0];
@@ -364,7 +367,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         assert_eq!(layout.nonformatted_lines().count(), 0);
         let mut finalized = vec![None; expected.len()];
         for fragment in batch.final_inline_fragments() {
-            let l::InlineFragmentOwner::Node(node) = fragment.owner() else {
+            let l::text_layout::InlineFragmentOwner::Node(node) = fragment.owner() else {
                 continue;
             };
             if !self
@@ -455,11 +458,11 @@ impl<S: l::LayoutScalar> Fixture<S> {
             .final_output();
         assert_eq!(
             root.size,
-            l::Size::new(S::from_f64(60.0), S::from_f64(10.0 * expected.len() as f64))
+            l::geometry::Size::new(S::from_f64(60.0), S::from_f64(10.0 * expected.len() as f64))
         );
         if expected.len() == 2 {
             let last = layout.run_views().find(|run| run.line() == 1).unwrap();
-            let x = if direction == l::Direction::Ltr {
+            let x = if direction == l::geometry::Direction::Ltr {
                 0.0
             } else {
                 60.0 - expected[1].1
@@ -469,8 +472,8 @@ impl<S: l::LayoutScalar> Fixture<S> {
         }
     }
 }
-fn characterize<S: l::LayoutScalar>(
-    direction: l::Direction,
+fn characterize<S: l::scalar::LayoutScalar>(
+    direction: l::geometry::Direction,
     wrap: t::style::Wrap,
     forced: bool,
     expected: &[(t::source::Range, f64, t::selection::LineEnd)],
@@ -515,7 +518,7 @@ fn current_ordinary_wrapping_uses_full_fitting_prefix_then_remaining_word() {
             t::selection::LineEnd::Paragraph,
         ),
     ];
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         characterize::<f32>(direction, t::style::Wrap::Word, false, &expected);
         characterize::<f64>(direction, t::style::Wrap::Word, false, &expected);
     }
@@ -544,7 +547,7 @@ fn actual_forced_control_separates_two_equivalent_ordinary_wrapping_groups() {
             t::selection::LineEnd::Paragraph,
         ),
     ];
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         characterize::<f32>(direction, t::style::Wrap::Word, true, &expected);
         characterize::<f64>(direction, t::style::Wrap::Word, true, &expected);
     }
@@ -556,18 +559,18 @@ fn nowrap_preserves_the_same_real_source_on_one_overflowing_line() {
         80.0,
         t::selection::LineEnd::Paragraph,
     )];
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         characterize::<f32>(direction, t::style::Wrap::None, false, &expected);
         characterize::<f64>(direction, t::style::Wrap::None, false, &expected);
     }
 }
 
-fn set_normalized_wrap_style<S: l::LayoutScalar>(
+fn set_normalized_wrap_style<S: l::scalar::LayoutScalar>(
     fixture: &mut Fixture<S>,
-    style: l::TextWrapStyle,
+    style: l::text_flow::TextWrapStyle,
 ) {
     let original = fixture.tree.inputs[0].as_box().cloned().unwrap();
-    fixture.tree.inputs[0] = l::LayoutInputOf::box_input(l::NodeInputOf {
+    fixture.tree.inputs[0] = l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
         text_wrap_style: style,
         ..original
     });
@@ -577,14 +580,14 @@ fn set_normalized_wrap_style<S: l::LayoutScalar>(
     );
 }
 
-fn assert_real_capacity_and_tab_basis<S: l::LayoutScalar>(
+fn assert_real_capacity_and_tab_basis<S: l::scalar::LayoutScalar>(
     fixture: &Fixture<S>,
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     count: usize,
 ) -> Vec<t::tabs::TabContext> {
     let mut tabs = vec![None; count];
     for fragment in batch.final_inline_fragments() {
-        let l::InlineFragmentOwner::Node(node) = fragment.owner() else {
+        let l::text_layout::InlineFragmentOwner::Node(node) = fragment.owner() else {
             continue;
         };
         if !fixture
@@ -618,30 +621,30 @@ fn assert_real_capacity_and_tab_basis<S: l::LayoutScalar>(
         .collect()
 }
 
-fn compute_changed_wrap_style<S: l::LayoutScalar>(
+fn compute_changed_wrap_style<S: l::scalar::LayoutScalar>(
     fixture: &Fixture<S>,
-) -> l::CompletedLayoutBatchOf<u32, S> {
-    let flow = l::LayoutFlowInput::try_new(
+) -> l::batch::CompletedLayoutBatchOf<u32, S> {
+    let flow = l::text_layout::LayoutFlowInput::try_new(
         &fixture.tree,
         0,
         vec![fixture.binding.clone()],
-        l::WrappingInput::default(),
+        l::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
     let request = {
         let sizing_request = crate::layout::native_request::sizing(
-            surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(S::from_f64(60.0)), None),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         );
-        l::LayoutRootRequestOf::standalone(
+        l::request::LayoutRootRequestOf::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::LayoutTree::node_input(&fixture.tree, 0).writing_mode,
-                surgeist_layout::LayoutTree::node_input(&fixture.tree, 0).direction,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::tree::LayoutTree::node_input(&fixture.tree, 0).writing_mode,
+                surgeist_layout::tree::LayoutTree::node_input(&fixture.tree, 0).direction,
             ),
             sizing_request
                 .orthogonal_fallback()
@@ -653,8 +656,8 @@ fn compute_changed_wrap_style<S: l::LayoutScalar>(
     batch
 }
 
-fn balance_transition<S: l::LayoutScalar>(
-    direction: l::Direction,
+fn balance_transition<S: l::scalar::LayoutScalar>(
+    direction: l::geometry::Direction,
     wrap: t::style::Wrap,
     forced_groups: bool,
     auto_expected: &[(t::source::Range, f64, t::selection::LineEnd)],
@@ -663,7 +666,7 @@ fn balance_transition<S: l::LayoutScalar>(
     let mut fixture = Fixture::<S>::new(direction, wrap, forced_groups);
     assert_eq!(
         fixture.tree.inputs[0].as_box().unwrap().text_wrap_style,
-        l::TextWrapStyle::Auto
+        l::text_flow::TextWrapStyle::Auto
     );
     let preparation = fixture.prepared.clone();
     let capture = Arc::clone(&fixture.capture);
@@ -672,7 +675,7 @@ fn balance_transition<S: l::LayoutScalar>(
     fixture.assert_lines(&auto, auto_expected, direction);
     let actual_tabs = assert_real_capacity_and_tab_basis(&fixture, &auto, auto_expected.len());
 
-    set_normalized_wrap_style(&mut fixture, l::TextWrapStyle::Balance);
+    set_normalized_wrap_style(&mut fixture, l::text_flow::TextWrapStyle::Balance);
     assert_eq!(fixture.prepared, preparation);
     assert!(Arc::ptr_eq(&fixture.capture, &capture));
     assert_eq!(fixture.binding, binding);
@@ -701,7 +704,7 @@ fn balance_transition<S: l::LayoutScalar>(
     // Existing completed Auto output is immutable after a different real choice.
     fixture.assert_lines(&auto, auto_expected, direction);
 
-    set_normalized_wrap_style(&mut fixture, l::TextWrapStyle::Auto);
+    set_normalized_wrap_style(&mut fixture, l::text_flow::TextWrapStyle::Auto);
     let auto_again = compute_changed_wrap_style(&fixture);
     fixture.assert_lines(&auto_again, auto_expected, direction);
     assert_eq!(
@@ -745,7 +748,7 @@ fn balance_uses_two_real_word_lines_with_natural_measures_thirty_and_forty() {
             t::selection::LineEnd::Paragraph,
         ),
     ];
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         balance_transition::<f32>(direction, t::style::Wrap::Word, false, &auto, &balanced);
         balance_transition::<f64>(direction, t::style::Wrap::Word, false, &auto, &balanced);
     }
@@ -797,7 +800,7 @@ fn balance_preserves_each_actual_forced_group_and_its_two_line_count() {
             t::selection::LineEnd::Paragraph,
         ),
     ];
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         balance_transition::<f32>(direction, t::style::Wrap::Word, true, &auto, &balanced);
         balance_transition::<f64>(direction, t::style::Wrap::Word, true, &auto, &balanced);
     }
@@ -810,7 +813,7 @@ fn balance_keeps_actual_nowrap_source_on_its_original_overflowing_line() {
         80.0,
         t::selection::LineEnd::Paragraph,
     )];
-    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+    for direction in [l::geometry::Direction::Ltr, l::geometry::Direction::Rtl] {
         balance_transition::<f32>(
             direction,
             t::style::Wrap::None,

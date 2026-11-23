@@ -14,15 +14,21 @@ use crate::{
 /// clipping and margin-collapse predicates are not available per axis.
 ///
 /// ```compile_fail
-/// use surgeist_layout::Overflow;
+/// use surgeist_layout::overflow::Overflow;
 ///
 /// let _ = Overflow::Hidden.clips_contents();
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::Overflow;
+/// use surgeist_layout::overflow::Overflow;
 ///
 /// let _ = Overflow::Hidden.blocks_margin_collapse();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::overflow::Overflow;
 /// ```
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum Overflow {
@@ -50,17 +56,25 @@ impl Overflow {
 /// phase is observable only on layout-produced scroll geometry.
 ///
 /// ```compile_fail
-/// use surgeist_layout::{NodeInput, Overflow, Point};
+/// use surgeist_layout::{geometry::Point, node::NodeInput, overflow::Overflow};
 ///
 /// let mut input = NodeInput::DEFAULT;
 /// input.overflow = Point::new(Overflow::Visible, Overflow::Visible);
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::{ComputedOverflow, Overflow};
+/// use surgeist_layout::overflow::{ComputedOverflow, Overflow};
 ///
 /// let mut overflow = ComputedOverflow::try_new(Overflow::Visible, Overflow::Clip).unwrap();
 /// overflow.x = Overflow::Hidden;
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::geometry::Point;
+/// use surgeist_layout::node::NodeInput;
+/// use surgeist_layout::overflow::{ComputedOverflow, Overflow};
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ComputedOverflow {

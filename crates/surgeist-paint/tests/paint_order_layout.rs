@@ -17,11 +17,11 @@ use surgeist_paint::stacking::{
 };
 
 struct Tree {
-    inputs: Vec<layout::LayoutInput>,
+    inputs: Vec<layout::node::LayoutInput>,
     children: Vec<Vec<usize>>,
 }
 
-impl layout::Traverse for Tree {
+impl layout::tree::Traverse for Tree {
     type Node = usize;
     type Scalar = f32;
     type Children<'a> = std::iter::Copied<std::slice::Iter<'a, usize>>;
@@ -36,36 +36,45 @@ impl layout::Traverse for Tree {
     }
 }
 
-impl layout::LayoutTree for Tree {
+impl layout::tree::LayoutTree for Tree {
     type MeasureError = Infallible;
-    fn node_input(&self, node: usize) -> &layout::NodeInput {
+    fn node_input(&self, node: usize) -> &layout::node::NodeInput {
         self.inputs[node].as_box().unwrap()
     }
-    fn layout_input(&self, node: usize) -> layout::LayoutInputView<'_> {
+    fn layout_input(&self, node: usize) -> layout::node::LayoutInputView<'_> {
         self.inputs[node].as_view()
     }
 }
 
-fn px(value: f32) -> layout::PreferredSize {
-    layout::PreferredSize::value(layout::LengthPercentageOf::px(value).unwrap())
+fn px(value: f32) -> layout::sizing::PreferredSize {
+    layout::sizing::PreferredSize::value(layout::length::LengthPercentageOf::px(value).unwrap())
 }
 
-fn root_request() -> layout::LayoutRootRequest {
-    let extent = layout::Size::splat(Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()));
-    let axis = layout::AxisSizingRequest::new(
-        layout::AvailableSpace::Definite(layout::NonNegativeFiniteOf::new(100.0).unwrap()),
-        layout::SizingOperation::Normal,
+fn root_request() -> layout::request::LayoutRootRequest {
+    let extent = layout::geometry::Size::splat(Some(
+        layout::length::NonNegativeFiniteOf::new(100.0).unwrap(),
+    ));
+    let axis = layout::constraint::AxisSizingRequest::new(
+        layout::constraint::AvailableSpace::Definite(
+            layout::length::NonNegativeFiniteOf::new(100.0).unwrap(),
+        ),
+        layout::constraint::SizingOperation::Normal,
     );
-    layout::LayoutRootRequest::standalone(
-        layout::SizingRequest::new(
-            layout::Size::splat(axis),
-            layout::OrthogonalFallback::new(
+    layout::request::LayoutRootRequest::standalone(
+        layout::constraint::SizingRequest::new(
+            layout::geometry::Size::splat(axis),
+            layout::constraint::OrthogonalFallback::new(
                 extent,
-                layout::NearestScrollport::Absent,
-                layout::Size::splat(layout::OrthogonalFallbackLimit::Unbounded),
+                layout::constraint::NearestScrollport::Absent,
+                layout::geometry::Size::splat(
+                    layout::constraint::OrthogonalFallbackLimit::Unbounded,
+                ),
             ),
         ),
-        layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
+            layout::geometry::Direction::Ltr,
+        ),
         extent,
     )
 }
@@ -141,32 +150,32 @@ fn real_boxes_keep_geometry_and_appearance_across_source_flex_grid_paint_permuta
         let tree = Tree {
             inputs: (0..9)
                 .map(|node| {
-                    layout::LayoutInput::box_input(layout::NodeInput {
+                    layout::node::LayoutInput::box_input(layout::node::NodeInput {
                         display: if node == 0 {
                             match mode {
-                                ChildOrder::Source => layout::Display::Block,
-                                ChildOrder::Flex => layout::Display::Flex,
-                                ChildOrder::Grid => layout::Display::Grid,
+                                ChildOrder::Source => layout::box_model::Display::Block,
+                                ChildOrder::Flex => layout::box_model::Display::Flex,
+                                ChildOrder::Grid => layout::box_model::Display::Grid,
                             }
                         } else {
-                            layout::Display::Block
+                            layout::box_model::Display::Block
                         },
-                        size: layout::Size::new(
+                        size: layout::geometry::Size::new(
                             px(if node == 0 { 100.0 } else { 10.0 + node as f32 }),
                             px(if node == 0 { 100.0 } else { 10.0 + node as f32 }),
                         ),
-                        item_order: layout::ItemOrder::new(match node {
+                        item_order: layout::node::ItemOrder::new(match node {
                             1 => 2,
                             2 => -1,
                             3 => 1,
                             _ => 0,
                         }),
                         position: if node == 6 {
-                            layout::Position::Absolute
+                            layout::box_model::Position::Absolute
                         } else {
-                            layout::Position::Relative
+                            layout::box_model::Position::Relative
                         },
-                        ..layout::NodeInput::DEFAULT
+                        ..layout::node::NodeInput::DEFAULT
                     })
                 })
                 .collect(),
@@ -364,49 +373,52 @@ fn actual_fragmented_root_continuations_retain_exact_occurrence_geometry_and_par
     let tree = Tree {
         inputs: [None, Some(30.0), Some(40.0)]
             .map(|height| {
-                layout::LayoutInput::box_input(layout::NodeInput {
-                    display: layout::Display::Block,
-                    size: layout::Size::new(
-                        layout::PreferredSize::AUTO,
-                        height.map_or(layout::PreferredSize::AUTO, px),
+                layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                    display: layout::box_model::Display::Block,
+                    size: layout::geometry::Size::new(
+                        layout::sizing::PreferredSize::AUTO,
+                        height.map_or(layout::sizing::PreferredSize::AUTO, px),
                     ),
-                    ..layout::NodeInput::DEFAULT
+                    ..layout::node::NodeInput::DEFAULT
                 })
             })
             .into(),
         children: vec![vec![1, 2], vec![], vec![]],
     };
-    let axes = layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr);
-    let bound = layout::LayoutBoundRequestOf::block_fragmentation(
-        layout::LayoutSourceBasis::fresh(),
+    let axes = layout::geometry::FlowAxes::new(
+        layout::geometry::WritingMode::HorizontalTb,
+        layout::geometry::Direction::Ltr,
+    );
+    let bound = layout::fragmentation::LayoutBoundRequestOf::block_fragmentation(
+        layout::batch::LayoutSourceBasis::fresh(),
         root_request(),
-        layout::FragmentationKind::Page {
-            progression: layout::PageProgression::LeftToRight,
+        layout::fragmentation::FragmentationKind::Page {
+            progression: layout::fragmentation::PageProgression::LeftToRight,
         },
         axes,
         vec![
-            layout::BlockFragmentainerOf {
-                origin: layout::Point::ZERO,
-                size: layout::Size::new(100.0, 50.0),
-                breaks: layout::FragmentationBreakKinds::NONE,
+            layout::fragmentation::BlockFragmentainerOf {
+                origin: layout::geometry::Point::ZERO,
+                size: layout::geometry::Size::new(100.0, 50.0),
+                breaks: layout::fragmentation::FragmentationBreakKinds::NONE,
                 page_side: None,
             },
             // Physical x is deliberately earlier despite later logical continuation.
-            layout::BlockFragmentainerOf {
-                origin: layout::Point::new(-200.0, 0.0),
-                size: layout::Size::new(60.0, 80.0),
-                breaks: layout::FragmentationBreakKinds::PAGE,
+            layout::fragmentation::BlockFragmentainerOf {
+                origin: layout::geometry::Point::new(-200.0, 0.0),
+                size: layout::geometry::Size::new(60.0, 80.0),
+                breaks: layout::fragmentation::FragmentationBreakKinds::PAGE,
                 page_side: None,
             },
         ],
     )
     .unwrap();
-    let flow = layout::LayoutFlowInput::try_new_bound(
+    let flow = layout::text_layout::LayoutFlowInput::try_new_bound(
         &tree,
         0,
         bound.clone(),
         Vec::new(),
-        layout::WrappingInput::default(),
+        layout::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
@@ -425,7 +437,7 @@ fn actual_fragmented_root_continuations_retain_exact_occurrence_geometry_and_par
             .unwrap()
             .final_geometry()
             .size,
-        layout::Size::new(100.0, 50.0)
+        layout::geometry::Size::new(100.0, 50.0)
     );
     assert_eq!(
         continuations[1]
@@ -433,22 +445,22 @@ fn actual_fragmented_root_continuations_retain_exact_occurrence_geometry_and_par
             .unwrap()
             .final_geometry()
             .size,
-        layout::Size::new(60.0, 40.0)
+        layout::geometry::Size::new(60.0, 40.0)
     );
     assert_eq!(
         batch
             .fragmentainer(continuations[1].fragmentainer().expect("external frame"))
             .unwrap()
             .origin(),
-        layout::Point::new(-200.0, 0.0)
+        layout::geometry::Point::new(-200.0, 0.0)
     );
     assert_eq!(
         continuations[0].source_children(),
-        [(layout::SourceIndex::new(0), 1)]
+        [(layout::node::SourceIndex::new(0), 1)]
     );
     assert_eq!(
         continuations[1].source_children(),
-        [(layout::SourceIndex::new(1), 2)]
+        [(layout::node::SourceIndex::new(1), 2)]
     );
     let identities = [2, 0, 1];
     let box_id = |node| BoxId::new(slot(&identities, node));
@@ -458,7 +470,7 @@ fn actual_fragmented_root_continuations_retain_exact_occurrence_geometry_and_par
             BoxFacts::new(
                 if node == 0 { None } else { Some(box_id(0)) },
                 if node == 0 {
-                    layout::SourceIndex::ZERO
+                    layout::node::SourceIndex::ZERO
                 } else {
                     batch
                         .node_layout(node)
@@ -545,7 +557,7 @@ fn actual_fragmented_root_continuations_retain_exact_occurrence_geometry_and_par
                 let id = occurrence_ids[fragment.id().get()];
                 let actual = batch.fragment(id).unwrap();
                 match batch.node_layout(actual.node()).unwrap() {
-                    layout::NodeLayoutRefOf::Fragments(_) => {
+                    layout::fragmentation::NodeLayoutRefOf::Fragments(_) => {
                         let expected = if fragment.id().get() == 0 {
                             &continuations[1]
                         } else {
@@ -562,25 +574,25 @@ fn actual_fragmented_root_continuations_retain_exact_occurrence_geometry_and_par
                         ));
                         assert_eq!(batch.fragment(actual.id()).unwrap().id(), id);
                     }
-                    layout::NodeLayoutRefOf::SingleBox(actual) => {
+                    layout::fragmentation::NodeLayoutRefOf::SingleBox(actual) => {
                         let node = identities[fragment.owner().id().get()];
                         assert_eq!(actual.node(), node);
                         let parent = fragment.parent().unwrap();
                         assert_eq!(
                             actual.coordinate_parent(),
-                            Some(&layout::FragmentCoordinateSpace::Fragment(
+                            Some(&layout::fragmentation::FragmentCoordinateSpace::Fragment(
                                 occurrence_ids[parent.id().get()].clone()
                             ))
                         );
                         assert_eq!(
                             actual.final_output().size,
-                            layout::Size::new(
+                            layout::geometry::Size::new(
                                 if node == 1 { 100.0 } else { 60.0 },
                                 if node == 1 { 30.0 } else { 40.0 }
                             )
                         );
                     }
-                    layout::NodeLayoutRefOf::NonBox(_) => {
+                    layout::fragmentation::NodeLayoutRefOf::NonBox(_) => {
                         panic!("paint occurrence must resolve to an actual box")
                     }
                 }
@@ -598,45 +610,57 @@ fn border_image_area_from_completed_layout_precedes_source_partition() {
         resolve_border_image_tiling, resolve_mask_border_in_area,
     };
 
-    let border = |value| layout::LengthOf::value(layout::LengthPercentageOf::px(value).unwrap());
+    let border = |value| {
+        layout::length::LengthOf::value(layout::length::LengthPercentageOf::px(value).unwrap())
+    };
     let tree = Tree {
-        inputs: vec![layout::LayoutInput::box_input(layout::NodeInput {
-            display: layout::Display::Block,
-            box_sizing: layout::BoxSizing::BorderBox,
-            size: layout::Size::new(px(40.0), px(20.0)),
-            border: layout::Edges::new(border(2.0), border(3.0), border(4.0), border(5.0)),
-            ..layout::NodeInput::DEFAULT
-        })],
+        inputs: vec![layout::node::LayoutInput::box_input(
+            layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
+                box_sizing: layout::box_model::BoxSizing::BorderBox,
+                size: layout::geometry::Size::new(px(40.0), px(20.0)),
+                border: layout::geometry::Edges::new(
+                    border(2.0),
+                    border(3.0),
+                    border(4.0),
+                    border(5.0),
+                ),
+                ..layout::node::NodeInput::DEFAULT
+            },
+        )],
         children: vec![vec![]],
     };
     let batch = layout::compute_layout(&tree, 0, root_request()).unwrap();
     let node = batch.node_layout(0).unwrap().single_box().unwrap();
     let output = node.final_output();
-    assert_eq!(output.size, layout::Size::new(40.0, 20.0));
-    assert_eq!(output.border, layout::Edges::new(2.0, 3.0, 4.0, 5.0));
+    assert_eq!(output.size, layout::geometry::Size::new(40.0, 20.0));
+    assert_eq!(
+        output.border,
+        layout::geometry::Edges::new(2.0, 3.0, 4.0, 5.0)
+    );
 
     let area = resolve_border_image_area(
         BorderImageAreaRequest {
             border_origin: output.location.map(f64::from),
             border_size: output.size.map(f64::from),
             border_widths: output.border.map(f64::from),
-            outsets: layout::Edges::all(BorderImageOutset::BorderWidthMultiple(1.0)),
+            outsets: layout::geometry::Edges::all(BorderImageOutset::BorderWidthMultiple(1.0)),
         },
         options(),
     )
     .result
     .unwrap();
-    assert_eq!(area.default_size(), layout::Size::new(48.0, 26.0));
-    assert_eq!(area.rect().min(), layout::Point::new(-5.0, -2.0));
-    assert_eq!(area.rect().max(), layout::Point::new(43.0, 24.0));
+    assert_eq!(area.default_size(), layout::geometry::Size::new(48.0, 26.0));
+    assert_eq!(area.rect().min(), layout::geometry::Point::new(-5.0, -2.0));
+    assert_eq!(area.rect().max(), layout::geometry::Point::new(43.0, 24.0));
 
     let partition = BorderImagePartitionRequest {
         source: BorderImageSource {
-            coordinate_size: layout::Size::new(20.0, 10.0),
-            natural_size: layout::Size::new(Some(10.0), Some(5.0)),
+            coordinate_size: layout::geometry::Size::new(20.0, 10.0),
+            natural_size: layout::geometry::Size::new(Some(10.0), Some(5.0)),
         },
-        slices: layout::Edges::all(BorderImageSlice::SourceUnits(2.0)),
-        widths: layout::Edges::all(BorderImageWidth::BorderWidthMultiple(2.0)),
+        slices: layout::geometry::Edges::all(BorderImageSlice::SourceUnits(2.0)),
+        widths: layout::geometry::Edges::all(BorderImageWidth::BorderWidthMultiple(2.0)),
         fill_center: true,
     };
     let geometry = resolve_border_image_in_area(area, partition, options())
@@ -645,15 +669,15 @@ fn border_image_area_from_completed_layout_precedes_source_partition() {
     assert_eq!(geometry.area(), area.rect());
     assert_eq!(
         geometry.used_widths(),
-        layout::Edges::new(4.0, 6.0, 8.0, 10.0)
+        layout::geometry::Edges::new(4.0, 6.0, 8.0, 10.0)
     );
-    let repeat = layout::Size::new(BorderImageRepeat::Repeat, BorderImageRepeat::Round);
+    let repeat = layout::geometry::Size::new(BorderImageRepeat::Repeat, BorderImageRepeat::Round);
     let tiling = resolve_border_image_tiling(&geometry, repeat, options())
         .result
         .unwrap();
     let top = tiling.regions()[0][1].unwrap();
-    assert_eq!(top.clip().min(), layout::Point::new(5.0, -2.0));
-    assert_eq!(top.clip().max(), layout::Point::new(37.0, 2.0));
+    assert_eq!(top.clip().min(), layout::geometry::Point::new(5.0, -2.0));
+    assert_eq!(top.clip().max(), layout::geometry::Point::new(37.0, 2.0));
     assert_eq!(top.axes().width.extent(), 32.0);
     assert_eq!(
         top.axes().width.placement(),
@@ -687,7 +711,7 @@ fn border_image_area_from_completed_layout_precedes_source_partition() {
     assert_eq!(opaque.tiles().regions()[0][1], Some(top));
     assert!(opaque.tiles().regions()[1][1].is_none());
     let center = opaque.opaque_center().unwrap();
-    assert_eq!(center.min(), layout::Point::new(5.0, 2.0));
-    assert_eq!(center.max(), layout::Point::new(37.0, 16.0));
+    assert_eq!(center.min(), layout::geometry::Point::new(5.0, 2.0));
+    assert_eq!(center.max(), layout::geometry::Point::new(37.0, 16.0));
     assert_eq!(node.final_output(), output);
 }

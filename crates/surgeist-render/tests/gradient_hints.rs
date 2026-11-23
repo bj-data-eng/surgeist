@@ -52,7 +52,7 @@ fn source(length: f64, alpha: f32) -> [GradientStopItem<Color>; 3] {
 
 fn line(length: f64) -> LinearGradientLine {
     resolve_linear_gradient(
-        layout::Size::new(length, 16.0),
+        layout::geometry::Size::new(length, 16.0),
         LinearGradientDirection::Right,
         options(),
     )
@@ -239,9 +239,12 @@ fn authentic_linear_hint_controls_half_and_three_quarter_premultiplied_colors() 
 fn authentic_unequal_ellipse_hints_execute_for_ordinary_and_repeating_consumers() {
     let (ordinary, repeating) = {
         let geometry = resolve_radial_gradient(
-            layout::Size::new(32.0, 16.0),
-            Some(layout::Point::new(8.0, 8.0)),
-            RadialGradientSize::EllipseRadii(layout::Size::new(position(16.0), position(8.0))),
+            layout::geometry::Size::new(32.0, 16.0),
+            Some(layout::geometry::Point::new(8.0, 8.0)),
+            RadialGradientSize::EllipseRadii(layout::geometry::Size::new(
+                position(16.0),
+                position(8.0),
+            )),
             options(),
         )
         .result

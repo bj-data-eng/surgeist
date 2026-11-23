@@ -55,7 +55,7 @@ fn at(value: f64, color: Color) -> GradientStopItem<Color> {
 
 fn line(length: f64) -> LinearGradientLine {
     resolve_linear_gradient(
-        layout::Size::<f64>::new(length, 1.0),
+        layout::geometry::Size::<f64>::new(length, 1.0),
         LinearGradientDirection::Right,
         paint_options(),
     )

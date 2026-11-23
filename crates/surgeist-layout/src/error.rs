@@ -1,3 +1,5 @@
+//! The layout failure taxonomy and the descriptors of sizing behavior.
+
 use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide};
 use crate::node_input::FloatExclusionIntervalErrorOf;
 use crate::output::RunMode;
@@ -454,10 +456,7 @@ pub enum SizingBehavior {
 /// [`LayoutUnsupportedCapability`] rather than constructing them.
 ///
 /// ```compile_fail
-/// use surgeist_layout::{
-///     PhysicalAxis, SizingAlgorithm, SizingBehavior, SizingProperty,
-///     UnsupportedSizingBehavior,
-/// };
+/// use surgeist_layout::{error::{SizingAlgorithm, SizingBehavior, SizingProperty, UnsupportedSizingBehavior}, geometry::PhysicalAxis};
 /// let _ = UnsupportedSizingBehavior {
 ///     property: SizingProperty::Preferred,
 ///     behavior: SizingBehavior::Stretch,
@@ -467,16 +466,19 @@ pub enum SizingBehavior {
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::{
-///     PhysicalAxis, SizingAlgorithm, SizingBehavior, SizingProperty,
-///     UnsupportedSizingBehavior,
-/// };
+/// use surgeist_layout::{error::{SizingAlgorithm, SizingBehavior, SizingProperty, UnsupportedSizingBehavior}, geometry::PhysicalAxis};
 /// let _ = UnsupportedSizingBehavior::new(
 ///     SizingProperty::Preferred,
 ///     SizingBehavior::Stretch,
 ///     SizingAlgorithm::Leaf,
 ///     PhysicalAxis::Horizontal,
 /// );
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::{error::{SizingAlgorithm, SizingBehavior, SizingProperty, UnsupportedSizingBehavior}, geometry::PhysicalAxis};
 /// ```
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct UnsupportedSizingBehavior {

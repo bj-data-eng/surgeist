@@ -1,3 +1,5 @@
+//! Grid tracks, lines, placement, template areas, axis kind, lanes flow and tolerance, and named-line errors.
+
 use std::ops::ControlFlow;
 
 use crate::accounting::LayoutWork;
@@ -30,8 +32,8 @@ use crate::{
     },
     geometry::{Edges, Point, Size},
     node_input::{
-        AlignContent, AlignItems, BoxSizing, Direction, Display, GridAutoFlow, GridPlacement,
-        Overflow, Position, RawGridLine, RawGridPlacement, SizeContainment,
+        AlignContent, AlignItems, BoxSizing, Direction, Display, Overflow, Position,
+        SizeContainment,
     },
     output::{
         BaselinesOf, ComputeInputOf, ComputeOutputOf, NodeOutputOf, RequestedAxis, RunMode,
@@ -41,9 +43,8 @@ use crate::{
     sizing::{MinSizeOf, PreferredSizeOf},
     tree::Traverse,
     value::{
-        AvailableSpaceOf, AxisSizingRequestOf, GridSpan, LengthAutoOf, LengthOf,
-        LengthResolutionStatus, MaxTrackSizingOf, MinTrackSizingOf, OrthogonalFallbackOf,
-        SizingOperation, SizingRequestOf, TrackComponentOf, TrackRepeat, TrackSizingOf,
+        AvailableSpaceOf, AxisSizingRequestOf, LengthAutoOf, LengthOf, LengthResolutionStatus,
+        OrthogonalFallbackOf, SizingOperation, SizingRequestOf,
     },
 };
 
@@ -64,6 +65,19 @@ pub(crate) use observation::{
 mod placement;
 mod subgrid;
 pub(crate) use subgrid::{WrapperResolutionMemo, WrapperResolutions};
+
+pub use crate::node_input::{
+    GridAutoFlow, GridFlowTolerance, GridFlowToleranceOf, GridLanesFlow, GridPlacement,
+    RawGridLine, RawGridPlacement,
+};
+pub use crate::value::{
+    GridLine, GridSpan, GridTemplateAreaRow, GridTemplateAreas, MaxTrackSizing, MaxTrackSizingOf,
+    MinTrackSizing, MinTrackSizingOf, SubgridLineNameComponent, SubgridLineNameRepeatCount,
+    SubgridTrack, TrackComponent, TrackComponentList, TrackComponentListOf, TrackComponentOf,
+    TrackFlexFactor, TrackFlexFactorOf, TrackRepeat, TrackRepeatCount, TrackRepetition,
+    TrackRepetitionError, TrackRepetitionOf, TrackSizing, TrackSizingOf, track_sizing_components,
+    track_sizing_components_of,
+};
 
 /// Whether a test asks every nested subgrid computation to repeat.
 #[cfg(test)]

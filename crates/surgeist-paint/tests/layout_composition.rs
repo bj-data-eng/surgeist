@@ -10,9 +10,9 @@ use surgeist_paint::stacking::{
 };
 
 struct Tree {
-    inputs: Vec<layout::LayoutInput>,
+    inputs: Vec<layout::node::LayoutInput>,
 }
-impl layout::Traverse for Tree {
+impl layout::tree::Traverse for Tree {
     type Node = usize;
     type Scalar = f32;
     type Children<'a> = std::iter::Copied<std::slice::Iter<'a, usize>>;
@@ -31,34 +31,43 @@ impl layout::Traverse for Tree {
         self.children(node).nth(index).unwrap()
     }
 }
-impl layout::LayoutTree for Tree {
+impl layout::tree::LayoutTree for Tree {
     type MeasureError = Infallible;
-    fn node_input(&self, node: usize) -> &layout::NodeInput {
+    fn node_input(&self, node: usize) -> &layout::node::NodeInput {
         self.inputs[node].as_box().unwrap()
     }
-    fn layout_input(&self, node: usize) -> layout::LayoutInputView<'_> {
+    fn layout_input(&self, node: usize) -> layout::node::LayoutInputView<'_> {
         self.inputs[node].as_view()
     }
 }
-fn px(n: f32) -> layout::PreferredSize {
-    layout::PreferredSize::value(layout::LengthPercentageOf::px(n).unwrap())
+fn px(n: f32) -> layout::sizing::PreferredSize {
+    layout::sizing::PreferredSize::value(layout::length::LengthPercentageOf::px(n).unwrap())
 }
-fn request() -> layout::LayoutRootRequest {
-    let extent = layout::Size::splat(Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()));
-    let axis = layout::AxisSizingRequest::new(
-        layout::AvailableSpace::Definite(layout::NonNegativeFiniteOf::new(100.0).unwrap()),
-        layout::SizingOperation::Normal,
+fn request() -> layout::request::LayoutRootRequest {
+    let extent = layout::geometry::Size::splat(Some(
+        layout::length::NonNegativeFiniteOf::new(100.0).unwrap(),
+    ));
+    let axis = layout::constraint::AxisSizingRequest::new(
+        layout::constraint::AvailableSpace::Definite(
+            layout::length::NonNegativeFiniteOf::new(100.0).unwrap(),
+        ),
+        layout::constraint::SizingOperation::Normal,
     );
-    layout::LayoutRootRequest::standalone(
-        layout::SizingRequest::new(
-            layout::Size::splat(axis),
-            layout::OrthogonalFallback::new(
+    layout::request::LayoutRootRequest::standalone(
+        layout::constraint::SizingRequest::new(
+            layout::geometry::Size::splat(axis),
+            layout::constraint::OrthogonalFallback::new(
                 extent,
-                layout::NearestScrollport::Absent,
-                layout::Size::splat(layout::OrthogonalFallbackLimit::Unbounded),
+                layout::constraint::NearestScrollport::Absent,
+                layout::geometry::Size::splat(
+                    layout::constraint::OrthogonalFallbackLimit::Unbounded,
+                ),
             ),
         ),
-        layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
+            layout::geometry::Direction::Ltr,
+        ),
         extent,
     )
 }
@@ -66,35 +75,35 @@ fn request() -> layout::LayoutRootRequest {
 fn completed_geometry_stays_joined_to_identity_when_paint_slice_is_permuted() {
     for mode in [ChildOrder::Source, ChildOrder::Flex, ChildOrder::Grid] {
         let display = match mode {
-            ChildOrder::Source => layout::Display::Block,
-            ChildOrder::Flex => layout::Display::Flex,
-            ChildOrder::Grid => layout::Display::Grid,
+            ChildOrder::Source => layout::box_model::Display::Block,
+            ChildOrder::Flex => layout::box_model::Display::Flex,
+            ChildOrder::Grid => layout::box_model::Display::Grid,
         };
         let tree = Tree {
             inputs: (0..5)
                 .map(|node| {
-                    layout::LayoutInput::box_input(layout::NodeInput {
+                    layout::node::LayoutInput::box_input(layout::node::NodeInput {
                         display: if node == 0 {
                             display
                         } else {
-                            layout::Display::Block
+                            layout::box_model::Display::Block
                         },
-                        size: layout::Size::new(
+                        size: layout::geometry::Size::new(
                             px(if node == 0 { 100.0 } else { 20.0 }),
                             px(if node == 0 { 100.0 } else { 20.0 }),
                         ),
-                        item_order: layout::ItemOrder::new(match node {
+                        item_order: layout::node::ItemOrder::new(match node {
                             1 => 1,
                             2 => -1,
                             3 => -99,
                             _ => 0,
                         }),
                         position: if node == 3 {
-                            layout::Position::Absolute
+                            layout::box_model::Position::Absolute
                         } else {
-                            layout::Position::Relative
+                            layout::box_model::Position::Relative
                         },
-                        ..layout::NodeInput::DEFAULT
+                        ..layout::node::NodeInput::DEFAULT
                     })
                 })
                 .collect(),
@@ -197,7 +206,7 @@ fn completed_geometry_stays_joined_to_identity_when_paint_slice_is_permuted() {
         assert_eq!(plan.context_for_box(slot(1)).unwrap().box_id(), slot(0));
         assert_eq!(
             geometry[slot(4).get()].source_index,
-            layout::SourceIndex::ZERO
+            layout::node::SourceIndex::ZERO
         );
     }
 }

@@ -2,7 +2,7 @@
 use super::*;
 
 fn unscoped_native_pair_input(
-    direction: layout::Direction,
+    direction: layout::geometry::Direction,
 ) -> text::capture::ContextualSourceInput {
     use text::capture::SourceProcessingEvent as E;
     let mut raw = paired_source(direction);
@@ -13,11 +13,18 @@ fn unscoped_native_pair_input(
     raw
 }
 
-fn actual_early_native_pair_without_inline_scope<S: layout::LayoutScalar>() {
-    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+fn actual_early_native_pair_without_inline_scope<S: layout::scalar::LayoutScalar>() {
+    for direction in [
+        layout::geometry::Direction::Ltr,
+        layout::geometry::Direction::Rtl,
+    ] {
         let mut host = PairedEarly::<S>::new(direction, false);
-        host.declarations
-            .retain(|row| matches!(&row.box_, layout::InlineBoxRef::NativePair { .. }));
+        host.declarations.retain(|row| {
+            matches!(
+                &row.box_,
+                layout::inline_wrapping::InlineBoxRef::NativePair { .. }
+            )
+        });
         host.scopes.clear();
         host.base.orders.clear(); // Complete actual native inventory proves it.
         let raw = unscoped_native_pair_input(direction);
@@ -43,7 +50,7 @@ fn actual_early_native_pair_without_inline_scope<S: layout::LayoutScalar>() {
         // The host implements only Traverse + WrapEdgeSource. It has real
         // boundary controls and source origins, and no prepared handles.
         let (processed, _receipt) =
-            layout::process_wrapping_source(&host, 0, raw, host.occurrences())
+            layout::inline_wrapping::process_wrapping_source(&host, 0, raw, host.occurrences())
                 .expect(
                     "an explicit authentic native pair must not require a fabricated InlineScope",
                 )

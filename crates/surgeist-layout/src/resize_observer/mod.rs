@@ -1,3 +1,5 @@
+//! Resize-observer box measurements.
+
 mod pixel_edge;
 
 use crate::output::GeometryStateOf;

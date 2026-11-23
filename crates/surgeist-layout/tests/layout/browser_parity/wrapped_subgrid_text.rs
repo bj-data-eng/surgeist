@@ -55,15 +55,16 @@ impl Measurer {
     fn place(
         &mut self,
         label: &str,
-        direction: layout::Direction,
+        direction: layout::geometry::Direction,
         width: Width,
     ) -> Result<&Placement, Error> {
         let label_index = profile::LABELS
             .iter()
             .position(|&known| label == known)
             .ok_or_else(|| invalid("unexpected authored text"))?;
-        let rtl = direction == layout::Direction::Rtl;
-        let flow = layout::FlowAxes::new(layout::WritingMode::HorizontalTb, direction);
+        let rtl = direction == layout::geometry::Direction::Rtl;
+        let flow =
+            layout::geometry::FlowAxes::new(layout::geometry::WritingMode::HorizontalTb, direction);
         let key = (label_index, rtl, width);
         if let Entry::Vacant(entry) = self.layouts.entry(key) {
             let paragraph = match self.paragraphs.entry((label_index, rtl)) {
@@ -80,35 +81,37 @@ impl Measurer {
             };
             let (space, operation) = match width {
                 Width::MinContent => (
-                    layout::AvailableSpace::Indefinite,
-                    layout::SizingOperation::MinContent,
+                    layout::constraint::AvailableSpace::Indefinite,
+                    layout::constraint::SizingOperation::MinContent,
                 ),
                 Width::MaxContent => (
-                    layout::AvailableSpace::Indefinite,
-                    layout::SizingOperation::MaxContent,
+                    layout::constraint::AvailableSpace::Indefinite,
+                    layout::constraint::SizingOperation::MaxContent,
                 ),
                 Width::Definite(bits) => (
-                    layout::AvailableSpace::Definite(
-                        layout::NonNegativeFiniteOf::new(Scalar::from_bits(bits))
+                    layout::constraint::AvailableSpace::Definite(
+                        layout::length::NonNegativeFiniteOf::new(Scalar::from_bits(bits))
                             .map_err(invalid)?,
                     ),
-                    layout::SizingOperation::Normal,
+                    layout::constraint::SizingOperation::Normal,
                 ),
             };
-            let axes = layout::Size::new(
-                layout::AxisSizingRequest::new(space, operation),
-                layout::AxisSizingRequest::new(
-                    layout::AvailableSpace::Indefinite,
-                    layout::SizingOperation::Normal,
+            let axes = layout::geometry::Size::new(
+                layout::constraint::AxisSizingRequest::new(space, operation),
+                layout::constraint::AxisSizingRequest::new(
+                    layout::constraint::AvailableSpace::Indefinite,
+                    layout::constraint::SizingOperation::Normal,
                 ),
             );
-            let fallback = layout::OrthogonalFallback::new(
-                layout::Size::NONE,
-                layout::NearestScrollport::Absent,
-                layout::Size::splat(layout::OrthogonalFallbackLimit::Unbounded),
+            let fallback = layout::constraint::OrthogonalFallback::new(
+                layout::geometry::Size::NONE,
+                layout::constraint::NearestScrollport::Absent,
+                layout::geometry::Size::splat(
+                    layout::constraint::OrthogonalFallbackLimit::Unbounded,
+                ),
             );
-            let request = layout::LayoutRootRequest::standalone(
-                layout::SizingRequest::new(axes, fallback),
+            let request = layout::request::LayoutRootRequest::standalone(
+                layout::constraint::SizingRequest::new(axes, fallback),
                 flow,
                 axes.map(|axis| axis.space().definite_size()),
             );
@@ -129,10 +132,10 @@ impl Measurer {
     pub(super) fn measure(
         &mut self,
         label: &str,
-        input: layout::LeafMeasureInput,
-    ) -> Result<layout::Size, Error> {
+        input: layout::tree::LeafMeasureInput,
+    ) -> Result<layout::geometry::Size, Error> {
         let flow = input.flow_axes();
-        if flow.writing_mode() != layout::WritingMode::HorizontalTb {
+        if flow.writing_mode() != layout::geometry::WritingMode::HorizontalTb {
             return Err(invalid("unsupported text writing mode"));
         }
         let direction = flow.direction();
@@ -147,9 +150,13 @@ impl Measurer {
                         .map(|placed| placed.size.width)
                 };
                 match inline.operation() {
-                    layout::SizingOperation::MinContent => measure(self, Width::MinContent)?,
-                    layout::SizingOperation::MaxContent => measure(self, Width::MaxContent)?,
-                    layout::SizingOperation::Normal => {
+                    layout::constraint::SizingOperation::MinContent => {
+                        measure(self, Width::MinContent)?
+                    }
+                    layout::constraint::SizingOperation::MaxContent => {
+                        measure(self, Width::MaxContent)?
+                    }
+                    layout::constraint::SizingOperation::Normal => {
                         let max = measure(self, Width::MaxContent)?;
                         if let Some(available) = inline.space().definite_size() {
                             max.min(available.get())
@@ -169,7 +176,7 @@ impl Measurer {
                     .height
             }
         };
-        Ok(layout::Size::new(width, height))
+        Ok(layout::geometry::Size::new(width, height))
     }
 }
 
@@ -181,7 +188,7 @@ enum Width {
 }
 
 struct Placement {
-    size: layout::Size,
+    size: layout::geometry::Size,
     layout: text::layout::Layout,
 }
 
@@ -189,7 +196,7 @@ struct Placement {
 // leaf would use. Cache each sizing request outside the nested Grid traversal.
 fn paragraph_tree(
     label: &str,
-    flow: layout::FlowAxes,
+    flow: layout::geometry::FlowAxes,
     prepared: text::prepared::PreparedText,
 ) -> Result<TestTree, Error> {
     let origin = prepared
@@ -216,20 +223,22 @@ fn paragraph_tree(
             ..inherited
         },
     )?;
-    tree.nodes[node].layout_input =
-        layout::LayoutInput::inline_text(layout::TextParticipation::new(origin.clone()));
+    tree.nodes[node].layout_input = layout::node::LayoutInput::inline_text(
+        layout::text_layout::TextParticipation::new(origin.clone()),
+    );
     tree.nodes[node].text = None;
     tree.nodes[root].children.push(node);
-    tree.paragraphs.push(layout::TextParagraphBinding {
-        inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
-        prepared,
-        container: root,
-        nodes: vec![node],
-        origins: vec![layout::TextOriginBinding { node, origin }],
-        atomics: Vec::new(),
-        controls: Vec::new(),
-        line_strut: None,
-    });
+    tree.paragraphs
+        .push(layout::text_layout::TextParagraphBinding {
+            inline_box_fragments: layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
+            prepared,
+            container: root,
+            nodes: vec![node],
+            origins: vec![layout::text_layout::TextOriginBinding { node, origin }],
+            atomics: Vec::new(),
+            controls: Vec::new(),
+            line_strut: None,
+        });
     Ok(tree)
 }
 
@@ -256,11 +265,11 @@ pub(super) fn install(
             .layout_input
             .as_box()
             .ok_or_else(|| invalid("wrapped text requires its authored Flex box"))?;
-        if style.display != layout::Display::Flex
+        if style.display != layout::box_model::Display::Flex
             || style.direction != occurrence.direction
-            || style.writing_mode != layout::WritingMode::HorizontalTb
-            || style.padding != layout::Edges::all(layout::Length::ZERO)
-            || style.border != layout::Edges::all(layout::Length::ZERO)
+            || style.writing_mode != layout::geometry::WritingMode::HorizontalTb
+            || style.padding != layout::geometry::Edges::all(layout::length::Length::ZERO)
+            || style.border != layout::geometry::Edges::all(layout::length::Length::ZERO)
             || leaf.font_family != super::FontFamily::Ahem
             || leaf.font_size != 10.0
             || leaf.line_height != 10.0
@@ -366,8 +375,8 @@ pub(super) fn verify(
                 .ok_or_else(|| invalid("missing actual hidden-leaf scroll geometry"))?;
             let port = geometry.scrollport();
             let actual = geometry.overflow_clip();
-            if geometry.used_overflow_x() != layout::Overflow::Hidden
-                || geometry.used_overflow_y() != layout::Overflow::Hidden
+            if geometry.used_overflow_x() != layout::overflow::Overflow::Hidden
+                || geometry.used_overflow_y() != layout::overflow::Overflow::Hidden
                 || actual.x().map(|edge| [edge.minimum(), edge.maximum()])
                     != Some([port.origin().x, port.origin().x + port.size().width])
                 || actual.y().map(|edge| [edge.minimum(), edge.maximum()])

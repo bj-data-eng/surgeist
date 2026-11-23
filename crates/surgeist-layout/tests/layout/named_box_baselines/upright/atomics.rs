@@ -4,41 +4,44 @@ use super::*;
 use surgeist_text::font::FontBaseline;
 mod supplemental;
 
-fn central() -> l::InlineBaselineContext {
-    l::InlineBaselineContext::Named(FontBaseline::Central)
+fn central() -> l::baseline::InlineBaselineContext {
+    l::baseline::InlineBaselineContext::Named(FontBaseline::Central)
 }
 
-fn available<S: l::LayoutScalar>(width: f64, height: f64) -> surgeist_layout::SizingRequestOf<S> {
+fn available<S: l::scalar::LayoutScalar>(
+    width: f64,
+    height: f64,
+) -> surgeist_layout::constraint::SizingRequestOf<S> {
     crate::layout::native_request::sizing(
-        surgeist_layout::Size::new(Some(n(width)), Some(n(height))),
-        surgeist_layout::Size::new(
-            surgeist_layout::SizingOperation::Normal,
-            surgeist_layout::SizingOperation::Normal,
+        surgeist_layout::geometry::Size::new(Some(n(width)), Some(n(height))),
+        surgeist_layout::geometry::Size::new(
+            surgeist_layout::constraint::SizingOperation::Normal,
+            surgeist_layout::constraint::SizingOperation::Normal,
         ),
     )
 }
 
-fn solve<S: l::LayoutScalar>(
+fn solve<S: l::scalar::LayoutScalar>(
     host: &Host<S>,
-    bindings: Vec<l::TextParagraphBinding<u32>>,
+    bindings: Vec<l::text_layout::TextParagraphBinding<u32>>,
     width: f64,
     height: f64,
-) -> l::CompletedLayoutBatchOf<u32, S> {
-    let flow = l::LayoutFlowInput::try_new(
+) -> l::batch::CompletedLayoutBatchOf<u32, S> {
+    let flow = l::text_layout::LayoutFlowInput::try_new(
         host,
         0,
         bindings,
-        l::WrappingInput::default(),
+        l::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .expect("actual processed captures and issued occurrence roles must bind to their real nodes");
     l::compute_layout_with_flow(&flow, 0, {
         let sizing_request = available(width, height);
-        l::LayoutRootRequestOf::standalone(
+        l::request::LayoutRootRequestOf::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
-                surgeist_layout::LayoutTree::node_input(host, 0).direction,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::tree::LayoutTree::node_input(host, 0).writing_mode,
+                surgeist_layout::tree::LayoutTree::node_input(host, 0).direction,
             ),
             sizing_request
                 .orthogonal_fallback()
@@ -48,8 +51,8 @@ fn solve<S: l::LayoutScalar>(
     .expect("native atomic adapter must retain physical size and match the child's actual Central")
 }
 
-fn placed<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+fn placed<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     container: u32,
 ) -> &t::layout::Layout {
     batch
@@ -60,29 +63,50 @@ fn placed<S: l::LayoutScalar>(
         .layout()
 }
 
-fn assert_central<S: l::LayoutScalar>(facts: l::NamedBaselinesOf<S>, expected: f64) {
+fn assert_central<S: l::scalar::LayoutScalar>(
+    facts: l::baseline::NamedBaselinesOf<S>,
+    expected: f64,
+) {
     let pair = facts.get(FontBaseline::Central);
-    let coordinate =
-        l::BaselineCoordinateOf::try_new(l::PhysicalAxis::Horizontal, n(expected)).unwrap();
-    assert_eq!(pair.first(), l::BaselineFactOf::Available(coordinate));
-    assert_eq!(pair.last(), l::BaselineFactOf::Available(coordinate));
+    let coordinate = l::baseline::BaselineCoordinateOf::try_new(
+        l::geometry::PhysicalAxis::Horizontal,
+        n(expected),
+    )
+    .unwrap();
+    assert_eq!(
+        pair.first(),
+        l::baseline::BaselineFactOf::Available(coordinate)
+    );
+    assert_eq!(
+        pair.last(),
+        l::baseline::BaselineFactOf::Available(coordinate)
+    );
 }
 
-fn child_input<S: l::LayoutScalar>() -> l::NodeInputOf<S> {
-    let mut input = root(l::WritingMode::VerticalLr, l::Direction::Ltr, central());
-    input.display = l::Display::InlineBlock;
-    input.size = l::Size::new(px(6.0), px(14.0));
+fn child_input<S: l::scalar::LayoutScalar>() -> l::node::NodeInputOf<S> {
+    let mut input = root(
+        l::geometry::WritingMode::VerticalLr,
+        l::geometry::Direction::Ltr,
+        central(),
+    );
+    input.display = l::box_model::Display::InlineBlock;
+    input.size = l::geometry::Size::new(px(6.0), px(14.0));
     input
 }
 
-fn child_binding(fixture: &Fixture, container: u32, text: u32) -> l::TextParagraphBinding<u32> {
+fn child_binding(
+    fixture: &Fixture,
+    container: u32,
+    text: u32,
+) -> l::text_layout::TextParagraphBinding<u32> {
     let origin = fixture.prepared.origin_views().next().unwrap().handle();
-    l::TextParagraphBinding {
-        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+    l::text_layout::TextParagraphBinding {
+        inline_box_fragments:
+            surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: fixture.prepared.clone(),
         container,
         nodes: vec![text],
-        origins: vec![l::TextOriginBinding { origin, node: text }],
+        origins: vec![l::text_layout::TextOriginBinding { origin, node: text }],
         atomics: vec![],
         controls: vec![],
         // Its real font2/2 establishes Central2. The parent's separately
@@ -91,13 +115,13 @@ fn child_binding(fixture: &Fixture, container: u32, text: u32) -> l::TextParagra
     }
 }
 
-fn qualify_child<S: l::LayoutScalar>(fixture: &Fixture) {
+fn qualify_child<S: l::scalar::LayoutScalar>(fixture: &Fixture) {
     let mut host = Host::<S>::new(child_input());
     let binding = child_binding(fixture, 0, 1);
     assert_eq!(
         host.push(
             Some(0),
-            l::LayoutInputOf::inline_text(l::TextParticipation::new(
+            l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
                 binding.origins[0].origin.clone(),
             )),
         ),
@@ -109,7 +133,7 @@ fn qualify_child<S: l::LayoutScalar>(fixture: &Fixture) {
         crate::layout::observation::phase(&batch, true),
     ] {
         let output = node(entries, 0);
-        assert_eq!(output.size, l::Size::new(n(6.0), n(14.0)));
+        assert_eq!(output.size, l::geometry::Size::new(n(6.0), n(14.0)));
         assert_central(output.named_baselines, 2.0);
     }
     let text = placed(&batch, 0);
@@ -123,7 +147,7 @@ fn qualify_child<S: l::LayoutScalar>(fixture: &Fixture) {
     );
     let mut saw_source = false;
     for row in batch.unrounded_inline_fragments() {
-        if matches!(row.owner(), l::InlineFragmentOwner::Node(1)) {
+        if matches!(row.owner(), l::text_layout::InlineFragmentOwner::Node(1)) {
             saw_source = true;
             let fragment = row.fragment();
             let line = fragment.finalized_fragment().finalized_line();
@@ -137,7 +161,7 @@ fn qualify_child<S: l::LayoutScalar>(fixture: &Fixture) {
                 (8.0, 2.0, 4.0)
             );
             assert_eq!(line.selected_line().request().line_strut, None);
-            assert_eq!(fragment.baseline(), l::Point::new(n(2.0), n(0.0)));
+            assert_eq!(fragment.baseline(), l::geometry::Point::new(n(2.0), n(0.0)));
         }
     }
     assert!(
@@ -461,18 +485,18 @@ fn qualify_parent_text(prepared: &t::prepared::PreparedText, atomic: t::prepared
     assert_eq!(layout.inline_boxes()[0].rect(), physical);
 }
 
-fn native_atomic<S: l::LayoutScalar>() {
+fn native_atomic<S: l::scalar::LayoutScalar>() {
     let child = fixture();
     // This actual owning operation precedes preparation/binding of the parent.
     // It is evidence for the child's named fact, not a fabricated provider row.
     qualify_child::<S>(&child);
     let parent = parent(&child.bytes);
     for (mode, c) in [
-        (l::WritingMode::VerticalRl, 32.0),
-        (l::WritingMode::VerticalLr, 2.0),
+        (l::geometry::WritingMode::VerticalRl, 32.0),
+        (l::geometry::WritingMode::VerticalLr, 2.0),
     ] {
-        let mut input = root(mode, l::Direction::Ltr, central());
-        input.size = l::Size::new(px(40.0), px(22.0));
+        let mut input = root(mode, l::geometry::Direction::Ltr, central());
+        input.size = l::geometry::Size::new(px(40.0), px(22.0));
         let mut host = Host::<S>::new(input);
         let origins = parent
             .prepared
@@ -482,18 +506,22 @@ fn native_atomic<S: l::LayoutScalar>() {
         assert_eq!(
             host.push(
                 Some(0),
-                l::LayoutInputOf::inline_text(l::TextParticipation::new(origins[0].clone()))
+                l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+                    origins[0].clone()
+                ))
             ),
             1
         );
         assert_eq!(
-            host.push(Some(0), l::LayoutInputOf::box_input(child_input())),
+            host.push(Some(0), l::node::LayoutInputOf::box_input(child_input())),
             2
         );
         assert_eq!(
             host.push(
                 Some(0),
-                l::LayoutInputOf::inline_text(l::TextParticipation::new(origins[1].clone()))
+                l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+                    origins[1].clone()
+                ))
             ),
             3
         );
@@ -501,24 +529,25 @@ fn native_atomic<S: l::LayoutScalar>() {
         assert_eq!(
             host.push(
                 Some(2),
-                l::LayoutInputOf::inline_text(l::TextParticipation::new(
+                l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
                     inner.origins[0].origin.clone()
                 ))
             ),
             4
         );
         let atomic = parent.prepared.atomic_views().next().unwrap().handle();
-        let outer = l::TextParagraphBinding {
-            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+        let outer = l::text_layout::TextParagraphBinding {
+            inline_box_fragments:
+                surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: parent.prepared.clone(),
             container: 0,
             nodes: vec![1, 2, 3],
             origins: origins
                 .into_iter()
                 .zip([1, 3])
-                .map(|(origin, node)| l::TextOriginBinding { origin, node })
+                .map(|(origin, node)| l::text_layout::TextOriginBinding { origin, node })
                 .collect(),
-            atomics: vec![l::TextAtomicBinding {
+            atomics: vec![l::text_layout::TextAtomicBinding {
                 occurrence: atomic.clone(),
                 node: 2,
             }],
@@ -531,11 +560,11 @@ fn native_atomic<S: l::LayoutScalar>() {
             crate::layout::observation::phase(&batch, true),
         ] {
             let root = node(entries, 0);
-            assert_eq!(root.size, l::Size::new(n(40.0), n(22.0)));
+            assert_eq!(root.size, l::geometry::Size::new(n(40.0), n(22.0)));
             assert_central(root.named_baselines, c);
             let child = node(entries, 2);
-            assert_eq!(child.size, l::Size::new(n(6.0), n(14.0)));
-            assert_eq!(child.location, l::Point::new(n(c - 2.0), n(4.0)));
+            assert_eq!(child.size, l::geometry::Size::new(n(6.0), n(14.0)));
+            assert_eq!(child.location, l::geometry::Point::new(n(c - 2.0), n(4.0)));
             assert_central(child.named_baselines, 2.0);
         }
         let text = placed(&batch, 0);
@@ -583,7 +612,7 @@ fn native_atomic<S: l::LayoutScalar>() {
         let mut source_ranges = Vec::new();
         for row in batch.unrounded_inline_fragments() {
             let owner = match row.owner() {
-                l::InlineFragmentOwner::Node(node) if [1, 3].contains(node) => *node,
+                l::text_layout::InlineFragmentOwner::Node(node) if [1, 3].contains(node) => *node,
                 _ => continue,
             };
             let fragment = row.fragment();
@@ -608,13 +637,13 @@ fn native_atomic<S: l::LayoutScalar>() {
             assert_eq!(receipt.view().aggregate_range(), Some(range));
             assert_eq!(receipt.view().local_range(), Some(range));
             source_ranges.push(range);
-            assert_eq!(fragment.baseline(), l::Point::new(n(c), n(0.0)));
+            assert_eq!(fragment.baseline(), l::geometry::Point::new(n(c), n(0.0)));
             let rect = fragment.rect().unwrap();
             assert_eq!(
                 rect.origin(),
-                l::Point::new(n(c - 2.0), n(if owner == 1 { 0.0 } else { 18.0 }))
+                l::geometry::Point::new(n(c - 2.0), n(if owner == 1 { 0.0 } else { 18.0 }))
             );
-            assert_eq!(rect.size(), l::Size::new(n(4.0), n(4.0)));
+            assert_eq!(rect.size(), l::geometry::Size::new(n(4.0), n(4.0)));
         }
         source_ranges.sort_by_key(|range| range.start);
         assert_eq!(

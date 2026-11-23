@@ -41,9 +41,9 @@ use render::paint_gradient::{prepare_linear_gradient, prepare_radial_gradient};
 mod native_viewport;
 use native_viewport::NativeViewport;
 
-struct BorderBox(layout::LayoutInput);
+struct BorderBox(layout::node::LayoutInput);
 
-impl layout::Traverse for BorderBox {
+impl layout::tree::Traverse for BorderBox {
     type Node = ();
     type Scalar = f32;
     type Children<'a> = std::iter::Empty<()>;
@@ -61,14 +61,14 @@ impl layout::Traverse for BorderBox {
     }
 }
 
-impl layout::LayoutTree for BorderBox {
+impl layout::tree::LayoutTree for BorderBox {
     type MeasureError = Infallible;
 
-    fn node_input(&self, (): ()) -> &layout::NodeInput {
+    fn node_input(&self, (): ()) -> &layout::node::NodeInput {
         self.0.as_box().unwrap()
     }
 
-    fn layout_input(&self, (): ()) -> layout::LayoutInputView<'_> {
+    fn layout_input(&self, (): ()) -> layout::node::LayoutInputView<'_> {
         self.0.as_view()
     }
 }
@@ -77,32 +77,44 @@ fn paint_options() -> PaintOptions {
     PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off)
 }
 
-fn source_size() -> layout::Size<f64> {
-    let border = layout::LengthOf::value(layout::LengthPercentageOf::px(2.0).unwrap());
-    let px = |length| layout::PreferredSize::value(layout::LengthPercentageOf::px(length).unwrap());
-    let tree = BorderBox(layout::LayoutInput::box_input(layout::NodeInput {
-        display: layout::Display::Block,
-        box_sizing: layout::BoxSizing::BorderBox,
-        size: layout::Size::new(px(28.0), px(12.0)),
-        border: layout::Edges::all(border),
-        ..layout::NodeInput::DEFAULT
-    }));
+fn source_size() -> layout::geometry::Size<f64> {
+    let border =
+        layout::length::LengthOf::value(layout::length::LengthPercentageOf::px(2.0).unwrap());
+    let px = |length| {
+        layout::sizing::PreferredSize::value(
+            layout::length::LengthPercentageOf::px(length).unwrap(),
+        )
+    };
+    let tree = BorderBox(layout::node::LayoutInput::box_input(
+        layout::node::NodeInput {
+            display: layout::box_model::Display::Block,
+            box_sizing: layout::box_model::BoxSizing::BorderBox,
+            size: layout::geometry::Size::new(px(28.0), px(12.0)),
+            border: layout::geometry::Edges::all(border),
+            ..layout::node::NodeInput::DEFAULT
+        },
+    ));
     let request = NativeViewport::new(
-        layout::Size::splat(Some(64.0)),
-        layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        layout::geometry::Size::splat(Some(64.0)),
+        layout::geometry::FlowAxes::new(
+            layout::geometry::WritingMode::HorizontalTb,
+            layout::geometry::Direction::Ltr,
+        ),
     )
-    .request(layout::Size::splat(layout::SizingOperation::Normal));
+    .request(layout::geometry::Size::splat(
+        layout::constraint::SizingOperation::Normal,
+    ));
     let batch = layout::compute_layout(&tree, (), request).unwrap();
     let node = batch.node_layout(()).unwrap().single_box().unwrap();
     let output = node.final_output();
-    assert_eq!(output.size, layout::Size::new(28.0, 12.0));
+    assert_eq!(output.size, layout::geometry::Size::new(28.0, 12.0));
 
     let area = resolve_border_image_area(
         BorderImageAreaRequest {
             border_origin: output.location.map(f64::from),
             border_size: output.size.map(f64::from),
             border_widths: output.border.map(f64::from),
-            outsets: layout::Edges::all(BorderImageOutset::BorderWidthMultiple(1.0)),
+            outsets: layout::geometry::Edges::all(BorderImageOutset::BorderWidthMultiple(1.0)),
         },
         paint_options(),
     )
@@ -112,7 +124,7 @@ fn source_size() -> layout::Size<f64> {
     // CSS Images 3 §4.4 sizes the whole source using the border-image area as
     // its default object size. A gradient has no natural dimensions.
     let size = area.default_size();
-    assert_eq!(size, layout::Size::new(32.0, 16.0));
+    assert_eq!(size, layout::geometry::Size::new(32.0, 16.0));
     size
 }
 
@@ -196,7 +208,7 @@ fn used_stops(
 
 fn linear_source(
     source: &CssGradient,
-    size: layout::Size<f64>,
+    size: layout::geometry::Size<f64>,
     account: &mut RenderAccountingContext,
 ) -> Gradient {
     let CssGradient::Linear(linear) = source else {
@@ -228,7 +240,7 @@ fn linear_source(
 
 fn radial_source(
     source: &CssGradient,
-    size: layout::Size<f64>,
+    size: layout::geometry::Size<f64>,
     account: &mut RenderAccountingContext,
 ) -> Gradient {
     let CssGradient::Radial(radial) = source else {

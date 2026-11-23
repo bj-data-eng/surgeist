@@ -3,10 +3,10 @@
 use super::*;
 
 struct WbrTree {
-    inputs: Vec<layout::LayoutInput>,
-    non_box: layout::NodeInput,
+    inputs: Vec<layout::node::LayoutInput>,
+    non_box: layout::node::NodeInput,
 }
-impl layout::Traverse for WbrTree {
+impl layout::tree::Traverse for WbrTree {
     type Node = usize;
     type Scalar = f32;
     type Children<'a> = std::ops::Range<usize>;
@@ -24,15 +24,15 @@ impl layout::Traverse for WbrTree {
         self.children(node).nth(index).unwrap()
     }
 }
-impl layout::LayoutTree for WbrTree {
+impl layout::tree::LayoutTree for WbrTree {
     type MeasureError = Infallible;
-    fn node_input(&self, node: usize) -> &layout::NodeInput {
+    fn node_input(&self, node: usize) -> &layout::node::NodeInput {
         self.inputs[node]
             .as_view()
             .as_box()
             .unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, node: usize) -> layout::LayoutInputView<'_> {
+    fn layout_input(&self, node: usize) -> layout::node::LayoutInputView<'_> {
         self.inputs[node].as_view()
     }
 }
@@ -42,9 +42,9 @@ fn capture(
     shared_mark: bool,
     replacements: &[text::style::WordSpaceTransform],
     authored_width: Option<f32>,
-    request: layout::LayoutRootRequest,
+    request: layout::request::LayoutRootRequest,
 ) -> (
-    layout::CompletedLayoutBatch<usize>,
+    layout::batch::CompletedLayoutBatch<usize>,
     Vec<text::prepared::PreparedOrigin>,
     Vec<text::prepared::PreparedControl>,
     text::source::Source,
@@ -148,58 +148,60 @@ fn capture(
         .map(|view| view.handle())
         .collect::<Vec<_>>();
     assert_eq!(controls.len(), replacements.len());
-    let mut inputs = vec![layout::LayoutInput::box_input(layout::NodeInput {
-        display: layout::Display::Block,
-        size: layout::Size::new(
-            match authored_width {
-                Some(width) => {
-                    layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(width).unwrap())
-                }
-                None => layout::PreferredSizeOf::AUTO,
-            },
-            layout::PreferredSizeOf::AUTO,
-        ),
-        ..layout::NodeInput::DEFAULT
-    })];
+    let mut inputs = vec![layout::node::LayoutInput::box_input(
+        layout::node::NodeInput {
+            display: layout::box_model::Display::Block,
+            size: layout::geometry::Size::new(
+                match authored_width {
+                    Some(width) => layout::sizing::PreferredSizeOf::value(
+                        layout::length::LengthPercentageOf::px(width).unwrap(),
+                    ),
+                    None => layout::sizing::PreferredSizeOf::AUTO,
+                },
+                layout::sizing::PreferredSizeOf::AUTO,
+            ),
+            ..layout::node::NodeInput::DEFAULT
+        },
+    )];
     let mut origin_bindings = vec![];
     let mut control_bindings = vec![];
     if shared_mark {
-        origin_bindings.push(layout::TextOriginBinding {
+        origin_bindings.push(layout::text_layout::TextOriginBinding {
             origin: origins[0].clone(),
             node: inputs.len(),
         });
-        inputs.push(layout::LayoutInput::InlineText(
-            layout::TextParticipation::new(origins[0].clone()),
+        inputs.push(layout::node::LayoutInput::InlineText(
+            layout::text_layout::TextParticipation::new(origins[0].clone()),
         ));
     }
     for control in &controls {
-        control_bindings.push(layout::TextControlBinding {
+        control_bindings.push(layout::text_layout::TextControlBinding {
             occurrence: control.clone(),
             node: inputs.len(),
         });
-        inputs.push(layout::LayoutInput::TextControl(
-            layout::TextControlParticipation::new(control.clone()),
+        inputs.push(layout::node::LayoutInput::TextControl(
+            layout::text_layout::TextControlParticipation::new(control.clone()),
         ));
     }
     if shared_mark {
-        origin_bindings.push(layout::TextOriginBinding {
+        origin_bindings.push(layout::text_layout::TextOriginBinding {
             origin: origins[1].clone(),
             node: inputs.len(),
         });
-        inputs.push(layout::LayoutInput::InlineText(
-            layout::TextParticipation::new(origins[1].clone()),
+        inputs.push(layout::node::LayoutInput::InlineText(
+            layout::text_layout::TextParticipation::new(origins[1].clone()),
         ));
     }
     let nodes = (1..inputs.len()).collect();
     let tree = WbrTree {
         inputs,
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let captured = layout::LayoutFlowInput::try_new(
+    let captured = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
-        vec![layout::TextParagraphBinding {
-            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+        vec![layout::text_layout::TextParagraphBinding {
+            inline_box_fragments: layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes,
@@ -208,7 +210,7 @@ fn capture(
             atomics: vec![],
             line_strut: None,
         }],
-        surgeist_layout::WrappingInput {
+        surgeist_layout::inline_wrapping::WrappingInput {
             native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
@@ -239,7 +241,7 @@ fn glyphs(placed: &text::layout::Layout, bytes: &[u8]) -> Vec<(u32, f32)> {
         })
         .collect()
 }
-fn line(batch: &layout::CompletedLayoutBatch<usize>) -> text::finalized::FinalizedLine {
+fn line(batch: &layout::batch::CompletedLayoutBatch<usize>) -> text::finalized::FinalizedLine {
     batch.final_inline_fragments()[0]
         .fragment()
         .finalized_fragment()
@@ -314,12 +316,15 @@ fn wbr_inserts_before_a_real_mark_and_retains_both_original_and_control_custody(
             &[replacement],
             Some(100.0),
             NativeViewport::new(
-                layout::Size::new(Some(100.0), None),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::geometry::Size::new(Some(100.0), None),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
             )
-            .request(layout::Size::new(
-                layout::SizingOperation::Normal,
-                layout::SizingOperation::Normal,
+            .request(layout::geometry::Size::new(
+                layout::constraint::SizingOperation::Normal,
+                layout::constraint::SizingOperation::Normal,
             )),
         );
         let placed = batch.placed_text()[0].layout();
@@ -384,12 +389,15 @@ fn equal_anchor_wbr_keep_distinct_positions_and_only_the_second_owns_the_shared_
         ],
         Some(100.0),
         NativeViewport::new(
-            layout::Size::new(Some(100.0), None),
-            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::geometry::Size::new(Some(100.0), None),
+            layout::geometry::FlowAxes::new(
+                layout::geometry::WritingMode::HorizontalTb,
+                layout::geometry::Direction::Ltr,
+            ),
         )
-        .request(layout::Size::new(
-            layout::SizingOperation::Normal,
-            layout::SizingOperation::Normal,
+        .request(layout::geometry::Size::new(
+            layout::constraint::SizingOperation::Normal,
+            layout::constraint::SizingOperation::Normal,
         )),
     );
     let placed = batch.placed_text()[0].layout();
@@ -471,12 +479,15 @@ fn source_less_only_wbr_has_real_fit_and_intrinsics_without_authored_text() {
             &[replacement],
             Some(4.0),
             NativeViewport::new(
-                layout::Size::new(Some(4.0), None),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::geometry::Size::new(Some(4.0), None),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
             )
-            .request(layout::Size::new(
-                layout::SizingOperation::Normal,
-                layout::SizingOperation::Normal,
+            .request(layout::geometry::Size::new(
+                layout::constraint::SizingOperation::Normal,
+                layout::constraint::SizingOperation::Normal,
             )),
         );
         let placed = batch.placed_text()[0].layout();
@@ -498,8 +509,8 @@ fn source_less_only_wbr_has_real_fit_and_intrinsics_without_authored_text() {
             text::geometry::Rect::new(0.0, 0.0, advance, 10.0)
         );
         for purpose in [
-            layout::SizingOperation::MinContent,
-            layout::SizingOperation::MaxContent,
+            layout::constraint::SizingOperation::MinContent,
+            layout::constraint::SizingOperation::MaxContent,
         ] {
             let (intrinsic, _, _, _) = capture(
                 &mut system,
@@ -507,13 +518,16 @@ fn source_less_only_wbr_has_real_fit_and_intrinsics_without_authored_text() {
                 &[replacement],
                 None,
                 NativeViewport::new(
-                    layout::Size::new(None, None),
-                    layout::FlowAxes::new(
-                        layout::WritingMode::HorizontalTb,
-                        layout::Direction::Ltr,
+                    layout::geometry::Size::new(None, None),
+                    layout::geometry::FlowAxes::new(
+                        layout::geometry::WritingMode::HorizontalTb,
+                        layout::geometry::Direction::Ltr,
                     ),
                 )
-                .request(layout::Size::new(purpose, layout::SizingOperation::Normal)),
+                .request(layout::geometry::Size::new(
+                    purpose,
+                    layout::constraint::SizingOperation::Normal,
+                )),
             );
             assert_eq!(
                 intrinsic
@@ -594,12 +608,15 @@ fn wbr_accessibility_keeps_only_actual_authored_a_and_mark_with_their_real_bound
             &replacements,
             Some(100.0),
             NativeViewport::new(
-                layout::Size::new(Some(100.0), None),
-                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::geometry::Size::new(Some(100.0), None),
+                layout::geometry::FlowAxes::new(
+                    layout::geometry::WritingMode::HorizontalTb,
+                    layout::geometry::Direction::Ltr,
+                ),
             )
-            .request(layout::Size::new(
-                layout::SizingOperation::Normal,
-                layout::SizingOperation::Normal,
+            .request(layout::geometry::Size::new(
+                layout::constraint::SizingOperation::Normal,
+                layout::constraint::SizingOperation::Normal,
             )),
         );
         let placed = batch.placed_text()[0].layout();

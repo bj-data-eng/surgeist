@@ -5,7 +5,7 @@ use super::{
 use crate::PaintError;
 use crate::accounting::{OperationKind, PaintOptions, PaintPhase, PaintReport, WorkKind, charge};
 use std::{cmp::Ordering, num::NonZeroU64};
-use surgeist_layout::Size;
+use surgeist_layout::geometry::Size;
 
 /// The resolved repeat choice for one physical axis.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -592,7 +592,7 @@ mod tests {
         BorderImageWidth, resolve_border_image,
     };
     use std::mem::size_of;
-    use surgeist_layout::{Edges, Point};
+    use surgeist_layout::geometry::{Edges, Point};
     use surgeist_ledger::ProfileMode;
 
     fn options(limits: PaintLimits) -> PaintOptions {

@@ -76,7 +76,7 @@ impl Proof {
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct SourceOccurrence {
     pub(super) path: SourcePath,
-    pub(super) direction: layout::Direction,
+    pub(super) direction: layout::geometry::Direction,
     pub(super) words: Vec<intrinsic::WordRange>,
     pub(super) clip: Option<[u32; 4]>,
     pub(super) sizes: Option<grid_lanes::Sizes>,
@@ -312,10 +312,10 @@ fn bind_direct_occurrences(
         .collect()
 }
 
-fn occurrence_direction(direction: Option<&str>) -> Result<layout::Direction, Error> {
+fn occurrence_direction(direction: Option<&str>) -> Result<layout::geometry::Direction, Error> {
     match direction {
-        Some("ltr") => Ok(layout::Direction::Ltr),
-        Some("rtl") => Ok(layout::Direction::Rtl),
+        Some("ltr") => Ok(layout::geometry::Direction::Ltr),
+        Some("rtl") => Ok(layout::geometry::Direction::Rtl),
         _ => Err(invalid("unsupported occurrence direction")),
     }
 }
@@ -564,7 +564,7 @@ pub(super) fn prepare_label(
     system: &mut text::System,
     face: &surgeist_font::FontFace,
     label: &str,
-    direction: layout::Direction,
+    direction: layout::geometry::Direction,
 ) -> Result<text::prepared::PreparedText, Error> {
     let text_style = text::style::Style {
         font: text::style::Font::new().family("Ahem"),
@@ -584,8 +584,12 @@ pub(super) fn prepare_label(
             source,
             base_style: text_style,
             base_direction: match direction {
-                layout::Direction::Ltr => text::paragraph::ParagraphBaseDirection::LeftToRight,
-                layout::Direction::Rtl => text::paragraph::ParagraphBaseDirection::RightToLeft,
+                layout::geometry::Direction::Ltr => {
+                    text::paragraph::ParagraphBaseDirection::LeftToRight
+                }
+                layout::geometry::Direction::Rtl => {
+                    text::paragraph::ParagraphBaseDirection::RightToLeft
+                }
             },
             terminal_edge: text::paragraph::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
@@ -664,12 +668,13 @@ pub(super) fn lower(tree: &mut TestTree, golden: &Golden, proof: &Proof) -> Resu
         let (_, _, node) = path
             .locate(tree)
             .ok_or_else(|| invalid("missing source path"))?;
-        let flow = layout::FlowAxes::new(layout::WritingMode::HorizontalTb, direction);
+        let flow =
+            layout::geometry::FlowAxes::new(layout::geometry::WritingMode::HorizontalTb, direction);
         let style = tree.nodes[node]
             .layout_input
             .as_box()
             .ok_or_else(|| invalid("missing source box"))?;
-        if style.display != layout::Display::Flex
+        if style.display != layout::box_model::Display::Flex
             || style.writing_mode != flow.writing_mode()
             || style.direction != flow.direction()
             || tree.nodes[node].font_family != super::FontFamily::Ahem
@@ -707,24 +712,27 @@ pub(super) fn lower(tree: &mut TestTree, golden: &Golden, proof: &Proof) -> Resu
                 ..inherited
             },
         )?;
-        tree.nodes[text_node].layout_input =
-            layout::LayoutInput::inline_text(layout::TextParticipation::new(origin.clone()));
+        tree.nodes[text_node].layout_input = layout::node::LayoutInput::inline_text(
+            layout::text_layout::TextParticipation::new(origin.clone()),
+        );
         tree.nodes[text_node].text = None;
         tree.nodes[wrapper].children.push(text_node);
         tree.nodes[node].children.push(wrapper);
-        tree.paragraphs.push(layout::TextParagraphBinding {
-            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
-            prepared,
-            container: wrapper,
-            nodes: vec![text_node],
-            origins: vec![layout::TextOriginBinding {
-                node: text_node,
-                origin,
-            }],
-            atomics: Vec::new(),
-            controls: Vec::new(),
-            line_strut: None,
-        });
+        tree.paragraphs
+            .push(layout::text_layout::TextParagraphBinding {
+                inline_box_fragments:
+                    layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
+                prepared,
+                container: wrapper,
+                nodes: vec![text_node],
+                origins: vec![layout::text_layout::TextOriginBinding {
+                    node: text_node,
+                    origin,
+                }],
+                atomics: Vec::new(),
+                controls: Vec::new(),
+                line_strut: None,
+            });
         tree.flex_text.push(LoweredOccurrence {
             path,
             source: node,
@@ -737,7 +745,7 @@ pub(super) fn lower(tree: &mut TestTree, golden: &Golden, proof: &Proof) -> Resu
 
 pub(super) fn verify_word_ranges(
     tree: &TestTree,
-    batch: &layout::CompletedLayoutBatch<usize>,
+    batch: &layout::batch::CompletedLayoutBatch<usize>,
     proof: &Proof,
 ) -> Result<(), Error> {
     if !proof.is_intrinsic() {
@@ -758,7 +766,8 @@ pub(super) fn verify_word_ranges(
             .iter()
             .find(|placed| placed.container() == lowered.wrapper)
             .ok_or_else(|| invalid(format!("missing placed Text for {path}")))?;
-        let layout::LayoutInput::InlineText(participation) = &tree.nodes[lowered.text].layout_input
+        let layout::node::LayoutInput::InlineText(participation) =
+            &tree.nodes[lowered.text].layout_input
         else {
             return Err(invalid(format!("missing source origin for {path}")));
         };
@@ -873,7 +882,7 @@ mod tests {
                 .flat_map(|row| {
                     (0..2).map(move |item| SourceOccurrence {
                         path: SourcePath::RowItem { row, item },
-                        direction: layout::Direction::Ltr,
+                        direction: layout::geometry::Direction::Ltr,
                         words: Vec::new(),
                         clip: None,
                         sizes: None,

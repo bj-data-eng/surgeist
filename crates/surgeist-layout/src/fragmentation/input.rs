@@ -173,7 +173,7 @@ pub(crate) enum FragmentationStart {
     /// This includes accepted zero-sized source occurrences.
     InFrame,
     /// The frame was actually entered by the recorded scheduler transition.
-    AfterBreak(super::FragmentationBreakReason),
+    AfterBreak(super::output::FragmentationBreakReason),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

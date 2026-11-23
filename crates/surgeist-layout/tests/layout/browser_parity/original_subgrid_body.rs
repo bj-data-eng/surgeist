@@ -4,7 +4,7 @@ use super::capture_authority::{PathDigest, SpecializedEvidence, sha256};
 use super::exact_differences::{
     QualificationError, QualifiedComparison, QualifiedVerdict, RawVerdict,
 };
-use super::layout::Direction;
+use super::layout::geometry::Direction;
 use super::root_context::QualifiedRootContext;
 use super::{
     Error, Expectation, Golden, Node, NodeKind, NumericComparisonSink, RootContext, Scalar,

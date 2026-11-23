@@ -45,9 +45,9 @@ fn paint_options() -> PaintOptions {
 }
 fn geometry(radius: f64) -> RadialGradientGeometry {
     resolve_radial_gradient(
-        layout::Size::new(32.0, 16.0),
-        Some(layout::Point::new(8.0, 8.0)),
-        RadialGradientSize::EllipseRadii(layout::Size::new(
+        layout::geometry::Size::new(32.0, 16.0),
+        Some(layout::geometry::Point::new(8.0, 8.0)),
+        RadialGradientSize::EllipseRadii(layout::geometry::Size::new(
             position(radius, 0.0),
             position(0.0, 0.0),
         )),

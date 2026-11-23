@@ -7,15 +7,15 @@ enum Refusal {
     LaterBand,
 }
 
-struct ShapeHost<S: l::LayoutScalar> {
+struct ShapeHost<S: l::scalar::LayoutScalar> {
     inner: Host<S>,
     float: u32,
-    mode: l::WritingMode,
+    mode: l::geometry::WritingMode,
     refuse: Cell<bool>,
-    queries: RefCell<Vec<(l::FloatExclusionQueryOf<S>, bool)>>,
+    queries: RefCell<Vec<(l::box_model::FloatExclusionQueryOf<S>, bool)>>,
 }
 
-impl<S: l::LayoutScalar> l::Traverse for ShapeHost<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for ShapeHost<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -24,55 +24,58 @@ impl<S: l::LayoutScalar> l::Traverse for ShapeHost<S> {
         Self: 'a;
 
     fn children(&self, node: u32) -> Self::Children<'_> {
-        l::Traverse::children(&self.inner, node)
+        l::tree::Traverse::children(&self.inner, node)
     }
     fn child_count(&self, node: u32) -> usize {
-        l::Traverse::child_count(&self.inner, node)
+        l::tree::Traverse::child_count(&self.inner, node)
     }
     fn child(&self, node: u32, index: usize) -> u32 {
-        l::Traverse::child(&self.inner, node, index)
+        l::tree::Traverse::child(&self.inner, node, index)
     }
 }
 
-impl<S: l::LayoutScalar> l::LayoutTree for ShapeHost<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for ShapeHost<S> {
     type MeasureError = Refusal;
 
-    fn node_input(&self, node: u32) -> &l::NodeInputOf<S> {
-        l::LayoutTree::node_input(&self.inner, node)
+    fn node_input(&self, node: u32) -> &l::node::NodeInputOf<S> {
+        l::tree::LayoutTree::node_input(&self.inner, node)
     }
-    fn layout_input(&self, node: u32) -> l::LayoutInputViewOf<'_, S> {
-        l::LayoutTree::layout_input(&self.inner, node)
+    fn layout_input(&self, node: u32) -> l::node::LayoutInputViewOf<'_, S> {
+        l::tree::LayoutTree::layout_input(&self.inner, node)
     }
     fn cache_get(
         &self,
         node: u32,
-        input: &l::ComputeInputOf<S>,
-        context: l::CacheKeyContext,
-    ) -> Option<l::ComputeOutputOf<S>> {
-        l::LayoutTree::cache_get(&self.inner, node, input, context)
+        input: &l::cache::ComputeInputOf<S>,
+        context: l::cache::CacheKeyContext,
+    ) -> Option<l::cache::ComputeOutputOf<S>> {
+        l::tree::LayoutTree::cache_get(&self.inner, node, input, context)
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
-        l::LayoutTree::unrounded_layout(&self.inner, node)
+    fn unrounded_layout(&self, node: u32) -> Option<l::batch::LayoutOutputEntryOf<u32, S>> {
+        l::tree::LayoutTree::unrounded_layout(&self.inner, node)
     }
     fn float_exclusion_interval(
         &self,
         node: u32,
-        query: l::FloatExclusionQueryOf<S>,
-    ) -> Option<Result<Option<l::FloatExclusionIntervalOf<S>>, Refusal>> {
+        query: l::box_model::FloatExclusionQueryOf<S>,
+    ) -> Option<Result<Option<l::box_model::FloatExclusionIntervalOf<S>>, Refusal>> {
         if node != self.float {
             return None;
         }
         assert_eq!(
             query.flow_axes(),
-            l::FlowAxes::new(self.mode, l::Direction::Ltr)
+            l::geometry::FlowAxes::new(self.mode, l::geometry::Direction::Ltr)
         );
-        assert_eq!(query.margin_box().origin(), l::Point::ZERO);
-        assert_eq!(query.margin_box().size(), l::Size::new(n(40.0), n(18.0)));
+        assert_eq!(query.margin_box().origin(), l::geometry::Point::ZERO);
+        assert_eq!(
+            query.margin_box().size(),
+            l::geometry::Size::new(n(40.0), n(18.0))
+        );
         let nonempty = query.band_minimum() < query.band_maximum();
         let later = nonempty
             && match self.mode {
-                l::WritingMode::VerticalRl => query.band_maximum() <= n(30.0),
-                l::WritingMode::VerticalLr => query.band_minimum() >= n(10.0),
+                l::geometry::WritingMode::VerticalRl => query.band_maximum() <= n(30.0),
+                l::geometry::WritingMode::VerticalLr => query.band_minimum() >= n(10.0),
                 _ => panic!("this provider owns native vertical fixtures"),
             };
         let refused = self.refuse.get() && later;
@@ -87,17 +90,18 @@ impl<S: l::LayoutScalar> l::LayoutTree for ShapeHost<S> {
     }
 }
 
-impl<S: l::LayoutScalar> ShapeHost<S> {
+impl<S: l::scalar::LayoutScalar> ShapeHost<S> {
     fn compute(
         &self,
-        bindings: &[l::TextParagraphBinding<u32>],
+        bindings: &[l::text_layout::TextParagraphBinding<u32>],
         changed: &[u32],
-    ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S, Refusal>> {
-        let flow = l::LayoutFlowInput::try_new(
+    ) -> Result<l::batch::CompletedLayoutBatchOf<u32, S>, l::error::LayoutErrorOf<u32, S, Refusal>>
+    {
+        let flow = l::text_layout::LayoutFlowInput::try_new(
             self,
             0,
             bindings.to_vec(),
-            l::WrappingInput::default(),
+            l::inline_wrapping::WrappingInput::default(),
             Vec::new(),
         )
         .expect("the incoming float is outside the actual captured source window");
@@ -106,11 +110,11 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
             0,
             {
                 let sizing_request = available(40.0, 18.0);
-                l::LayoutRootRequestOf::standalone(
+                l::request::LayoutRootRequestOf::standalone(
                     sizing_request,
-                    surgeist_layout::FlowAxes::new(
-                        surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
-                        surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                    surgeist_layout::geometry::FlowAxes::new(
+                        surgeist_layout::tree::LayoutTree::node_input(self, 0).writing_mode,
+                        surgeist_layout::tree::LayoutTree::node_input(self, 0).direction,
                     ),
                     sizing_request
                         .orthogonal_fallback()
@@ -122,23 +126,23 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
     }
 }
 
-fn scene<S: l::LayoutScalar>(
+fn scene<S: l::scalar::LayoutScalar>(
     parent: &Parent,
     child: &Fixture,
-    mode: l::WritingMode,
-) -> (ShapeHost<S>, Vec<l::TextParagraphBinding<u32>>) {
-    let mut input = root(mode, l::Direction::Ltr, central());
-    input.size = l::Size::new(px(40.0), px(18.0));
+    mode: l::geometry::WritingMode,
+) -> (ShapeHost<S>, Vec<l::text_layout::TextParagraphBinding<u32>>) {
+    let mut input = root(mode, l::geometry::Direction::Ltr, central());
+    input.size = l::geometry::Size::new(px(40.0), px(18.0));
     let mut inner = Host::new(input);
     let float = inner.push(
         Some(0),
-        l::LayoutInputOf::box_input(l::NodeInputOf {
-            display: l::Display::Block,
+        l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+            display: l::box_model::Display::Block,
             writing_mode: mode,
-            float: l::Float::Left,
-            float_exclusion: l::FloatExclusion::Shape,
-            size: l::Size::new(px(40.0), px(18.0)),
-            ..l::NodeInputOf::default()
+            float: l::box_model::Float::Left,
+            float_exclusion: l::box_model::FloatExclusion::Shape,
+            size: l::geometry::Size::new(px(40.0), px(18.0)),
+            ..l::node::NodeInputOf::default()
         }),
     );
     assert_eq!(float, 1);
@@ -158,9 +162,9 @@ fn scene<S: l::LayoutScalar>(
     )
 }
 
-fn same_text_geometry<S: l::LayoutScalar>(
-    left: &l::CompletedLayoutBatchOf<u32, S>,
-    right: &l::CompletedLayoutBatchOf<u32, S>,
+fn same_text_geometry<S: l::scalar::LayoutScalar>(
+    left: &l::batch::CompletedLayoutBatchOf<u32, S>,
+    right: &l::batch::CompletedLayoutBatchOf<u32, S>,
 ) {
     assert_eq!(left.placed_text().len(), right.placed_text().len());
     for row in left.placed_text() {
@@ -195,7 +199,7 @@ fn same_text_geometry<S: l::LayoutScalar>(
     }
 }
 
-fn late_refusal<S: l::LayoutScalar>() {
+fn late_refusal<S: l::scalar::LayoutScalar>() {
     let child = fixture();
     qualify_child::<S>(&child);
     let parent = captured_parent(
@@ -204,7 +208,10 @@ fn late_refusal<S: l::LayoutScalar>() {
         false,
         t::source::Id::from_u64(3),
     );
-    for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
+    for mode in [
+        l::geometry::WritingMode::VerticalRl,
+        l::geometry::WritingMode::VerticalLr,
+    ] {
         let (mut host, bindings) = scene::<S>(&parent, &child, mode);
         let old = host.compute(&bindings, &[]).unwrap();
         let text = placed(&old, 0);
@@ -232,7 +239,7 @@ fn late_refusal<S: l::LayoutScalar>() {
             (18.0, 8.0, 10.0)
         );
         assert_eq!(lines[&1].feedback().advance, 4.0);
-        let c = if mode == l::WritingMode::VerticalRl {
+        let c = if mode == l::geometry::WritingMode::VerticalRl {
             32.0
         } else {
             2.0
@@ -253,23 +260,26 @@ fn late_refusal<S: l::LayoutScalar>() {
         // Err proves that no completed batch is returned. Immutable compute
         // has no sink/application step whose chronology could be observed.
         let error = host.compute(&bindings, &[0, host.float]).unwrap_err();
-        assert_eq!(error.operation(), l::LayoutOperation::FloatExclusionQuery);
+        assert_eq!(
+            error.operation(),
+            l::error::LayoutOperation::FloatExclusionQuery
+        );
         assert_eq!(
             error.site(),
-            l::LayoutErrorSiteOf::ContainerSubject {
+            l::error::LayoutErrorSiteOf::ContainerSubject {
                 container: 0,
                 subject: host.float,
             }
         );
         assert!(matches!(
             error.kind(),
-            l::LayoutErrorKindOf::Measurement(Refusal::LaterBand)
+            l::error::LayoutErrorKindOf::Measurement(Refusal::LaterBand)
         ));
         let queries = host.queries.borrow();
         let failed = queries.iter().position(|(_, refused)| *refused).unwrap();
         let later = &queries[failed].0;
         assert!(later.band_minimum() < later.band_maximum());
-        assert!(if mode == l::WritingMode::VerticalRl {
+        assert!(if mode == l::geometry::WritingMode::VerticalRl {
             later.band_maximum() <= n(30.0)
         } else {
             later.band_minimum() >= n(10.0)
@@ -277,7 +287,7 @@ fn late_refusal<S: l::LayoutScalar>() {
         assert!(
             queries[..failed].iter().any(|(query, refused)| !*refused
                 && query.band_minimum() < query.band_maximum()
-                && if mode == l::WritingMode::VerticalRl {
+                && if mode == l::geometry::WritingMode::VerticalRl {
                     query.band_maximum() > n(30.0)
                 } else {
                     query.band_minimum() < n(10.0)
@@ -294,9 +304,11 @@ fn late_refusal<S: l::LayoutScalar>() {
                 .map(|(node, view)| (
                     node,
                     match view {
-                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
-                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
-                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                            view.unrounded_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                            view.unrounded_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -306,9 +318,11 @@ fn late_refusal<S: l::LayoutScalar>() {
                 .map(|(node, view)| (
                     node,
                     match view {
-                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
-                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
-                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                            view.unrounded_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                            view.unrounded_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -320,9 +334,11 @@ fn late_refusal<S: l::LayoutScalar>() {
                 .map(|(node, view)| (
                     node,
                     match view {
-                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -332,9 +348,11 @@ fn late_refusal<S: l::LayoutScalar>() {
                 .map(|(node, view)| (
                     node,
                     match view {
-                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                            view.final_entry(),
+                        surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -374,9 +392,11 @@ fn late_refusal<S: l::LayoutScalar>() {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -386,9 +406,11 @@ fn late_refusal<S: l::LayoutScalar>() {
                     .map(|(node, view)| (
                         node,
                         match view {
-                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::SingleBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::NonBox(view) =>
+                                view.final_entry(),
+                            surgeist_layout::fragmentation::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))

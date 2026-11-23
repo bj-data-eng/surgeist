@@ -22,7 +22,7 @@ use crate::accounting::{
 use crate::gradient_stops::{GradientPosition, GradientPositionComponent};
 use core::error::Error;
 use std::fmt;
-use surgeist_layout::{PhysicalAxis, Point, Size};
+use surgeist_layout::geometry::{PhysicalAxis, Point, Size};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
 /// Physical side/corner extent of a radial ending shape.

@@ -1,3 +1,5 @@
+//! The numeric lane of a layout computation.
+
 use crate::error::LayoutTextNumericError;
 use core::fmt::Debug;
 use core::ops::{Add, Div, Mul, Neg, Sub};

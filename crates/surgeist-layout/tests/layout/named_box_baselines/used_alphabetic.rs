@@ -417,8 +417,8 @@ fn terminal(p: &t::prepared::PreparedText) -> t::prepared::PreparedOpportunity {
         .unwrap()
         .handle()
 }
-fn placed<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+fn placed<S: l::scalar::LayoutScalar>(
+    batch: &l::batch::CompletedLayoutBatchOf<u32, S>,
     container: u32,
 ) -> &t::layout::Layout {
     batch
@@ -428,31 +428,39 @@ fn placed<S: l::LayoutScalar>(
         .unwrap()
         .layout()
 }
-fn space<S: l::LayoutScalar>(width: f64, height: f64) -> surgeist_layout::SizingRequestOf<S> {
+fn space<S: l::scalar::LayoutScalar>(
+    width: f64,
+    height: f64,
+) -> surgeist_layout::constraint::SizingRequestOf<S> {
     crate::layout::native_request::sizing(
-        surgeist_layout::Size::new(Some(n(width)), Some(n(height))),
-        surgeist_layout::Size::new(
-            surgeist_layout::SizingOperation::Normal,
-            surgeist_layout::SizingOperation::Normal,
+        surgeist_layout::geometry::Size::new(Some(n(width)), Some(n(height))),
+        surgeist_layout::geometry::Size::new(
+            surgeist_layout::constraint::SizingOperation::Normal,
+            surgeist_layout::constraint::SizingOperation::Normal,
         ),
     )
 }
-fn solve<S: l::LayoutScalar>(
+fn solve<S: l::scalar::LayoutScalar>(
     host: &Host<S>,
-    bindings: Vec<l::TextParagraphBinding<u32>>,
+    bindings: Vec<l::text_layout::TextParagraphBinding<u32>>,
     width: f64,
     height: f64,
-) -> l::CompletedLayoutBatchOf<u32, S> {
-    let flow =
-        l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default(), Vec::new())
-            .expect("actual issued origins/atomic must bind to real tree members");
+) -> l::batch::CompletedLayoutBatchOf<u32, S> {
+    let flow = l::text_layout::LayoutFlowInput::try_new(
+        host,
+        0,
+        bindings,
+        l::inline_wrapping::WrappingInput::default(),
+        Vec::new(),
+    )
+    .expect("actual issued origins/atomic must bind to real tree members");
     l::compute_layout_with_flow(&flow, 0, {
         let sizing_request = space(width, height);
-        l::LayoutRootRequestOf::standalone(
+        l::request::LayoutRootRequestOf::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
-                surgeist_layout::LayoutTree::node_input(host, 0).direction,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::tree::LayoutTree::node_input(host, 0).writing_mode,
+                surgeist_layout::tree::LayoutTree::node_input(host, 0).direction,
             ),
             sizing_request
                 .orthogonal_fallback()
@@ -461,30 +469,35 @@ fn solve<S: l::LayoutScalar>(
     })
     .expect("used Alphabetic preparation must supply Layout Named(Alphabetic)")
 }
-fn child_input<S: l::LayoutScalar>(
+fn child_input<S: l::scalar::LayoutScalar>(
     cw: bool,
-    context: l::InlineBaselineContext,
-) -> l::NodeInputOf<S> {
+    context: l::baseline::InlineBaselineContext,
+) -> l::node::NodeInputOf<S> {
     let mut input = root(
         if cw {
-            l::WritingMode::SidewaysRl
+            l::geometry::WritingMode::SidewaysRl
         } else {
-            l::WritingMode::HorizontalTb
+            l::geometry::WritingMode::HorizontalTb
         },
-        l::Direction::Ltr,
+        l::geometry::Direction::Ltr,
         context,
     );
-    input.display = l::Display::InlineBlock;
-    input.size = l::Size::new(px(6.0), px(14.0));
+    input.display = l::box_model::Display::InlineBlock;
+    input.size = l::geometry::Size::new(px(6.0), px(14.0));
     input
 }
-fn child_binding(child: &Captured, container: u32, text: u32) -> l::TextParagraphBinding<u32> {
-    l::TextParagraphBinding {
-        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+fn child_binding(
+    child: &Captured,
+    container: u32,
+    text: u32,
+) -> l::text_layout::TextParagraphBinding<u32> {
+    l::text_layout::TextParagraphBinding {
+        inline_box_fragments:
+            surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: child.prepared.clone(),
         container,
         nodes: vec![text],
-        origins: vec![l::TextOriginBinding {
+        origins: vec![l::text_layout::TextOriginBinding {
             origin: child.prepared.origin_views().next().unwrap().handle(),
             node: text,
         }],
@@ -493,34 +506,44 @@ fn child_binding(child: &Captured, container: u32, text: u32) -> l::TextParagrap
         line_strut: None,
     }
 }
-fn unknown<S: l::LayoutScalar>(facts: l::NamedBaselinesOf<S>) {
+fn unknown<S: l::scalar::LayoutScalar>(facts: l::baseline::NamedBaselinesOf<S>) {
     for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         let pair = facts.get(name);
         assert_eq!(
             (pair.first(), pair.last()),
-            (l::BaselineFactOf::Unknown, l::BaselineFactOf::Unknown)
+            (
+                l::baseline::BaselineFactOf::Unknown,
+                l::baseline::BaselineFactOf::Unknown
+            )
         );
     }
 }
-fn alpha<S: l::LayoutScalar>(
-    facts: l::NamedBaselinesOf<S>,
-    axis: l::PhysicalAxis,
+fn alpha<S: l::scalar::LayoutScalar>(
+    facts: l::baseline::NamedBaselinesOf<S>,
+    axis: l::geometry::PhysicalAxis,
     first: f64,
     last: f64,
 ) {
     let pair = facts.get(FontBaseline::Alphabetic);
     assert_eq!(
         pair.first(),
-        l::BaselineFactOf::Available(l::BaselineCoordinateOf::try_new(axis, n(first)).unwrap())
+        l::baseline::BaselineFactOf::Available(
+            l::baseline::BaselineCoordinateOf::try_new(axis, n(first)).unwrap()
+        )
     );
     assert_eq!(
         pair.last(),
-        l::BaselineFactOf::Available(l::BaselineCoordinateOf::try_new(axis, n(last)).unwrap())
+        l::baseline::BaselineFactOf::Available(
+            l::baseline::BaselineCoordinateOf::try_new(axis, n(last)).unwrap()
+        )
     );
     let other = facts.get(FontBaseline::Central);
     assert_eq!(
         (other.first(), other.last()),
-        (l::BaselineFactOf::Unknown, l::BaselineFactOf::Unknown)
+        (
+            l::baseline::BaselineFactOf::Unknown,
+            l::baseline::BaselineFactOf::Unknown
+        )
     );
 }
 fn qualify_child_text(child: &Captured, bytes: &[u8], cw: bool) {
@@ -619,12 +642,17 @@ fn qualify_child_text(child: &Captured, bytes: &[u8], cw: bool) {
         .collect::<Vec<_>>();
     assert_eq!(origins, if cw { vec![1.5, -4.5] } else { vec![4.5, 10.5] });
 }
-fn qualify_physical_child<S: l::LayoutScalar>(child: &Captured, cw: bool) {
-    let mut host = Host::<S>::new(child_input(cw, l::InlineBaselineContext::Physical));
+fn qualify_physical_child<S: l::scalar::LayoutScalar>(child: &Captured, cw: bool) {
+    let mut host = Host::<S>::new(child_input(
+        cw,
+        l::baseline::InlineBaselineContext::Physical,
+    ));
     let binding = child_binding(child, 0, 1);
     host.push(
         Some(0),
-        l::LayoutInputOf::inline_text(l::TextParticipation::new(binding.origins[0].origin.clone())),
+        l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+            binding.origins[0].origin.clone(),
+        )),
     );
     let batch = solve(&host, vec![binding], 6.0, 14.0);
     let text = placed(&batch, 0);
@@ -637,7 +665,7 @@ fn qualify_physical_child<S: l::LayoutScalar>(child: &Captured, cw: bool) {
     );
     assert_eq!(
         node(crate::layout::observation::phase(&batch, false), 0).size,
-        l::Size::new(n(6.0), n(14.0))
+        l::geometry::Size::new(n(6.0), n(14.0))
     );
     unknown(node(crate::layout::observation::phase(&batch, false), 0).named_baselines);
     unknown(node(crate::layout::observation::phase(&batch, true), 0).named_baselines);
@@ -652,8 +680,8 @@ fn qualify_physical_child<S: l::LayoutScalar>(child: &Captured, cw: bool) {
 
 #[derive(Clone, Copy)]
 struct Case {
-    mode: l::WritingMode,
-    source: l::BaselineSource,
+    mode: l::geometry::WritingMode,
+    source: l::baseline::BaselineSource,
     baseline: f64,
     before: f64,
     height: f64,
@@ -664,8 +692,8 @@ struct Case {
 }
 const CASES: [Case; 8] = [
     Case {
-        mode: l::WritingMode::HorizontalTb,
-        source: l::BaselineSource::First,
+        mode: l::geometry::WritingMode::HorizontalTb,
+        source: l::baseline::BaselineSource::First,
         baseline: 7.0,
         before: 7.0,
         height: 17.0,
@@ -675,8 +703,8 @@ const CASES: [Case; 8] = [
         child_reference: 4.0,
     },
     Case {
-        mode: l::WritingMode::HorizontalTb,
-        source: l::BaselineSource::Last,
+        mode: l::geometry::WritingMode::HorizontalTb,
+        source: l::baseline::BaselineSource::Last,
         baseline: 10.0,
         before: 10.0,
         height: 14.0,
@@ -686,8 +714,8 @@ const CASES: [Case; 8] = [
         child_reference: 10.0,
     },
     Case {
-        mode: l::WritingMode::SidewaysRl,
-        source: l::BaselineSource::First,
+        mode: l::geometry::WritingMode::SidewaysRl,
+        source: l::baseline::BaselineSource::First,
         baseline: 33.0,
         before: 7.0,
         height: 10.0,
@@ -697,8 +725,8 @@ const CASES: [Case; 8] = [
         child_reference: 2.0,
     },
     Case {
-        mode: l::WritingMode::SidewaysRl,
-        source: l::BaselineSource::Last,
+        mode: l::geometry::WritingMode::SidewaysRl,
+        source: l::baseline::BaselineSource::Last,
         baseline: 30.0,
         before: 10.0,
         height: 13.0,
@@ -708,8 +736,8 @@ const CASES: [Case; 8] = [
         child_reference: -4.0,
     },
     Case {
-        mode: l::WritingMode::VerticalRl,
-        source: l::BaselineSource::First,
+        mode: l::geometry::WritingMode::VerticalRl,
+        source: l::baseline::BaselineSource::First,
         baseline: 33.0,
         before: 7.0,
         height: 10.0,
@@ -719,8 +747,8 @@ const CASES: [Case; 8] = [
         child_reference: 2.0,
     },
     Case {
-        mode: l::WritingMode::VerticalRl,
-        source: l::BaselineSource::Last,
+        mode: l::geometry::WritingMode::VerticalRl,
+        source: l::baseline::BaselineSource::Last,
         baseline: 30.0,
         before: 10.0,
         height: 13.0,
@@ -730,8 +758,8 @@ const CASES: [Case; 8] = [
         child_reference: -4.0,
     },
     Case {
-        mode: l::WritingMode::VerticalLr,
-        source: l::BaselineSource::First,
+        mode: l::geometry::WritingMode::VerticalLr,
+        source: l::baseline::BaselineSource::First,
         baseline: 3.0,
         before: 7.0,
         height: 10.0,
@@ -741,8 +769,8 @@ const CASES: [Case; 8] = [
         child_reference: 2.0,
     },
     Case {
-        mode: l::WritingMode::VerticalLr,
-        source: l::BaselineSource::Last,
+        mode: l::geometry::WritingMode::VerticalLr,
+        source: l::baseline::BaselineSource::Last,
         baseline: 3.0,
         before: 10.0,
         height: 13.0,
@@ -753,7 +781,7 @@ const CASES: [Case; 8] = [
     },
 ];
 fn parent_allocation(parent: &Captured, case: Case) -> t::allocation::AtomicAllocation {
-    let cw = case.mode != l::WritingMode::HorizontalTb;
+    let cw = case.mode != l::geometry::WritingMode::HorizontalTb;
     let p = case.child_reference;
     let before = if cw { 6.0 - p } else { p };
     let rect = if cw {
@@ -783,7 +811,7 @@ fn parent_allocation(parent: &Captured, case: Case) -> t::allocation::AtomicAllo
     }
 }
 fn qualify_parent_text(parent: &Captured, bytes: &[u8], case: Case) {
-    let cw = case.mode != l::WritingMode::HorizontalTb;
+    let cw = case.mode != l::geometry::WritingMode::HorizontalTb;
     let line = select(
         parent,
         parent.prepared.boundary_views().next().unwrap().handle(),
@@ -856,11 +884,16 @@ fn qualify_parent_text(parent: &Captured, bytes: &[u8], case: Case) {
         );
     }
 }
-fn actual<S: l::LayoutScalar>(bytes: &[u8], parent: &Captured, child: &Captured, case: Case) {
-    let cw = case.mode != l::WritingMode::HorizontalTb;
-    let context = l::InlineBaselineContext::Named(FontBaseline::Alphabetic);
-    let mut input = root(case.mode, l::Direction::Ltr, context);
-    input.size = l::Size::new(px(40.0), px(40.0));
+fn actual<S: l::scalar::LayoutScalar>(
+    bytes: &[u8],
+    parent: &Captured,
+    child: &Captured,
+    case: Case,
+) {
+    let cw = case.mode != l::geometry::WritingMode::HorizontalTb;
+    let context = l::baseline::InlineBaselineContext::Named(FontBaseline::Alphabetic);
+    let mut input = root(case.mode, l::geometry::Direction::Ltr, context);
+    input.size = l::geometry::Size::new(px(40.0), px(40.0));
     let mut host = Host::<S>::new(input);
     let origins = parent
         .prepared
@@ -869,31 +902,41 @@ fn actual<S: l::LayoutScalar>(bytes: &[u8], parent: &Captured, child: &Captured,
         .collect::<Vec<_>>();
     host.push(
         Some(0),
-        l::LayoutInputOf::inline_text(l::TextParticipation::new(origins[0].clone())),
+        l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+            origins[0].clone(),
+        )),
     );
     let mut input = child_input(cw, context);
     input.baseline_source = case.source;
-    assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(input)), 2);
+    assert_eq!(
+        host.push(Some(0), l::node::LayoutInputOf::box_input(input)),
+        2
+    );
     host.push(
         Some(0),
-        l::LayoutInputOf::inline_text(l::TextParticipation::new(origins[1].clone())),
+        l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+            origins[1].clone(),
+        )),
     );
     let inner = child_binding(child, 2, 4);
     host.push(
         Some(2),
-        l::LayoutInputOf::inline_text(l::TextParticipation::new(inner.origins[0].origin.clone())),
+        l::node::LayoutInputOf::inline_text(l::text_layout::TextParticipation::new(
+            inner.origins[0].origin.clone(),
+        )),
     );
-    let outer = l::TextParagraphBinding {
-        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
+    let outer = l::text_layout::TextParagraphBinding {
+        inline_box_fragments:
+            surgeist_layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: parent.prepared.clone(),
         container: 0,
         nodes: vec![1, 2, 3],
         origins: origins
             .into_iter()
             .zip([1, 3])
-            .map(|(origin, node)| l::TextOriginBinding { origin, node })
+            .map(|(origin, node)| l::text_layout::TextOriginBinding { origin, node })
             .collect(),
-        atomics: vec![l::TextAtomicBinding {
+        atomics: vec![l::text_layout::TextAtomicBinding {
             occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
             node: 2,
         }],
@@ -902,9 +945,9 @@ fn actual<S: l::LayoutScalar>(bytes: &[u8], parent: &Captured, child: &Captured,
     };
     let batch = solve(&host, vec![outer, inner], 40.0, 40.0);
     let axis = if cw {
-        l::PhysicalAxis::Horizontal
+        l::geometry::PhysicalAxis::Horizontal
     } else {
-        l::PhysicalAxis::Vertical
+        l::geometry::PhysicalAxis::Vertical
     };
     for entries in [
         crate::layout::observation::phase(&batch, false),
@@ -925,9 +968,9 @@ fn actual<S: l::LayoutScalar>(bytes: &[u8], parent: &Captured, child: &Captured,
         );
         assert_eq!(
             output.location,
-            l::Point::new(n(case.child_x), n(case.child_y))
+            l::geometry::Point::new(n(case.child_x), n(case.child_y))
         );
-        assert_eq!(output.size, l::Size::new(n(6.0), n(14.0)));
+        assert_eq!(output.size, l::geometry::Size::new(n(6.0), n(14.0)));
         assert_eq!(
             if cw {
                 output.location.x.to_f64()
@@ -992,7 +1035,7 @@ fn actual<S: l::LayoutScalar>(bytes: &[u8], parent: &Captured, child: &Captured,
     let line = batch
         .unrounded_inline_fragments()
         .iter()
-        .find(|row| matches!(row.owner(), l::InlineFragmentOwner::Node(1)))
+        .find(|row| matches!(row.owner(), l::text_layout::InlineFragmentOwner::Node(1)))
         .unwrap()
         .fragment()
         .finalized_fragment()
@@ -1007,7 +1050,7 @@ fn actual<S: l::LayoutScalar>(bytes: &[u8], parent: &Captured, child: &Captured,
         parent.prepared.atomic_views().next().unwrap().handle()
     );
 }
-fn core<S: l::LayoutScalar>() {
+fn core<S: l::scalar::LayoutScalar>() {
     let bytes = font();
     qualify_font(&bytes);
     let mut system = t::System::default();
@@ -1060,7 +1103,7 @@ fn core<S: l::LayoutScalar>() {
     // All standalone new-producer controls precede the intended Layout RED.
     for case in CASES {
         qualify_parent_text(
-            if case.mode == l::WritingMode::HorizontalTb {
+            if case.mode == l::geometry::WritingMode::HorizontalTb {
                 &parent_h
             } else {
                 &parent_cw
@@ -1070,7 +1113,7 @@ fn core<S: l::LayoutScalar>() {
         );
     }
     for case in CASES {
-        let cw = case.mode != l::WritingMode::HorizontalTb;
+        let cw = case.mode != l::geometry::WritingMode::HorizontalTb;
         actual::<S>(
             &bytes,
             if cw { &parent_cw } else { &parent_h },

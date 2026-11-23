@@ -3,12 +3,12 @@ use std::{convert::Infallible, slice};
 use surgeist_layout as l;
 use surgeist_text::supplied_line::BidiLevel;
 
-struct AtomicTree<S: l::LayoutScalar> {
-    inputs: Vec<l::LayoutInputOf<S>>,
+struct AtomicTree<S: l::scalar::LayoutScalar> {
+    inputs: Vec<l::node::LayoutInputOf<S>>,
     children: Vec<Vec<u32>>,
-    non_box: l::NodeInputOf<S>,
+    non_box: l::node::NodeInputOf<S>,
 }
-impl<S: l::LayoutScalar> l::Traverse for AtomicTree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::Traverse for AtomicTree<S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -25,52 +25,57 @@ impl<S: l::LayoutScalar> l::Traverse for AtomicTree<S> {
         self.children[node as usize][index]
     }
 }
-impl<S: l::LayoutScalar> l::LayoutTree for AtomicTree<S> {
+impl<S: l::scalar::LayoutScalar> l::tree::LayoutTree for AtomicTree<S> {
     type MeasureError = Infallible;
-    fn node_input(&self, node: u32) -> &l::NodeInputOf<S> {
+    fn node_input(&self, node: u32) -> &l::node::NodeInputOf<S> {
         self.inputs[node as usize].as_box().unwrap_or(&self.non_box)
     }
-    fn layout_input(&self, node: u32) -> l::LayoutInputViewOf<'_, S> {
+    fn layout_input(&self, node: u32) -> l::node::LayoutInputViewOf<'_, S> {
         self.inputs[node as usize].as_view()
     }
 }
-impl<S: l::LayoutScalar> AtomicTree<S> {
-    fn new(direction: l::Direction, capacity: f64, widths: &[f64], levels: &[u8]) -> Self {
+impl<S: l::scalar::LayoutScalar> AtomicTree<S> {
+    fn new(
+        direction: l::geometry::Direction,
+        capacity: f64,
+        widths: &[f64],
+        levels: &[u8],
+    ) -> Self {
         assert_eq!(widths.len(), levels.len());
-        let mut inputs = vec![l::LayoutInputOf::box_input(l::NodeInputOf {
-            display: l::Display::Block,
+        let mut inputs = vec![l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+            display: l::box_model::Display::Block,
             direction,
-            writing_mode: l::WritingMode::HorizontalTb,
-            text_wrap_style: l::TextWrapStyle::Auto,
-            text_align: l::TextAlign::Start,
-            text_align_last: l::TextAlignLast::Start,
-            size: l::Size::new(
-                l::PreferredSizeOf::value(
-                    l::LengthPercentageOf::px(S::from_f64(capacity)).unwrap(),
+            writing_mode: l::geometry::WritingMode::HorizontalTb,
+            text_wrap_style: l::text_flow::TextWrapStyle::Auto,
+            text_align: l::text_flow::TextAlign::Start,
+            text_align_last: l::text_flow::TextAlignLast::Start,
+            size: l::geometry::Size::new(
+                l::sizing::PreferredSizeOf::value(
+                    l::length::LengthPercentageOf::px(S::from_f64(capacity)).unwrap(),
                 ),
-                l::PreferredSizeOf::AUTO,
+                l::sizing::PreferredSizeOf::AUTO,
             ),
-            ..l::NodeInputOf::default()
+            ..l::node::NodeInputOf::default()
         })];
         for (&width, &level) in widths.iter().zip(levels) {
             assert!(width > 0.0);
-            inputs.push(l::LayoutInputOf::box_input(l::NodeInputOf {
-                display: l::Display::InlineBlock,
+            inputs.push(l::node::LayoutInputOf::box_input(l::node::NodeInputOf {
+                display: l::box_model::Display::InlineBlock,
                 direction,
-                vertical_align: l::VerticalAlignOf::Baseline,
-                atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
+                vertical_align: l::inline::VerticalAlignOf::Baseline,
+                atomic_inline_participation: Some(l::inline::AtomicInlineParticipation::new(
                     BidiLevel::try_new(level).unwrap(),
-                    l::InlineBreakOpportunity::Allowed,
+                    l::text_flow::InlineBreakOpportunity::Allowed,
                 )),
-                size: l::Size::new(
-                    l::PreferredSizeOf::value(
-                        l::LengthPercentageOf::px(S::from_f64(width)).unwrap(),
+                size: l::geometry::Size::new(
+                    l::sizing::PreferredSizeOf::value(
+                        l::length::LengthPercentageOf::px(S::from_f64(width)).unwrap(),
                     ),
-                    l::PreferredSizeOf::value(
-                        l::LengthPercentageOf::px(S::from_f64(10.0)).unwrap(),
+                    l::sizing::PreferredSizeOf::value(
+                        l::length::LengthPercentageOf::px(S::from_f64(10.0)).unwrap(),
                     ),
                 ),
-                ..l::NodeInputOf::default()
+                ..l::node::NodeInputOf::default()
             }));
         }
         let mut children = vec![vec![]; inputs.len()];
@@ -80,18 +85,18 @@ impl<S: l::LayoutScalar> AtomicTree<S> {
         Self {
             inputs,
             children,
-            non_box: l::NodeInputOf::non_box(),
+            non_box: l::node::NodeInputOf::non_box(),
         }
     }
 }
-fn output<S: l::LayoutScalar>(
-    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+fn output<S: l::scalar::LayoutScalar>(
+    entries: (&l::batch::CompletedLayoutBatchOf<u32, S>, bool),
     node: u32,
 ) -> crate::layout::observation::Observation<S> {
     crate::layout::observation::observe(entries, node, crate::layout::observation::Kind::Box)
 }
-fn assert_placement<S: l::LayoutScalar>(
-    direction: l::Direction,
+fn assert_placement<S: l::scalar::LayoutScalar>(
+    direction: l::geometry::Direction,
     capacity: f64,
     widths: &[f64],
     levels: &[u8],
@@ -110,21 +115,24 @@ fn assert_placement<S: l::LayoutScalar>(
             .atomic_inline_participation
             .unwrap();
         assert_eq!(actual.bidi_level().get(), level);
-        assert_eq!(actual.following_break(), l::InlineBreakOpportunity::Allowed);
+        assert_eq!(
+            actual.following_break(),
+            l::text_flow::InlineBreakOpportunity::Allowed
+        );
     }
     let request = {
         let sizing_request = crate::layout::native_request::sizing(
-            surgeist_layout::Size::new(Some(S::from_f64(capacity)), None),
-            surgeist_layout::Size::new(
-                surgeist_layout::SizingOperation::Normal,
-                surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::geometry::Size::new(Some(S::from_f64(capacity)), None),
+            surgeist_layout::geometry::Size::new(
+                surgeist_layout::constraint::SizingOperation::Normal,
+                surgeist_layout::constraint::SizingOperation::Normal,
             ),
         );
-        l::LayoutRootRequestOf::standalone(
+        l::request::LayoutRootRequestOf::standalone(
             sizing_request,
-            surgeist_layout::FlowAxes::new(
-                surgeist_layout::LayoutTree::node_input(&tree, 0).writing_mode,
-                surgeist_layout::LayoutTree::node_input(&tree, 0).direction,
+            surgeist_layout::geometry::FlowAxes::new(
+                surgeist_layout::tree::LayoutTree::node_input(&tree, 0).writing_mode,
+                surgeist_layout::tree::LayoutTree::node_input(&tree, 0).direction,
             ),
             sizing_request
                 .orthogonal_fallback()
@@ -142,16 +150,16 @@ fn assert_placement<S: l::LayoutScalar>(
     ] {
         assert_eq!(
             output(entries, 0).size,
-            l::Size::new(S::from_f64(capacity), S::from_f64(10.0))
+            l::geometry::Size::new(S::from_f64(capacity), S::from_f64(10.0))
         );
         let mut physical = vec![];
         for (i, (&width, &x)) in widths.iter().zip(source_x).enumerate() {
             let id = u32::try_from(i + 1).unwrap();
             let actual = output(entries, id);
-            assert_eq!(actual.source_index, l::SourceIndex::new(i));
+            assert_eq!(actual.source_index, l::node::SourceIndex::new(i));
             assert_eq!(
                 actual.size,
-                l::Size::new(S::from_f64(width), S::from_f64(10.0))
+                l::geometry::Size::new(S::from_f64(width), S::from_f64(10.0))
             );
             assert_eq!(actual.location.y, S::ZERO);
             assert_eq!(
@@ -187,7 +195,7 @@ macro_rules! scalar_cases {
             #[test]
             fn ltr_even_levels_keep_source_order() {
                 assert_placement::<$scalar>(
-                    l::Direction::Ltr,
+                    l::geometry::Direction::Ltr,
                     60.0,
                     &[30.0, 20.0, 10.0],
                     &[0, 0, 0],
@@ -201,7 +209,7 @@ macro_rules! scalar_cases {
                 // L2 reverses the complete level1 run: C,B,A. Physical widths
                 // then accumulate from the occupied interval's left edge.
                 assert_placement::<$scalar>(
-                    l::Direction::Rtl,
+                    l::geometry::Direction::Rtl,
                     60.0,
                     &[30.0, 20.0, 10.0],
                     &[1, 1, 1],
@@ -213,7 +221,7 @@ macro_rules! scalar_cases {
             #[test]
             fn rtl_partial_line_keeps_reversed_order_in_right_aligned_hull() {
                 assert_placement::<$scalar>(
-                    l::Direction::Rtl,
+                    l::geometry::Direction::Rtl,
                     100.0,
                     &[30.0, 20.0, 10.0],
                     &[1, 1, 1],
@@ -226,7 +234,7 @@ macro_rules! scalar_cases {
             fn ltr_mixed_levels_reverse_only_the_odd_subsequence() {
                 // Level1 B,C reverses to C,B; the level0 exterior stays A,D.
                 assert_placement::<$scalar>(
-                    l::Direction::Ltr,
+                    l::geometry::Direction::Ltr,
                     100.0,
                     &[30.0, 20.0, 10.0, 10.0],
                     &[0, 1, 1, 0],
@@ -240,7 +248,7 @@ macro_rules! scalar_cases {
                 // L2 level2 first reverses B,C, then level1 reverses all slots:
                 // A,C,B,D becomes D,B,C,A. The70-unit hull begins at30.
                 assert_placement::<$scalar>(
-                    l::Direction::Rtl,
+                    l::geometry::Direction::Rtl,
                     100.0,
                     &[30.0, 20.0, 10.0, 10.0],
                     &[1, 2, 2, 1],

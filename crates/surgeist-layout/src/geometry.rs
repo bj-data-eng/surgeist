@@ -1,15 +1,22 @@
+//! Physical points, sizes, edges and axes, and the writing-mode mapping of `FlowAxes`.
+
 use core::ops::{Add, Sub};
 
-use crate::{
-    node_input::{Direction, WritingMode},
-    scalar::{DefaultScalar, LayoutScalar},
-};
+use crate::scalar::{DefaultScalar, LayoutScalar};
+
+pub use crate::node_input::{Direction, WritingMode};
 
 /// A physical x/y coordinate axis.
 ///
 /// ```compile_fail
-/// use surgeist_layout::PhysicalAxis;
+/// use surgeist_layout::geometry::PhysicalAxis;
 /// let _ = PhysicalAxis::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::geometry::PhysicalAxis;
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PhysicalAxis {
@@ -30,8 +37,14 @@ impl PhysicalAxis {
 /// A flow-relative axis used by crate-private layout algorithms.
 ///
 /// ```compile_fail
-/// use surgeist_layout::LogicalAxis;
+/// use surgeist_layout::geometry::LogicalAxis;
 /// let _ = LogicalAxis::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::geometry::LogicalAxis;
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LogicalAxis {
@@ -72,8 +85,14 @@ impl PhysicalProgression {
 /// A side of a physical rectangle.
 ///
 /// ```compile_fail
-/// use surgeist_layout::PhysicalSide;
+/// use surgeist_layout::geometry::PhysicalSide;
 /// let _ = PhysicalSide::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::geometry::PhysicalSide;
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PhysicalSide {
@@ -116,8 +135,14 @@ impl PhysicalSide {
 /// resolved used inline `Direction`; it has no context-free fallback.
 ///
 /// ```compile_fail
-/// use surgeist_layout::FlowAxes;
+/// use surgeist_layout::geometry::FlowAxes;
 /// let _ = FlowAxes::default();
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::geometry::FlowAxes;
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FlowAxes {
@@ -720,13 +745,19 @@ impl<S: LayoutScalar> LogicalRectOf<S> {
 /// available on physical points.
 ///
 /// ```compile_fail
-/// use surgeist_layout::{FlexDirection, Point};
+/// use surgeist_layout::{flex::FlexDirection, geometry::Point};
 /// let _ = Point::new(1.0, 2.0).main(FlexDirection::Row);
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::{FlexDirection, Point};
+/// use surgeist_layout::{flex::FlexDirection, geometry::Point};
 /// let _ = Point::new(1.0, 2.0).cross(FlexDirection::Column);
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::{flex::FlexDirection, geometry::Point};
 /// ```
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Point<T = DefaultScalar> {
@@ -771,18 +802,24 @@ impl<S: LayoutScalar> Point<S> {
 /// available on physical sizes.
 ///
 /// ```compile_fail
-/// use surgeist_layout::{FlexDirection, Size};
+/// use surgeist_layout::{flex::FlexDirection, geometry::Size};
 /// let _ = Size::new(1.0, 2.0).main(FlexDirection::Row);
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::{FlexDirection, Size};
+/// use surgeist_layout::{flex::FlexDirection, geometry::Size};
 /// let _ = Size::new(1.0, 2.0).cross(FlexDirection::Column);
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::{FlexDirection, Size};
+/// use surgeist_layout::{flex::FlexDirection, geometry::Size};
 /// let _ = Size::from_cross(FlexDirection::Row, Some(1.0));
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::{flex::FlexDirection, geometry::Size};
 /// ```
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Size<T = DefaultScalar> {
@@ -868,13 +905,19 @@ impl<U, T: Sub<U>> Sub<Size<U>> for Size<T> {
 /// available on physical edges.
 ///
 /// ```compile_fail
-/// use surgeist_layout::{Edges, FlexDirection};
+/// use surgeist_layout::{flex::FlexDirection, geometry::Edges};
 /// let _ = Edges::all(1.0).main_sum(FlexDirection::Row);
 /// ```
 ///
 /// ```compile_fail
-/// use surgeist_layout::{Edges, FlexDirection};
+/// use surgeist_layout::{flex::FlexDirection, geometry::Edges};
 /// let _ = Edges::all(1.0).cross_sum(FlexDirection::Column);
+/// ```
+///
+/// The imports of the failing examples above resolve:
+///
+/// ```no_run
+/// use surgeist_layout::{flex::FlexDirection, geometry::Edges};
 /// ```
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Edges<T = DefaultScalar> {
@@ -981,7 +1024,6 @@ impl<S: LayoutScalar> Edges<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node_input::{Direction, WritingMode};
 
     fn assert_fri06_mr02_physical_edge_geometry_carrier<T>(edges: Edges<T>)
     where

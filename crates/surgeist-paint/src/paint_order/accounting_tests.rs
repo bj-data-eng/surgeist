@@ -4,7 +4,7 @@ use crate::stacking::{
     BoxFacts, BoxId, ChildOrder, ContextEffect, Participation, Position, ZIndex,
 };
 use std::{cell::Cell, time::Duration};
-use surgeist_layout::SourceIndex;
+use surgeist_layout::node::SourceIndex;
 use surgeist_ledger::ProfileMode;
 
 struct Fixture {

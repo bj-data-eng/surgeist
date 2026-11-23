@@ -237,8 +237,8 @@ fn prepare(
     prepared
 }
 
-fn composition(bytes: &[u8], mode: layout::WritingMode) {
-    let horizontal = mode == layout::WritingMode::HorizontalTb;
+fn composition(bytes: &[u8], mode: layout::geometry::WritingMode) {
+    let horizontal = mode == layout::geometry::WritingMode::HorizontalTb;
     let orientation = if horizontal {
         text::selection::LineOrientation::Horizontal
     } else {
@@ -252,31 +252,37 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
         .unwrap();
     let prepared = prepare(&mut system, &source, orientation);
     let origin = prepared.origin_views().next().unwrap().handle();
-    let px = |value| layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(value).unwrap());
+    let px = |value| {
+        layout::sizing::PreferredSizeOf::value(
+            layout::length::LengthPercentageOf::px(value).unwrap(),
+        )
+    };
     let tree = Tree {
         inputs: [
-            layout::LayoutInput::box_input(layout::NodeInput {
-                display: layout::Display::Block,
+            layout::node::LayoutInput::box_input(layout::node::NodeInput {
+                display: layout::box_model::Display::Block,
                 writing_mode: mode,
-                inline_baseline_context: layout::InlineBaselineContext::Named(
+                inline_baseline_context: layout::baseline::InlineBaselineContext::Named(
                     FontBaseline::Alphabetic,
                 ),
-                size: layout::Size::new(px(40.0), px(40.0)),
-                ..layout::NodeInput::DEFAULT
+                size: layout::geometry::Size::new(px(40.0), px(40.0)),
+                ..layout::node::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::inline_text(layout::TextParticipation::new(origin.clone())),
+            layout::node::LayoutInput::inline_text(layout::text_layout::TextParticipation::new(
+                origin.clone(),
+            )),
         ],
-        non_box: layout::NodeInput::non_box(),
+        non_box: layout::node::NodeInput::non_box(),
     };
-    let flow = layout::LayoutFlowInput::try_new(
+    let flow = layout::text_layout::LayoutFlowInput::try_new(
         &tree,
         0,
-        vec![layout::TextParagraphBinding {
-            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
+        vec![layout::text_layout::TextParagraphBinding {
+            inline_box_fragments: layout::text_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 0,
             nodes: vec![1],
-            origins: vec![layout::TextOriginBinding {
+            origins: vec![layout::text_layout::TextOriginBinding {
                 origin: origin.clone(),
                 node: 1,
             }],
@@ -284,7 +290,7 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
             controls: vec![],
             line_strut: None,
         }],
-        layout::WrappingInput::default(),
+        layout::inline_wrapping::WrappingInput::default(),
         Vec::new(),
     )
     .unwrap();
@@ -292,12 +298,12 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
         &flow,
         0,
         NativeViewport::new(
-            layout::Size::new(Some(40.0), Some(40.0)),
-            layout::FlowAxes::new(mode, layout::Direction::Ltr),
+            layout::geometry::Size::new(Some(40.0), Some(40.0)),
+            layout::geometry::FlowAxes::new(mode, layout::geometry::Direction::Ltr),
         )
-        .request(layout::Size::new(
-            layout::SizingOperation::Normal,
-            layout::SizingOperation::Normal,
+        .request(layout::geometry::Size::new(
+            layout::constraint::SizingOperation::Normal,
+            layout::constraint::SizingOperation::Normal,
         )),
     )
     .unwrap();
@@ -307,15 +313,17 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
     // Their real component maxima are9/3/H12. One common alignment is
     // y9 for H, x(40-9)=31 for Vrl/Srl, and x(12-9)=3 for Vlr.
     let common = match mode {
-        layout::WritingMode::HorizontalTb => 9.0,
-        layout::WritingMode::VerticalLr => 3.0,
-        layout::WritingMode::VerticalRl | layout::WritingMode::SidewaysRl => 31.0,
+        layout::geometry::WritingMode::HorizontalTb => 9.0,
+        layout::geometry::WritingMode::VerticalLr => 3.0,
+        layout::geometry::WritingMode::VerticalRl | layout::geometry::WritingMode::SidewaysRl => {
+            31.0
+        }
         _ => unreachable!("the test supplies only supported H/CW profiles"),
     };
     let axis = if horizontal {
-        layout::PhysicalAxis::Vertical
+        layout::geometry::PhysicalAxis::Vertical
     } else {
-        layout::PhysicalAxis::Horizontal
+        layout::geometry::PhysicalAxis::Horizontal
     };
     let root = batch
         .node_layout(0)
@@ -324,8 +332,8 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
         .expect("root produces one box");
     for output in [root.unrounded_output(), root.final_output()] {
         let pair = output.named_baselines.get(FontBaseline::Alphabetic);
-        let fact = layout::BaselineFactOf::Available(
-            layout::BaselineCoordinateOf::try_new(axis, common as f32).unwrap(),
+        let fact = layout::baseline::BaselineFactOf::Available(
+            layout::baseline::BaselineCoordinateOf::try_new(axis, common as f32).unwrap(),
         );
         assert_eq!((pair.first(), pair.last()), (fact, fact));
     }
@@ -574,10 +582,10 @@ fn actual_used_alphabetic_script_origins_reach_render_from_named_layout() {
         assert_eq!(admitted.bounds().ink_rect(), Some(expected));
     }
     for mode in [
-        layout::WritingMode::HorizontalTb,
-        layout::WritingMode::SidewaysRl,
-        layout::WritingMode::VerticalRl,
-        layout::WritingMode::VerticalLr,
+        layout::geometry::WritingMode::HorizontalTb,
+        layout::geometry::WritingMode::SidewaysRl,
+        layout::geometry::WritingMode::VerticalRl,
+        layout::geometry::WritingMode::VerticalLr,
     ] {
         composition(&bytes, mode);
     }
