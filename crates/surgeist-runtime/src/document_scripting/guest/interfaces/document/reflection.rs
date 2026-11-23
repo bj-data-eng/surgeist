@@ -400,7 +400,7 @@ impl Receiver {
     }
 }
 
-fn html_element_is(node: DomNode<'_>, interface: &str) -> bool {
+pub(super) fn html_element_is(node: DomNode<'_>, interface: &str) -> bool {
     node.as_element().is_some_and(|element| {
         !element.has_failed_construction_interface()
             && KnownHtmlElement::from_name(element.name())

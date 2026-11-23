@@ -879,7 +879,13 @@ fn install_html_members<'scope>(
         "HTMLHtmlElement" => LocalString::Html.install(scope, prototype, capture)?,
         "HTMLBaseElement" => LocalString::Base.install(scope, prototype, capture)?,
         "HTMLModElement" => LocalString::Mod.install(scope, prototype, capture)?,
-        "HTMLMapElement" => LocalString::Map.install(scope, prototype, capture)?,
+        "HTMLMapElement" => {
+            LocalString::Map.install(scope, prototype, capture)?;
+            super::element_collections::MAP_AREAS.install(scope, prototype, capture)?;
+        }
+        "HTMLDataListElement" => {
+            super::element_collections::DATALIST_OPTIONS.install(scope, prototype, capture)?;
+        }
         "HTMLElement" => {
             super::reflection::install(
                 scope,

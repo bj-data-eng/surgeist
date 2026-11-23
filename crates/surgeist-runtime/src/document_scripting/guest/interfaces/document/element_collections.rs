@@ -1,17 +1,67 @@
 //! Ordinary Element traversal and live descendant queries.
 
-use super::tree_mutations::Receiver;
 use super::*;
+use super::{element::HTML_NAMESPACE, reflection::html_element_is, tree_mutations::Receiver};
 use surgeist_bindings_js::{
     DomString,
     conversion::{Argument, Nullable, Type, declarations},
 };
-use surgeist_dom::tree::{DomDescendantQueryRoot, DomHtmlCollectionLimits};
+use surgeist_dom::tree::{DomDescendantQueryRoot, DomHtmlCollectionLimits, DomNode};
 
 const CHILDREN_REFERENCE: u32 = 11;
 const GET_BY_TAG: &[u16] = &ascii(b"getElementsByTagName");
 const GET_BY_TAG_NS: &[u16] = &ascii(b"getElementsByTagNameNS");
 const GET_BY_CLASS: &[u16] = &ascii(b"getElementsByClassName");
+
+#[derive(Clone, Copy)]
+pub(super) struct DescendantCollection {
+    member: &'static [u16],
+    getter: &'static [u16],
+    interface: &'static str,
+    required: &'static [u16],
+    local_name: &'static [u16],
+    cache_reference: u32,
+}
+
+pub(super) const MAP_AREAS: DescendantCollection = DescendantCollection {
+    member: &ascii(b"areas"),
+    getter: &ascii(b"get areas"),
+    interface: "HTMLMapElement",
+    required: &ascii(b"HTMLMapElement required"),
+    local_name: &ascii(b"area"),
+    cache_reference: 19,
+};
+
+pub(super) const DATALIST_OPTIONS: DescendantCollection = DescendantCollection {
+    member: &ascii(b"options"),
+    getter: &ascii(b"get options"),
+    interface: "HTMLDataListElement",
+    required: &ascii(b"HTMLDataListElement required"),
+    local_name: &ascii(b"option"),
+    cache_reference: 20,
+};
+
+impl DescendantCollection {
+    pub(super) fn install<'scope>(
+        self,
+        scope: &mut Scope<'scope>,
+        prototype: &Value<'scope>,
+        capture: CaptureFunding<'_>,
+    ) -> Result<(), DocumentGuestEventError> {
+        let handler = capture(size_of::<(Capture, Self)>())?;
+        install_getter(
+            scope,
+            prototype,
+            self.member,
+            self.getter,
+            true,
+            Callback::new(move |scope, arguments| {
+                handler.descendant_collection(scope, arguments, self)
+            }),
+        )?;
+        Ok(())
+    }
+}
 
 #[derive(Clone, Copy)]
 enum ParentMember {
@@ -245,7 +295,7 @@ impl Capture {
             let (collection, origin) =
                 self.callbacks
                     .with_read(&owner, &events, |read, attached| {
-                        let origin = collection_origin(read, parent.node(), attached)?;
+                        let origin = collection_origin(read.node(parent.node())?, attached)?;
                         let dom = read
                             .dom
                             .try_borrow()
@@ -355,6 +405,73 @@ impl Capture {
         tree::tree_completion(scope, &events, result)
     }
 
+    fn descendant_collection<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        arguments: Arguments<'scope>,
+        property: DescendantCollection,
+    ) -> Result<Completion<'scope>, Error> {
+        let wrapper = arguments.receiver();
+        let Some(GuestNode::Element(id)) = tree::projected_node(scope, wrapper)? else {
+            return Ok(Completion::Throw(scope.type_error(property.required)?));
+        };
+        let (owner, events) = self.active(scope)?;
+        let result = (|| {
+            let qualified = self
+                .callbacks
+                .with_read(&owner, &events, |read, attached| {
+                    let node = read.node(id)?;
+                    read.step()?;
+                    if html_element_is(node, property.interface) {
+                        Ok(Some(collection_origin(node, attached)?))
+                    } else {
+                        Ok(None)
+                    }
+                })?;
+            let Some(origin) = qualified else {
+                return Ok(Completion::Throw(scope.type_error(property.required)?));
+            };
+            if let Some(cached) = scope
+                .native_object_reference::<GuestNodeProjection>(wrapper, property.cache_reference)?
+            {
+                return Ok(Completion::Return(cached));
+            }
+
+            let limit = HTML_NAMESPACE.len() + property.local_name.len();
+            let (namespace, name, backing) = character_data::copy_native_name_pair(
+                &owner,
+                &events,
+                Some(HTML_NAMESPACE),
+                property.local_name,
+            )?;
+            let collection = self.callbacks.with_read(&owner, &events, |read, _| {
+                let dom = read
+                    .dom
+                    .try_borrow()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                Ok(dom.raw().get_elements_by_tag_name_ns(
+                    DomDescendantQueryRoot::Element(id),
+                    namespace,
+                    name,
+                    limit,
+                    read.cancel,
+                )?)
+            })?;
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            let value = public.with_collection_projection(&events, origin, |projection| {
+                projection.project_for_root(
+                    scope,
+                    (&owner, &events, collection),
+                    wrapper,
+                    Some(property.cache_reference),
+                    Some(backing),
+                )
+            })?;
+            Ok(Completion::Return(value))
+        })();
+        tree::tree_completion(scope, &events, result)
+    }
+
     fn descendant_elements<'scope>(
         &self,
         scope: &mut Scope<'scope>,
@@ -417,7 +534,7 @@ impl Capture {
             let (collection, origin) =
                 self.callbacks
                     .with_read(&owner, &events, |read, attached| {
-                        let origin = collection_origin(read, node.node(), attached)?;
+                        let origin = collection_origin(read.node(node.node())?, attached)?;
                         let dom = read
                             .dom
                             .try_borrow()
@@ -457,12 +574,8 @@ impl Capture {
 }
 
 fn collection_origin(
-    read: &NativeRead<'_>,
-    node: NodeId,
+    node: DomNode<'_>,
     attached: DomHostedGlobalId,
 ) -> Result<Option<DomHostedGlobalId>, DocumentGuestEventError> {
-    Ok(read
-        .node(node)?
-        .relevant_global()?
-        .filter(|origin| *origin != attached))
+    Ok(node.relevant_global()?.filter(|origin| *origin != attached))
 }

@@ -471,6 +471,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     );
     super::guest::tests::token_list_admission::wrong_html_token_list_receiver_does_not_open_its_cached_view();
     super::guest::tests::dataset_admission::dataset_read_admits_exact_native_observation();
+    super::guest::tests::member_collection_admission::member_getters_admit_exact_native_work_and_storage();
     super::guest::tests::dataset_admission::dataset_releases_retired_element_and_map();
     super::guest::tests::token_list_admission::token_edit_preserves_the_original_source_refusal();
     super::guest::tests::token_list_admission::indexed_membership_admits_the_native_descriptor_read(

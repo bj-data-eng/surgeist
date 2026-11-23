@@ -547,6 +547,16 @@
       ]
     },
     {
+      "id": "HTMLDataListElement.source",
+      "path": "references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md",
+      "anchor": "htmldatalistelement",
+      "block": 0,
+      "sha256": "910ec29b3e619bf879bec65b7f4699fcf6855ef108f76266af5096446c82c519",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-datalist-element",
+      "entries": ["HTMLDataListElement"]
+    },
+    {
       "id": "HTMLHeadElement.source",
       "path": "references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md",
       "anchor": "the&#45;head&#45;element",
@@ -6825,6 +6835,17 @@
           "readonly": true,
           "id": "HTMLMapElement.areas"
         }
+      ],
+      "inherits": "HTMLElement"
+    },
+    {
+      "id": "HTMLDataListElement",
+      "kind": "interface",
+      "name": "HTMLDataListElement",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {"attributes": [{"name": "HTMLConstructor"}], "kind": "constructor", "arguments": [], "id": "HTMLDataListElement.constructor:0"},
+        {"attributes": [{"name": "SameObject"}], "kind": "attribute", "type": {"kind": "named", "name": "HTMLCollection"}, "name": "options", "readonly": true, "id": "HTMLDataListElement.options"}
       ],
       "inherits": "HTMLElement"
     },
@@ -15088,13 +15109,6 @@
       "requirement": "Retain the source-backed FileList interface and actual File custody, supported indices and wrapper identity for the current Input selection."
     },
     {
-      "name": "HTMLDataListElement",
-      "kind": "interface",
-      "owner": "surgeist-runtime",
-      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmldatalistelement",
-      "requirement": "Retain the defining interface and its live options collection. Use authentic native DataList identity for Input's nullable list result."
-    },
-    {
       "name": "RadioNodeList",
       "kind": "interface",
       "owner": "surgeist-runtime",
@@ -20667,13 +20681,31 @@
       "result_view": "value"
     },
     "HTMLMapElement.areas/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose the live SameObject HTMLCollection from the canonical Map-rooted HTML Area descendant query.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-map-areas",
-        "issue": 3242
-      },
+      "kind": "native",
+      "adapter": "htmlmapelement.areas.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element_collections.rs", "symbol": "descendant_collection"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "get_elements_by_tag_name_ns"}
+      ],
+      "requirements": [],
+      "result_view": "live"
+    },
+    "HTMLDataListElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmldatalistelement.constructor.construct",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs", "symbol": "construct_html_element"}
+      ],
+      "requirements": []
+    },
+    "HTMLDataListElement.options/get": {
+      "kind": "native",
+      "adapter": "htmldatalistelement.options.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element_collections.rs", "symbol": "descendant_collection"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/store/html_collection.rs", "symbol": "get_elements_by_tag_name_ns"}
+      ],
+      "requirements": [],
       "result_view": "live"
     },
     "HTMLHeadElement.constructor:0/construct": {
