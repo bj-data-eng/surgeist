@@ -650,7 +650,9 @@ impl core::fmt::Display for LayoutInternalInvariant {
             Self::MissingLeafMeasurementProvider => {
                 "the tree supplied no leaf measurement for a node that requires one"
             }
-            Self::MissingStagedUnroundedOutput => "a staged output that the phase needs is missing",
+            Self::MissingStagedUnroundedOutput => {
+                "a staged output, or the part of it that the phase needs, is missing"
+            }
             Self::InvalidOutputGeometryPhase => {
                 "a staged output was consumed in a different geometry or readback phase"
             }

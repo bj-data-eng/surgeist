@@ -194,7 +194,7 @@ impl core::fmt::Display for TextBindingError {
         f.write_str(match self {
             Self::EmptyRun => "a text run binds no nodes where it needs some",
             Self::RunMembership => {
-                "the nodes and source segment bound to a text run are not the run's contiguous window of the flow"
+                "the nodes and source segment bound to a text run do not match the run's windows of the flow"
             }
             Self::ParticipantOrder => "the participants of a text run are not in source order",
             Self::DuplicateRunNode => "a node appears more than once in a text run",
