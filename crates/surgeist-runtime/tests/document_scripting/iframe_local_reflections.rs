@@ -22,11 +22,12 @@ fn fixture(source_work: u64) -> (DocumentScriptHost, NodeId, DomHostedNavigableI
     batch.set_attribute(&frame, "loading", "LaZy");
     let receipt = session.dom().apply(batch, &cancel()).unwrap();
     let frame = receipt.created(&frame).unwrap().unwrap();
-    let (mut host, _) = attach_event_window_with_source_limits(
+    let (mut host, _) = attach_event_window_with_limits(
         session,
         top,
         Arc::new(cancel()),
-        900_000,
+        (8_000_000, 6_000_000, 900_000),
+        surgeist_ledger::ProfileMode::Off,
         DomSourceLimits::new(16_000_000, 1_000_000, source_work, 128, 4096, 4096, 8),
         |_, _, _| {},
     );

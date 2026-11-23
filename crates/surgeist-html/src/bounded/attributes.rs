@@ -19,7 +19,7 @@ pub use crate::internal::attributes::bounded_rules::{
     form_enctype_override_keyword_with, form_method_keyword_with,
     form_method_override_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
     hidden_processing_with, hidden_setter_action_with, input_list_applies, input_readonly_applies,
-    input_submitter_context, inputmode_keyword_with, popover_keyword_with,
+    input_submitter_context, inputmode_keyword_with, loading_processing_with, popover_keyword_with,
     referrerpolicy_processing_with, stylesheet_link_context_work_bound,
     template_shadow_root_mode_keyword_with, template_shadow_root_slot_assignment_keyword_with,
     translate_processing_with,

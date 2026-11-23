@@ -1492,8 +1492,8 @@ enum_rule!(DECODING, HtmlDecoding, Decoding, Context::Elements(&[KnownHtmlElemen
     ["sync" => ("sync", HtmlDecoding::Sync), "async" => ("async", HtmlDecoding::Async), "auto" => ("auto", HtmlDecoding::Auto)]);
 // The shared defining grammar is applied by attr-img-loading,
 // attr-iframe-loading and attr-media-loading (audio/video).
-enum_rule!(LOADING, HtmlLoading, Loading, Context::Elements(&[KnownHtmlElement::Img, KnownHtmlElement::Iframe, KnownHtmlElement::Audio, KnownHtmlElement::Video]), [89], "lazy-loading-attributes",
-    Some(HtmlLoading::Eager), Some(HtmlLoading::Eager), None,
+total_enum_rule!(LOADING, LOADING_DEFAULTS, HtmlLoading, Loading, Context::Elements(&[KnownHtmlElement::Img, KnownHtmlElement::Iframe, KnownHtmlElement::Audio, KnownHtmlElement::Video]), [89], "lazy-loading-attributes",
+    HtmlLoading::Eager, HtmlLoading::Eager, None,
     ["lazy" => ("lazy", HtmlLoading::Lazy), "eager" => ("eager", HtmlLoading::Eager)]);
 enum_rule!(PRELOAD, HtmlPreloadState, Preload, Context::Elements(&[KnownHtmlElement::Audio, KnownHtmlElement::Video]), [123], "attr-media-preload",
     Some(HtmlPreloadState::ImplementationDefined), Some(HtmlPreloadState::ImplementationDefined), Some(HtmlPreloadState::Keyword(HtmlPreload::Auto)),
@@ -3202,6 +3202,15 @@ pub(crate) mod bounded_rules {
         admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
     ) -> Result<HtmlFetchPriority, E> {
         total_enum_value_with(&FETCHPRIORITY, &FETCHPRIORITY_DEFAULTS, raw, admit)
+    }
+
+    /// Loading content-state processing for an already qualified caller.
+    /// Admit each reached comparison over the exact attribute and its defaults.
+    pub fn loading_processing_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<HtmlLoading, E> {
+        total_enum_value_with(&LOADING, &LOADING_DEFAULTS, raw, admit)
     }
 
     /// Referrer policy content-state processing, independently of element,

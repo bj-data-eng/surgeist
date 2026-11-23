@@ -30,8 +30,8 @@ use surgeist_html::bounded::attributes::{
     form_enctype_override_keyword_with, form_method_keyword_with,
     form_method_override_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
     hidden_processing_with, hidden_setter_action_with, inputmode_keyword_with,
-    link_as_keyword_with, popover_keyword_with, popover_target_action_with,
-    referrerpolicy_processing_with, table_cell_scope_keyword_with,
+    link_as_keyword_with, loading_processing_with, popover_keyword_with,
+    popover_target_action_with, referrerpolicy_processing_with, table_cell_scope_keyword_with,
     template_shadow_root_mode_keyword_with, template_shadow_root_slot_assignment_keyword_with,
 };
 use surgeist_html::bounded::input::input_colorspace_with;
@@ -58,6 +58,7 @@ pub(super) enum Reflection {
     CrossOrigin,
     ReferrerPolicy,
     FetchPriority,
+    Loading,
     LinkAs,
     Boolean,
     Mode,
@@ -156,6 +157,7 @@ pub(super) enum Receiver {
     Form,
     Frameset,
     Input,
+    Iframe,
     Label,
     Legend,
     Marquee,
@@ -282,6 +284,10 @@ impl Receiver {
                 step()?;
                 super::frameset::is_frameset(node)
             }
+            Self::Iframe => {
+                step()?;
+                html_element_is(node, "HTMLIFrameElement")
+            }
             Self::Input => {
                 step()?;
                 node.as_element().is_some_and(|element| {
@@ -396,6 +402,7 @@ impl Receiver {
             Self::Form => const { &ascii(b"HTMLFormElement required") },
             Self::Frameset => const { &ascii(b"HTMLFrameSetElement required") },
             Self::Input => const { &ascii(b"HTMLInputElement required") },
+            Self::Iframe => const { &ascii(b"HTMLIFrameElement required") },
             Self::Label => const { &ascii(b"HTMLLabelElement required") },
             Self::Legend => const { &ascii(b"HTMLLegendElement required") },
             Self::Marquee => const { &ascii(b"HTMLMarqueeElement required") },
@@ -595,6 +602,9 @@ impl Capture {
                     Reflection::LinkAs => {
                         Reflected::Keyword(Some(link_as_keyword_with(units, |_| read.step())?))
                     }
+                    Reflection::Loading => Reflected::Keyword(Some(
+                        loading_processing_with(units, |_| read.step())?.canonical_keyword(),
+                    )),
                     Reflection::FetchPriority => Reflected::Keyword(Some(
                         fetchpriority_processing_with(units, |_| read.step())?.canonical_keyword(),
                     )),
@@ -1058,6 +1068,7 @@ impl Capture {
                             | Receiver::Form
                             | Receiver::Frameset
                             | Receiver::Input
+                            | Receiver::Iframe
                             | Receiver::Label
                             | Receiver::Legend
                             | Receiver::Marquee
