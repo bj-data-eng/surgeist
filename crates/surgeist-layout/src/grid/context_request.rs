@@ -18,13 +18,13 @@ pub(super) enum GridParentContextSource<'input, Node, S: LayoutScalar> {
 }
 
 /// The parent facts of one intrinsic probe or contribution, owned so that the
-/// request outlives the borrows it was made from. Each scrollbar pass rebuilds
-/// the inherited tracks from them, adding the pass's gutter to the spanned
-/// tracks of a content contribution.
+/// request outlives the borrows it was made from. They are the loan of a
+/// contextual item's request: the parent's minimum functions wait until a span
+/// of them is read, so a track the item does not span is never resolved. Each
+/// scrollbar pass rebuilds the inherited tracks from them, adding the pass's
+/// gutter to the spanned tracks of a content contribution.
 pub(super) struct OwnedProbeContext<'input, Node, S: LayoutScalar> {
-    context: OwnedSubgridContext<'input, Node, S>,
-    column_geometry: Option<UsedGridAxisGeometryOf<S>>,
-    row_geometry: Option<UsedGridAxisGeometryOf<S>>,
+    loan: SubgridItemLoan<'input, Node, S>,
     parent_flow: crate::geometry::FlowAxes,
     kind: GridIntrinsicProbeKind,
 }
@@ -35,7 +35,7 @@ impl<'input, Node: Copy + PartialEq, S: LayoutScalar> OwnedProbeContext<'input, 
         subject: Node,
         constants: &Constants<S>,
     ) -> LayoutResultOf<Node, GridParentContext<S, Node>, S, M> {
-        let source = self.context.input();
+        let source = self.loan.input();
         let child_flow = crate::geometry::FlowAxes::new(
             source.child_style.writing_mode,
             source.child_style.direction,
@@ -71,10 +71,10 @@ impl<'input, Node: Copy + PartialEq, S: LayoutScalar> OwnedProbeContext<'input, 
                 *last = *last + after;
             }
         }
-        let column_geometry = self.column_geometry.as_ref().map(|geometry| {
+        let column_geometry = self.loan.share().column_geometry().map(|geometry| {
             UsedGridAxisGeometryOf::from_sizing_gutters(columns.clone(), &geometry.sizing_gutters())
         });
-        let row_geometry = self.row_geometry.as_ref().map(|geometry| {
+        let row_geometry = self.loan.share().row_geometry().map(|geometry| {
             UsedGridAxisGeometryOf::from_sizing_gutters(rows.clone(), &geometry.sizing_gutters())
         });
         let mut frame = source;
@@ -198,16 +198,15 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContextRequest<'input, Node, 
             source.child_style.writing_mode,
             source.child_style.direction,
         );
-        let parent_context =
-            GridParentContextSource::Intrinsic(OwnedSubgridContext::new(source).map(|context| {
+        let parent_context = GridParentContextSource::Intrinsic(
+            SubgridParentShare::new(&source, column_geometry, row_geometry, None).map(|share| {
                 Box::new(OwnedProbeContext {
-                    context,
-                    column_geometry: column_geometry.cloned(),
-                    row_geometry: row_geometry.cloned(),
+                    loan: SubgridItemLoan::new(share, &source),
                     parent_flow,
                     kind,
                 })
-            }));
+            }),
+        );
         Self {
             container: node,
             node,
