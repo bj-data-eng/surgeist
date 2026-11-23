@@ -11,7 +11,7 @@ use crate::{
     value::{SubgridTrack, TrackComponentOf},
 };
 
-fn subgrid<S: LayoutScalar>() -> Vec<TrackComponentOf<S>> {
+pub(super) fn subgrid<S: LayoutScalar>() -> Vec<TrackComponentOf<S>> {
     vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))]
 }
 
@@ -21,7 +21,7 @@ fn fixed_tracks<S: LayoutScalar>(sizes: [f64; 2]) -> Vec<TrackComponentOf<S>> {
         .into()
 }
 
-fn px_size<S: LayoutScalar>(width: f64, height: f64) -> Size<PreferredSizeOf<S>> {
+pub(super) fn px_size<S: LayoutScalar>(width: f64, height: f64) -> Size<PreferredSizeOf<S>> {
     Size::new(width, height).map(|value| PreferredSizeOf::px(S::from_f64(value)))
 }
 
@@ -131,7 +131,7 @@ fn subgrid_grid_chain<S: LayoutScalar>(depth: u32, span: Span) -> PublicLayoutTr
     tree.children(depth, [depth + 1, depth + 2])
 }
 
-fn assert_box<S: LayoutScalar>(
+pub(super) fn assert_box<S: LayoutScalar>(
     batch: &crate::output::CompletedLayoutBatchOf<u32, S>,
     node: u32,
     location: (f64, f64),
