@@ -1,5 +1,6 @@
 use crate::engine::block_scope::{ComputeResult, ordinary};
 use std::{collections::BTreeMap, ops::ControlFlow};
+use surgeist_text::font::FontBaseline;
 
 use super::inline::{
     AtomicInlineBoxParticipant, ForcedLineBreakControlOf, InlineBoundaryControlOf, InlineFlowOf,
@@ -2177,10 +2178,7 @@ fn block_baseline_output<Node: Copy, S: LayoutScalar, M>(
             .last,
         );
         let edge = crate::BaselineFactOf::Available(coordinate);
-        for name in [
-            crate::BaselineName::Alphabetic,
-            crate::BaselineName::Central,
-        ] {
+        for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
             facts = facts.with(
                 name,
                 crate::BaselinePairOf::new(facts.get(name).first(), edge),

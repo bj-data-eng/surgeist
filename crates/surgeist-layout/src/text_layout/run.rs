@@ -19,6 +19,7 @@ use crate::{
     AxisSizingRequestOf, Direction, FlowAxes, InlineFragmentOutputOf, LayoutScalar,
     LayoutTextNumericError, Point, ScrollRectOf, Size, TextAlign, TextAlignLast, TextJustification,
 };
+use surgeist_text::font::FontBaseline;
 use surgeist_text::{
     allocation::{
         AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
@@ -601,7 +602,7 @@ pub(crate) fn named_baseline(
 ) -> bool {
     match (context, prepared.baseline_reference()) {
         (
-            crate::InlineBaselineContext::Named(crate::BaselineName::Central),
+            crate::InlineBaselineContext::Named(FontBaseline::Central),
             Some(surgeist_text::font::FontBaseline::Central),
         ) => {
             matches!(
@@ -615,7 +616,7 @@ pub(crate) fn named_baseline(
                 )
         }
         (
-            crate::InlineBaselineContext::Named(crate::BaselineName::Alphabetic),
+            crate::InlineBaselineContext::Named(FontBaseline::Alphabetic),
             Some(surgeist_text::font::FontBaseline::Alphabetic),
         ) => {
             matches!(
@@ -2676,10 +2677,7 @@ pub(crate) fn pending_visual_named_baselines<S: LayoutScalar>(
         other => Ok(other),
     };
     let mut result = facts;
-    for name in [
-        crate::BaselineName::Alphabetic,
-        crate::BaselineName::Central,
-    ] {
+    for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         let pair = facts.get(name);
         result = result.with(
             name,

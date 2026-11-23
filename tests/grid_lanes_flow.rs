@@ -7,12 +7,12 @@ use surgeist::css::values::layout::{
 };
 use surgeist::layout::{
     AlignContent, AvailableSpaceOf, AxisSizingRequestOf, Direction, Display, FlowAxes,
-    GridAxisKind, GridFlowToleranceOf, GridLanesFlow, GridPlacement, LaneItemOf,
-    LanePlacementInputOf, LayoutInputOf, LayoutInputViewOf, LayoutRootRequestOf, LayoutScalar,
-    LayoutTree, LengthOf, LengthPercentageOf, NearestScrollportOf, NodeInputOf,
-    NonNegativeFiniteOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf, Point, PreferredSizeOf,
-    Size, SizingCalculationOf, SizingOperation, SizingRequestOf, TrackComponentOf, TrackSizingOf,
-    Traverse, WritingMode, compute_layout, place_lanes, resolve_grid_lanes_flow,
+    GridAxisKind, GridFlowToleranceOf, GridLanesFlow, GridPlacement, LayoutInputOf,
+    LayoutInputViewOf, LayoutRootRequestOf, LayoutScalar, LayoutTree, LengthOf, LengthPercentageOf,
+    NearestScrollportOf, NodeInputOf, NonNegativeFiniteOf, OrthogonalFallbackLimitOf,
+    OrthogonalFallbackOf, Point, PreferredSizeOf, Size, SizingCalculationOf, SizingOperation,
+    SizingRequestOf, TrackComponentOf, TrackSizingOf, Traverse, WritingMode, compute_layout,
+    resolve_grid_lanes_flow,
 };
 
 #[test]
@@ -136,8 +136,12 @@ fn distinct_controls_and_shorthand_direction_are_independent_of_declaration_orde
     }
 }
 
+/// Four 10 by 10 items in three 10-wide lanes with an infinite tolerance: the
+/// first three fill the lanes from the reversed end (lines 3, 2 and 1), and the
+/// fourth stacks behind the first in the lane where the tie is broken last.
 fn assert_css_reverse_reaches_lane_placement<S: LayoutScalar>() {
     let none = CssGridTrackList::none();
+    let px = S::from_f64;
     for direction in [
         CssItemDirection::RowReverse,
         CssItemDirection::ColumnReverse,
@@ -150,41 +154,74 @@ fn assert_css_reverse_reaches_lane_placement<S: LayoutScalar>() {
             &none,
         )
         .unwrap();
-        let report = place_lanes(LanePlacementInputOf {
-            grid_axis_tracks: 3,
-            grid_axis: flow.grid_axis(),
-            reversed: flow.reversed(),
-            lane_gap: S::ZERO,
-            tolerance: GridFlowToleranceOf::Infinite,
-            tolerance_basis: S::ZERO,
-            items: (0..4)
-                .map(|item| LaneItemOf {
-                    item,
-                    grid_axis_span: 1,
-                    definite_grid_axis_start: None,
-                    lane_axis_margin_box: S::from_usize(10),
-                })
-                .collect(),
-        })
+        assert!(flow.reversed());
+        let columns = flow.grid_axis() == GridAxisKind::Column;
+        let physical_size = |grid, stacking| {
+            if columns {
+                Size::new(grid, stacking)
+            } else {
+                Size::new(stacking, grid)
+            }
+        };
+        let root_size = physical_size(px(30.0), px(100.0));
+        let preferred_size = |value| PreferredSizeOf::value(LengthPercentageOf::px(value).unwrap());
+        let fixed_track = TrackComponentOf::from(TrackSizingOf::calculation(
+            SizingCalculationOf::value(LengthPercentageOf::px(px(10.0)).unwrap()),
+        ));
+        let mut inputs = vec![LayoutInputOf::box_input(NodeInputOf {
+            display: Display::GridLanes,
+            grid_lanes_flow: flow,
+            size: root_size.map(preferred_size),
+            grid_template_columns: if columns {
+                vec![fixed_track.clone(); 3]
+            } else {
+                Vec::new()
+            },
+            grid_template_rows: if columns {
+                Vec::new()
+            } else {
+                vec![fixed_track.clone(); 3]
+            },
+            grid_flow_tolerance: GridFlowToleranceOf::Infinite,
+            justify_content: Some(AlignContent::Start),
+            align_content: Some(AlignContent::Start),
+            ..NodeInputOf::default()
+        })];
+        for _ in 0..4 {
+            inputs.push(LayoutInputOf::box_input(NodeInputOf {
+                size: physical_size(px(10.0), px(10.0)).map(preferred_size),
+                ..NodeInputOf::default()
+            }));
+        }
+        let batch = compute_layout(
+            &BackfillTree { inputs },
+            0,
+            definite_standalone_request(root_size),
+        )
         .unwrap();
-        assert_eq!(report.grid_axis, flow.grid_axis());
-        assert_eq!(report.lane_axis, flow.stacking_axis());
-        assert_eq!(
-            report
-                .item_offsets
-                .iter()
-                .map(|item| item.grid_axis_start)
-                .collect::<Vec<_>>(),
-            [3, 2, 1, 3]
-        );
-        assert_eq!(
-            report
-                .item_offsets
-                .iter()
-                .map(|item| item.offset)
-                .collect::<Vec<_>>(),
-            [S::ZERO, S::ZERO, S::ZERO, S::from_usize(10)]
-        );
+        let locations = (1..=4)
+            .map(|node| {
+                batch
+                    .node_layout(node)
+                    .unwrap()
+                    .single_box()
+                    .expect("fixture node produces one box")
+                    .unrounded_output()
+                    .location
+            })
+            .collect::<Vec<_>>();
+        // Grid lines 3, 2, 1, 3 start at 20, 10, 0, 20 along the grid axis; the
+        // stacking offsets are 0, 0, 0, 10.
+        let expected = [(20.0, 0.0), (10.0, 0.0), (0.0, 0.0), (20.0, 10.0)]
+            .map(|(grid, stacking)| {
+                if columns {
+                    Point::new(px(grid), px(stacking))
+                } else {
+                    Point::new(px(stacking), px(grid))
+                }
+            })
+            .to_vec();
+        assert_eq!(locations, expected, "{direction:?}");
     }
 }
 
@@ -231,6 +268,28 @@ impl<S: LayoutScalar> LayoutTree for BackfillTree<S> {
     fn layout_input(&self, node: usize) -> LayoutInputViewOf<'_, S> {
         self.inputs[node].as_view()
     }
+}
+
+fn definite_standalone_request<S: LayoutScalar>(root_size: Size<S>) -> LayoutRootRequestOf<S> {
+    let axes = root_size.map(|size| {
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(size).unwrap()),
+            SizingOperation::Normal,
+        )
+    });
+    let parent = axes.map(|axis| axis.space().definite_size());
+    LayoutRootRequestOf::standalone(
+        SizingRequestOf::new(
+            axes,
+            OrthogonalFallbackOf::new(
+                parent,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        parent,
+    )
 }
 
 fn assert_backfill_geometry<S: LayoutScalar>(
@@ -298,28 +357,10 @@ fn assert_backfill_geometry<S: LayoutScalar>(
             ..NodeInputOf::default()
         }));
     }
-    let axes = root_size.map(|size| {
-        AxisSizingRequestOf::new(
-            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(size).unwrap()),
-            SizingOperation::Normal,
-        )
-    });
-    let parent = axes.map(|axis| axis.space().definite_size());
     let batch = compute_layout(
         &BackfillTree { inputs },
         0,
-        LayoutRootRequestOf::standalone(
-            SizingRequestOf::new(
-                axes,
-                OrthogonalFallbackOf::new(
-                    parent,
-                    NearestScrollportOf::Absent,
-                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
-                ),
-            ),
-            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-            parent,
-        ),
+        definite_standalone_request(root_size),
     )
     .unwrap();
     // The definite 40-high item occupies track 2. The two-track bridge starts

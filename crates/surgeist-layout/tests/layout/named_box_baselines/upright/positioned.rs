@@ -1,5 +1,6 @@
 //! Native OutOfFlow capture uses actual absolute child geometry.
 use super::*;
+use surgeist_text::font::FontBaseline;
 mod supplemental;
 
 struct Parent {
@@ -8,7 +9,7 @@ struct Parent {
 }
 
 fn central() -> l::InlineBaselineContext {
-    l::InlineBaselineContext::Named(l::BaselineName::Central)
+    l::InlineBaselineContext::Named(FontBaseline::Central)
 }
 
 fn available<S: l::LayoutScalar>(width: f64, height: f64) -> surgeist_layout::SizingRequestOf<S> {
@@ -456,7 +457,7 @@ fn qualify_child<S: l::LayoutScalar>(child: &Fixture) {
     // by contract, rather than converting it to a flow-block-start distance.
     let pair = node(crate::layout::observation::phase(&batch, false), 0)
         .named_baselines
-        .get(l::BaselineName::Central);
+        .get(FontBaseline::Central);
     assert_eq!(
         (pair.first(), pair.last()),
         (l::BaselineFactOf::Unknown, l::BaselineFactOf::Unknown)
@@ -537,7 +538,7 @@ fn native_positioned<S: l::LayoutScalar>() {
             let output = node(entries, 2);
             assert_eq!(output.location, l::Point::new(n(child_x), n(4.0)));
             assert_eq!(output.size, l::Size::new(n(6.0), n(14.0)));
-            let pair = output.named_baselines.get(l::BaselineName::Central);
+            let pair = output.named_baselines.get(FontBaseline::Central);
             assert_eq!(
                 (pair.first(), pair.last()),
                 (l::BaselineFactOf::Unknown, l::BaselineFactOf::Unknown)

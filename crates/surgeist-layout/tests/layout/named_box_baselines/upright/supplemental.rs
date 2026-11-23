@@ -1,9 +1,10 @@
 //! Public sizing, containing-frame, replay and refusal witnesses. The font and
 //! allocation premises remain those independently qualified by the parent.
 use super::*;
+use surgeist_text::font::FontBaseline;
 
 fn central() -> l::InlineBaselineContext {
-    l::InlineBaselineContext::Named(l::BaselineName::Central)
+    l::InlineBaselineContext::Named(FontBaseline::Central)
 }
 
 fn attach<S: l::LayoutScalar>(
@@ -85,7 +86,7 @@ fn placed<S: l::LayoutScalar>(
 }
 
 fn central_offsets<S: l::LayoutScalar>(facts: l::NamedBaselinesOf<S>) -> [S; 2] {
-    let pair = facts.get(l::BaselineName::Central);
+    let pair = facts.get(FontBaseline::Central);
     [pair.first(), pair.last()].map(|fact| match fact {
         l::BaselineFactOf::Available(coordinate) => {
             assert_eq!(coordinate.axis(), l::PhysicalAxis::Horizontal);
@@ -704,7 +705,7 @@ fn refusals_preserve_publication<S: l::LayoutScalar>() {
     old.apply_to(&mut host).unwrap();
     let published_nodes = semantic(host.published.batch.as_ref().unwrap(), &host);
     host.change(0, |input| {
-        input.inline_baseline_context = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic)
+        input.inline_baseline_context = l::InlineBaselineContext::Named(FontBaseline::Alphabetic)
     });
     let error = solve(
         &host,

@@ -1,9 +1,10 @@
 //! Numeric box/control qualification of the resolved post-baseline operation.
 use super::*;
+use surgeist_text::font::FontBaseline;
 
 fn input<S: LayoutScalar>(mode: WritingMode, amount: S) -> MixedInlineRunInputOf<S> {
     let axes = FlowAxes::new(mode, Direction::Ltr);
-    let reference = crate::InlineBaselineContext::Named(crate::BaselineName::Central);
+    let reference = crate::InlineBaselineContext::Named(FontBaseline::Central);
     let size = axes.physical_size(crate::geometry::LogicalSizeOf::new(
         S::from_f64(5.0),
         S::from_f64(10.0),

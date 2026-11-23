@@ -3,7 +3,12 @@ use super::*;
 use crate::geometry::FlowAxes;
 
 #[derive(Clone, Copy)]
-pub(in crate::grid) struct IntrinsicGridChildInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct IntrinsicGridChildInput<
+    'input,
+    'a,
+    Node,
+    S: LayoutScalar = DefaultScalar,
+> {
     pub(in crate::grid) child_style: &'a GridItemProjection<'input, S>,
     pub(in crate::grid) child_container: Option<&'a GridContainerInput<'input, S>>,
     pub(in crate::grid) grid: IntrinsicGrid<'input, 'a, Node, S>,
@@ -685,7 +690,12 @@ fn apply_resolved_intrinsic_subgrid_area_constraints<S: LayoutScalar>(
     }
 }
 
-pub(super) struct SubgridIntrinsicContributionInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridIntrinsicContributionInput<
+    'input,
+    'a,
+    Node,
+    S: LayoutScalar = DefaultScalar,
+> {
     pub(super) grid: IntrinsicGrid<'input, 'a, Node, S>,
     pub(super) owner: Node,
     pub(super) constants: &'a Constants<S>,
@@ -704,7 +714,7 @@ pub(super) struct SubgridIntrinsicContributionInput<'input, 'a, Node, S: LayoutS
     pub(super) query: IntrinsicGridQuery<'a, S>,
 }
 
-pub(super) struct SubgridIntrinsicContributionReport<Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridIntrinsicContributionReport<Node, S: LayoutScalar = DefaultScalar> {
     pub(super) row_contributions: Vec<RowIntrinsicContribution<Node, S>>,
     pub(super) ancestor_baseline_group: AncestorBaselineGroup<Node, S>,
     pub(super) receipts: Vec<GridContributionReceipt<Node, S>>,

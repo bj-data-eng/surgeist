@@ -5,7 +5,7 @@ use crate::scroll::{
 };
 
 #[derive(Clone, Copy, Debug)]
-pub(in crate::grid) struct GridChildContribution<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct GridChildContribution<S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) source_index: crate::SourceIndex,
     pub(in crate::grid) location: Point<S>,
     pub(in crate::grid) margin: Edges<S>,

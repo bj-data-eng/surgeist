@@ -1,6 +1,7 @@
 use super::*;
 use std::cell::RefCell;
 use std::convert::Infallible;
+use surgeist_text::font::FontBaseline;
 
 #[path = "receiver_pretty_tests.rs"]
 mod pretty;
@@ -50,7 +51,7 @@ fn atomic<S: LayoutScalar>(
 }
 
 fn named() -> crate::InlineBaselineContext {
-    crate::InlineBaselineContext::Named(crate::BaselineName::Alphabetic)
+    crate::InlineBaselineContext::Named(FontBaseline::Alphabetic)
 }
 
 fn input<S: LayoutScalar>(

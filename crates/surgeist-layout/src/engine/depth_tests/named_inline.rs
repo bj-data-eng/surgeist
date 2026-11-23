@@ -1,9 +1,10 @@
 use super::*;
 use crate::{
-    AtomicInlineParticipation, BaselineName, InlineBaselineContext, InlineBreakOpportunity,
-    LayoutErrorKindOf, LayoutErrorSiteOf, LayoutMissingContext, LayoutOperation, MinSizeOf,
-    PreferredSizeOf, VerticalAlignOf,
+    AtomicInlineParticipation, InlineBaselineContext, InlineBreakOpportunity, LayoutErrorKindOf,
+    LayoutErrorSiteOf, LayoutMissingContext, LayoutOperation, MinSizeOf, PreferredSizeOf,
+    VerticalAlignOf,
 };
+use surgeist_text::font::FontBaseline;
 
 fn named_receiver_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
     named_receiver_chain_with_wrap_style(depth, crate::TextWrapStyle::Auto)
@@ -14,7 +15,7 @@ fn named_receiver_chain_with_wrap_style<S: LayoutScalar>(
     wrap_style: crate::TextWrapStyle,
 ) -> PublicLayoutTreeOf<S> {
     let preferred = |value| PreferredSizeOf::px(S::from_f64(value));
-    let named = InlineBaselineContext::Named(BaselineName::Alphabetic);
+    let named = InlineBaselineContext::Named(FontBaseline::Alphabetic);
     let atomic = |alignment, following_break| NodeInputOf {
         display: Display::InlineBlock,
         atomic_inline_participation: Some(AtomicInlineParticipation::new(
@@ -170,7 +171,7 @@ fn assert_named_receiver_geometry_with_wrap_style<S: LayoutScalar>(
 ) -> usize {
     let first_sibling = 3 * depth;
     let first_control = first_sibling + depth;
-    let named = InlineBaselineContext::Named(BaselineName::Alphabetic);
+    let named = InlineBaselineContext::Named(FontBaseline::Alphabetic);
     let mut tree = named_receiver_chain_with_wrap_style::<S>(depth, wrap_style);
     for layer in 0..depth - 1 {
         let child = 3 * layer + 1;
@@ -218,7 +219,7 @@ fn assert_named_receiver_geometry_with_wrap_style<S: LayoutScalar>(
             .single_box()
             .unwrap()
             .final_output();
-        let pair = output.named_baselines.get(BaselineName::Alphabetic);
+        let pair = output.named_baselines.get(FontBaseline::Alphabetic);
         assert_eq!(pair.first(), crate::BaselineFactOf::Unknown);
         // Two 7-unit lines put the receiving line's Alphabetic baseline at14.
         assert_eq!(
@@ -238,7 +239,7 @@ fn assert_named_receiver_geometry_with_wrap_style<S: LayoutScalar>(
         .single_box()
         .unwrap()
         .final_output();
-    let pair = terminal.named_baselines.get(BaselineName::Alphabetic);
+    let pair = terminal.named_baselines.get(FontBaseline::Alphabetic);
     assert_eq!(pair.first(), crate::BaselineFactOf::Absent);
     assert_eq!(pair.last(), crate::BaselineFactOf::Absent);
     for layer in 0..depth - 1 {
@@ -252,7 +253,7 @@ fn assert_named_receiver_geometry_with_wrap_style<S: LayoutScalar>(
         // The Grid is 7 high. Its following zero-height Forced line establishes
         // the atom's last Alphabetic baseline at 7, without adding box height.
         assert_eq!(
-            output.named_baselines.get(BaselineName::Alphabetic).last(),
+            output.named_baselines.get(FontBaseline::Alphabetic).last(),
             crate::BaselineFactOf::Available(
                 crate::BaselineCoordinateOf::try_new(
                     crate::PhysicalAxis::Vertical,

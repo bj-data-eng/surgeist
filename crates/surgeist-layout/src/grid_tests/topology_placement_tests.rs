@@ -913,31 +913,6 @@ fn assert_lanes_preserves_cursor_after_definite_placement<S: LayoutScalar>() {
         (None, 1, 5.0),
         (None, 1, 5.0),
     ];
-    let placement = place_lanes(LanePlacementInputOf {
-        grid_axis_tracks: 3,
-        grid_axis: crate::GridAxisKind::Column,
-        reversed: false,
-        lane_gap: S::ZERO,
-        tolerance: GridFlowToleranceOf::Infinite,
-        tolerance_basis: px(120.0),
-        items: items
-            .into_iter()
-            .enumerate()
-            .map(|(item, (line, span, height))| LaneItemOf {
-                item,
-                grid_axis_span: span,
-                definite_grid_axis_start: line,
-                lane_axis_margin_box: px(height),
-            })
-            .collect(),
-    })
-    .unwrap();
-    let starts = placement
-        .item_offsets
-        .iter()
-        .map(|item| item.grid_axis_start)
-        .collect::<Vec<_>>();
-
     let container = Size::new(px(120.0), px(100.0));
     let mut tree = PublicLayoutTreeOf::new().children(1, [2, 3, 4, 5]).style(
         1,
@@ -968,11 +943,9 @@ fn assert_lanes_preserves_cursor_after_definite_placement<S: LayoutScalar>() {
 
     // The first item spans two tracks and advances the cursor to line 3.
     // The definite item at line 3 leaves it there. The next automatic
-    // item then wraps the search back to line 1.
-    assert_eq!(
-        (starts, xs),
-        (vec![1, 3, 3, 1], [0.0, 80.0, 80.0, 0.0].map(px))
-    );
+    // item then wraps the search back to line 1. Lines 1, 3, 3 and 1 start
+    // at 0, 80, 80 and 0 in 40px tracks.
+    assert_eq!(xs, [0.0, 80.0, 80.0, 0.0].map(px));
 }
 
 #[test]
@@ -987,26 +960,6 @@ fn lanes_preserves_cursor_after_definite_placement_f64() {
 
 fn assert_lanes_floors_outer_advance<S: LayoutScalar>() {
     let px = S::from_f64;
-    let mut input = LanePlacementInputOf {
-        grid_axis_tracks: 1,
-        grid_axis: crate::GridAxisKind::Column,
-        reversed: false,
-        lane_gap: px(5.0),
-        tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
-        tolerance_basis: px(40.0),
-        items: [20.0, -10.0, 10.0]
-            .into_iter()
-            .enumerate()
-            .map(|(item, height)| LaneItemOf {
-                item,
-                grid_axis_span: 1,
-                definite_grid_axis_start: None,
-                lane_axis_margin_box: px(height),
-            })
-            .collect(),
-    };
-    let placement = place_lanes(input.clone()).unwrap();
-
     let container = Size::new(px(40.0), px(100.0));
     let root = NodeInputOf {
         display: Display::GridLanes,
@@ -1035,17 +988,26 @@ fn assert_lanes_floors_outer_advance<S: LayoutScalar>() {
     let batch = fri08_c03_auto_fit_batch(&tree, container);
     let last = fri08_c01_placement_output(&batch, 4);
     // 20px + 5px gap + floored 0px outer size + 5px gap.
-    assert_eq!(
-        (
-            placement.item_offsets[2].offset,
-            placement.content_size,
-            last.location.y
+    assert_eq!(last.location.y, px(30.0));
+    // The last box's outer edge, 30 + 10, ends the visible content of an
+    // auto-height container.
+    let auto_batch = fri08_c03_auto_fit_batch(
+        &tree.clone().style(
+            1,
+            NodeInputOf {
+                size: Size::new(PreferredSizeOf::px(px(40.0)), PreferredSizeOf::AUTO),
+                ..root.clone()
+            },
         ),
-        (px(30.0), px(40.0), px(30.0))
+        container,
+    );
+    assert_eq!(
+        fri08_c01_placement_output(&auto_batch, 1)
+            .content_size
+            .height,
+        px(40.0)
     );
 
-    input.items.truncate(2);
-    let terminal = place_lanes(input).unwrap();
     let terminal_tree = tree.children(1, [2, 3]).style(
         1,
         NodeInputOf {
@@ -1057,14 +1019,10 @@ fn assert_lanes_floors_outer_advance<S: LayoutScalar>() {
     let terminal_root = fri08_c01_placement_output(&terminal_batch, 1);
     // The terminal outer edge is 25-10=15, so the packed first/last range
     // sizes the container to 15. The earlier 20-unit box still determines
-    // visible content and the standalone placement report's maximum extent.
+    // visible content.
     assert_eq!(
-        (
-            terminal.content_size,
-            terminal_root.size.height,
-            terminal_root.content_size.height
-        ),
-        (px(20.0), px(15.0), px(20.0))
+        (terminal_root.size.height, terminal_root.content_size.height),
+        (px(15.0), px(20.0))
     );
 }
 
@@ -1089,29 +1047,6 @@ fn assert_lanes_signed_tolerance_keeps_shortest<S: LayoutScalar>() {
         (GridFlowToleranceOf::Percent(px(0.25)), 2),
         (GridFlowToleranceOf::Length(LengthOf::px(px(22.0))), 1),
     ] {
-        let placement = place_lanes(LanePlacementInputOf {
-            grid_axis_tracks: 2,
-            grid_axis: crate::GridAxisKind::Column,
-            reversed: false,
-            lane_gap: S::ZERO,
-            tolerance,
-            tolerance_basis: container.width,
-            items: vec![
-                LaneItemOf {
-                    item: 2,
-                    grid_axis_span: 1,
-                    definite_grid_axis_start: Some(1),
-                    lane_axis_margin_box: px(22.0),
-                },
-                LaneItemOf {
-                    item: 3,
-                    grid_axis_span: 1,
-                    definite_grid_axis_start: None,
-                    lane_axis_margin_box: px(5.0),
-                },
-            ],
-        })
-        .map(|report| report.item_offsets[1].grid_axis_start);
         let tree = PublicLayoutTreeOf::new()
             .children(1, [2, 3])
             .style(
@@ -1157,11 +1092,9 @@ fn assert_lanes_signed_tolerance_keeps_shortest<S: LayoutScalar>() {
         } else {
             Point::new(px(40.0), S::ZERO)
         };
-        if placement != Ok(expected_lane)
-            || !matches!(&location, Ok(Some(point)) if *point == expected_point)
-        {
+        if !matches!(&location, Ok(Some(point)) if *point == expected_point) {
             differences.push(format!(
-                "{tolerance:?}: {placement:?} and {location:?}, expected lane {expected_lane} at {expected_point:?}"
+                "{tolerance:?}: {location:?}, expected lane {expected_lane} at {expected_point:?}"
             ));
         }
     }
@@ -4560,7 +4493,7 @@ fn grid_compute_size_applies_aspect_ratio_to_max_size() {
     impl Traverse for NoChildMeasurementTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4596,7 +4529,7 @@ fn grid_compute_size_applies_aspect_ratio_to_max_size() {
     impl<'input> Traverse for NoChildMeasurementTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4729,7 +4662,7 @@ fn grid_content_size_mode_ignores_authored_size() {
     impl Traverse for NoChildMeasurementTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4765,7 +4698,7 @@ fn grid_content_size_mode_ignores_authored_size() {
     impl<'input> Traverse for NoChildMeasurementTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -6214,7 +6147,7 @@ fn named_grid_non_rectangular_template_area_is_rejected_despite_explicit_line_na
     assert_eq!(site, crate::LayoutErrorSiteOf::Node(1));
     assert_eq!(
         report,
-        NamedGridErrorReport::NonRectangularTemplateArea {
+        NamedGridError::NonRectangularTemplateArea {
             name: "bad".to_string(),
         }
     );
@@ -6222,7 +6155,7 @@ fn named_grid_non_rectangular_template_area_is_rejected_despite_explicit_line_na
 
 fn assert_grid_names_rejection<T>(
     result: Result<T, crate::LayoutErrorOf<u32, f32>>,
-    expected: NamedGridErrorReport,
+    expected: NamedGridError,
 ) {
     let Err(error) = result else {
         panic!("invalid grid names must not lay out");
@@ -6300,7 +6233,7 @@ fn invalid_template_areas_are_rejected_instead_of_reported() {
 
     assert_grid_names_rejection(
         result,
-        NamedGridErrorReport::TemplateAreaRowLengthMismatch {
+        NamedGridError::TemplateAreaRowLengthMismatch {
             row: 2,
             expected: 2,
             actual: 1,
@@ -6362,7 +6295,7 @@ fn invalid_line_names_are_rejected_instead_of_reported() {
 
     assert_grid_names_rejection(
         result,
-        NamedGridErrorReport::ReservedLineName {
+        NamedGridError::ReservedLineName {
             name: "auto".to_string(),
         },
     );
@@ -6431,7 +6364,7 @@ fn invalid_grid_item_placement_reports_one_authored_fallback_once() {
         .report()
         .named_grid_errors()
         .iter()
-        .filter(|error| **error == NamedGridErrorReport::ZeroLine)
+        .filter(|error| **error == NamedGridError::ZeroLine)
         .count();
 
     assert_eq!(zero_line_count, 1);
@@ -7203,8 +7136,8 @@ fn named_lines_add_template_area_generated_names_and_facts() {
 
 #[test]
 fn named_lines_ignore_template_area_null_cells() {
-    let base =
-        named::named_lines_from_track_components::<Scalar>(GridAxisKind::Row, &[], 0).unwrap();
+    let base = named::named_lines_from_track_components::<DefaultScalar>(GridAxisKind::Row, &[], 0)
+        .unwrap();
     let areas = crate::GridTemplateAreas {
         rows: vec![
             crate::GridTemplateAreaRow {
@@ -7445,7 +7378,8 @@ fn named_grid_resolver_normalizes_spans_and_conflicts() {
 #[test]
 fn grid_axis_placement_preserves_out_of_range_numeric_lines() {
     let lines =
-        named::named_lines_from_track_components::<Scalar>(GridAxisKind::Column, &[], 2).unwrap();
+        named::named_lines_from_track_components::<DefaultScalar>(GridAxisKind::Column, &[], 2)
+            .unwrap();
 
     assert_eq!(
         resolve_grid_item_axis_placement(
@@ -7533,7 +7467,7 @@ fn named_grid_placement_fallback_is_reported() {
     .unwrap();
 
     assert_eq!(placement, GridPlacement::AUTO);
-    assert!(report.errors().contains(&NamedGridErrorReport::ZeroLine));
+    assert!(report.errors().contains(&NamedGridError::ZeroLine));
 }
 
 #[test]
@@ -7586,7 +7520,8 @@ fn named_lines_reject_non_rectangular_template_areas() {
 #[test]
 fn named_lines_treat_default_template_areas_as_noop() {
     let base =
-        named::named_lines_from_track_components::<Scalar>(GridAxisKind::Column, &[], 1).unwrap();
+        named::named_lines_from_track_components::<DefaultScalar>(GridAxisKind::Column, &[], 1)
+            .unwrap();
     let lines = named::add_area_generated_lines(
         GridAxisKind::Column,
         base,
@@ -7838,7 +7773,7 @@ fn standalone_raw_grid_placement_retains_exact_negative_report() {
     assert_eq!(placement, GridPlacement::AUTO);
     assert_eq!(
         report.errors(),
-        &[NamedGridErrorReport::LineBeforeFirst {
+        &[NamedGridError::LineBeforeFirst {
             axis: GridAxisKind::Column,
             line: isize::MIN + 1
         }],
@@ -7860,7 +7795,7 @@ fn standalone_raw_grid_placement_reports_invalid_shadowed_positioned_input() {
         )
         .unwrap();
         assert_eq!(absolute, typed);
-        assert_eq!(report.errors(), &[NamedGridErrorReport::ZeroLine]);
+        assert_eq!(report.errors(), &[NamedGridError::ZeroLine]);
     }
 }
 

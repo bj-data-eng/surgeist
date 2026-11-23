@@ -36,7 +36,7 @@ pub(super) fn subgrid_axis_report<S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct GridAxisMappingInput<'input, S: LayoutScalar = Scalar> {
+pub(super) struct GridAxisMappingInput<'input, S: LayoutScalar = DefaultScalar> {
     pub(super) queried_axis: GridAxisKind,
     pub(super) parent_style: &'input NodeInputOf<S>,
     pub(super) child_style: &'input NodeInputOf<S>,
@@ -53,7 +53,7 @@ pub(super) fn map_grid_axis<'input, S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct SubgridEligibilityInput<'input, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridEligibilityInput<'input, S: LayoutScalar = DefaultScalar> {
     pub(super) axis: GridAxisKind,
     pub(super) parent_style: &'input NodeInputOf<S>,
     pub(super) has_parent_grid: bool,
@@ -76,7 +76,7 @@ pub(super) fn subgrid_eligibility<'input, S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct SubgridChildParentContextInput<'input, Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridChildParentContextInput<'input, Node, S: LayoutScalar = DefaultScalar> {
     pub(super) item: SubgridItemReport<Node>,
     pub(super) child_style: &'input NodeInputOf<S>,
     pub(super) area: GridArea<S>,
@@ -1151,40 +1151,6 @@ pub(super) fn assert_fri08_c04_standalone_nested_flows<S: LayoutScalar>() {
                 }
             }
         }
-    }
-}
-
-pub(super) fn fri08_c03_intrinsic_facts<S: LayoutScalar>(
-    minimum: f64,
-    min_content: f64,
-    max_content: f64,
-) -> LaneContributionFactsOf<S> {
-    LaneContributionFactsOf {
-        min_content: S::from_f64(min_content),
-        max_content: S::from_f64(max_content),
-        min_size: S::from_f64(minimum),
-        automatic_minimum_applies: false,
-    }
-}
-
-pub(super) fn fri08_c03_intrinsic_projected_item<S: LayoutScalar>(
-    id: &'static str,
-    span: usize,
-    candidate_starts: Option<Vec<usize>>,
-    edges: LaneIntrinsicEdgeFactsOf<S>,
-    contribution: LaneContributionFactsOf<S>,
-) -> ProjectedLaneIntrinsicItemOf<S> {
-    ProjectedLaneIntrinsicItemOf {
-        id,
-        kind: LaneIntrinsicItemKind::Indefinite {
-            span: LaneTrackSpanLength::new(span).expect("intrinsic span is nonzero"),
-        },
-        candidate_starts,
-        contribution: contribution.into(),
-        edges,
-        contribution_kind: IntrinsicSpanContribution::MinContent {
-            prioritize_min_tracks: false,
-        },
     }
 }
 
@@ -2671,7 +2637,7 @@ pub(super) fn assert_fri06_mr02_geometry_error_grid_own<S: LayoutScalar>() {
     }
 }
 
-pub(super) fn fri05_c05_grid_sizing_input(size: Size<Option<Scalar>>) -> ComputeInput {
+pub(super) fn fri05_c05_grid_sizing_input(size: Size<Option<DefaultScalar>>) -> ComputeInput {
     ComputeInput::for_child(
         RunMode::PerformLayout,
         SizingMode::InherentSize,
@@ -2862,7 +2828,10 @@ pub(super) fn fri04_c04_grid_dispatch_style(
     style
 }
 
-pub(super) fn lp(absolute_px: Scalar, percent_fraction: Scalar) -> LengthPercentageOf {
+pub(super) fn lp(
+    absolute_px: DefaultScalar,
+    percent_fraction: DefaultScalar,
+) -> LengthPercentageOf {
     LengthPercentageOf::from_coefficients(absolute_px, percent_fraction)
         .expect("test coefficients are finite")
 }
@@ -2871,14 +2840,14 @@ pub(super) fn invalid_numeric_lp() -> LengthPercentageOf {
     LengthPercentageOf::from_coefficients(f32::MAX, f32::MAX).expect("test coefficients are finite")
 }
 
-pub(super) fn fri04_c03_grid_track_value(value: Scalar) -> SizingCalculation {
+pub(super) fn fri04_c03_grid_track_value(value: DefaultScalar) -> SizingCalculation {
     SizingCalculation::value(LengthPercentageOf::px(value).expect("test sizing value is finite"))
 }
 
 pub(super) fn fri04_c03_grid_track_nested(
-    minimum: Scalar,
-    preferred: Scalar,
-    maximum: Scalar,
+    minimum: DefaultScalar,
+    preferred: DefaultScalar,
+    maximum: DefaultScalar,
 ) -> SizingCalculation {
     let preferred = SizingCalculation::max(vec![
         fri04_c03_grid_track_value(preferred),
@@ -2897,9 +2866,9 @@ pub(super) fn fri04_c03_grid_track_nested(
 }
 
 pub(super) fn fri04_c03_grid_track_percentage_nested(
-    minimum: Scalar,
-    percentage: Scalar,
-    maximum: Scalar,
+    minimum: DefaultScalar,
+    percentage: DefaultScalar,
+    maximum: DefaultScalar,
 ) -> SizingCalculation {
     SizingCalculation::clamp(
         Some(fri04_c03_grid_track_value(minimum)),
@@ -2916,10 +2885,10 @@ pub(super) fn fri04_c03_grid_track_percentage_nested(
 }
 
 pub(super) fn baseline_measure(
-    width: Scalar,
-    height: Scalar,
-    first_baseline: Option<Scalar>,
-    last_baseline_from_bottom: Option<Scalar>,
+    width: DefaultScalar,
+    height: DefaultScalar,
+    first_baseline: Option<DefaultScalar>,
+    last_baseline_from_bottom: Option<DefaultScalar>,
 ) -> ComputeOutput {
     ComputeOutput::from_sizes_and_baselines(
         Size::new(width, height),
@@ -2935,10 +2904,10 @@ pub(super) fn baseline_measure(
 }
 
 pub(super) fn vertical_baseline_measure(
-    width: Scalar,
-    height: Scalar,
-    first_baseline: Option<Scalar>,
-    last_baseline_from_right: Option<Scalar>,
+    width: DefaultScalar,
+    height: DefaultScalar,
+    first_baseline: Option<DefaultScalar>,
+    last_baseline_from_right: Option<DefaultScalar>,
 ) -> ComputeOutput {
     ComputeOutput::from_sizes_and_baselines(
         Size::new(width, height),
@@ -3024,7 +2993,7 @@ pub(super) fn compute_oracle_grid_output(tree: &mut OracleTree) -> ComputeOutput
 // The grid container's site and the grid-name error that rejects its layout.
 pub(super) fn oracle_grid_names_rejection(
     tree: &mut OracleTree,
-) -> (crate::LayoutErrorSiteOf<u32>, crate::NamedGridErrorReport) {
+) -> (crate::LayoutErrorSiteOf<u32>, crate::NamedGridError) {
     let Err(error) = crate::compute_grid(&mut tree.borrow_compute(), 1, oracle_grid_input()) else {
         panic!("invalid grid names must not lay out");
     };
@@ -3036,7 +3005,7 @@ pub(super) fn oracle_grid_names_rejection(
     }
 }
 
-pub(super) fn final_y(tree: &OracleTree, node: u32) -> Scalar {
+pub(super) fn final_y(tree: &OracleTree, node: u32) -> DefaultScalar {
     tree.final_layout(node)
         .expect("node should have a final layout")
         .location

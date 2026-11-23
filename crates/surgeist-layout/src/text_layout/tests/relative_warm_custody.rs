@@ -1,5 +1,6 @@
 use super::*;
 use crate::test_support::readback::{self, Phase};
+use surgeist_text::font::FontBaseline;
 
 #[derive(Clone, Copy)]
 enum ReturnedCustody {
@@ -591,7 +592,7 @@ fn custody_inner_named_recompute<S: LayoutScalar>() {
     let inner = PreparedParagraph::plain(3, Source::new("X"), ahem_style(10.0, 10.0));
     let atom = NodeInputOf {
         display: Display::InlineBlock,
-        inline_baseline_context: InlineBaselineContext::Named(BaselineName::Alphabetic),
+        inline_baseline_context: InlineBaselineContext::Named(FontBaseline::Alphabetic),
         position: Position::Relative,
         vertical_align: VerticalAlignOf::Baseline,
         size: Size::new(
@@ -660,7 +661,7 @@ fn custody_inner_named_recompute<S: LayoutScalar>() {
         binding.prepared = prepared;
     }
     let mut root = custody_root();
-    root.inline_baseline_context = InlineBaselineContext::Named(BaselineName::Alphabetic);
+    root.inline_baseline_context = InlineBaselineContext::Named(FontBaseline::Alphabetic);
     let tree = PublicLayoutTreeOf::new()
         .children(0, [1, 2])
         .children(1, [])
@@ -705,7 +706,7 @@ fn custody_inner_named_recompute<S: LayoutScalar>() {
             assert_eq!(run.font_size(), 10.0);
         }
         let node = custody_entry(batch, 2, true).output();
-        let named = node.named_baselines.get(BaselineName::Alphabetic);
+        let named = node.named_baselines.get(FontBaseline::Alphabetic);
         // Named readback is relative to the published border, while Text
         // line baselines are global: actual Alphabetic8 + borderTop1 =9.
         assert_eq!(node.location.y, custody_n::<S>(1.0));

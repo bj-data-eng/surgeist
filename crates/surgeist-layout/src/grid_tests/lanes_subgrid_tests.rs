@@ -18,6 +18,7 @@ use super::fixtures::{
     with_projected_subgrid_child_input,
 };
 use super::*;
+use crate::test_support::lane_placement::{LaneFixture, LaneFixtureItem};
 use crate::test_support::readback::{self, Phase};
 
 fn assert_explicit_lanes_flow_ignores_the_stacking_template<S: LayoutScalar>() {
@@ -2912,116 +2913,9 @@ fn fri04_c03_grid_track_grid_and_lanes_propagate_invalid_property_numeric() {
 }
 
 #[test]
-fn fri04_c03_grid_track_lanes_resolve_nested_track_bases_and_propagate_invalid_numeric() {
-    let report = lane_intrinsic_sizing(LaneIntrinsicSizingInput {
-        axis: GridAxisKind::Column,
-        available: None,
-        gap: 0.0,
-        tracks: vec![TrackSizing::new(
-            MinTrackSizing::Calculation(fri04_c03_grid_track_nested(20.0, 40.0, 60.0)),
-            MaxTrackSizing::Auto,
-        )],
-        content_sized_tracks: vec![0],
-        items: Vec::new(),
-    })
-    .expect("nested lane track sizing resolves")
-    .expect("nested lane placement is valid");
-    assert_eq!(report.final_track_sizes, [40.0]);
-
-    let invalid = SizingCalculation::max(vec![
-        fri04_c03_grid_track_value(10.0),
-        SizingCalculation::value(invalid_numeric_lp()),
-    ])
-    .expect("nested maximum is nonempty");
-    let error = lane_intrinsic_sizing(LaneIntrinsicSizingInput {
-        axis: GridAxisKind::Row,
-        available: Some(f32::MAX),
-        gap: 0.0,
-        tracks: vec![TrackSizing::new(
-            MinTrackSizing::Calculation(invalid),
-            MaxTrackSizing::Auto,
-        )],
-        content_sized_tracks: vec![0],
-        items: Vec::new(),
-    })
-    .expect_err("invalid nested lane track numeric must fail");
-    assert!(matches!(
-        error.kind(),
-        LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric { value })
-            if value.is_infinite()
-    ));
-}
-
-#[test]
-fn lane_intrinsic_item_exposes_exactly_one_kind() {
-    let contribution = LaneContributionFacts {
-        min_content: 1.0,
-        max_content: 2.0,
-        min_size: 0.0,
-        automatic_minimum_applies: true,
-    };
-    let span = LaneTrackSpanLength::new(2).expect("span should be nonzero");
-    let item = LaneIntrinsicItem::indefinite("item", span, contribution);
-
-    assert!(matches!(
-        item.kind(),
-        LaneIntrinsicItemKind::Indefinite { span } if span.get() == 2
-    ));
-}
-
-#[test]
-fn lane_intrinsic_item_rejects_malformed_definite_span_without_track_context() {
-    let contribution = LaneContributionFacts {
-        min_content: 1.0,
-        max_content: 2.0,
-        min_size: 0.0,
-        automatic_minimum_applies: true,
-    };
-    let span = LaneTrackSpan::new(0, 1);
-    let err = LaneIntrinsicItem::definite("item", span, contribution)
-        .expect_err("malformed definite span should be rejected at construction");
-
-    assert_eq!(err, LanePlacementError::InvalidDefiniteLaneSpan { span });
-}
-
-#[test]
-fn lane_track_span_length_rejects_zero() {
-    assert!(LaneTrackSpanLength::new(0).is_none());
-}
-
-#[test]
-fn lane_errors_carry_context() {
-    let err = place_lanes(LanePlacementInput {
-        grid_axis_tracks: 2,
-        grid_axis: crate::GridAxisKind::Column,
-        reversed: false,
-        lane_gap: 0.0,
-        tolerance: GridFlowTolerance::Infinite,
-        tolerance_basis: 0.0,
-        items: vec![LaneItem {
-            item: "item",
-            grid_axis_span: 1,
-            definite_grid_axis_start: Some(0),
-            lane_axis_margin_box: 1.0,
-        }],
-    })
-    .expect_err("zero grid axis start should be rejected with context");
-
-    assert_eq!(err, LanePlacementError::InvalidGridAxisStart { start: 0 });
-}
-
-#[test]
 fn lanes_reject_invalid_raw_tolerance_basis() {
-    let err = place_lanes(LanePlacementInput::<&str> {
-        grid_axis_tracks: 2,
-        grid_axis: crate::GridAxisKind::Column,
-        reversed: false,
-        lane_gap: 0.0,
-        tolerance: GridFlowTolerance::Percent(0.25),
-        tolerance_basis: f32::NAN,
-        items: Vec::new(),
-    })
-    .expect_err("invalid raw tolerance basis should return a typed error");
+    let err = resolve_tolerance(GridFlowTolerance::Percent(0.25), f32::NAN)
+        .expect_err("invalid raw tolerance basis should return a typed error");
 
     assert_eq!(err, LanePlacementError::InvalidGridFlowToleranceBasis);
 }
@@ -3032,7 +2926,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
         outputs: HashMap<u32, ComputeOutput>,
     }
 
@@ -3041,7 +2935,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
             &mut self,
             node: u32,
             input: ComputeInput,
-        ) -> LayoutResultOf<u32, ComputeOutput, Scalar> {
+        ) -> LayoutResultOf<u32, ComputeOutput, DefaultScalar> {
             let node_input = self.styles[&node].clone();
             if self.children[&node].is_empty() {
                 return Ok(self.outputs[&node]);
@@ -3062,7 +2956,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
     impl Traverse for RecursiveTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -3084,7 +2978,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
         outputs: &'input mut HashMap<u32, ComputeOutput>,
     }
 
@@ -3102,7 +2996,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
     impl<'input> Traverse for RecursiveTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4511,9 +4405,9 @@ fn named_grid_lanes_place_item_between_named_ordinary_grid_lines() {
 
     assert_eq!(
         child.location.x,
-        (expected.start_line as Scalar - 1.0) * 40.0
+        (expected.start_line as DefaultScalar - 1.0) * 40.0
     );
-    assert_eq!(child.size.width, expected.span as Scalar * 40.0);
+    assert_eq!(child.size.width, expected.span as DefaultScalar * 40.0);
 }
 
 #[test]
@@ -4581,9 +4475,9 @@ fn named_grid_lanes_span_named_implicit_fallback_line() {
 
     assert_eq!(
         child.location.x,
-        (expected.start_line as Scalar - 1.0) * 40.0
+        (expected.start_line as DefaultScalar - 1.0) * 40.0
     );
-    assert_eq!(child.size.width, expected.span as Scalar * 40.0);
+    assert_eq!(child.size.width, expected.span as DefaultScalar * 40.0);
 }
 
 #[test]
@@ -4685,9 +4579,9 @@ fn named_grid_lanes_subgrid_axis_uses_inherited_line_names() {
 
     assert_eq!(
         child.location.x,
-        (expected.start_line as Scalar - 1.0) * 40.0
+        (expected.start_line as DefaultScalar - 1.0) * 40.0
     );
-    assert_eq!(child.size.width, expected.span as Scalar * 40.0);
+    assert_eq!(child.size.width, expected.span as DefaultScalar * 40.0);
 }
 
 fn assert_logical_inherited_grid_axis_contexts<S: LayoutScalar>()
@@ -7180,7 +7074,7 @@ impl LaneMarginMeasureTree {
 
 impl Traverse for LaneMarginMeasureTree {
     type Node = usize;
-    type Scalar = Scalar;
+    type Scalar = DefaultScalar;
     type Children<'a>
         = std::vec::IntoIter<Self::Node>
     where
@@ -7226,7 +7120,7 @@ impl LaneMarginMeasureTreeCompute<'_> {
 
 impl<'input> Traverse for LaneMarginMeasureTreeCompute<'input> {
     type Node = usize;
-    type Scalar = Scalar;
+    type Scalar = DefaultScalar;
     type Children<'a>
         = std::vec::IntoIter<Self::Node>
     where
@@ -7305,189 +7199,22 @@ impl<'input> Compute<'input> for LaneMarginMeasureTreeCompute<'input> {
 }
 
 #[test]
-fn grid_lane_track_base_rejects_positive_invalid_affine_numeric_result() {
-    let outcome = lane_intrinsic_sizing(LaneIntrinsicSizingInput {
-        axis: GridAxisKind::Column,
-        available: Some(2.0),
-        gap: 0.0,
-        tracks: vec![TrackSizing::new(
-            MinTrackSizing::Calculation(SizingCalculation::value(invalid_numeric_lp())),
-            MaxTrackSizing::Auto,
-        )],
-        content_sized_tracks: vec![0],
-        items: Vec::new(),
-    });
-
-    let error = outcome.expect_err("invalid lane track sizing must not produce output");
-
-    assert_eq!(error.site(), LayoutErrorSite::Standalone);
-    assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    crate::test_support::assert_error_kind(
-        error.kind(),
-        &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric {
-            value: f32::INFINITY,
-        }),
-    );
-}
-
-#[test]
-fn grid_lane_track_base_rejects_signed_invalid_affine_numeric_result() {
-    let outcome = lane_intrinsic_sizing(LaneIntrinsicSizingInput {
-        axis: GridAxisKind::Column,
-        available: Some(f32::MAX),
-        gap: 0.0,
-        tracks: vec![TrackSizing::new(
-            MinTrackSizing::Calculation(SizingCalculation::value(lp(-f32::MAX, -1.0))),
-            MaxTrackSizing::Auto,
-        )],
-        content_sized_tracks: vec![0],
-        items: Vec::new(),
-    });
-
-    let error = outcome.expect_err("invalid lane track sizing must not produce output");
-
-    assert_eq!(error.site(), LayoutErrorSite::Standalone);
-    assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    crate::test_support::assert_error_kind(
-        error.kind(),
-        &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric {
-            value: f32::NEG_INFINITY,
-        }),
-    );
-}
-
-#[test]
-fn grid_lane_track_base_rejects_positive_and_signed_invalid_f64_affine_numeric_results() {
-    for (label, absolute, percent, expected) in [
-        ("positive", f64::MAX, 1.0_f64, f64::INFINITY),
-        ("signed", -f64::MAX, -1.0_f64, f64::NEG_INFINITY),
-    ] {
-        let outcome = lane_intrinsic_sizing(LaneIntrinsicSizingInputOf::<f64> {
-            axis: GridAxisKind::Column,
-            available: Some(f64::MAX),
-            gap: 0.0,
-            tracks: vec![TrackSizingOf::new(
-                MinTrackSizingOf::Calculation(SizingCalculationOf::value(
-                    LengthPercentageOf::from_coefficients(absolute, percent)
-                        .expect("test coefficients are finite"),
-                )),
-                MaxTrackSizingOf::Auto,
-            )],
-            content_sized_tracks: vec![0],
-            items: Vec::new(),
-        });
-
-        let error = outcome.expect_err("invalid lane track sizing must not produce output");
-
-        assert_eq!(error.site(), LayoutErrorSite::Standalone, "{label} site");
-        assert_eq!(
-            error.operation(),
-            LayoutOperation::ValueResolution,
-            "{label} operation"
-        );
-        crate::test_support::assert_error_kind(
-            error.kind(),
-            &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
-                value: expected,
-            }),
-        );
-    }
-}
-
-#[test]
-fn lane_intrinsic_public_inputs_accept_non_default_scalar() {
-    let facts = LaneContributionFactsOf::<f64> {
-        min_content: 1.25_f64,
-        max_content: 2.5_f64,
-        min_size: 0.75_f64,
-        automatic_minimum_applies: true,
-    };
-    let item = LaneIntrinsicItemOf::<f64>::indefinite(
-        "wide",
-        LaneTrackSpanLength::new(2).expect("span should be nonzero"),
-        facts,
-    );
-    let input = LaneIntrinsicSizingInputOf::<f64> {
-        axis: GridAxisKind::Column,
-        available: Some(10.5_f64),
-        gap: 1.5_f64,
-        tracks: vec![TrackSizingOf::<f64>::AUTO],
-        content_sized_tracks: vec![0],
-        items: vec![item],
-    };
-
-    assert_eq!(input.gap, 1.5_f64);
-    assert_eq!(input.items[0].contribution().max_content, 2.5_f64);
-
-    let placement_input = LanePlacementInputOf::<_, f64> {
-        grid_axis_tracks: 1,
+fn lane_placement_computes_with_non_default_scalar() {
+    let placement = LaneFixture::<f64> {
         grid_axis: crate::GridAxisKind::Column,
         reversed: false,
-        lane_gap: 1.5_f64,
-        tolerance: GridFlowToleranceOf::Percent(0.25_f64),
-        tolerance_basis: 10.5_f64,
-        items: Vec::<LaneItemOf<&str, f64>>::new(),
-    };
-
-    assert_eq!(
-        placement_input.tolerance,
-        GridFlowToleranceOf::Percent(0.25_f64)
-    );
-}
-
-#[test]
-fn lane_public_helpers_compute_with_non_default_scalar() {
-    let placement = place_lanes(LanePlacementInputOf::<_, f64> {
-        grid_axis_tracks: 2,
-        grid_axis: crate::GridAxisKind::Column,
-        reversed: false,
+        tracks: 2,
         lane_gap: 0.5,
         tolerance: GridFlowToleranceOf::Normal { font_size: 0.0 },
-        tolerance_basis: 0.0,
         items: vec![
-            LaneItemOf {
-                item: "a",
-                grid_axis_span: 1,
-                definite_grid_axis_start: None,
-                lane_axis_margin_box: 10.25,
-            },
-            LaneItemOf {
-                item: "b",
-                grid_axis_span: 1,
-                definite_grid_axis_start: None,
-                lane_axis_margin_box: 12.5,
-            },
+            LaneFixtureItem::auto(1, 10.25),
+            LaneFixtureItem::auto(1, 12.5),
         ],
-    })
-    .expect("f64 lane placement should compute");
+    }
+    .layout();
 
-    assert_eq!(placement.content_size, 12.5);
-    assert_eq!(placement.item_offsets[1].offset, 0.0);
-
-    let intrinsic = lane_intrinsic_sizing(LaneIntrinsicSizingInputOf::<f64> {
-        axis: GridAxisKind::Column,
-        available: Some(80.0),
-        gap: 1.25,
-        tracks: vec![TrackSizingOf::<f64>::AUTO],
-        content_sized_tracks: vec![0],
-        items: vec![
-            LaneIntrinsicItemOf::<f64>::definite(
-                "definite",
-                LaneTrackSpan::new(1, 2),
-                LaneContributionFactsOf {
-                    min_content: 9.5,
-                    max_content: 14.25,
-                    min_size: 7.0,
-                    automatic_minimum_applies: true,
-                },
-            )
-            .expect("span is valid"),
-        ],
-    })
-    .expect("f64 lane intrinsic sizing should not fail")
-    .expect("f64 lane intrinsic sizing should produce a report");
-
-    assert_eq!(intrinsic.final_track_sizes, vec![9.5]);
+    assert_eq!(placement.content_extent, 12.5);
+    assert_eq!(placement.offsets[1], 0.0);
 }
 
 #[test]
@@ -7853,7 +7580,7 @@ fn subgrid_axis_placement_reports_one_authored_fallback_once() {
             report
                 .errors()
                 .iter()
-                .filter(|error| **error == NamedGridErrorReport::ZeroLine)
+                .filter(|error| **error == NamedGridError::ZeroLine)
                 .count(),
             1
         );
@@ -10716,16 +10443,16 @@ fn subgrid_intrinsic_parent_context_uses_actual_span_and_reversal() {
         eligibility: SubgridEligibility::SharedTracks,
     };
 
-    let axis: InheritedGridAxis<Scalar> = intrinsic_subgrid_axis_parent_context(
+    let axis: InheritedGridAxis<DefaultScalar> = intrinsic_subgrid_axis_parent_context(
         report,
         GridArea {
             row: 0,
             column: 1,
             row_end: 1,
             column_end: 4,
-            size: LogicalSizeOf::new(Scalar::ZERO, Scalar::ZERO),
+            size: LogicalSizeOf::new(DefaultScalar::ZERO, DefaultScalar::ZERO),
         },
-        Size::<Scalar>::ZERO,
+        Size::<DefaultScalar>::ZERO,
         SubgridParentTrackSource {
             baseline_references: crate::GridBaselineReferences::default(),
             flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
@@ -10778,7 +10505,8 @@ fn subgrid_line_names_recompute_area_generated_names_clipped_to_span() {
     };
     let parent = named::add_area_generated_lines(
         GridAxisKind::Column,
-        named::named_lines_from_track_components::<Scalar>(GridAxisKind::Column, &[], 4).unwrap(),
+        named::named_lines_from_track_components::<DefaultScalar>(GridAxisKind::Column, &[], 4)
+            .unwrap(),
         &areas,
     )
     .unwrap();
@@ -10806,7 +10534,8 @@ fn subgrid_area_facts_preserve_reversed_orientation_and_axis_validity() {
     };
     let parent_lines = named::add_area_generated_lines(
         GridAxisKind::Column,
-        named::named_lines_from_track_components::<Scalar>(GridAxisKind::Column, &[], 4).unwrap(),
+        named::named_lines_from_track_components::<DefaultScalar>(GridAxisKind::Column, &[], 4)
+            .unwrap(),
         &areas,
     )
     .unwrap();
@@ -10848,7 +10577,7 @@ fn subgrid_area_facts_preserve_reversed_orientation_and_axis_validity() {
 fn subgrid_local_area_facts_clamp_to_inherited_span() {
     let parent_context = GridParentContext {
         columns: Some(test_inherited_axis(
-            named::named_lines_from_track_components::<Scalar>(GridAxisKind::Column, &[], 4)
+            named::named_lines_from_track_components::<DefaultScalar>(GridAxisKind::Column, &[], 4)
                 .unwrap(),
             None,
             0,
@@ -10898,7 +10627,8 @@ fn subgrid_duplicate_area_facts_merge_with_parent_clipped_boundaries() {
     };
     let parent_lines = named::add_area_generated_lines(
         GridAxisKind::Column,
-        named::named_lines_from_track_components::<Scalar>(GridAxisKind::Column, &[], 4).unwrap(),
+        named::named_lines_from_track_components::<DefaultScalar>(GridAxisKind::Column, &[], 4)
+            .unwrap(),
         &parent_areas,
     )
     .unwrap();
@@ -11533,7 +11263,7 @@ fn nested_subgrid_same_flow_projects_physical_edge_sums_before_local_track_sizin
     assert_eq!(prepared.containing_flow_axes(), flow);
     // This replaces the former detached Auto estimate with authored known
     // geometry. Preserve the percentage equation in the represented lane.
-    let outer_border: Scalar = 200.0 - (3.0 + 7.0);
+    let outer_border: DefaultScalar = 200.0 - (3.0 + 7.0);
     let inner_border = outer_border - (13.0 + 19.0 + 29.0 + 37.0);
     let nearest_content = inner_border - (0.1 * inner_border + 0.3 * inner_border);
     assert_eq!(outer_border, 190.0);

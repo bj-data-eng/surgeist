@@ -188,7 +188,7 @@ pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
     TreeTopologyCycle,
     /// The grid container's named lines or template areas violate the Grid
     /// specification. The error site is the grid container.
-    GridNames(crate::NamedGridErrorReport),
+    GridNames(crate::NamedGridError),
     TextBinding(crate::text_layout::TextBindingError),
     WrappingScope(crate::inline_wrapping::WrappingScopeError),
 }
@@ -225,7 +225,6 @@ pub enum LayoutMissingContext {
     RequiredBasis,
     FloatExclusionProvider,
     TextCapture,
-    InlineWrapping,
     /// The selected hyphenation needs an owning completed-block continuation.
     TextBlockTail,
     TextOutOfFlowGeometry,
@@ -359,7 +358,12 @@ impl UnsupportedSizingBehavior {
 #[non_exhaustive]
 pub enum LayoutUnsupportedCapability {
     BlockFragmentationProfile,
-    LaterFriBehavior,
+    /// An inline text or text control node whose parent does not accept inline
+    /// text.
+    NonBoxNodeOutsideInlineFlow,
+    /// Value resolution received `LengthResolutionStatus::NonNumeric`, a
+    /// represented length that has no number.
+    NonNumericLength,
     /// Size preparation requires a definite root-local Block and an empty,
     /// in-flow, unmeasured InlineBlock.
     InlineAtomicSizePreparation,
@@ -529,7 +533,7 @@ where
             LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value })
         }
         LengthResolutionStatus::NonNumeric => {
-            LayoutErrorKindOf::UnsupportedCapability(LayoutUnsupportedCapability::LaterFriBehavior)
+            LayoutErrorKindOf::UnsupportedCapability(LayoutUnsupportedCapability::NonNumericLength)
         }
         LengthResolutionStatus::Resolved => LayoutErrorKindOf::InternalInvariant(
             LayoutInternalInvariant::ResolvedLengthOnFailurePath,

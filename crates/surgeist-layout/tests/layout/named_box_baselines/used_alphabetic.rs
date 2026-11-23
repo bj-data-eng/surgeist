@@ -1,5 +1,6 @@
 //! Actual used-Alphabetic Text supplies Layout's named reference and child facts.
 use super::*;
+use surgeist_text::font::FontBaseline;
 mod joins;
 
 const ALPHA: t::font::FontBaseline = t::font::FontBaseline::Alphabetic;
@@ -493,7 +494,7 @@ fn child_binding(child: &Captured, container: u32, text: u32) -> l::TextParagrap
     }
 }
 fn unknown<S: l::LayoutScalar>(facts: l::NamedBaselinesOf<S>) {
-    for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+    for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         let pair = facts.get(name);
         assert_eq!(
             (pair.first(), pair.last()),
@@ -507,7 +508,7 @@ fn alpha<S: l::LayoutScalar>(
     first: f64,
     last: f64,
 ) {
-    let pair = facts.get(l::BaselineName::Alphabetic);
+    let pair = facts.get(FontBaseline::Alphabetic);
     assert_eq!(
         pair.first(),
         l::BaselineFactOf::Available(l::BaselineCoordinateOf::try_new(axis, n(first)).unwrap())
@@ -516,7 +517,7 @@ fn alpha<S: l::LayoutScalar>(
         pair.last(),
         l::BaselineFactOf::Available(l::BaselineCoordinateOf::try_new(axis, n(last)).unwrap())
     );
-    let other = facts.get(l::BaselineName::Central);
+    let other = facts.get(FontBaseline::Central);
     assert_eq!(
         (other.first(), other.last()),
         (l::BaselineFactOf::Unknown, l::BaselineFactOf::Unknown)
@@ -857,7 +858,7 @@ fn qualify_parent_text(parent: &Captured, bytes: &[u8], case: Case) {
 }
 fn actual<S: l::LayoutScalar>(bytes: &[u8], parent: &Captured, child: &Captured, case: Case) {
     let cw = case.mode != l::WritingMode::HorizontalTb;
-    let context = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic);
+    let context = l::InlineBaselineContext::Named(FontBaseline::Alphabetic);
     let mut input = root(case.mode, l::Direction::Ltr, context);
     input.size = l::Size::new(px(40.0), px(40.0));
     let mut host = Host::<S>::new(input);

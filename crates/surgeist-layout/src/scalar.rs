@@ -1,5 +1,6 @@
 use core::fmt::Debug;
 use core::ops::{Add, Div, Mul, Neg, Sub};
+use surgeist_text::inline_box::InlineBoxEdgeComponents;
 
 /// Numeric precision contract for one layout computation.
 pub trait LayoutScalar:
@@ -69,8 +70,34 @@ pub(crate) fn round_layout_coordinate<S: LayoutScalar>(value: S) -> S {
 }
 
 macro_rules! impl_layout_scalar {
-    ($ty:ty) => {
-        impl private::Sealed for $ty {}
+    ($ty:ty, $bits:ty, $edge_components:ident) => {
+        impl private::Sealed for $ty {
+            const MAX_NONNEGATIVE_FINITE_RANK: u64 = <$ty>::MAX.to_bits() as u64;
+            const FRACTION_BITS: usize = <$ty>::MANTISSA_DIGITS as usize - 1;
+            const SMALLEST_SUBNORMAL_EXPONENT: usize =
+                (<$ty>::MANTISSA_DIGITS as i32 - <$ty>::MIN_EXP) as usize;
+
+            fn nonnegative_finite_rank(self) -> u64 {
+                if self == 0.0 {
+                    0
+                } else {
+                    u64::from(self.to_bits())
+                }
+            }
+
+            fn from_nonnegative_finite_rank(rank: u64) -> Self {
+                // Every rank is bounded by MAX_NONNEGATIVE_FINITE_RANK.
+                <$ty>::from_bits(<$bits>::try_from(rank).expect("bounded finite rank"))
+            }
+
+            fn inline_box_edge_components(
+                margin: Self,
+                border: Self,
+                padding: Self,
+            ) -> surgeist_text::Result<InlineBoxEdgeComponents> {
+                InlineBoxEdgeComponents::$edge_components(margin, border, padding)
+            }
+        }
 
         impl LayoutScalar for $ty {
             const ZERO: Self = 0.0;
@@ -136,49 +163,129 @@ macro_rules! impl_layout_scalar {
     };
 }
 
-impl_layout_scalar!(f32);
-impl_layout_scalar!(f64);
+impl_layout_scalar!(f32, u32, from_f32);
+impl_layout_scalar!(f64, u64, from_f64);
 
 mod private {
-    pub trait Sealed {}
-}
+    use surgeist_text::inline_box::InlineBoxEdgeComponents;
 
-// Private numeric consumers share the actual sealed nonnegative finite rank domain.
-pub(crate) fn max_nonnegative_finite_rank<S: LayoutScalar>() -> u64 {
-    use core::any::TypeId;
-    if TypeId::of::<S>() == TypeId::of::<f32>() {
-        u64::from(f32::MAX.to_bits())
-    } else if TypeId::of::<S>() == TypeId::of::<f64>() {
-        f64::MAX.to_bits()
-    } else {
-        unreachable!("LayoutScalar is sealed to f32 and f64")
+    /// Per-lane numeric facts that private layout algorithms need. Only `f32`
+    /// and `f64` implement it.
+    pub trait Sealed {
+        /// The largest rank of a finite non-negative value of this lane.
+        const MAX_NONNEGATIVE_FINITE_RANK: u64;
+        /// Explicit significand bits of the lane's binary format.
+        const FRACTION_BITS: usize;
+        /// Magnitude of the binary exponent of the smallest subnormal value.
+        const SMALLEST_SUBNORMAL_EXPONENT: usize;
+
+        /// The rank of a finite non-negative value: its bit pattern, which is
+        /// ordered like the value, with zero of either sign at rank zero.
+        fn nonnegative_finite_rank(self) -> u64;
+        /// The value of a rank not above `MAX_NONNEGATIVE_FINITE_RANK`.
+        fn from_nonnegative_finite_rank(rank: u64) -> Self;
+        /// The text crate's inline-box edge components for three lane values,
+        /// converted without narrowing.
+        fn inline_box_edge_components(
+            margin: Self,
+            border: Self,
+            padding: Self,
+        ) -> surgeist_text::Result<InlineBoxEdgeComponents>;
     }
 }
 
-pub(crate) fn nonnegative_finite_rank<S: LayoutScalar>(value: S) -> u64 {
-    use core::any::TypeId;
-    if value == S::ZERO {
-        return 0;
-    }
-    if TypeId::of::<S>() == TypeId::of::<f32>() {
-        u64::from((value.to_f64() as f32).to_bits())
-    } else if TypeId::of::<S>() == TypeId::of::<f64>() {
-        value.to_f64().to_bits()
-    } else {
-        unreachable!("LayoutScalar is sealed to f32 and f64")
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::private::Sealed;
+    use super::*;
 
-pub(crate) fn from_nonnegative_finite_rank<S: LayoutScalar>(rank: u64) -> S {
-    use core::any::TypeId;
-    if TypeId::of::<S>() == TypeId::of::<f32>() {
-        // Every rank is bounded by this actual scalar's max_nonnegative_finite_rank.
-        S::from_f32(f32::from_bits(
-            u32::try_from(rank).expect("bounded finite f32 rank"),
-        ))
-    } else if TypeId::of::<S>() == TypeId::of::<f64>() {
-        S::from_f64(f64::from_bits(rank))
-    } else {
-        unreachable!("LayoutScalar is sealed to f32 and f64")
+    struct LaneFacts {
+        max_rank: u64,
+        fraction_bits: usize,
+        smallest_subnormal_exponent: usize,
+        one_rank: u64,
+    }
+
+    // The expectations are the IEEE 754 binary32 and binary64 formats.
+    fn assert_rank_facts<S: LayoutScalar>(expected: LaneFacts) {
+        assert_eq!(S::MAX_NONNEGATIVE_FINITE_RANK, expected.max_rank);
+        assert_eq!(S::FRACTION_BITS, expected.fraction_bits);
+        assert_eq!(
+            S::SMALLEST_SUBNORMAL_EXPONENT,
+            expected.smallest_subnormal_exponent
+        );
+
+        assert_eq!(S::ZERO.nonnegative_finite_rank(), 0);
+        assert_eq!((-S::ZERO).nonnegative_finite_rank(), 0);
+        assert_eq!(S::from_nonnegative_finite_rank(0), S::ZERO);
+
+        let smallest = S::from_nonnegative_finite_rank(1);
+        // Two factors keep each power of two representable in binary64.
+        let exponent = expected.smallest_subnormal_exponent as i32;
+        assert_eq!(
+            smallest.to_f64(),
+            2f64.powi(-(exponent / 2)) * 2f64.powi(-(exponent - exponent / 2))
+        );
+        assert_eq!(smallest.nonnegative_finite_rank(), 1);
+
+        assert_eq!(S::ONE.nonnegative_finite_rank(), expected.one_rank);
+        assert_eq!(S::from_nonnegative_finite_rank(expected.one_rank), S::ONE);
+
+        let largest = S::from_nonnegative_finite_rank(expected.max_rank);
+        assert!(largest.is_finite());
+        assert_eq!(largest.nonnegative_finite_rank(), expected.max_rank);
+        assert!(!S::from_nonnegative_finite_rank(expected.max_rank + 1).is_finite());
+    }
+
+    #[test]
+    fn f32_rank_items_follow_the_binary32_format() {
+        assert_rank_facts::<f32>(LaneFacts {
+            max_rank: 0x7f7f_ffff,
+            fraction_bits: 23,
+            smallest_subnormal_exponent: 149,
+            one_rank: 0x3f80_0000,
+        });
+    }
+
+    #[test]
+    fn f64_rank_items_follow_the_binary64_format() {
+        assert_rank_facts::<f64>(LaneFacts {
+            max_rank: 0x7fef_ffff_ffff_ffff,
+            fraction_bits: 52,
+            smallest_subnormal_exponent: 1074,
+            one_rank: 0x3ff0_0000_0000_0000,
+        });
+    }
+
+    #[test]
+    fn f32_edge_components_keep_the_f32_lane_without_narrowing_loss() {
+        let subnormal = f32::from_bits(1);
+        let actual = <f32 as Sealed>::inline_box_edge_components(1.5, 0.25, subnormal).unwrap();
+        assert_eq!(
+            actual,
+            InlineBoxEdgeComponents::from_f32(1.5, 0.25, subnormal).unwrap()
+        );
+        assert_ne!(
+            actual,
+            InlineBoxEdgeComponents::from_f64(1.5, 0.25, f64::from(subnormal)).unwrap()
+        );
+        assert!(<f32 as Sealed>::inline_box_edge_components(f32::NAN, 0.0, 0.0).is_err());
+        assert!(<f32 as Sealed>::inline_box_edge_components(0.0, -1.0, 0.0).is_err());
+    }
+
+    #[test]
+    fn f64_edge_components_keep_the_f64_lane() {
+        let subnormal = f64::from_bits(1);
+        let actual = <f64 as Sealed>::inline_box_edge_components(1.5, 0.25, subnormal).unwrap();
+        assert_eq!(
+            actual,
+            InlineBoxEdgeComponents::from_f64(1.5, 0.25, subnormal).unwrap()
+        );
+        assert_ne!(
+            actual,
+            InlineBoxEdgeComponents::from_f32(1.5, 0.25, 0.0).unwrap()
+        );
+        assert!(<f64 as Sealed>::inline_box_edge_components(f64::INFINITY, 0.0, 0.0).is_err());
+        assert!(<f64 as Sealed>::inline_box_edge_components(0.0, 0.0, -1.0).is_err());
     }
 }

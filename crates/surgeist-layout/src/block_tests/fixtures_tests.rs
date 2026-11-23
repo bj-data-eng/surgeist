@@ -12,7 +12,10 @@ pub(super) fn fri06_atomic_participation() -> AtomicInlineParticipation {
     )
 }
 
-pub(super) fn lp(absolute_px: Scalar, percent_fraction: Scalar) -> LengthPercentageOf {
+pub(super) fn lp(
+    absolute_px: DefaultScalar,
+    percent_fraction: DefaultScalar,
+) -> LengthPercentageOf {
     LengthPercentageOf::from_coefficients(absolute_px, percent_fraction)
         .expect("test coefficients are finite")
 }

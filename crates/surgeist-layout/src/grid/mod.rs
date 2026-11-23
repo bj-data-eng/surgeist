@@ -7,8 +7,8 @@ use super::{
     LayoutInternalInvariant, LayoutInvalidInputOf, LayoutOperation, LayoutResultOf, LayoutScalar,
     LengthAutoOf, LengthOf, LengthResolutionStatus, MaxTrackSizingOf, MinSizeOf, MinTrackSizingOf,
     NodeOutputOf, OrthogonalFallbackOf, Overflow, Point, Position, PreferredSizeOf, RequestedAxis,
-    RunMode, Scalar, Size, SizingAlgorithm, SizingMode, SizingOperation, SizingRequestOf,
-    TrackComponentOf, TrackRepeat, TrackSizingOf, Traverse,
+    RunMode, Size, SizingAlgorithm, SizingMode, SizingOperation, SizingRequestOf, TrackComponentOf,
+    TrackRepeat, TrackSizingOf, Traverse,
 };
 use crate::accounting::LayoutWork;
 use crate::engine::containment::{
@@ -84,15 +84,6 @@ use intrinsic_stage::{
     GridIntrinsicProbe, GridIntrinsicProbeKind, GridTrackSizing, IntrinsicSubgridSource,
 };
 use lane_repeat::{LaneRepeatExpansion, LaneRepeatPlacement, LaneRepeatProbe};
-pub use lanes::{
-    DefiniteLaneIntrinsicItem, DefiniteLaneIntrinsicItemOf, IndefiniteLaneContributionGroup,
-    IndefiniteLaneContributionGroupOf, LaneContributionFacts, LaneContributionFactsOf,
-    LaneIntrinsicItem, LaneIntrinsicItemKind, LaneIntrinsicItemOf, LaneIntrinsicSizingInput,
-    LaneIntrinsicSizingInputOf, LaneIntrinsicSizingReport, LaneIntrinsicSizingReportOf, LaneItem,
-    LaneItemOf, LaneItemOffset, LaneItemOffsetOf, LanePlacementError, LanePlacementInput,
-    LanePlacementInputOf, LanePlacementReport, LanePlacementReportOf, LaneTrackSpan,
-    LaneTrackSpanLength, lane_intrinsic_sizing, place_lanes,
-};
 use lanes::{
     GridLanesFinish, GridLanesLayoutInput, LaneIntrinsicTrackSizeInput, LanePacking,
     LanePackingChild, LanePackingSource, LanePlacementGeometry, LanePlacementPacking,
@@ -100,29 +91,25 @@ use lanes::{
     grid_axis_for_grid_lanes, lane_axis_for_grid_lanes, layout_grid_lanes_children,
     prepare_grid_lanes_intrinsic_child_input,
 };
+pub use named::NamedGridError;
+pub(crate) use named::NamedGridReport;
 use named::{
-    GridAreaNameFacts, NamedGridError, NamedGridLines, build_grid_named_context,
+    GridAreaNameFacts, NamedGridLines, build_grid_named_context,
     resolve_grid_placement_or_auto_with_report, resolve_positioned_grid_placement_with_report,
     resolve_subgrid_placement,
 };
-pub use named::{NamedGridErrorReport, NamedGridReport};
 use placement::*;
 use subgrid::*;
 use topology::{ExpandedGridTopology, ExpandedGridTopologyInput, TemplateAreaExpandedAxes};
 use tracks::*;
 
-pub struct GridComputationOf<S: LayoutScalar = DefaultScalar> {
+pub(crate) struct GridComputationOf<S: LayoutScalar = DefaultScalar> {
     output: ComputeOutputOf<S>,
     report: GridComputationReport,
 }
 
-pub type GridComputation = GridComputationOf<DefaultScalar>;
-
 impl<S: LayoutScalar> GridComputationOf<S> {
-    pub fn output(&self) -> &ComputeOutputOf<S> {
-        &self.output
-    }
-
+    #[cfg(test)]
     pub fn report(&self) -> &GridComputationReport {
         &self.report
     }
@@ -133,19 +120,17 @@ impl<S: LayoutScalar> GridComputationOf<S> {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct GridComputationReport {
+pub(crate) struct GridComputationReport {
     named_grid: NamedGridReport,
 }
 
 impl GridComputationReport {
-    pub fn named_grid(&self) -> &NamedGridReport {
-        &self.named_grid
-    }
-
-    pub fn named_grid_errors(&self) -> &[NamedGridErrorReport] {
+    #[cfg(test)]
+    pub fn named_grid_errors(&self) -> &[NamedGridError] {
         self.named_grid.errors()
     }
 
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.named_grid.is_empty()
     }
@@ -721,7 +706,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
     }
 }
 
-pub(crate) struct GridComputeResult<Node, S: LayoutScalar = Scalar> {
+pub(crate) struct GridComputeResult<Node, S: LayoutScalar = DefaultScalar> {
     output: ComputeOutputOf<S>,
     report: GridComputationReport,
     baseline_groups: GridBaselineGroups<S>,
@@ -2880,7 +2865,7 @@ fn grid_requested_operations<S: LayoutScalar>(
     )
 }
 
-struct IntrinsicSizingAxisInput<'a, S: LayoutScalar = Scalar> {
+struct IntrinsicSizingAxisInput<'a, S: LayoutScalar = DefaultScalar> {
     operation: SizingOperation,
     run_mode: RunMode,
     style_size: &'a PreferredSizeOf<S>,
@@ -2921,7 +2906,7 @@ fn intrinsic_sizing_axis_content_size<S: LayoutScalar>(
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct GridParentContext<S: LayoutScalar = Scalar, Node = ()> {
+struct GridParentContext<S: LayoutScalar = DefaultScalar, Node = ()> {
     columns: Option<InheritedGridAxis<S, Node>>,
     rows: Option<InheritedGridAxis<S, Node>>,
 }
@@ -2947,7 +2932,7 @@ impl<S: LayoutScalar, Node> GridParentContext<S, Node> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct InheritedGridAxis<S: LayoutScalar = Scalar, Node = ()> {
+struct InheritedGridAxis<S: LayoutScalar = DefaultScalar, Node = ()> {
     offset: S,
     gap: S,
     tracks: Vec<S>,
@@ -3009,13 +2994,13 @@ fn minimum_parent_functions<'a, Node, S: LayoutScalar>(
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct InheritedGridOwnerBaselineTargets<Node, S: LayoutScalar = Scalar> {
+struct InheritedGridOwnerBaselineTargets<Node, S: LayoutScalar = DefaultScalar> {
     group: AncestorBaselineGroup<Node, S>,
     mapping: CheckedOwnerToCurrentPlacementMap<Node, S>,
 }
 
 #[derive(Clone, PartialEq)]
-struct GridContainerContext<S: LayoutScalar = Scalar> {
+struct GridContainerContext<S: LayoutScalar = DefaultScalar> {
     topology: ExpandedGridTopology<S>,
     gap: LogicalSizeOf<S>,
     column_gutters: OrdinaryGridAxisGuttersOf<S>,
@@ -3036,7 +3021,7 @@ impl<S: LayoutScalar> core::ops::Deref for GridContainerContext<S> {
     }
 }
 
-struct InitializedGridTracks<'input, Node, S: LayoutScalar = Scalar> {
+struct InitializedGridTracks<'input, Node, S: LayoutScalar = DefaultScalar> {
     column_tracks: Vec<TrackSizingOf<S>>,
     row_tracks: Vec<TrackSizingOf<S>>,
     track_available: LogicalSizeOf<AxisSizingRequestOf<S>>,
@@ -3073,7 +3058,7 @@ pub(super) struct ResolvedGridItemPlacement {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct GridPlacementContext<'input, Node, S: LayoutScalar = Scalar> {
+pub(super) struct GridPlacementContext<'input, Node, S: LayoutScalar = DefaultScalar> {
     pub(super) children: Vec<Node>,
     pub(super) items: Vec<ResolvedGridItemPlacement>,
     child_inputs: Vec<GridChildInput<'input, S>>,
@@ -3669,7 +3654,7 @@ fn invalid_grid_names_error<Node, S: LayoutScalar, M>(
     LayoutErrorOf::new(
         LayoutErrorSiteOf::Node(container),
         LayoutOperation::ChildLayout,
-        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::GridNames(error.into())),
+        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::GridNames(error)),
     )
 }
 
@@ -3956,7 +3941,7 @@ struct GridTrackSource<'input, 'a, Node, S: LayoutScalar> {
     stage: GridSizingStage,
 }
 
-struct GridTrackResolutionInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+struct GridTrackResolutionInput<'input, 'a, Node, S: LayoutScalar = DefaultScalar> {
     style: &'a GridContainerProjection<'a, S>,
     constants: &'a Constants<S>,
     column_tracks: &'a [TrackSizingOf<S>],
@@ -4013,7 +3998,7 @@ struct GridTrackSizingPhases {
     limit: GridSizingStage,
 }
 
-struct GridTrackResolution<Node, S: LayoutScalar = Scalar> {
+struct GridTrackResolution<Node, S: LayoutScalar = DefaultScalar> {
     sizing_phases: GridTrackSizingPhases,
     columns: Vec<S>,
     rows: Vec<S>,
@@ -4025,7 +4010,7 @@ struct GridTrackResolution<Node, S: LayoutScalar = Scalar> {
 type GridTrackResolutionResult<Node, S, M> =
     LayoutResultOf<Node, GridTrackResolution<Node, S>, S, M>;
 
-struct GridChildLayoutInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+struct GridChildLayoutInput<'input, 'a, Node, S: LayoutScalar = DefaultScalar> {
     execution_input: ComputeInputOf<S>,
     scroll_box: CanonicalScrollBoxOf<S>,
     sizing_phases: GridTrackSizingPhases,
@@ -4575,7 +4560,7 @@ where
     })
 }
 
-struct GridLayoutContext<'input, 'a, Node, S: LayoutScalar = Scalar> {
+struct GridLayoutContext<'input, 'a, Node, S: LayoutScalar = DefaultScalar> {
     execution_input: ComputeInputOf<S>,
     scroll_box: CanonicalScrollBoxOf<S>,
     style: &'a GridContainerProjection<'input, S>,
@@ -4706,7 +4691,7 @@ fn qualify_grid_fallback<Node: Copy, S: LayoutScalar, M>(
 }
 
 #[derive(Clone, Copy, PartialEq)]
-struct Constants<S: LayoutScalar = Scalar> {
+struct Constants<S: LayoutScalar = DefaultScalar> {
     pub(super) flow_axes: crate::geometry::FlowAxes,
     explicit_definite_content_size: Size<Option<S>>,
     indefinite_percentage_axis: Option<PhysicalAxis>,

@@ -1,6 +1,6 @@
 use core::ops::{Add, Sub};
 
-use super::{Direction, LayoutScalar, Scalar, WritingMode};
+use super::{DefaultScalar, Direction, LayoutScalar, WritingMode};
 
 /// A physical x/y coordinate axis.
 ///
@@ -514,7 +514,7 @@ fn project_to_start<S: LayoutScalar>(origin: S, size: S, extent: S, start: Physi
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct LogicalPointOf<S: LayoutScalar = Scalar> {
+pub(crate) struct LogicalPointOf<S: LayoutScalar = DefaultScalar> {
     pub(crate) inline: S,
     pub(crate) block: S,
 }
@@ -561,7 +561,7 @@ where
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct LogicalSizeOf<T = Scalar> {
+pub(crate) struct LogicalSizeOf<T = DefaultScalar> {
     pub(crate) inline: T,
     pub(crate) block: T,
 }
@@ -654,7 +654,7 @@ impl<U, T: Sub<U>> Sub<LogicalSizeOf<U>> for LogicalSizeOf<T> {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct LogicalEdgesOf<T = Scalar> {
+pub(crate) struct LogicalEdgesOf<T = DefaultScalar> {
     pub(crate) inline_start: T,
     pub(crate) inline_end: T,
     pub(crate) block_start: T,
@@ -699,7 +699,7 @@ where
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct LogicalRectOf<S: LayoutScalar = Scalar> {
+pub(crate) struct LogicalRectOf<S: LayoutScalar = DefaultScalar> {
     pub(crate) origin: LogicalPointOf<S>,
     pub(crate) size: LogicalSizeOf<S>,
 }
@@ -726,7 +726,7 @@ impl<S: LayoutScalar> LogicalRectOf<S> {
 /// let _ = Point::new(1.0, 2.0).cross(FlexDirection::Column);
 /// ```
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct Point<T = Scalar> {
+pub struct Point<T = DefaultScalar> {
     pub x: T,
     pub y: T,
 }
@@ -782,7 +782,7 @@ impl<S: LayoutScalar> Point<S> {
 /// let _ = Size::from_cross(FlexDirection::Row, Some(1.0));
 /// ```
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct Size<T = Scalar> {
+pub struct Size<T = DefaultScalar> {
     pub width: T,
     pub height: T,
 }
@@ -874,7 +874,7 @@ impl<U, T: Sub<U>> Sub<Size<U>> for Size<T> {
 /// let _ = Edges::all(1.0).cross_sum(FlexDirection::Column);
 /// ```
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct Edges<T = Scalar> {
+pub struct Edges<T = DefaultScalar> {
     pub top: T,
     pub right: T,
     pub bottom: T,

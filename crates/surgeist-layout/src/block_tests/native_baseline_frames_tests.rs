@@ -4,6 +4,7 @@ use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{ahem_style, in_flat_wrapping_context};
 use surgeist_text as text;
+use surgeist_text::font::FontBaseline;
 
 const AHEM: &[u8] = include_bytes!("../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
@@ -16,11 +17,11 @@ fn px<S: LayoutScalar>(value: f64) -> PreferredSizeOf<S> {
 fn vertical(mode: WritingMode) -> bool {
     mode != WritingMode::HorizontalTb
 }
-fn name(mode: WritingMode) -> BaselineName {
+fn name(mode: WritingMode) -> FontBaseline {
     if matches!(mode, WritingMode::VerticalRl | WritingMode::VerticalLr) {
-        BaselineName::Central
+        FontBaseline::Central
     } else {
-        BaselineName::Alphabetic
+        FontBaseline::Alphabetic
     }
 }
 fn physical<S: LayoutScalar>(mode: WritingMode, cross: f64) -> Size<S> {
@@ -104,7 +105,7 @@ impl Paragraph {
             boundary_policies: vec![],
             anchor_order: vec![],
         };
-        let typography = if name(mode) == BaselineName::Central {
+        let typography = if name(mode) == FontBaseline::Central {
             text::analyzed::AnalysisTypography::Upright {
                 computed_direction: text::paragraph::ParagraphBaseDirection::LeftToRight,
             }
@@ -131,7 +132,7 @@ impl Paragraph {
         };
         let mut options =
             text::prepared::PreparationOptions::default().with_orientation(orientation);
-        if name(mode) == BaselineName::Alphabetic {
+        if name(mode) == FontBaseline::Alphabetic {
             options = options.with_baseline_reference(text::font::FontBaseline::Alphabetic);
         }
         Self {
@@ -483,7 +484,7 @@ fn mixed_numeric_and_native<S: LayoutScalar>() {
             // Its declared Central2/extent4 metrics qualify its numeric line;
             // no AxisSizingRequest baseline output is supplied by this fixture.
             let metrics = InlineMetricsOf::try_new(
-                InlineBaselineContext::Named(BaselineName::Central),
+                InlineBaselineContext::Named(FontBaseline::Central),
                 n(2.0),
                 n(4.0),
             )
@@ -575,7 +576,7 @@ fn unknown_and_absent<S: LayoutScalar>() {
             let child_output = owner.compute_child(2, request).unwrap();
             assert_eq!(child_output.size, Size::new(n(4.0), n(100.0)));
             assert_eq!(child_output.baselines(), BaselinesOf::NONE);
-            let own = child_output.named_baselines.get(BaselineName::Central);
+            let own = child_output.named_baselines.get(FontBaseline::Central);
             let actual_kind = if opaque_leaf {
                 BaselineFactOf::Unknown
             } else {
@@ -587,7 +588,7 @@ fn unknown_and_absent<S: LayoutScalar>() {
             let native = if native_first { 9.0 } else { 5.0 };
             assert_eq!(output.first_baselines, Point::new(Some(n(native)), None));
             assert_eq!(output.last_baselines, Point::new(Some(n(native)), None));
-            let pair = output.named_baselines.get(BaselineName::Central);
+            let pair = output.named_baselines.get(FontBaseline::Central);
             let first = if opaque_leaf && !native_first {
                 BaselineFactOf::Unknown
             } else {
@@ -797,7 +798,7 @@ fn cache_frames<S: LayoutScalar>() {
         15.0,
     );
     let demand = auto.with_named_baseline_demand(crate::output::NamedBaselineDemand::Fact {
-        name: BaselineName::Central,
+        name: FontBaseline::Central,
         set: crate::output::NamedBaselineSet::First,
     });
     let refined = tree.compute(&paragraph, demand, false);
@@ -887,7 +888,7 @@ fn reflow<S: LayoutScalar>() {
         assert_eq!(output.size, Size::new(n(width), n(inline)));
         assert_eq!(output.first_baselines, Point::new(Some(n(first)), None));
         assert_eq!(output.last_baselines, Point::new(Some(n(last)), None));
-        let pair = output.named_baselines.get(BaselineName::Central);
+        let pair = output.named_baselines.get(FontBaseline::Central);
         assert_eq!((pair.first(), pair.last()), (central(first), central(last)));
     };
     // Ahem's X/space/X occupies30 along the inline axis. At30 it is one
@@ -1003,7 +1004,7 @@ fn source_refinement<S: LayoutScalar>() {
     };
     let plain = scene_request(Size::NONE, 100.0);
     let demanded = plain.with_named_baseline_demand(crate::output::NamedBaselineDemand::Fact {
-        name: BaselineName::Central,
+        name: FontBaseline::Central,
         set: crate::output::NamedBaselineSet::First,
     });
     {
@@ -1023,8 +1024,8 @@ fn source_refinement<S: LayoutScalar>() {
         let clarified = owner.compute_child(2, demanded).unwrap();
         assert_eq!(unknown.size, Size::new(n(4.0), n(100.0)));
         assert_eq!(clarified.size, unknown.size);
-        let before = unknown.named_baselines.get(BaselineName::Central);
-        let after = clarified.named_baselines.get(BaselineName::Central);
+        let before = unknown.named_baselines.get(FontBaseline::Central);
+        let after = clarified.named_baselines.get(FontBaseline::Central);
         assert_eq!(
             (before.first(), before.last()),
             (BaselineFactOf::Unknown, BaselineFactOf::Unknown)
@@ -1039,7 +1040,7 @@ fn source_refinement<S: LayoutScalar>() {
     }
     let unresolved = tree.compute(&paragraph, plain, false);
     assert_eq!(unresolved.size, physical(mode, 14.0));
-    let pair = unresolved.named_baselines.get(BaselineName::Central);
+    let pair = unresolved.named_baselines.get(FontBaseline::Central);
     assert_eq!(
         (pair.first(), pair.last()),
         (BaselineFactOf::Unknown, central(5.0))

@@ -127,48 +127,18 @@ pub(super) enum LineNameOrigin {
     LocalSubgrid,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) enum NamedGridError {
-    ReservedLineName {
-        name: String,
-    },
-    UnresolvedAutoRepeatNames {
-        axis: GridAxisKind,
-    },
-    EmptyTemplateAreas,
-    TemplateAreaRowLengthMismatch {
-        row: usize,
-        expected: usize,
-        actual: usize,
-    },
-    NonRectangularTemplateArea {
-        name: String,
-    },
-    ZeroRepeat {
-        axis: GridAxisKind,
-    },
-    MultipleAutoFillRepeats {
-        axis: GridAxisKind,
-    },
-    ZeroLine,
-    ZeroSpan,
-    AutoWithoutCursor,
-    LineBeforeFirst {
-        axis: GridAxisKind,
-        line: isize,
-    },
-}
-
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct NamedGridReport {
-    errors: Vec<NamedGridErrorReport>,
+pub(crate) struct NamedGridReport {
+    errors: Vec<NamedGridError>,
 }
 
 impl NamedGridReport {
-    pub fn errors(&self) -> &[NamedGridErrorReport] {
+    #[cfg(test)]
+    pub fn errors(&self) -> &[NamedGridError] {
         &self.errors
     }
 
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.errors.is_empty()
     }
@@ -180,7 +150,7 @@ impl NamedGridReport {
     }
 
     pub(super) fn push_error(&mut self, error: NamedGridError) {
-        self.errors.push(error.into());
+        self.errors.push(error);
     }
 
     pub(super) fn extend(&mut self, other: NamedGridReport) {
@@ -189,7 +159,7 @@ impl NamedGridReport {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum NamedGridErrorReport {
+pub enum NamedGridError {
     ReservedLineName {
         name: String,
     },
@@ -218,38 +188,6 @@ pub enum NamedGridErrorReport {
         axis: GridAxisKind,
         line: isize,
     },
-}
-
-impl From<NamedGridError> for NamedGridErrorReport {
-    fn from(error: NamedGridError) -> Self {
-        match error {
-            NamedGridError::ReservedLineName { name } => Self::ReservedLineName { name },
-            NamedGridError::UnresolvedAutoRepeatNames { axis } => {
-                Self::UnresolvedAutoRepeatNames { axis }
-            }
-            NamedGridError::EmptyTemplateAreas => Self::EmptyTemplateAreas,
-            NamedGridError::TemplateAreaRowLengthMismatch {
-                row,
-                expected,
-                actual,
-            } => Self::TemplateAreaRowLengthMismatch {
-                row,
-                expected,
-                actual,
-            },
-            NamedGridError::NonRectangularTemplateArea { name } => {
-                Self::NonRectangularTemplateArea { name }
-            }
-            NamedGridError::ZeroRepeat { axis } => Self::ZeroRepeat { axis },
-            NamedGridError::MultipleAutoFillRepeats { axis } => {
-                Self::MultipleAutoFillRepeats { axis }
-            }
-            NamedGridError::ZeroLine => Self::ZeroLine,
-            NamedGridError::ZeroSpan => Self::ZeroSpan,
-            NamedGridError::AutoWithoutCursor => Self::AutoWithoutCursor,
-            NamedGridError::LineBeforeFirst { axis, line } => Self::LineBeforeFirst { axis, line },
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

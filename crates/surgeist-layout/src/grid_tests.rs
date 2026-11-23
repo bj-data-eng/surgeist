@@ -26,6 +26,10 @@ mod fixtures;
 mod browser_controls;
 #[path = "grid_tests/child_baseline_tests.rs"]
 mod child_baseline;
+#[path = "grid_tests/lane_collapsed_intrinsic_tests.rs"]
+mod lane_collapsed_intrinsic;
+#[path = "grid_tests/lane_track_sizing_ports_tests.rs"]
+mod lane_track_sizing_ports;
 #[path = "grid_tests/lanes_subgrid_tests.rs"]
 mod lanes_subgrid;
 #[path = "grid_tests/minimum_over_maximum_tests.rs"]

@@ -9,6 +9,7 @@ mod used_alphabetic;
 use std::{cell::Cell, convert::Infallible, slice, sync::Arc};
 use surgeist_layout as l;
 use surgeist_text as t;
+use surgeist_text::font::FontBaseline;
 
 #[derive(Clone)]
 struct Published<S: l::LayoutScalar> {
@@ -303,7 +304,7 @@ fn node_of_kind<S: l::LayoutScalar>(
 }
 fn named<S: l::LayoutScalar>(
     facts: l::NamedBaselinesOf<S>,
-    name: l::BaselineName,
+    name: FontBaseline,
     axis: l::PhysicalAxis,
     offset: f64,
 ) {
@@ -319,7 +320,7 @@ fn named<S: l::LayoutScalar>(
     }
 }
 fn absent<S: l::LayoutScalar>(facts: l::NamedBaselinesOf<S>) {
-    for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+    for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         let pair = facts.get(name);
         assert_eq!(pair.first(), l::BaselineFactOf::Absent);
         assert_eq!(pair.last(), l::BaselineFactOf::Absent);
@@ -402,7 +403,7 @@ fn margin_matrix<S: l::LayoutScalar>() {
             l::WritingMode::SidewaysLr,
         ] {
             for direction in [l::Direction::Ltr, l::Direction::Rtl] {
-                for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+                for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
                     let mut host = Host::<S>::new(root(
                         mode,
                         direction,
@@ -417,7 +418,7 @@ fn margin_matrix<S: l::LayoutScalar>() {
                         l::LayoutInputOf::box_input(atomic(mode, direction, 6.0, mb)),
                     );
                     let batch = host.compute(mode, &[]).unwrap();
-                    let alpha = name == l::BaselineName::Alphabetic;
+                    let alpha = name == FontBaseline::Alphabetic;
                     let reverse = matches!(
                         mode,
                         l::WritingMode::VerticalRl
@@ -513,9 +514,9 @@ fn margin_matrix<S: l::LayoutScalar>() {
                             offset,
                         );
                         let other = if alpha {
-                            l::BaselineName::Central
+                            FontBaseline::Central
                         } else {
-                            l::BaselineName::Alphabetic
+                            FontBaseline::Alphabetic
                         };
                         let unknown = node(entries, 0).named_baselines.get(other);
                         assert_eq!(unknown.first(), l::BaselineFactOf::Unknown);
@@ -563,7 +564,7 @@ fn constructors<S: l::LayoutScalar>(largest: S) {
         l::ComputeOutputOf::from_sizes_and_first_baselines(size, size, raw_projection),
         l::ComputeOutputOf::from_outer_size(size),
     ] {
-        for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+        for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
             let facts = output.named_baselines.get(name);
             assert_eq!(facts.first(), l::BaselineFactOf::Unknown);
             assert_eq!(facts.last(), l::BaselineFactOf::Unknown);
@@ -648,12 +649,12 @@ fn propagation<S: l::LayoutScalar>() {
         l::WritingMode::SidewaysLr,
     ] {
         for direction in [l::Direction::Ltr, l::Direction::Rtl] {
-            for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+            for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
                 for different_own_name in [false, true] {
-                    let other = if name == l::BaselineName::Alphabetic {
-                        l::BaselineName::Central
+                    let other = if name == FontBaseline::Alphabetic {
+                        FontBaseline::Central
                     } else {
-                        l::BaselineName::Alphabetic
+                        FontBaseline::Alphabetic
                     };
                     let mut host = Host::<S>::new(root(
                         mode,
@@ -679,7 +680,7 @@ fn propagation<S: l::LayoutScalar>() {
                         2
                     );
                     let batch = host.compute(mode, &[]).unwrap();
-                    let alpha = name == l::BaselineName::Alphabetic;
+                    let alpha = name == FontBaseline::Alphabetic;
                     let reverse = matches!(
                         mode,
                         l::WritingMode::VerticalRl
@@ -792,10 +793,10 @@ fn source_child_named_facts_translate_through_boxes_independently_of_own_context
 fn authority_refusals<S: l::LayoutScalar>() {
     let h = l::WritingMode::HorizontalTb;
     let d = l::Direction::Ltr;
-    let alpha = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic);
+    let alpha = l::InlineBaselineContext::Named(FontBaseline::Alphabetic);
     for child_context in [
         l::InlineBaselineContext::Physical,
-        l::InlineBaselineContext::Named(l::BaselineName::Central),
+        l::InlineBaselineContext::Named(FontBaseline::Central),
     ] {
         let mut host = Host::<S>::new(root(h, d, alpha));
         wrapper(&mut host, h, d, child_context, child_context);
@@ -826,7 +827,7 @@ fn authority_refusals<S: l::LayoutScalar>() {
         l::InlineBaselineContext::Physical,
     );
     let batch = physical.compute(h, &[]).unwrap();
-    for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+    for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         assert_eq!(
             node(crate::layout::observation::phase(&batch, false), 0)
                 .named_baselines
@@ -849,7 +850,7 @@ fn authority_refusals<S: l::LayoutScalar>() {
             );
             named(
                 node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
-                l::BaselineName::Alphabetic,
+                FontBaseline::Alphabetic,
                 l::PhysicalAxis::Vertical,
                 8.0,
             );
@@ -894,7 +895,7 @@ fn authority_refusals<S: l::LayoutScalar>() {
             );
             let facts = node(crate::layout::observation::phase(&top, false), 0)
                 .named_baselines
-                .get(l::BaselineName::Alphabetic);
+                .get(FontBaseline::Alphabetic);
             assert_eq!(facts.first(), l::BaselineFactOf::Unknown);
             if has_tail {
                 match facts.last() {
@@ -977,7 +978,7 @@ fn source_unknown_axis_and_control_reference_mismatches_refuse_precisely_f64() {
     authority_refusals::<f64>();
 }
 
-fn pair<S: l::LayoutScalar>(name: l::BaselineName) -> Host<S> {
+fn pair<S: l::LayoutScalar>(name: FontBaseline) -> Host<S> {
     let mode = l::WritingMode::HorizontalTb;
     let direction = l::Direction::Ltr;
     let mut host = Host::new(root(mode, direction, l::InlineBaselineContext::Named(name)));
@@ -993,7 +994,7 @@ fn pair<S: l::LayoutScalar>(name: l::BaselineName) -> Host<S> {
 }
 fn cache_and_atomicity<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
-    let mut host = pair::<S>(l::BaselineName::Alphabetic);
+    let mut host = pair::<S>(FontBaseline::Alphabetic);
     let alpha = host.compute(mode, &[]).unwrap();
     let original = semantic(&alpha, &host);
     assert_eq!(
@@ -1010,12 +1011,10 @@ fn cache_and_atomicity<S: l::LayoutScalar>() {
     );
     warm.apply_to(&mut host).unwrap();
     host.change(0, |input| {
-        input.inline_baseline_context = l::InlineBaselineContext::Named(l::BaselineName::Central)
+        input.inline_baseline_context = l::InlineBaselineContext::Named(FontBaseline::Central)
     });
     let central = host.compute(mode, &[0]).unwrap();
-    let fresh = pair::<S>(l::BaselineName::Central)
-        .compute(mode, &[])
-        .unwrap();
+    let fresh = pair::<S>(FontBaseline::Central).compute(mode, &[]).unwrap();
     assert_eq!(semantic(&central, &host), semantic(&fresh, &host));
     assert_eq!(
         node(crate::layout::observation::phase(&central, false), 2).location,
@@ -1023,7 +1022,7 @@ fn cache_and_atomicity<S: l::LayoutScalar>() {
     );
     named(
         node(crate::layout::observation::phase(&central, false), 0).named_baselines,
-        l::BaselineName::Central,
+        FontBaseline::Central,
         l::PhysicalAxis::Vertical,
         10.0,
     );
@@ -1033,7 +1032,7 @@ fn cache_and_atomicity<S: l::LayoutScalar>() {
         input.margin.bottom = l::LengthAutoOf::ZERO;
     });
     let changed_margin = host.compute(mode, &[2]).unwrap();
-    let mut independent = pair::<S>(l::BaselineName::Central);
+    let mut independent = pair::<S>(FontBaseline::Central);
     independent.change(2, |input| {
         input.margin.top = l::LengthAutoOf::value(l::LengthPercentageOf::px(n(4.0)).unwrap());
         input.margin.bottom = l::LengthAutoOf::ZERO;
@@ -1068,11 +1067,11 @@ fn cache_and_atomicity<S: l::LayoutScalar>() {
     assert_eq!(semantic(&restored, &host), semantic(&fresh_margin, &host));
     restored.apply_to(&mut host).unwrap();
     host.change(0, |input| {
-        input.inline_baseline_context = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic)
+        input.inline_baseline_context = l::InlineBaselineContext::Named(FontBaseline::Alphabetic)
     });
     let back = host.compute(mode, &[0]).unwrap();
     independent.change(0, |input| {
-        input.inline_baseline_context = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic)
+        input.inline_baseline_context = l::InlineBaselineContext::Named(FontBaseline::Alphabetic)
     });
     assert_eq!(
         semantic(&back, &host),
@@ -1094,7 +1093,7 @@ fn overflowing_synthesis<S: l::LayoutScalar>(largest: S) {
     let mut host = Host::<S>::new(root(
         mode,
         l::Direction::Ltr,
-        l::InlineBaselineContext::Named(l::BaselineName::Alphabetic),
+        l::InlineBaselineContext::Named(FontBaseline::Alphabetic),
     ));
     host.push(
         Some(0),
@@ -1117,7 +1116,7 @@ fn overflowing_synthesis<S: l::LayoutScalar>(largest: S) {
     );
     named(
         node(crate::layout::observation::phase(&control, false), 0).named_baselines,
-        l::BaselineName::Alphabetic,
+        FontBaseline::Alphabetic,
         l::PhysicalAxis::Vertical,
         largest.to_f64(),
     );
@@ -1150,7 +1149,7 @@ fn finite_maximum_control_precedes_generated_named_overflow_refusal_f64() {
 
 fn fractional_references<S: l::LayoutScalar>() {
     for mode in [l::WritingMode::HorizontalTb, l::WritingMode::VerticalLr] {
-        let context = l::InlineBaselineContext::Named(l::BaselineName::Central);
+        let context = l::InlineBaselineContext::Named(FontBaseline::Central);
         let mut host = Host::<S>::new(root(mode, l::Direction::Ltr, context));
         host.push(
             Some(0),
@@ -1191,19 +1190,19 @@ fn fractional_references<S: l::LayoutScalar>() {
         assert_eq!(node(raw, 2).size, physical_size(mode, 20.0, 18.5));
         named(
             node(raw, 0).named_baselines,
-            l::BaselineName::Central,
+            FontBaseline::Central,
             axis,
             15.0,
         );
         named(
             node(raw, 2).named_baselines,
-            l::BaselineName::Central,
+            FontBaseline::Central,
             axis,
             raw_offset,
         );
         named(
             node(raw, 3).named_baselines,
-            l::BaselineName::Central,
+            FontBaseline::Central,
             axis,
             5.0,
         );
@@ -1218,19 +1217,19 @@ fn fractional_references<S: l::LayoutScalar>() {
         );
         named(
             node(final_rows, 0).named_baselines,
-            l::BaselineName::Central,
+            FontBaseline::Central,
             axis,
             15.0,
         );
         named(
             node(final_rows, 2).named_baselines,
-            l::BaselineName::Central,
+            FontBaseline::Central,
             axis,
             final_offset,
         );
         named(
             node(final_rows, 3).named_baselines,
-            l::BaselineName::Central,
+            FontBaseline::Central,
             axis,
             4.0,
         );
@@ -1402,7 +1401,7 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
         node(crate::layout::observation::phase(&physical, false), 0).size,
         l::Size::new(n(100.0), n(10.0))
     );
-    for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+    for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         assert_eq!(
             node(crate::layout::observation::phase(&physical, false), 0)
                 .named_baselines
@@ -1449,7 +1448,7 @@ fn actual_registered_text_is_valid_physical_but_not_named_origin_authority_f64()
 fn inline_block_default_last<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
     let direction = l::Direction::Ltr;
-    let context = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic);
+    let context = l::InlineBaselineContext::Named(FontBaseline::Alphabetic);
     let mut host = Host::<S>::new(root(mode, direction, context));
     assert_eq!(
         host.push(
@@ -1488,7 +1487,7 @@ fn inline_block_default_last<S: l::LayoutScalar>() {
         assert_eq!(node(entries, 4).size, l::Size::new(n(10.0), n(20.0)));
         let facts = node(entries, 2)
             .named_baselines
-            .get(l::BaselineName::Alphabetic);
+            .get(FontBaseline::Alphabetic);
         for (fact, expected) in [(facts.first(), 10.0), (facts.last(), 30.0)] {
             match fact {
                 l::BaselineFactOf::Available(coordinate) => {
@@ -1516,7 +1515,7 @@ fn inline_block_default_last<S: l::LayoutScalar>() {
         assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(30.0)));
         named(
             node(entries, 0).named_baselines,
-            l::BaselineName::Alphabetic,
+            FontBaseline::Alphabetic,
             l::PhysicalAxis::Vertical,
             30.0,
         );
@@ -1572,10 +1571,7 @@ fn source_fact<S: l::LayoutScalar>(fact: l::BaselineFactOf<S>, axis: l::Physical
         other => panic!("expected actual named coordinate {value}, got {other:?}"),
     }
 }
-fn source_block<S: l::LayoutScalar>(
-    name: l::BaselineName,
-    height: Option<f64>,
-) -> l::NodeInputOf<S> {
+fn source_block<S: l::LayoutScalar>(name: FontBaseline, height: Option<f64>) -> l::NodeInputOf<S> {
     let mut input = root(
         l::WritingMode::HorizontalTb,
         l::Direction::Ltr,
@@ -1588,7 +1584,7 @@ fn source_block<S: l::LayoutScalar>(
 fn source_line<S: l::LayoutScalar>(
     host: &mut Host<S>,
     parent: u32,
-    name: l::BaselineName,
+    name: FontBaseline,
     height: f64,
 ) -> u32 {
     let line = host.push(
@@ -1607,7 +1603,7 @@ fn source_line<S: l::LayoutScalar>(
     line
 }
 fn source_parent<S: l::LayoutScalar>(
-    name: l::BaselineName,
+    name: FontBaseline,
     peer: f64,
     source: l::BaselineSource,
     overflow: l::ComputedOverflow,
@@ -1632,7 +1628,7 @@ fn source_parent<S: l::LayoutScalar>(
 }
 fn source_content<S: l::LayoutScalar>(
     host: &mut Host<S>,
-    name: l::BaselineName,
+    name: FontBaseline,
     spacer: f64,
     last: f64,
 ) {
@@ -1676,7 +1672,7 @@ fn source_rectangles<S: l::LayoutScalar>(
 
 fn source_override_cache<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
-    let name = l::BaselineName::Alphabetic;
+    let name = FontBaseline::Alphabetic;
     let visible = l::ComputedOverflow::try_new(l::Overflow::Visible, l::Overflow::Visible).unwrap();
     let fixture = |source| {
         let mut host = source_parent::<S>(name, 30.0, source, visible, 0.0);
@@ -1745,7 +1741,7 @@ fn named_source_overrides_noninheritance_and_real_cache_f64() {
 
 fn source_unknown_selection<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
-    let name = l::BaselineName::Alphabetic;
+    let name = FontBaseline::Alphabetic;
     let visible = l::ComputedOverflow::try_new(l::Overflow::Visible, l::Overflow::Visible).unwrap();
     for unknown_first in [true, false] {
         for source in [
@@ -1841,7 +1837,7 @@ fn named_source_selected_unknown_never_borrows_opposite_fact_f64() {
 
 fn source_absent_and_empty_scroll<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
-    let name = l::BaselineName::Central;
+    let name = FontBaseline::Central;
     let visible = l::ComputedOverflow::try_new(l::Overflow::Visible, l::Overflow::Visible).unwrap();
     let hidden = l::ComputedOverflow::try_new(l::Overflow::Hidden, l::Overflow::Hidden).unwrap();
     for child_overflow in [l::Overflow::Hidden, l::Overflow::Scroll, l::Overflow::Auto] {
@@ -1882,10 +1878,10 @@ fn source_absent_and_empty_scroll<S: l::LayoutScalar>() {
     // result for a scroll container; merely clamping Available exports misses it.
     for source in [l::BaselineSource::First, l::BaselineSource::Last] {
         for (name, margin, height, y, coordinate) in [
-            (l::BaselineName::Alphabetic, 8.0, 68.0, 20.0, 40.0),
-            (l::BaselineName::Alphabetic, -6.0, 60.0, 26.0, 34.0),
-            (l::BaselineName::Central, 8.0, 60.0, 6.0, 24.0),
-            (l::BaselineName::Central, -6.0, 60.0, 13.0, 17.0),
+            (FontBaseline::Alphabetic, 8.0, 68.0, 20.0, 40.0),
+            (FontBaseline::Alphabetic, -6.0, 60.0, 26.0, 34.0),
+            (FontBaseline::Central, 8.0, 60.0, 6.0, 24.0),
+            (FontBaseline::Central, -6.0, 60.0, 13.0, 17.0),
         ] {
             let host = source_parent::<S>(name, 60.0, source, hidden, margin);
             let batch = host.compute(mode, &[]).unwrap();
@@ -1897,7 +1893,7 @@ fn source_absent_and_empty_scroll<S: l::LayoutScalar>() {
                 absent(node(entries, 2).named_baselines);
                 // The actual parent anchor proves the used clamped coordinate
                 // without replacing the child's Absent facts.
-                let parent = if name == l::BaselineName::Alphabetic {
+                let parent = if name == FontBaseline::Alphabetic {
                     60.0
                 } else {
                     30.0
@@ -1927,7 +1923,7 @@ fn source_scroll_content<S: l::LayoutScalar>() {
     let hidden = l::ComputedOverflow::try_new(l::Overflow::Hidden, l::Overflow::Hidden).unwrap();
     for (name, source, margin, height, peer, y, last) in [
         (
-            l::BaselineName::Alphabetic,
+            FontBaseline::Alphabetic,
             l::BaselineSource::Auto,
             8.0,
             68.0,
@@ -1936,7 +1932,7 @@ fn source_scroll_content<S: l::LayoutScalar>() {
             40.0,
         ),
         (
-            l::BaselineName::Alphabetic,
+            FontBaseline::Alphabetic,
             l::BaselineSource::Auto,
             -6.0,
             60.0,
@@ -1945,7 +1941,7 @@ fn source_scroll_content<S: l::LayoutScalar>() {
             34.0,
         ),
         (
-            l::BaselineName::Alphabetic,
+            FontBaseline::Alphabetic,
             l::BaselineSource::Auto,
             -50.0,
             60.0,
@@ -1954,7 +1950,7 @@ fn source_scroll_content<S: l::LayoutScalar>() {
             0.0,
         ),
         (
-            l::BaselineName::Central,
+            FontBaseline::Central,
             l::BaselineSource::Auto,
             8.0,
             70.0,
@@ -1963,7 +1959,7 @@ fn source_scroll_content<S: l::LayoutScalar>() {
             40.0,
         ),
         (
-            l::BaselineName::Central,
+            FontBaseline::Central,
             l::BaselineSource::Auto,
             -6.0,
             64.0,
@@ -1972,7 +1968,7 @@ fn source_scroll_content<S: l::LayoutScalar>() {
             34.0,
         ),
         (
-            l::BaselineName::Central,
+            FontBaseline::Central,
             l::BaselineSource::Auto,
             -50.0,
             60.0,
@@ -1981,7 +1977,7 @@ fn source_scroll_content<S: l::LayoutScalar>() {
             0.0,
         ),
         (
-            l::BaselineName::Alphabetic,
+            FontBaseline::Alphabetic,
             l::BaselineSource::First,
             0.0,
             90.0,
@@ -1990,7 +1986,7 @@ fn source_scroll_content<S: l::LayoutScalar>() {
             24.0,
         ),
         (
-            l::BaselineName::Alphabetic,
+            FontBaseline::Alphabetic,
             l::BaselineSource::Last,
             0.0,
             76.0,
@@ -1999,7 +1995,7 @@ fn source_scroll_content<S: l::LayoutScalar>() {
             24.0,
         ),
         (
-            l::BaselineName::Central,
+            FontBaseline::Central,
             l::BaselineSource::First,
             0.0,
             65.0,
@@ -2008,7 +2004,7 @@ fn source_scroll_content<S: l::LayoutScalar>() {
             19.0,
         ),
         (
-            l::BaselineName::Central,
+            FontBaseline::Central,
             l::BaselineSource::Last,
             0.0,
             60.0,
@@ -2032,7 +2028,7 @@ fn source_scroll_content<S: l::LayoutScalar>() {
             source_fact(
                 pair.first(),
                 l::PhysicalAxis::Vertical,
-                if name == l::BaselineName::Alphabetic {
+                if name == FontBaseline::Alphabetic {
                     10.0
                 } else {
                     5.0
@@ -2040,7 +2036,7 @@ fn source_scroll_content<S: l::LayoutScalar>() {
             );
             source_fact(pair.last(), l::PhysicalAxis::Vertical, last);
             if source == l::BaselineSource::Auto {
-                for exceptional_name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+                for exceptional_name in [FontBaseline::Alphabetic, FontBaseline::Central] {
                     source_fact(
                         node(entries, 2)
                             .named_baselines
@@ -2074,14 +2070,14 @@ fn source_clip_and_nested<S: l::LayoutScalar>() {
         let scroll = overflow == hidden;
         for (name, height, peer, y, last) in [
             (
-                l::BaselineName::Alphabetic,
+                FontBaseline::Alphabetic,
                 60.0,
                 0.0,
                 if scroll { 20.0 } else { 5.0 },
                 if scroll { 40.0 } else { 55.0 },
             ),
             (
-                l::BaselineName::Central,
+                FontBaseline::Central,
                 if scroll { 70.0 } else { 75.0 },
                 if scroll { 10.0 } else { 15.0 },
                 0.0,
@@ -2109,8 +2105,8 @@ fn source_clip_and_nested<S: l::LayoutScalar>() {
     }
     // Only Alphabetic exceeds40: Central35 must not be replaced by40.
     for (name, last) in [
-        (l::BaselineName::Alphabetic, 40.0),
-        (l::BaselineName::Central, 35.0),
+        (FontBaseline::Alphabetic, 40.0),
+        (FontBaseline::Central, 35.0),
     ] {
         let mut host = source_parent::<S>(name, 60.0, l::BaselineSource::Last, hidden, 0.0);
         source_content(&mut host, name, 15.0, 20.0);
@@ -2126,7 +2122,7 @@ fn source_clip_and_nested<S: l::LayoutScalar>() {
             );
         }
     }
-    for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+    for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         for outer_scroll in [false, true] {
             let mut host = Host::<S>::new(source_block(name, None));
             host.change(0, |input| {
@@ -2178,8 +2174,8 @@ fn named_source_clip_individual_clamp_and_nested_initial_frames_f64() {
 fn source_vertical_lr<S: l::LayoutScalar>() {
     let mode = l::WritingMode::VerticalLr;
     for (name, extent, peer_x) in [
-        (l::BaselineName::Alphabetic, 100.0, 40.0),
-        (l::BaselineName::Central, 70.0, 10.0),
+        (FontBaseline::Alphabetic, 100.0, 40.0),
+        (FontBaseline::Central, 70.0, 10.0),
     ] {
         let mut host = Host::<S>::new(root(
             mode,
@@ -2205,7 +2201,7 @@ fn source_vertical_lr<S: l::LayoutScalar>() {
             assert_eq!(node(entries, 1).location, l::Point::new(n(peer_x), S::ZERO));
             assert_eq!(node(entries, 2).location, l::Point::new(S::ZERO, n(20.0)));
             assert_eq!(node(entries, 2).size, l::Size::new(n(40.0), n(20.0)));
-            for exceptional_name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+            for exceptional_name in [FontBaseline::Alphabetic, FontBaseline::Central] {
                 let pair = node(entries, 2).named_baselines.get(exceptional_name);
                 assert_eq!(pair.first(), l::BaselineFactOf::Absent);
                 source_fact(pair.last(), l::PhysicalAxis::Horizontal, 40.0);
@@ -2225,7 +2221,7 @@ fn named_source_vertical_lr_empty_scroll_uses_block_end_for_both_names_f64() {
 fn packet_child<S: l::LayoutScalar>(host: &mut Host<S>, parent: u32) -> (u32, u32) {
     let child = host.push(
         Some(parent),
-        l::LayoutInputOf::box_input(source_block(l::BaselineName::Alphabetic, None)),
+        l::LayoutInputOf::box_input(source_block(FontBaseline::Alphabetic, None)),
     );
     let mut inner = atomic(
         l::WritingMode::HorizontalTb,
@@ -2240,7 +2236,7 @@ fn packet_child<S: l::LayoutScalar>(host: &mut Host<S>, parent: u32) -> (u32, u3
 fn packet_producer_control<S: l::LayoutScalar>() {
     // A root writer exposes the same actual native Block producer.
     // Its sole real10-high baseline-less atom synthesizes under-edge Alpha10.
-    let mut host = Host::<S>::new(source_block(l::BaselineName::Alphabetic, None));
+    let mut host = Host::<S>::new(source_block(FontBaseline::Alphabetic, None));
     let mut inner = atomic(
         l::WritingMode::HorizontalTb,
         l::Direction::Ltr,
@@ -2260,7 +2256,7 @@ fn packet_producer_control<S: l::LayoutScalar>() {
         absent(node(entries, 1).named_baselines);
         named(
             node(entries, 0).named_baselines,
-            l::BaselineName::Alphabetic,
+            FontBaseline::Alphabetic,
             l::PhysicalAxis::Vertical,
             10.0,
         );
@@ -2278,10 +2274,7 @@ fn packet_computed_alpha<S: l::LayoutScalar>(
         .iter()
         .filter(|row| row.node() == child)
     {
-        let pair = row
-            .output()
-            .named_baselines
-            .get(l::BaselineName::Alphabetic);
+        let pair = row.output().named_baselines.get(FontBaseline::Alphabetic);
         for fact in [pair.first(), pair.last()] {
             match fact {
                 l::BaselineFactOf::Unknown => {}
@@ -2303,7 +2296,7 @@ fn packet_alpha<S: l::LayoutScalar>(batch: &l::CompletedLayoutBatchOf<u32, S>, c
     ] {
         named(
             node(entries, child).named_baselines,
-            l::BaselineName::Alphabetic,
+            FontBaseline::Alphabetic,
             l::PhysicalAxis::Vertical,
             10.0,
         );
@@ -2517,12 +2510,12 @@ fn packet_grid_known_size<S: l::LayoutScalar>() {
         l::Direction::Ltr,
         l::InlineBaselineContext::Physical,
     ));
-    let mut float = source_block(l::BaselineName::Alphabetic, Some(10.0));
+    let mut float = source_block(FontBaseline::Alphabetic, Some(10.0));
     float.inline_baseline_context = l::InlineBaselineContext::Physical;
     float.size.width = px(10.0);
     float.float = l::Float::Left;
     assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(float)), 1);
-    let mut child = source_block(l::BaselineName::Alphabetic, Some(20.0));
+    let mut child = source_block(FontBaseline::Alphabetic, Some(20.0));
     child.inline_baseline_context = l::InlineBaselineContext::Physical;
     child.block_flow_context = l::BlockFlowContext::Independent;
     assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(child)), 2);
@@ -2560,7 +2553,7 @@ fn packet_grid_known_size<S: l::LayoutScalar>() {
             );
         }
         for id in [2, 3] {
-            for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+            for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
                 let pair = node_of_kind(
                     entries,
                     id,
@@ -2771,7 +2764,7 @@ fn packet_text_float<S: l::LayoutScalar>() {
         ),
         1
     );
-    let mut float = source_block(l::BaselineName::Alphabetic, None);
+    let mut float = source_block(FontBaseline::Alphabetic, None);
     float.float = l::Float::Left;
     assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(float)), 2);
     assert_eq!(
@@ -2921,12 +2914,12 @@ fn sizing_demand_host<S: l::LayoutScalar>(
     content: DemandContent,
 ) -> Host<S> {
     let mode = l::WritingMode::HorizontalTb;
-    let alpha = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic);
+    let alpha = l::InlineBaselineContext::Named(FontBaseline::Alphabetic);
     let mut outer = root(mode, l::Direction::Ltr, l::InlineBaselineContext::Physical);
     outer.display = l::Display::Flex;
     outer.align_items = Some(l::AlignItems::Start);
     let mut host = Host::<S>::new(outer);
-    let mut line = source_block(l::BaselineName::Alphabetic, None);
+    let mut line = source_block(FontBaseline::Alphabetic, None);
     line.inline_baseline_context = context;
     line.size.width = px(40.0);
     assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(line)), 1);
@@ -2954,10 +2947,7 @@ fn sizing_demand_host<S: l::LayoutScalar>(
             assert_eq!(
                 host.push(
                     Some(3),
-                    l::LayoutInputOf::box_input(source_block(
-                        l::BaselineName::Alphabetic,
-                        Some(0.0)
-                    ))
+                    l::LayoutInputOf::box_input(source_block(FontBaseline::Alphabetic, Some(0.0)))
                 ),
                 4
             );
@@ -3013,7 +3003,7 @@ fn sizing_demand_facts<S: l::LayoutScalar>(
     ] {
         named(
             node(entries, 3).named_baselines,
-            l::BaselineName::Alphabetic,
+            FontBaseline::Alphabetic,
             l::PhysicalAxis::Vertical,
             0.0,
         );
@@ -3052,7 +3042,7 @@ fn sizing_demand_facts<S: l::LayoutScalar>(
             );
             named(
                 node_of_kind(entries, 4, content_kind).named_baselines,
-                l::BaselineName::Alphabetic,
+                FontBaseline::Alphabetic,
                 l::PhysicalAxis::Vertical,
                 0.0,
             );
@@ -3124,7 +3114,7 @@ fn sizing_demand_facts<S: l::LayoutScalar>(
             assert_eq!(node(entries, 3).location, l::Point::new(n(20.0), n(20.0)));
             named(
                 node(entries, 1).named_baselines,
-                l::BaselineName::Alphabetic,
+                FontBaseline::Alphabetic,
                 l::PhysicalAxis::Vertical,
                 20.0,
             );
@@ -3135,10 +3125,7 @@ fn sizing_demand_facts<S: l::LayoutScalar>(
     for row in batch.cache_store_entries().iter().filter(|row| {
         row.node() == 3 || matches!(content, DemandContent::Decorated) && row.node() == 4
     }) {
-        let pair = row
-            .output()
-            .named_baselines
-            .get(l::BaselineName::Alphabetic);
+        let pair = row.output().named_baselines.get(FontBaseline::Alphabetic);
         for fact in [pair.first(), pair.last()] {
             match fact {
                 l::BaselineFactOf::Unknown => {}
@@ -3165,10 +3152,7 @@ fn sizing_unknown_keys<S: l::LayoutScalar>(
         .filter(|row| row.node() == 3)
         .filter_map(|row| {
             let output = host.published.caches[3].get_with_context(row.input(), row.context())?;
-            (output
-                .named_baselines
-                .get(l::BaselineName::Alphabetic)
-                .last()
+            (output.named_baselines.get(FontBaseline::Alphabetic).last()
                 == l::BaselineFactOf::Unknown)
                 .then_some((*row.input(), row.context()))
         })
@@ -3182,7 +3166,7 @@ fn sizing_unknown_keys<S: l::LayoutScalar>(
 fn sizing_demand_cache<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
     let physical = l::InlineBaselineContext::Physical;
-    let alpha = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic);
+    let alpha = l::InlineBaselineContext::Named(FontBaseline::Alphabetic);
     for content in [DemandContent::ZeroForced, DemandContent::Decorated] {
         for starts_named in [false, true] {
             let first_context = if starts_named { alpha } else { physical };
@@ -3282,10 +3266,7 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
                         .filter(|row| row.node() == 3)
                     {
                         let key = (*row.input(), row.context());
-                        let pair = row
-                            .output()
-                            .named_baselines
-                            .get(l::BaselineName::Alphabetic);
+                        let pair = row.output().named_baselines.get(FontBaseline::Alphabetic);
                         let keys = if matches!(pair.last(), l::BaselineFactOf::Available(_)) {
                             &mut available_keys
                         } else {
@@ -3365,7 +3346,7 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
     ] {
         let pair = node(entries, 3)
             .named_baselines
-            .get(l::BaselineName::Alphabetic);
+            .get(FontBaseline::Alphabetic);
         assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
         assert_eq!(pair.last(), l::BaselineFactOf::Unknown);
     }

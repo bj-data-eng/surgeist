@@ -10,12 +10,12 @@ use super::fixtures::{
     fri04_c04_grid_dispatch_style, fri05_c05_grid_sizing_input,
     fri06_c12_t08_inherited_baseline_gap_position, fri06_mr02_geometry_error_assert,
     fri08_c01_placement_compute, fri08_c01_placement_output, fri08_c02_auto_fit_output,
-    fri08_c02_auto_fit_repeat, fri08_c03_intrinsic_facts, fri08_c03_intrinsic_projected_item,
-    fri08_c04_baseline_area_implicit_tree, fri08_c04_baseline_physical_edge,
-    fri08_c04_baseline_world_coordinate, inherited_placement_frames, inherited_placement_group,
-    inherited_placement_mapping, inherited_placement_member, inherited_placement_witness, lp,
-    map_grid_axis, subgrid_axis_report, subgrid_child_parent_context, subgrid_eligibility,
-    subgrid_track, subgrid_track_of, tagged_baseline, vertical_baseline_measure,
+    fri08_c02_auto_fit_repeat, fri08_c04_baseline_area_implicit_tree,
+    fri08_c04_baseline_physical_edge, fri08_c04_baseline_world_coordinate,
+    inherited_placement_frames, inherited_placement_group, inherited_placement_mapping,
+    inherited_placement_member, inherited_placement_witness, lp, map_grid_axis,
+    subgrid_axis_report, subgrid_child_parent_context, subgrid_eligibility, subgrid_track,
+    subgrid_track_of, tagged_baseline, vertical_baseline_measure,
     with_projected_subgrid_child_input,
 };
 use super::*;
@@ -192,79 +192,6 @@ fn fri08_c03_containing_block_baseline_synthesis_survives_final_layout() {
     );
     assert_eq!(output.first_baselines.y, Some(7.0));
     assert_eq!(output.last_baselines.y, Some(15.0));
-}
-
-#[test]
-fn fri08_c03_intrinsic_equivalence_requires_candidates_and_edges() {
-    let input = LaneIntrinsicSizingInput {
-        axis: GridAxisKind::Column,
-        available: None,
-        gap: 0.0,
-        tracks: vec![TrackSizing::AUTO; 3],
-        content_sized_tracks: vec![0, 1, 2],
-        items: Vec::new(),
-    };
-    let zero_edges = LaneIntrinsicEdgeFactsOf::default();
-    let items = vec![
-        fri08_c03_intrinsic_projected_item(
-            "equivalent-a",
-            1,
-            None,
-            zero_edges,
-            fri08_c03_intrinsic_facts(5.0, 30.0, 40.0),
-        ),
-        fri08_c03_intrinsic_projected_item(
-            "equivalent-b",
-            1,
-            None,
-            zero_edges,
-            fri08_c03_intrinsic_facts(20.0, 10.0, 50.0),
-        ),
-        fri08_c03_intrinsic_projected_item(
-            "equivalent-candidate-set",
-            1,
-            Some(vec![2, 1, 0, 1]),
-            zero_edges,
-            fri08_c03_intrinsic_facts(1.0, 2.0, 3.0),
-        ),
-        fri08_c03_intrinsic_projected_item(
-            "different-candidates",
-            1,
-            Some(vec![0]),
-            zero_edges,
-            fri08_c03_intrinsic_facts(7.0, 8.0, 9.0),
-        ),
-        fri08_c03_intrinsic_projected_item(
-            "different-edges",
-            1,
-            None,
-            LaneIntrinsicEdgeFactsOf {
-                start_mbp: 1.0,
-                ..zero_edges
-            },
-            fri08_c03_intrinsic_facts(7.0, 8.0, 9.0),
-        ),
-    ];
-    let report = lane_intrinsic_sizing_projected_with::<(), _, core::convert::Infallible>(
-        &input,
-        &items,
-        None,
-        LayoutErrorSite::Standalone,
-    )
-    .expect("projection values are finite")
-    .expect("projection spans are valid");
-
-    assert_eq!(report.indefinite_groups.len(), 3);
-    let equivalent = report
-        .indefinite_groups
-        .iter()
-        .find(|group| {
-            group.item_ids == ["equivalent-a", "equivalent-b", "equivalent-candidate-set"]
-        })
-        .expect("equal keys share one componentwise maximum group");
-    assert_eq!(equivalent.max_min_size, 20.0);
-    assert_eq!(equivalent.max_min_content, 30.0);
-    assert_eq!(equivalent.max_max_content, 50.0);
 }
 
 fn assert_fri08_c04_baseline_area_implicit_composition<S: LayoutScalar>() {
@@ -1840,7 +1767,7 @@ where
         }
     }
 }
-fn final_height(tree: &OracleTree, node: u32) -> Scalar {
+fn final_height(tree: &OracleTree, node: u32) -> DefaultScalar {
     tree.final_layout(node)
         .expect("node should have a final layout")
         .size
@@ -1853,7 +1780,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
         outputs: HashMap<u32, ComputeOutput>,
     }
 
@@ -1862,7 +1789,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
             &mut self,
             node: u32,
             input: ComputeInput,
-        ) -> LayoutResultOf<u32, ComputeOutput, Scalar> {
+        ) -> LayoutResultOf<u32, ComputeOutput, DefaultScalar> {
             let node_input = self.styles[&node].clone();
             if self.children[&node].is_empty() {
                 return Ok(self.outputs[&node]);
@@ -1883,7 +1810,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
     impl Traverse for RecursiveTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -1905,7 +1832,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
         outputs: &'input mut HashMap<u32, ComputeOutput>,
     }
 
@@ -1923,7 +1850,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
     impl<'input> Traverse for RecursiveTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -2941,7 +2868,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
     }
 
     impl<'input> RecursiveTreeCompute<'input> {
@@ -2949,7 +2876,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
             &mut self,
             node: u32,
             input: ComputeInput,
-        ) -> LayoutResultOf<u32, ComputeOutput, Scalar> {
+        ) -> LayoutResultOf<u32, ComputeOutput, DefaultScalar> {
             let node_input = self.styles[&node].clone();
             if self.children[&node].is_empty() {
                 return Ok(ComputeOutput::from_outer_size(Size::new(30.0, 12.0)));
@@ -2970,7 +2897,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     impl Traverse for RecursiveTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -2992,7 +2919,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
     }
 
     impl RecursiveTree {
@@ -3008,7 +2935,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     impl<'input> Traverse for RecursiveTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -8104,9 +8031,9 @@ fn horizontal_baseline_flow_axes() -> crate::geometry::FlowAxes {
 }
 
 struct BaselineTestMetrics {
-    first: Scalar,
-    last: Scalar,
-    height: Scalar,
+    first: DefaultScalar,
+    last: DefaultScalar,
+    height: DefaultScalar,
 }
 
 fn baseline_test_item<'input>(

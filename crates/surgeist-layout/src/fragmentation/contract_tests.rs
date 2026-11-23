@@ -1,6 +1,13 @@
-#![forbid(unsafe_code)]
+use super::*;
+use crate::{Direction, FlowAxes, WritingMode};
 
-use surgeist_layout::*;
+/// Schedules without feedback, as a mode owner that only needs the report.
+fn resolve_fragmentation<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>>(
+    input: &FragmentationInputOf<K, S>,
+    provider: &mut P,
+) -> Result<FragmentationReportOf<K, S>, FragmentationError<P::Error>> {
+    resolve_with_feedback(input, provider, |_| Ok(()))
+}
 
 // Normalized-mode fixtures keep source units separate from layout geometry.
 type Input<S> = FragmentationInputOf<u32, S>;

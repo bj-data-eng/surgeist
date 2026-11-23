@@ -74,7 +74,7 @@ impl InvalidationTree {
 
 impl Traverse for InvalidationTree {
     type Node = u32;
-    type Scalar = Scalar;
+    type Scalar = DefaultScalar;
     type Children<'a>
         = std::iter::Copied<std::slice::Iter<'a, u32>>
     where
@@ -455,7 +455,7 @@ struct TransactionSink {
     mutations: RefCell<Vec<Mutation>>,
 }
 
-impl LayoutBatchSink<u32, Scalar> for TransactionSink {
+impl LayoutBatchSink<u32, DefaultScalar> for TransactionSink {
     fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
         &self.publication_targets
     }
@@ -468,7 +468,7 @@ impl LayoutBatchSink<u32, Scalar> for TransactionSink {
 
     fn prepare_layout_batch(
         &self,
-        preparation: crate::LayoutBatchPreparation<'_, u32, Scalar>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, DefaultScalar>,
     ) -> Result<Self::Prepared, Self::Error> {
         let batch = preparation.batch();
         if self.fail_preparation {
@@ -486,7 +486,7 @@ impl LayoutBatchSink<u32, Scalar> for TransactionSink {
 
     fn commit_layout_batch(
         &mut self,
-        commit: crate::LayoutBatchCommit<'_, u32, Scalar, Self::Prepared>,
+        commit: crate::LayoutBatchCommit<'_, u32, DefaultScalar, Self::Prepared>,
     ) {
         let prepared = commit.into_prepared();
         self.unrounded.clear();
@@ -669,7 +669,7 @@ fn fri06_c01_batch_transaction_successful_preparation_uses_no_interior_mutation(
         before: TransactionSink,
         observed: std::cell::Cell<bool>,
     }
-    impl LayoutBatchSink<u32, Scalar> for PreparationObserver<'_> {
+    impl LayoutBatchSink<u32, DefaultScalar> for PreparationObserver<'_> {
         type Error = &'static str;
         type Prepared = PreparedReplacement;
         fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
@@ -680,7 +680,7 @@ fn fri06_c01_batch_transaction_successful_preparation_uses_no_interior_mutation(
         }
         fn prepare_layout_batch(
             &self,
-            preparation: crate::LayoutBatchPreparation<'_, u32, Scalar>,
+            preparation: crate::LayoutBatchPreparation<'_, u32, DefaultScalar>,
         ) -> Result<Self::Prepared, Self::Error> {
             let prepared = self.inner.prepare_layout_batch(preparation)?;
             assert_eq!(*self.inner, self.before);
@@ -708,7 +708,7 @@ fn fri06_c01_batch_transaction_successful_preparation_uses_no_interior_mutation(
         }
         fn commit_layout_batch(
             &mut self,
-            _commit: crate::LayoutBatchCommit<'_, u32, Scalar, Self::Prepared>,
+            _commit: crate::LayoutBatchCommit<'_, u32, DefaultScalar, Self::Prepared>,
         ) {
             panic!("preparation observation deliberately refuses before commit");
         }

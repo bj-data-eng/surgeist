@@ -2983,7 +2983,7 @@ fn block_empty_auto_height_can_collapse_through() {
     impl Traverse for BlockTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -3019,7 +3019,7 @@ fn block_empty_auto_height_can_collapse_through() {
     impl<'input> Traverse for BlockTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -3151,7 +3151,7 @@ fn block_with_padding_reports_own_margins_when_child_collapse_is_blocked() {
     impl Traverse for BlockTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -3187,7 +3187,7 @@ fn block_with_padding_reports_own_margins_when_child_collapse_is_blocked() {
     impl<'input> Traverse for BlockTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -3992,7 +3992,7 @@ fn block_compute_size_uses_definite_min_max_without_measuring_children() {
     impl Traverse for BlockTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4028,7 +4028,7 @@ fn block_compute_size_uses_definite_min_max_without_measuring_children() {
     impl<'input> Traverse for BlockTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4159,7 +4159,7 @@ fn block_definite_compute_size_keeps_grid_children_on_fast_path_until_grid_basel
     impl Traverse for BlockTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4195,7 +4195,7 @@ fn block_definite_compute_size_keeps_grid_children_on_fast_path_until_grid_basel
     impl<'input> Traverse for BlockTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where

@@ -4,6 +4,7 @@ use super::*;
 use crate::geometry::LogicalEdgesOf;
 use crate::output::{NamedBaselineDemand, NamedBaselineSet};
 use crate::test_support::readback::{self, Phase};
+use surgeist_text::font::FontBaseline;
 
 fn n<S: LayoutScalar>(v: f64) -> S {
     S::from_f64(v)
@@ -141,8 +142,8 @@ fn fixture<S: LayoutScalar>(
                     // The actual inherited shared Row must retain owner0's reference,
                     // including the first pass before any target exists.
                     grid_baseline_references: GridBaselineReferences {
-                        columns: GridBaselineReference::Named(BaselineName::Alphabetic),
-                        rows: GridBaselineReference::Named(BaselineName::Alphabetic),
+                        columns: GridBaselineReference::Named(FontBaseline::Alphabetic),
+                        rows: GridBaselineReference::Named(FontBaseline::Alphabetic),
                     },
                     ..NodeInputOf::default()
                 },
@@ -156,15 +157,15 @@ fn border_synthesis<S: LayoutScalar>() {
         for last in [false, true] {
             for reference in [
                 GridBaselineReference::Physical,
-                GridBaselineReference::Named(BaselineName::Alphabetic),
-                GridBaselineReference::Named(BaselineName::Central),
+                GridBaselineReference::Named(FontBaseline::Alphabetic),
+                GridBaselineReference::Named(FontBaseline::Central),
             ] {
                 let tree = fixture::<S>(reference, last, column, false);
                 assert!(!tree.has_leaf_measurement(1) && !tree.has_leaf_measurement(2));
                 assert_eq!((tree.child_count(1), tree.child_count(2)), (0, 0));
                 let batch = compute_layout(&tree, 0, request()).unwrap();
                 assert_eq!(observed(&batch, 0).size, Size::splat(n(200.0)));
-                let central = reference == GridBaselineReference::Named(BaselineName::Central);
+                let central = reference == GridBaselineReference::Named(FontBaseline::Central);
                 // Row/Htb: First target max(3+25,7+50)=57; Last distance
                 // max(5+25,11+50)=61. Column/VRL First normalizes to the
                 // owner's Last cohort; selected physical ports remain25/50.
@@ -232,7 +233,7 @@ fn border_synthesis<S: LayoutScalar>() {
 fn inherited_context<S: LayoutScalar>() {
     for last in [false, true] {
         let tree = fixture::<S>(
-            GridBaselineReference::Named(BaselineName::Central),
+            GridBaselineReference::Named(FontBaseline::Central),
             last,
             false,
             true,
@@ -250,7 +251,7 @@ fn inherited_context<S: LayoutScalar>() {
 
 fn unknown_refuses_without_changing_prior_output<S: LayoutScalar>() {
     let good = fixture::<S>(
-        GridBaselineReference::Named(BaselineName::Central),
+        GridBaselineReference::Named(FontBaseline::Central),
         false,
         false,
         false,
@@ -285,7 +286,7 @@ fn unknown_refuses_without_changing_prior_output<S: LayoutScalar>() {
 
 fn zero_line_fixture<S: LayoutScalar>() -> PublicLayoutTreeOf<S> {
     fixture::<S>(
-        GridBaselineReference::Named(BaselineName::Central),
+        GridBaselineReference::Named(FontBaseline::Central),
         true,
         false,
         false,
@@ -297,7 +298,7 @@ fn zero_line_fixture<S: LayoutScalar>() -> PublicLayoutTreeOf<S> {
         NodeInputOf {
             display: Display::Block,
             size: Size::new(PreferredSizeOf::px(n(20.0)), PreferredSizeOf::px(n(50.0))),
-            inline_baseline_context: InlineBaselineContext::Named(BaselineName::Central),
+            inline_baseline_context: InlineBaselineContext::Named(FontBaseline::Central),
             align_self: Some(AlignItems::LastBaseline),
             grid_column: GridPlacement::try_lines(1, 2).unwrap(),
             grid_row: GridPlacement::try_lines(1, 2).unwrap(),
@@ -320,7 +321,7 @@ fn zero_line_fixture<S: LayoutScalar>() -> PublicLayoutTreeOf<S> {
         LayoutInputOf::line_break(
             LineBreakInputOf::new().with_metrics(
                 InlineMetricsOf::try_new(
-                    InlineBaselineContext::Named(BaselineName::Central),
+                    InlineBaselineContext::Named(FontBaseline::Central),
                     S::ZERO,
                     S::ZERO,
                 )
@@ -334,7 +335,7 @@ fn actual_named_last_zero<S: LayoutScalar>() {
     let tree = zero_line_fixture::<S>();
     let batch = compute_layout(&tree, 0, request()).unwrap();
     let one = observed(&batch, 1);
-    let last = one.named_baselines.get(BaselineName::Central).last();
+    let last = one.named_baselines.get(FontBaseline::Central).last();
     assert_eq!(
         last,
         BaselineFactOf::Available(
@@ -353,14 +354,14 @@ fn fact_selection_and_cache<S: LayoutScalar>() {
     };
     let output = ComputeOutputOf::from_outer_size(Size::new(n(20.0), n(50.0)))
         .with_named_baselines(NamedBaselinesOf::unknown().with(
-            BaselineName::Central,
+            FontBaseline::Central,
             BaselinePairOf::new(
                 fact(PhysicalAxis::Vertical, 7.0),
                 fact(PhysicalAxis::Vertical, 0.0),
             ),
         ));
     let selected = select_grid_baseline(
-        GridBaselineReference::Named(BaselineName::Central),
+        GridBaselineReference::Named(FontBaseline::Central),
         AlignItems::LastBaseline,
         flow,
         PhysicalAxis::Vertical,
@@ -371,7 +372,7 @@ fn fact_selection_and_cache<S: LayoutScalar>() {
     assert_eq!(selected.coordinate, S::ZERO);
     assert!(!selected.synthesized);
     let input = |output, auto_margins| AncestorBaselineMemberInput {
-        reference: GridBaselineReference::Named(BaselineName::Central),
+        reference: GridBaselineReference::Named(FontBaseline::Central),
         source: 1_u32,
         axis: GridAxisKind::Row,
         ancestor_span: GridTrackSpan::new(1, 3),
@@ -401,7 +402,7 @@ fn fact_selection_and_cache<S: LayoutScalar>() {
         .is_none()
     );
     let wrong = output.with_named_baselines(NamedBaselinesOf::unknown().with(
-        BaselineName::Central,
+        FontBaseline::Central,
         BaselinePairOf::new(
             fact(PhysicalAxis::Horizontal, 7.0),
             fact(PhysicalAxis::Horizontal, 0.0),
@@ -409,7 +410,7 @@ fn fact_selection_and_cache<S: LayoutScalar>() {
     ));
     assert_eq!(
         select_grid_baseline(
-            GridBaselineReference::Named(BaselineName::Central),
+            GridBaselineReference::Named(FontBaseline::Central),
             AlignItems::LastBaseline,
             flow,
             PhysicalAxis::Vertical,
@@ -424,7 +425,7 @@ fn fact_selection_and_cache<S: LayoutScalar>() {
     );
     assert_eq!(
         select_grid_baseline(
-            GridBaselineReference::Named(BaselineName::Alphabetic),
+            GridBaselineReference::Named(FontBaseline::Alphabetic),
             AlignItems::Baseline,
             flow,
             PhysicalAxis::Vertical,
@@ -453,7 +454,7 @@ fn fact_selection_and_cache<S: LayoutScalar>() {
         display: Display::Grid,
         grid_baseline_references: GridBaselineReferences {
             columns: GridBaselineReference::Physical,
-            rows: GridBaselineReference::Named(BaselineName::Central),
+            rows: GridBaselineReference::Named(FontBaseline::Central),
         },
         ..NodeInputOf::default()
     };
@@ -485,7 +486,7 @@ fn fact_selection_and_cache<S: LayoutScalar>() {
         assert_eq!(
             demanded.named_baseline_demand(),
             NamedBaselineDemand::Fact {
-                name: BaselineName::Central,
+                name: FontBaseline::Central,
                 set
             }
         );
@@ -499,7 +500,7 @@ fn fact_selection_and_cache<S: LayoutScalar>() {
         assert_eq!(unrelated.named_baseline_demand(), NamedBaselineDemand::None);
     }
     let asked = base.with_named_baseline_demand(NamedBaselineDemand::Fact {
-        name: BaselineName::Central,
+        name: FontBaseline::Central,
         set: NamedBaselineSet::Last,
     });
     let mut cache = CacheOf::new();
@@ -511,11 +512,11 @@ fn fact_selection_and_cache<S: LayoutScalar>() {
     for other in [
         base,
         base.with_named_baseline_demand(NamedBaselineDemand::Fact {
-            name: BaselineName::Central,
+            name: FontBaseline::Central,
             set: NamedBaselineSet::First,
         }),
         base.with_named_baseline_demand(NamedBaselineDemand::Fact {
-            name: BaselineName::Alphabetic,
+            name: FontBaseline::Alphabetic,
             set: NamedBaselineSet::Last,
         }),
     ] {
@@ -567,10 +568,10 @@ fn lane_capability<S: LayoutScalar>() {
         let mut named_style = lane_style.clone();
         if column {
             named_style.grid_baseline_references.columns =
-                GridBaselineReference::Named(BaselineName::Central);
+                GridBaselineReference::Named(FontBaseline::Central);
         } else {
             named_style.grid_baseline_references.rows =
-                GridBaselineReference::Named(BaselineName::Central);
+                GridBaselineReference::Named(FontBaseline::Central);
         }
         let named = original.clone().style(0, named_style);
         if column {
@@ -625,7 +626,7 @@ fn central_synthesis_refuses_a_lost_nonzero_half_but_preserves_real_zero() {
             .with_named_baselines(NamedBaselinesOf::absent());
         assert_eq!(
             select_grid_baseline(
-                GridBaselineReference::Named(BaselineName::Central),
+                GridBaselineReference::Named(FontBaseline::Central),
                 AlignItems::Baseline,
                 flow,
                 PhysicalAxis::Vertical,
@@ -636,7 +637,7 @@ fn central_synthesis_refuses_a_lost_nonzero_half_but_preserves_real_zero() {
             ))
         );
         let zero = select_grid_baseline(
-            GridBaselineReference::Named(BaselineName::Central),
+            GridBaselineReference::Named(FontBaseline::Central),
             AlignItems::Baseline,
             flow,
             PhysicalAxis::Vertical,
@@ -665,7 +666,7 @@ fn actual_scroll_last_export<S: LayoutScalar>() {
     // already inside the scroll border. Grid's margin contribution is then
     // -5+(50-45)=0; the real empty peer contributes100-50=50.
     assert_eq!(
-        one.named_baselines.get(BaselineName::Central).last(),
+        one.named_baselines.get(FontBaseline::Central).last(),
         BaselineFactOf::Available(
             BaselineCoordinateOf::try_new(PhysicalAxis::Vertical, n(45.0)).unwrap()
         )
@@ -741,7 +742,7 @@ fn inherited_lane_named_census<S: LayoutScalar>() {
     let mut accepted = None;
     for (reference, height) in [
         (GridBaselineReference::Physical, 200.0),
-        (GridBaselineReference::Named(BaselineName::Central), 175.0),
+        (GridBaselineReference::Named(FontBaseline::Central), 175.0),
     ] {
         let tree = inherited_lane_sizing_fixture::<S>(reference);
         for node in [0, 1] {
@@ -752,7 +753,7 @@ fn inherited_lane_named_census<S: LayoutScalar>() {
         assert_eq!(tree.node_input(0).grid_baseline_references.rows, reference);
         assert_eq!(
             tree.node_input(1).grid_baseline_references.rows,
-            GridBaselineReference::Named(BaselineName::Alphabetic)
+            GridBaselineReference::Named(FontBaseline::Alphabetic)
         );
         assert_eq!(
             grid_axis_for_grid_lanes(&GridContainerProjection::from_node(tree.node_input(1))),
@@ -788,13 +789,13 @@ fn inherited_lane_named_census<S: LayoutScalar>() {
             NamedBaselinesOf::unknown(),
             "sizing does not invent a named container export"
         );
-        if reference == GridBaselineReference::Named(BaselineName::Central) {
+        if reference == GridBaselineReference::Named(FontBaseline::Central) {
             accepted = Some(output);
         }
     }
 
     let good =
-        inherited_lane_sizing_fixture::<S>(GridBaselineReference::Named(BaselineName::Central));
+        inherited_lane_sizing_fixture::<S>(GridBaselineReference::Named(FontBaseline::Central));
     let bad = good.clone().children(11, [111]).children(111, []).style(
         111,
         NodeInputOf {

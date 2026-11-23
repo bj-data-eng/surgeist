@@ -2,6 +2,7 @@
 //! Font sides2/2 are . The separately supplied line strut8/2 establishes
 //! finalized B8/H10, distinguishing line-over from vertical block progression.
 use super::*;
+use surgeist_text::font::FontBaseline;
 mod atomics;
 mod constraints;
 mod mixed;
@@ -610,17 +611,17 @@ fn named_columns<S: l::LayoutScalar>() {
         let batch = compute::<S>(
             &fixture,
             mode,
-            l::InlineBaselineContext::Named(l::BaselineName::Central),
+            l::InlineBaselineContext::Named(FontBaseline::Central),
         );
         geometry(&fixture, &batch, centers);
         let facts = node(crate::layout::observation::phase(&batch, false), 0).named_baselines;
-        let pair = facts.get(l::BaselineName::Central);
+        let pair = facts.get(FontBaseline::Central);
         for (fact, c) in [(pair.first(), centers[0]), (pair.last(), centers[1])] {
             let coordinate =
                 l::BaselineCoordinateOf::try_new(l::PhysicalAxis::Horizontal, n(c)).unwrap();
             assert_eq!(fact, l::BaselineFactOf::Available(coordinate));
         }
-        let alpha = facts.get(l::BaselineName::Alphabetic);
+        let alpha = facts.get(FontBaseline::Alphabetic);
         assert_eq!(
             (alpha.first(), alpha.last()),
             (l::BaselineFactOf::Unknown, l::BaselineFactOf::Unknown)

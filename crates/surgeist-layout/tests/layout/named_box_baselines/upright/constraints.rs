@@ -1,9 +1,10 @@
 //! Native controls, nonformatted receipts and physical float constraints.
 use super::*;
 use std::cell::RefCell;
+use surgeist_text::font::FontBaseline;
 
 fn central() -> l::InlineBaselineContext {
-    l::InlineBaselineContext::Named(l::BaselineName::Central)
+    l::InlineBaselineContext::Named(FontBaseline::Central)
 }
 
 struct Native {
@@ -315,7 +316,7 @@ fn central_pair<S: l::LayoutScalar>(
 ) -> l::BaselinePairOf<S> {
     node(crate::layout::observation::phase(batch, true), 0)
         .named_baselines
-        .get(l::BaselineName::Central)
+        .get(FontBaseline::Central)
 }
 
 fn controls_and_completion<S: l::LayoutScalar>() {

@@ -19,9 +19,8 @@ pub(in crate::grid) struct GridTrackSizingConstraint<S: LayoutScalar> {
 pub(super) use flexible::*;
 pub(super) use intrinsic::*;
 pub(super) use ordinary::{
-    GridAxisTrackPhases, GridIntrinsicContributionRow, OrdinaryIntrinsicContributionInput,
-    SpanningContributionError, SpanningTrackContext, apply_ordinary_intrinsic_contribution,
-    grid_contribution_rows, resolve_grid_contribution_rows, track_base_size,
+    GridAxisTrackPhases, GridIntrinsicContributionRow, SpanningContributionError,
+    SpanningTrackContext, grid_contribution_rows, resolve_grid_contribution_rows, track_base_size,
 };
 #[cfg(test)]
 pub(super) use ordinary::{
@@ -75,7 +74,7 @@ pub(in crate::grid) fn track_calculation_is_cyclic_auto<S: LayoutScalar>(
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct OrdinaryGridAxisGuttersOf<S: LayoutScalar = Scalar> {
+pub(super) struct OrdinaryGridAxisGuttersOf<S: LayoutScalar = DefaultScalar> {
     collapsed: Vec<bool>,
     active_boundary_after: Vec<bool>,
     gutter_after: Vec<S>,
@@ -224,7 +223,7 @@ impl<S: LayoutScalar> OrdinaryGridAxisGuttersOf<S> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct UsedGridAxisGeometryOf<S: LayoutScalar = Scalar> {
+pub(super) struct UsedGridAxisGeometryOf<S: LayoutScalar = DefaultScalar> {
     sizes: Vec<S>,
     collapsed: Vec<bool>,
     active_boundary_after: Vec<bool>,

@@ -1,9 +1,5 @@
 use super::*;
-use crate::scalar::{
-    from_nonnegative_finite_rank, max_nonnegative_finite_rank, nonnegative_finite_rank,
-};
 
-use super::flexible::span_contribution_with_gutters;
 use crate::LengthResolutionOf;
 
 fn resolution_or_zero<S: LayoutScalar>(resolution: LengthResolutionOf<S>) -> S {
@@ -114,52 +110,6 @@ impl<'a, S: LayoutScalar> OrdinaryTrackState<'a, S> {
             self.growth_limit = Some(limit.max(self.base_size));
         }
     }
-}
-
-#[derive(Clone, Copy)]
-pub(in crate::grid) struct OrdinaryIntrinsicContributionInput<'a, S: LayoutScalar = Scalar> {
-    pub(in crate::grid) tracks: &'a [TrackSizingOf<S>],
-    pub(in crate::grid) start: usize,
-    pub(in crate::grid) end: usize,
-    pub(in crate::grid) kind: IntrinsicSpanContribution,
-    pub(in crate::grid) percent_basis: Option<S>,
-    pub(in crate::grid) contribution: S,
-    pub(in crate::grid) gap: S,
-    pub(in crate::grid) gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
-}
-
-pub(in crate::grid) fn apply_ordinary_intrinsic_contribution<S: LayoutScalar>(
-    sizes: &mut [S],
-    input: OrdinaryIntrinsicContributionInput<'_, S>,
-) {
-    let OrdinaryIntrinsicContributionInput {
-        tracks,
-        start,
-        end,
-        kind,
-        percent_basis,
-        contribution,
-        gap,
-        gutters,
-    } = input;
-    let Some(span_tracks) = tracks.get(start..end) else {
-        return;
-    };
-    let Some(span_sizes) = sizes.get_mut(start..end) else {
-        return;
-    };
-    if span_tracks.is_empty() || !span_tracks.iter().any(track_has_intrinsic_sizing_function) {
-        return;
-    }
-    if span_tracks.len() == 1 {
-        span_sizes[0] = span_sizes[0].max(contribution);
-        return;
-    }
-    let mut target = span_contribution_with_gutters(contribution, start, end, gap, gutters);
-    if matches!(kind, IntrinsicSpanContribution::MinContent { .. }) {
-        target = (target - intrinsic_span_minimum_floor_space(span_tracks)).max(S::ZERO);
-    }
-    distribute_intrinsic_span(span_sizes, span_tracks, kind, percent_basis, target);
 }
 
 // The full track and actual containing constraint are necessary: an Auto
@@ -954,15 +904,15 @@ fn phase_feasible_size<S: LayoutScalar>(
     if preferred > lower && phase_trial_size(sizes, item, recipient, preferred) == Some(target) {
         return preferred;
     }
-    let mut low = nonnegative_finite_rank(lower);
-    let mut high = nonnegative_finite_rank(upper);
+    let mut low = lower.nonnegative_finite_rank();
+    let mut high = upper.nonnegative_finite_rank();
     if !phase_trial_size(sizes, item, recipient, upper).is_some_and(|total| total <= target) {
         // Positive finite IEEE ranks are ordered integers. Upper-midpoint
         // bisection strictly shrinks the interval: at most32/64 integer
         // iterations, plus fixed endpoint/preferred validation calls.
         while low < high {
             let middle = low + (high - low).div_ceil(2);
-            let candidate = from_nonnegative_finite_rank::<S>(middle);
+            let candidate = S::from_nonnegative_finite_rank(middle);
             if phase_trial_size(sizes, item, recipient, candidate)
                 .is_some_and(|total| total <= target)
             {
@@ -974,7 +924,7 @@ fn phase_feasible_size<S: LayoutScalar>(
     } else {
         low = high;
     }
-    let best = from_nonnegative_finite_rank::<S>(low);
+    let best = S::from_nonnegative_finite_rank(low);
     let best_fold = phase_trial_size(sizes, item, recipient, best);
     if preferred > lower && phase_trial_size(sizes, item, recipient, preferred) == best_fold {
         preferred
@@ -1107,7 +1057,7 @@ fn distribute_phase_space<S: LayoutScalar>(
             let upper = if nominal_final.is_finite() {
                 nominal_final
             } else {
-                from_nonnegative_finite_rank(max_nonnegative_finite_rank::<S>())
+                S::from_nonnegative_finite_rank(S::MAX_NONNEGATIVE_FINITE_RANK)
             };
             let upper = limit.map_or(upper, |limit| upper.min(limit)).max(previous);
             let candidate = if last {
@@ -1138,7 +1088,7 @@ fn distribute_phase_space<S: LayoutScalar>(
                 let previous = sizes[index];
                 let upper = limit
                     .unwrap_or_else(|| {
-                        from_nonnegative_finite_rank(max_nonnegative_finite_rank::<S>())
+                        S::from_nonnegative_finite_rank(S::MAX_NONNEGATIVE_FINITE_RANK)
                     })
                     .max(previous);
                 let candidate = phase_residual_candidate(sizes, item, index, target);

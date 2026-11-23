@@ -1,5 +1,6 @@
 //! Independent bidi, allocation-domain and physical box qualification.
 use super::*;
+use surgeist_text::font::FontBaseline;
 mod geometry;
 mod late;
 
@@ -343,7 +344,7 @@ fn guards<S: l::LayoutScalar>() {
             10.0,
         );
         qualify_parent(&parent, kind);
-        for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+        for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
             let (mut host, bindings) = scene::<S>(&parent, &child, kind, l::Direction::Ltr, 40.0);
             host.change(0, |input| {
                 input.inline_baseline_context = l::InlineBaselineContext::Named(name)

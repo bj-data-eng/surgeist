@@ -1,5 +1,6 @@
 //! Physical clockwise Text keeps the actual child's physical content unrotated.
 use super::*;
+use surgeist_text::font::FontBaseline;
 mod supplemental;
 mod vertical_writing_modes;
 
@@ -451,7 +452,7 @@ fn run<S: l::LayoutScalar>(
     )
 }
 fn unknown<S: l::LayoutScalar>(facts: l::NamedBaselinesOf<S>) {
-    for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+    for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         let pair = facts.get(name);
         assert_eq!(
             (pair.first(), pair.last()),

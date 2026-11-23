@@ -23,7 +23,7 @@ The package excludes the separate `tools/surgeist-layout-audits` tree.
 ## Scalar precision
 
 `surgeist-layout` keeps its default public API at browser-style coordinate
-precision: `DefaultScalar` is `f32`, and `Scalar` aliases `DefaultScalar`.
+precision: `DefaultScalar` is `f32`.
 Most applications should use the default aliases such as `NodeInput`,
 `ComputeInput`, and `ComputeOutput`.
 
@@ -170,8 +170,9 @@ previously optimized output.
 
 `NodeInputOf::inline_baseline_context` selects the numeric line's alignment
 reference. `InlineBaselineContext::Physical` is the default raw coordinate
-operation. `Named(BaselineName::Alphabetic)` and `Named(BaselineName::Central)`
-request matching named baselines. The caller resolves the name from its
+operation. `Named(FontBaseline::Alphabetic)` and `Named(FontBaseline::Central)`
+request matching named baselines; `FontBaseline` is
+`surgeist_text::font::FontBaseline`. The caller resolves the name from its
 typographic context; writing mode alone does not choose it. A parent's request
 does not change the child's own alignment context.
 
@@ -295,7 +296,7 @@ unsupported producer named authority.
 
 `NodeInputOf::grid_baseline_references` supplies resolved references for this
 Grid container's local Column and Row alignment contexts. Both default to
-`GridBaselineReference::Physical`. A `Named(BaselineName)` value is an explicit
+`GridBaselineReference::Physical`. A `Named(FontBaseline)` value is an explicit
 normalized choice; writing mode does not choose a name. An inherited shared
 subgrid context retains the actual owning axis's reference, including before
 that context has any baseline target. A standalone context keeps its own input.
@@ -1116,22 +1117,19 @@ rectangle, with auto margins resolved to zero. Absolute children leave track dem
 and other absolute children's frozen bounds unchanged; their overflow still
 contributes to final scroll geometry.
 
-- Sparse lane placement uses `place_lanes`, `LanePlacementInputOf`, and
-  `LanePlacementReportOf`, with an explicit grid axis and reverse traversal.
-  Container layout consumes `NodeInputOf::grid_lanes_flow` for the resolved axis
-  pair, progression and dense packing.
-- Intrinsic lane sizing: `lane_intrinsic_sizing`, `LaneIntrinsicSizingInputOf`, and `LaneIntrinsicSizingReportOf`.
-- Grid computation reports: `GridComputationOf` and `GridComputationReport`.
+- Sparse lane placement runs inside container layout, which consumes
+  `NodeInputOf::grid_lanes_flow` for the resolved axis pair, progression and
+  dense packing.
 - Finite track construction: `TrackSizingOf`, `TrackComponentOf`, `TrackComponentListOf`, and `track_sizing_components_of`.
 
 ### Normalized fragmentation scheduling
 
 Source: [fragmentation](../src/fragmentation/mod.rs).
 
-`resolve_fragmentation` computes a complete schedule from caller-owned source
-occurrences, fragmentation contexts and a `FragmentationProvider`. The provider
-supplies fragmentainer constraints and measures the remaining source under the
-current frame. Opportunities must describe that frame; measurements made at a
+The crate-private scheduler computes a complete schedule from caller-owned
+source occurrences, fragmentation contexts and a `FragmentationProvider`. The
+provider supplies fragmentainer constraints and measures the remaining source
+under the current frame. Opportunities must describe that frame; measurements made at a
 different inline size cannot stand in for them.
 
 `FragmentationKind::Page { progression }` carries `PageProgression` separately

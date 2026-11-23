@@ -2,7 +2,7 @@ use super::*;
 use crate::geometry::{LogicalPointOf, LogicalSizeOf};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct GridArea<S: LayoutScalar = Scalar> {
+pub(super) struct GridArea<S: LayoutScalar = DefaultScalar> {
     pub(super) column: usize,
     pub(super) row: usize,
     pub(super) column_end: usize,
@@ -1316,7 +1316,7 @@ pub(super) fn resolve_grid_child_areas_with_geometry<'input, Node, S: LayoutScal
     areas
 }
 
-pub(super) struct ResolveGridChildAreasInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+pub(super) struct ResolveGridChildAreasInput<'input, 'a, Node, S: LayoutScalar = DefaultScalar> {
     pub(super) children: &'a [Node],
     pub(super) placements: &'a GridPlacementContext<'input, Node, S>,
     pub(super) style: &'a GridContainerProjection<'a, S>,
@@ -1375,7 +1375,7 @@ pub(super) fn place_grid_child_area_phase<'input, Node, S: LayoutScalar>(
     }
 }
 
-pub(super) struct PlacementContext<'a, S: LayoutScalar = Scalar> {
+pub(super) struct PlacementContext<'a, S: LayoutScalar = DefaultScalar> {
     pub(super) columns: &'a [S],
     pub(super) rows: &'a [S],
     pub(super) gap: LogicalSizeOf<S>,
@@ -1402,7 +1402,7 @@ pub(super) fn placement_phase(
     }
 }
 
-pub(super) struct PlacementGrid<'a, S: LayoutScalar = Scalar> {
+pub(super) struct PlacementGrid<'a, S: LayoutScalar = DefaultScalar> {
     pub(super) occupancy: &'a [bool],
     pub(super) columns: &'a [S],
     pub(super) rows: &'a [S],

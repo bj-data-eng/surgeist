@@ -536,7 +536,7 @@ pub(in crate::grid) fn verify_refreshed_baselines<
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::grid) struct BaselineGeometry<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct BaselineGeometry<S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) available_span_size: S,
     pub(in crate::grid) margin_box_size: S,
     // Border-box baselines are stored separately on PendingGridItem. These
@@ -548,19 +548,19 @@ pub(in crate::grid) struct BaselineGeometry<S: LayoutScalar = Scalar> {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(in crate::grid) struct TrackBaselineGroup<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct TrackBaselineGroup<S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) first: Option<PhysicalBaseline<S>>,
     pub(in crate::grid) last: Option<PhysicalBaseline<S>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(in crate::grid) struct GridBaselineGroups<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct GridBaselineGroups<S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) rows: Vec<TrackBaselineGroup<S>>,
     pub(in crate::grid) columns: Vec<TrackBaselineGroup<S>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(in crate::grid) struct FinalAncestorBaselineGroups<Node, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct FinalAncestorBaselineGroups<Node, S: LayoutScalar = DefaultScalar> {
     rows: AncestorBaselineGroup<Node, S>,
     columns: AncestorBaselineGroup<Node, S>,
     placement_rows: Option<InheritedGridOwnerBaselineTargets<Node, S>>,
@@ -660,12 +660,12 @@ pub(in crate::grid) fn final_ancestor_baseline_groups_with_parent_context_for_tr
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::grid) struct GridContainerBaselines<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct GridContainerBaselines<S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) baselines: BaselinesOf<S>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(in crate::grid) struct BaselineShim<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct BaselineShim<S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) before: S,
     pub(in crate::grid) after: S,
 }
@@ -750,7 +750,7 @@ pub(in crate::grid) fn spanned_track_size<S: LayoutScalar>(
     track_sum + gap_sum
 }
 
-pub(super) struct OwnerProgressionTrackFrameInput<'a, S: LayoutScalar = Scalar> {
+pub(super) struct OwnerProgressionTrackFrameInput<'a, S: LayoutScalar = DefaultScalar> {
     pub(super) parent_tracks: &'a [S],
     pub(super) parent_boundary_gutters: &'a [S],
     pub(super) parent_line_offsets: Option<&'a [S]>,
@@ -864,7 +864,12 @@ pub(super) fn owner_progression_track_frame_origins<S: LayoutScalar>(
     Some((parent_first, parent_last, current_first, current_last))
 }
 
-pub(in crate::grid) struct BaselineAlignedAxisInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct BaselineAlignedAxisInput<
+    'input,
+    'a,
+    Node,
+    S: LayoutScalar = DefaultScalar,
+> {
     pub(in crate::grid) item: &'a PendingGridItem<'input, Node, S>,
     pub(in crate::grid) child_style: &'a GridItemProjection<'input, S>,
     pub(in crate::grid) container_style: &'a GridContainerProjection<'a, S>,

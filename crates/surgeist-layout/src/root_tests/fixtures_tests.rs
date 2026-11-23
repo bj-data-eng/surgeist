@@ -1855,7 +1855,7 @@ impl<M> RootSessionTree<M> {
 
 impl<M> Traverse for RootSessionTree<M> {
     type Node = u32;
-    type Scalar = Scalar;
+    type Scalar = DefaultScalar;
     type Children<'a>
         = std::iter::Copied<std::slice::Iter<'a, u32>>
     where
@@ -2144,12 +2144,12 @@ pub(super) fn root_writing_mode_directions() -> [(WritingMode, Direction); 10] {
 }
 
 fn public_scroll_error_without_batch(
-    native_frame: crate::test_support::requests::NativeRootFrameOf<Scalar>,
+    native_frame: crate::test_support::requests::NativeRootFrameOf<DefaultScalar>,
     tree: &RootSessionTree,
     available: Size<crate::AxisSizingRequest>,
     expected_site: LayoutErrorSite<u32>,
     expected_operation: LayoutOperation,
-) -> LayoutErrorOf<u32, Scalar, &'static str> {
+) -> LayoutErrorOf<u32, DefaultScalar, &'static str> {
     let request = native_frame.request(available);
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         compute_layout(tree, 0, request)
@@ -2168,7 +2168,7 @@ fn public_scroll_error_without_batch(
 
 /// The failure keeps the rejected canonical scroll fact as its cause.
 pub(super) fn assert_public_scroll_geometry_error_without_batch(
-    native_frame: crate::test_support::requests::NativeRootFrameOf<Scalar>,
+    native_frame: crate::test_support::requests::NativeRootFrameOf<DefaultScalar>,
     tree: &RootSessionTree,
     available: Size<crate::AxisSizingRequest>,
     expected_site: LayoutErrorSite<u32>,
@@ -2189,7 +2189,7 @@ pub(super) fn assert_public_scroll_geometry_error_without_batch(
 }
 
 pub(super) fn assert_public_rounded_scroll_geometry_error_without_batch(
-    native_frame: crate::test_support::requests::NativeRootFrameOf<Scalar>,
+    native_frame: crate::test_support::requests::NativeRootFrameOf<DefaultScalar>,
     tree: &RootSessionTree,
     available: Size<crate::AxisSizingRequest>,
     expected_site: LayoutErrorSite<u32>,
@@ -2281,7 +2281,7 @@ pub(super) fn fri05_c03_root_measurement_size(input: LeafMeasureInput) -> Size<f
 }
 
 pub(super) fn fri05_c03_tree_leaf_layout(
-    native_frame: crate::test_support::requests::NativeRootFrameOf<crate::Scalar>,
+    native_frame: crate::test_support::requests::NativeRootFrameOf<crate::DefaultScalar>,
     style: NodeInput,
     measured: Size<f32>,
     available: Size<f32>,

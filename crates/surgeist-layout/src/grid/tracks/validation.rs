@@ -103,13 +103,13 @@ pub(in crate::grid) fn prepend_auto_tracks<S: LayoutScalar>(
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(in crate::grid) struct ExpandedTrackOf<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct ExpandedTrackOf<S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) sizing: TrackSizingOf<S>,
     pub(in crate::grid) auto_repeat: Option<AutoRepeatTrackOrigin>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(in crate::grid) struct TrackExpansionOf<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct TrackExpansionOf<S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) tracks: Vec<ExpandedTrackOf<S>>,
 }
 
@@ -668,7 +668,7 @@ pub(in crate::grid) fn tracks_need_available_basis<S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::grid) struct ReservedTrackSpace<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct ReservedTrackSpace<S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) count: usize,
     pub(in crate::grid) size: S,
 }

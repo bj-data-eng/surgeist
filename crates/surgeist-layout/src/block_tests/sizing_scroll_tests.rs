@@ -2446,13 +2446,13 @@ fn block_fixed_parent_height_keeps_orthogonal_child_inline_known() {
 struct CalcLeafTree {
     children: HashMap<u32, Vec<u32>>,
     styles: HashMap<u32, NodeInput>,
-    layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+    layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
     invalid_leaf_measurement: bool,
 }
 
 impl Traverse for CalcLeafTree {
     type Node = u32;
-    type Scalar = Scalar;
+    type Scalar = DefaultScalar;
     type Children<'a>
         = std::iter::Copied<std::slice::Iter<'a, u32>>
     where
@@ -2478,7 +2478,7 @@ impl Traverse for CalcLeafTree {
 struct CalcLeafTreeCompute<'input> {
     children: &'input HashMap<u32, Vec<u32>>,
     styles: &'input HashMap<u32, NodeInput>,
-    layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+    layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
     invalid_leaf_measurement: bool,
 }
 
@@ -2495,7 +2495,7 @@ impl CalcLeafTree {
 
 impl<'input> Traverse for CalcLeafTreeCompute<'input> {
     type Node = u32;
-    type Scalar = Scalar;
+    type Scalar = DefaultScalar;
     type Children<'a>
         = std::iter::Copied<std::slice::Iter<'a, u32>>
     where
@@ -2732,7 +2732,7 @@ fn unresolved_symbolic_vertical_margin_is_not_treated_as_auto_margin() {
         NodeInput {
             margin: Edges {
                 top: LengthAuto::value(margin),
-                ..Edges::<Scalar>::ZERO.map(|_| LengthAuto::px(0.0))
+                ..Edges::<DefaultScalar>::ZERO.map(|_| LengthAuto::px(0.0))
             },
             ..NodeInput::default()
         },
@@ -2786,12 +2786,12 @@ struct Fri05C03BlockPassTree {
     styles: HashMap<u32, NodeInput>,
     child_output: Option<ComputeOutput>,
     child_inputs: Vec<ComputeInput>,
-    layouts: Vec<(u32, crate::LayoutOutputEntryOf<u32, Scalar>)>,
+    layouts: Vec<(u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>)>,
 }
 
 impl Traverse for Fri05C03BlockPassTree {
     type Node = u32;
-    type Scalar = Scalar;
+    type Scalar = DefaultScalar;
     type Children<'a>
         = std::iter::Copied<std::slice::Iter<'a, u32>>
     where
@@ -2820,7 +2820,7 @@ struct Fri05C03BlockPassTreeCompute<'input> {
     styles: &'input HashMap<u32, NodeInput>,
     child_output: Option<ComputeOutput>,
     child_inputs: &'input mut Vec<ComputeInput>,
-    layouts: &'input mut Vec<(u32, crate::LayoutOutputEntryOf<u32, Scalar>)>,
+    layouts: &'input mut Vec<(u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>)>,
 }
 
 impl Fri05C03BlockPassTree {
@@ -2837,7 +2837,7 @@ impl Fri05C03BlockPassTree {
 
 impl<'input> Traverse for Fri05C03BlockPassTreeCompute<'input> {
     type Node = u32;
-    type Scalar = Scalar;
+    type Scalar = DefaultScalar;
     type Children<'a>
         = std::iter::Copied<std::slice::Iter<'a, u32>>
     where

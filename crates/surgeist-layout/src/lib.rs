@@ -114,7 +114,7 @@
 //!
 //! `compute_leaf` is the direct fallible measurement boundary: providers receive
 //! non-negative content-space constraints and provider failures or invalid output
-//! become typed layout errors. `DefaultScalar` and `Scalar` use `f32`; generic
+//! become typed layout errors. `DefaultScalar` uses `f32`; generic
 //! `*Of<S>` contracts support end-to-end `f32` and `f64` scalar lanes.
 //!
 //! [`ItemOrder`] is the layout-ready signed order value. [`SourceIndex`] is
@@ -248,20 +248,25 @@ mod engine;
 mod error;
 mod flex;
 mod fragmentation;
+pub(crate) use fragmentation::{
+    FragmentainerOf, FragmentationBoundaryControls, FragmentationBreakControl,
+    FragmentationBreakReason, FragmentationContext, FragmentationControlKind, FragmentationCutOf,
+    FragmentationError, FragmentationFallback, FragmentationFlowOf,
+    FragmentationGraphicalProgressOf, FragmentationInputOf, FragmentationMeasuredHeadOf,
+    FragmentationOccurrence, FragmentationOpportunityKindOf, FragmentationOpportunityOf,
+    FragmentationPieceKindOf, FragmentationPosition, FragmentationProvider, FragmentationQueryOf,
+    FragmentationReplyOf, FragmentationRole, FragmentationStart, FragmentationWindowEnd,
+    FragmentationWindowOf,
+};
 pub use fragmentation::{
-    FragmentainerOf, FragmentationBoundaryControls, FragmentationBreak, FragmentationBreakControl,
-    FragmentationBreakInside, FragmentationBreakKinds, FragmentationBreakReason,
-    FragmentationBreakRecord, FragmentationContext, FragmentationControlKind,
-    FragmentationCoverage, FragmentationCutOf, FragmentationEmergencySliceOf, FragmentationError,
-    FragmentationFallback, FragmentationFlowOf, FragmentationForcedSide, FragmentationFrameOf,
-    FragmentationGraphicalCoverageOf, FragmentationGraphicalProgressOf, FragmentationInputError,
-    FragmentationInputOf, FragmentationKind, FragmentationLogicalPageSide,
-    FragmentationMeasuredHeadOf, FragmentationOccurrence, FragmentationOpportunityKindOf,
-    FragmentationOpportunityOf, FragmentationPageSide, FragmentationPhysicalPageSide,
-    FragmentationPieceKindOf, FragmentationPieceOf, FragmentationPosition, FragmentationProvider,
-    FragmentationQueryOf, FragmentationReplyOf, FragmentationReportOf, FragmentationRole,
-    FragmentationStage, FragmentationStart, FragmentationWindowEnd, FragmentationWindowOf,
-    PageProgression, resolve_fragmentation,
+    FragmentationBreak, FragmentationBreakInside, FragmentationBreakKinds,
+    FragmentationGraphicalCoverageOf, FragmentationInputError, FragmentationKind,
+    FragmentationLogicalPageSide, FragmentationPageSide, FragmentationPhysicalPageSide,
+    PageProgression,
+};
+#[cfg(test)]
+pub(crate) use fragmentation::{
+    FragmentationCoverage, FragmentationPieceOf, FragmentationReportOf, FragmentationStage,
 };
 mod geometry;
 mod grid;
@@ -309,12 +314,6 @@ mod value;
 /// boundary and the default Surgeist layout coordinate contract.
 pub type DefaultScalar = f32;
 
-/// Convenience alias for the default scalar precision.
-///
-/// Use explicit `*Of<S>` types with `S: LayoutScalar` when one layout tree
-/// needs to run end-to-end with a different supported precision such as `f64`.
-pub type Scalar = DefaultScalar;
-
 #[cfg(test)]
 pub(crate) use block::compute_block;
 pub use cache::{Cache, CacheKeyContext, CacheOf, ClearState};
@@ -341,21 +340,10 @@ pub use error::{
 #[cfg(test)]
 pub(crate) use flex::compute_flex;
 pub use geometry::{Edges, FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide, Point, Size};
-pub use grid::{
-    DefiniteLaneIntrinsicItem, DefiniteLaneIntrinsicItemOf, GridAxisKind, GridComputation,
-    GridComputationOf, GridComputationReport, IndefiniteLaneContributionGroup,
-    IndefiniteLaneContributionGroupOf, LaneContributionFacts, LaneContributionFactsOf,
-    LaneIntrinsicItem, LaneIntrinsicItemKind, LaneIntrinsicItemOf, LaneIntrinsicSizingInput,
-    LaneIntrinsicSizingInputOf, LaneIntrinsicSizingReport, LaneIntrinsicSizingReportOf, LaneItem,
-    LaneItemOf, LaneItemOffset, LaneItemOffsetOf, LanePlacementError, LanePlacementInput,
-    LanePlacementInputOf, LanePlacementReport, LanePlacementReportOf, LaneTrackSpan,
-    LaneTrackSpanLength, NamedGridErrorReport, NamedGridReport, lane_intrinsic_sizing, place_lanes,
-};
+pub use grid::{GridAxisKind, NamedGridError};
 #[cfg(test)]
 pub(crate) use grid::{compute_grid, compute_grid_with_report};
-pub use measurement::{
-    LeafMeasureError, LeafMeasureErrorOf, LeafMeasureInput, LeafMeasureInputOf, compute_leaf,
-};
+pub use measurement::{LeafMeasureInput, LeafMeasureInputOf, compute_leaf};
 pub use node_input::{
     AlignContent, AlignItems, AtomicInlineParticipation, BaselineSource, BlockFlowContext,
     BlockGeneration, BoxSizing, Clear, ComputedOverflow, ComputedOverflowError, Direction, Display,
@@ -420,8 +408,6 @@ pub use sizing::{
     PreferredSizeCalcBasis, PreferredSizeOf, SizingCalculation, SizingCalculationError,
     SizingCalculationOf,
 };
-/// Baseline names, independent of any font-design or placed-box coordinate.
-pub use surgeist_text::font::FontBaseline as BaselineName;
 pub use tree::{LayoutBatchSink, LayoutTree, Traverse};
 pub use value::{
     AspectRatio, AspectRatioOf, AvailableSpace, AvailableSpaceOf, AxisSizingRequest,

@@ -1,5 +1,6 @@
 //! Public Mixed consumers: one Vertical frame and independently qualified axes.
 use super::*;
+use surgeist_text::font::FontBaseline;
 
 fn near(actual: f64, expected: f64) {
     assert!(
@@ -9,7 +10,7 @@ fn near(actual: f64, expected: f64) {
 }
 
 fn central() -> l::InlineBaselineContext {
-    l::InlineBaselineContext::Named(l::BaselineName::Central)
+    l::InlineBaselineContext::Named(FontBaseline::Central)
 }
 
 fn mixed_font() -> Vec<u8> {
@@ -266,7 +267,7 @@ fn available<S: l::LayoutScalar>(height: f64) -> surgeist_layout::SizingRequestO
 }
 
 fn central_facts<S: l::LayoutScalar>(facts: l::NamedBaselinesOf<S>, first: f64, last: f64) {
-    let pair = facts.get(l::BaselineName::Central);
+    let pair = facts.get(FontBaseline::Central);
     for (actual, expected) in [(pair.first(), first), (pair.last(), last)] {
         let point =
             l::BaselineCoordinateOf::try_new(l::PhysicalAxis::Horizontal, n(expected)).unwrap();

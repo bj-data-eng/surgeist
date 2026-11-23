@@ -1,13 +1,13 @@
 use super::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct GridAlignment<S: LayoutScalar = Scalar> {
+pub(super) struct GridAlignment<S: LayoutScalar = DefaultScalar> {
     pub(super) start: S,
     pub(super) gap: S,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct OrdinaryGridAxisAlignment<S: LayoutScalar = Scalar> {
+pub(super) struct OrdinaryGridAxisAlignment<S: LayoutScalar = DefaultScalar> {
     pub(super) start: S,
     pub(super) gutter_after: Vec<S>,
 }

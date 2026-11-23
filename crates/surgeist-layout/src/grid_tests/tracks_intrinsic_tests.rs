@@ -9,9 +9,8 @@ use super::fixtures::{
     fri08_c02_auto_fit_output, fri08_c02_auto_fit_repeat, fri08_c02_fit_content_track,
     fri08_c02_flex_track, fri08_c02_stretch_track, fri08_c02_stretch_tree,
     fri08_c02_track_mix_tree, fri08_c02_track_sizes, fri08_c03_auto_fit_batch,
-    fri08_c03_auto_fit_named_repeat, fri08_c03_intrinsic_facts, fri08_c03_intrinsic_projected_item,
-    fri08_c04_standalone_intrinsic_minimum_width, inherited_placement_member, invalid_numeric_lp,
-    lp, subgrid_track_of, track_component_flex,
+    fri08_c03_auto_fit_named_repeat, fri08_c04_standalone_intrinsic_minimum_width,
+    inherited_placement_member, invalid_numeric_lp, lp, subgrid_track_of, track_component_flex,
 };
 use super::*;
 use crate::test_support::readback::{self, Phase};
@@ -299,126 +298,6 @@ fn assert_fri08_c04_standalone_edges_gaps_and_percentage<S: LayoutScalar>() {
 fn fri08_c04_standalone_context_applies_percentage_unequal_gaps_and_mbp_once() {
     assert_fri08_c04_standalone_edges_gaps_and_percentage::<f32>();
     assert_fri08_c04_standalone_edges_gaps_and_percentage::<f64>();
-}
-
-#[test]
-fn fri08_c03_intrinsic_definite_exact_and_automatic_spans_project_to_every_active_start() {
-    let input = LaneIntrinsicSizingInput {
-        axis: GridAxisKind::Column,
-        available: None,
-        gap: 0.0,
-        tracks: vec![TrackSizing::AUTO; 4],
-        content_sized_tracks: vec![0, 1, 2, 3],
-        items: vec![
-            LaneIntrinsicItem::definite(
-                "definite",
-                LaneTrackSpan::new(2, 4),
-                fri08_c03_intrinsic_facts(20.0, 30.0, 40.0),
-            )
-            .expect("definite span fits"),
-            LaneIntrinsicItem::indefinite(
-                "auto-one",
-                LaneTrackSpanLength::new(1).expect("one is nonzero"),
-                fri08_c03_intrinsic_facts(10.0, 20.0, 30.0),
-            ),
-            LaneIntrinsicItem::indefinite(
-                "auto-two",
-                LaneTrackSpanLength::new(2).expect("two is nonzero"),
-                fri08_c03_intrinsic_facts(10.0, 20.0, 30.0),
-            ),
-        ],
-    };
-    let report = lane_intrinsic_sizing(input)
-        .expect("candidate projection has finite values")
-        .expect("candidate projection has valid spans");
-
-    assert_eq!(report.definite_items[0].span, LaneTrackSpan::new(2, 4));
-    assert_eq!(
-        report
-            .converted_indefinite_items
-            .iter()
-            .map(|item| item.span)
-            .collect::<Vec<_>>(),
-        vec![
-            LaneTrackSpan::new(1, 2),
-            LaneTrackSpan::new(2, 3),
-            LaneTrackSpan::new(3, 4),
-            LaneTrackSpan::new(4, 5),
-            LaneTrackSpan::new(1, 3),
-            LaneTrackSpan::new(2, 4),
-            LaneTrackSpan::new(3, 5),
-        ]
-    );
-}
-
-fn assert_fri08_c03_intrinsic_fixed_content_gap_distribution<S: LayoutScalar>() {
-    let scalar = S::from_f64;
-    let input = LaneIntrinsicSizingInputOf::<S> {
-        axis: GridAxisKind::Column,
-        available: None,
-        gap: scalar(10.0),
-        tracks: vec![
-            TrackSizingOf::AUTO,
-            TrackSizingOf::px(scalar(20.0)),
-            TrackSizingOf::AUTO,
-        ],
-        content_sized_tracks: vec![0, 2],
-        items: vec![LaneIntrinsicItemOf::indefinite(
-            "mixed-span",
-            LaneTrackSpanLength::new(3).expect("three is nonzero"),
-            fri08_c03_intrinsic_facts(100.0, 120.0, 160.0),
-        )],
-    };
-    let report = lane_intrinsic_sizing(input)
-        .expect("mixed projection values are finite")
-        .expect("mixed projection span is valid");
-    assert_eq!(
-        report.final_track_sizes,
-        vec![scalar(30.0), scalar(20.0), scalar(30.0)]
-    );
-}
-
-#[test]
-fn fri08_c03_intrinsic_fixed_content_gap_distribution_is_scalar_deterministic() {
-    assert_fri08_c03_intrinsic_fixed_content_gap_distribution::<f32>();
-    assert_fri08_c03_intrinsic_fixed_content_gap_distribution::<f64>();
-}
-
-#[test]
-fn fri08_c03_intrinsic_collapsed_auto_fit_tracks_are_not_candidate_starts() {
-    let input = LaneIntrinsicSizingInput {
-        axis: GridAxisKind::Column,
-        available: None,
-        gap: 10.0,
-        tracks: vec![TrackSizing::AUTO, TrackSizing::px(0.0), TrackSizing::AUTO],
-        content_sized_tracks: vec![0, 2],
-        items: Vec::new(),
-    };
-    let items = vec![fri08_c03_intrinsic_projected_item(
-        "active-only",
-        1,
-        None,
-        LaneIntrinsicEdgeFactsOf::default(),
-        fri08_c03_intrinsic_facts(20.0, 30.0, 40.0),
-    )];
-    let gutters = OrdinaryGridAxisGuttersOf::new(3, &[false, true, false], 10.0);
-    let report = lane_intrinsic_sizing_projected_with::<(), _, core::convert::Infallible>(
-        &input,
-        &items,
-        Some(&gutters),
-        LayoutErrorSite::Standalone,
-    )
-    .expect("active candidate projection has finite values")
-    .expect("active candidate projection has valid spans");
-    assert_eq!(
-        report
-            .converted_indefinite_items
-            .iter()
-            .map(|item| item.span)
-            .collect::<Vec<_>>(),
-        vec![LaneTrackSpan::new(1, 2), LaneTrackSpan::new(3, 4)]
-    );
-    assert_eq!(report.final_track_sizes, [20.0, 0.0, 20.0]);
 }
 
 #[test]
@@ -1801,19 +1680,10 @@ fn fri04_c03_grid_track_nested_track_breadths_and_fit_content_use_complete_progr
 }
 
 #[test]
-fn fri04_c03_grid_track_nested_classification_controls_intrinsic_definite_space_and_floor() {
+fn fri04_c03_grid_track_nested_classification_controls_percent_sizing_and_definite_minimum() {
     let independent = TrackSizing::calculation(fri04_c03_grid_track_nested(20.0, 40.0, 60.0));
     assert!(!track_has_percent_sizing(&independent));
     assert_eq!(independent.min.definite(None), Some(40.0));
-    assert_eq!(track_min_floor_space(&independent), 40.0);
-    assert_eq!(
-        intrinsic_span_definite_track_space(core::slice::from_ref(&independent)),
-        40.0
-    );
-    assert_eq!(
-        intrinsic_span_minimum_floor_space(core::slice::from_ref(&independent)),
-        40.0
-    );
 
     let dependent = TrackSizing::calculation(
         SizingCalculation::max(vec![
@@ -1826,7 +1696,6 @@ fn fri04_c03_grid_track_nested_classification_controls_intrinsic_definite_space_
     );
     assert!(track_has_percent_sizing(&dependent));
     assert_eq!(dependent.min.definite(None), None);
-    assert_eq!(track_min_floor_space(&dependent), 0.0);
 }
 
 fn fake_leaf_error(
@@ -4655,7 +4524,7 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
     }
 
     impl<'input> RecursiveTreeCompute<'input> {
@@ -4663,7 +4532,7 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
             &mut self,
             node: u32,
             input: ComputeInput,
-        ) -> LayoutResultOf<u32, ComputeOutput, Scalar> {
+        ) -> LayoutResultOf<u32, ComputeOutput, DefaultScalar> {
             let node_input = self.styles[&node].clone();
             if self.children[&node].is_empty() {
                 return compute_leaf(input, &node_input, |measure_input| {
@@ -4691,7 +4560,7 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
     impl Traverse for RecursiveTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4713,7 +4582,7 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
     }
 
     impl RecursiveTree {
@@ -4729,7 +4598,7 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
     impl<'input> Traverse for RecursiveTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4885,7 +4754,7 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
     }
 
     impl<'input> RecursiveTreeCompute<'input> {
@@ -4893,7 +4762,7 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
             &mut self,
             node: u32,
             input: ComputeInput,
-        ) -> LayoutResultOf<u32, ComputeOutput, Scalar> {
+        ) -> LayoutResultOf<u32, ComputeOutput, DefaultScalar> {
             let node_input = self.styles[&node].clone();
             if self.children[&node].is_empty() {
                 return compute_leaf(input, &node_input, |measure_input| {
@@ -4921,7 +4790,7 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
     impl Traverse for RecursiveTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4943,7 +4812,7 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
     }
 
     impl RecursiveTree {
@@ -4959,7 +4828,7 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
     impl<'input> Traverse for RecursiveTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -6353,22 +6222,6 @@ fn checked_track_phases_accept_f64_item_facts() {
 }
 
 #[test]
-fn distribute_intrinsic_span_preserves_f64_fractional_shares() {
-    let mut sizes = vec![1.25_f64, 3.75_f64];
-    let tracks = [TrackSizingOf::<f64>::AUTO, TrackSizingOf::<f64>::AUTO];
-
-    distribute_intrinsic_span(
-        &mut sizes,
-        &tracks,
-        IntrinsicSpanContribution::MaxContent,
-        None,
-        12.0_f64,
-    );
-
-    assert_eq!(sizes, vec![6.0_f64, 6.0_f64]);
-}
-
-#[test]
 fn px_only_affine_max_track_keeps_its_min_content_minimum() {
     let tracks = [TrackSizing::new(
         MinTrackSizing::MinContent,
@@ -6586,240 +6439,6 @@ fn grid_item_sizing_keeps_inline_stretch_when_min_inline_defines_aspect_ratio() 
     .unwrap();
 
     assert_eq!(sizing.known, Size::new(Some(100.0), Some(50.0)));
-}
-
-#[test]
-fn fr_span_contribution_distributes_by_flex_factor() {
-    let tracks = [track_flex(1.0), track_flex(2.0)];
-    let mut sizes = [0.0, 0.0];
-
-    distribute_intrinsic_span(
-        &mut sizes,
-        &tracks,
-        IntrinsicSpanContribution::MaxContent,
-        None,
-        60.0,
-    );
-
-    assert_eq!(sizes, [20.0, 40.0]);
-}
-
-#[test]
-fn fr_span_contribution_subtracts_non_flex_base_tracks() {
-    let tracks = [TrackSizing::MIN_CONTENT, track_flex(1.0)];
-    let mut sizes = [10.0, 0.0];
-
-    distribute_intrinsic_span(
-        &mut sizes,
-        &tracks,
-        IntrinsicSpanContribution::MaxContent,
-        None,
-        40.0,
-    );
-
-    assert_eq!(sizes, [10.0, 30.0]);
-}
-
-#[test]
-fn fr_span_contribution_normalizes_sub_one_factors() {
-    let tracks = [track_flex(0.2), track_flex(0.3)];
-    let mut sizes = [0.0, 0.0];
-
-    distribute_intrinsic_span(
-        &mut sizes,
-        &tracks,
-        IntrinsicSpanContribution::MaxContent,
-        None,
-        60.0,
-    );
-
-    assert_eq!(sizes, [24.0, 36.0]);
-}
-
-#[test]
-fn fr_span_contribution_normalizes_sub_one_factors_after_non_flex_tracks() {
-    let tracks = [TrackSizing::px(9.0), track_flex(0.5), track_flex(0.5)];
-    let mut sizes = [0.0, 0.0, 0.0];
-
-    distribute_intrinsic_span(
-        &mut sizes,
-        &tracks,
-        IntrinsicSpanContribution::MaxContent,
-        None,
-        18.0,
-    );
-
-    assert_eq!(sizes, [0.0, 4.5, 4.5]);
-}
-
-#[test]
-fn fr_span_contribution_splits_zero_factors_evenly() {
-    let tracks = [track_flex(0.0), track_flex(0.0)];
-    let mut sizes = [0.0, 0.0];
-
-    distribute_intrinsic_span(
-        &mut sizes,
-        &tracks,
-        IntrinsicSpanContribution::MaxContent,
-        None,
-        60.0,
-    );
-
-    assert_eq!(sizes, [30.0, 30.0]);
-}
-
-#[test]
-fn fr_span_contribution_keeps_indefinite_percent_tracks_for_initial_sizing() {
-    let tracks = [
-        TrackSizing::MIN_CONTENT,
-        TrackSizing::MAX_CONTENT,
-        TrackSizing::fit_content(SizingCalculation::value(lp(20.0, 0.0))),
-        TrackSizing::AUTO,
-        TrackSizing::px(10.0),
-        TrackSizing::percent(0.2),
-        track_flex(1.0),
-        track_flex(2.0),
-    ];
-    let mut sizes = [0.0; 8];
-
-    distribute_intrinsic_span(
-        &mut sizes,
-        &tracks,
-        IntrinsicSpanContribution::MaxContent,
-        None,
-        160.0,
-    );
-
-    assert_eq!(sizes, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 50.0, 100.0]);
-}
-
-#[test]
-fn fr_span_contribution_reserves_resolved_percent_tracks() {
-    let tracks = [
-        TrackSizing::MIN_CONTENT,
-        TrackSizing::MAX_CONTENT,
-        TrackSizing::fit_content(SizingCalculation::value(lp(20.0, 0.0))),
-        TrackSizing::AUTO,
-        TrackSizing::px(10.0),
-        TrackSizing::percent(0.2),
-        track_flex(1.0),
-        track_flex(2.0),
-    ];
-    let mut sizes = [0.0; 8];
-
-    distribute_intrinsic_span(
-        &mut sizes,
-        &tracks,
-        IntrinsicSpanContribution::MaxContent,
-        Some(160.0),
-        160.0,
-    );
-
-    assert_eq!(sizes, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 39.333332, 78.666664]);
-}
-
-#[test]
-fn max_content_span_prefers_max_content_track() {
-    let tracks = [
-        TrackSizing::MIN_CONTENT,
-        TrackSizing::MAX_CONTENT,
-        TrackSizing::px(10.0),
-    ];
-    let mut sizes = [80.0, 80.0, 0.0];
-
-    distribute_intrinsic_span(
-        &mut sizes,
-        &tracks,
-        IntrinsicSpanContribution::MaxContent,
-        None,
-        320.0,
-    );
-
-    assert_eq!(sizes, [80.0, 230.0, 0.0]);
-}
-
-#[test]
-fn max_content_span_prefers_max_content_track_over_min_content_maximum() {
-    let tracks = [
-        TrackSizing::MAX_CONTENT,
-        TrackSizing::minmax(MinTrackSizing::MAX_CONTENT, MaxTrackSizing::MIN_CONTENT),
-    ];
-    let mut sizes = [40.0, 20.0];
-
-    distribute_intrinsic_span(
-        &mut sizes,
-        &tracks,
-        IntrinsicSpanContribution::MaxContent,
-        None,
-        80.0,
-    );
-
-    assert_eq!(sizes, [60.0, 20.0]);
-}
-
-#[test]
-fn min_content_span_counts_indefinite_percent_tracks() {
-    let tracks = [
-        TrackSizing::MIN_CONTENT,
-        TrackSizing::MAX_CONTENT,
-        TrackSizing::px(10.0),
-        TrackSizing::percent(0.2),
-    ];
-    let mut sizes = [0.0, 0.0, 0.0, 0.0];
-
-    distribute_intrinsic_span(
-        &mut sizes,
-        &tracks,
-        IntrinsicSpanContribution::MinContent {
-            prioritize_min_tracks: false,
-        },
-        None,
-        160.0,
-    );
-
-    assert_eq!(sizes, [42.666668, 42.666668, 0.0, 0.0]);
-}
-
-#[test]
-fn max_content_span_keeps_indefinite_percent_tracks_for_initial_sizing() {
-    let tracks = [
-        TrackSizing::MIN_CONTENT,
-        TrackSizing::MAX_CONTENT,
-        TrackSizing::px(10.0),
-        TrackSizing::percent(0.2),
-    ];
-    let mut sizes = [42.666668, 42.666668, 0.0, 0.0];
-
-    distribute_intrinsic_span(
-        &mut sizes,
-        &tracks,
-        IntrinsicSpanContribution::MaxContent,
-        None,
-        320.0,
-    );
-
-    assert_eq!(sizes, [42.666668, 267.3333, 0.0, 0.0]);
-}
-
-#[test]
-fn max_content_span_reserves_resolved_percent_tracks() {
-    let tracks = [
-        TrackSizing::MIN_CONTENT,
-        TrackSizing::MAX_CONTENT,
-        TrackSizing::px(10.0),
-        TrackSizing::percent(0.2),
-    ];
-    let mut sizes = [42.666668, 42.666668, 0.0, 0.0];
-
-    distribute_intrinsic_span(
-        &mut sizes,
-        &tracks,
-        IntrinsicSpanContribution::MaxContent,
-        Some(320.0),
-        320.0,
-    );
-
-    assert_eq!(sizes, [42.666668, 203.33333, 0.0, 0.0]);
 }
 
 #[test]

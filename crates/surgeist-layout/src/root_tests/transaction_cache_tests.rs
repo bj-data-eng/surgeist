@@ -1130,7 +1130,7 @@ fn flex_item_root_uses_explicit_parent_axes_for_percentage_and_cache_in_both_sca
 }
 
 fn root_cache_input(
-    native_frame: crate::test_support::requests::NativeRootFrameOf<crate::Scalar>,
+    native_frame: crate::test_support::requests::NativeRootFrameOf<crate::DefaultScalar>,
     available: Size<crate::AxisSizingRequest>,
 ) -> ComputeInput {
     ComputeInput::for_child(

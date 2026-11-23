@@ -1,4 +1,4 @@
-use crate::{LayoutScalar, LengthResolutionStatus, Scalar, TrackComponentOf, TrackSizingOf};
+use crate::{DefaultScalar, LayoutScalar, LengthResolutionStatus, TrackComponentOf, TrackSizingOf};
 
 use super::GridContainerProjection;
 use super::named::{GridAreaNameFacts, GridNamedContext, NamedGridLines};
@@ -50,7 +50,7 @@ impl TemplateAreaExpandedAxes {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct ExpandedGridTopology<S: LayoutScalar = Scalar> {
+pub(super) struct ExpandedGridTopology<S: LayoutScalar = DefaultScalar> {
     pub(super) column_tracks: Vec<TrackSizingOf<S>>,
     pub(super) row_tracks: Vec<TrackSizingOf<S>>,
     pub(super) explicit_columns: usize,
@@ -70,7 +70,7 @@ pub(super) struct ExpandedGridTopology<S: LayoutScalar = Scalar> {
     inherited_rows: bool,
 }
 
-pub(super) struct ExpandedGridTopologyInput<'a, S: LayoutScalar = Scalar> {
+pub(super) struct ExpandedGridTopologyInput<'a, S: LayoutScalar = DefaultScalar> {
     pub(super) container: GridContainerProjection<'a, S>,
     pub(super) columns: TrackExpansionOf<S>,
     pub(super) rows: TrackExpansionOf<S>,
@@ -83,7 +83,7 @@ pub(super) struct ExpandedGridTopologyInput<'a, S: LayoutScalar = Scalar> {
     pub(super) inherited_rows: bool,
 }
 
-struct ExpandedAxisTopology<S: LayoutScalar = Scalar> {
+struct ExpandedAxisTopology<S: LayoutScalar = DefaultScalar> {
     tracks: Vec<TrackSizingOf<S>>,
     origins: Vec<ExplicitTrackOrigin>,
     named_lines: NamedGridLines,
@@ -442,7 +442,7 @@ fn collapse_auto_fit_axis(
     }
 }
 
-struct ImplicitAxisGrowth<S: LayoutScalar = Scalar> {
+struct ImplicitAxisGrowth<S: LayoutScalar = DefaultScalar> {
     leading_tracks: Vec<TrackSizingOf<S>>,
     leading_origins: Vec<ExplicitTrackOrigin>,
     trailing_tracks: Vec<TrackSizingOf<S>>,

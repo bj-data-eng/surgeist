@@ -566,7 +566,7 @@ fn cached_compute_uses_tree_cache_before_running_expensive_layout() {
 
     impl CacheAccess for Probe {
         type Node = u32;
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
 
         fn cache_context(&self) -> CacheKeyContext {
             static_cache_context()
@@ -634,7 +634,7 @@ fn cached_compute_uses_tree_cache_before_running_expensive_layout() {
         ),
     );
 
-    let mut compute = |size| -> crate::LayoutResultOf<u32, ComputeOutput, Scalar> {
+    let mut compute = |size| -> crate::LayoutResultOf<u32, ComputeOutput, DefaultScalar> {
         let request =
             crate::engine::contracts::ChildCacheRequest::new(7, input, probe.cache_context());
         if let Some(output) = request.restore_hit(&mut probe)? {

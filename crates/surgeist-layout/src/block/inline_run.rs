@@ -2,6 +2,7 @@ use super::absolute::{StaticPositionGeometry, absolute_static_position};
 use super::scroll::{BlockScrollContributions, child_scrollbar_size};
 use super::*;
 use crate::{AxisSizingRequestOf, FlowAxes};
+use surgeist_text::font::FontBaseline;
 
 mod fit;
 mod placement;
@@ -921,7 +922,7 @@ fn named_atomic_baseline<S: LayoutScalar, M>(
     output: ComputeOutputOf<S>,
     margin: Edges<S>,
     containing_flow_axes: FlowAxes,
-    name: crate::BaselineName,
+    name: FontBaseline,
 ) -> Result<S, LayoutErrorKindOf<S, M>> {
     let logical_size = containing_flow_axes.logical_size(output.size);
     let used_overflow = UsedOverflow::from_computed(
@@ -964,8 +965,8 @@ fn named_atomic_baseline<S: LayoutScalar, M>(
             };
             let under = edge(containing_flow_axes.line_under());
             match name {
-                crate::BaselineName::Alphabetic => under,
-                crate::BaselineName::Central => {
+                FontBaseline::Alphabetic => under,
+                FontBaseline::Central => {
                     edge(containing_flow_axes.line_over()) / S::from_f64(2.0)
                         + under / S::from_f64(2.0)
                 }

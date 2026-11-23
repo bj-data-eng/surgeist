@@ -13,7 +13,6 @@ mod validation;
 pub use input::*;
 pub use output::*;
 pub use page::*;
-pub use scheduler::resolve_fragmentation;
 pub(crate) use scheduler::{
     AcceptedStep, CompletedExecution, Execution, ScopeEndpointOf, ScopeHeadProjectionOf,
     ScopeProjectionOf, ScopeTicket,

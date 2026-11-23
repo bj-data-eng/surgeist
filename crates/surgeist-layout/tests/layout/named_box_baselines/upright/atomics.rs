@@ -1,10 +1,11 @@
 //! A real native Text child supplies Central2 inside its physical6x14 border.
 //! Parent flow progression and Text's right-to-left cell map stay distinct.
 use super::*;
+use surgeist_text::font::FontBaseline;
 mod supplemental;
 
 fn central() -> l::InlineBaselineContext {
-    l::InlineBaselineContext::Named(l::BaselineName::Central)
+    l::InlineBaselineContext::Named(FontBaseline::Central)
 }
 
 fn available<S: l::LayoutScalar>(width: f64, height: f64) -> surgeist_layout::SizingRequestOf<S> {
@@ -60,7 +61,7 @@ fn placed<S: l::LayoutScalar>(
 }
 
 fn assert_central<S: l::LayoutScalar>(facts: l::NamedBaselinesOf<S>, expected: f64) {
-    let pair = facts.get(l::BaselineName::Central);
+    let pair = facts.get(FontBaseline::Central);
     let coordinate =
         l::BaselineCoordinateOf::try_new(l::PhysicalAxis::Horizontal, n(expected)).unwrap();
     assert_eq!(pair.first(), l::BaselineFactOf::Available(coordinate));

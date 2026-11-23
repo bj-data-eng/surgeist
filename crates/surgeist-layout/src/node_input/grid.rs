@@ -1,4 +1,5 @@
 use super::super::{DefaultScalar, GridLine, GridSpan, LayoutScalar, LengthOf};
+use surgeist_text::font::FontBaseline;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum GridAutoFlow {
@@ -290,7 +291,7 @@ impl GridAutoFlow {
 pub enum GridBaselineReference {
     #[default]
     Physical,
-    Named(crate::BaselineName),
+    Named(FontBaseline),
 }
 
 /// References for this container's local Column and Row alignment contexts.
