@@ -160,15 +160,17 @@ pub(super) enum NamedGridError {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct NamedGridReport {
+pub(crate) struct NamedGridReport {
     errors: Vec<NamedGridErrorReport>,
 }
 
 impl NamedGridReport {
+    #[cfg(test)]
     pub fn errors(&self) -> &[NamedGridErrorReport] {
         &self.errors
     }
 
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.errors.is_empty()
     }

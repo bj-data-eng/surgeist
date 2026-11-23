@@ -70,14 +70,6 @@ impl<S: LayoutScalar> LeafMeasureInputOf<S> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum LeafMeasureErrorOf<S: LayoutScalar, M> {
-    Provider(M),
-    InvalidOutput(InvalidMeasurementOutputOf<S>),
-}
-
-pub type LeafMeasureError<M> = LeafMeasureErrorOf<DefaultScalar, M>;
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct LeafBoxEdges<S: LayoutScalar> {
     padding: Edges<S>,
@@ -778,22 +770,16 @@ pub(crate) fn validate_native_sample<Node: Copy, S: LayoutScalar, M>(
         .map_err(|error| leaf_measurement_error_at_site(LayoutErrorSiteOf::Node(node), error))
 }
 
-fn validate_measurement_output<S, M>(measured: Size<S>) -> Result<Size<S>, LeafMeasureErrorOf<S, M>>
+fn validate_measurement_output<S>(
+    measured: Size<S>,
+) -> Result<Size<S>, InvalidMeasurementOutputOf<S>>
 where
     S: LayoutScalar,
 {
-    let width = NonNegativeFiniteOf::new(measured.width).map_err(|error| {
-        LeafMeasureErrorOf::InvalidOutput(InvalidMeasurementOutputOf::new(
-            PhysicalAxis::Horizontal,
-            error,
-        ))
-    })?;
-    let height = NonNegativeFiniteOf::new(measured.height).map_err(|error| {
-        LeafMeasureErrorOf::InvalidOutput(InvalidMeasurementOutputOf::new(
-            PhysicalAxis::Vertical,
-            error,
-        ))
-    })?;
+    let width = NonNegativeFiniteOf::new(measured.width)
+        .map_err(|error| InvalidMeasurementOutputOf::new(PhysicalAxis::Horizontal, error))?;
+    let height = NonNegativeFiniteOf::new(measured.height)
+        .map_err(|error| InvalidMeasurementOutputOf::new(PhysicalAxis::Vertical, error))?;
 
     Ok(Size::new(width.get(), height.get()))
 }
@@ -835,18 +821,16 @@ where
 
 fn leaf_measurement_error_at_site<Node, S, M>(
     site: LayoutErrorSiteOf<Node>,
-    error: LeafMeasureErrorOf<S, M>,
+    error: InvalidMeasurementOutputOf<S>,
 ) -> LayoutErrorOf<Node, S, M>
 where
     S: LayoutScalar,
 {
-    let kind = match error {
-        LeafMeasureErrorOf::Provider(error) => LayoutErrorKindOf::Measurement(error),
-        LeafMeasureErrorOf::InvalidOutput(error) => {
-            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::MeasurementOutput(error))
-        }
-    };
-    LayoutErrorOf::new(site, LayoutOperation::LeafMeasurement, kind)
+    LayoutErrorOf::new(
+        site,
+        LayoutOperation::LeafMeasurement,
+        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::MeasurementOutput(error)),
+    )
 }
 
 fn resolve_leaf_auto<S>(

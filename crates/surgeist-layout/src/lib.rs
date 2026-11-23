@@ -347,19 +347,16 @@ pub use error::{
 pub(crate) use flex::compute_flex;
 pub use geometry::{Edges, FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide, Point, Size};
 pub use grid::{
-    DefiniteLaneIntrinsicItem, DefiniteLaneIntrinsicItemOf, GridAxisKind, GridComputation,
-    GridComputationOf, GridComputationReport, IndefiniteLaneContributionGroup,
-    IndefiniteLaneContributionGroupOf, LaneContributionFacts, LaneContributionFactsOf,
-    LaneIntrinsicItem, LaneIntrinsicItemKind, LaneIntrinsicItemOf, LaneIntrinsicSizingInput,
-    LaneIntrinsicSizingInputOf, LaneIntrinsicSizingReport, LaneIntrinsicSizingReportOf,
-    LanePlacementError, LaneTrackSpan, LaneTrackSpanLength, NamedGridErrorReport, NamedGridReport,
-    lane_intrinsic_sizing,
+    DefiniteLaneIntrinsicItem, DefiniteLaneIntrinsicItemOf, GridAxisKind,
+    IndefiniteLaneContributionGroup, IndefiniteLaneContributionGroupOf, LaneContributionFacts,
+    LaneContributionFactsOf, LaneIntrinsicItem, LaneIntrinsicItemKind, LaneIntrinsicItemOf,
+    LaneIntrinsicSizingInput, LaneIntrinsicSizingInputOf, LaneIntrinsicSizingReport,
+    LaneIntrinsicSizingReportOf, LanePlacementError, LaneTrackSpan, LaneTrackSpanLength,
+    NamedGridErrorReport, lane_intrinsic_sizing,
 };
 #[cfg(test)]
 pub(crate) use grid::{compute_grid, compute_grid_with_report};
-pub use measurement::{
-    LeafMeasureError, LeafMeasureErrorOf, LeafMeasureInput, LeafMeasureInputOf, compute_leaf,
-};
+pub use measurement::{LeafMeasureInput, LeafMeasureInputOf, compute_leaf};
 pub use node_input::{
     AlignContent, AlignItems, AtomicInlineParticipation, BaselineSource, BlockFlowContext,
     BlockGeneration, BoxSizing, Clear, ComputedOverflow, ComputedOverflowError, Direction, Display,

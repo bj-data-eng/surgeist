@@ -98,29 +98,25 @@ use lanes::{
     grid_axis_for_grid_lanes, lane_axis_for_grid_lanes, layout_grid_lanes_children,
     prepare_grid_lanes_intrinsic_child_input,
 };
+pub use named::NamedGridErrorReport;
+pub(crate) use named::NamedGridReport;
 use named::{
     GridAreaNameFacts, NamedGridError, NamedGridLines, build_grid_named_context,
     resolve_grid_placement_or_auto_with_report, resolve_positioned_grid_placement_with_report,
     resolve_subgrid_placement,
 };
-pub use named::{NamedGridErrorReport, NamedGridReport};
 use placement::*;
 use subgrid::*;
 use topology::{ExpandedGridTopology, ExpandedGridTopologyInput, TemplateAreaExpandedAxes};
 use tracks::*;
 
-pub struct GridComputationOf<S: LayoutScalar = DefaultScalar> {
+pub(crate) struct GridComputationOf<S: LayoutScalar = DefaultScalar> {
     output: ComputeOutputOf<S>,
     report: GridComputationReport,
 }
 
-pub type GridComputation = GridComputationOf<DefaultScalar>;
-
 impl<S: LayoutScalar> GridComputationOf<S> {
-    pub fn output(&self) -> &ComputeOutputOf<S> {
-        &self.output
-    }
-
+    #[cfg(test)]
     pub fn report(&self) -> &GridComputationReport {
         &self.report
     }
@@ -131,19 +127,17 @@ impl<S: LayoutScalar> GridComputationOf<S> {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct GridComputationReport {
+pub(crate) struct GridComputationReport {
     named_grid: NamedGridReport,
 }
 
 impl GridComputationReport {
-    pub fn named_grid(&self) -> &NamedGridReport {
-        &self.named_grid
-    }
-
+    #[cfg(test)]
     pub fn named_grid_errors(&self) -> &[NamedGridErrorReport] {
         self.named_grid.errors()
     }
 
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.named_grid.is_empty()
     }
