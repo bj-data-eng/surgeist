@@ -48,6 +48,7 @@ mod form_owner;
 mod fragment;
 mod frameset;
 mod html_document;
+mod iframe;
 mod input;
 mod interface_constants;
 mod label;

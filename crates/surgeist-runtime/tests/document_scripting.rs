@@ -127,6 +127,8 @@ mod hidden_reflection;
 mod html_prototype_order;
 #[path = "document_scripting/html_token_lists.rs"]
 mod html_token_lists;
+#[path = "document_scripting/iframe_local_reflections.rs"]
+mod iframe_local_reflections;
 #[path = "document_scripting/input_attributes.rs"]
 mod input_attributes;
 #[path = "document_scripting/input_list.rs"]
@@ -2629,6 +2631,8 @@ fn main() {
             "member-collection-stale" => member_collection_lifetime::destroyed_member_roots_preserve_the_first_native_failure(),
             "anchor-attributes" => anchor_attributes::anchor_text_and_scalar_attributes_use_live_native_source(),
             "area-attributes" => area_attributes::area_attributes_follow_canonical_source_and_receivers(),
+            "iframe-local-reflections" => iframe_local_reflections::local_reflections_follow_the_original_iframe_and_attributes(),
+            "iframe-loading-source-refusal" => iframe_local_reflections::loading_setter_preserves_the_original_source_refusal(),
             "link-local-reflections" => link_style_reflections::never_hosted_link_reflects_live_native_attributes(),
             "link-local-refusal" => link_style_reflections::hosted_link_reflection_preserves_original_source_refusal(),
             "style-local-reflections" => link_style_reflections::active_style_media_updates_the_original_native_sheet(),
@@ -2807,6 +2811,8 @@ fn main() {
     input_state::attached_input_exposes_canonical_value_modes_and_checkedness();
     anchor_attributes::anchor_text_and_scalar_attributes_use_live_native_source();
     area_attributes::area_attributes_follow_canonical_source_and_receivers();
+    iframe_local_reflections::local_reflections_follow_the_original_iframe_and_attributes();
+    iframe_local_reflections::loading_setter_preserves_the_original_source_refusal();
     link_style_reflections::never_hosted_link_reflects_live_native_attributes();
     link_style_reflections::hosted_link_reflection_preserves_original_source_refusal();
     link_style_reflections::active_style_media_updates_the_original_native_sheet();

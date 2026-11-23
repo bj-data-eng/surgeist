@@ -30268,22 +30268,22 @@
       }
     },
     "HTMLIFrameElement.name/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose name with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.name.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.name/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose name with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.name.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.sandbox/get": {
       "kind": "native",
@@ -30310,112 +30310,115 @@
       "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
     },
     "HTMLIFrameElement.allow/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose allow with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.allow.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.allow/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose allow with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.allow.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.allowFullscreen/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose allowFullscreen with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.allowfullscreen.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.allowFullscreen/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose allowFullscreen with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.allowfullscreen.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.width/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose width with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.width.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.width/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose width with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.width.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.height/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose height with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.height.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.height/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose height with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.height.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.referrerPolicy/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose referrerPolicy with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.referrerpolicy.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "referrerpolicy_processing_with"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.referrerPolicy/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose referrerPolicy with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.referrerpolicy.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.loading/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose loading with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.loading.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "loading_processing_with"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.loading/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose loading with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.loading.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.contentDocument/get": {
       "kind": "host",
@@ -30445,58 +30448,58 @@
       }
     },
     "HTMLIFrameElement.obsolete.align/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose align with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.obsolete.align.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.obsolete.align/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose align with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.obsolete.align.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.obsolete.scrolling/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose scrolling with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.obsolete.scrolling.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.obsolete.scrolling/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose scrolling with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.obsolete.scrolling.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.obsolete.frameBorder/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose frameBorder with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.obsolete.frameborder.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.obsolete.frameBorder/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose frameBorder with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.obsolete.frameborder.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.obsolete.longDesc/get": {
       "kind": "host",
@@ -30517,40 +30520,40 @@
       }
     },
     "HTMLIFrameElement.obsolete.marginHeight/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose marginHeight with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.obsolete.marginheight.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.obsolete.marginHeight/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose marginHeight with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.obsolete.marginheight.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.obsolete.marginWidth/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose marginWidth with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.obsolete.marginwidth.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"}
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.obsolete.marginWidth/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Expose marginWidth with the pinned Iframe semantics over the canonical native element.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#HTMLIFrameElement-partial",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.obsolete.marginwidth.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "DOMStringMap.operation:0/call": {
       "kind": "native",
