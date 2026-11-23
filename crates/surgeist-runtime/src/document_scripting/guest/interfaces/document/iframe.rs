@@ -58,6 +58,9 @@ const AFTER_SANDBOX: &[reflection::Member] = &[
         &ascii(b"loading"),
         Reflection::Loading,
     ),
+];
+
+const OBSOLETE: &[reflection::Member] = &[
     (
         &ascii(b"align"),
         &ascii(b"get align"),
@@ -107,5 +110,7 @@ pub(super) fn install<'scope>(
         capture,
         HtmlTokenListReflection::IframeSandbox,
     )?;
-    reflection::install(scope, prototype, capture, Receiver::Iframe, AFTER_SANDBOX)
+    reflection::install(scope, prototype, capture, Receiver::Iframe, AFTER_SANDBOX)?;
+    super::frame_content::install(scope, prototype, capture, Receiver::Iframe)?;
+    reflection::install(scope, prototype, capture, Receiver::Iframe, OBSOLETE)
 }

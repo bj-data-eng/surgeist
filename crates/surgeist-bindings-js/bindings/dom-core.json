@@ -22923,22 +22923,81 @@
       "requirements": []
     },
     "HTMLFrameElement.contentDocument/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Return the active Frame content Document with the pinned origin-domain checks.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-frame-contentdocument",
-        "issue": 3279
-      }
+      "kind": "native",
+      "adapter": "htmlframeelement.contentdocument.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/frame_content.rs",
+          "symbol": "read_frame_content"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/element.rs",
+          "symbol": "child_navigable"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/hosted/history.rs",
+          "symbol": "active_document"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/hosted/history.rs",
+          "symbol": "hosted_creation_navigable_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "project_node"
+        }
+      ],
+      "requirements": []
     },
     "HTMLFrameElement.contentWindow/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Return the original active Frame WindowProxy for the current native child.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-frame-contentwindow",
-        "issue": 3279
-      }
+      "kind": "native",
+      "adapter": "htmlframeelement.contentwindow.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/frame_content.rs",
+          "symbol": "read_frame_content"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/element.rs",
+          "symbol": "child_navigable"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/hosted/history.rs",
+          "symbol": "active_document"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/hosted/history.rs",
+          "symbol": "hosted_creation_navigable_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/window_children.rs",
+          "symbol": "document_window"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the original foreign WindowProxy when the qualified cross-origin profile is supported.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#cross-origin-objects",
+          "issue": 3145
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Use the replacement active Window when native navigation retargets the original proxy.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-windowproxy-exotic-object",
+          "issue": 3146
+        }
+      ]
     },
     "HTMLFrameElement.marginHeight/get": {
       "kind": "native",
@@ -32721,31 +32780,120 @@
       "requirements": []
     },
     "HTMLIFrameElement.contentDocument/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Return the current Iframe content Document or null using the pinned document and origin checks.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.contentdocument.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/frame_content.rs",
+          "symbol": "read_frame_content"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/element.rs",
+          "symbol": "child_navigable"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/hosted/history.rs",
+          "symbol": "active_document"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/hosted/history.rs",
+          "symbol": "hosted_creation_navigable_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "project_node"
+        }
+      ],
+      "requirements": []
     },
     "HTMLIFrameElement.contentWindow/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Return the current child navigable WindowProxy, or null when the Iframe has no child navigable.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.contentwindow.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/frame_content.rs",
+          "symbol": "read_frame_content"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/element.rs",
+          "symbol": "child_navigable"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/hosted/history.rs",
+          "symbol": "active_document"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/hosted/history.rs",
+          "symbol": "hosted_creation_navigable_with"
+        },
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/window_children.rs",
+          "symbol": "document_window"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Expose the original foreign WindowProxy when the qualified cross-origin profile is supported.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#cross-origin-objects",
+          "issue": 3145
+        },
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Use the replacement active Window when native navigation retargets the original proxy.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-windowproxy-exotic-object",
+          "issue": 3146
+        }
+      ]
     },
     "HTMLIFrameElement.getSVGDocument:0/call": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Return the accessible Iframe content Document only when it is an SVG document.",
-        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmliframeelement",
-        "issue": 2258
-      }
+      "kind": "native",
+      "adapter": "htmliframeelement.getsvgdocument.call",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/frame_content.rs",
+          "symbol": "read_frame_content"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/element.rs",
+          "symbol": "child_navigable"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/hosted/history.rs",
+          "symbol": "active_document"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/hosted/history.rs",
+          "symbol": "hosted_creation_navigable_with"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/document.rs",
+          "symbol": "content_type"
+        }
+      ],
+      "requirements": [
+        {
+          "owner": "surgeist-runtime",
+          "contract": "Return a positive SVG Document only from an actual navigated XML page load with the computed SVG MIME type.",
+          "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-media-getsvgdocument",
+          "issue": 3146
+        }
+      ]
     },
     "HTMLIFrameElement.obsolete.align/get": {
       "kind": "native",

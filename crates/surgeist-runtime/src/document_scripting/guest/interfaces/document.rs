@@ -47,6 +47,7 @@ mod form;
 mod form_owner;
 mod fragment;
 mod frame;
+mod frame_content;
 mod frameset;
 mod html_document;
 mod iframe;

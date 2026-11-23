@@ -5,7 +5,7 @@ use super::{
     *,
 };
 
-const MEMBERS: &[reflection::Member] = &[
+const BEFORE_CONTENT: &[reflection::Member] = &[
     (
         &ascii(b"name"),
         &ascii(b"get name"),
@@ -34,6 +34,9 @@ const MEMBERS: &[reflection::Member] = &[
         &ascii(b"noresize"),
         Reflection::Boolean,
     ),
+];
+
+const MARGINS: &[reflection::Member] = &[
     (
         &ascii(b"marginHeight"),
         &ascii(b"get marginHeight"),
@@ -55,5 +58,7 @@ pub(super) fn install<'scope>(
     prototype: &Value<'scope>,
     capture: CaptureFunding<'_>,
 ) -> Result<(), DocumentGuestEventError> {
-    reflection::install(scope, prototype, capture, Receiver::Frame, MEMBERS)
+    reflection::install(scope, prototype, capture, Receiver::Frame, BEFORE_CONTENT)?;
+    super::frame_content::install(scope, prototype, capture, Receiver::Frame)?;
+    reflection::install(scope, prototype, capture, Receiver::Frame, MARGINS)
 }
