@@ -116,6 +116,9 @@ pub(crate) enum CaptureKind {
 struct Capture {
     kind: CaptureKind,
     incomplete: bool,
+    /// Where its writes begin, which only its own closing may name.
+    #[cfg(test)]
+    start: usize,
 }
 
 #[cfg(test)]
@@ -207,6 +210,8 @@ impl<Node: Copy, S: LayoutScalar> EffectLog<Node, S> {
                 self.captures.push(Capture {
                     kind,
                     incomplete: false,
+                    #[cfg(test)]
+                    start: self.effects.len(),
                 });
             } else {
                 self.broken = true;
@@ -229,11 +234,19 @@ impl<Node: Copy, S: LayoutScalar> EffectLog<Node, S> {
     /// returns the writes the enclosing captures need with `restore`.
     pub(super) fn finish(&mut self, start: usize) -> (Vec<StagedEffect<Node, S>>, bool) {
         self.open -= 1;
-        let complete = !self.broken
-            && self
-                .captures
-                .pop()
-                .is_some_and(|capture| !capture.incomplete);
+        let closed = if self.broken {
+            None
+        } else {
+            self.captures.pop()
+        };
+        #[cfg(test)]
+        if let Some(capture) = &closed {
+            assert_eq!(
+                capture.start, start,
+                "a capture closes after the captures opened within it"
+            );
+        }
+        let complete = closed.is_some_and(|capture| !capture.incomplete);
         let writes = self.effects.split_off(start);
         if self.open == 0 {
             self.broken = false;

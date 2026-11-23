@@ -297,11 +297,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicRepeatSizing<'input, Nod
     }
 
     /// Closes the effect captures a traversal the sizing waits on holds.
-    pub(super) fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        self.collection.close_captures::<Tree, M>(tree);
+    pub(super) fn take_captures(&mut self, starts: &mut Vec<usize>) {
+        self.collection.take_captures(starts);
     }
 
     /// Accepts the receipt of a contextual Grid computation the sizing waited
@@ -853,12 +850,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'input, Node, S> 
     }
 
     /// Closes the effect captures a traversal the sizing waits on holds.
-    pub(super) fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
+    pub(super) fn take_captures(&mut self, starts: &mut Vec<usize>) {
         if let Some(active) = self.active.as_mut() {
-            active.collection.close_captures::<Tree, M>(tree);
+            active.collection.take_captures(starts);
         }
     }
 
@@ -881,7 +875,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'input, Node, S> 
             Ok(())
         })();
         if result.is_err() {
-            self.close_captures::<Tree, M>(tree);
+            let mut starts = Vec::new();
+            self.take_captures(&mut starts);
+            close_captures_latest_first(tree, starts);
         }
         result
     }
@@ -1734,12 +1730,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> ContributionCollection<'input, No
     }
 
     /// Closes the effect captures a traversal the collection waits on holds.
-    fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
+    fn take_captures(&mut self, starts: &mut Vec<usize>) {
         if let Some(beginning) = self.beginning_mut() {
-            beginning.close_captures::<Tree, M>(tree);
+            beginning.take_captures(starts);
         }
     }
 

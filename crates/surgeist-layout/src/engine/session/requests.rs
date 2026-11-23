@@ -338,16 +338,13 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         let result = self.drive_staged_requests(request, &mut pending, &mut staged);
         result.map_err(|mut stop| {
             while let Some(mut trial) = staged.pop() {
-                trial
-                    .session
-                    .close_observation_captures(&mut trial.pending.grid_observations);
-                trial
-                    .session
-                    .close_context_captures(&mut trial.pending.grids);
+                trial.session.close_held_captures(
+                    &mut trial.pending.grid_observations,
+                    &mut trial.pending.grids,
+                );
                 stop = trial.session.unwind_blocks(trial.pending.blocks, stop);
             }
-            self.close_observation_captures(&mut pending.grid_observations);
-            self.close_context_captures(&mut pending.grids);
+            self.close_held_captures(&mut pending.grid_observations, &mut pending.grids);
             self.unwind_blocks(pending.blocks, stop)
         })
     }
@@ -643,17 +640,6 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         }
     }
 
-    /// Closes the effect captures the track sizing traversals of the
-    /// observations a failure left suspended hold, innermost first.
-    fn close_observation_captures(
-        &mut self,
-        observations: &mut Vec<GridObservationRequest<'input, Tree::Node, Tree::Scalar>>,
-    ) {
-        while let Some(mut observation) = observations.pop() {
-            observation.computation.close_captures(self);
-        }
-    }
-
     /// Closes the effect capture of a contextual Grid request, if it opened
     /// one, and returns the writes it captured.
     fn close_context_capture(
@@ -663,22 +649,40 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         start.and_then(|start| self.end_effect_capture(start))
     }
 
-    /// Closes the effect captures of the contextual Grid requests a failure
-    /// left suspended, innermost first. They have no writes to replay.
-    fn close_context_captures(
+    /// Closes the effect captures the requests a failure left suspended hold:
+    /// those of their contextual Grid computations and of the preparations their
+    /// track sizing traversals wait in. They have no writes to replay. A
+    /// capture closes after every capture opened within it, whichever request
+    /// holds it: an observation is below the requests it issues, and a
+    /// computation's own capture opened before the preparations of its track
+    /// sizing.
+    fn close_held_captures(
         &mut self,
+        observations: &mut Vec<GridObservationRequest<'input, Tree::Node, Tree::Scalar>>,
         grids: &mut Vec<GridRequest<'input, Tree::Node, Tree::Scalar>>,
     ) {
+        let mut starts = Vec::new();
+        for observation in observations.iter_mut() {
+            observation.computation.take_captures(&mut starts);
+        }
+        observations.clear();
         while let Some(mut grid) = grids.pop() {
-            // The captures a track sizing's traversal holds opened after the
-            // capture of the computation that owns it.
-            grid.computation.close_captures(self);
+            grid.computation.take_captures(&mut starts);
             if let GridCompletion::Context {
                 effects_start: Some(effects_start),
             } = grid.completion
             {
-                self.end_effect_capture(effects_start);
+                starts.push(effects_start);
             }
+        }
+        self.close_latest_first(starts);
+    }
+
+    /// Closes the effect captures that began at `starts`, the latest first.
+    pub(super) fn close_latest_first(&mut self, mut starts: Vec<usize>) {
+        starts.sort_unstable_by(|first, second| second.cmp(first));
+        for start in starts {
+            self.end_effect_capture(start);
         }
     }
 

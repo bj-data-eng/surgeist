@@ -425,3 +425,184 @@ fn deep_stacking_subgrid_chain_in_a_lane_sizes_the_lane_from_leaves_f64() {
         || assert_stacking_subgrid_chain::<f64>(STACKING_DEPTH),
     );
 }
+
+// A leaf whose measurement fails. The refusal of the host reaches the caller
+// unchanged from the leaf, through every contextual Grid request above it, and
+// every effect capture the requests held is closed: a session dropped with a
+// capture open fails its test.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct LeafFailure;
+
+struct FailingLeaf<S: LayoutScalar> {
+    tree: PublicLayoutTreeOf<S>,
+    leaf: u32,
+}
+
+impl<S: LayoutScalar> crate::tree::Traverse for FailingLeaf<S> {
+    type Node = u32;
+    type Scalar = S;
+    type Children<'a>
+        = <PublicLayoutTreeOf<S> as crate::tree::Traverse>::Children<'a>
+    where
+        Self: 'a;
+
+    fn children(&self, node: u32) -> Self::Children<'_> {
+        crate::tree::Traverse::children(&self.tree, node)
+    }
+
+    fn child_count(&self, node: u32) -> usize {
+        self.tree.child_count(node)
+    }
+
+    fn child(&self, node: u32, index: usize) -> u32 {
+        self.tree.child(node, index)
+    }
+}
+
+impl<S: LayoutScalar> crate::tree::LayoutTree for FailingLeaf<S> {
+    type MeasureError = LeafFailure;
+
+    fn node_input(&self, node: u32) -> &NodeInputOf<S> {
+        self.tree.node_input(node)
+    }
+
+    fn layout_input(&self, node: u32) -> crate::node_input::LayoutInputViewOf<'_, S> {
+        self.tree.layout_input(node)
+    }
+
+    fn has_leaf_measurement(&self, node: u32) -> bool {
+        node == self.leaf
+    }
+
+    fn measure_leaf(
+        &self,
+        node: u32,
+        _input: crate::measurement::LeafMeasureInputOf<S>,
+    ) -> Option<Result<Size<S>, LeafFailure>> {
+        (node == self.leaf).then_some(Err(LeafFailure))
+    }
+}
+
+/// `tree` with `leaves` measured by the host: they have no size of their own,
+/// so that their measurement is asked for. A leaf of a Grid sits in `cell`.
+fn measured_leaves<S: LayoutScalar>(
+    mut tree: PublicLayoutTreeOf<S>,
+    leaves: &[(u32, Option<(isize, isize)>)],
+) -> PublicLayoutTreeOf<S> {
+    for &(node, cell) in leaves {
+        let style = match cell {
+            Some((column, row)) => NodeInputOf {
+                grid_column: line(column),
+                grid_row: line(row),
+                ..NodeInputOf::default()
+            },
+            None => NodeInputOf::default(),
+        };
+        tree = tree.style(node, style);
+    }
+    tree
+}
+
+fn assert_leaf_failure_surfaces_unchanged<S: LayoutScalar>(tree: PublicLayoutTreeOf<S>, leaf: u32) {
+    let document = FailingLeaf { tree, leaf };
+    let error =
+        compute_layout(&document, 0, standalone()).expect_err("the leaf cannot be measured");
+    assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(leaf));
+    assert_eq!(
+        error.operation(),
+        crate::error::LayoutOperation::LeafMeasurement
+    );
+    assert!(
+        matches!(
+            error.kind(),
+            crate::error::LayoutErrorKindOf::Measurement(LeafFailure)
+        ),
+        "{error:?}"
+    );
+}
+
+fn assert_auto_column_leaf_failure<S: LayoutScalar>(depth: u32, scrolled: bool) {
+    let tree = measured_leaves(
+        auto_column_chain::<S>(depth, 60.0, scrolled),
+        &[(depth + 1, Some((1, 1))), (depth + 2, Some((2, 2)))],
+    );
+    assert_leaf_failure_surfaces_unchanged(tree.clone(), depth + 1);
+    assert_leaf_failure_surfaces_unchanged(tree, depth + 2);
+}
+
+fn assert_alternating_leaf_failure<S: LayoutScalar>(depth: u32) {
+    let tree = measured_leaves(
+        alternating_chain::<S>(depth),
+        &[(depth + 1, Some((1, 1))), (depth + 2, Some((2, 2)))],
+    );
+    assert_leaf_failure_surfaces_unchanged(tree.clone(), depth + 1);
+    assert_leaf_failure_surfaces_unchanged(tree, depth + 2);
+}
+
+fn assert_lane_leaf_failure<S: LayoutScalar>(
+    tree: impl Fn(u32) -> PublicLayoutTreeOf<S>,
+    depth: u32,
+) {
+    let tree = measured_leaves(
+        tree(depth),
+        &[(depth + 1, None), (depth + 2, None), (depth + 3, None)],
+    );
+    for leaf in [depth + 1, depth + 2, depth + 3] {
+        assert_leaf_failure_surfaces_unchanged(tree.clone(), leaf);
+    }
+}
+
+#[test]
+fn auto_column_subgrid_chain_leaf_refusal_surfaces_unchanged() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_intrinsic::auto_column_subgrid_chain_leaf_refusal_surfaces_unchanged",
+        || {
+            assert_auto_column_leaf_failure::<f32>(3, false);
+            assert_auto_column_leaf_failure::<f64>(3, false);
+        },
+    );
+}
+
+#[test]
+fn scrolled_auto_column_subgrid_chain_leaf_refusal_surfaces_unchanged() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_intrinsic::scrolled_auto_column_subgrid_chain_leaf_refusal_surfaces_unchanged",
+        || {
+            assert_auto_column_leaf_failure::<f32>(2, true);
+            assert_auto_column_leaf_failure::<f64>(2, true);
+        },
+    );
+}
+
+#[test]
+fn alternating_subgrid_chain_leaf_refusal_surfaces_unchanged() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_intrinsic::alternating_subgrid_chain_leaf_refusal_surfaces_unchanged",
+        || {
+            assert_alternating_leaf_failure::<f32>(4);
+            assert_alternating_leaf_failure::<f64>(4);
+        },
+    );
+}
+
+#[test]
+fn auto_lane_subgrid_chain_leaf_refusal_surfaces_unchanged() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_intrinsic::auto_lane_subgrid_chain_leaf_refusal_surfaces_unchanged",
+        || {
+            assert_lane_leaf_failure::<f32>(auto_lane_chain::<f32>, 3);
+            assert_lane_leaf_failure::<f64>(auto_lane_chain::<f64>, 3);
+        },
+    );
+}
+
+#[test]
+fn stacking_subgrid_chain_leaf_refusal_surfaces_unchanged() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_intrinsic::stacking_subgrid_chain_leaf_refusal_surfaces_unchanged",
+        || {
+            assert_lane_leaf_failure::<f32>(stacking_subgrid_chain::<f32>, 3);
+            assert_lane_leaf_failure::<f64>(stacking_subgrid_chain::<f64>, 3);
+        },
+    );
+}

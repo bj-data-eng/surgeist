@@ -2387,7 +2387,9 @@ where
     let mut frames = WrapperFrames::new();
     let result = frames.visit_to_end::<Tree, M>(tree, root, fold);
     if result.is_err() {
-        frames.close_captures(tree);
+        let mut starts = Vec::new();
+        frames.take_captures(&mut starts);
+        close_captures_latest_first(tree, starts);
     }
     result
 }
@@ -2503,15 +2505,13 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperFrames<'input, Node, S> {
         }
     }
 
-    /// Closes the effect captures the waiting preparations still hold,
-    /// innermost first.
-    pub(super) fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
+    /// Takes the frames and adds to `starts` where the effect capture of each
+    /// waiting preparation began. The captures stay open for the caller to
+    /// close, latest first.
+    pub(super) fn take_captures(&mut self, starts: &mut Vec<usize>) {
         while let Some(frame) = self.frames.pop() {
             if let LevelFrame::Prepare(prepare) = frame {
-                tree.end_effect_capture(prepare.pending.capture());
+                starts.push(prepare.pending.capture());
             }
         }
     }

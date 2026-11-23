@@ -205,11 +205,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> LaneRepeatProbe<'input, Node, S> 
     }
 
     /// Closes the effect captures a traversal the probe waits on holds.
-    pub(super) fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        self.sizing.close_captures::<Tree, M>(tree);
+    pub(super) fn take_captures(&mut self, starts: &mut Vec<usize>) {
+        self.sizing.take_captures(starts);
     }
 
     pub(super) fn accept_context<M>(
@@ -245,7 +242,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> LaneRepeatProbe<'input, Node, S> 
             }
         })();
         if result.is_err() {
-            self.close_captures::<Tree, M>(tree);
+            let mut starts = Vec::new();
+            self.take_captures(&mut starts);
+            close_captures_latest_first(tree, starts);
         }
         result
     }

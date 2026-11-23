@@ -1202,7 +1202,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<'input, Node,
             });
             match self.walk::<Tree, M>(tree, node, grid, &mut frames, &mut fold) {
                 Err(error) => {
-                    frames.close_captures(tree);
+                    let mut starts = Vec::new();
+                    frames.take_captures(&mut starts);
+                    close_captures_latest_first(tree, starts);
                     return Err(error);
                 }
                 Ok(Walk::Request(request)) => {
@@ -1280,18 +1282,15 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<'input, Node,
         }
     }
 
-    /// Closes the effect captures the traversal's waiting preparations hold,
-    /// innermost first.
-    pub(in crate::grid) fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
+    /// Takes the traversal's frames and adds to `starts` where the effect
+    /// capture of each waiting preparation began.
+    pub(in crate::grid) fn take_captures(&mut self, starts: &mut Vec<usize>) {
         if let Some(mut frames) = self
             .traversal
             .as_mut()
             .and_then(|traversal| traversal.frames.take())
         {
-            frames.close_captures(tree);
+            frames.take_captures(starts);
         }
     }
 

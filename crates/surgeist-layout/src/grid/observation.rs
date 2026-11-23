@@ -271,12 +271,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridObservationRun<'input
 
     /// Closes the effect captures the traversals of the observation's track
     /// sizing hold.
-    pub(crate) fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
+    pub(crate) fn take_captures(&mut self, starts: &mut Vec<usize>) {
         if let Some(GridPassWork::Accepted(accepted)) = self.work.as_mut() {
-            accepted.close_captures::<Tree, M>(tree);
+            accepted.take_captures(starts);
         }
     }
 

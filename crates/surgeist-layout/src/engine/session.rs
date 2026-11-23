@@ -9,6 +9,8 @@ pub(crate) use staged_effects::{CaptureKind, StagedEffect, StagedEffects};
 mod requests;
 
 #[cfg(test)]
+mod capture_close_order_tests;
+#[cfg(test)]
 mod entry_observation_tests;
 
 #[cfg(test)]

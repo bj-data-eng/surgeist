@@ -178,6 +178,18 @@ impl GridComputationReport {
     }
 }
 
+/// Closes the effect captures that began at `starts`, the latest first, as
+/// nested captures must close.
+fn close_captures_latest_first<'input, Tree, M>(tree: &mut Tree, mut starts: Vec<usize>)
+where
+    Tree: Compute<'input, M>,
+{
+    starts.sort_unstable_by(|first, second| second.cmp(first));
+    for start in starts {
+        tree.end_effect_capture(start);
+    }
+}
+
 pub(crate) fn compute_grid<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
@@ -676,19 +688,16 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
 
     /// Closes the effect captures the traversals of the computation's track
     /// sizing hold, innermost first.
-    pub(crate) fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
+    pub(crate) fn take_captures(&mut self, starts: &mut Vec<usize>) {
         match (&mut self.tracks, &mut self.pass) {
             (Some(GridTrackPassPhase::Repeat(repeat)), _) => {
-                repeat.close_captures::<Tree, M>(tree);
+                repeat.take_captures(starts);
             }
             (Some(GridTrackPassPhase::Sizing(tracks)), _) => {
-                tracks.sizing.close_captures::<Tree, M>(tree);
+                tracks.sizing.take_captures(starts);
             }
             (_, Some(GridPassWork::Accepted(accepted))) => {
-                accepted.close_captures::<Tree, M>(tree);
+                accepted.take_captures(starts);
             }
             _ => {}
         }
@@ -1926,11 +1935,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridRepeatPass<'input, Node, S> {
         )
     }
 
-    fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        self.probe.close_captures::<Tree, M>(tree);
+    fn take_captures(&mut self, starts: &mut Vec<usize>) {
+        self.probe.take_captures(starts);
     }
 
     fn accept_context<M>(
@@ -2588,11 +2594,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridAcceptedSizing<'input, Node, 
             .accept(self.source.output.node, self.source.track_source(), output)
     }
 
-    pub(super) fn close_captures<Tree, M>(&mut self, tree: &mut Tree)
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        self.receiver.sizing.close_captures::<Tree, M>(tree);
+    pub(super) fn take_captures(&mut self, starts: &mut Vec<usize>) {
+        self.receiver.sizing.take_captures(starts);
     }
 
     /// Runs the track sizing to its end on the native stack.
@@ -2609,7 +2612,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridAcceptedSizing<'input, Node, 
             Ok(())
         })();
         if result.is_err() {
-            self.close_captures::<Tree, M>(tree);
+            let mut starts = Vec::new();
+            self.take_captures(&mut starts);
+            close_captures_latest_first(tree, starts);
         }
         let _ = node;
         result
@@ -4558,7 +4563,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FinalGridTrackSizing<'input, Node
             Ok(())
         })();
         if result.is_err() {
-            self.sizing.close_captures::<Tree, M>(tree);
+            let mut starts = Vec::new();
+            self.sizing.take_captures(&mut starts);
+            close_captures_latest_first(tree, starts);
         }
         result
     }
