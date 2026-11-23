@@ -199,8 +199,8 @@ impl core::fmt::Display for NamedGridError {
             }
             Self::UnresolvedAutoRepeatNames { axis } => write!(
                 f,
-                "the line names of the {} axis cannot be resolved against its auto repeat or \
-                 subgrid span",
+                "the auto-repeat track count or the subgrid span and line-name count on the {} \
+                 axis cannot be resolved",
                 grid_axis_label(*axis)
             ),
             Self::EmptyTemplateAreas => f.write_str("the grid template areas are empty"),
@@ -210,7 +210,7 @@ impl core::fmt::Display for NamedGridError {
                 actual,
             } => write!(
                 f,
-                "template area row {row} has {actual} cells where {expected} are expected"
+                "template area row {row} has length {actual} where length {expected} is expected"
             ),
             Self::NonRectangularTemplateArea { name } => {
                 write!(f, "the template area {name:?} is not rectangular")
