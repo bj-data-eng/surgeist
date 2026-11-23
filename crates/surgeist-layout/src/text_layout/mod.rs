@@ -194,7 +194,7 @@ impl core::fmt::Display for TextBindingError {
         f.write_str(match self {
             Self::EmptyRun => "a text run binds no nodes where it needs some",
             Self::RunMembership => {
-                "the nodes bound to a text run do not match the run's membership in the tree"
+                "the nodes and source segment bound to a text run are not the run's contiguous window of the flow"
             }
             Self::ParticipantOrder => "the participants of a text run are not in source order",
             Self::DuplicateRunNode => "a node appears more than once in a text run",
@@ -209,7 +209,7 @@ impl core::fmt::Display for TextBindingError {
                 "the control bindings do not cover the paragraph's controls exactly once"
             }
             Self::ScopeCoverage => {
-                "the scope bindings do not cover the paragraph's scopes exactly once"
+                "a scope of the paragraph's text preparation is missing from the captured inline scopes"
             }
             Self::ScopeAssociation => {
                 "a scope is not associated with the tree consistently with its text preparation"
@@ -220,7 +220,7 @@ impl core::fmt::Display for TextBindingError {
             Self::ScopeBoundaryOrder => {
                 "scope boundaries are not in the order of the text preparation"
             }
-            Self::ScopeOccurrenceMembership => "a scope occurrence is not a member of its scope",
+            Self::ScopeOccurrenceMembership => "a scope occurrence, separator or endpoint is not a member of the scope it names, or is out of order",
             Self::ScopeTreeAmbiguity => "a scope's association with the tree is ambiguous",
             Self::ParticipantRole => {
                 "a participant's role differs from the role the text preparation requires"
@@ -230,10 +230,10 @@ impl core::fmt::Display for TextBindingError {
             }
             Self::RootMismatch => "the text binding names a different root than the layout request",
             Self::TabReferenceDirection => {
-                "the direction of a tab reference differs from the paragraph's base direction"
+                "the paragraph's container box does not supply the direction of its tab reference"
             }
             Self::TerminalBlockEdge => {
-                "a paragraph that ends at a block end is followed by in-flow content"
+                "a paragraph that ends at a block end is followed by a node that is neither display none nor absolutely positioned"
             }
             Self::ComputedBoundaryAssociation => {
                 "a computed line boundary is not associated with its text preparation"
