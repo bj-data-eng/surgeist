@@ -4655,7 +4655,7 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
     }
 
     impl<'input> RecursiveTreeCompute<'input> {
@@ -4663,7 +4663,7 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
             &mut self,
             node: u32,
             input: ComputeInput,
-        ) -> LayoutResultOf<u32, ComputeOutput, Scalar> {
+        ) -> LayoutResultOf<u32, ComputeOutput, DefaultScalar> {
             let node_input = self.styles[&node].clone();
             if self.children[&node].is_empty() {
                 return compute_leaf(input, &node_input, |measure_input| {
@@ -4691,7 +4691,7 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
     impl Traverse for RecursiveTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4713,7 +4713,7 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
     }
 
     impl RecursiveTree {
@@ -4729,7 +4729,7 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
     impl<'input> Traverse for RecursiveTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4885,7 +4885,7 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
     }
 
     impl<'input> RecursiveTreeCompute<'input> {
@@ -4893,7 +4893,7 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
             &mut self,
             node: u32,
             input: ComputeInput,
-        ) -> LayoutResultOf<u32, ComputeOutput, Scalar> {
+        ) -> LayoutResultOf<u32, ComputeOutput, DefaultScalar> {
             let node_input = self.styles[&node].clone();
             if self.children[&node].is_empty() {
                 return compute_leaf(input, &node_input, |measure_input| {
@@ -4921,7 +4921,7 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
     impl Traverse for RecursiveTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4943,7 +4943,7 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
     }
 
     impl RecursiveTree {
@@ -4959,7 +4959,7 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
     impl<'input> Traverse for RecursiveTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where

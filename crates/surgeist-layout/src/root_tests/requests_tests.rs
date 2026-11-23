@@ -6639,7 +6639,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
     #[derive(Default)]
     struct HiddenTree {
         children: HashMap<u32, Vec<u32>>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
         caches: HashMap<u32, Cache>,
         inputs: HashMap<u32, LayoutInput>,
         hidden_children: Vec<u32>,
@@ -6647,7 +6647,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
 
     impl Traverse for HiddenTree {
         type Node = u32;
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -6668,7 +6668,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
 
     struct HiddenTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
         caches: &'input mut HashMap<u32, Cache>,
         inputs: &'input HashMap<u32, LayoutInput>,
         hidden_children: &'input mut Vec<u32>,
@@ -6688,7 +6688,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
 
     impl<'input> Traverse for HiddenTreeCompute<'input> {
         type Node = u32;
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -6778,7 +6778,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
 
     impl<'input> CacheAccess for HiddenTreeCompute<'input> {
         type Node = u32;
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
 
         fn cache_context(&self) -> crate::CacheKeyContext {
             crate::CacheKeyContext::new()
@@ -6865,7 +6865,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
     #[derive(Default)]
     struct HiddenTree {
         children: HashMap<u32, Vec<u32>>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
         caches: HashMap<u32, Cache>,
         inputs: HashMap<u32, LayoutInput>,
         hidden_children: Vec<u32>,
@@ -6873,7 +6873,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
 
     impl Traverse for HiddenTree {
         type Node = u32;
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -6894,7 +6894,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
 
     struct HiddenTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
         caches: &'input mut HashMap<u32, Cache>,
         inputs: &'input HashMap<u32, LayoutInput>,
         hidden_children: &'input mut Vec<u32>,
@@ -6914,7 +6914,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
 
     impl<'input> Traverse for HiddenTreeCompute<'input> {
         type Node = u32;
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -7004,7 +7004,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
 
     impl<'input> CacheAccess for HiddenTreeCompute<'input> {
         type Node = u32;
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
 
         fn cache_context(&self) -> crate::CacheKeyContext {
             crate::CacheKeyContext::new()

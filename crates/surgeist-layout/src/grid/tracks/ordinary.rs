@@ -117,7 +117,7 @@ impl<'a, S: LayoutScalar> OrdinaryTrackState<'a, S> {
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::grid) struct OrdinaryIntrinsicContributionInput<'a, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct OrdinaryIntrinsicContributionInput<'a, S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) tracks: &'a [TrackSizingOf<S>],
     pub(in crate::grid) start: usize,
     pub(in crate::grid) end: usize,

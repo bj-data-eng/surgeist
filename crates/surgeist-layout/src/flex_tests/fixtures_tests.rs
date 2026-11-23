@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) type FlexTree<S = Scalar> = OracleTreeOf<S>;
+pub(super) type FlexTree<S = DefaultScalar> = OracleTreeOf<S>;
 pub(super) fn fri07_c01_composition_output<S: LayoutScalar>(
     entries: &[LayoutOutputEntryOf<u32, S>],
     node: u32,

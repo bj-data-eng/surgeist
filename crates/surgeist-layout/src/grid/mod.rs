@@ -7,8 +7,8 @@ use super::{
     LayoutInternalInvariant, LayoutInvalidInputOf, LayoutOperation, LayoutResultOf, LayoutScalar,
     LengthAutoOf, LengthOf, LengthResolutionStatus, MaxTrackSizingOf, MinSizeOf, MinTrackSizingOf,
     NodeOutputOf, OrthogonalFallbackOf, Overflow, Point, Position, PreferredSizeOf, RequestedAxis,
-    RunMode, Scalar, Size, SizingAlgorithm, SizingMode, SizingOperation, SizingRequestOf,
-    TrackComponentOf, TrackRepeat, TrackSizingOf, Traverse,
+    RunMode, Size, SizingAlgorithm, SizingMode, SizingOperation, SizingRequestOf, TrackComponentOf,
+    TrackRepeat, TrackSizingOf, Traverse,
 };
 use crate::accounting::LayoutWork;
 use crate::engine::containment::{
@@ -713,7 +713,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContinuation<'input, Node, S>
     }
 }
 
-pub(crate) struct GridComputeResult<Node, S: LayoutScalar = Scalar> {
+pub(crate) struct GridComputeResult<Node, S: LayoutScalar = DefaultScalar> {
     output: ComputeOutputOf<S>,
     report: GridComputationReport,
     baseline_groups: GridBaselineGroups<S>,
@@ -2872,7 +2872,7 @@ fn grid_requested_operations<S: LayoutScalar>(
     )
 }
 
-struct IntrinsicSizingAxisInput<'a, S: LayoutScalar = Scalar> {
+struct IntrinsicSizingAxisInput<'a, S: LayoutScalar = DefaultScalar> {
     operation: SizingOperation,
     run_mode: RunMode,
     style_size: &'a PreferredSizeOf<S>,
@@ -2913,7 +2913,7 @@ fn intrinsic_sizing_axis_content_size<S: LayoutScalar>(
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct GridParentContext<S: LayoutScalar = Scalar, Node = ()> {
+struct GridParentContext<S: LayoutScalar = DefaultScalar, Node = ()> {
     columns: Option<InheritedGridAxis<S, Node>>,
     rows: Option<InheritedGridAxis<S, Node>>,
 }
@@ -2939,7 +2939,7 @@ impl<S: LayoutScalar, Node> GridParentContext<S, Node> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct InheritedGridAxis<S: LayoutScalar = Scalar, Node = ()> {
+struct InheritedGridAxis<S: LayoutScalar = DefaultScalar, Node = ()> {
     offset: S,
     gap: S,
     tracks: Vec<S>,
@@ -3001,13 +3001,13 @@ fn minimum_parent_functions<'a, Node, S: LayoutScalar>(
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct InheritedGridOwnerBaselineTargets<Node, S: LayoutScalar = Scalar> {
+struct InheritedGridOwnerBaselineTargets<Node, S: LayoutScalar = DefaultScalar> {
     group: AncestorBaselineGroup<Node, S>,
     mapping: CheckedOwnerToCurrentPlacementMap<Node, S>,
 }
 
 #[derive(Clone, PartialEq)]
-struct GridContainerContext<S: LayoutScalar = Scalar> {
+struct GridContainerContext<S: LayoutScalar = DefaultScalar> {
     topology: ExpandedGridTopology<S>,
     gap: LogicalSizeOf<S>,
     column_gutters: OrdinaryGridAxisGuttersOf<S>,
@@ -3028,7 +3028,7 @@ impl<S: LayoutScalar> core::ops::Deref for GridContainerContext<S> {
     }
 }
 
-struct InitializedGridTracks<'input, Node, S: LayoutScalar = Scalar> {
+struct InitializedGridTracks<'input, Node, S: LayoutScalar = DefaultScalar> {
     column_tracks: Vec<TrackSizingOf<S>>,
     row_tracks: Vec<TrackSizingOf<S>>,
     track_available: LogicalSizeOf<AxisSizingRequestOf<S>>,
@@ -3065,7 +3065,7 @@ pub(super) struct ResolvedGridItemPlacement {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct GridPlacementContext<'input, Node, S: LayoutScalar = Scalar> {
+pub(super) struct GridPlacementContext<'input, Node, S: LayoutScalar = DefaultScalar> {
     pub(super) children: Vec<Node>,
     pub(super) items: Vec<ResolvedGridItemPlacement>,
     child_inputs: Vec<GridChildInput<'input, S>>,
@@ -3948,7 +3948,7 @@ struct GridTrackSource<'input, 'a, Node, S: LayoutScalar> {
     stage: GridSizingStage,
 }
 
-struct GridTrackResolutionInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+struct GridTrackResolutionInput<'input, 'a, Node, S: LayoutScalar = DefaultScalar> {
     style: &'a GridContainerProjection<'a, S>,
     constants: &'a Constants<S>,
     column_tracks: &'a [TrackSizingOf<S>],
@@ -4005,7 +4005,7 @@ struct GridTrackSizingPhases {
     limit: GridSizingStage,
 }
 
-struct GridTrackResolution<Node, S: LayoutScalar = Scalar> {
+struct GridTrackResolution<Node, S: LayoutScalar = DefaultScalar> {
     sizing_phases: GridTrackSizingPhases,
     columns: Vec<S>,
     rows: Vec<S>,
@@ -4017,7 +4017,7 @@ struct GridTrackResolution<Node, S: LayoutScalar = Scalar> {
 type GridTrackResolutionResult<Node, S, M> =
     LayoutResultOf<Node, GridTrackResolution<Node, S>, S, M>;
 
-struct GridChildLayoutInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+struct GridChildLayoutInput<'input, 'a, Node, S: LayoutScalar = DefaultScalar> {
     execution_input: ComputeInputOf<S>,
     scroll_box: CanonicalScrollBoxOf<S>,
     sizing_phases: GridTrackSizingPhases,
@@ -4567,7 +4567,7 @@ where
     })
 }
 
-struct GridLayoutContext<'input, 'a, Node, S: LayoutScalar = Scalar> {
+struct GridLayoutContext<'input, 'a, Node, S: LayoutScalar = DefaultScalar> {
     execution_input: ComputeInputOf<S>,
     scroll_box: CanonicalScrollBoxOf<S>,
     style: &'a GridContainerProjection<'input, S>,
@@ -4698,7 +4698,7 @@ fn qualify_grid_fallback<Node: Copy, S: LayoutScalar, M>(
 }
 
 #[derive(Clone, Copy, PartialEq)]
-struct Constants<S: LayoutScalar = Scalar> {
+struct Constants<S: LayoutScalar = DefaultScalar> {
     pub(super) flow_axes: crate::geometry::FlowAxes,
     explicit_definite_content_size: Size<Option<S>>,
     indefinite_percentage_axis: Option<PhysicalAxis>,

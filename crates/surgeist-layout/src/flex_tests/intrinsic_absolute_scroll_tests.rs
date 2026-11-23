@@ -6022,12 +6022,12 @@ struct Fri05C04FlexAutoPassTree {
     child_outputs: HashMap<u32, ComputeOutput>,
     child_inputs: Vec<ComputeInput>,
     child_requests: Vec<(u32, ComputeInput)>,
-    layouts: Vec<(u32, crate::LayoutOutputEntryOf<u32, Scalar>)>,
+    layouts: Vec<(u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>)>,
 }
 
 impl Traverse for Fri05C04FlexAutoPassTree {
     type Node = u32;
-    type Scalar = Scalar;
+    type Scalar = DefaultScalar;
     type Children<'a>
         = std::iter::Copied<std::slice::Iter<'a, u32>>
     where
@@ -6058,7 +6058,7 @@ struct Fri05C04FlexAutoPassTreeCompute<'input> {
     child_outputs: &'input mut HashMap<u32, ComputeOutput>,
     child_inputs: &'input mut Vec<ComputeInput>,
     child_requests: &'input mut Vec<(u32, ComputeInput)>,
-    layouts: &'input mut Vec<(u32, crate::LayoutOutputEntryOf<u32, Scalar>)>,
+    layouts: &'input mut Vec<(u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>)>,
 }
 
 impl Fri05C04FlexAutoPassTree {
@@ -6077,7 +6077,7 @@ impl Fri05C04FlexAutoPassTree {
 
 impl<'input> Traverse for Fri05C04FlexAutoPassTreeCompute<'input> {
     type Node = u32;
-    type Scalar = Scalar;
+    type Scalar = DefaultScalar;
     type Children<'a>
         = std::iter::Copied<std::slice::Iter<'a, u32>>
     where

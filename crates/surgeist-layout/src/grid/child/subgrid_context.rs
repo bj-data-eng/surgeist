@@ -5,7 +5,7 @@ pub(in crate::grid) struct SubgridChildParentContextInput<
     'input,
     'a,
     Node,
-    S: LayoutScalar = Scalar,
+    S: LayoutScalar = DefaultScalar,
 > {
     pub(in crate::grid) item: SubgridItemReport<Node>,
     pub(in crate::grid) parent_baseline_references: crate::GridBaselineReferences,
@@ -611,7 +611,7 @@ fn subgrid_child_axis_context_input<'input, 'a, Node: Copy, S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy)]
-struct SubgridChildAxisContextInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+struct SubgridChildAxisContextInput<'input, 'a, Node, S: LayoutScalar = DefaultScalar> {
     parent_grid: Option<Node>,
     parent_baseline_references: crate::GridBaselineReferences,
     current_grid: Node,
@@ -923,7 +923,7 @@ where
     }
 }
 
-struct SubgridParentAxisData<'a, S: LayoutScalar = Scalar> {
+struct SubgridParentAxisData<'a, S: LayoutScalar = DefaultScalar> {
     tracks: &'a [S],
     geometry: Option<&'a UsedGridAxisGeometryOf<S>>,
     gap: S,
@@ -1083,7 +1083,7 @@ fn apply_final_subgrid_axis_constraint<S: LayoutScalar>(
     }
 }
 
-pub(in crate::grid) struct SubgridBaselineRefreshInput<'a, Node, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct SubgridBaselineRefreshInput<'a, Node, S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) node: Node,
     pub(in crate::grid) container_style: &'a GridContainerProjection<'a, S>,
     pub(in crate::grid) columns: &'a [S],
@@ -1142,7 +1142,7 @@ type GridContextStep<'input, Node, S, M> =
 /// The cursor of the post-placement subgrid baseline refresh. Each item that
 /// needs context recomputes once, in source order, as a request the caller
 /// executes; its receipt then replaces the item's output and baselines.
-pub(in crate::grid) struct SubgridBaselineRefresh<Node, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct SubgridBaselineRefresh<Node, S: LayoutScalar = DefaultScalar> {
     next_index: usize,
     in_flight: Option<RefreshInFlight<S>>,
     /// The parent facts the items' requests share, copied when the first

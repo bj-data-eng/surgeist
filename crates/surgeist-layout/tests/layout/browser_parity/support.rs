@@ -74,7 +74,7 @@ mod wrapped_subgrid_text;
 pub use element_scroll_sizes::ElementScrollSizeMismatch;
 use prepared_range_qualification::{Comparisons as PreparedRangeComparisons, RangePieceKey};
 
-type Scalar = layout::Scalar;
+type Scalar = layout::DefaultScalar;
 pub(super) type ObservedPlacement = layout::PlacedTextOutput<usize>;
 
 #[derive(Clone, Copy, Debug)]

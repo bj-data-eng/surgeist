@@ -4493,7 +4493,7 @@ fn grid_compute_size_applies_aspect_ratio_to_max_size() {
     impl Traverse for NoChildMeasurementTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4529,7 +4529,7 @@ fn grid_compute_size_applies_aspect_ratio_to_max_size() {
     impl<'input> Traverse for NoChildMeasurementTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4662,7 +4662,7 @@ fn grid_content_size_mode_ignores_authored_size() {
     impl Traverse for NoChildMeasurementTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4698,7 +4698,7 @@ fn grid_content_size_mode_ignores_authored_size() {
     impl<'input> Traverse for NoChildMeasurementTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -7136,8 +7136,8 @@ fn named_lines_add_template_area_generated_names_and_facts() {
 
 #[test]
 fn named_lines_ignore_template_area_null_cells() {
-    let base =
-        named::named_lines_from_track_components::<Scalar>(GridAxisKind::Row, &[], 0).unwrap();
+    let base = named::named_lines_from_track_components::<DefaultScalar>(GridAxisKind::Row, &[], 0)
+        .unwrap();
     let areas = crate::GridTemplateAreas {
         rows: vec![
             crate::GridTemplateAreaRow {
@@ -7378,7 +7378,8 @@ fn named_grid_resolver_normalizes_spans_and_conflicts() {
 #[test]
 fn grid_axis_placement_preserves_out_of_range_numeric_lines() {
     let lines =
-        named::named_lines_from_track_components::<Scalar>(GridAxisKind::Column, &[], 2).unwrap();
+        named::named_lines_from_track_components::<DefaultScalar>(GridAxisKind::Column, &[], 2)
+            .unwrap();
 
     assert_eq!(
         resolve_grid_item_axis_placement(
@@ -7519,7 +7520,8 @@ fn named_lines_reject_non_rectangular_template_areas() {
 #[test]
 fn named_lines_treat_default_template_areas_as_noop() {
     let base =
-        named::named_lines_from_track_components::<Scalar>(GridAxisKind::Column, &[], 1).unwrap();
+        named::named_lines_from_track_components::<DefaultScalar>(GridAxisKind::Column, &[], 1)
+            .unwrap();
     let lines = named::add_area_generated_lines(
         GridAxisKind::Column,
         base,

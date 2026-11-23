@@ -75,7 +75,7 @@ pub(in crate::grid) fn track_calculation_is_cyclic_auto<S: LayoutScalar>(
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct OrdinaryGridAxisGuttersOf<S: LayoutScalar = Scalar> {
+pub(super) struct OrdinaryGridAxisGuttersOf<S: LayoutScalar = DefaultScalar> {
     collapsed: Vec<bool>,
     active_boundary_after: Vec<bool>,
     gutter_after: Vec<S>,
@@ -224,7 +224,7 @@ impl<S: LayoutScalar> OrdinaryGridAxisGuttersOf<S> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct UsedGridAxisGeometryOf<S: LayoutScalar = Scalar> {
+pub(super) struct UsedGridAxisGeometryOf<S: LayoutScalar = DefaultScalar> {
     sizes: Vec<S>,
     collapsed: Vec<bool>,
     active_boundary_after: Vec<bool>,

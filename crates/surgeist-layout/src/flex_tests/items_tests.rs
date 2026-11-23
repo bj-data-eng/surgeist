@@ -1603,7 +1603,7 @@ fn flex_compute_size_short_circuits_when_container_size_is_definite() {
     impl Traverse for FlexTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -1639,7 +1639,7 @@ fn flex_compute_size_short_circuits_when_container_size_is_definite() {
     impl<'input> Traverse for FlexTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -2151,7 +2151,7 @@ fn flex_compute_size_uses_definite_min_max_without_measuring_children() {
     impl Traverse for FlexTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -2187,7 +2187,7 @@ fn flex_compute_size_uses_definite_min_max_without_measuring_children() {
     impl<'input> Traverse for FlexTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where

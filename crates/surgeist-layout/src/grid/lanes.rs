@@ -272,7 +272,7 @@ pub struct IndefiniteLaneContributionGroupOf<S: LayoutScalar = DefaultScalar> {
 pub type IndefiniteLaneContributionGroup = IndefiniteLaneContributionGroupOf<DefaultScalar>;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(super) struct LaneIntrinsicEdgeFactsOf<S: LayoutScalar = Scalar> {
+pub(super) struct LaneIntrinsicEdgeFactsOf<S: LayoutScalar = DefaultScalar> {
     pub(super) start_mbp: S,
     pub(super) end_mbp: S,
     pub(super) start_half_gap: S,
@@ -280,7 +280,7 @@ pub(super) struct LaneIntrinsicEdgeFactsOf<S: LayoutScalar = Scalar> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct LaneIntrinsicEquivalenceKeyOf<S: LayoutScalar = Scalar> {
+struct LaneIntrinsicEquivalenceKeyOf<S: LayoutScalar = DefaultScalar> {
     span: usize,
     candidate_starts: Vec<usize>,
     edges: LaneIntrinsicEdgeFactsOf<S>,
@@ -288,7 +288,7 @@ struct LaneIntrinsicEquivalenceKeyOf<S: LayoutScalar = Scalar> {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct ProjectedLaneIntrinsicItemOf<S: LayoutScalar = Scalar> {
+pub(super) struct ProjectedLaneIntrinsicItemOf<S: LayoutScalar = DefaultScalar> {
     pub(super) id: &'static str,
     pub(super) kind: LaneIntrinsicItemKind,
     pub(super) candidate_starts: Option<Vec<usize>>,
@@ -298,7 +298,7 @@ pub(super) struct ProjectedLaneIntrinsicItemOf<S: LayoutScalar = Scalar> {
 }
 
 #[derive(Clone, Debug)]
-struct ProjectedLaneIntrinsicGroupOf<S: LayoutScalar = Scalar> {
+struct ProjectedLaneIntrinsicGroupOf<S: LayoutScalar = DefaultScalar> {
     key: LaneIntrinsicEquivalenceKeyOf<S>,
     max_min_content: S,
     max_max_content: S,
@@ -1291,7 +1291,7 @@ fn consume_lane_opening<S: LayoutScalar>(skipped: &mut Vec<Range<S>>, occupied: 
     );
 }
 
-pub(super) struct GridLanesLayoutInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+pub(super) struct GridLanesLayoutInput<'input, 'a, Node, S: LayoutScalar = DefaultScalar> {
     pub(super) scroll_box: CanonicalScrollBoxOf<S>,
     pub(super) style: &'a GridContainerProjection<'input, S>,
     pub(super) constants: &'a Constants<S>,
@@ -1312,7 +1312,7 @@ pub(super) struct GridLanesLayoutInput<'input, 'a, Node, S: LayoutScalar = Scala
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct LaneIntrinsicTrackSizeInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+pub(super) struct LaneIntrinsicTrackSizeInput<'input, 'a, Node, S: LayoutScalar = DefaultScalar> {
     pub(super) grid: IntrinsicGrid<'input, 'a, Node, S>,
     #[cfg(test)]
     pub(super) frame: IntrinsicStageFrame<'a, S>,
@@ -2022,7 +2022,7 @@ pub(in crate::grid) fn lane_child_subgrid_requests<S: LayoutScalar>(
 }
 
 #[derive(Clone, PartialEq)]
-pub(super) struct NestedLaneIntrinsicProjectionOf<S: LayoutScalar = Scalar> {
+pub(super) struct NestedLaneIntrinsicProjectionOf<S: LayoutScalar = DefaultScalar> {
     pub(super) root_track_count: usize,
     pub(super) axis: GridAxisKind,
     pub(super) wrapper_span: usize,
@@ -2156,7 +2156,7 @@ impl<S: LayoutScalar, Node: Copy + Eq> NestedLaneTraversalMemoOf<S, Node> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct NestedLaneCandidateGroupOf<S: LayoutScalar = Scalar> {
+pub(super) struct NestedLaneCandidateGroupOf<S: LayoutScalar = DefaultScalar> {
     pub(super) starts: Vec<usize>,
     pub(super) edges: LaneIntrinsicEdgeFactsOf<S>,
 }
@@ -3819,7 +3819,7 @@ pub(super) fn normalize_grid_lanes_stacking_axis_sizing<'input, S: LayoutScalar>
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct LaneAxisMarginBoxMeasureInput<'input, 'a, S: LayoutScalar = Scalar> {
+pub(super) struct LaneAxisMarginBoxMeasureInput<'input, 'a, S: LayoutScalar = DefaultScalar> {
     pub(super) child_style: &'a GridItemProjection<'input, S>,
     pub(super) container_style: &'a GridContainerProjection<'a, S>,
     pub(super) constants: &'a Constants<S>,

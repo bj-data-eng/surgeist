@@ -114,7 +114,7 @@
 //!
 //! `compute_leaf` is the direct fallible measurement boundary: providers receive
 //! non-negative content-space constraints and provider failures or invalid output
-//! become typed layout errors. `DefaultScalar` and `Scalar` use `f32`; generic
+//! become typed layout errors. `DefaultScalar` uses `f32`; generic
 //! `*Of<S>` contracts support end-to-end `f32` and `f64` scalar lanes.
 //!
 //! [`ItemOrder`] is the layout-ready signed order value. [`SourceIndex`] is
@@ -313,12 +313,6 @@ mod value;
 /// This is intentionally `f32`, matching the crate's browser-parity fixture
 /// boundary and the default Surgeist layout coordinate contract.
 pub type DefaultScalar = f32;
-
-/// Convenience alias for the default scalar precision.
-///
-/// Use explicit `*Of<S>` types with `S: LayoutScalar` when one layout tree
-/// needs to run end-to-end with a different supported precision such as `f64`.
-pub type Scalar = DefaultScalar;
 
 #[cfg(test)]
 pub(crate) use block::compute_block;

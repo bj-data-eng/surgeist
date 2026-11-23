@@ -120,7 +120,7 @@ impl SubgridEligibility {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct SubgridEligibilityInput<'input, 'a, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridEligibilityInput<'input, 'a, S: LayoutScalar = DefaultScalar> {
     pub(super) axis: GridAxisKind,
     pub(super) parent_style: &'a GridContainerProjection<'a, S>,
     pub(super) has_parent_grid: bool,
@@ -183,7 +183,7 @@ pub(super) enum SubgridTraversalAxis {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct SubgridAxisEdges<S: LayoutScalar = Scalar> {
+pub(super) struct SubgridAxisEdges<S: LayoutScalar = DefaultScalar> {
     pub(super) start: S,
     pub(super) end: S,
 }
@@ -199,21 +199,21 @@ impl<S: LayoutScalar> Default for SubgridAxisEdges<S> {
 
 #[cfg(test)]
 #[derive(Clone, Debug)]
-pub(super) struct SubgridTraversalInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridTraversalInput<'input, 'a, Node, S: LayoutScalar = DefaultScalar> {
     pub(super) ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts<'a>,
     pub(super) root_children: Vec<SubgridTraversalChild<'input, Node, S>>,
 }
 
 #[cfg(test)]
 #[derive(Clone, Debug)]
-pub(super) enum SubgridTraversalChild<'input, Node, S: LayoutScalar = Scalar> {
+pub(super) enum SubgridTraversalChild<'input, Node, S: LayoutScalar = DefaultScalar> {
     Subgrid(SubgridTraversalNode<'input, Node, S>),
     Leaf(SubgridTraversalLeaf<'input, Node, S>),
 }
 
 #[cfg(test)]
 #[derive(Clone, Debug)]
-pub(super) struct SubgridTraversalNode<'input, Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridTraversalNode<'input, Node, S: LayoutScalar = DefaultScalar> {
     pub(super) node: Node,
     pub(super) style: GridItemProjection<'input, S>,
     pub(super) axis: SubgridTraversalAxis,
@@ -262,7 +262,7 @@ impl<Node, S: LayoutScalar> SubgridTraversalNode<'_, Node, S> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct SubgridTraversalLeaf<'input, Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridTraversalLeaf<'input, Node, S: LayoutScalar = DefaultScalar> {
     pub(super) node: Node,
     pub(super) style: GridItemProjection<'input, S>,
     pub(super) span_in_parent: GridTrackSpan,
@@ -272,7 +272,7 @@ pub(super) struct SubgridTraversalLeaf<'input, Node, S: LayoutScalar = Scalar> {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct SubgridLeafContribution<'input, Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridLeafContribution<'input, Node, S: LayoutScalar = DefaultScalar> {
     pub(super) node: Node,
     pub(super) style: GridItemProjection<'input, S>,
     pub(super) ancestor_span: GridTrackSpan,
@@ -495,7 +495,7 @@ pub(super) struct GridMinimumWrapperChild<'input, 'a, Node, S: LayoutScalar> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct SubgridAncestorBaselineAdjustments<S: LayoutScalar = Scalar> {
+pub(super) struct SubgridAncestorBaselineAdjustments<S: LayoutScalar = DefaultScalar> {
     pub(super) start: S,
     pub(super) end: S,
 }
@@ -647,7 +647,7 @@ impl<S: LayoutScalar> SubgridAdjustmentFrames<S> {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct SubgridTraversalReport<'input, Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridTraversalReport<'input, Node, S: LayoutScalar = DefaultScalar> {
     pub(super) edge_lower_bounds: Vec<S>,
     pub(super) leaves: Vec<SubgridLeafContribution<'input, Node, S>>,
     pub(super) adjustments: SubgridAdjustmentFrames<S>,
@@ -1170,7 +1170,7 @@ fn map_line_to_ancestor(context: SubgridLineTransform, line: usize) -> isize {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum ResolvedSubgridGap<S: LayoutScalar = Scalar> {
+pub(super) enum ResolvedSubgridGap<S: LayoutScalar = DefaultScalar> {
     Normal,
     Length(S),
 }
@@ -1185,7 +1185,7 @@ impl<S: LayoutScalar> ResolvedSubgridGap<S> {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct SubgridTrackInheritanceInput<'a, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridTrackInheritanceInput<'a, S: LayoutScalar = DefaultScalar> {
     pub(super) parent_tracks: &'a [S],
     pub(super) parent_span: GridTrackSpan,
     pub(super) reversed: bool,
@@ -1196,7 +1196,7 @@ pub(super) struct SubgridTrackInheritanceInput<'a, S: LayoutScalar = Scalar> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct SubgridTrackInheritanceReport<S: LayoutScalar = Scalar> {
+pub(super) struct SubgridTrackInheritanceReport<S: LayoutScalar = DefaultScalar> {
     pub(super) parent_span: GridTrackSpan,
     pub(super) copied_parent_tracks: Vec<S>,
     pub(super) reversed: bool,
@@ -1215,7 +1215,7 @@ pub(super) struct SubgridTrackInheritanceReport<S: LayoutScalar = Scalar> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct OwnerTrackPlacementEntry<S: LayoutScalar = Scalar> {
+struct OwnerTrackPlacementEntry<S: LayoutScalar = DefaultScalar> {
     owner_track: usize,
     first_frame_translation: S,
     last_frame_translation: S,
@@ -1233,7 +1233,7 @@ impl<S: LayoutScalar> OwnerTrackPlacementEntry<S> {
 /// A checked translation of the same selected owner point through actual used
 /// track frames. Each scalar includes the geometry's gutters exactly once.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct CheckedOwnerToCurrentPlacementMap<Node, S: LayoutScalar = Scalar> {
+pub(super) struct CheckedOwnerToCurrentPlacementMap<Node, S: LayoutScalar = DefaultScalar> {
     owner: Node,
     current_grid: Node,
     current_axis: GridAxisKind,
@@ -1246,7 +1246,7 @@ pub(super) struct CheckedOwnerToCurrentPlacementMap<Node, S: LayoutScalar = Scal
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct OwnerToCurrentPlacementBoundaryInput<'a, Node, S: LayoutScalar = Scalar> {
+pub(super) struct OwnerToCurrentPlacementBoundaryInput<'a, Node, S: LayoutScalar = DefaultScalar> {
     pub(super) parent_grid: Node,
     pub(super) current_grid: Node,
     pub(super) parent_axis: GridAxisKind,
@@ -1445,7 +1445,7 @@ impl<Node: Copy> CurrentGridDirectWitness<Node> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct InheritedCurrentGridBaselinePlacement<Node, S: LayoutScalar = Scalar> {
+pub(super) struct InheritedCurrentGridBaselinePlacement<Node, S: LayoutScalar = DefaultScalar> {
     axis: GridAxisKind,
     physical_axis: PhysicalAxis,
     role: AncestorBaselineRole,
@@ -1459,7 +1459,8 @@ pub(super) struct InheritedCurrentGridBaselinePlacement<Node, S: LayoutScalar = 
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct InheritedCurrentGridBaselinePlacementInput<Node, S: LayoutScalar = Scalar> {
+pub(super) struct InheritedCurrentGridBaselinePlacementInput<Node, S: LayoutScalar = DefaultScalar>
+{
     pub(super) axis: GridAxisKind,
     pub(super) reference: crate::GridBaselineReference,
     pub(super) physical_axis: PhysicalAxis,
@@ -1813,7 +1814,12 @@ pub(super) fn collect_subgrid_report<'input, Node: Copy, S: LayoutScalar>(
     GridSubgridReport { items }
 }
 
-pub(super) struct GridSubgridIntrinsicTraversalInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+pub(super) struct GridSubgridIntrinsicTraversalInput<
+    'input,
+    'a,
+    Node,
+    S: LayoutScalar = DefaultScalar,
+> {
     pub(super) grid: IntrinsicGrid<'input, 'a, Node, S>,
     pub(super) axis: GridAxisKind,
     pub(super) containing_flow_axes: crate::geometry::FlowAxes,

@@ -23,7 +23,7 @@ The package excludes the separate `tools/surgeist-layout-audits` tree.
 ## Scalar precision
 
 `surgeist-layout` keeps its default public API at browser-style coordinate
-precision: `DefaultScalar` is `f32`, and `Scalar` aliases `DefaultScalar`.
+precision: `DefaultScalar` is `f32`.
 Most applications should use the default aliases such as `NodeInput`,
 `ComputeInput`, and `ComputeOutput`.
 

@@ -1840,7 +1840,7 @@ where
         }
     }
 }
-fn final_height(tree: &OracleTree, node: u32) -> Scalar {
+fn final_height(tree: &OracleTree, node: u32) -> DefaultScalar {
     tree.final_layout(node)
         .expect("node should have a final layout")
         .size
@@ -1853,7 +1853,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
         outputs: HashMap<u32, ComputeOutput>,
     }
 
@@ -1862,7 +1862,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
             &mut self,
             node: u32,
             input: ComputeInput,
-        ) -> LayoutResultOf<u32, ComputeOutput, Scalar> {
+        ) -> LayoutResultOf<u32, ComputeOutput, DefaultScalar> {
             let node_input = self.styles[&node].clone();
             if self.children[&node].is_empty() {
                 return Ok(self.outputs[&node]);
@@ -1883,7 +1883,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
     impl Traverse for RecursiveTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -1905,7 +1905,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
         outputs: &'input mut HashMap<u32, ComputeOutput>,
     }
 
@@ -1923,7 +1923,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
     impl<'input> Traverse for RecursiveTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -2941,7 +2941,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
     }
 
     impl<'input> RecursiveTreeCompute<'input> {
@@ -2949,7 +2949,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
             &mut self,
             node: u32,
             input: ComputeInput,
-        ) -> LayoutResultOf<u32, ComputeOutput, Scalar> {
+        ) -> LayoutResultOf<u32, ComputeOutput, DefaultScalar> {
             let node_input = self.styles[&node].clone();
             if self.children[&node].is_empty() {
                 return Ok(ComputeOutput::from_outer_size(Size::new(30.0, 12.0)));
@@ -2970,7 +2970,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     impl Traverse for RecursiveTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -2992,7 +2992,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
     }
 
     impl RecursiveTree {
@@ -3008,7 +3008,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     impl<'input> Traverse for RecursiveTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -8104,9 +8104,9 @@ fn horizontal_baseline_flow_axes() -> crate::geometry::FlowAxes {
 }
 
 struct BaselineTestMetrics {
-    first: Scalar,
-    last: Scalar,
-    height: Scalar,
+    first: DefaultScalar,
+    last: DefaultScalar,
+    height: DefaultScalar,
 }
 
 fn baseline_test_item<'input>(

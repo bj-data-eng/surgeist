@@ -31,7 +31,7 @@ pub(super) use subgrid_context::*;
 
 use settlement::{OrdinaryGridItemPlacement, stage_ordinary_grid_items};
 
-pub(super) struct GridChildrenLayout<Node, S: LayoutScalar = Scalar> {
+pub(super) struct GridChildrenLayout<Node, S: LayoutScalar = DefaultScalar> {
     pub(super) executed_baselines: Option<ExecutedBaselineInventory<Node, S>>,
     pub(super) visible_content_size: Size<S>,
     pub(super) contributions: ScrollContributionAccumulatorOf<S>,
@@ -1326,7 +1326,7 @@ pub(super) fn grid_axis_logical_offsets<S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct GridAxisOffsetsInput<'a, S: LayoutScalar = Scalar> {
+pub(super) struct GridAxisOffsetsInput<'a, S: LayoutScalar = DefaultScalar> {
     pub(super) style: &'a GridContainerProjection<'a, S>,
     pub(super) axis: GridAxisKind,
     pub(super) tracks: &'a [S],
@@ -1401,7 +1401,7 @@ fn grid_physical_axis_progression(
     FlowAxes::new(writing_mode, direction).physical_axis_progression(axis)
 }
 
-pub(super) struct PendingGridItem<'input, Node, S: LayoutScalar = Scalar> {
+pub(super) struct PendingGridItem<'input, Node, S: LayoutScalar = DefaultScalar> {
     pub(super) node: Node,
     pub(super) style: GridItemProjection<'input, S>,
     pub(super) nested_container: Option<GridContainerInput<'input, S>>,
@@ -1429,7 +1429,7 @@ pub(super) struct PendingGridItem<'input, Node, S: LayoutScalar = Scalar> {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct GridItemSizing<S: LayoutScalar = Scalar, Available = S> {
+pub(super) struct GridItemSizing<S: LayoutScalar = DefaultScalar, Available = S> {
     pub(super) known: Size<Option<S>>,
     pub(super) available: Size<Available>,
     pub(super) unresolved_margin: Edges<Option<S>>,
@@ -1956,7 +1956,7 @@ fn transpose_edges_result<T, S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct PhysicalGridItemAxis<S: LayoutScalar = Scalar> {
+pub(super) struct PhysicalGridItemAxis<S: LayoutScalar = DefaultScalar> {
     pub(super) area_size: S,
     pub(super) size: S,
     pub(super) margin_start: Option<S>,
@@ -1966,7 +1966,7 @@ pub(super) struct PhysicalGridItemAxis<S: LayoutScalar = Scalar> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct ResolvedGridItemAxis<S: LayoutScalar = Scalar> {
+pub(super) struct ResolvedGridItemAxis<S: LayoutScalar = DefaultScalar> {
     pub(super) offset: S,
     pub(super) margin_start: S,
     pub(super) margin_end: S,

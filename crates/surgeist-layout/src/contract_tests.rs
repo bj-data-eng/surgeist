@@ -7,7 +7,10 @@ fn default_scalar_remains_single_precision() {
         std::mem::size_of::<DefaultScalar>(),
         std::mem::size_of::<f32>()
     );
-    assert_eq!(std::mem::size_of::<Scalar>(), std::mem::size_of::<f32>());
+    assert_eq!(
+        std::mem::size_of::<DefaultScalar>(),
+        std::mem::size_of::<f32>()
+    );
 }
 
 #[test]

@@ -199,7 +199,7 @@ impl<Node, S: LayoutScalar> IntrinsicAxisContributions<Node, S> {
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::grid) struct IntrinsicGrid<'input, 'a, Node, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct IntrinsicGrid<'input, 'a, Node, S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) style: &'a GridContainerProjection<'a, S>,
     pub(in crate::grid) constants: &'a Constants<S>,
     pub(in crate::grid) sizing_flow_axes: FlowAxes,
@@ -334,7 +334,7 @@ impl<'input, 'a, Node, S: LayoutScalar> IntrinsicGrid<'input, 'a, Node, S> {
 }
 
 #[derive(Clone, Copy, Default)]
-pub(in crate::grid) struct IntrinsicGridLowerBounds<'a, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct IntrinsicGridLowerBounds<'a, S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) columns: Option<&'a [S]>,
     pub(in crate::grid) rows: Option<&'a [S]>,
 }
@@ -374,7 +374,7 @@ pub(in crate::grid) enum BaselineOwnerEdge {
 
 /// One finite signed distance from the selected owner-track edge.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::grid) struct AncestorBaselineTarget<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct AncestorBaselineTarget<S: LayoutScalar = DefaultScalar> {
     role: AncestorBaselineRole,
     selected_ancestor_track: usize,
     selected_owner_edge: BaselineOwnerEdge,
@@ -409,7 +409,7 @@ impl<S: LayoutScalar> AncestorBaselineTarget<S> {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(in crate::grid) struct TrackAncestorBaselineTargets<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct TrackAncestorBaselineTargets<S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) first: Option<AncestorBaselineTarget<S>>,
     pub(in crate::grid) last: Option<AncestorBaselineTarget<S>>,
 }
@@ -426,7 +426,7 @@ fn reduce_complete_target<S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct FlattenedScalarContribution<Node, S: LayoutScalar = Scalar> {
+pub(super) struct FlattenedScalarContribution<Node, S: LayoutScalar = DefaultScalar> {
     pub(super) source: Node,
     axis: GridAxisKind,
     pub(super) ancestor_span: GridTrackSpan,
@@ -453,7 +453,7 @@ impl<Node, S: LayoutScalar> FlattenedScalarContribution<Node, S> {
 /// owner-edge cohort. In particular, reversing a cohort never selects another
 /// body port or another track in a spanning item's alignment context.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::grid) struct AncestorBaselineMember<Node, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct AncestorBaselineMember<Node, S: LayoutScalar = DefaultScalar> {
     reference: crate::GridBaselineReference,
     source: Node,
     axis: GridAxisKind,
@@ -552,7 +552,7 @@ impl<Node: Copy, S: LayoutScalar> AncestorBaselineMember<Node, S> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(in crate::grid) struct AncestorBaselineGroup<Node, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct AncestorBaselineGroup<Node, S: LayoutScalar = DefaultScalar> {
     owner: Node,
     axis: GridAxisKind,
     physical_axis: PhysicalAxis,
@@ -707,7 +707,7 @@ impl<Node: Copy, S: LayoutScalar> AncestorBaselineGroup<Node, S> {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct RowIntrinsicContribution<Node, S: LayoutScalar = Scalar> {
+pub(super) struct RowIntrinsicContribution<Node, S: LayoutScalar = DefaultScalar> {
     pub(super) source: Node,
     pub(super) start: usize,
     pub(super) end: usize,
@@ -1621,7 +1621,7 @@ fn row_baseline_shim<Node: Copy, S: LayoutScalar>(
     group.intrinsic_shim(member)
 }
 
-pub(in crate::grid) struct AncestorBaselineMemberInput<Node, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct AncestorBaselineMemberInput<Node, S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) source: Node,
     pub(in crate::grid) reference: crate::GridBaselineReference,
     pub(in crate::grid) axis: GridAxisKind,

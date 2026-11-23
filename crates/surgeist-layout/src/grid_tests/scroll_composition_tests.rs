@@ -5462,7 +5462,7 @@ fn grid_content_box_compute_size_does_not_add_scrollbar_to_authored_size() {
     impl Traverse for NoChildMeasurementTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -5498,7 +5498,7 @@ fn grid_content_box_compute_size_does_not_add_scrollbar_to_authored_size() {
     impl<'input> Traverse for NoChildMeasurementTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where

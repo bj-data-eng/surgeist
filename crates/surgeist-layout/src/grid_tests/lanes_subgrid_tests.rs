@@ -3004,7 +3004,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
         outputs: HashMap<u32, ComputeOutput>,
     }
 
@@ -3013,7 +3013,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
             &mut self,
             node: u32,
             input: ComputeInput,
-        ) -> LayoutResultOf<u32, ComputeOutput, Scalar> {
+        ) -> LayoutResultOf<u32, ComputeOutput, DefaultScalar> {
             let node_input = self.styles[&node].clone();
             if self.children[&node].is_empty() {
                 return Ok(self.outputs[&node]);
@@ -3034,7 +3034,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
     impl Traverse for RecursiveTree {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -3056,7 +3056,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, DefaultScalar>>,
         outputs: &'input mut HashMap<u32, ComputeOutput>,
     }
 
@@ -3074,7 +3074,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
     impl<'input> Traverse for RecursiveTreeCompute<'input> {
         type Node = u32;
 
-        type Scalar = Scalar;
+        type Scalar = DefaultScalar;
         type Children<'a>
             = std::iter::Copied<std::slice::Iter<'a, u32>>
         where
@@ -4483,9 +4483,9 @@ fn named_grid_lanes_place_item_between_named_ordinary_grid_lines() {
 
     assert_eq!(
         child.location.x,
-        (expected.start_line as Scalar - 1.0) * 40.0
+        (expected.start_line as DefaultScalar - 1.0) * 40.0
     );
-    assert_eq!(child.size.width, expected.span as Scalar * 40.0);
+    assert_eq!(child.size.width, expected.span as DefaultScalar * 40.0);
 }
 
 #[test]
@@ -4553,9 +4553,9 @@ fn named_grid_lanes_span_named_implicit_fallback_line() {
 
     assert_eq!(
         child.location.x,
-        (expected.start_line as Scalar - 1.0) * 40.0
+        (expected.start_line as DefaultScalar - 1.0) * 40.0
     );
-    assert_eq!(child.size.width, expected.span as Scalar * 40.0);
+    assert_eq!(child.size.width, expected.span as DefaultScalar * 40.0);
 }
 
 #[test]
@@ -4657,9 +4657,9 @@ fn named_grid_lanes_subgrid_axis_uses_inherited_line_names() {
 
     assert_eq!(
         child.location.x,
-        (expected.start_line as Scalar - 1.0) * 40.0
+        (expected.start_line as DefaultScalar - 1.0) * 40.0
     );
-    assert_eq!(child.size.width, expected.span as Scalar * 40.0);
+    assert_eq!(child.size.width, expected.span as DefaultScalar * 40.0);
 }
 
 fn assert_logical_inherited_grid_axis_contexts<S: LayoutScalar>()
@@ -7152,7 +7152,7 @@ impl LaneMarginMeasureTree {
 
 impl Traverse for LaneMarginMeasureTree {
     type Node = usize;
-    type Scalar = Scalar;
+    type Scalar = DefaultScalar;
     type Children<'a>
         = std::vec::IntoIter<Self::Node>
     where
@@ -7198,7 +7198,7 @@ impl LaneMarginMeasureTreeCompute<'_> {
 
 impl<'input> Traverse for LaneMarginMeasureTreeCompute<'input> {
     type Node = usize;
-    type Scalar = Scalar;
+    type Scalar = DefaultScalar;
     type Children<'a>
         = std::vec::IntoIter<Self::Node>
     where
@@ -10662,16 +10662,16 @@ fn subgrid_intrinsic_parent_context_uses_actual_span_and_reversal() {
         eligibility: SubgridEligibility::SharedTracks,
     };
 
-    let axis: InheritedGridAxis<Scalar> = intrinsic_subgrid_axis_parent_context(
+    let axis: InheritedGridAxis<DefaultScalar> = intrinsic_subgrid_axis_parent_context(
         report,
         GridArea {
             row: 0,
             column: 1,
             row_end: 1,
             column_end: 4,
-            size: LogicalSizeOf::new(Scalar::ZERO, Scalar::ZERO),
+            size: LogicalSizeOf::new(DefaultScalar::ZERO, DefaultScalar::ZERO),
         },
-        Size::<Scalar>::ZERO,
+        Size::<DefaultScalar>::ZERO,
         SubgridParentTrackSource {
             baseline_references: crate::GridBaselineReferences::default(),
             flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
@@ -10724,7 +10724,8 @@ fn subgrid_line_names_recompute_area_generated_names_clipped_to_span() {
     };
     let parent = named::add_area_generated_lines(
         GridAxisKind::Column,
-        named::named_lines_from_track_components::<Scalar>(GridAxisKind::Column, &[], 4).unwrap(),
+        named::named_lines_from_track_components::<DefaultScalar>(GridAxisKind::Column, &[], 4)
+            .unwrap(),
         &areas,
     )
     .unwrap();
@@ -10752,7 +10753,8 @@ fn subgrid_area_facts_preserve_reversed_orientation_and_axis_validity() {
     };
     let parent_lines = named::add_area_generated_lines(
         GridAxisKind::Column,
-        named::named_lines_from_track_components::<Scalar>(GridAxisKind::Column, &[], 4).unwrap(),
+        named::named_lines_from_track_components::<DefaultScalar>(GridAxisKind::Column, &[], 4)
+            .unwrap(),
         &areas,
     )
     .unwrap();
@@ -10794,7 +10796,7 @@ fn subgrid_area_facts_preserve_reversed_orientation_and_axis_validity() {
 fn subgrid_local_area_facts_clamp_to_inherited_span() {
     let parent_context = GridParentContext {
         columns: Some(test_inherited_axis(
-            named::named_lines_from_track_components::<Scalar>(GridAxisKind::Column, &[], 4)
+            named::named_lines_from_track_components::<DefaultScalar>(GridAxisKind::Column, &[], 4)
                 .unwrap(),
             None,
             0,
@@ -10844,7 +10846,8 @@ fn subgrid_duplicate_area_facts_merge_with_parent_clipped_boundaries() {
     };
     let parent_lines = named::add_area_generated_lines(
         GridAxisKind::Column,
-        named::named_lines_from_track_components::<Scalar>(GridAxisKind::Column, &[], 4).unwrap(),
+        named::named_lines_from_track_components::<DefaultScalar>(GridAxisKind::Column, &[], 4)
+            .unwrap(),
         &parent_areas,
     )
     .unwrap();
@@ -11479,7 +11482,7 @@ fn nested_subgrid_same_flow_projects_physical_edge_sums_before_local_track_sizin
     assert_eq!(prepared.containing_flow_axes(), flow);
     // This replaces the former detached Auto estimate with authored known
     // geometry. Preserve the percentage equation in the represented lane.
-    let outer_border: Scalar = 200.0 - (3.0 + 7.0);
+    let outer_border: DefaultScalar = 200.0 - (3.0 + 7.0);
     let inner_border = outer_border - (13.0 + 19.0 + 29.0 + 37.0);
     let nearest_content = inner_border - (0.1 * inner_border + 0.3 * inner_border);
     assert_eq!(outer_border, 190.0);

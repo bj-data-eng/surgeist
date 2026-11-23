@@ -24,7 +24,7 @@ impl GridAxisKind {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct GridAxisMappingInput<'input, 'a, S: LayoutScalar = Scalar> {
+pub(super) struct GridAxisMappingInput<'input, 'a, S: LayoutScalar = DefaultScalar> {
     pub(super) queried_axis: GridAxisKind,
     pub(super) parent_style: &'a GridContainerProjection<'a, S>,
     pub(super) child_style: &'a GridItemProjection<'input, S>,

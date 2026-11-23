@@ -937,7 +937,7 @@ fn assert_fri04_c05_source_intent(golden: &support::Golden) {
                 child.style.get("max-width"),
                 Some("clamp(35%, max(50%, 100px), 70%)")
             );
-            let basis: surgeist_layout::Scalar = 240.0;
+            let basis: surgeist_layout::DefaultScalar = 240.0;
             let minimum = (0.25 * basis).max((0.30 * basis).min(72.0));
             let maximum = (0.50 * basis).max(100.0).clamp(0.35 * basis, 0.70 * basis);
             let width = (0.50 * basis - 10.0).clamp(minimum, maximum);

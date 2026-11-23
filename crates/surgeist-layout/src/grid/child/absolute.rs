@@ -229,7 +229,7 @@ pub(in crate::grid) enum AbsoluteGridAxisLines<'a, S: LayoutScalar> {
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::grid) struct AbsoluteGridAxisInput<'a, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct AbsoluteGridAxisInput<'a, S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) placement: super::GridPlacement,
     pub(in crate::grid) lines: AbsoluteGridAxisLines<'a, S>,
     pub(in crate::grid) padding_box_location: S,
@@ -626,7 +626,7 @@ impl<Node: Copy, S: LayoutScalar> PositionedGridChild<'_, Node, S> {
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::grid) struct LogicalAbsoluteGridArea<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct LogicalAbsoluteGridArea<S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) location: LogicalPointOf<S>,
     pub(in crate::grid) size: LogicalSizeOf<S>,
     pub(in crate::grid) static_location: LogicalPointOf<S>,
@@ -634,13 +634,13 @@ pub(in crate::grid) struct LogicalAbsoluteGridArea<S: LayoutScalar = Scalar> {
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::grid) struct AbsoluteGridAxisArea<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct AbsoluteGridAxisArea<S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) location: S,
     pub(in crate::grid) size: S,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::grid) struct AbsoluteGridAxis<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct AbsoluteGridAxis<S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) area_location: S,
     pub(in crate::grid) static_area_location: S,
     pub(in crate::grid) area_size: S,
@@ -658,7 +658,7 @@ pub(in crate::grid) struct AbsoluteGridAxis<S: LayoutScalar = Scalar> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::grid) struct ResolvedAbsoluteGridAxis<S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct ResolvedAbsoluteGridAxis<S: LayoutScalar = DefaultScalar> {
     pub(in crate::grid) location: S,
     pub(in crate::grid) margin_start: S,
     pub(in crate::grid) margin_end: S,

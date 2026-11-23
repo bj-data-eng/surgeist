@@ -1,13 +1,13 @@
 use crate::test_support::readback::{self, Phase};
 use crate::{AvailableSpace, AxisSizingRequest, NonNegativeFiniteOf, SizingOperation};
 use crate::{
-    Baselines, CollapsibleMarginOf, ComputeOutput, Direction, Display, Edges, FlexItemCollapse,
-    FloatExclusionInterval, FloatExclusionIntervalError, FloatExclusionIntervalErrorOf,
-    FloatExclusionIntervalOf, FloatExclusionQuery, FloatExclusionQueryOf, FlowAxes,
-    LayoutOperation, LayoutScalar, Length, LengthAuto, LengthPercentageOf, LengthResolutionStatus,
-    MaxTrackSizing, MinTrackSizing, PhysicalAxis, PhysicalBlockMarginCollapse,
-    PhysicalBlockMarginCollapseOf, PhysicalSide, Point, PreferredSize, Scalar, Size,
-    SizingCalculation, TrackComponent, TrackComponentList, TrackFlexFactor, TrackRepeatCount,
+    Baselines, CollapsibleMarginOf, ComputeOutput, DefaultScalar, Direction, Display, Edges,
+    FlexItemCollapse, FloatExclusionInterval, FloatExclusionIntervalError,
+    FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQuery,
+    FloatExclusionQueryOf, FlowAxes, LayoutOperation, LayoutScalar, Length, LengthAuto,
+    LengthPercentageOf, LengthResolutionStatus, MaxTrackSizing, MinTrackSizing, PhysicalAxis,
+    PhysicalBlockMarginCollapse, PhysicalBlockMarginCollapseOf, PhysicalSide, Point, PreferredSize,
+    Size, SizingCalculation, TrackComponent, TrackComponentList, TrackFlexFactor, TrackRepeatCount,
     TrackSizing, WritingMode,
 };
 
@@ -1136,8 +1136,8 @@ fn aspect_ratio_rejects_non_positive_or_non_finite_values() {
     assert!(super::AspectRatio::new(1.5).is_some());
     assert_eq!(super::AspectRatio::new(0.0), None);
     assert_eq!(super::AspectRatio::new(-1.0), None);
-    assert_eq!(super::AspectRatio::new(Scalar::NAN), None);
-    assert_eq!(super::AspectRatio::new(Scalar::INFINITY), None);
+    assert_eq!(super::AspectRatio::new(DefaultScalar::NAN), None);
+    assert_eq!(super::AspectRatio::new(DefaultScalar::INFINITY), None);
 }
 
 #[test]
