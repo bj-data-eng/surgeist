@@ -154,6 +154,7 @@ pub(super) enum Receiver {
     Fieldset,
     Font,
     Form,
+    Frame,
     Frameset,
     Input,
     Iframe,
@@ -282,9 +283,14 @@ impl Receiver {
                         .as_element()
                         .is_some_and(|element| !element.has_failed_construction_interface())
             }
-            Self::Frameset => {
+            Self::Frame | Self::Frameset => {
                 step()?;
-                super::frameset::is_frameset(node)
+                let local: &[u16] = if matches!(self, Self::Frame) {
+                    const { &ascii(b"frame") }
+                } else {
+                    const { &ascii(b"frameset") }
+                };
+                obsolete_html_element_is(node, local)
             }
             Self::Iframe => {
                 step()?;
@@ -414,6 +420,7 @@ impl Receiver {
             Self::Fieldset => const { &ascii(b"HTMLFieldSetElement required") },
             Self::Font => const { &ascii(b"HTMLFontElement required") },
             Self::Form => const { &ascii(b"HTMLFormElement required") },
+            Self::Frame => const { &ascii(b"HTMLFrameElement required") },
             Self::Frameset => const { &ascii(b"HTMLFrameSetElement required") },
             Self::Input => const { &ascii(b"HTMLInputElement required") },
             Self::Iframe => const { &ascii(b"HTMLIFrameElement required") },
@@ -448,6 +455,17 @@ pub(super) fn html_element_is(node: DomNode<'_>, interface: &str) -> bool {
         !element.has_failed_construction_interface()
             && KnownHtmlElement::from_name(element.name())
                 .is_some_and(|known| known.inventory_row().interface() == interface)
+    })
+}
+
+fn obsolete_html_element_is(node: DomNode<'_>, local: &[u16]) -> bool {
+    node.as_element().is_some_and(|element| {
+        let name = element.name();
+        !element.has_failed_construction_interface()
+            && name.local_name().code_units() == local
+            && name
+                .namespace_uri()
+                .is_some_and(|uri| uri.code_units() == HTML_NAMESPACE)
     })
 }
 
@@ -1101,6 +1119,7 @@ impl Capture {
                             | Receiver::Dialog
                             | Receiver::Fieldset
                             | Receiver::Form
+                            | Receiver::Frame
                             | Receiver::Frameset
                             | Receiver::Input
                             | Receiver::Iframe

@@ -2928,6 +2928,16 @@ pub fn html_image_element_obsolete_border_setter() -> Type<DomString> {
     types::DOM_STRING_NULL_TO_EMPTY
 }
 
+/// Selected setter conversion for `HTMLFrameElement.marginHeight`.
+pub fn html_frame_element_margin_height_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLFrameElement.marginWidth`.
+pub fn html_frame_element_margin_width_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
 /// Selected setter conversion for `HTMLTitleElement.text`.
 pub fn html_title_element_text_setter() -> Type<DomString> {
     types::DOM_STRING

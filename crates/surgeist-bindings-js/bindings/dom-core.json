@@ -605,6 +605,18 @@
       ]
     },
     {
+      "id": "HTMLFrameElement.source",
+      "path": "references/html-language-obsolete--877d6146487f--66870e9cdabe.md",
+      "anchor": "htmlframeelement",
+      "block": 0,
+      "sha256": "ae9ce4ef0e8532b93a9868b865f8f01d680fbd3a322ba1597652c8382708abc3",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#htmlframeelement",
+      "entries": [
+        "HTMLFrameElement"
+      ]
+    },
+    {
       "id": "HTMLHeadElement.source",
       "path": "references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md",
       "anchor": "the&#45;head&#45;element",
@@ -7650,6 +7662,212 @@
         }
       ],
       "inherits": "HTMLMediaElement"
+    },
+    {
+      "id": "HTMLFrameElement",
+      "kind": "interface",
+      "name": "HTMLFrameElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLFrameElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "name",
+          "readonly": false,
+          "id": "HTMLFrameElement.name"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "scrolling",
+          "readonly": false,
+          "id": "HTMLFrameElement.scrolling"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectURL"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "src",
+          "readonly": false,
+          "id": "HTMLFrameElement.src"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "frameBorder",
+          "readonly": false,
+          "id": "HTMLFrameElement.frameBorder"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectURL"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "longDesc",
+          "readonly": false,
+          "id": "HTMLFrameElement.longDesc"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "boolean"
+          },
+          "name": "noResize",
+          "readonly": false,
+          "id": "HTMLFrameElement.noResize"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "Document"
+            }
+          },
+          "name": "contentDocument",
+          "readonly": true,
+          "id": "HTMLFrameElement.contentDocument"
+        },
+        {
+          "attributes": [],
+          "kind": "attribute",
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "named",
+              "name": "WindowProxy"
+            }
+          },
+          "name": "contentWindow",
+          "readonly": true,
+          "id": "HTMLFrameElement.contentWindow"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "marginHeight",
+          "readonly": false,
+          "id": "HTMLFrameElement.marginHeight"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString",
+            "attributes": [
+              {
+                "name": "LegacyNullToEmptyString"
+              }
+            ]
+          },
+          "name": "marginWidth",
+          "readonly": false,
+          "id": "HTMLFrameElement.marginWidth"
+        }
+      ],
+      "inherits": "HTMLElement"
     },
     {
       "id": "HTMLHeadElement",
@@ -22511,6 +22729,281 @@
           "owner": "surgeist-dom",
           "path": "crates/surgeist-dom/src/internal/source.rs",
           "symbol": "remove_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFrameElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlframeelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFrameElement.name/get": {
+      "kind": "native",
+      "adapter": "htmlframeelement.name.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFrameElement.name/set": {
+      "kind": "native",
+      "adapter": "htmlframeelement.name.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFrameElement.scrolling/get": {
+      "kind": "native",
+      "adapter": "htmlframeelement.scrolling.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFrameElement.scrolling/set": {
+      "kind": "native",
+      "adapter": "htmlframeelement.scrolling.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFrameElement.src/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Qualify current Frame URL reflection against the actual node Document base and encoding.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-frame-src",
+        "issue": 3257
+      }
+    },
+    "HTMLFrameElement.src/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Apply the native Frame src edit and retain its reached navigation effect and failure.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-frame-src",
+        "issue": 2259
+      }
+    },
+    "HTMLFrameElement.frameBorder/get": {
+      "kind": "native",
+      "adapter": "htmlframeelement.frameborder.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFrameElement.frameBorder/set": {
+      "kind": "native",
+      "adapter": "htmlframeelement.frameborder.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFrameElement.longDesc/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Qualify current Frame URL reflection against the actual node Document base and encoding.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-frame-longdesc",
+        "issue": 3257
+      }
+    },
+    "HTMLFrameElement.longDesc/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose canonical USVString longDesc writes alongside the qualified native URL getter.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-frame-longdesc",
+        "issue": 3257
+      }
+    },
+    "HTMLFrameElement.noResize/get": {
+      "kind": "native",
+      "adapter": "htmlframeelement.noresize.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFrameElement.noResize/set": {
+      "kind": "native",
+      "adapter": "htmlframeelement.noresize.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "remove_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFrameElement.contentDocument/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Return the active Frame content Document with the pinned origin-domain checks.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-frame-contentdocument",
+        "issue": 3279
+      }
+    },
+    "HTMLFrameElement.contentWindow/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Return the original active Frame WindowProxy for the current native child.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-frame-contentwindow",
+        "issue": 3279
+      }
+    },
+    "HTMLFrameElement.marginHeight/get": {
+      "kind": "native",
+      "adapter": "htmlframeelement.marginheight.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFrameElement.marginHeight/set": {
+      "kind": "native",
+      "adapter": "htmlframeelement.marginheight.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFrameElement.marginWidth/get": {
+      "kind": "native",
+      "adapter": "htmlframeelement.marginwidth.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLFrameElement.marginWidth/set": {
+      "kind": "native",
+      "adapter": "htmlframeelement.marginwidth.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
         }
       ],
       "requirements": []
