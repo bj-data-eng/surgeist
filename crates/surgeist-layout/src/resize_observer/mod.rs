@@ -52,16 +52,22 @@ pub enum ResizeObserverMeasurementError {
 impl core::fmt::Display for ResizeObserverMeasurementError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match *self {
-            Self::NonFiniteContentOrigin { axis, coordinate } => {
+            Self::NonFiniteContentOrigin { axis, coordinate } => write!(
+                f,
+                "the content origin coordinate {coordinate} on the {} axis is not finite",
+                crate::error::physical_axis_label(axis)
+            ),
+            Self::InvalidScale { scale } => {
                 write!(
                     f,
-                    "nonfinite content origin {coordinate} on the {axis:?} axis"
+                    "the device-pixel scale {scale} is not finite and positive"
                 )
             }
-            Self::InvalidScale { scale } => write!(f, "invalid device-pixel scale {scale}"),
-            Self::DevicePixelExtentOutOfRange { axis } => {
-                write!(f, "device-pixel extent exceeds u64 on the {axis:?} axis")
-            }
+            Self::DevicePixelExtentOutOfRange { axis } => write!(
+                f,
+                "the device-pixel extent on the {} axis exceeds the range of u64",
+                crate::error::physical_axis_label(axis)
+            ),
         }
     }
 }

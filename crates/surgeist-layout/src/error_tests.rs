@@ -44,7 +44,7 @@ fn display_names_operation_site_and_kind() {
     );
     assert_eq!(
         error.to_string(),
-        "root layout failed at node 3: missing context: RequiredBasis"
+        "root layout failed at node 3: context that layout requires is missing"
     );
 }
 
@@ -189,9 +189,16 @@ fn rejected_measurement_output_sources_the_scalar_error() {
     ));
     assert_eq!(
         error.to_string(),
-        "child layout failed at node 3: measurement output rejected on the Horizontal axis"
+        "child layout failed at node 3: layout input is invalid"
     );
-    let source = error.source().expect("the scalar error is the cause");
+    let input = error.source().expect("the invalid input is the cause");
+    assert_eq!(input.to_string(), "a measurement output is invalid");
+    let output = input.source().expect("the rejected output is the cause");
+    assert_eq!(
+        output.to_string(),
+        "measurement output rejected on the horizontal axis"
+    );
+    let source = output.source().expect("the scalar error is the cause");
     assert_eq!(
         source.downcast_ref::<NonNegativeFiniteScalarErrorOf<f64>>(),
         Some(&scalar)
@@ -291,9 +298,14 @@ fn rejected_float_exclusion_provider_output_displays_without_its_cause_and_sourc
     ));
     assert_eq!(
         error.to_string(),
-        "child layout failed at node 3: float exclusion provider output rejected"
+        "child layout failed at node 3: layout input is invalid"
     );
-    let source = error.source().expect("the interval error is the cause");
+    let input = error.source().expect("the invalid input is the cause");
+    assert_eq!(
+        input.to_string(),
+        "float exclusion provider output is invalid"
+    );
+    let source = input.source().expect("the interval error is the cause");
     assert!(
         source
             .downcast_ref::<FloatExclusionIntervalErrorOf<f64>>()

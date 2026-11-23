@@ -1180,3 +1180,734 @@ fn block_fragmentation_request_rejects_frames_with_a_fragmentation_input_error()
         "a fragmentation boundary is invalid"
     );
 }
+
+#[test]
+fn layout_missing_context_prints_its_message_and_has_no_source() {
+    use l::LayoutMissingContext as E;
+    is_error::<E>();
+    let table = [
+        (
+            E::NamedInlineBaseline,
+            "the named inline baseline that the request needs is missing",
+        ),
+        (
+            E::NamedGridBaseline,
+            "an eligible grid participant did not establish the requested named baseline",
+        ),
+        (
+            E::RequiredBasis,
+            "a definite basis that the operation requires is missing",
+        ),
+        (
+            E::FloatExclusionProvider,
+            "the tree supplied no float exclusion interval for the requested query",
+        ),
+        (
+            E::TextCapture,
+            "the text capture that the flow requires is missing",
+        ),
+        (
+            E::TextBlockTail,
+            "the selected hyphenation needs a completed-block continuation that is missing",
+        ),
+        (
+            E::TextOutOfFlowGeometry,
+            "the geometry of an out-of-flow box that text placement requires is missing",
+        ),
+        (
+            E::ComputedLineBoundaryIncidence,
+            "a computed line boundary has no proved side in the native flow",
+        ),
+        (
+            E::AnonymousGeneratingBlock,
+            "an anonymous block has no generating block context",
+        ),
+    ];
+    assert_messages(&table, 9);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn layout_internal_invariant_prints_its_message_and_has_no_source() {
+    use l::LayoutInternalInvariant as E;
+    is_error::<E>();
+    let table = [
+        (
+            E::ResolvedLengthOnFailurePath,
+            "a length that resolved was reported on a failure path",
+        ),
+        (
+            E::InvalidRoundedScrollGeometry,
+            "rounding produced invalid scroll geometry",
+        ),
+        (
+            E::InvalidRoundedInlineFragmentGeometry,
+            "inline fitting produced invalid inline fragment geometry",
+        ),
+        (
+            E::InvalidInlineBalance,
+            "a balanced-line basis violated its finite, count or replay invariant",
+        ),
+        (
+            E::InvalidInlineTailSelection,
+            "a paragraph-tail program did not reproduce its retained basis",
+        ),
+        (
+            E::InvalidInlinePrettySelection,
+            "a pretty-wrapping program did not reproduce its retained phase or fallback basis",
+        ),
+        (
+            E::InvalidAtomicReceiverBasis,
+            "a deferred receiving metric no longer matched its retained atomic source",
+        ),
+        (
+            E::MissingLeafMeasurementProvider,
+            "the tree supplied no leaf measurement for a node that requires one",
+        ),
+        (
+            E::MissingStagedUnroundedOutput,
+            "a staged unrounded output is missing",
+        ),
+        (
+            E::InvalidOutputGeometryPhase,
+            "a staged output was consumed in a different geometry or readback phase",
+        ),
+        (
+            E::InvalidGridTrackSizing,
+            "grid contribution incidence or resolved track state violated its native contract",
+        ),
+        (
+            E::SubgridTrackInheritance,
+            "subgrid track inheritance violated its native contract",
+        ),
+        (
+            E::SubgridBaselineInheritance,
+            "subgrid baseline inheritance violated its native contract",
+        ),
+    ];
+    assert_messages(&table, 13);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn layout_text_numeric_error_prints_its_message_and_has_no_source() {
+    use l::LayoutTextNumericError as E;
+    is_error::<E>();
+    let table = [
+        (E::NonFinite, "the value is not finite"),
+        (
+            E::OutOfRange,
+            "the value is outside the representable range",
+        ),
+        (
+            E::NonZeroLost,
+            "a nonzero contribution was lost to rounding or arithmetic",
+        ),
+    ];
+    assert_messages(&table, 3);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn atomic_inline_participation_role_error_prints_its_message_and_has_no_source() {
+    use l::AtomicInlineParticipationRoleError as E;
+    is_error::<E>();
+    let table = [
+        (
+            E::MissingForAtomicInline,
+            "an atomic inline requires atomic inline participation facts and has none",
+        ),
+        (
+            E::UnexpectedForNonAtomic,
+            "a node that is not an atomic inline carries atomic inline participation facts",
+        ),
+        (
+            E::UnexpectedForPreparedAtomic,
+            "a prepared atomic inline carries atomic inline participation facts that text already supplies",
+        ),
+    ];
+    assert_messages(&table, 3);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn non_box_node_role_error_prints_its_message_and_has_no_source() {
+    use l::NonBoxNodeRoleError as E;
+    is_error::<E>();
+    let table = [
+        (
+            E::NonCanonicalNodeInput,
+            "a non-box node's node input is not the canonical non-box input",
+        ),
+        (E::HasChildren, "a non-box node has children"),
+        (
+            E::HasLeafMeasurement,
+            "a non-box node has a leaf measurement",
+        ),
+    ];
+    assert_messages(&table, 3);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn float_exclusion_role_error_prints_its_message_and_has_no_source() {
+    use l::FloatExclusionRoleError as E;
+    is_error::<E>();
+    let table = [
+        (E::Hidden, "a hidden node cannot supply a float exclusion"),
+        (
+            E::NonFloating,
+            "a node that does not float cannot supply a float exclusion",
+        ),
+        (
+            E::Absolute,
+            "an absolutely positioned node cannot supply a float exclusion",
+        ),
+    ];
+    assert_messages(&table, 3);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+// ---------------------------------------------------------------- end to end
+
+/// A tree of hand-built nodes; node 0 is the root.
+struct Tree {
+    nodes: Vec<(l::NodeInput, Vec<usize>)>,
+}
+
+impl l::Traverse for Tree {
+    type Node = usize;
+    type Scalar = f32;
+    type Children<'a> = std::iter::Copied<std::slice::Iter<'a, usize>>;
+    fn children(&self, node: usize) -> Self::Children<'_> {
+        self.nodes[node].1.iter().copied()
+    }
+    fn child_count(&self, node: usize) -> usize {
+        self.nodes[node].1.len()
+    }
+    fn child(&self, node: usize, index: usize) -> usize {
+        self.nodes[node].1[index]
+    }
+}
+
+impl l::LayoutTree for Tree {
+    type MeasureError = Infallible;
+    fn node_input(&self, node: usize) -> &l::NodeInput {
+        &self.nodes[node].0
+    }
+    fn layout_input(&self, node: usize) -> l::LayoutInputView<'_> {
+        l::LayoutInputView::Box(&self.nodes[node].0)
+    }
+}
+
+fn px(value: f32) -> l::PreferredSize {
+    l::PreferredSize::value(l::LengthPercentageOf::px(value).expect("a finite length"))
+}
+
+fn block(size: l::Size<l::PreferredSize>) -> l::NodeInput {
+    l::NodeInput {
+        display: l::Display::Block,
+        size,
+        ..l::NodeInput::default()
+    }
+}
+
+fn leaf_context() -> l::ContainingLayoutContext {
+    l::ContainingLayoutContext::new(
+        l::FlowAxes::new(l::WritingMode::HorizontalTb, l::Direction::Ltr),
+        l::ParentFormattingContext::NoParent,
+    )
+}
+
+fn leaf_input(parent: l::Size<Option<f32>>) -> l::ComputeInput {
+    l::ComputeInput::leaf_layout(l::Size::NONE, parent, leaf_context(), sizing_request())
+        .expect("a finite leaf input is valid")
+}
+
+#[test]
+fn compute_leaf_reports_an_unresolvable_numeric_width() {
+    let style = l::NodeInput {
+        size: l::Size::new(
+            l::PreferredSize::value(
+                l::LengthPercentageOf::from_coefficients(f32::MAX, 1.0).expect("finite"),
+            ),
+            l::PreferredSize::AUTO,
+        ),
+        ..l::NodeInput::default()
+    };
+    let error = l::compute_leaf(
+        leaf_input(l::Size::new(Some(f32::MAX), None)),
+        &style,
+        |_| Ok::<_, HostFailure>(l::Size::new(12.0, 8.0)),
+    )
+    .expect_err("the width overflows");
+    assert_eq!(
+        chain(&error),
+        [
+            "value resolution failed at a standalone request: layout input is invalid",
+            "numeric value inf is invalid"
+        ]
+    );
+}
+
+#[test]
+fn compute_leaf_reports_a_percentage_without_a_basis() {
+    let style = l::NodeInput {
+        padding: l::Edges::all(l::Length::value(
+            l::LengthPercentageOf::from_percent_fraction(0.5).expect("finite"),
+        )),
+        ..l::NodeInput::default()
+    };
+    let error = l::compute_leaf(leaf_input(l::Size::NONE), &style, |_| {
+        Ok::<_, HostFailure>(l::Size::new(12.0, 8.0))
+    })
+    .expect_err("a percentage padding needs a basis");
+    assert_eq!(
+        chain(&error),
+        [
+            "value resolution failed at a standalone request: context that layout requires is \
+             missing",
+            "a definite basis that the operation requires is missing"
+        ]
+    );
+}
+
+#[test]
+fn compute_leaf_reports_the_host_measurement_failure() {
+    let error = l::compute_leaf(leaf_input(l::Size::NONE), &l::NodeInput::default(), |_| {
+        Err::<l::Size<f32>, _>(HostFailure)
+    })
+    .expect_err("the host cannot measure");
+    assert_eq!(
+        chain(&error),
+        [
+            "leaf measurement failed at a standalone request: measurement failed",
+            "the host could not measure the node"
+        ]
+    );
+}
+
+#[test]
+fn compute_leaf_reports_a_negative_measurement_output() {
+    let error = l::compute_leaf(leaf_input(l::Size::NONE), &l::NodeInput::default(), |_| {
+        Ok::<_, HostFailure>(l::Size::new(-1.0, 5.0))
+    })
+    .expect_err("a negative measured width is rejected");
+    assert_eq!(
+        chain(&error),
+        [
+            "leaf measurement failed at a standalone request: layout input is invalid",
+            "a measurement output is invalid",
+            "measurement output rejected on the horizontal axis",
+            "scalar must be non-negative"
+        ]
+    );
+    is_error::<l::LayoutInvalidInputOf<f32>>();
+    is_error::<l::InvalidMeasurementOutputOf<f32>>();
+}
+
+#[test]
+fn compute_layout_reports_a_stretch_width_on_an_absolute_box() {
+    let mut child = block(l::Size::new(
+        l::PreferredSize::STRETCH,
+        l::PreferredSize::AUTO,
+    ));
+    child.position = l::Position::Absolute;
+    let tree = Tree {
+        nodes: vec![
+            (block(l::Size::new(px(200.0), px(200.0))), vec![1]),
+            (child, vec![]),
+        ],
+    };
+    let error = l::compute_layout(&tree, 0, root_request())
+        .expect_err("later-owned absolute sizing is not supported");
+    assert_eq!(
+        chain(&error),
+        [
+            "value resolution failed at node 1: layout does not support a capability its input \
+             requires",
+            "the stretch sizing behavior of the preferred size is not supported by the \
+             positioned algorithm on the horizontal axis"
+        ]
+    );
+    is_error::<l::LayoutUnsupportedCapability>();
+}
+
+#[test]
+fn compute_layout_reports_an_anonymous_block_that_is_not_a_block() {
+    let mut anonymous = l::NodeInput {
+        display: l::Display::Flex,
+        ..l::NodeInput::default()
+    };
+    anonymous.block_generation = l::BlockGeneration::Anonymous;
+    let tree = Tree {
+        nodes: vec![
+            (block(l::Size::new(px(100.0), px(100.0))), vec![1]),
+            (anonymous, vec![]),
+        ],
+    };
+    let error = l::compute_layout(&tree, 0, root_request())
+        .expect_err("an anonymous block must be a block");
+    assert_eq!(
+        chain(&error),
+        [
+            "root layout failed at node 1: layout input is invalid",
+            "an anonymous block has a role an anonymous block cannot have"
+        ]
+    );
+}
+
+#[test]
+fn compute_layout_reports_a_cycle_in_the_tree() {
+    let tree = Tree {
+        nodes: vec![
+            (
+                block(l::Size::new(l::PreferredSize::AUTO, l::PreferredSize::AUTO)),
+                vec![1],
+            ),
+            (
+                block(l::Size::new(l::PreferredSize::AUTO, l::PreferredSize::AUTO)),
+                vec![0],
+            ),
+        ],
+    };
+    let error = l::compute_layout(&tree, 0, root_request()).expect_err("the tree has a cycle");
+    let levels = chain(&error);
+    assert_eq!(levels[1], "the tree contains a cycle");
+    assert!(
+        levels[0].ends_with(": layout input is invalid"),
+        "{levels:?}"
+    );
+}
+
+#[test]
+fn compute_layout_invalidated_reports_a_changed_node_outside_the_tree() {
+    let tree = Tree {
+        nodes: vec![(block(l::Size::new(px(50.0), px(50.0))), vec![])],
+    };
+    let error = l::compute_layout_invalidated(&tree, 0, root_request(), &[5])
+        .expect_err("node 5 is not in the tree");
+    assert_eq!(
+        chain(&error),
+        [
+            "cache invalidation failed at node 5: layout input is invalid",
+            "an invalidated node is not reachable from the layout root"
+        ]
+    );
+}
+
+#[test]
+fn flow_input_rejects_a_root_that_the_request_does_not_name() {
+    let tree = Tree {
+        nodes: vec![
+            (
+                block(l::Size::new(l::PreferredSize::AUTO, l::PreferredSize::AUTO)),
+                vec![1],
+            ),
+            (
+                block(l::Size::new(l::PreferredSize::AUTO, l::PreferredSize::AUTO)),
+                vec![],
+            ),
+        ],
+    };
+    let flow = l::LayoutFlowInput::try_new(&tree, 0, vec![], l::WrappingInput::default(), vec![])
+        .expect("an empty flow is valid");
+    let error = l::compute_layout_with_flow(&flow, 1, root_request())
+        .expect_err("the flow is bound to node 0");
+    assert_eq!(
+        chain(&error),
+        [
+            "text capture failed at node 1: layout input is invalid",
+            "the text binding is invalid",
+            "the text binding names a different root than the layout request"
+        ]
+    );
+}
+
+#[test]
+fn scroll_anchor_selection_error_names_the_unavailable_anchor() {
+    is_error::<l::ScrollAnchorSelectionError<u32>>();
+    let region = l::ScrollRect::try_new(l::Point::new(0.0, 0.0), l::Size::new(10.0, 10.0))
+        .expect("a finite rectangle");
+    let request = l::ScrollAnchorRequestOf::<u32, f32> {
+        scroller: 1,
+        optimal_viewing_region: region,
+        focused: l::ScrollAnchorPriority::Absent,
+        find_match: l::ScrollAnchorPriority::Absent,
+    };
+    let error = l::select_scroll_anchor(request, |_| None)
+        .expect_err("a scroller that cannot be read is an error");
+    assert_eq!(error.to_string(), "scroll anchor node 1 is unavailable");
+    use l::ScrollAnchorSelectionError as E;
+    let table = [
+        (E::FocusUnavailable, "focused-area anchor is unavailable"),
+        (
+            E::FindMatchUnavailable,
+            "active find-match element is unavailable",
+        ),
+        (E::MissingNode(4), "scroll anchor node 4 is unavailable"),
+        (
+            E::InconsistentDomChild {
+                parent: 2,
+                child: 3,
+            },
+            "scroll anchor node 3 is not a DOM child of 2",
+        ),
+        (
+            E::InconsistentPositionedChild { owner: 2, child: 5 },
+            "scroll anchor node 5 has no positioned edge from 2",
+        ),
+        (E::Cycle(6), "scroll anchor traversal repeats ancestor 6"),
+    ];
+    assert_messages(&table, 6);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+// ---------------------------------------------------------------- payload tables
+
+#[test]
+fn layout_invalid_input_names_the_rejected_input_and_sources_the_detail() {
+    use l::LayoutInvalidInputOf as E;
+    let axes = l::FlowAxes::new(l::WritingMode::HorizontalTb, l::Direction::Ltr);
+    let vertical = l::FlowAxes::new(l::WritingMode::VerticalRl, l::Direction::Ltr);
+    let table: Vec<(E<f32>, &str, Option<&str>)> = vec![
+        (
+            E::BlockFragmentationRequest,
+            "the block fragmentation request does not match this root layout",
+            None,
+        ),
+        (
+            E::InlineBaseline(l::InlineBaselineError::UnrepresentableCoordinate),
+            "an inline baseline fact is invalid",
+            Some("a named baseline coordinate cannot be represented in its output frame"),
+        ),
+        (
+            E::GridBaseline(l::GridBaselineError::UnrepresentableCoordinate),
+            "a grid baseline fact is invalid",
+            Some("a grid baseline coordinate cannot be represented in its output frame"),
+        ),
+        (
+            E::RootContext(l::RootContextMismatch::Display),
+            "the root context disagrees with the node's input",
+            Some("the root context's display differs from the node's input"),
+        ),
+        (
+            E::InvalidNumeric { value: f32::NAN },
+            "numeric value NaN is invalid",
+            None,
+        ),
+        (
+            E::InlineFlowMismatch {
+                expected: axes,
+                actual: vertical,
+            },
+            "a visible inline control's flow axes differ from its containing block's",
+            None,
+        ),
+        (
+            E::InlineBoundaryParentMismatch {
+                expected: Some(axes),
+                actual: None,
+            },
+            "an inline box edge's parent flow axes differ from the expected parent flow axes",
+            None,
+        ),
+        (
+            E::InlineBoundaryParentAxis {
+                parent: vertical,
+                formatter: axes,
+            },
+            "an inline box edge's parent runs on a physical axis incompatible with its formatter",
+            None,
+        ),
+        (
+            E::AtomicInlineParticipation {
+                reason: l::AtomicInlineParticipationRoleError::MissingForAtomicInline,
+            },
+            "an atomic inline's participation facts are invalid",
+            Some("an atomic inline requires atomic inline participation facts and has none"),
+        ),
+        (
+            E::NonBoxNodeRole {
+                reason: l::NonBoxNodeRoleError::HasChildren,
+            },
+            "a non-box node's role is invalid",
+            Some("a non-box node has children"),
+        ),
+        (
+            E::FloatExclusionRole {
+                reason: l::FloatExclusionRoleError::Hidden,
+            },
+            "a float exclusion's node role is invalid",
+            Some("a hidden node cannot supply a float exclusion"),
+        ),
+        (
+            E::FloatExclusionProviderOutput {
+                error: l::FloatExclusionIntervalErrorOf::NonFiniteBandMinimum { value: f32::NAN },
+            },
+            "float exclusion provider output is invalid",
+            Some("band minimum must be finite"),
+        ),
+        (
+            E::AnonymousBlockRole,
+            "an anonymous block has a role an anonymous block cannot have",
+            None,
+        ),
+        (
+            E::AnonymousIndentMismatch,
+            "an anonymous block's text indent differs from that of its generating block",
+            None,
+        ),
+        (
+            E::InvalidationNodeNotReachable,
+            "an invalidated node is not reachable from the layout root",
+            None,
+        ),
+        (
+            E::InlineAtomicNotDirectChild,
+            "the atomic inline is not exactly one direct child of its container",
+            None,
+        ),
+        (
+            E::InlineAtomicAmbiguousOccurrence,
+            "the direct child is also reachable along another path from its container",
+            None,
+        ),
+        (E::TreeTopologyCycle, "the tree contains a cycle", None),
+        (
+            E::GridNames(l::NamedGridError::ZeroSpan),
+            "the grid container's named lines or template areas are invalid",
+            Some("a grid span cannot be zero"),
+        ),
+        (
+            E::TextBinding(l::TextBindingError::EmptyRun),
+            "the text binding is invalid",
+            Some("a text run binds no nodes where it needs some"),
+        ),
+        (
+            E::WrappingScope(l::WrappingScopeError::CyclicGap),
+            "the wrapping scopes are invalid",
+            Some("gap anchors form a cycle"),
+        ),
+    ];
+    let rows: Vec<(&E<f32>, &str)> = table.iter().map(|(e, m, _)| (e, *m)).collect();
+    let mut seen = std::collections::BTreeSet::new();
+    assert_eq!(table.len(), 21, "one row per variant but MeasurementOutput");
+    for (error, message, source) in &table {
+        assert_eq!(&error.to_string(), message);
+        assert_text_is_plain(message, "an invalid input");
+        assert!(seen.insert(*message));
+        assert_eq!(error.source().map(|s| s.to_string()).as_deref(), *source);
+    }
+    assert_eq!(rows.len(), 21);
+}
+
+#[test]
+fn layout_unsupported_capability_names_the_missing_capability() {
+    use l::LayoutUnsupportedCapability as E;
+    let table = [
+        (
+            E::BlockFragmentationProfile,
+            "the block fragmentation profile is not supported",
+        ),
+        (
+            E::NonBoxNodeOutsideInlineFlow,
+            "an inline text or text control node has a parent that does not accept inline text",
+        ),
+        (
+            E::NonNumericLength,
+            "a non-numeric length value cannot be used where a number is required",
+        ),
+        (
+            E::InlineAtomicSizePreparation,
+            "size preparation requires a definite root-local block and an empty, in-flow, \
+             unmeasured inline-block",
+        ),
+        (
+            E::NamedGridLanesBaseline {
+                axis: l::GridAxisKind::Row,
+            },
+            "named grid baseline placement on the row axis is not supplied for grid lanes",
+        ),
+        (
+            E::TextWritingMode(l::WritingMode::SidewaysLr),
+            "the sideways-lr writing mode needs a physical adapter that text-backed runs do not \
+             support",
+        ),
+    ];
+    assert_messages(&table, 6);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn existing_complete_errors_keep_their_messages_and_report_no_unwanted_source() {
+    let baseline = [
+        (
+            l::BaselineOffsetResolutionError::MissingOwnLineHeight,
+            "baseline offset requires the child's own used line height",
+        ),
+        (
+            l::BaselineOffsetResolutionError::NonFinite,
+            "baseline offset arithmetic must remain finite",
+        ),
+        (
+            l::BaselineOffsetResolutionError::NonZeroLost,
+            "baseline offset arithmetic lost a nonzero contribution",
+        ),
+    ];
+    assert_messages(&baseline, 3);
+    let track = [
+        (
+            l::TrackRepetitionError::ZeroCount,
+            "track repeat count must be greater than zero",
+        ),
+        (
+            l::TrackRepetitionError::EmptyComponents,
+            "track repeat components must not be empty",
+        ),
+    ];
+    assert_messages(&track, 2);
+    let scalar = [
+        (
+            l::NonNegativeFiniteScalarErrorOf::<f32>::NonFinite { value: f32::NAN },
+            "scalar must be finite",
+        ),
+        (
+            l::NonNegativeFiniteScalarErrorOf::<f32>::Negative { value: -1.0 },
+            "scalar must be non-negative",
+        ),
+    ];
+    assert_messages(&scalar, 2);
+    let finite = [(
+        l::FiniteScalarErrorOf::<f32>::NonFinite { value: f32::NAN },
+        "scalar must be finite",
+    )];
+    assert_messages(&finite, 1);
+    is_error::<l::BaselineOffsetResolutionError>();
+    is_error::<l::CalcSizeConstructionError>();
+    is_error::<l::ComputedOverflowError>();
+    is_error::<l::FiniteScalarErrorOf<f32>>();
+    is_error::<l::FloatExclusionIntervalErrorOf<f32>>();
+    is_error::<l::NonNegativeFiniteScalarErrorOf<f32>>();
+    is_error::<l::OrthogonalFallbackErrorOf<f32>>();
+    is_error::<l::ScrollRectErrorOf<f32>>();
+    is_error::<l::SizingCalculationError>();
+    is_error::<l::TrackRepetitionError>();
+    is_error::<l::ScrollMarginErrorOf<f32>>();
+}
