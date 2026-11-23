@@ -81,6 +81,7 @@ mod script;
 mod select;
 mod shadow;
 mod slot;
+mod source_element;
 mod structural_alignment;
 mod style_policy;
 mod table_cell_column;

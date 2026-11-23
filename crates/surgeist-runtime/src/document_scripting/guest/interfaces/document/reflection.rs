@@ -158,6 +158,7 @@ pub(super) enum Receiver {
     Input,
     Iframe,
     Image,
+    Source,
     Label,
     Legend,
     Marquee,
@@ -292,6 +293,10 @@ impl Receiver {
                 step()?;
                 html_element_is(node, "HTMLImageElement")
             }
+            Self::Source => {
+                step()?;
+                html_element_is(node, "HTMLSourceElement")
+            }
             Self::Input => {
                 step()?;
                 node.as_element().is_some_and(|element| {
@@ -408,6 +413,7 @@ impl Receiver {
             Self::Input => const { &ascii(b"HTMLInputElement required") },
             Self::Iframe => const { &ascii(b"HTMLIFrameElement required") },
             Self::Image => const { &ascii(b"HTMLImageElement required") },
+            Self::Source => const { &ascii(b"HTMLSourceElement required") },
             Self::Label => const { &ascii(b"HTMLLabelElement required") },
             Self::Legend => const { &ascii(b"HTMLLegendElement required") },
             Self::Marquee => const { &ascii(b"HTMLMarqueeElement required") },
@@ -918,7 +924,7 @@ impl Capture {
                         | Reflection::CanvasDimension(_)
                 ) || matches!(
                     (reflection, receiver),
-                    (Reflection::UnsignedLong, Receiver::Image)
+                    (Reflection::UnsignedLong, Receiver::Image | Receiver::Source)
                 ) {
                     let current = self.callbacks.with_read(&owner, &events, |read, _| {
                         receiver.matches(read.node(id)?, || read.step())
@@ -1090,6 +1096,7 @@ impl Capture {
                             | Receiver::Input
                             | Receiver::Iframe
                             | Receiver::Image
+                            | Receiver::Source
                             | Receiver::Label
                             | Receiver::Legend
                             | Receiver::Marquee

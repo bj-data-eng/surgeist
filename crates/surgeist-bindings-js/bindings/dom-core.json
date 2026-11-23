@@ -581,6 +581,18 @@
       ]
     },
     {
+      "id": "HTMLSourceElement.source",
+      "path": "references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md",
+      "anchor": "htmlsourceelement",
+      "block": 0,
+      "sha256": "9957aae9fd7389341fa96602f822eb7dd63e2b8890787ea4ce3e6125006b7683",
+      "revision": "877d6146487f15b15bc8dd0e3c625063a37b456a",
+      "url": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-source-element",
+      "entries": [
+        "HTMLSourceElement"
+      ]
+    },
+    {
       "id": "HTMLHeadElement.source",
       "path": "references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md",
       "anchor": "the&#45;head&#45;element",
@@ -7358,6 +7370,156 @@
         }
       ],
       "partial": true
+    },
+    {
+      "id": "HTMLSourceElement",
+      "kind": "interface",
+      "name": "HTMLSourceElement",
+      "attributes": [
+        {
+          "name": "Exposed",
+          "value": "Window"
+        }
+      ],
+      "members": [
+        {
+          "attributes": [
+            {
+              "name": "HTMLConstructor"
+            }
+          ],
+          "kind": "constructor",
+          "arguments": [],
+          "id": "HTMLSourceElement.constructor:0"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "ReflectURL"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "src",
+          "readonly": false,
+          "id": "HTMLSourceElement.src"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "type",
+          "readonly": false,
+          "id": "HTMLSourceElement.type"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "USVString"
+          },
+          "name": "srcset",
+          "readonly": false,
+          "id": "HTMLSourceElement.srcset"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "sizes",
+          "readonly": false,
+          "id": "HTMLSourceElement.sizes"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "DOMString"
+          },
+          "name": "media",
+          "readonly": false,
+          "id": "HTMLSourceElement.media"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "width",
+          "readonly": false,
+          "id": "HTMLSourceElement.width"
+        },
+        {
+          "attributes": [
+            {
+              "name": "CEReactions"
+            },
+            {
+              "name": "Reflect"
+            }
+          ],
+          "kind": "attribute",
+          "type": {
+            "kind": "named",
+            "name": "unsigned long"
+          },
+          "name": "height",
+          "readonly": false,
+          "id": "HTMLSourceElement.height"
+        }
+      ],
+      "inherits": "HTMLElement"
     },
     {
       "id": "HTMLHeadElement",
@@ -21737,6 +21899,290 @@
       ],
       "requirements": [],
       "result_view": "live"
+    },
+    "HTMLSourceElement.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "htmlsourceelement.constructor.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/element.rs",
+          "symbol": "construct_html_element"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSourceElement.src/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Expose the paired Source src getter using current Document URL evidence from the qualified reader.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-source-src",
+        "issue": 3277
+      }
+    },
+    "HTMLSourceElement.src/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Convert Source src to USVString and apply the canonical edit with its actual media effects.",
+        "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-source-src",
+        "issue": 3277
+      }
+    },
+    "HTMLSourceElement.type/get": {
+      "kind": "native",
+      "adapter": "htmlsourceelement.type.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSourceElement.type/set": {
+      "kind": "native",
+      "adapter": "htmlsourceelement.type.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/image.rs",
+          "symbol": "image_attribute_change"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSourceElement.srcset/get": {
+      "kind": "native",
+      "adapter": "htmlsourceelement.srcset.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSourceElement.srcset/set": {
+      "kind": "native",
+      "adapter": "htmlsourceelement.srcset.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/image.rs",
+          "symbol": "image_attribute_change"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSourceElement.sizes/get": {
+      "kind": "native",
+      "adapter": "htmlsourceelement.sizes.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSourceElement.sizes/set": {
+      "kind": "native",
+      "adapter": "htmlsourceelement.sizes.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/image.rs",
+          "symbol": "image_attribute_change"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSourceElement.media/get": {
+      "kind": "native",
+      "adapter": "htmlsourceelement.media.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSourceElement.media/set": {
+      "kind": "native",
+      "adapter": "htmlsourceelement.media.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/image.rs",
+          "symbol": "image_attribute_change"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSourceElement.width/get": {
+      "kind": "native",
+      "adapter": "htmlsourceelement.width.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "unsigned_long_reflection_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSourceElement.width/set": {
+      "kind": "native",
+      "adapter": "htmlsourceelement.width.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "unsigned_long_setter_value"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/image.rs",
+          "symbol": "image_attribute_change"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSourceElement.height/get": {
+      "kind": "native",
+      "adapter": "htmlsourceelement.height.get",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/attr.rs",
+          "symbol": "get_null_namespace_attribute_with"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "unsigned_long_reflection_with"
+        }
+      ],
+      "requirements": []
+    },
+    "HTMLSourceElement.height/set": {
+      "kind": "native",
+      "adapter": "htmlsourceelement.height.set",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs",
+          "symbol": "reflect_attribute"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/source.rs",
+          "symbol": "set_attribute_ns"
+        },
+        {
+          "owner": "surgeist-html",
+          "path": "crates/surgeist-html/src/internal/attributes/scalar.rs",
+          "symbol": "unsigned_long_setter_value"
+        },
+        {
+          "owner": "surgeist-dom",
+          "path": "crates/surgeist-dom/src/internal/store/image.rs",
+          "symbol": "image_attribute_change"
+        }
+      ],
+      "requirements": []
     },
     "HTMLHeadElement.constructor:0/construct": {
       "kind": "native",
