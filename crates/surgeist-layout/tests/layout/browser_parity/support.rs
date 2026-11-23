@@ -11831,11 +11831,11 @@ mod tests {
         );
         assert_eq!(
             ordinary("NaNpx"),
-            "invalid sizing fixture `NaNpx`: absolute length coefficient must be finite"
+            "invalid sizing fixture `NaNpx`: the absolute length coefficient is invalid"
         );
         assert_eq!(
             calc_size("NaNpx"),
-            "invalid calc-size fixture `NaNpx`: absolute length coefficient must be finite"
+            "invalid calc-size fixture `NaNpx`: the absolute length coefficient is invalid"
         );
         assert_eq!(ordinary("size"), "invalid number `size`");
         assert_eq!(

@@ -115,20 +115,20 @@ fn calc_size_calculation_error_names_the_coefficient_and_sources_the_scalar_erro
     assert_eq!(
         chain(&rejected(f32::NAN, 0.0, 0.0)),
         [
-            "absolute length coefficient must be finite",
+            "the absolute length coefficient is invalid",
             "scalar must be finite"
         ]
     );
     assert_eq!(
         chain(&rejected(0.0, f32::INFINITY, 0.0)),
         [
-            "percentage coefficient must be finite",
+            "the percentage coefficient is invalid",
             "scalar must be finite"
         ]
     );
     assert_eq!(
         chain(&rejected(0.0, 0.0, f32::NEG_INFINITY)),
-        ["size coefficient must be finite", "scalar must be finite"]
+        ["the size coefficient is invalid", "scalar must be finite"]
     );
 }
 
@@ -142,14 +142,14 @@ fn length_percentage_error_names_the_coefficient_and_sources_the_scalar_error() 
     assert_eq!(
         chain(&rejected(f32::NAN, 0.0)),
         [
-            "absolute length coefficient must be finite",
+            "the absolute length coefficient is invalid",
             "scalar must be finite"
         ]
     );
     assert_eq!(
         chain(&rejected(0.0, f32::NAN)),
         [
-            "percentage coefficient must be finite",
+            "the percentage coefficient is invalid",
             "scalar must be finite"
         ]
     );
@@ -164,32 +164,29 @@ fn inline_boundary_edge_error_names_the_component_and_sources_the_scalar_error()
     };
     assert_eq!(
         chain(&rejected(f32::NAN, 0.0, 0.0)),
-        ["inline margin must be finite", "scalar must be finite"]
+        ["the inline margin is invalid", "scalar must be finite"]
     );
     assert_eq!(
         chain(&rejected(0.0, -1.0, 0.0)),
         [
-            "inline border must be finite and nonnegative",
+            "the inline border is invalid",
             "scalar must be non-negative"
         ]
     );
     assert_eq!(
         chain(&rejected(0.0, 0.0, f32::NAN)),
-        [
-            "inline padding must be finite and nonnegative",
-            "scalar must be finite"
-        ]
+        ["the inline padding is invalid", "scalar must be finite"]
     );
     assert_eq!(
         chain(&rejected(0.0, f32::MAX, f32::MAX)),
         [
-            "inline border/padding sum must be finite",
+            "the inline border and padding sum is invalid",
             "scalar must be finite"
         ]
     );
     assert_eq!(
         chain(&rejected(f32::MAX, f32::MAX, 0.0)),
-        ["inline signed flow must be finite", "scalar must be finite"]
+        ["the inline signed flow is invalid", "scalar must be finite"]
     );
 }
 
@@ -206,6 +203,16 @@ fn inline_boundary_edge_errors_without_a_payload_have_no_source() {
     assert_eq!(
         chain(&lost_strip),
         ["inline signed flow lost its nonzero strip extent"]
+    );
+    let metrics = l::InlineMetricsOf::<f32>::try_new(l::InlineBaselineContext::Physical, 1.0, 2.0)
+        .expect("valid metrics");
+    let edge = l::InlineBoundaryEdgeOf::<f32>::try_new(2.0, 0.0, 0.0).expect("a finite margin");
+    let needs_edge =
+        l::InlineBoundaryInputOf::contribution(l::InlineBoundaryKind::Start, metrics, edge)
+            .expect_err("a nonzero margin needs the box-edge operation");
+    assert_eq!(
+        chain(&needs_edge),
+        ["a nonzero inline margin requires an operation that gives the inline box an edge"]
     );
 }
 
@@ -317,7 +324,7 @@ fn error_kinds_state_the_kind_of_failure_and_leave_the_detail_to_the_payload() {
                 value: 0.25,
                 reason: l::LayoutTextNumericError::NonZeroLost,
             },
-            "text value 0.25 failed a numeric conversion",
+            "numeric operation on the value 0.25 failed",
         ),
         (
             K::InternalInvariant(l::LayoutInternalInvariant::MissingStagedUnroundedOutput),
@@ -362,7 +369,7 @@ fn error_chain_names_operation_site_and_kind_and_then_the_payload() {
     assert_eq!(
         chain(&error),
         [
-            "root layout failed at node 7: text value 0.25 failed a numeric conversion",
+            "root layout failed at node 7: numeric operation on the value 0.25 failed",
             "a nonzero contribution was lost to rounding or arithmetic"
         ]
     );
@@ -638,7 +645,7 @@ fn text_binding_error_prints_its_message_and_has_no_source() {
         (E::EmptyRun, "a text run binds no nodes where it needs some"),
         (
             E::RunMembership,
-            "the nodes bound to a text run do not match the run's membership in the tree",
+            "the nodes and source segment bound to a text run are not the run's contiguous window of the flow",
         ),
         (
             E::ParticipantOrder,
@@ -663,7 +670,7 @@ fn text_binding_error_prints_its_message_and_has_no_source() {
         ),
         (
             E::ScopeCoverage,
-            "the scope bindings do not cover the paragraph's scopes exactly once",
+            "a scope of the paragraph's text preparation is missing from the captured inline scopes",
         ),
         (
             E::ScopeAssociation,
@@ -679,7 +686,7 @@ fn text_binding_error_prints_its_message_and_has_no_source() {
         ),
         (
             E::ScopeOccurrenceMembership,
-            "a scope occurrence is not a member of its scope",
+            "a scope occurrence, separator or endpoint is not a member of the scope it names, or is out of order",
         ),
         (
             E::ScopeTreeAmbiguity,
@@ -699,11 +706,11 @@ fn text_binding_error_prints_its_message_and_has_no_source() {
         ),
         (
             E::TabReferenceDirection,
-            "the direction of a tab reference differs from the paragraph's base direction",
+            "the paragraph's container box does not supply the direction of its tab reference",
         ),
         (
             E::TerminalBlockEdge,
-            "a paragraph that ends at a block end is followed by in-flow content",
+            "a paragraph that ends at a block end is followed by a node that is neither display none nor absolutely positioned",
         ),
         (
             E::ComputedBoundaryAssociation,
@@ -727,7 +734,7 @@ fn wrapping_scope_error_prints_its_message_and_has_no_source() {
     let table = [
         (
             E::Allocation,
-            "wrapping could not allocate its working storage",
+            "wrapping could not allocate storage or stay within its text work limits",
         ),
         (
             E::NodeNotReachable,
@@ -743,9 +750,12 @@ fn wrapping_scope_error_prints_its_message_and_has_no_source() {
         ),
         (
             E::DifferentFlow,
-            "a scope, edge or node does not belong to the inline flow it is declared for",
+            "a scope, edge or node is declared for a flow that does not contain it or that cannot be an inline flow",
         ),
-        (E::EndpointOrder, "scope endpoints are not in source order"),
+        (
+            E::EndpointOrder,
+            "scope endpoints are missing or not in source order among the flow's children",
+        ),
         (
             E::DuplicateScope,
             "the same scope is declared more than once",
@@ -773,11 +783,11 @@ fn wrapping_scope_error_prints_its_message_and_has_no_source() {
         ),
         (
             E::UnsupportedIncidence,
-            "a scope has an incidence that cannot be established or that this wrapping does not support",
+            "wrapping does not support this flow, scope or edge, or its incidence cannot be established",
         ),
         (
             E::InconsistentIncidence,
-            "the incidences of the wrapping scopes are inconsistent with the flow",
+            "the wrapping incidence, completion or ordering data is inconsistent or exceeds a representable range",
         ),
         (
             E::ChildOrder,
@@ -785,7 +795,7 @@ fn wrapping_scope_error_prints_its_message_and_has_no_source() {
         ),
         (
             E::MissingChildOrder,
-            "a box that requires a child order has none",
+            "the child order that a box needs is missing or incomplete",
         ),
         (
             E::SourceProcessingRequired,
@@ -797,7 +807,7 @@ fn wrapping_scope_error_prints_its_message_and_has_no_source() {
         ),
         (
             E::PlanMismatch,
-            "the wrapping input does not match the processed wrapping plan",
+            "the wrapping input, receipt or endpoint ranks do not match the processed wrapping plan",
         ),
         (E::MissingBoxMetrics, "a box has no metric contribution"),
         (
@@ -810,18 +820,21 @@ fn wrapping_scope_error_prints_its_message_and_has_no_source() {
         ),
         (
             E::MissingGap,
-            "a gap that the declarations require is missing",
+            "the declarations do not determine the gap that they require",
         ),
-        (E::AmbiguousGap, "a gap is declared ambiguously"),
-        (E::InvalidGapAnchor, "a gap anchor is invalid"),
+        (E::AmbiguousGap, "a gap is not determined uniquely"),
+        (
+            E::InvalidGapAnchor,
+            "a gap anchor, or a box that a gap names, is invalid",
+        ),
         (
             E::ConflictingGap,
-            "two declarations of the same gap conflict",
+            "gap declarations, or the gaps derived from them, contradict each other",
         ),
         (E::CyclicGap, "gap anchors form a cycle"),
         (
             E::GapOutsideSelection,
-            "a gap lies outside the selected scope",
+            "a gap lies outside the selected units",
         ),
         (
             E::DuplicateFamily,
@@ -864,8 +877,7 @@ fn named_grid_error_names_the_rejected_line_name_template_or_placement() {
         ),
         (
             E::UnresolvedAutoRepeatNames { axis: Axis::Column },
-            "the line names of the column axis cannot be resolved against its auto repeat or \
-             subgrid span",
+            "the auto-repeat track count or the subgrid span and line-name count on the column axis cannot be resolved",
         ),
         (E::EmptyTemplateAreas, "the grid template areas are empty"),
         (
@@ -874,7 +886,7 @@ fn named_grid_error_names_the_rejected_line_name_template_or_placement() {
                 expected: 3,
                 actual: 1,
             },
-            "template area row 2 has 1 cells where 3 are expected",
+            "template area row 2 has length 1 where length 3 is expected",
         ),
         (
             E::NonRectangularTemplateArea {
@@ -989,7 +1001,7 @@ fn root_context_mismatch_prints_its_message_and_has_no_source() {
         ),
         (
             E::WritingMode,
-            "the root context's writing mode differs from the node's input",
+            "the root context's non-horizontal writing mode or hypothetical block offset needs a definite local size or an auto-sized grid with fixed tracks",
         ),
         (
             E::Display,
@@ -1049,12 +1061,11 @@ fn block_fragmentation_failure_names_the_fragmentainer_or_the_inconsistent_input
         ),
         (
             E::InvalidGeometry,
-            "a fragmentainer frame or fragment geometry is not finite, non-negative or \
-             consistent",
+            "a fragmentainer frame or fragment geometry is not finite, is negative or is inconsistent",
         ),
         (
             E::InvalidSource,
-            "the supplied fragmentation source is inconsistent with the tree or the request",
+            "the fragmentation source is inconsistent with the tree or the request",
         ),
     ];
     assert_messages(&table, 5);
@@ -1268,7 +1279,7 @@ fn layout_internal_invariant_prints_its_message_and_has_no_source() {
         ),
         (
             E::MissingStagedUnroundedOutput,
-            "a staged unrounded output is missing",
+            "a staged output that the phase needs is missing",
         ),
         (
             E::InvalidOutputGeometryPhase,
@@ -1667,7 +1678,7 @@ fn scroll_anchor_selection_error_names_the_unavailable_anchor() {
         ),
         (
             E::InconsistentPositionedChild { owner: 2, child: 5 },
-            "scroll anchor node 5 has no positioned edge from 2",
+            "scroll anchor node 5 is listed as a positioned child of 2 but is not one",
         ),
         (E::Cycle(6), "scroll anchor traversal repeats ancestor 6"),
     ];

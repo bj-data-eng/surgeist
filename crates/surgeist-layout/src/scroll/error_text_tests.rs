@@ -80,14 +80,17 @@ fn canonical_scroll_geometry_failure_names_the_rejected_fact_and_sources_its_cau
                 fact: CanonicalScrollRectFact::BorderBox,
                 source: rect_cause(),
             },
-            &["the rounded border box is invalid", RECT_TEXT],
+            &["the border box or its rounded form is invalid", RECT_TEXT],
         ),
         (
             C::RoundedRect {
                 fact: CanonicalScrollRectFact::TargetBorderBox,
                 source: rect_cause(),
             },
-            &["the rounded target border box is invalid", RECT_TEXT],
+            &[
+                "the target border box or its rounded form is invalid",
+                RECT_TEXT,
+            ],
         ),
         (
             C::RoundedContribution(coordinate_cause()),

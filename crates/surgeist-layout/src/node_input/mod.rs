@@ -1019,7 +1019,7 @@ mod tests {
             assert_same_non_finite(value, rejected);
             assert_eq!(
                 error.to_string(),
-                format!("scroll margin {edge_name} edge must be finite")
+                format!("scroll margin {edge_name} edge is invalid")
             );
 
             let source = std::error::Error::source(&error)
