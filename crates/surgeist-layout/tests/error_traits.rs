@@ -1958,3 +1958,72 @@ fn applying_a_batch_to_a_sink_that_cannot_prepare_it_reports_the_sink_error() {
         ]
     );
 }
+
+#[test]
+fn compute_layout_reports_scroll_geometry_that_overflows_the_scalar() {
+    // A root block whose border box ends beyond the largest finite scalar: a
+    // left border and padding of f32::MAX on a box of that width.
+    let overflowing = l::Edges {
+        left: l::Length::value(l::LengthPercentageOf::px(f32::MAX).expect("a finite length")),
+        ..l::Edges::all(l::Length::ZERO)
+    };
+    let root = l::NodeInput {
+        padding: overflowing,
+        border: overflowing,
+        ..block(l::Size::new(px(f32::MAX), px(1.0)))
+    };
+    let tree = Tree {
+        nodes: vec![(root, vec![])],
+    };
+    let sizing = native_request::sizing(
+        l::Size::new(Some(f32::MAX), Some(1.0)),
+        l::Size::new(l::SizingOperation::Normal, l::SizingOperation::Normal),
+    );
+    let request = l::LayoutRootRequest::standalone(
+        sizing,
+        l::FlowAxes::new(l::WritingMode::HorizontalTb, l::Direction::Ltr),
+        sizing.orthogonal_fallback().initial_containing_block(),
+    );
+    let error = l::compute_layout(&tree, 0, request)
+        .expect_err("the overflowing scroll geometry is rejected");
+    assert_eq!(
+        chain(&error),
+        [
+            "root layout failed at node 0: scroll geometry rejected",
+            "canonical scroll geometry is invalid",
+            "the scroll box clip or gutter is invalid",
+            "a scroll box rectangle is invalid",
+            "scroll rectangle horizontal size must be finite"
+        ]
+    );
+}
+
+#[test]
+fn a_handle_from_another_result_is_rejected_with_a_handle_error() {
+    is_error::<l::LayoutHandleError>();
+    let tree = Tree {
+        nodes: vec![(block(l::Size::new(px(50.0), px(50.0))), vec![])],
+    };
+    let first = l::compute_layout(&tree, 0, root_request()).expect("a single box lays out");
+    let second = l::compute_layout(&tree, 0, root_request()).expect("a single box lays out");
+    let id = first
+        .node_layout(0)
+        .expect("node 0 has a layout")
+        .single_box()
+        .expect("a block root produces one box")
+        .id()
+        .clone();
+    assert!(first.fragment(&id).is_ok());
+    let error = second
+        .fragment(&id)
+        .expect_err("the handle belongs to the first result");
+    assert_eq!(
+        chain(&error),
+        ["the handle belongs to a different layout result"]
+    );
+    let error = match second.child_fragments(&id) {
+        Ok(_) => panic!("the handle belongs to the first result"),
+        Err(error) => error,
+    };
+    assert_eq!(error, l::LayoutHandleError::WrongResult);
+}
