@@ -7,10 +7,29 @@
 //! context and returns its payload from `source()`, so a full chain is the
 //! `Display` of every level.
 
+#[path = "support/native_request.rs"]
+mod native_request;
+
 use core::convert::Infallible;
 use std::error::Error;
 use surgeist_layout as l;
 use surgeist_text as text;
+
+fn sizing_request() -> l::SizingRequest {
+    native_request::sizing(
+        l::Size::new(Some(100.0), Some(100.0)),
+        l::Size::new(l::SizingOperation::Normal, l::SizingOperation::Normal),
+    )
+}
+
+fn root_request() -> l::LayoutRootRequest {
+    let sizing = sizing_request();
+    l::LayoutRootRequest::standalone(
+        sizing,
+        l::FlowAxes::new(l::WritingMode::HorizontalTb, l::Direction::Ltr),
+        sizing.orthogonal_fallback().initial_containing_block(),
+    )
+}
 
 fn is_error<E: Error + 'static>() {}
 
@@ -889,4 +908,275 @@ fn named_grid_error_names_the_rejected_line_name_template_or_placement() {
     for (error, _) in &table {
         assert!(error.source().is_none());
     }
+}
+
+#[test]
+fn layout_handle_error_prints_its_message_and_has_no_source() {
+    use l::LayoutHandleError as E;
+    is_error::<E>();
+    let table = [
+        (
+            E::WrongResult,
+            "the handle belongs to a different layout result",
+        ),
+        (
+            E::MissingFragment,
+            "the result has no fragment for the handle",
+        ),
+        (
+            E::MissingFragmentainer,
+            "the result has no fragmentainer for the handle",
+        ),
+    ];
+    assert_messages(&table, 3);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn fragmentation_input_error_prints_its_message_and_has_no_source() {
+    use l::FragmentationInputError as E;
+    is_error::<E>();
+    let table = [
+        (
+            E::ContextReference,
+            "a fragmentation context refers to a context that does not exist or does not match",
+        ),
+        (
+            E::ContextCycle,
+            "fragmentation contexts refer to each other in a cycle",
+        ),
+        (
+            E::DuplicateOccurrence,
+            "an occurrence appears more than once",
+        ),
+        (E::InvalidPosition, "a fragmentation position is invalid"),
+        (
+            E::InvalidGeometry,
+            "a fragmentation geometry value is not finite or is negative",
+        ),
+        (
+            E::InvalidLineCounts,
+            "the orphan or widow count of a window is zero",
+        ),
+        (
+            E::InvalidContentGap,
+            "the content gap of a window is negative or not finite",
+        ),
+        (E::InvalidBoundary, "a fragmentation boundary is invalid"),
+        (
+            E::InvalidParentFragmentainer,
+            "a parent fragmentainer does not match its child",
+        ),
+        (E::InvalidWindow, "a fragmentation window is invalid"),
+        (E::InvalidSlice, "a fragmentation slice is invalid"),
+    ];
+    assert_messages(&table, 11);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn root_context_mismatch_prints_its_message_and_has_no_source() {
+    use l::RootContextMismatch as E;
+    is_error::<E>();
+    let table = [
+        (
+            E::Position,
+            "the root context's position differs from the node's input",
+        ),
+        (
+            E::WritingMode,
+            "the root context's writing mode differs from the node's input",
+        ),
+        (
+            E::Display,
+            "the root context's display differs from the node's input",
+        ),
+        (
+            E::BoxEdges,
+            "the root context's box edges differ from the node's input",
+        ),
+        (
+            E::Insets,
+            "the root context's insets differ from the node's input",
+        ),
+        (
+            E::AspectRatio,
+            "the root context's aspect ratio differs from the node's input",
+        ),
+        (
+            E::Replaced,
+            "the root context's replaced-element fact differs from the node's input",
+        ),
+        (
+            E::Float,
+            "the root context's float differs from the node's input",
+        ),
+        (
+            E::Clearance,
+            "the root context's clear differs from the node's input",
+        ),
+        (
+            E::Alignment,
+            "the root context's alignment differs from the node's input",
+        ),
+    ];
+    assert_messages(&table, 10);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn block_fragmentation_failure_names_the_fragmentainer_or_the_inconsistent_input() {
+    use l::BlockFragmentationFailure as E;
+    is_error::<E>();
+    let table = [
+        (
+            E::MissingFragmentainer { index: 3 },
+            "fragmentainer 3 is missing",
+        ),
+        (
+            E::MissingPageSide { index: 2 },
+            "the page side of fragmentainer 2 is missing",
+        ),
+        (
+            E::NoProgress { occurrence: 5 },
+            "fragmentation of occurrence 5 made no progress",
+        ),
+        (
+            E::InvalidGeometry,
+            "a fragmentainer frame or fragment geometry is not finite, non-negative or \
+             consistent",
+        ),
+        (
+            E::InvalidSource,
+            "the supplied fragmentation source is inconsistent with the tree or the request",
+        ),
+    ];
+    assert_messages(&table, 5);
+    for (error, _) in &table {
+        assert!(error.source().is_none());
+    }
+}
+
+#[test]
+fn layout_batch_apply_error_names_the_refusal_and_sources_the_preparation_error() {
+    use l::LayoutBatchApplyError as E;
+    is_error::<E<HostFailure>>();
+    let table: [(E<HostFailure>, &str); 7] = [
+        (
+            E::MissingTarget,
+            "the request names a publication target that the sink does not have",
+        ),
+        (
+            E::TrackedRootRequiresBoundRequest,
+            "the sink tracks this root and the request carries no bound target",
+        ),
+        (
+            E::StaleSource,
+            "the request's source basis differs from the sink's current basis",
+        ),
+        (
+            E::StaleConstraints,
+            "the request's constraints differ from the sink's current constraints",
+        ),
+        (
+            E::Preparation(HostFailure),
+            "the sink failed to prepare the replacement",
+        ),
+        (
+            E::OverlappingRoot,
+            "the nodes of the batch overlap those of another published root",
+        ),
+        (
+            E::Allocation,
+            "layout could not allocate the storage to apply the batch",
+        ),
+    ];
+    assert_messages(&table, 7);
+    for (error, _) in &table {
+        match error {
+            E::Preparation(_) => assert_eq!(
+                chain(error),
+                [
+                    "the sink failed to prepare the replacement",
+                    "the host could not measure the node"
+                ]
+            ),
+            _ => assert!(error.source().is_none()),
+        }
+    }
+}
+
+#[test]
+fn leaf_size_input_error_names_the_rejected_size_and_sources_the_scalar_error() {
+    is_error::<l::LayoutSizeInputErrorOf<f32>>();
+    let context = l::ContainingLayoutContext::new(
+        l::FlowAxes::new(l::WritingMode::HorizontalTb, l::Direction::Ltr),
+        l::ParentFormattingContext::NoParent,
+    );
+    let known = l::ComputeInput::leaf_layout(
+        l::Size::new(Some(-1.0), None),
+        l::Size::NONE,
+        context,
+        sizing_request(),
+    )
+    .expect_err("a negative known size is rejected");
+    assert_eq!(
+        chain(&known),
+        [
+            "the known size on the horizontal axis is invalid",
+            "scalar must be non-negative"
+        ]
+    );
+    let parent = l::ComputeInput::leaf_layout(
+        l::Size::NONE,
+        l::Size::new(None, Some(f32::NAN)),
+        context,
+        sizing_request(),
+    )
+    .expect_err("a non-finite percentage parent size is rejected");
+    assert_eq!(
+        chain(&parent),
+        [
+            "the percentage-parent size on the vertical axis is invalid",
+            "scalar must be finite"
+        ]
+    );
+}
+
+#[test]
+fn block_fragmentation_request_rejects_frames_with_a_fragmentation_input_error() {
+    let frame = |width: f32, breaks| l::BlockFragmentainerOf::<f32> {
+        origin: l::Point::new(0.0, 0.0),
+        size: l::Size::new(width, 50.0),
+        breaks,
+        page_side: None,
+    };
+    let request = |frames| {
+        l::LayoutBoundRequestOf::block_fragmentation(
+            l::LayoutSourceBasis::fresh(),
+            root_request(),
+            l::FragmentationKind::Column,
+            l::FlowAxes::new(l::WritingMode::HorizontalTb, l::Direction::Ltr),
+            frames,
+        )
+        .expect_err("the frames are rejected")
+    };
+    assert_eq!(
+        request(vec![]).to_string(),
+        "a fragmentation window is invalid"
+    );
+    assert_eq!(
+        request(vec![frame(-1.0, l::FragmentationBreakKinds::COLUMN)]).to_string(),
+        "a fragmentation geometry value is not finite or is negative"
+    );
+    assert_eq!(
+        request(vec![frame(10.0, l::FragmentationBreakKinds::PAGE)]).to_string(),
+        "a fragmentation boundary is invalid"
+    );
 }

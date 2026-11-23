@@ -104,6 +104,29 @@ pub enum FragmentationInputError {
     InvalidWindow,
     InvalidSlice,
 }
+
+impl core::fmt::Display for FragmentationInputError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::ContextReference => {
+                "a fragmentation context refers to a context that does not exist or does not match"
+            }
+            Self::ContextCycle => "fragmentation contexts refer to each other in a cycle",
+            Self::DuplicateOccurrence => "an occurrence appears more than once",
+            Self::InvalidPosition => "a fragmentation position is invalid",
+            Self::InvalidGeometry => "a fragmentation geometry value is not finite or is negative",
+            Self::InvalidLineCounts => "the orphan or widow count of a window is zero",
+            Self::InvalidContentGap => "the content gap of a window is negative or not finite",
+            Self::InvalidBoundary => "a fragmentation boundary is invalid",
+            Self::InvalidParentFragmentainer => "a parent fragmentainer does not match its child",
+            Self::InvalidWindow => "a fragmentation window is invalid",
+            Self::InvalidSlice => "a fragmentation slice is invalid",
+        })
+    }
+}
+
+impl std::error::Error for FragmentationInputError {}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum FragmentationError<E> {
     InvalidInput(FragmentationInputError),
