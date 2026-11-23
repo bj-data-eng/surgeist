@@ -137,6 +137,8 @@ mod label_live;
 mod legend_form;
 #[path = "document_scripting/local_html.rs"]
 mod local_html;
+#[path = "document_scripting/map_datalist_collections.rs"]
+mod map_datalist_collections;
 #[path = "document_scripting/marquee.rs"]
 mod marquee;
 #[path = "document_scripting/named_node_map.rs"]
@@ -2616,6 +2618,7 @@ fn main() {
             "input-state" => input_state::attached_input_exposes_canonical_value_modes_and_checkedness(),
             "script-async" => script_async::script_async_keeps_native_flag_and_content_coherent(),
             "script-keywords" => script_async::script_keyword_reflections_follow_exact_live_attributes(),
+            "map-datalist-collections" => map_datalist_collections::map_areas_and_datalist_options_are_distinct_live_associations(),
             "anchor-attributes" => anchor_attributes::anchor_text_and_scalar_attributes_use_live_native_source(),
             "input-list" => input_list::attached_input_list_follows_the_first_exact_id_in_its_tree(),
             "input-attributes" => input_attributes::attached_input_reflections_use_canonical_attributes(),
@@ -2793,6 +2796,7 @@ fn main() {
     anchor_attributes::anchor_text_and_scalar_attributes_use_live_native_source();
     script_async::script_async_keeps_native_flag_and_content_coherent();
     script_async::script_keyword_reflections_follow_exact_live_attributes();
+    map_datalist_collections::map_areas_and_datalist_options_are_distinct_live_associations();
     input_list::attached_input_list_follows_the_first_exact_id_in_its_tree();
     input_attributes::attached_input_reflections_use_canonical_attributes();
     numeric_control_attributes::attached_controls_reflect_native_integer_attributes();
