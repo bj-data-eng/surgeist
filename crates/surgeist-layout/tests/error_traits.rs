@@ -669,7 +669,7 @@ fn text_binding_error_prints_its_message_and_has_no_source() {
         (E::EmptyRun, "a text run binds no nodes where it needs some"),
         (
             E::RunMembership,
-            "the nodes and source segment bound to a text run are not the run's contiguous window of the flow",
+            "the nodes and source segment bound to a text run do not match the run's windows of the flow",
         ),
         (
             E::ParticipantOrder,
@@ -1053,7 +1053,7 @@ fn root_context_mismatch_prints_its_message_and_has_no_source() {
         ),
         (
             E::WritingMode,
-            "the root context's non-horizontal writing mode or hypothetical block offset needs a definite local size or an auto-sized grid with fixed tracks",
+            "the root context's non-horizontal writing mode or hypothetical block offset needs a definite local size, an auto-sized horizontal block or an auto-sized grid with fixed tracks",
         ),
         (
             E::Display,
@@ -1356,7 +1356,7 @@ fn layout_internal_invariant_prints_its_message_and_has_no_source() {
         ),
         (
             E::MissingStagedUnroundedOutput,
-            "a staged output that the phase needs is missing",
+            "a staged output, or the part of it that the phase needs, is missing",
         ),
         (
             E::InvalidOutputGeometryPhase,
