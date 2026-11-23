@@ -1,5 +1,5 @@
 use crate::DefaultScalar;
-use crate::geometry::{FlowAxes, PhysicalAxis};
+use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide};
 use crate::node_input::FloatExclusionIntervalErrorOf;
 use crate::output::RunMode;
 use crate::scalar::LayoutScalar;
@@ -140,6 +140,18 @@ pub enum LayoutTextNumericError {
     NonZeroLost,
 }
 
+impl core::fmt::Display for LayoutTextNumericError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::NonFinite => "the value is not finite",
+            Self::OutOfRange => "the value is outside the representable range",
+            Self::NonZeroLost => "a nonzero contribution was lost to rounding or arithmetic",
+        })
+    }
+}
+
+impl std::error::Error for LayoutTextNumericError {}
+
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
@@ -195,12 +207,112 @@ pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
 
 pub type LayoutInvalidInput = LayoutInvalidInputOf<DefaultScalar>;
 
+impl<S: LayoutScalar> fmt::Display for LayoutInvalidInputOf<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidNumeric { value } => {
+                write!(f, "numeric value {} is invalid", value.to_f64())
+            }
+            Self::BlockFragmentationRequest => {
+                f.write_str("the block fragmentation request does not match this root layout")
+            }
+            Self::InlineBaseline(_) => f.write_str("an inline baseline fact is invalid"),
+            Self::GridBaseline(_) => f.write_str("a grid baseline fact is invalid"),
+            Self::RootContext(_) => f.write_str("the root context disagrees with the node's input"),
+            Self::MeasurementOutput(_) => f.write_str("a measurement output is invalid"),
+            Self::InlineFlowMismatch { .. } => f.write_str(
+                "a visible inline control's flow axes differ from its containing block's",
+            ),
+            Self::InlineBoundaryParentMismatch { .. } => f.write_str(
+                "an inline box edge's parent flow axes differ from the expected parent flow axes",
+            ),
+            Self::InlineBoundaryParentAxis { .. } => f.write_str(
+                "an inline box edge's parent runs on a physical axis incompatible with its \
+                 formatter",
+            ),
+            Self::AtomicInlineParticipation { .. } => {
+                f.write_str("an atomic inline's participation facts are invalid")
+            }
+            Self::NonBoxNodeRole { .. } => f.write_str("a non-box node's role is invalid"),
+            Self::FloatExclusionRole { .. } => {
+                f.write_str("a float exclusion's node role is invalid")
+            }
+            Self::FloatExclusionProviderOutput { .. } => {
+                f.write_str("float exclusion provider output is invalid")
+            }
+            Self::AnonymousBlockRole => {
+                f.write_str("an anonymous block has a role an anonymous block cannot have")
+            }
+            Self::AnonymousIndentMismatch => f.write_str(
+                "an anonymous block's text indent differs from that of its generating block",
+            ),
+            Self::InvalidationNodeNotReachable => {
+                f.write_str("an invalidated node is not reachable from the layout root")
+            }
+            Self::InlineAtomicNotDirectChild => {
+                f.write_str("the atomic inline is not exactly one direct child of its container")
+            }
+            Self::InlineAtomicAmbiguousOccurrence => f.write_str(
+                "the direct child is also reachable along another path from its container",
+            ),
+            Self::TreeTopologyCycle => f.write_str("the tree contains a cycle"),
+            Self::GridNames(_) => {
+                f.write_str("the grid container's named lines or template areas are invalid")
+            }
+            Self::TextBinding(_) => f.write_str("the text binding is invalid"),
+            Self::WrappingScope(_) => f.write_str("the wrapping scopes are invalid"),
+        }
+    }
+}
+
+/// `source()` returns the payload that carries the detail of the invalid input.
+impl<S: LayoutScalar> std::error::Error for LayoutInvalidInputOf<S> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InlineBaseline(error) => Some(error),
+            Self::GridBaseline(error) => Some(error),
+            Self::RootContext(error) => Some(error),
+            Self::MeasurementOutput(error) => Some(error),
+            Self::AtomicInlineParticipation { reason } => Some(reason),
+            Self::NonBoxNodeRole { reason } => Some(reason),
+            Self::FloatExclusionRole { reason } => Some(reason),
+            Self::FloatExclusionProviderOutput { error } => Some(error),
+            Self::GridNames(error) => Some(error),
+            Self::TextBinding(error) => Some(error),
+            Self::WrappingScope(error) => Some(error),
+            Self::BlockFragmentationRequest
+            | Self::InvalidNumeric { .. }
+            | Self::InlineFlowMismatch { .. }
+            | Self::InlineBoundaryParentMismatch { .. }
+            | Self::InlineBoundaryParentAxis { .. }
+            | Self::AnonymousBlockRole
+            | Self::AnonymousIndentMismatch
+            | Self::InvalidationNodeNotReachable
+            | Self::InlineAtomicNotDirectChild
+            | Self::InlineAtomicAmbiguousOccurrence
+            | Self::TreeTopologyCycle => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AtomicInlineParticipationRoleError {
     MissingForAtomicInline,
     UnexpectedForNonAtomic,
     UnexpectedForPreparedAtomic,
 }
+
+impl core::fmt::Display for AtomicInlineParticipationRoleError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::MissingForAtomicInline => "an atomic inline requires atomic inline participation facts and has none",
+            Self::UnexpectedForNonAtomic => "a node that is not an atomic inline carries atomic inline participation facts",
+            Self::UnexpectedForPreparedAtomic => "a prepared atomic inline carries atomic inline participation facts that text already supplies",
+        })
+    }
+}
+
+impl std::error::Error for AtomicInlineParticipationRoleError {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NonBoxNodeRoleError {
@@ -209,12 +321,38 @@ pub enum NonBoxNodeRoleError {
     HasLeafMeasurement,
 }
 
+impl core::fmt::Display for NonBoxNodeRoleError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::NonCanonicalNodeInput => {
+                "a non-box node's node input is not the canonical non-box input"
+            }
+            Self::HasChildren => "a non-box node has children",
+            Self::HasLeafMeasurement => "a non-box node has a leaf measurement",
+        })
+    }
+}
+
+impl std::error::Error for NonBoxNodeRoleError {}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FloatExclusionRoleError {
     Hidden,
     NonFloating,
     Absolute,
 }
+
+impl core::fmt::Display for FloatExclusionRoleError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::Hidden => "a hidden node cannot supply a float exclusion",
+            Self::NonFloating => "a node that does not float cannot supply a float exclusion",
+            Self::Absolute => "an absolutely positioned node cannot supply a float exclusion",
+        })
+    }
+}
+
+impl std::error::Error for FloatExclusionRoleError {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -232,6 +370,36 @@ pub enum LayoutMissingContext {
     ComputedLineBoundaryIncidence,
     AnonymousGeneratingBlock,
 }
+
+impl core::fmt::Display for LayoutMissingContext {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::NamedInlineBaseline => {
+                "the named inline baseline that the request needs is missing"
+            }
+            Self::NamedGridBaseline => {
+                "an eligible grid participant did not establish the requested named baseline"
+            }
+            Self::RequiredBasis => "a definite basis that the operation requires is missing",
+            Self::FloatExclusionProvider => {
+                "the tree supplied no float exclusion interval for the requested query"
+            }
+            Self::TextCapture => "the text capture that the flow requires is missing",
+            Self::TextBlockTail => {
+                "the selected hyphenation needs a completed-block continuation that is missing"
+            }
+            Self::TextOutOfFlowGeometry => {
+                "the geometry of an out-of-flow box that text placement requires is missing"
+            }
+            Self::ComputedLineBoundaryIncidence => {
+                "a computed line boundary has no proved side in the native flow"
+            }
+            Self::AnonymousGeneratingBlock => "an anonymous block has no generating block context",
+        })
+    }
+}
+
+impl std::error::Error for LayoutMissingContext {}
 
 impl core::hash::Hash for PhysicalAxis {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
@@ -376,6 +544,62 @@ pub enum LayoutUnsupportedCapability {
     TextWritingMode(crate::WritingMode),
 }
 
+impl fmt::Display for LayoutUnsupportedCapability {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BlockFragmentationProfile => {
+                f.write_str("the block fragmentation profile is not supported")
+            }
+            Self::NonBoxNodeOutsideInlineFlow => f.write_str(
+                "an inline text or text control node has a parent that does not accept inline text",
+            ),
+            Self::NonNumericLength => {
+                f.write_str("a non-numeric length value cannot be used where a number is required")
+            }
+            Self::InlineAtomicSizePreparation => f.write_str(
+                "size preparation requires a definite root-local block and an empty, in-flow, \
+                 unmeasured inline-block",
+            ),
+            Self::NamedGridLanesBaseline { axis } => write!(
+                f,
+                "named grid baseline placement on the {} axis is not supplied for grid lanes",
+                grid_axis_label(*axis)
+            ),
+            Self::SizingBehavior(unsupported) => {
+                f.write_str("the ")?;
+                match unsupported.behavior() {
+                    SizingBehavior::MinContent => f.write_str("min-content")?,
+                    SizingBehavior::MaxContent => f.write_str("max-content")?,
+                    SizingBehavior::FitContentFunction => f.write_str("fit-content function")?,
+                    SizingBehavior::Stretch => f.write_str("stretch")?,
+                    SizingBehavior::FitContent => f.write_str("fit-content")?,
+                    SizingBehavior::Contain => f.write_str("contain")?,
+                    SizingBehavior::CalcSize(basis) => write!(
+                        f,
+                        "calc-size with the {} basis",
+                        calc_size_basis_label(basis)
+                    )?,
+                }
+                write!(
+                    f,
+                    " sizing behavior of the {} is not supported by the {} algorithm on the {} \
+                     axis",
+                    sizing_property_label(unsupported.property()),
+                    sizing_algorithm_label(unsupported.algorithm()),
+                    physical_axis_label(unsupported.axis())
+                )
+            }
+            Self::TextWritingMode(mode) => write!(
+                f,
+                "the {} writing mode needs a physical adapter that text-backed runs do not support",
+                writing_mode_label(*mode)
+            ),
+        }
+    }
+}
+
+impl std::error::Error for LayoutUnsupportedCapability {}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum LayoutInternalInvariant {
@@ -401,6 +625,52 @@ pub enum LayoutInternalInvariant {
     SubgridBaselineInheritance,
 }
 
+impl core::fmt::Display for LayoutInternalInvariant {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::ResolvedLengthOnFailurePath => {
+                "a length that resolved was reported on a failure path"
+            }
+            Self::InvalidRoundedScrollGeometry => "rounding produced invalid scroll geometry",
+            Self::InvalidRoundedInlineFragmentGeometry => {
+                "inline fitting produced invalid inline fragment geometry"
+            }
+            Self::InvalidInlineBalance => {
+                "a balanced-line basis violated its finite, count or replay invariant"
+            }
+            Self::InvalidInlineTailSelection => {
+                "a paragraph-tail program did not reproduce its retained basis"
+            }
+            Self::InvalidInlinePrettySelection => {
+                "a pretty-wrapping program did not reproduce its retained phase or fallback basis"
+            }
+            Self::InvalidAtomicReceiverBasis => {
+                "a deferred receiving metric no longer matched its retained atomic source"
+            }
+            Self::MissingLeafMeasurementProvider => {
+                "the tree supplied no leaf measurement for a node that requires one"
+            }
+            Self::MissingStagedUnroundedOutput => {
+                "a staged output, or the part of it that the phase needs, is missing"
+            }
+            Self::InvalidOutputGeometryPhase => {
+                "a staged output was consumed in a different geometry or readback phase"
+            }
+            Self::InvalidGridTrackSizing => {
+                "grid contribution incidence or resolved track state violated its native contract"
+            }
+            Self::SubgridTrackInheritance => {
+                "subgrid track inheritance violated its native contract"
+            }
+            Self::SubgridBaselineInheritance => {
+                "subgrid baseline inheritance violated its native contract"
+            }
+        })
+    }
+}
+
+impl std::error::Error for LayoutInternalInvariant {}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct InvalidMeasurementOutputOf<S: LayoutScalar = DefaultScalar> {
     axis: PhysicalAxis,
@@ -408,6 +678,23 @@ pub struct InvalidMeasurementOutputOf<S: LayoutScalar = DefaultScalar> {
 }
 
 pub type InvalidMeasurementOutput = InvalidMeasurementOutputOf<DefaultScalar>;
+
+impl<S: LayoutScalar> fmt::Display for InvalidMeasurementOutputOf<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "measurement output rejected on the {} axis",
+            physical_axis_label(self.axis)
+        )
+    }
+}
+
+/// `source()` returns the scalar validation error of the rejected size.
+impl<S: LayoutScalar> std::error::Error for InvalidMeasurementOutputOf<S> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
 
 impl<S: LayoutScalar> InvalidMeasurementOutputOf<S> {
     pub(crate) const fn new(axis: PhysicalAxis, error: NonNegativeFiniteScalarErrorOf<S>) -> Self {
@@ -630,29 +917,24 @@ scroll_geometry_cause_from! {
 
 impl<S: LayoutScalar> fmt::Display for LayoutScrollGeometryErrorOf<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.cause {
-            ScrollGeometryCauseOf::Canonical(cause) => {
-                write!(f, "canonical scroll geometry rejected: {cause:?}")
-            }
-            ScrollGeometryCauseOf::Contribution(cause) => {
-                write!(f, "scroll contribution rejected: {cause:?}")
-            }
-            ScrollGeometryCauseOf::BoxClipGutter(cause) => {
-                write!(f, "scroll box clip or gutter rejected: {cause:?}")
-            }
-            ScrollGeometryCauseOf::Rect(_) => f.write_str("scroll rectangle rejected"),
-            ScrollGeometryCauseOf::Coordinate(cause) => {
-                write!(f, "scroll coordinate rejected: {cause:?}")
-            }
-        }
+        f.write_str(match &self.cause {
+            ScrollGeometryCauseOf::Canonical(_) => "canonical scroll geometry is invalid",
+            ScrollGeometryCauseOf::Contribution(_) => "a scroll contribution is invalid",
+            ScrollGeometryCauseOf::BoxClipGutter(_) => "a scroll box clip or gutter is invalid",
+            ScrollGeometryCauseOf::Rect(_) => "a scroll rectangle is invalid",
+            ScrollGeometryCauseOf::Coordinate(_) => "a scroll coordinate is invalid",
+        })
     }
 }
 
 impl<S: LayoutScalar> std::error::Error for LayoutScrollGeometryErrorOf<S> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.cause {
+            ScrollGeometryCauseOf::Canonical(cause) => Some(cause),
+            ScrollGeometryCauseOf::Contribution(cause) => Some(cause),
+            ScrollGeometryCauseOf::BoxClipGutter(cause) => Some(cause),
             ScrollGeometryCauseOf::Rect(cause) => Some(cause),
-            _ => None,
+            ScrollGeometryCauseOf::Coordinate(cause) => Some(cause),
         }
     }
 }
@@ -693,38 +975,25 @@ impl<Node: fmt::Debug> fmt::Display for LayoutErrorSiteOf<Node> {
             } => write!(
                 f,
                 "fragment containing block of subject {subject:?} in container {container:?} \
-                 (fragmentainer {fragmentainer_index}, {axis:?} axis)"
+                 (fragmentainer {fragmentainer_index}, {} axis)",
+                physical_axis_label(*axis)
             ),
             Self::Standalone => f.write_str("a standalone request"),
         }
     }
 }
 
-/// Formats the kind without repeating a cause that `source()` of the error
-/// returns: measurement, Text, resource-limit and scroll geometry failures, and
-/// rejected measurement output and float exclusion provider output, state the
-/// failure and the facts the cause does not carry. Other invalid input prints
-/// its `Debug` form.
+/// States what kind of failure occurred. The payload of a wrapper variant
+/// carries the detail and is the `source()` of the failure, so it is not
+/// repeated here.
 impl<S: LayoutScalar, M> fmt::Display for LayoutErrorKindOf<S, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidInput(LayoutInvalidInputOf::MeasurementOutput(output)) => {
-                write!(
-                    f,
-                    "measurement output rejected on the {:?} axis",
-                    output.axis
-                )
-            }
-            Self::InvalidInput(LayoutInvalidInputOf::FloatExclusionProviderOutput { .. }) => {
-                f.write_str("float exclusion provider output rejected")
-            }
-            Self::InvalidInput(input) => write!(f, "invalid input: {input:?}"),
-            Self::BlockFragmentation(failure) => {
-                write!(f, "block fragmentation failed: {failure:?}")
-            }
-            Self::MissingContext(context) => write!(f, "missing context: {context:?}"),
-            Self::UnsupportedCapability(capability) => {
-                write!(f, "unsupported capability: {capability:?}")
+            Self::InvalidInput(_) => f.write_str("layout input is invalid"),
+            Self::BlockFragmentation(_) => f.write_str("block fragmentation failed"),
+            Self::MissingContext(_) => f.write_str("context that layout requires is missing"),
+            Self::UnsupportedCapability(_) => {
+                f.write_str("layout does not support a capability its input requires")
             }
             Self::Measurement(_) => f.write_str("measurement failed"),
             Self::Allocation => f.write_str("layout could not allocate its working storage"),
@@ -741,12 +1010,10 @@ impl<S: LayoutScalar, M> fmt::Display for LayoutErrorKindOf<S, M> {
                 f,
                 "justification advance {advance} exceeds the available line budget {available}"
             ),
-            Self::TextNumeric { value, reason } => {
-                write!(f, "text value {value} is invalid: {reason:?}")
+            Self::TextNumeric { value, .. } => {
+                write!(f, "numeric operation on the value {value} failed")
             }
-            Self::InternalInvariant(invariant) => {
-                write!(f, "internal layout invariant violated: {invariant:?}")
-            }
+            Self::InternalInvariant(_) => f.write_str("an internal layout invariant was violated"),
         }
     }
 }
@@ -769,9 +1036,11 @@ where
     }
 }
 
-/// `source()` returns the measurement error, the Text error of a Text or
-/// resource-limit failure, the scroll geometry cause, the scalar error of a
-/// rejected measurement output, or the rejected float exclusion interval.
+/// `source()` returns the payload of the failure kind: the measurement error,
+/// the Text error of a Text or resource-limit failure, the scroll geometry
+/// cause, the reason of a numeric conversion failure, or the invalid input,
+/// block fragmentation failure, missing context, unsupported capability or
+/// internal invariant. A failure without a deeper cause has no source.
 ///
 /// Beyond `LayoutScalar` (which is `'static`), `Node` needs `Debug` and `M`
 /// needs `Error + 'static`.
@@ -783,20 +1052,105 @@ where
 {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
+            LayoutErrorKindOf::InvalidInput(input) => Some(input),
+            LayoutErrorKindOf::BlockFragmentation(failure) => Some(failure),
+            LayoutErrorKindOf::MissingContext(context) => Some(context),
+            LayoutErrorKindOf::UnsupportedCapability(capability) => Some(capability),
             LayoutErrorKindOf::Measurement(error) => Some(error),
             LayoutErrorKindOf::Text(error) | LayoutErrorKindOf::ResourceLimit(error) => Some(error),
             LayoutErrorKindOf::ScrollGeometry(error) => Some(error),
-            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::MeasurementOutput(output)) => {
-                Some(&output.error)
-            }
-            LayoutErrorKindOf::InvalidInput(
-                LayoutInvalidInputOf::FloatExclusionProviderOutput { error },
-            ) => Some(error),
-            _ => None,
+            LayoutErrorKindOf::TextNumeric { reason, .. } => Some(reason),
+            LayoutErrorKindOf::InternalInvariant(invariant) => Some(invariant),
+            LayoutErrorKindOf::Allocation
+            | LayoutErrorKindOf::TextFeedbackCycle
+            | LayoutErrorKindOf::InlineFeedbackCycle
+            | LayoutErrorKindOf::TextSpacingBudget { .. } => None,
         }
+    }
+}
+
+/// Words that name a physical axis in messages.
+pub(crate) const fn physical_axis_label(axis: PhysicalAxis) -> &'static str {
+    match axis {
+        PhysicalAxis::Horizontal => "horizontal",
+        PhysicalAxis::Vertical => "vertical",
+    }
+}
+
+/// Words that name a logical axis in messages.
+pub(crate) const fn logical_axis_label(axis: LogicalAxis) -> &'static str {
+    match axis {
+        LogicalAxis::Inline => "inline",
+        LogicalAxis::Block => "block",
+    }
+}
+
+/// Words that name a grid axis in messages.
+pub(crate) const fn grid_axis_label(axis: crate::GridAxisKind) -> &'static str {
+    match axis {
+        crate::GridAxisKind::Column => "column",
+        crate::GridAxisKind::Row => "row",
+    }
+}
+
+/// Words that name a writing mode in messages.
+pub(crate) const fn writing_mode_label(mode: crate::WritingMode) -> &'static str {
+    match mode {
+        crate::WritingMode::HorizontalTb => "horizontal-tb",
+        crate::WritingMode::VerticalRl => "vertical-rl",
+        crate::WritingMode::VerticalLr => "vertical-lr",
+        crate::WritingMode::SidewaysRl => "sideways-rl",
+        crate::WritingMode::SidewaysLr => "sideways-lr",
+    }
+}
+
+const fn sizing_property_label(property: SizingProperty) -> &'static str {
+    match property {
+        SizingProperty::Preferred => "preferred size",
+        SizingProperty::Minimum => "minimum size",
+        SizingProperty::Maximum => "maximum size",
+        SizingProperty::FlexBasis => "flex basis",
+    }
+}
+
+const fn sizing_algorithm_label(algorithm: SizingAlgorithm) -> &'static str {
+    match algorithm {
+        SizingAlgorithm::Leaf => "leaf",
+        SizingAlgorithm::Block => "block",
+        SizingAlgorithm::Flex => "flex",
+        SizingAlgorithm::Grid => "grid",
+        SizingAlgorithm::GridLanes => "grid lanes",
+        SizingAlgorithm::Positioned => "positioned",
+    }
+}
+
+const fn calc_size_basis_label(basis: CalcSizeBehaviorBasis) -> &'static str {
+    match basis {
+        CalcSizeBehaviorBasis::Auto => "auto",
+        CalcSizeBehaviorBasis::None => "none",
+        CalcSizeBehaviorBasis::Content => "content",
+        CalcSizeBehaviorBasis::MinContent => "min-content",
+        CalcSizeBehaviorBasis::MaxContent => "max-content",
+        CalcSizeBehaviorBasis::Stretch => "stretch",
+        CalcSizeBehaviorBasis::FitContent => "fit-content",
+        CalcSizeBehaviorBasis::Contain => "contain",
+    }
+}
+
+/// Words that name a physical side in messages.
+pub(crate) const fn physical_side_label(side: PhysicalSide) -> &'static str {
+    match side {
+        PhysicalSide::Top => "top",
+        PhysicalSide::Right => "right",
+        PhysicalSide::Bottom => "bottom",
+        PhysicalSide::Left => "left",
     }
 }
 
 #[cfg(test)]
 #[path = "error_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "error_text_tests.rs"]
+mod text_tests;

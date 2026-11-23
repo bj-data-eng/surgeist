@@ -537,6 +537,27 @@ pub struct LayoutSizeInputErrorOf<S: LayoutScalar = DefaultScalar> {
 
 pub type LayoutSizeInputError = LayoutSizeInputErrorOf<DefaultScalar>;
 
+impl<S: LayoutScalar> core::fmt::Display for LayoutSizeInputErrorOf<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "the {} on the {} axis is invalid",
+            match self.input {
+                LayoutSizeInput::Known => "known size",
+                LayoutSizeInput::PercentageParent => "percentage-parent size",
+            },
+            crate::error::physical_axis_label(self.axis)
+        )
+    }
+}
+
+/// `source()` returns the scalar validation error of the rejected size.
+impl<S: LayoutScalar> std::error::Error for LayoutSizeInputErrorOf<S> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.scalar)
+    }
+}
+
 impl<S: LayoutScalar> LayoutSizeInputErrorOf<S> {
     #[must_use]
     pub const fn input(&self) -> LayoutSizeInput {
@@ -790,6 +811,27 @@ pub enum RootContextMismatch {
     Clearance,
     Alignment,
 }
+
+impl core::fmt::Display for RootContextMismatch {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::Position => "the root context's position differs from the node's input",
+            Self::WritingMode => "a root with a non-horizontal writing mode or a hypothetical block offset needs a definite local size, an auto-sized horizontal block or an auto-sized grid with fixed tracks",
+            Self::Display => "the root context's display differs from the node's input",
+            Self::BoxEdges => "the root context's box edges differ from the node's input",
+            Self::Insets => "the root context's insets differ from the node's input",
+            Self::AspectRatio => "the root context's aspect ratio differs from the node's input",
+            Self::Replaced => {
+                "the root context's replaced-element fact differs from the node's input"
+            }
+            Self::Float => "the root context's float differs from the node's input",
+            Self::Clearance => "the root context's clear differs from the node's input",
+            Self::Alignment => "the root context's alignment differs from the node's input",
+        })
+    }
+}
+
+impl std::error::Error for RootContextMismatch {}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LayoutRootContextOf<S: LayoutScalar = DefaultScalar> {

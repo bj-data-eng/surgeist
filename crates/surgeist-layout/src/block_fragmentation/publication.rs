@@ -61,6 +61,43 @@ pub enum LayoutBatchApplyError<E> {
     Allocation,
 }
 
+impl<E> core::fmt::Display for LayoutBatchApplyError<E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::MissingTarget => {
+                "the request names a publication target that the sink does not have"
+            }
+            Self::TrackedRootRequiresBoundRequest => {
+                "the sink tracks this root and the request carries no bound target"
+            }
+            Self::StaleSource => "the request's source basis differs from the sink's current basis",
+            Self::StaleConstraints => {
+                "the request's constraints differ from the sink's current constraints"
+            }
+            Self::Preparation(_) => "the sink failed to prepare the replacement",
+            Self::OverlappingRoot => {
+                "the nodes of the batch overlap those of another published root"
+            }
+            Self::Allocation => "layout could not allocate the storage to apply the batch",
+        })
+    }
+}
+
+/// `source()` returns the sink's preparation error.
+impl<E: std::error::Error + 'static> std::error::Error for LayoutBatchApplyError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Preparation(error) => Some(error),
+            Self::MissingTarget
+            | Self::TrackedRootRequiresBoundRequest
+            | Self::StaleSource
+            | Self::StaleConstraints
+            | Self::OverlappingRoot
+            | Self::Allocation => None,
+        }
+    }
+}
+
 pub(crate) fn check_target<E>(
     requested: Option<&LayoutTargetBasis>,
     current: Option<&LayoutTargetBasis>,

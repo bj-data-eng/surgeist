@@ -389,6 +389,18 @@ pub enum LayoutHandleError {
     MissingFragmentainer,
 }
 
+impl core::fmt::Display for LayoutHandleError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::WrongResult => "the handle belongs to a different layout result",
+            Self::MissingFragment => "the result has no fragment for the handle",
+            Self::MissingFragmentainer => "the result has no fragmentainer for the handle",
+        })
+    }
+}
+
+impl std::error::Error for LayoutHandleError {}
+
 /// One captured external fragmentainer in this result's root coordinate space.
 #[derive(Clone, Debug)]
 pub struct LayoutFragmentainerOutputOf<S: LayoutScalar = DefaultScalar> {

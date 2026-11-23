@@ -48,6 +48,28 @@ pub enum InlineBaselineError {
     },
 }
 
+impl core::fmt::Display for InlineBaselineError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use crate::error::physical_axis_label;
+        match self {
+            Self::UnrepresentableCoordinate => {
+                f.write_str("a named baseline coordinate cannot be represented in its output frame")
+            }
+            Self::AxisMismatch { expected, actual } => write!(
+                f,
+                "an inline baseline on the {} axis was supplied where the {} axis was expected",
+                physical_axis_label(*actual),
+                physical_axis_label(*expected)
+            ),
+            Self::ReferenceMismatch { .. } => f.write_str(
+                "an inline baseline reference differs from the reference the request expects",
+            ),
+        }
+    }
+}
+
+impl std::error::Error for InlineBaselineError {}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum LineBreakDisplay {
     #[default]
@@ -281,6 +303,37 @@ pub enum InlineMetricsError<S: LayoutScalar = DefaultScalar> {
     BaselineExceedsLineHeight { baseline: S, line_height: S },
 }
 
+impl<S: LayoutScalar> core::fmt::Display for InlineMetricsError<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::NonFinite { value } => {
+                write!(f, "inline metric {} is not finite", value.to_f64())
+            }
+            Self::Negative { value } => write!(f, "inline metric {} is negative", value.to_f64()),
+            Self::BaselineExceedsLineExtent {
+                baseline,
+                line_extent,
+            } => write!(
+                f,
+                "baseline {} exceeds the line extent {}",
+                baseline.to_f64(),
+                line_extent.to_f64()
+            ),
+            Self::BaselineExceedsLineHeight {
+                baseline,
+                line_height,
+            } => write!(
+                f,
+                "baseline {} exceeds the line height {}",
+                baseline.to_f64(),
+                line_height.to_f64()
+            ),
+        }
+    }
+}
+
+impl<S: LayoutScalar> std::error::Error for InlineMetricsError<S> {}
+
 impl<S: LayoutScalar> InlineMetricsOf<S> {
     pub fn try_new(
         reference: InlineBaselineContext,
@@ -498,22 +551,34 @@ pub type InlineBoundaryEdgeError = InlineBoundaryEdgeErrorOf<DefaultScalar>;
 impl<S: LayoutScalar> core::fmt::Display for InlineBoundaryEdgeErrorOf<S> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(match self {
-            Self::InvalidMargin(_) => "inline margin must be finite",
-            Self::InvalidBorder(_) => "inline border must be finite and nonnegative",
-            Self::InvalidPadding(_) => "inline padding must be finite and nonnegative",
-            Self::InvalidBorderPaddingAdvance(_) => "inline border/padding sum must be finite",
-            Self::InvalidFlowAdvance(_) => "inline signed flow must be finite",
+            Self::InvalidMargin(_) => "the inline margin is invalid",
+            Self::InvalidBorder(_) => "the inline border is invalid",
+            Self::InvalidPadding(_) => "the inline padding is invalid",
+            Self::InvalidBorderPaddingAdvance(_) => "the inline border and padding sum is invalid",
+            Self::InvalidFlowAdvance(_) => "the inline signed flow is invalid",
             Self::LostMargin { .. } => "inline signed flow lost its nonzero margin",
             Self::LostBorderPaddingAdvance { .. } => {
                 "inline signed flow lost its nonzero strip extent"
             }
             Self::MarginRequiresBoxEdge { .. } => {
-                "a nonzero inline margin requires a BoxEdge operation"
+                "a nonzero inline margin requires an operation that gives the inline box an edge"
             }
         })
     }
 }
-impl<S: LayoutScalar> std::error::Error for InlineBoundaryEdgeErrorOf<S> {}
+impl<S: LayoutScalar> std::error::Error for InlineBoundaryEdgeErrorOf<S> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidMargin(error)
+            | Self::InvalidBorderPaddingAdvance(error)
+            | Self::InvalidFlowAdvance(error) => Some(error),
+            Self::InvalidBorder(error) | Self::InvalidPadding(error) => Some(error),
+            Self::LostMargin { .. }
+            | Self::LostBorderPaddingAdvance { .. }
+            | Self::MarginRequiresBoxEdge { .. } => None,
+        }
+    }
+}
 
 /// Actual used signed margin and nonnegative border/padding on one inline side.
 /// Both sums are computed and validated in this computation's native scalar lane.

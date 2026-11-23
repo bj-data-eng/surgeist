@@ -245,6 +245,33 @@ pub enum BlockFragmentationFailure {
     InvalidSource,
 }
 
+impl core::fmt::Display for BlockFragmentationFailure {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::MissingFragmentainer { index } => {
+                write!(f, "fragmentainer {index} is missing")
+            }
+            Self::MissingPageSide { index } => {
+                write!(f, "the page side of fragmentainer {index} is missing")
+            }
+            Self::NoProgress { occurrence } => {
+                write!(
+                    f,
+                    "fragmentation of occurrence {occurrence} made no progress"
+                )
+            }
+            Self::InvalidGeometry => f.write_str(
+                "a fragmentainer frame or fragment geometry is not finite, is negative or is inconsistent",
+            ),
+            Self::InvalidSource => f.write_str(
+                "the fragmentation source is inconsistent with the tree or the request",
+            ),
+        }
+    }
+}
+
+impl std::error::Error for BlockFragmentationFailure {}
+
 /// Used auto-box allocation produced by an accepted native fragment pass.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FragmentBoxAllocation<Node, S: LayoutScalar> {

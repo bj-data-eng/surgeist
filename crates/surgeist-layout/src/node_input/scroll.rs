@@ -341,7 +341,7 @@ impl<S: LayoutScalar> core::fmt::Display for ScrollMarginErrorOf<S> {
             PhysicalSide::Bottom => "bottom",
             PhysicalSide::Left => "left",
         };
-        write!(f, "scroll margin {edge} edge must be finite")
+        write!(f, "scroll margin {edge} edge is invalid")
     }
 }
 

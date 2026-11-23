@@ -39,6 +39,9 @@ pub enum surgeist_layout::AtomicInlineParticipationRoleError
 pub surgeist_layout::AtomicInlineParticipationRoleError::MissingForAtomicInline
 pub surgeist_layout::AtomicInlineParticipationRoleError::UnexpectedForNonAtomic
 pub surgeist_layout::AtomicInlineParticipationRoleError::UnexpectedForPreparedAtomic
+impl core::error::Error for surgeist_layout::AtomicInlineParticipationRoleError
+impl core::fmt::Display for surgeist_layout::AtomicInlineParticipationRoleError
+pub fn surgeist_layout::AtomicInlineParticipationRoleError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::AvailableSpaceOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::AvailableSpaceOf::Definite(surgeist_layout::NonNegativeFiniteOf<S>)
 pub surgeist_layout::AvailableSpaceOf::Indefinite
@@ -71,6 +74,9 @@ pub surgeist_layout::BlockFragmentationFailure::MissingPageSide
 pub surgeist_layout::BlockFragmentationFailure::MissingPageSide::index: usize
 pub surgeist_layout::BlockFragmentationFailure::NoProgress
 pub surgeist_layout::BlockFragmentationFailure::NoProgress::occurrence: usize
+impl core::error::Error for surgeist_layout::BlockFragmentationFailure
+impl core::fmt::Display for surgeist_layout::BlockFragmentationFailure
+pub fn surgeist_layout::BlockFragmentationFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::BlockGeneration
 pub surgeist_layout::BlockGeneration::Anonymous
 pub surgeist_layout::BlockGeneration::Principal
@@ -91,6 +97,7 @@ pub surgeist_layout::CalcSizeCalculationErrorOf::InvalidAbsolutePx(surgeist_layo
 pub surgeist_layout::CalcSizeCalculationErrorOf::InvalidPercentFraction(surgeist_layout::FiniteScalarErrorOf<S>)
 pub surgeist_layout::CalcSizeCalculationErrorOf::InvalidSizeFraction(surgeist_layout::FiniteScalarErrorOf<S>)
 impl<S: surgeist_layout::LayoutScalar> core::error::Error for surgeist_layout::CalcSizeCalculationErrorOf<S>
+pub fn surgeist_layout::CalcSizeCalculationErrorOf<S>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl<S: surgeist_layout::LayoutScalar> core::fmt::Display for surgeist_layout::CalcSizeCalculationErrorOf<S>
 pub fn surgeist_layout::CalcSizeCalculationErrorOf<S>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::CalcSizeConstructionError
@@ -201,6 +208,9 @@ pub enum surgeist_layout::FloatExclusionRoleError
 pub surgeist_layout::FloatExclusionRoleError::Absolute
 pub surgeist_layout::FloatExclusionRoleError::Hidden
 pub surgeist_layout::FloatExclusionRoleError::NonFloating
+impl core::error::Error for surgeist_layout::FloatExclusionRoleError
+impl core::fmt::Display for surgeist_layout::FloatExclusionRoleError
+pub fn surgeist_layout::FloatExclusionRoleError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::FragmentCoordinateSpace
 pub surgeist_layout::FragmentCoordinateSpace::Fragment(surgeist_layout::LayoutFragmentId)
 pub surgeist_layout::FragmentCoordinateSpace::Fragmentainer(surgeist_layout::LayoutFragmentainerId)
@@ -239,6 +249,9 @@ pub surgeist_layout::FragmentationInputError::InvalidParentFragmentainer
 pub surgeist_layout::FragmentationInputError::InvalidPosition
 pub surgeist_layout::FragmentationInputError::InvalidSlice
 pub surgeist_layout::FragmentationInputError::InvalidWindow
+impl core::error::Error for surgeist_layout::FragmentationInputError
+impl core::fmt::Display for surgeist_layout::FragmentationInputError
+pub fn surgeist_layout::FragmentationInputError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::FragmentationKind
 pub surgeist_layout::FragmentationKind::Column
 pub surgeist_layout::FragmentationKind::Page
@@ -274,6 +287,9 @@ pub surgeist_layout::GridBaselineError::AxisMismatch
 pub surgeist_layout::GridBaselineError::AxisMismatch::actual: surgeist_layout::PhysicalAxis
 pub surgeist_layout::GridBaselineError::AxisMismatch::expected: surgeist_layout::PhysicalAxis
 pub surgeist_layout::GridBaselineError::UnrepresentableCoordinate
+impl core::error::Error for surgeist_layout::GridBaselineError
+impl core::fmt::Display for surgeist_layout::GridBaselineError
+pub fn surgeist_layout::GridBaselineError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::GridBaselineReference
 pub surgeist_layout::GridBaselineReference::Named(surgeist_text::font::metrics::baseline::FontBaseline)
 pub surgeist_layout::GridBaselineReference::Physical
@@ -302,6 +318,9 @@ pub surgeist_layout::InlineBaselineError::ReferenceMismatch
 pub surgeist_layout::InlineBaselineError::ReferenceMismatch::actual: surgeist_layout::InlineBaselineContext
 pub surgeist_layout::InlineBaselineError::ReferenceMismatch::expected: surgeist_layout::InlineBaselineContext
 pub surgeist_layout::InlineBaselineError::UnrepresentableCoordinate
+impl core::error::Error for surgeist_layout::InlineBaselineError
+impl core::fmt::Display for surgeist_layout::InlineBaselineError
+pub fn surgeist_layout::InlineBaselineError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::InlineBoundaryEdgeErrorOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::InlineBoundaryEdgeErrorOf::InvalidBorder(surgeist_layout::NonNegativeFiniteScalarErrorOf<S>)
 pub surgeist_layout::InlineBoundaryEdgeErrorOf::InvalidBorderPaddingAdvance(surgeist_layout::FiniteScalarErrorOf<S>)
@@ -315,6 +334,7 @@ pub surgeist_layout::InlineBoundaryEdgeErrorOf::LostMargin::value: S
 pub surgeist_layout::InlineBoundaryEdgeErrorOf::MarginRequiresBoxEdge
 pub surgeist_layout::InlineBoundaryEdgeErrorOf::MarginRequiresBoxEdge::margin: S
 impl<S: surgeist_layout::LayoutScalar> core::error::Error for surgeist_layout::InlineBoundaryEdgeErrorOf<S>
+pub fn surgeist_layout::InlineBoundaryEdgeErrorOf<S>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl<S: surgeist_layout::LayoutScalar> core::fmt::Display for surgeist_layout::InlineBoundaryEdgeErrorOf<S>
 pub fn surgeist_layout::InlineBoundaryEdgeErrorOf<S>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::InlineBoundaryKind
@@ -369,6 +389,9 @@ pub surgeist_layout::InlineMetricsError::Negative
 pub surgeist_layout::InlineMetricsError::Negative::value: S
 pub surgeist_layout::InlineMetricsError::NonFinite
 pub surgeist_layout::InlineMetricsError::NonFinite::value: S
+impl<S: surgeist_layout::LayoutScalar> core::error::Error for surgeist_layout::InlineMetricsError<S>
+impl<S: surgeist_layout::LayoutScalar> core::fmt::Display for surgeist_layout::InlineMetricsError<S>
+pub fn surgeist_layout::InlineMetricsError<S>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::ItemAlignmentPosition
 pub surgeist_layout::ItemAlignmentPosition::Center
 pub surgeist_layout::ItemAlignmentPosition::End
@@ -385,6 +408,10 @@ pub surgeist_layout::LayoutBatchApplyError::Preparation(E)
 pub surgeist_layout::LayoutBatchApplyError::StaleConstraints
 pub surgeist_layout::LayoutBatchApplyError::StaleSource
 pub surgeist_layout::LayoutBatchApplyError::TrackedRootRequiresBoundRequest
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_layout::LayoutBatchApplyError<E>
+pub fn surgeist_layout::LayoutBatchApplyError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E> core::fmt::Display for surgeist_layout::LayoutBatchApplyError<E>
+pub fn surgeist_layout::LayoutBatchApplyError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_layout::LayoutErrorKindOf<S: surgeist_layout::LayoutScalar, M>
 pub surgeist_layout::LayoutErrorKindOf::Allocation
 pub surgeist_layout::LayoutErrorKindOf::BlockFragmentation(surgeist_layout::BlockFragmentationFailure)
@@ -423,6 +450,9 @@ pub enum surgeist_layout::LayoutHandleError
 pub surgeist_layout::LayoutHandleError::MissingFragment
 pub surgeist_layout::LayoutHandleError::MissingFragmentainer
 pub surgeist_layout::LayoutHandleError::WrongResult
+impl core::error::Error for surgeist_layout::LayoutHandleError
+impl core::fmt::Display for surgeist_layout::LayoutHandleError
+pub fn surgeist_layout::LayoutHandleError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::LayoutInputOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::LayoutInputOf::Box(alloc::boxed::Box<surgeist_layout::NodeInputOf<S>>)
 pub surgeist_layout::LayoutInputOf::InlineBoundary(surgeist_layout::InlineBoundaryInputOf<S>)
@@ -467,6 +497,9 @@ pub surgeist_layout::LayoutInternalInvariant::MissingStagedUnroundedOutput
 pub surgeist_layout::LayoutInternalInvariant::ResolvedLengthOnFailurePath
 pub surgeist_layout::LayoutInternalInvariant::SubgridBaselineInheritance
 pub surgeist_layout::LayoutInternalInvariant::SubgridTrackInheritance
+impl core::error::Error for surgeist_layout::LayoutInternalInvariant
+impl core::fmt::Display for surgeist_layout::LayoutInternalInvariant
+pub fn surgeist_layout::LayoutInternalInvariant::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_layout::LayoutInvalidInputOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::LayoutInvalidInputOf::AnonymousBlockRole
 pub surgeist_layout::LayoutInvalidInputOf::AnonymousIndentMismatch
@@ -501,6 +534,10 @@ pub surgeist_layout::LayoutInvalidInputOf::RootContext(surgeist_layout::RootCont
 pub surgeist_layout::LayoutInvalidInputOf::TextBinding(surgeist_layout::TextBindingError)
 pub surgeist_layout::LayoutInvalidInputOf::TreeTopologyCycle
 pub surgeist_layout::LayoutInvalidInputOf::WrappingScope(surgeist_layout::WrappingScopeError)
+impl<S: surgeist_layout::LayoutScalar> core::error::Error for surgeist_layout::LayoutInvalidInputOf<S>
+pub fn surgeist_layout::LayoutInvalidInputOf<S>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<S: surgeist_layout::LayoutScalar> core::fmt::Display for surgeist_layout::LayoutInvalidInputOf<S>
+pub fn surgeist_layout::LayoutInvalidInputOf<S>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_layout::LayoutMissingContext
 pub surgeist_layout::LayoutMissingContext::AnonymousGeneratingBlock
 pub surgeist_layout::LayoutMissingContext::ComputedLineBoundaryIncidence
@@ -511,6 +548,9 @@ pub surgeist_layout::LayoutMissingContext::RequiredBasis
 pub surgeist_layout::LayoutMissingContext::TextBlockTail
 pub surgeist_layout::LayoutMissingContext::TextCapture
 pub surgeist_layout::LayoutMissingContext::TextOutOfFlowGeometry
+impl core::error::Error for surgeist_layout::LayoutMissingContext
+impl core::fmt::Display for surgeist_layout::LayoutMissingContext
+pub fn surgeist_layout::LayoutMissingContext::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::LayoutOperation
 pub surgeist_layout::LayoutOperation::CacheAccess
 pub surgeist_layout::LayoutOperation::CacheInvalidation
@@ -545,6 +585,9 @@ pub enum surgeist_layout::LayoutTextNumericError
 pub surgeist_layout::LayoutTextNumericError::NonFinite
 pub surgeist_layout::LayoutTextNumericError::NonZeroLost
 pub surgeist_layout::LayoutTextNumericError::OutOfRange
+impl core::error::Error for surgeist_layout::LayoutTextNumericError
+impl core::fmt::Display for surgeist_layout::LayoutTextNumericError
+pub fn surgeist_layout::LayoutTextNumericError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_layout::LayoutUnsupportedCapability
 pub surgeist_layout::LayoutUnsupportedCapability::BlockFragmentationProfile
 pub surgeist_layout::LayoutUnsupportedCapability::InlineAtomicSizePreparation
@@ -554,6 +597,9 @@ pub surgeist_layout::LayoutUnsupportedCapability::NonBoxNodeOutsideInlineFlow
 pub surgeist_layout::LayoutUnsupportedCapability::NonNumericLength
 pub surgeist_layout::LayoutUnsupportedCapability::SizingBehavior(surgeist_layout::UnsupportedSizingBehavior)
 pub surgeist_layout::LayoutUnsupportedCapability::TextWritingMode(surgeist_layout::WritingMode)
+impl core::error::Error for surgeist_layout::LayoutUnsupportedCapability
+impl core::fmt::Display for surgeist_layout::LayoutUnsupportedCapability
+pub fn surgeist_layout::LayoutUnsupportedCapability::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::LengthAutoOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::LengthAutoOf::Auto
 pub surgeist_layout::LengthAutoOf::Value(surgeist_layout::LengthPercentageOf<S>)
@@ -599,6 +645,7 @@ pub enum surgeist_layout::LengthPercentageErrorOf<S: surgeist_layout::LayoutScal
 pub surgeist_layout::LengthPercentageErrorOf::InvalidAbsolutePx(surgeist_layout::FiniteScalarErrorOf<S>)
 pub surgeist_layout::LengthPercentageErrorOf::InvalidPercentFraction(surgeist_layout::FiniteScalarErrorOf<S>)
 impl<S: surgeist_layout::LayoutScalar> core::error::Error for surgeist_layout::LengthPercentageErrorOf<S>
+pub fn surgeist_layout::LengthPercentageErrorOf<S>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl<S: surgeist_layout::LayoutScalar> core::fmt::Display for surgeist_layout::LengthPercentageErrorOf<S>
 pub fn surgeist_layout::LengthPercentageErrorOf<S>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::LengthResolutionStatus<S: surgeist_layout::LayoutScalar>
@@ -689,6 +736,9 @@ pub surgeist_layout::NamedGridError::ZeroLine
 pub surgeist_layout::NamedGridError::ZeroRepeat
 pub surgeist_layout::NamedGridError::ZeroRepeat::axis: surgeist_layout::GridAxisKind
 pub surgeist_layout::NamedGridError::ZeroSpan
+impl core::error::Error for surgeist_layout::NamedGridError
+impl core::fmt::Display for surgeist_layout::NamedGridError
+pub fn surgeist_layout::NamedGridError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::NearestScrollportOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::NearestScrollportOf::Absent
 pub surgeist_layout::NearestScrollportOf::Present(surgeist_layout::Size<surgeist_layout::OrthogonalFallbackLimitOf<S>>)
@@ -711,6 +761,9 @@ pub enum surgeist_layout::NonBoxNodeRoleError
 pub surgeist_layout::NonBoxNodeRoleError::HasChildren
 pub surgeist_layout::NonBoxNodeRoleError::HasLeafMeasurement
 pub surgeist_layout::NonBoxNodeRoleError::NonCanonicalNodeInput
+impl core::error::Error for surgeist_layout::NonBoxNodeRoleError
+impl core::fmt::Display for surgeist_layout::NonBoxNodeRoleError
+pub fn surgeist_layout::NonBoxNodeRoleError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::NonNegativeFiniteScalarErrorOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::NonNegativeFiniteScalarErrorOf::Negative
 pub surgeist_layout::NonNegativeFiniteScalarErrorOf::Negative::value: S
@@ -844,6 +897,9 @@ pub surgeist_layout::RootContextMismatch::Insets
 pub surgeist_layout::RootContextMismatch::Position
 pub surgeist_layout::RootContextMismatch::Replaced
 pub surgeist_layout::RootContextMismatch::WritingMode
+impl core::error::Error for surgeist_layout::RootContextMismatch
+impl core::fmt::Display for surgeist_layout::RootContextMismatch
+pub fn surgeist_layout::RootContextMismatch::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::ScrollAnchorBoxOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::ScrollAnchorBoxOf::Eligible(surgeist_layout::ScrollRectOf<S>)
 pub surgeist_layout::ScrollAnchorBoxOf::Inline(core::option::Option<surgeist_layout::ScrollRectOf<S>>)
@@ -911,6 +967,9 @@ pub surgeist_layout::ScrollCoordinateErrorOf::NonFinitePhysicalRangeMaximum::val
 pub surgeist_layout::ScrollCoordinateErrorOf::NonFinitePhysicalRangeMinimum
 pub surgeist_layout::ScrollCoordinateErrorOf::NonFinitePhysicalRangeMinimum::axis: surgeist_layout::PhysicalAxis
 pub surgeist_layout::ScrollCoordinateErrorOf::NonFinitePhysicalRangeMinimum::value: S
+impl<S: surgeist_layout::LayoutScalar> core::error::Error for surgeist_layout::ScrollCoordinateErrorOf<S>
+impl<S: surgeist_layout::LayoutScalar> core::fmt::Display for surgeist_layout::ScrollCoordinateErrorOf<S>
+pub fn surgeist_layout::ScrollCoordinateErrorOf<S>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::ScrollPaddingValueOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::ScrollPaddingValueOf::Auto
 pub surgeist_layout::ScrollPaddingValueOf::Value(surgeist_layout::LengthPercentageOf<S>)
@@ -1050,6 +1109,9 @@ pub surgeist_layout::TextBindingError::ScopeOccurrenceMembership
 pub surgeist_layout::TextBindingError::ScopeTreeAmbiguity
 pub surgeist_layout::TextBindingError::TabReferenceDirection
 pub surgeist_layout::TextBindingError::TerminalBlockEdge
+impl core::error::Error for surgeist_layout::TextBindingError
+impl core::fmt::Display for surgeist_layout::TextBindingError
+pub fn surgeist_layout::TextBindingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::TextGroupAlign
 pub surgeist_layout::TextGroupAlign::Center
 pub surgeist_layout::TextGroupAlign::End
@@ -1161,6 +1223,9 @@ pub surgeist_layout::WrappingScopeError::PlanMismatch
 pub surgeist_layout::WrappingScopeError::SourceAssociation
 pub surgeist_layout::WrappingScopeError::SourceProcessingRequired
 pub surgeist_layout::WrappingScopeError::UnsupportedIncidence
+impl core::error::Error for surgeist_layout::WrappingScopeError
+impl core::fmt::Display for surgeist_layout::WrappingScopeError
+pub fn surgeist_layout::WrappingScopeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::WrappingScopeInput<Node>
 pub surgeist_layout::WrappingScopeInput::Captured
 pub surgeist_layout::WrappingScopeInput::Captured::edges: surgeist_layout::WrapEdges
@@ -1591,6 +1656,10 @@ pub struct surgeist_layout::InvalidMeasurementOutputOf<S: surgeist_layout::Layou
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::InvalidMeasurementOutputOf<S>
 pub const fn surgeist_layout::InvalidMeasurementOutputOf<S>::axis(self) -> surgeist_layout::PhysicalAxis
 pub const fn surgeist_layout::InvalidMeasurementOutputOf<S>::error(self) -> surgeist_layout::NonNegativeFiniteScalarErrorOf<S>
+impl<S: surgeist_layout::LayoutScalar> core::error::Error for surgeist_layout::InvalidMeasurementOutputOf<S>
+pub fn surgeist_layout::InvalidMeasurementOutputOf<S>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<S: surgeist_layout::LayoutScalar> core::fmt::Display for surgeist_layout::InvalidMeasurementOutputOf<S>
+pub fn surgeist_layout::InvalidMeasurementOutputOf<S>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_layout::ItemOrder(_)
 impl surgeist_layout::ItemOrder
 pub const surgeist_layout::ItemOrder::ZERO: Self
@@ -1691,6 +1760,10 @@ impl<S: surgeist_layout::LayoutScalar> surgeist_layout::LayoutSizeInputErrorOf<S
 pub const fn surgeist_layout::LayoutSizeInputErrorOf<S>::axis(&self) -> surgeist_layout::PhysicalAxis
 pub const fn surgeist_layout::LayoutSizeInputErrorOf<S>::input(&self) -> surgeist_layout::LayoutSizeInput
 pub const fn surgeist_layout::LayoutSizeInputErrorOf<S>::scalar(&self) -> surgeist_layout::NonNegativeFiniteScalarErrorOf<S>
+impl<S: surgeist_layout::LayoutScalar> core::error::Error for surgeist_layout::LayoutSizeInputErrorOf<S>
+pub fn surgeist_layout::LayoutSizeInputErrorOf<S>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<S: surgeist_layout::LayoutScalar> core::fmt::Display for surgeist_layout::LayoutSizeInputErrorOf<S>
+pub fn surgeist_layout::LayoutSizeInputErrorOf<S>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_layout::LayoutSourceBasis(_)
 impl surgeist_layout::LayoutSourceBasis
 pub fn surgeist_layout::LayoutSourceBasis::fresh() -> Self

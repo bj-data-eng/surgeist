@@ -189,6 +189,64 @@ pub enum TextBindingError {
     InlineBoxFragmentsRequireFlow,
 }
 
+impl core::fmt::Display for TextBindingError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::EmptyRun => "a text run binds no nodes where it needs some",
+            Self::RunMembership => {
+                "the nodes and source segment bound to a text run do not match the run's windows of the flow"
+            }
+            Self::ParticipantOrder => "the participants of a text run are not in source order",
+            Self::DuplicateRunNode => "a node appears more than once in a text run",
+            Self::OverlappingParagraphs => "two text paragraphs overlap",
+            Self::OriginCoverage => {
+                "the origin bindings do not cover the paragraph's origins exactly once"
+            }
+            Self::AtomicCoverage => {
+                "the atomic bindings do not cover the paragraph's atomic boxes exactly once"
+            }
+            Self::ControlCoverage => {
+                "the control bindings do not cover the paragraph's controls exactly once"
+            }
+            Self::ScopeCoverage => {
+                "a scope of the paragraph's text preparation is missing from the captured inline scopes"
+            }
+            Self::ScopeAssociation => {
+                "a scope is not associated with the tree consistently with its text preparation"
+            }
+            Self::ScopeBoundaryCapture => {
+                "a scope boundary is not captured by the text preparation"
+            }
+            Self::ScopeBoundaryOrder => {
+                "scope boundaries are not in the order of the text preparation"
+            }
+            Self::ScopeOccurrenceMembership => "a scope occurrence, separator or endpoint is not a member of the scope it names, or is out of order",
+            Self::ScopeTreeAmbiguity => "a scope's association with the tree is ambiguous",
+            Self::ParticipantRole => {
+                "a participant's role differs from the role the text preparation requires"
+            }
+            Self::MissingParagraph => {
+                "an inline text or text control node is bound to no paragraph"
+            }
+            Self::RootMismatch => "the text binding names a different root than the layout request",
+            Self::TabReferenceDirection => {
+                "the paragraph's container box does not supply the direction of its tab reference"
+            }
+            Self::TerminalBlockEdge => {
+                "a paragraph that ends at a block end is followed by a node that is neither display none nor absolutely positioned"
+            }
+            Self::ComputedBoundaryAssociation => {
+                "a computed line boundary is not associated with its text preparation"
+            }
+            Self::InlineBoxFragmentsRequireFlow => {
+                "complete inline box fragments require a run that binds a flow"
+            }
+        })
+    }
+}
+
+impl std::error::Error for TextBindingError {}
+
 /// Complete, checked inline flow over one borrowed tree.
 ///
 /// The tree borrow prevents mutable replacement of its normalized inputs while

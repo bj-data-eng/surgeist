@@ -162,7 +162,7 @@ impl<Node: fmt::Debug> fmt::Display for ScrollAnchorSelectionError<Node> {
             Self::InconsistentPositionedChild { owner, child } => {
                 write!(
                     f,
-                    "scroll anchor node {child:?} has no positioned edge from {owner:?}"
+                    "scroll anchor node {child:?} is listed as a positioned child of {owner:?} but is not one"
                 )
             }
             Self::Cycle(node) => write!(f, "scroll anchor traversal repeats ancestor {node:?}"),

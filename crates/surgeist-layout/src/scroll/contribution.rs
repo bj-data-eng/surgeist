@@ -172,6 +172,53 @@ pub(crate) enum ScrollContributionErrorOf<S: LayoutScalar> {
     NonFiniteTerminalEnd { side: PhysicalSide, value: S },
 }
 
+impl<S: LayoutScalar> core::fmt::Display for ScrollContributionErrorOf<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use crate::error::{logical_axis_label, physical_side_label};
+        match self {
+            Self::Rect(_) => f.write_str("a scroll contribution rectangle is invalid"),
+            Self::Coordinate(_) => f.write_str("a scroll contribution coordinate is invalid"),
+            Self::NonFiniteMargin { side, value } => write!(
+                f,
+                "the {} margin {} of a scroll contribution is not finite",
+                physical_side_label(*side),
+                value.to_f64()
+            ),
+            Self::NonFiniteFinalInFlowEnd { axis, value } => write!(
+                f,
+                "the final in-flow end {} on the {} axis is not finite",
+                value.to_f64(),
+                logical_axis_label(*axis)
+            ),
+            Self::InvalidTerminalPadding { side, value } => write!(
+                f,
+                "the terminal padding {} on the {} side is not finite and non-negative",
+                value.to_f64(),
+                physical_side_label(*side)
+            ),
+            Self::NonFiniteTerminalEnd { side, value } => write!(
+                f,
+                "the terminal end {} on the {} side is not finite",
+                value.to_f64(),
+                physical_side_label(*side)
+            ),
+        }
+    }
+}
+
+impl<S: LayoutScalar> std::error::Error for ScrollContributionErrorOf<S> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Rect(cause) => Some(cause),
+            Self::Coordinate(cause) => Some(cause),
+            Self::NonFiniteMargin { .. }
+            | Self::NonFiniteFinalInFlowEnd { .. }
+            | Self::InvalidTerminalPadding { .. }
+            | Self::NonFiniteTerminalEnd { .. } => None,
+        }
+    }
+}
+
 impl<S: LayoutScalar> From<ScrollRectErrorOf<S>> for ScrollContributionErrorOf<S> {
     fn from(value: ScrollRectErrorOf<S>) -> Self {
         Self::Rect(value)

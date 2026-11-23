@@ -1381,6 +1381,8 @@ fn source_native_box_alias_has_one_effective_force_and_keeps_distinct_caller_end
     source_native_alias::<f64>();
 }
 
+mod error_chain;
+
 mod unscoped_native_pair;
 
 mod phantom_receivers;
