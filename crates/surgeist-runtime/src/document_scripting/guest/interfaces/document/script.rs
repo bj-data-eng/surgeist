@@ -36,11 +36,32 @@ const DEFER: reflection::Member = (
 
 const AFTER_BLOCKING: &[reflection::Member] = &[
     (
+        &ascii(b"crossOrigin"),
+        &ascii(b"get crossOrigin"),
+        &ascii(b"set crossOrigin"),
+        &ascii(b"crossorigin"),
+        Reflection::CrossOrigin,
+    ),
+    (
+        &ascii(b"referrerPolicy"),
+        &ascii(b"get referrerPolicy"),
+        &ascii(b"set referrerPolicy"),
+        &ascii(b"referrerpolicy"),
+        Reflection::ReferrerPolicy,
+    ),
+    (
         &ascii(b"integrity"),
         &ascii(b"get integrity"),
         &ascii(b"set integrity"),
         &ascii(b"integrity"),
         Reflection::String,
+    ),
+    (
+        &ascii(b"fetchPriority"),
+        &ascii(b"get fetchPriority"),
+        &ascii(b"set fetchPriority"),
+        &ascii(b"fetchpriority"),
+        Reflection::FetchPriority,
     ),
     (
         &ascii(b"charset"),

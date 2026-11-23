@@ -17,15 +17,17 @@ use surgeist_bindings_js::{
 use surgeist_dom::{source::DomSourceEdit, tree::DomNode};
 use surgeist_html::attributes::command::HtmlCommandState;
 use surgeist_html::attributes::{
-    HtmlClosedByState, HtmlContentEditableState, HtmlHidden, HtmlHiddenState, HtmlTranslate,
+    HtmlClosedByState, HtmlContentEditableState, HtmlCrossOriginState, HtmlHidden, HtmlHiddenState,
+    HtmlTranslate,
 };
 use surgeist_html::bounded::attributes::{
     HtmlAutocompleteControl, HtmlControlDimensionRule, HtmlHiddenSetterAction,
     HtmlHiddenSetterInput, HtmlTableSpanRule, button_command_readback_with,
     closedby_processing_with, contenteditable_processing_with, contenteditable_setter_state_with,
     control_autocomplete_idl_with, control_length_reflection_with, control_length_setter_value,
-    dir_keyword_with, enterkeyhint_keyword_with, form_autocomplete_keyword_with,
-    form_enctype_keyword_with, form_enctype_override_keyword_with, form_method_keyword_with,
+    crossorigin_processing_with, dir_keyword_with, enterkeyhint_keyword_with,
+    fetchpriority_processing_with, form_autocomplete_keyword_with, form_enctype_keyword_with,
+    form_enctype_override_keyword_with, form_method_keyword_with,
     form_method_override_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
     hidden_processing_with, hidden_setter_action_with, inputmode_keyword_with,
     popover_keyword_with, popover_target_action_with, referrerpolicy_processing_with,
@@ -53,7 +55,9 @@ pub(super) enum Reflection {
     String,
     StringNullToEmpty,
     UsvString,
+    CrossOrigin,
     ReferrerPolicy,
+    FetchPriority,
     Boolean,
     Mode,
     SlotAssignment,
@@ -561,6 +565,17 @@ impl Capture {
                     Reflection::String | Reflection::StringNullToEmpty | Reflection::UsvString => {
                         Reflected::String(stored.map(|value| value.value().clone()))
                     }
+                    Reflection::CrossOrigin => Reflected::Keyword(
+                        match crossorigin_processing_with(units, |_| read.step())? {
+                            HtmlCrossOriginState::NoCors => None,
+                            HtmlCrossOriginState::Keyword(keyword) => {
+                                Some(keyword.canonical_keyword())
+                            }
+                        },
+                    ),
+                    Reflection::FetchPriority => Reflected::Keyword(Some(
+                        fetchpriority_processing_with(units, |_| read.step())?.canonical_keyword(),
+                    )),
                     Reflection::ReferrerPolicy => Reflected::Keyword(Some(
                         referrerpolicy_processing_with(units, |_| read.step())?.canonical_keyword(),
                     )),
@@ -811,7 +826,7 @@ impl Capture {
                 } else {
                     None
                 }
-            } else if matches!(reflection, Reflection::Popover) {
+            } else if matches!(reflection, Reflection::CrossOrigin | Reflection::Popover) {
                 let converted = self
                     .callbacks
                     .conversion

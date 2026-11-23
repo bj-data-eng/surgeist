@@ -20826,20 +20826,43 @@
       "source": "https://webidl.spec.whatwg.org/commit-snapshots/0620cf171d1b97138847088748e363cae4005156/#dfn-attribute-setter"
     },
     "HTMLScriptElement.crossOrigin/get": {
-      "kind": "host",
-      "requirement": {"owner": "surgeist-runtime", "contract": "Use the native Script cross-origin keyword and nullable reflection contract.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-crossorigin", "issue": 2258}
+      "kind": "native",
+      "adapter": "htmlscriptelement.crossorigin.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "crossorigin_processing_with"}
+      ],
+      "requirements": []
     },
     "HTMLScriptElement.crossOrigin/set": {
-      "kind": "host",
-      "requirement": {"owner": "surgeist-runtime", "contract": "Use the native Script cross-origin keyword and nullable reflection contract.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-crossorigin", "issue": 2258}
+      "kind": "native",
+      "adapter": "htmlscriptelement.crossorigin.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "remove_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLScriptElement.referrerPolicy/get": {
-      "kind": "host",
-      "requirement": {"owner": "surgeist-runtime", "contract": "Use the selected HTML referrer-policy reflection over the actual Script attribute.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-referrerpolicy", "issue": 2258}
+      "kind": "native",
+      "adapter": "htmlscriptelement.referrerpolicy.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "referrerpolicy_processing_with"}
+      ],
+      "requirements": []
     },
     "HTMLScriptElement.referrerPolicy/set": {
-      "kind": "host",
-      "requirement": {"owner": "surgeist-runtime", "contract": "Use the selected HTML referrer-policy reflection over the actual Script attribute.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-referrerpolicy", "issue": 2258}
+      "kind": "native",
+      "adapter": "htmlscriptelement.referrerpolicy.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLScriptElement.integrity/get": {
       "kind": "native",
@@ -20860,12 +20883,23 @@
       "requirements": []
     },
     "HTMLScriptElement.fetchPriority/get": {
-      "kind": "host",
-      "requirement": {"owner": "surgeist-runtime", "contract": "Use the selected HTML fetch-priority vocabulary over the actual Script attribute.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-fetchpriority", "issue": 2258}
+      "kind": "native",
+      "adapter": "htmlscriptelement.fetchpriority.get",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/attr.rs", "symbol": "get_null_namespace_attribute_with"},
+        {"owner": "surgeist-html", "path": "crates/surgeist-html/src/internal/attributes.rs", "symbol": "fetchpriority_processing_with"}
+      ],
+      "requirements": []
     },
     "HTMLScriptElement.fetchPriority/set": {
-      "kind": "host",
-      "requirement": {"owner": "surgeist-runtime", "contract": "Use the selected HTML fetch-priority vocabulary over the actual Script attribute.", "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-script-fetchpriority", "issue": 2258}
+      "kind": "native",
+      "adapter": "htmlscriptelement.fetchpriority.set",
+      "producers": [
+        {"owner": "surgeist-runtime", "path": "crates/surgeist-runtime/src/document_scripting/guest/interfaces/document/reflection.rs", "symbol": "reflect_attribute"},
+        {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/internal/source.rs", "symbol": "set_attribute_ns"}
+      ],
+      "requirements": []
     },
     "HTMLScriptElement.innerText/get": {
       "kind": "host",

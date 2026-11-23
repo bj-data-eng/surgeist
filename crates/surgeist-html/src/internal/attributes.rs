@@ -1535,10 +1535,10 @@ total_enum_rule!(CROSSORIGIN, CROSSORIGIN_DEFAULTS, HtmlCrossOriginState, Crosso
     HtmlCrossOriginState::NoCors, HtmlCrossOriginState::Keyword(HtmlCrossOrigin::Anonymous), Some(HtmlCrossOriginState::Keyword(HtmlCrossOrigin::Anonymous)),
     ["anonymous" => ("anonymous", HtmlCrossOriginState::Keyword(HtmlCrossOrigin::Anonymous)),
      "use-credentials" => ("use-credentials", HtmlCrossOriginState::Keyword(HtmlCrossOrigin::UseCredentials))]);
-enum_rule!(FETCHPRIORITY, HtmlFetchPriority, Fetchpriority,
+total_enum_rule!(FETCHPRIORITY, FETCHPRIORITY_DEFAULTS, HtmlFetchPriority, Fetchpriority,
     Context::Fetching { elements: &[KnownHtmlElement::Img, KnownHtmlElement::Link, KnownHtmlElement::Script], script: ScriptApplicability::ExternalClassicOrModule, hyperlink: false },
     [51], "fetch-priority-attributes",
-    Some(HtmlFetchPriority::Auto), Some(HtmlFetchPriority::Auto), None,
+    HtmlFetchPriority::Auto, HtmlFetchPriority::Auto, None,
     ["high" => ("high", HtmlFetchPriority::High), "low" => ("low", HtmlFetchPriority::Low), "auto" => ("auto", HtmlFetchPriority::Auto)]);
 total_enum_rule!(REFERRERPOLICY, REFERRERPOLICY_DEFAULTS, HtmlReferrerPolicy, Referrerpolicy,
     Context::Fetching { elements: &[KnownHtmlElement::A, KnownHtmlElement::Area, KnownHtmlElement::Iframe, KnownHtmlElement::Img, KnownHtmlElement::Link, KnownHtmlElement::Script], script: ScriptApplicability::ClassicOrModule, hyperlink: true },
@@ -3192,6 +3192,16 @@ pub(crate) mod bounded_rules {
         admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
     ) -> Result<HtmlCrossOriginState, E> {
         total_enum_value_with(&CROSSORIGIN, &CROSSORIGIN_DEFAULTS, raw, admit)
+    }
+
+    /// Fetch priority content-state processing for an already qualified caller.
+    /// Missing and invalid values select the default. The exact UTF-16 input
+    /// and keyword comparisons are admitted through the shared vocabulary.
+    pub fn fetchpriority_processing_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<HtmlFetchPriority, E> {
+        total_enum_value_with(&FETCHPRIORITY, &FETCHPRIORITY_DEFAULTS, raw, admit)
     }
 
     /// Referrer policy content-state processing, independently of element,

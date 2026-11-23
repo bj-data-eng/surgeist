@@ -118,9 +118,21 @@ pub(super) fn script_async_keeps_native_flag_and_content_coherent() {
 // Oracles: pinned HTML #cors-settings-attributes, #referrer-policy-attributes,
 // #fetch-priority-attributes, and the limited-to-known reflection algorithms.
 pub(super) fn script_keyword_reflections_follow_exact_live_attributes() {
-    let (session, top) = setup();
-    let (mut host, _) =
-        attach_event_window_with_work(session, top, Arc::new(cancel()), 400_000, |_, _, _| {});
+    let (mut session, top, _, body) = attached_script();
+    let mut batch = DomBatch::new();
+    let detached = batch.create_html_document(top.document(), None);
+    let frame = batch.create_element_ns(&detached, Namespace::html(), "iframe");
+    let commit = session.dom().apply(batch, &cancel()).unwrap();
+    let frame = commit.created(&frame).unwrap().unwrap();
+    let (mut host, _) = attach_event_window_with_limits(
+        session,
+        top,
+        Arc::new(cancel()),
+        (8_000_000, 6_000_000, 400_000),
+        surgeist_ledger::ProfileMode::Off,
+        DomSourceLimits::new(16_000_000, 1_000_000, 200_000, 64, 64, 64, 4),
+        |_, _, _| {},
+    );
     let permit = host.permit().unwrap();
 
     let result = super::window_length::observe(
@@ -147,6 +159,10 @@ pub(super) fn script_keyword_reflections_follow_exact_live_attributes() {
             const html = 'http://www.w3.org/1999/xhtml';
             const foreign = 'urn:script-keyword-foreign';
             const script = document.createElementNS(html, 'h:script');
+            const attached = document.getElementById('attached-script');
+            if (!attached.isConnected || Object.getPrototypeOf(attached) !== prototype ||
+                Object.getPrototypeOf(script) !== prototype || script.isConnected)
+                return 'connected and detached Script interface identity';
             const wrongNamespace = document.createElementNS(foreign, 'script');
             Object.setPrototypeOf(wrongNamespace, prototype);
             const wrongCase = document.createElementNS(html, 'SCRIPT');
@@ -246,6 +262,9 @@ pub(super) fn script_keyword_reflections_follow_exact_live_attributes() {
                     script.getAttributeNS(foreign, attr) !== 'foreign' ||
                     script.getAttributeNS(null, attr.toUpperCase()) !== 'uppercase')
                     return 'live absence or preservation of unrelated attributes ' + member;
+                set.call(attached, mixed);
+                if (get.call(attached) !== canonical || attached.getAttributeNS(null, attr) !== mixed)
+                    return 'live connected Script reflection ' + member;
             }
 
             const seen = [];
@@ -335,5 +354,98 @@ pub(super) fn script_keyword_reflections_follow_exact_live_attributes() {
         ),
         "ok",
     );
+
+    super::window_length::edit(&mut host, DomSourceEdit::insert_before(frame, body, None));
+    assert_eq!(
+        super::window_length::observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+                const child = window[0];
+                const prototype = child.HTMLScriptElement.prototype;
+                const script = child.document.createElement('script');
+                const local = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'crossOrigin');
+                const foreign = Object.getOwnPropertyDescriptor(prototype, 'crossOrigin');
+                if (Object.getPrototypeOf(script) !== prototype || foreign.get === local.get ||
+                    Object.getPrototypeOf(foreign.set) !== child.Function.prototype)
+                    return 'distinct original Script creation realm';
+                local.set.call(script, 'USE-CREDENTIALS');
+                if (foreign.get.call(script) !== 'use-credentials' ||
+                    document.adoptNode(script) !== script || script.ownerDocument !== document ||
+                    Object.getPrototypeOf(script) !== prototype)
+                    return 'borrowed accessor or native adoption changed Script identity';
+                foreign.set.call(script, null);
+                return local.get.call(script) === null && script.getAttributeNS(null, 'crossorigin') === null
+                    ? 'ok' : 'adopted Script must retain the original accessor and canonical attribute';
+            })()"#,
+        ),
+        "ok",
+    );
+    host.stop().into_session().unwrap();
+    script_keyword_source_refusal_preserves_native_attribute();
+}
+
+fn attached_script() -> (DomSession, DomHostedTopLevel, NodeId, NodeId) {
+    let (mut session, top) = setup();
+    let document = top.document();
+    let snapshot = session.snapshot();
+    let html = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let body = snapshot.node(html).unwrap().children()[1];
+    let mut batch = DomBatch::new();
+    let script = batch.create_element_ns(document, Namespace::html(), "script");
+    batch.set_attribute(&script, "id", "attached-script");
+    batch.set_attribute(&script, "crossorigin", "anonymous");
+    batch.insert_before(&script, body, None);
+    let receipt = session.dom().apply(batch, &cancel()).unwrap();
+    (
+        session,
+        top,
+        receipt.created(&script).unwrap().unwrap(),
+        body,
+    )
+}
+
+fn script_keyword_source_refusal_preserves_native_attribute() {
+    let (session, top, script, _) = attached_script();
+    let (mut host, _) = attach_event_window_with_source_limits(
+        session,
+        top,
+        Arc::new(cancel()),
+        160_000,
+        DomSourceLimits::new(16_000_000, 200_000, 0, 64, 64, 64, 2),
+        |_, _, _| {},
+    );
+    let permit = host.permit().unwrap();
+    let before = host.snapshot().unwrap();
+    let result = host.in_document(&permit, |scope| {
+        let assignment = "document.getElementById('attached-script').crossOrigin = null";
+        scope
+            .evaluate(&assignment.encode_utf16().collect::<Vec<_>>())
+            .map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("Script CORS removal must retain the original Source refusal: {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DomSourceDriveError>(),
+        Some(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+            DomError::SourceWorkLimit { limit: 0 }
+        )))
+    ));
+    let after = host.snapshot().unwrap();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(
+        after
+            .node(script)
+            .unwrap()
+            .attribute_ns(&Namespace::none(), &"crossorigin".into()),
+        Some(&"anonymous".into())
+    );
+    host.with_native(|dom, _, _| assert!(dom.pending_source_edit().is_none()))
+        .unwrap();
     host.stop().into_session().unwrap();
 }
