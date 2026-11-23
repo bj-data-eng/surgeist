@@ -960,7 +960,14 @@ impl Capture {
                 .try_borrow_mut()
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
             let record = events.reserve(&owner, size_of::<DefinitionWaiter>())?;
+            #[cfg(test)]
+            let registry_was_available = registry.waiting.try_borrow_mut().is_ok();
             let resolver = new_definition_resolver(scope)?;
+            #[cfg(test)]
+            assert!(
+                registry_was_available,
+                "pending resolver creation entered with a waiter registry loan"
+            );
             let promise = scope.resolver_promise(&resolver)?;
             let entry = Box::new(DefinitionWaiter {
                 name,
