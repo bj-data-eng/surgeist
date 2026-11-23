@@ -30,9 +30,9 @@ use surgeist_html::bounded::attributes::{
     form_enctype_override_keyword_with, form_method_keyword_with,
     form_method_override_keyword_with, heading_offset_reflection_with, heading_offset_setter_value,
     hidden_processing_with, hidden_setter_action_with, inputmode_keyword_with,
-    popover_keyword_with, popover_target_action_with, referrerpolicy_processing_with,
-    table_cell_scope_keyword_with, template_shadow_root_mode_keyword_with,
-    template_shadow_root_slot_assignment_keyword_with,
+    link_as_keyword_with, popover_keyword_with, popover_target_action_with,
+    referrerpolicy_processing_with, table_cell_scope_keyword_with,
+    template_shadow_root_mode_keyword_with, template_shadow_root_slot_assignment_keyword_with,
 };
 use surgeist_html::bounded::input::input_colorspace_with;
 use surgeist_html::bounded::marquee::{
@@ -58,6 +58,7 @@ pub(super) enum Reflection {
     CrossOrigin,
     ReferrerPolicy,
     FetchPriority,
+    LinkAs,
     Boolean,
     Mode,
     SlotAssignment,
@@ -131,6 +132,8 @@ pub(super) enum Receiver {
     Anchor,
     Area,
     Script,
+    Link,
+    Style,
     Body,
     Button,
     Canvas,
@@ -221,6 +224,14 @@ impl Receiver {
                     && node
                         .as_element()
                         .is_some_and(|element| !element.has_failed_construction_interface())
+            }
+            Self::Link => {
+                step()?;
+                html_element_is(node, "HTMLLinkElement")
+            }
+            Self::Style => {
+                step()?;
+                html_element_is(node, "HTMLStyleElement")
             }
             Self::Body => {
                 step()?;
@@ -361,6 +372,8 @@ impl Receiver {
             Self::Anchor => const { &ascii(b"HTMLAnchorElement required") },
             Self::Area => const { &ascii(b"HTMLAreaElement required") },
             Self::Script => const { &ascii(b"HTMLScriptElement required") },
+            Self::Link => const { &ascii(b"HTMLLinkElement required") },
+            Self::Style => const { &ascii(b"HTMLStyleElement required") },
             Self::Body => const { &ascii(b"HTMLBodyElement required") },
             Self::Button => const { &ascii(b"HTMLButtonElement required") },
             Self::Canvas => const { &ascii(b"HTMLCanvasElement required") },
@@ -579,6 +592,9 @@ impl Capture {
                             }
                         },
                     ),
+                    Reflection::LinkAs => {
+                        Reflected::Keyword(Some(link_as_keyword_with(units, |_| read.step())?))
+                    }
                     Reflection::FetchPriority => Reflected::Keyword(Some(
                         fetchpriority_processing_with(units, |_| read.step())?.canonical_keyword(),
                     )),
@@ -1033,6 +1049,8 @@ impl Capture {
                         Receiver::Anchor
                             | Receiver::Area
                             | Receiver::Script
+                            | Receiver::Link
+                            | Receiver::Style
                             | Receiver::Body
                             | Receiver::Button
                             | Receiver::Dialog

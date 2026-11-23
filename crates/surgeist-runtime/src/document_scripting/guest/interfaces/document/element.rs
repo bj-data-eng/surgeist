@@ -913,22 +913,9 @@ fn install_html_members<'scope>(
         "HTMLAnchorElement" => super::anchor::install(scope, prototype, capture)?,
         "HTMLAreaElement" => super::area::install(scope, prototype, capture)?,
         "HTMLScriptElement" => super::script::install(scope, prototype, capture)?,
-        "HTMLLinkElement" => {
-            for reflection in [
-                HtmlTokenListReflection::LinkRel,
-                HtmlTokenListReflection::LinkSizes,
-                HtmlTokenListReflection::LinkBlocking,
-            ] {
-                install_html_token_list(scope, prototype, capture, reflection)?;
-            }
-        }
+        "HTMLLinkElement" => super::link_style_attributes::install_link(scope, prototype, capture)?,
         "HTMLStyleElement" => {
-            install_html_token_list(
-                scope,
-                prototype,
-                capture,
-                HtmlTokenListReflection::StyleBlocking,
-            )?;
+            super::link_style_attributes::install_style(scope, prototype, capture)?
         }
         "HTMLIFrameElement" => {
             install_html_token_list(

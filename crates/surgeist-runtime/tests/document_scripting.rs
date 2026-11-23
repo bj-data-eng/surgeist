@@ -137,6 +137,8 @@ mod input_state;
 mod label_live;
 #[path = "document_scripting/legend_form.rs"]
 mod legend_form;
+#[path = "document_scripting/link_style_reflections.rs"]
+mod link_style_reflections;
 #[path = "document_scripting/local_html.rs"]
 mod local_html;
 #[path = "document_scripting/map_datalist_collections.rs"]
@@ -2627,6 +2629,9 @@ fn main() {
             "member-collection-stale" => member_collection_lifetime::destroyed_member_roots_preserve_the_first_native_failure(),
             "anchor-attributes" => anchor_attributes::anchor_text_and_scalar_attributes_use_live_native_source(),
             "area-attributes" => area_attributes::area_attributes_follow_canonical_source_and_receivers(),
+            "link-local-reflections" => link_style_reflections::never_hosted_link_reflects_live_native_attributes(),
+            "link-local-refusal" => link_style_reflections::hosted_link_reflection_preserves_original_source_refusal(),
+            "style-local-reflections" => link_style_reflections::active_style_media_updates_the_original_native_sheet(),
             "input-list" => input_list::attached_input_list_follows_the_first_exact_id_in_its_tree(),
             "input-attributes" => input_attributes::attached_input_reflections_use_canonical_attributes(),
             "numeric-control-attributes" => numeric_control_attributes::attached_controls_reflect_native_integer_attributes(),
@@ -2802,6 +2807,9 @@ fn main() {
     input_state::attached_input_exposes_canonical_value_modes_and_checkedness();
     anchor_attributes::anchor_text_and_scalar_attributes_use_live_native_source();
     area_attributes::area_attributes_follow_canonical_source_and_receivers();
+    link_style_reflections::never_hosted_link_reflects_live_native_attributes();
+    link_style_reflections::hosted_link_reflection_preserves_original_source_refusal();
+    link_style_reflections::active_style_media_updates_the_original_native_sheet();
     script_async::script_async_keeps_native_flag_and_content_coherent();
     script_async::script_keyword_reflections_follow_exact_live_attributes();
     map_datalist_collections::map_areas_and_datalist_options_are_distinct_live_associations();
