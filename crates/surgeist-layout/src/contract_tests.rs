@@ -504,6 +504,11 @@ fn assert_fri06_c01_non_box<S: LayoutScalar>() {
         error.kind(),
         &LayoutErrorKindOf::UnsupportedCapability(LayoutUnsupportedCapability::LaterFriBehavior),
     );
+    // A text node outside a parent that accepts inline text is one named condition.
+    assert_eq!(
+        format!("{:?}", error.kind()),
+        "UnsupportedCapability(NonBoxNodeOutsideInlineFlow)"
+    );
     assert_eq!(valid.cache_reads.get(), 0);
 
     let noncanonical = fri06_c01_tree::<S>(

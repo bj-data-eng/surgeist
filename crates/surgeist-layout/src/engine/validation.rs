@@ -414,6 +414,10 @@ mod tests {
             error.kind(),
             LayoutErrorKindOf::UnsupportedCapability(LayoutUnsupportedCapability::LaterFriBehavior)
         ));
+        assert_eq!(
+            format!("{:?}", error.kind()),
+            "UnsupportedCapability(NonBoxNodeOutsideInlineFlow)"
+        );
         let valid = tree.style(
             2,
             crate::NodeInputOf {
