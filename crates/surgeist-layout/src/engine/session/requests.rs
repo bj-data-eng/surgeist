@@ -16,8 +16,8 @@ use crate::flex::{FlexChild, FlexComputation, begin_flex_computation};
 use crate::grid::{
     GridChild, GridComputeResult, GridContextRequest, GridContinuation,
     GridRequest as GridComputationRequest, OrdinaryGridObservation,
-    OrdinaryGridObservationCompletion, OrdinaryGridObservationRun, begin_grid_computation,
-    begin_grid_context_computation,
+    OrdinaryGridObservationCompletion, OrdinaryGridObservationRun, ProbeKey,
+    begin_grid_computation, begin_grid_context_computation,
 };
 use crate::{
     engine::contracts::Compute,
@@ -249,14 +249,21 @@ type SessionBlock<'input, Tree> =
 enum StagedDestination<'input, Node, S: LayoutScalar> {
     Qualification,
     GridObservation,
-    /// An intrinsic probe of `node`.
-    GridProbe(Node),
+    /// An intrinsic probe of `node`, with the key its result is recorded under.
+    GridProbe(Node, Option<Box<ProbeMemoKey<'input, Node, S>>>),
     FloatTrial(FloatTrialRequest<Node, S>),
     SourceFloat {
         request: FloatTrialRequest<Node, S>,
         pending: Box<crate::block::entry::EntryFloat<'input, Node, S>>,
         observation: Option<crate::engine::entry_sources::FloatReservation<Node, S>>,
     },
+}
+
+/// Where the result of an intrinsic probe is shared: the index of its node in
+/// the validated graph and the inputs that determine the result.
+pub(super) struct ProbeMemoKey<'input, Node, S: LayoutScalar> {
+    index: usize,
+    key: ProbeKey<'input, Node, S>,
 }
 
 struct StagedTrial<'input, Tree: LayoutTree> {
@@ -494,6 +501,63 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         Ok(request)
     }
 
+    /// The key under which the result of `probe` is shared, and the index of
+    /// its node, when this session may stand a recorded probe in for a repeat.
+    /// A probe returns the same output and gutter for the same inputs, whichever
+    /// session computes it, when the computation reads nothing of the session:
+    /// that excludes text, group alignment, fragmentation, entry funding and
+    /// sources, wrapping and a publication target, as the reuse of subgrid
+    /// computations excludes them. An observation session starts with no float
+    /// frames (`State::fork`), so the float state of its parent is not read.
+    pub(super) fn probe_memo_key(
+        &self,
+        probe: &GridContextRequest<'input, Tree::Node, Tree::Scalar>,
+    ) -> Option<Box<ProbeMemoKey<'input, Tree::Node, Tree::Scalar>>> {
+        if self.probes.is_none()
+            || !self.reuses_subgrid_computations()
+            || self.text.is_some()
+            || self.entry_sources.is_some()
+            || self.wrapping.context.is_some()
+            || self.bound.is_some()
+            || crate::grid::subgrid_reuse_disabled()
+        {
+            return None;
+        }
+        let index = self.flow_graph?.index(probe.node())?;
+        Some(Box::new(ProbeMemoKey {
+            index,
+            key: probe.probe_key()?,
+        }))
+    }
+
+    fn recorded_probe(
+        &self,
+        index: usize,
+        key: &ProbeKey<'input, Tree::Node, Tree::Scalar>,
+    ) -> Option<GridComputeResult<Tree::Node, Tree::Scalar>> {
+        let table = self
+            .probes
+            .as_ref()?
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (output, gutter) = table.get(index, key)?;
+        Some(GridComputeResult::probe_receipt(output, gutter))
+    }
+
+    fn record_probe(
+        &self,
+        index: usize,
+        key: ProbeKey<'input, Tree::Node, Tree::Scalar>,
+        result: &GridComputeResult<Tree::Node, Tree::Scalar>,
+    ) {
+        if let Some(table) = &self.probes {
+            table
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(index, key, result.output(), result.effective_gutter());
+        }
+    }
+
     /// Runs an intrinsic probe in a disposable observation session of its own,
     /// as the synchronous observation did. Only what the parent consumes of
     /// the observation, the Text dependencies it accepts, outlives it.
@@ -507,9 +571,19 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         let parent = staged
             .last_mut()
             .map_or(&mut *self, |active| &mut active.session);
+        let memo = parent.probe_memo_key(&probe);
+        if let Some(memo) = &memo
+            && let Some(result) = parent.recorded_probe(memo.index, &memo.key)
+        {
+            // The probe's writes die with its observation session, so what it
+            // returned is all that a repeat has to stand in for.
+            return Ok(Request::Complete(CompletedRequest::Context(Box::new(
+                result,
+            ))));
+        }
         let session = parent.grid_observation_session(node)?;
         staged.push(StagedTrial {
-            destination: StagedDestination::GridProbe(node),
+            destination: StagedDestination::GridProbe(node, memo),
             session,
             pending: PendingRequests::new(),
         });
@@ -578,9 +652,13 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 drop(finished.session);
                 Request::Complete(output)
             }
-            StagedDestination::GridProbe(node) => {
+            StagedDestination::GridProbe(node, memo) => {
                 parent.accept_grid_observation(node, &finished.session)?;
                 drop(finished.session);
+                if let (Some(memo), CompletedRequest::Context(result)) = (memo, &output) {
+                    let ProbeMemoKey { index, key } = *memo;
+                    parent.record_probe(index, key, result);
+                }
                 Request::Complete(output)
             }
             StagedDestination::Qualification => {

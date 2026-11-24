@@ -2000,6 +2000,7 @@ fn project_intrinsic_role_grid<'input, 'a, Node: Copy, S: LayoutScalar>(
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum GridIntrinsicProbeKind {
     ContentContribution(GridAxisKind),
     AllocatedPrefix,

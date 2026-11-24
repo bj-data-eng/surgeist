@@ -69,7 +69,7 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     fn wrapper_resolutions(
         &mut self,
         _node: Self::Node,
-    ) -> Option<&mut crate::grid::WrapperResolutions<'input, Self::Node, Self::Scalar>> {
+    ) -> Option<crate::grid::WrapperResolutionsAccess<'_, 'input, Self::Node, Self::Scalar>> {
         None
     }
     fn block_float_state(

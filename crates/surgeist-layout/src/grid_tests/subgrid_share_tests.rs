@@ -256,3 +256,82 @@ fn intrinsic_request_reads_only_the_spanned_tracks_f32() {
 fn intrinsic_request_reads_only_the_spanned_tracks_f64() {
     assert_intrinsic_request_reads_only_the_spanned_tracks::<f64>();
 }
+
+// The parent facts of two shares are the same when the tracks, gap and names
+// are the same and a used geometry that one lacks is the uniform geometry of
+// its tracks, whichever share lacks it. A geometry with a gutter is not
+// uniform.
+fn assert_shares_compare_a_missing_geometry_as_uniform<S: LayoutScalar>() {
+    let scalar = S::from_f64;
+    let parent_columns = [scalar(30.0), scalar(40.0)];
+    let parent_rows = [scalar(50.0)];
+    let parent_names_columns = named::NamedGridLines::new(GridAxisKind::Column, 2);
+    let parent_names_rows = named::NamedGridLines::new(GridAxisKind::Row, 1);
+    let parent_style = NodeInputOf::<S> {
+        display: Display::Grid,
+        ..NodeInputOf::default()
+    };
+    let child_style = NodeInputOf::<S> {
+        display: Display::Grid,
+        grid_template_columns: subgrid_track_of(),
+        grid_template_rows: subgrid_track_of(),
+        ..NodeInputOf::default()
+    };
+    let fixture = SubgridChildParentContextInput {
+        item: SubgridItemReport {
+            node: 1u32,
+            column: subgrid_axis_report(&parent_style, &child_style, GridAxisKind::Column),
+            row: subgrid_axis_report(&parent_style, &child_style, GridAxisKind::Row),
+        },
+        child_style: &child_style,
+        area: GridArea {
+            row: 0,
+            column: 0,
+            row_end: 1,
+            column_end: 2,
+            size: LogicalSizeOf::new(scalar(70.0), scalar(50.0)),
+        },
+        content_box_size: Size::new(scalar(70.0), scalar(50.0)),
+        columns: &parent_columns,
+        rows: &parent_rows,
+        minimum_functions: GridMinimumParentFunctions {
+            columns: None,
+            rows: None,
+        },
+        gap: LogicalSizeOf::new(S::ZERO, S::ZERO),
+        parent_named_columns: &parent_names_columns,
+        parent_named_rows: &parent_names_rows,
+        parent_area_facts: None,
+        margin: Edges::all(Some(S::ZERO)),
+        border: Edges::ZERO,
+        padding: Edges::ZERO,
+    };
+    with_projected_subgrid_child_input(fixture, |input| {
+        let uniform_columns =
+            UsedGridAxisGeometryOf::new(parent_columns.to_vec(), Vec::new(), S::ZERO);
+        let uniform_rows = UsedGridAxisGeometryOf::new(parent_rows.to_vec(), Vec::new(), S::ZERO);
+        let gutter_columns =
+            UsedGridAxisGeometryOf::new(parent_columns.to_vec(), vec![true], S::ZERO);
+        let share = |columns: Option<&UsedGridAxisGeometryOf<S>>,
+                     rows: Option<&UsedGridAxisGeometryOf<S>>| {
+            SubgridParentShare::new(&input, columns, rows, None).expect("the share copies")
+        };
+        let lacking = share(None, None);
+        let uniform = share(Some(&uniform_columns), Some(&uniform_rows));
+        let gutter = share(Some(&gutter_columns), Some(&uniform_rows));
+        assert!(lacking.same_parent_facts(&uniform));
+        assert!(uniform.same_parent_facts(&lacking));
+        assert!(!lacking.same_parent_facts(&gutter));
+        assert!(!gutter.same_parent_facts(&lacking));
+    });
+}
+
+#[test]
+fn subgrid_shares_compare_a_missing_geometry_as_uniform_f32() {
+    assert_shares_compare_a_missing_geometry_as_uniform::<f32>();
+}
+
+#[test]
+fn subgrid_shares_compare_a_missing_geometry_as_uniform_f64() {
+    assert_shares_compare_a_missing_geometry_as_uniform::<f64>();
+}

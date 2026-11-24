@@ -3454,6 +3454,49 @@ impl<'input, Node, S: LayoutScalar> WrapperResolutionMemo<'input, Node, S> {
     }
 }
 
+/// The wrapper memo cannot grow to hold another resolution.
+struct WrapperMemoFull;
+
+/// A session's access to the resolutions of one wrapper: its own memo, or the
+/// memo that the observation sessions of a layout call share.
+pub(crate) enum WrapperResolutionsAccess<'a, 'input, Node, S: LayoutScalar> {
+    Own(&'a mut WrapperResolutions<'input, Node, S>),
+    Shared {
+        memo: std::sync::MutexGuard<'a, WrapperResolutionMemo<'input, Node, S>>,
+        index: usize,
+    },
+}
+
+impl<'a, 'input, Node: Copy + PartialEq, S: LayoutScalar>
+    WrapperResolutionsAccess<'a, 'input, Node, S>
+{
+    fn resolutions(&mut self) -> Option<&mut WrapperResolutions<'input, Node, S>> {
+        match self {
+            Self::Own(resolutions) => Some(resolutions),
+            Self::Shared { memo, index } => memo.wrapper(*index),
+        }
+    }
+
+    fn get(
+        &mut self,
+        identity: &WrapperResolutionIdentity<'_, '_, Node, S>,
+    ) -> Option<std::sync::Arc<WrapperResolution<'input, Node, S>>> {
+        self.resolutions()?.get(identity)
+    }
+
+    /// Records the resolution, or fails when the memo cannot grow to hold it.
+    fn insert(
+        &mut self,
+        key: WrapperResolutionKey<'input, Node, S>,
+        resolution: &std::sync::Arc<WrapperResolution<'input, Node, S>>,
+    ) -> Result<(), WrapperMemoFull> {
+        self.resolutions()
+            .ok_or(WrapperMemoFull)?
+            .insert(key, resolution)
+            .map_err(|_| WrapperMemoFull)
+    }
+}
+
 fn allocation_error<Node, S: LayoutScalar, M>(node: Node) -> LayoutErrorOf<Node, S, M> {
     LayoutErrorOf::new(
         LayoutErrorSiteOf::Node(node),
@@ -3849,7 +3892,7 @@ where
     resolution.effects = effects;
     let resolution = std::sync::Arc::new(resolution);
     if resolution.effects.is_some()
-        && let Some(memo) = tree.wrapper_resolutions(node).filter(|_| reuse)
+        && let Some(mut memo) = tree.wrapper_resolutions(node).filter(|_| reuse)
     {
         memo.insert(key, &resolution)
             .map_err(|_| allocation_error(node))?;
@@ -3994,7 +4037,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperLevel<'input, Node, S> {
         let reused = tree
             .wrapper_resolutions(node)
             .filter(|_| reuse)
-            .and_then(|memo| memo.get(&identity));
+            .and_then(|mut memo| memo.get(&identity));
         if let Some(resolution) = reused {
             // A recomputation would stage its writes again, each replacing its
             // earlier write and moving last. The reuse stages the same writes

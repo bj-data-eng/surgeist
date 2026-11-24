@@ -371,6 +371,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> Memo<Node, S> {
 
 impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
     pub(crate) fn enable_request_memo(&mut self) {
+        self.probes = None;
+        self.observed_wrappers = None;
         // These profiles own receipts or context beyond ordinary cache stores
         // and unrounded geometry. A continuous publication target contributes
         // no child state. Its host cache bypass is enforced by the cache owner.
@@ -449,6 +451,9 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
             }
         }
         self.memo = Some(Memo::new(eligible, profile));
+        if profile == Profile::Ordinary {
+            self.share_observation_memos();
+        }
         if self.bound.is_none()
             && (0..graph.nodes.len()).any(|index| self.block_floats.needs_work(index) == Some(true))
         {
@@ -456,8 +461,27 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
         }
     }
 
+    /// Starts the tables that the observation sessions of this call share.
+    fn share_observation_memos(&mut self) {
+        self.probes = Some(Arc::new(Mutex::new(crate::grid::ProbeResults::default())));
+        self.observed_wrappers = Some(Arc::new(Mutex::new(
+            crate::grid::WrapperResolutionMemo::default(),
+        )));
+    }
+
+    /// Forgets what the reuse of subgrid computations retained, which belongs
+    /// to the pass that computed it.
+    pub(super) fn clear_subgrid_reuse(&mut self) {
+        self.wrappers.clear();
+        if self.probes.is_some() {
+            self.share_observation_memos();
+        }
+    }
+
     pub(crate) fn release_request_memo(&mut self) {
         self.memo = None;
+        self.probes = None;
+        self.observed_wrappers = None;
     }
 
     pub(super) fn invalidate_scoped_request_memo(&mut self) {
@@ -622,7 +646,10 @@ impl<'a, Tree: LayoutTree> ComputeSession<'a, Tree> {
 
 // The scalar API exposes the sign of a raw zero. Typed sizing offers
 // already normalize zero, so preserve the representation of raw dimensions.
-fn exact_optional_size<S: LayoutScalar>(left: Size<Option<S>>, right: Size<Option<S>>) -> bool {
+pub(crate) fn exact_optional_size<S: LayoutScalar>(
+    left: Size<Option<S>>,
+    right: Size<Option<S>>,
+) -> bool {
     left.zip_map(right, |left, right| {
         left.map(|value| value.to_f64().to_bits()) == right.map(|value| value.to_f64().to_bits())
     }) == Size::splat(true)

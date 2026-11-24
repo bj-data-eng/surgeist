@@ -30,6 +30,10 @@ pub(super) struct OwnedProbeContext<'input, Node, S: LayoutScalar> {
 }
 
 impl<'input, Node: Copy + PartialEq, S: LayoutScalar> OwnedProbeContext<'input, Node, S> {
+    fn key(&self, request: &GridContextRequest<'input, Node, S>) -> ProbeKey<'input, Node, S> {
+        ProbeKey::new(request, &self.loan, self.parent_flow, self.kind)
+    }
+
     fn build<M>(
         &self,
         subject: Node,
@@ -248,6 +252,18 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContextRequest<'input, Node, 
         self.input
     }
 
+    /// The inputs that determine the result of an intrinsic probe, or `None`
+    /// for a request that is not a probe or whose parent facts could not be
+    /// copied.
+    pub(crate) fn probe_key(&self) -> Option<ProbeKey<'input, Node, S>> {
+        match (&self.parent_context, self.run) {
+            (GridParentContextSource::Intrinsic(Ok(owned)), ContextRun::Probe) => {
+                Some(owned.key(self))
+            }
+            _ => None,
+        }
+    }
+
     /// Computes the request on the native stack, for the synchronous drains.
     pub(super) fn compute_sync<Tree, M>(self, tree: &mut Tree) -> GridComputeOutcome<Node, S, M>
     where
@@ -271,9 +287,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContextRequest<'input, Node, 
                 )?;
                 match observation {
                     GridOverflowObservation::Intrinsic(observation) => {
-                        let mut result = GridComputeResult::from_output(observation.output);
-                        result.effective_gutter = observation.effective_gutter;
-                        Ok(result)
+                        Ok(GridComputeResult::probe_receipt(
+                            observation.output,
+                            observation.effective_gutter,
+                        ))
                     }
                     GridOverflowObservation::Children(_) => {
                         unreachable!("an intrinsic probe returns its prepared output")
