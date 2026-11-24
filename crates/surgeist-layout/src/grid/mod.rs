@@ -74,7 +74,8 @@ pub(crate) use observation::{
 };
 mod placement;
 mod subgrid;
-pub(crate) use subgrid::{WrapperResolutionMemo, WrapperResolutions};
+pub(crate) use child::subgrid_context::{ProbeKey, ProbeResults};
+pub(crate) use subgrid::{WrapperResolutionMemo, WrapperResolutionsAccess};
 
 pub use crate::node_input::{
     GridAutoFlow, GridFlowTolerance, GridFlowToleranceOf, GridLanesFlow, GridPlacement,
@@ -91,12 +92,12 @@ pub use crate::value::{
 
 /// Whether a test asks every nested subgrid computation to repeat.
 #[cfg(test)]
-fn subgrid_reuse_disabled() -> bool {
+pub(crate) fn subgrid_reuse_disabled() -> bool {
     subgrid_work::reuse_disabled()
 }
 
 #[cfg(not(test))]
-const fn subgrid_reuse_disabled() -> bool {
+pub(crate) const fn subgrid_reuse_disabled() -> bool {
     false
 }
 #[cfg(test)]
@@ -832,6 +833,22 @@ impl<Node, S: LayoutScalar> GridComputeResult<Node, S> {
     ) -> Self {
         self.effects = effects;
         self
+    }
+
+    /// The receipt of an intrinsic probe, which carries only its output and
+    /// the gutter it settled on.
+    pub(crate) fn probe_receipt(
+        output: ComputeOutputOf<S>,
+        effective_gutter: Option<Edges<S>>,
+    ) -> Self {
+        let mut receipt = Self::from_output(output);
+        receipt.effective_gutter = effective_gutter;
+        receipt
+    }
+
+    /// The geometry of the computation.
+    pub(crate) fn output(&self) -> ComputeOutputOf<S> {
+        self.output
     }
 
     pub(super) fn from_output(output: ComputeOutputOf<S>) -> Self {

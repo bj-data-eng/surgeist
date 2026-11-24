@@ -1,5 +1,6 @@
 mod cache_stores;
 mod memo;
+pub(crate) use memo::exact_optional_size;
 mod staged_effects;
 #[cfg(test)]
 pub(crate) use memo::compute_ordinary_with_request_trace;
@@ -111,6 +112,22 @@ pub(crate) fn trace_hidden_compute_session_requests<T>(
     (result, requests)
 }
 
+type SharedProbes<'a, Tree> = std::sync::Arc<
+    std::sync::Mutex<
+        crate::grid::ProbeResults<'a, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    >,
+>;
+
+type SharedWrappers<'a, Tree> = std::sync::Arc<
+    std::sync::Mutex<
+        crate::grid::WrapperResolutionMemo<
+            'a,
+            <Tree as Traverse>::Node,
+            <Tree as Traverse>::Scalar,
+        >,
+    >,
+>;
+
 pub(crate) struct ComputeSession<'a, Tree>
 where
     Tree: LayoutTree,
@@ -129,6 +146,16 @@ where
     cache: CacheStaging<Tree::Node, Tree::Scalar>,
     memo: Option<memo::Memo<Tree::Node, Tree::Scalar>>,
     wrappers: crate::grid::WrapperResolutionMemo<'a, Tree::Node, Tree::Scalar>,
+    /// The intrinsic probes this layout call has completed, which every
+    /// observation session of the call shares.
+    probes: Option<SharedProbes<'a, Tree>>,
+    /// The wrapper resolutions the observation sessions of this layout call
+    /// share. Only an observation session reads or records them; the session
+    /// that owns the call keeps its own `wrappers` and never reads an entry
+    /// an observation session recorded.
+    observed_wrappers: Option<SharedWrappers<'a, Tree>>,
+    /// Whether this session is a disposable observation of its parent.
+    observing: bool,
     effects: staged_effects::EffectLog<Tree::Node, Tree::Scalar>,
     entry_storage: Option<EntryStorage>,
     meter: Meter,
@@ -533,6 +560,9 @@ where
             },
             memo: None,
             wrappers: crate::grid::WrapperResolutionMemo::default(),
+            probes: None,
+            observed_wrappers: None,
+            observing: false,
             effects: staged_effects::EffectLog::new(),
             entry_storage: None,
             meter,
@@ -762,7 +792,7 @@ where
         >,
     ) {
         self.invalidate_scoped_request_memo();
-        self.wrappers.clear();
+        self.clear_subgrid_reuse();
         self.bound = Some(target);
         self.fragmentation = Some(FragmentComputation {
             scopes: None,
@@ -780,7 +810,7 @@ where
         >,
     ) {
         self.invalidate_scoped_request_memo();
-        self.wrappers.clear();
+        self.clear_subgrid_reuse();
         self.bound = Some(context.target.clone());
         self.fragmentation = Some(FragmentComputation {
             scopes: None,
@@ -906,7 +936,7 @@ where
     }
     pub(super) fn next_groups(&mut self, basis: &GroupBasis<Tree>) {
         // A reused subgrid computation belongs to the pass that staged it.
-        self.wrappers.clear();
+        self.clear_subgrid_reuse();
         if let (Some(state), Some(basis)) = (&mut self.groups, basis) {
             state.next_pass(basis);
         }
@@ -1097,7 +1127,7 @@ where
         frames: Vec<crate::text_layout::state::CanonicalFrame<Tree::Node, Tree::Scalar>>,
     ) -> SessionResult<Tree, ()> {
         self.invalidate_scoped_request_memo();
-        self.wrappers.clear();
+        self.clear_subgrid_reuse();
         if let Some(text) = self.text.as_mut() {
             text.formatted_next_pass().map_err(|error| {
                 crate::error::staging_text_error(
@@ -2026,6 +2056,9 @@ where
         );
         observation.block_floats = self.block_floats.fork();
         observation.entry_sources = self.entry_sources.clone();
+        observation.probes = self.probes.clone();
+        observation.observed_wrappers = self.observed_wrappers.clone();
+        observation.observing = true;
         if self.entry_sources.is_none() {
             observation.memo = self.memo.as_ref().and_then(memo::Memo::fork);
         }
@@ -2586,12 +2619,22 @@ where
     fn wrapper_resolutions(
         &mut self,
         node: Self::Node,
-    ) -> Option<&mut crate::grid::WrapperResolutions<'input, Self::Node, Self::Scalar>> {
+    ) -> Option<crate::grid::WrapperResolutionsAccess<'_, 'input, Self::Node, Self::Scalar>> {
         if !self.reuses_subgrid_computations() {
             return None;
         }
         let index = self.flow_graph?.index(node)?;
-        self.wrappers.wrapper(index)
+        if self.observing
+            && let Some(shared) = &self.observed_wrappers
+        {
+            let memo = shared
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            return Some(crate::grid::WrapperResolutionsAccess::Shared { memo, index });
+        }
+        self.wrappers
+            .wrapper(index)
+            .map(crate::grid::WrapperResolutionsAccess::Own)
     }
 
     fn text_computation(

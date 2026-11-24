@@ -251,8 +251,9 @@ impl<Node: Copy + PartialEq, S: LayoutScalar> SubgridParentShare<Node, S> {
     /// refresh data of either share is not compared: it only adds to a child's
     /// context where the refresh has ancestor baseline targets, which the
     /// caller excludes. A used geometry that a share lacks is the uniform
-    /// geometry of its tracks, as the track inheritance reads it.
-    fn same_parent_facts(&self, other: &Self) -> bool {
+    /// geometry of its tracks, as the track inheritance reads it, whichever of
+    /// the two shares lacks it.
+    pub(in crate::grid) fn same_parent_facts(&self, other: &Self) -> bool {
         let uniform =
             |tracks: &[S], gap: S| UsedGridAxisGeometryOf::new(tracks.to_vec(), Vec::new(), gap);
         let same_geometry = |first: &Option<UsedGridAxisGeometryOf<S>>,
@@ -262,8 +263,7 @@ impl<Node: Copy + PartialEq, S: LayoutScalar> SubgridParentShare<Node, S> {
             match (first, next) {
                 (None, None) => true,
                 (Some(first), Some(next)) => first == next,
-                (None, Some(next)) => *next == uniform(tracks, gap),
-                (Some(_), None) => false,
+                (None, Some(other)) | (Some(other), None) => *other == uniform(tracks, gap),
             }
         };
         self.parent_baseline_references == other.parent_baseline_references
@@ -305,14 +305,72 @@ pub(in crate::grid) struct SubgridItemLoan<'input, Node, S: LayoutScalar> {
     padding: Edges<S>,
 }
 
-/// Every input of one contextual Grid computation of a subgrid item, as its
-/// first request read them. The baseline refresh compares them with its own.
-pub(in crate::grid) struct ContextualFingerprint<'input, Node, S: LayoutScalar> {
+/// Every input of one contextual Grid computation of a subgrid item: the
+/// facts of its request and of the parent loan it reads. A contextual Grid
+/// computation reads only these and the tree, so a request equal in all of
+/// them returns the same output, baselines and error.
+struct ContextualInputs<'input, Node, S: LayoutScalar> {
     input: ComputeInputOf<S>,
     minimum: Size<Option<StandaloneIntrinsicMinimum>>,
     stage: GridSizingStage,
     container: GridContainerInput<'input, S>,
     loan: SubgridItemLoan<'input, Node, S>,
+}
+
+impl<'input, Node: Copy + PartialEq, S: LayoutScalar> ContextualInputs<'input, Node, S> {
+    fn of(
+        request: &GridContextRequest<'input, Node, S>,
+        loan: &SubgridItemLoan<'input, Node, S>,
+    ) -> Self {
+        Self {
+            input: request.input,
+            minimum: request.minimum,
+            stage: request.stage,
+            container: request.child,
+            loan: loan.clone(),
+        }
+    }
+
+    /// Whether a request with these inputs computes the same result as the
+    /// request these inputs came from. They are equal when:
+    /// - the child's compute input, stage and container are the same;
+    /// - the standalone-minimum phases the computation resolves are the same:
+    ///   the request's own, completed by the container's;
+    /// - the loan's item report, style, area, content box and margin, border
+    ///   and padding are the same; and
+    /// - the parent facts the loans share are the same: tracks, minimum
+    ///   functions, gap, named lines, area facts, baseline references and used
+    ///   geometry.
+    fn is_reproduced_by(&self, next: &Self) -> bool {
+        let resolved = |inputs: &Self| {
+            let contextual = standalone_intrinsic_minimum_phases(
+                &inputs.container.projection(),
+                inputs.container.inherited_axes(),
+            );
+            Size::new(
+                inputs.minimum.width.or(contextual.width),
+                inputs.minimum.height.or(contextual.height),
+            )
+        };
+        self.input == next.input
+            && self.stage == next.stage
+            && self.container.same_container(&next.container)
+            && resolved(self) == resolved(next)
+            && self.loan.item == next.loan.item
+            && self.loan.child_style == next.loan.child_style
+            && self.loan.area == next.loan.area
+            && self.loan.content_box_size == next.loan.content_box_size
+            && self.loan.margin == next.loan.margin
+            && self.loan.border == next.loan.border
+            && self.loan.padding == next.loan.padding
+            && self.loan.share.same_parent_facts(&next.loan.share)
+    }
+}
+
+/// Every input of one contextual Grid computation of a subgrid item, as its
+/// first request read them. The baseline refresh compares them with its own.
+pub(in crate::grid) struct ContextualFingerprint<'input, Node, S: LayoutScalar> {
+    inputs: ContextualInputs<'input, Node, S>,
     /// The writes the computation staged, which a reuse stages again.
     effects: Option<crate::engine::StagedEffects<Node, S>>,
 }
@@ -332,28 +390,13 @@ impl<'input, Node: Copy + PartialEq, S: LayoutScalar> ContextualFingerprint<'inp
             return None;
         };
         Some(Self {
-            input: request.input,
-            minimum: request.minimum,
-            stage: request.stage,
-            container: request.child,
-            loan: (**loan).clone(),
+            inputs: ContextualInputs::of(request, loan),
             effects: None,
         })
     }
 
     /// Whether `request` computes the same result as the request these inputs
-    /// came from. A contextual Grid computation reads only the fields of its
-    /// request and the parent facts its loan shares, so a request equal in all
-    /// of them returns the same output, baselines and error. They are equal
-    /// when:
-    /// - the child's compute input, stage and container are the same;
-    /// - the standalone-minimum phases the computation resolves are the same:
-    ///   the request's own, completed by the container's;
-    /// - the loan's item report, style, area, content box and margin, border
-    ///   and padding are the same; and
-    /// - the parent facts the loans share are the same: tracks, minimum
-    ///   functions, gap, named lines, area facts, baseline references and used
-    ///   geometry.
+    /// came from (`ContextualInputs::is_reproduced_by`).
     ///
     /// The refresh share adds ancestor baseline groups and the parent's
     /// template-area expansion to the context, and the caller establishes
@@ -365,29 +408,115 @@ impl<'input, Node: Copy + PartialEq, S: LayoutScalar> ContextualFingerprint<'inp
         let GridParentContextSource::Loan(next) = &request.parent_context else {
             return false;
         };
-        let resolved = |request_minimum: Size<Option<StandaloneIntrinsicMinimum>>,
-                        container: &GridContainerInput<'input, S>| {
-            let contextual = standalone_intrinsic_minimum_phases(
-                &container.projection(),
-                container.inherited_axes(),
-            );
-            Size::new(
-                request_minimum.width.or(contextual.width),
-                request_minimum.height.or(contextual.height),
+        self.inputs
+            .is_reproduced_by(&ContextualInputs::of(request, next))
+    }
+}
+
+/// Every input of one intrinsic probe: the inputs of its contextual Grid
+/// computation, the probe's kind and the flow axes of the parent whose tracks
+/// the probe's context is rebuilt from. Two probes with equal keys return the
+/// same output and gutter.
+pub(crate) struct ProbeKey<'input, Node, S: LayoutScalar> {
+    inputs: ContextualInputs<'input, Node, S>,
+    parent_flow: crate::geometry::FlowAxes,
+    kind: GridIntrinsicProbeKind,
+}
+
+impl<'input, Node: Copy + PartialEq, S: LayoutScalar> ProbeKey<'input, Node, S> {
+    pub(in crate::grid) fn new(
+        request: &GridContextRequest<'input, Node, S>,
+        loan: &SubgridItemLoan<'input, Node, S>,
+        parent_flow: crate::geometry::FlowAxes,
+        kind: GridIntrinsicProbeKind,
+    ) -> Self {
+        Self {
+            inputs: ContextualInputs::of(request, loan),
+            parent_flow,
+            kind,
+        }
+    }
+
+    /// Whether the probes of the two keys compute the same result. The sizes
+    /// of the compute input compare by representation, as the request memo
+    /// compares them: a raw zero keeps its sign.
+    pub(crate) fn same_probe(&self, other: &Self) -> bool {
+        self.parent_flow == other.parent_flow
+            && self.kind == other.kind
+            && crate::engine::exact_optional_size(
+                self.inputs.input.known(),
+                other.inputs.input.known(),
             )
-        };
-        self.input == request.input
-            && self.stage == request.stage
-            && self.container.same_container(&request.child)
-            && resolved(self.minimum, &self.container) == resolved(request.minimum, &request.child)
-            && self.loan.item == next.item
-            && self.loan.child_style == next.child_style
-            && self.loan.area == next.area
-            && self.loan.content_box_size == next.content_box_size
-            && self.loan.margin == next.margin
-            && self.loan.border == next.border
-            && self.loan.padding == next.padding
-            && self.loan.share.same_parent_facts(&next.share)
+            && crate::engine::exact_optional_size(
+                self.inputs.input.parent(),
+                other.inputs.input.parent(),
+            )
+            && self.inputs.is_reproduced_by(&other.inputs)
+    }
+}
+
+/// The intrinsic probes a layout call has completed, by the probe's node's
+/// index in the validated graph: what a probe returns to its requester, its
+/// output and the scrollbar gutter it settled on. Every observation session of
+/// the call shares one table, so a probe that a disposable session has
+/// computed is not computed again by another.
+pub(crate) struct ProbeResults<'input, Node, S: LayoutScalar> {
+    by_node: Vec<Vec<ProbeResult<'input, Node, S>>>,
+}
+
+struct ProbeResult<'input, Node, S: LayoutScalar> {
+    key: ProbeKey<'input, Node, S>,
+    output: ComputeOutputOf<S>,
+    gutter: Option<Edges<S>>,
+}
+
+impl<Node, S: LayoutScalar> Default for ProbeResults<'_, Node, S> {
+    fn default() -> Self {
+        Self {
+            by_node: Vec::new(),
+        }
+    }
+}
+
+impl<'input, Node: Copy + PartialEq, S: LayoutScalar> ProbeResults<'input, Node, S> {
+    /// The output and gutter of the completed probe with `key`, whose node is
+    /// at `index`.
+    pub(crate) fn get(
+        &self,
+        index: usize,
+        key: &ProbeKey<'input, Node, S>,
+    ) -> Option<(ComputeOutputOf<S>, Option<Edges<S>>)> {
+        self.by_node
+            .get(index)?
+            .iter()
+            .find(|result| result.key.same_probe(key))
+            .map(|result| (result.output, result.gutter))
+    }
+
+    /// Records the completed probe with `key`. A table that cannot grow
+    /// records nothing: a later probe computes again.
+    pub(crate) fn insert(
+        &mut self,
+        index: usize,
+        key: ProbeKey<'input, Node, S>,
+        output: ComputeOutputOf<S>,
+        gutter: Option<Edges<S>>,
+    ) {
+        if self.by_node.len() <= index {
+            let missing = index + 1 - self.by_node.len();
+            if self.by_node.try_reserve(missing).is_err() {
+                return;
+            }
+            self.by_node.resize_with(index + 1, Vec::new);
+        }
+        let row = &mut self.by_node[index];
+        if row.try_reserve(1).is_ok() {
+            row.push(ProbeResult {
+                key,
+                output,
+                gutter,
+            });
+        }
     }
 }
 

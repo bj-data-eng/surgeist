@@ -24,7 +24,7 @@ mod baseline;
 mod minimum;
 mod scroll;
 mod settlement;
-mod subgrid_context;
+pub(super) mod subgrid_context;
 
 pub(super) use absolute::*;
 pub(super) use baseline::*;

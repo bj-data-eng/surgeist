@@ -11,14 +11,14 @@ use crate::{
 
 // Chains whose items size intrinsic tracks of their parent. Every level is an
 // ordinary item of the level above, so its intrinsic contribution is a Grid
-// computed with its parent's tracks as context. Each level costs several
-// hundred KiB of native stack in a debug build, f64 more than f32, and
-// computes its subtree again for each intrinsic query, so the work grows
-// geometrically with the depth. The deep depths below overflow the 2 MiB stack
-// with the margin the comment on each constant gives, and the whole layout
-// still finishes in seconds once the recursion is off the stack. A scalar
-// whose frames overflow only at a depth the geometric work makes impractical
-// has no deep test for that chain.
+// computed with its parent's tracks as context. A level asks the level below
+// for the same few intrinsic queries however many of its own queries ask, and
+// an answered query is not computed again, so the work grows with the depth
+// (the work bounds below). The deep depths run on the 2 MiB stack of the
+// bounded test, and each finishes in about a second in a debug build. The
+// stacking chain is the exception: its lane children ask for contributions,
+// which are computed again for each query, so its work grows about four-fold
+// per level and its depth stays small.
 
 fn auto_tracks<S: LayoutScalar>() -> Vec<TrackComponentOf<S>> {
     vec![TrackComponentOf::AUTO, TrackComponentOf::AUTO]
@@ -118,9 +118,8 @@ fn assert_auto_column_chain<S: LayoutScalar>(depth: u32, root_height: f64, scrol
     assert_box(&batch, depth + 2, (30.0, 20.0), (40.0, 30.0));
 }
 
-// f64 overflows from 4 levels and f32 from 7.
-const AUTO_COLUMN_DEPTH_F32: u32 = 8;
-const AUTO_COLUMN_DEPTH_F64: u32 = 6;
+const AUTO_COLUMN_DEPTH_F32: u32 = 24;
+const AUTO_COLUMN_DEPTH_F64: u32 = 24;
 
 #[test]
 fn shallow_auto_column_subgrid_chain_sizes_columns_from_leaves() {
@@ -154,9 +153,7 @@ fn deep_auto_column_subgrid_chain_sizes_columns_from_leaves_f64() {
 // The root is 60px high, which holds its 50px row, and every level holds its
 // content, so there is no overflow, no scrollbar and no reserved gutter, and
 // the geometry is that of the chain without scrolling.
-// f64 overflows from 3 levels. The f32 chain does not overflow within the 5
-// levels that finish quickly.
-const SCROLLED_COLUMN_DEPTH: u32 = 4;
+const SCROLLED_COLUMN_DEPTH: u32 = 8;
 
 #[test]
 fn shallow_scrolled_auto_column_subgrid_chain_sizes_columns_from_leaves() {
@@ -166,6 +163,14 @@ fn shallow_scrolled_auto_column_subgrid_chain_sizes_columns_from_leaves() {
             assert_auto_column_chain::<f32>(2, 60.0, true);
             assert_auto_column_chain::<f64>(2, 60.0, true);
         },
+    );
+}
+
+#[test]
+fn deep_scrolled_auto_column_subgrid_chain_sizes_columns_from_leaves_f32() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_intrinsic::deep_scrolled_auto_column_subgrid_chain_sizes_columns_from_leaves_f32",
+        || assert_auto_column_chain::<f32>(SCROLLED_COLUMN_DEPTH, 60.0, true),
     );
 }
 
@@ -234,9 +239,7 @@ fn assert_alternating_chain<S: LayoutScalar>(depth: u32) {
     assert_box(&batch, depth + 2, (30.0, 20.0), (40.0, 50.0));
 }
 
-// f64 overflows from 8 levels. The f32 chain does not overflow within the 12
-// levels that finish quickly.
-const ALTERNATING_DEPTH: u32 = 10;
+const ALTERNATING_DEPTH: u32 = 32;
 
 #[test]
 fn shallow_alternating_subgrid_chain_sizes_tracks_from_leaves() {
@@ -246,6 +249,14 @@ fn shallow_alternating_subgrid_chain_sizes_tracks_from_leaves() {
             assert_alternating_chain::<f32>(4);
             assert_alternating_chain::<f64>(4);
         },
+    );
+}
+
+#[test]
+fn deep_alternating_subgrid_chain_sizes_tracks_from_leaves_f32() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_intrinsic::deep_alternating_subgrid_chain_sizes_tracks_from_leaves_f32",
+        || assert_alternating_chain::<f32>(ALTERNATING_DEPTH),
     );
 }
 
@@ -323,9 +334,7 @@ fn assert_auto_lane_chain<S: LayoutScalar>(depth: u32) {
     assert_box(&batch, depth + 3, (0.0, 5.0), (20.0, 9.0));
 }
 
-// f64 overflows from 4 levels. f32 overflows from 7, where the work is too
-// large for a quick test.
-const AUTO_LANE_DEPTH: u32 = 6;
+const AUTO_LANE_DEPTH: u32 = 24;
 
 #[test]
 fn shallow_auto_lane_subgrid_chain_sizes_lanes_from_leaves() {
@@ -335,6 +344,14 @@ fn shallow_auto_lane_subgrid_chain_sizes_lanes_from_leaves() {
             assert_auto_lane_chain::<f32>(3);
             assert_auto_lane_chain::<f64>(3);
         },
+    );
+}
+
+#[test]
+fn deep_auto_lane_subgrid_chain_sizes_lanes_from_leaves_f32() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_intrinsic::deep_auto_lane_subgrid_chain_sizes_lanes_from_leaves_f32",
+        || assert_auto_lane_chain::<f32>(AUTO_LANE_DEPTH),
     );
 }
 
@@ -404,8 +421,8 @@ fn assert_stacking_subgrid_chain<S: LayoutScalar>(depth: u32) {
     assert_box(&batch, depth + 3, (0.0, 12.0), (20.0, 9.0));
 }
 
-// f64 overflows from 5 levels. f32 overflows from 8, where the work is too
-// large for a quick test.
+// The work of this chain grows about four-fold per level, so its depth is
+// small.
 const STACKING_DEPTH: u32 = 6;
 
 #[test]
@@ -618,13 +635,15 @@ fn stacking_subgrid_chain_leaf_refusal_surfaces_unchanged() {
 // the next level, for each of three contributions of the intrinsic track
 // sizing algorithm (CSS Grid Level 1, section 11.5: the item's minimum
 // contribution, its min-content contribution and its max-content
-// contribution) in each of the five sizing stages the engine distinguishes
-// (initial first axis, initial second axis, first and second axis revisits,
-// and complete). The level is also laid out once for its final geometry and
+// contribution) in each of the two sizing stages that size the second axis
+// (the initial and the revisit). A parent that is itself a subgrid describes
+// its tracks, named lines and minimum functions differently from a parent
+// that declares them, so the same query can be made under two descriptions of
+// its parent. The level is also laid out once for its final geometry and
 // refreshed once for its baselines. A request is computed once for its node,
-// input, stage and parent tracks however many parents ask for it, so one
-// level adds at most
-const OWN_ROW_REQUESTS_PER_LEVEL: usize = 5 * 3 + 1 + 1;
+// input, stage and parent facts however many parents ask for it, so one level
+// adds at most
+const OWN_ROW_REQUESTS_PER_LEVEL: usize = 2 * 3 * 2 + 1 + 1;
 // contextual computations. A Grid Lanes level is also a lane-packing
 // candidate of its parent, which asks for the same contributions again.
 const LANE_REQUESTS_PER_LEVEL: usize = 2 * OWN_ROW_REQUESTS_PER_LEVEL;
@@ -688,7 +707,7 @@ fn assert_contextual_grids_bounded(
     }
 }
 
-const AUTO_COLUMN_WORK_DEPTHS: &[u32] = &[2, 3, 4, 5];
+const AUTO_COLUMN_WORK_DEPTHS: &[u32] = &[2, 3, 4, 5, 6, 7, 8];
 
 #[test]
 fn auto_column_chain_contextual_grids_grow_by_one_levels_requests_per_depth() {
@@ -711,7 +730,7 @@ fn auto_column_chain_contextual_grids_grow_by_one_levels_requests_per_depth() {
     }
 }
 
-const AUTO_LANE_WORK_DEPTHS: &[u32] = &[2, 3, 4, 5];
+const AUTO_LANE_WORK_DEPTHS: &[u32] = &[2, 3, 4, 5, 6, 7, 8];
 
 #[test]
 fn auto_lane_chain_contextual_grids_grow_by_one_levels_requests_per_depth() {
@@ -725,7 +744,7 @@ fn auto_lane_chain_contextual_grids_grow_by_one_levels_requests_per_depth() {
     }
 }
 
-const SCROLLED_WORK_DEPTHS: &[u32] = &[2, 3, 4];
+const SCROLLED_WORK_DEPTHS: &[u32] = &[2, 3, 4, 5, 6];
 
 #[test]
 fn scrolled_auto_column_chain_contextual_grids_grow_by_one_levels_requests_per_depth_below() {
@@ -748,7 +767,7 @@ fn scrolled_auto_column_chain_contextual_grids_grow_by_one_levels_requests_per_d
     }
 }
 
-const ALTERNATING_WORK_DEPTHS: &[u32] = &[2, 3, 4, 5, 6];
+const ALTERNATING_WORK_DEPTHS: &[u32] = &[2, 3, 4, 5, 6, 7, 8, 9];
 
 #[test]
 fn alternating_chain_contextual_grids_grow_by_one_levels_requests_per_depth() {
@@ -763,6 +782,118 @@ fn alternating_chain_contextual_grids_grow_by_one_levels_requests_per_depth() {
             |_| OWN_ROW_REQUESTS_PER_LEVEL,
         );
     }
+}
+
+/// The debug rendering of the completed layout of `tree` and the work it
+/// reported.
+fn rendered_layout_and_work<S: LayoutScalar>(
+    tree: &PublicLayoutTreeOf<S>,
+) -> (String, crate::accounting::SubgridWork) {
+    let host = crate::accounting::TestHost::new();
+    let batch = crate::engine::compute_layout_invalidated_accounted(
+        tree,
+        0,
+        standalone(),
+        &[],
+        Some(&host.scope()),
+    )
+    .expect("chain layout");
+    (format!("{batch:?}"), host.subgrid_work())
+}
+
+/// Lays out `tree` with the reuse of subgrid computations and with every
+/// computation repeated, and asserts that the published batch is the same and
+/// that the reuse computed fewer contextual Grids.
+fn assert_reuse_publishes_the_same_batch<S: LayoutScalar>(
+    name: &str,
+    tree: &PublicLayoutTreeOf<S>,
+) {
+    let (reused, reused_work) = rendered_layout_and_work(tree);
+    let (repeated, repeated_work) =
+        crate::grid::subgrid_work::with_subgrid_reuse_disabled(|| rendered_layout_and_work(tree));
+    if reused != repeated {
+        let at = reused
+            .chars()
+            .zip(repeated.chars())
+            .position(|(left, right)| left != right)
+            .unwrap_or_else(|| reused.len().min(repeated.len()));
+        let window = |text: &str| {
+            text.chars()
+                .skip(at.saturating_sub(150))
+                .take(400)
+                .collect::<String>()
+        };
+        panic!(
+            "{name}: reuse changed the published batch, first at {at}: reused {} repeated {}",
+            window(&reused),
+            window(&repeated)
+        );
+    }
+    assert!(
+        reused_work.contextual_grids < repeated_work.contextual_grids,
+        "{name}: the reuse engages: {reused_work:?} against {repeated_work:?}"
+    );
+}
+
+/// Runs `check` on a stack that holds the native recursion of the repeated
+/// layout, which computes every path through the chain.
+fn on_large_stack(check: impl FnOnce() + Send + 'static) {
+    std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(check)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn auto_column_chain_publishes_the_same_batch_with_and_without_reuse() {
+    on_large_stack(|| {
+        assert_reuse_publishes_the_same_batch(
+            "auto-column chain f32",
+            &auto_column_chain::<f32>(3, 40.0, false),
+        );
+        assert_reuse_publishes_the_same_batch(
+            "auto-column chain f64",
+            &auto_column_chain::<f64>(3, 40.0, false),
+        );
+    });
+}
+
+#[test]
+fn auto_lane_chain_publishes_the_same_batch_with_and_without_reuse() {
+    on_large_stack(|| {
+        assert_reuse_publishes_the_same_batch("auto-lane chain f32", &auto_lane_chain::<f32>(3));
+        assert_reuse_publishes_the_same_batch("auto-lane chain f64", &auto_lane_chain::<f64>(3));
+    });
+}
+
+#[test]
+fn scrolled_auto_column_chain_publishes_the_same_batch_with_and_without_reuse() {
+    on_large_stack(|| {
+        assert_reuse_publishes_the_same_batch(
+            "scrolled auto-column chain f32",
+            &auto_column_chain::<f32>(2, 60.0, true),
+        );
+        assert_reuse_publishes_the_same_batch(
+            "scrolled auto-column chain f64",
+            &auto_column_chain::<f64>(2, 60.0, true),
+        );
+    });
+}
+
+#[test]
+fn alternating_chain_publishes_the_same_batch_with_and_without_reuse() {
+    on_large_stack(|| {
+        assert_reuse_publishes_the_same_batch(
+            "alternating chain f32",
+            &alternating_chain::<f32>(4),
+        );
+        assert_reuse_publishes_the_same_batch(
+            "alternating chain f64",
+            &alternating_chain::<f64>(4),
+        );
+    });
 }
 
 // Chains that differ from the auto-column chain in one fact the sizes of the
