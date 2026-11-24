@@ -570,6 +570,80 @@ fn assert_lane_leaf_failure<S: LayoutScalar>(
     }
 }
 
+// The same refusals with the reuse of subgrid computations and with every
+// computation repeated: a probe that fails is recorded nowhere, so a later
+// request of it raises the same refusal, and the error is the one the repeated
+// layout raises.
+fn layout_refusal<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>, leaf: u32) -> String {
+    let document = FailingLeaf {
+        tree: tree.clone(),
+        leaf,
+    };
+    let error =
+        compute_layout(&document, 0, standalone()).expect_err("the leaf cannot be measured");
+    assert_eq!(error.site(), crate::error::LayoutErrorSiteOf::Node(leaf));
+    assert_eq!(
+        error.operation(),
+        crate::error::LayoutOperation::LeafMeasurement
+    );
+    assert!(
+        matches!(
+            error.kind(),
+            crate::error::LayoutErrorKindOf::Measurement(LeafFailure)
+        ),
+        "{error:?}"
+    );
+    format!("{error:?}")
+}
+
+fn assert_refusal_is_the_same_without_reuse<S: LayoutScalar>(
+    tree: PublicLayoutTreeOf<S>,
+    leaves: &[u32],
+) {
+    for &leaf in leaves {
+        let reused = layout_refusal(&tree, leaf);
+        let repeated =
+            crate::grid::subgrid_work::with_subgrid_reuse_disabled(|| layout_refusal(&tree, leaf));
+        assert_eq!(reused, repeated, "leaf {leaf}");
+    }
+}
+
+#[test]
+fn auto_column_chain_leaf_refusal_is_the_same_with_and_without_reuse() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_intrinsic::auto_column_chain_leaf_refusal_is_the_same_with_and_without_reuse",
+        || {
+            let leaves = [(4, Some((1, 1))), (5, Some((2, 2)))];
+            assert_refusal_is_the_same_without_reuse(
+                measured_leaves(auto_column_chain::<f32>(3, 60.0, false), &leaves),
+                &[4, 5],
+            );
+            assert_refusal_is_the_same_without_reuse(
+                measured_leaves(auto_column_chain::<f64>(3, 60.0, false), &leaves),
+                &[4, 5],
+            );
+        },
+    );
+}
+
+#[test]
+fn auto_lane_chain_leaf_refusal_is_the_same_with_and_without_reuse() {
+    on_bounded_stack(
+        "engine::depth_tests::contextual_intrinsic::auto_lane_chain_leaf_refusal_is_the_same_with_and_without_reuse",
+        || {
+            let leaves = [(4, None), (5, None), (6, None)];
+            assert_refusal_is_the_same_without_reuse(
+                measured_leaves(auto_lane_chain::<f32>(3), &leaves),
+                &[4, 5, 6],
+            );
+            assert_refusal_is_the_same_without_reuse(
+                measured_leaves(auto_lane_chain::<f64>(3), &leaves),
+                &[4, 5, 6],
+            );
+        },
+    );
+}
+
 #[test]
 fn auto_column_subgrid_chain_leaf_refusal_surfaces_unchanged() {
     on_bounded_stack(

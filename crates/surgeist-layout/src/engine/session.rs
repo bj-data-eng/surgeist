@@ -2627,9 +2627,12 @@ where
         if self.observing
             && let Some(shared) = &self.observed_wrappers
         {
-            let memo = shared
+            let mut memo = shared
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+            // A memo that cannot hold the wrapper's row retains nothing, as
+            // the session's own memo does.
+            memo.wrapper(index)?;
             return Some(crate::grid::WrapperResolutionsAccess::Shared { memo, index });
         }
         self.wrappers
