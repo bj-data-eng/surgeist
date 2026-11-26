@@ -162,10 +162,11 @@ impl std::error::Error for CssSourceRetentionError {}
 pub enum CssSourceRetentionAction {
     /// Admit the next observation before its operands are read.
     Step,
-    /// Complete live collector metadata and source-reference bank bytes.
-    /// During replacement this includes both old and requested/actual new banks.
+    /// Complete live collector metadata, source-reference bank bytes and identity
+    /// index bytes. During replacement this includes both the old storage and the
+    /// requested/actual new storage, with the temporary headers of the new storage.
     Scratch {
-        /// Live bytes, including fixed collector metadata and every bank held at once.
+        /// Live bytes, including fixed collector metadata and every bank and index held at once.
         live_bytes: usize,
     },
 }
@@ -290,13 +291,26 @@ pub trait CssRetainedSources {
 /// One cumulative admission, deduplicated by actual immutable snapshot identity.
 /// It does not count references held by callers or inspect Arc strong counts.
 ///
+/// Recording or recognizing a snapshot, and recognizing a shared original UTF16
+/// backing, goes through identity indexes over the bank of recorded snapshots, so
+/// the work of [`Self::source`] does not grow with the number of snapshots
+/// recorded and its one-step charge bounds it. An index is an open-addressing
+/// table of bank positions whose length is a power of two, at least twice the
+/// bank's room, probed linearly from a fixed integer mix of the identity's
+/// address. It depends on no hash seed, so the table lengths, the storage the
+/// collector reports and every charge are the same for the same sequence of
+/// snapshots. The bank keeps its recording order and recording a snapshot does
+/// not move the others, which a bank sorted for bisection would. The indexes
+/// are part of the collector's own storage, which
+/// [`CssSourceRetentionAction::Scratch`] reports.
+///
 /// The borrowed predicate may capture thread-local owner state. Consequently the
 /// collector is neither Send nor Sync, including values constructed with new.
 /// It also makes no UnwindSafe or RefUnwindSafe guarantee. Source snapshots stay
 /// independently shareable; this collector's lifetime/auto-trait contract does
 /// not change their immutable ownership.
 pub struct CssSourceRetention<'admit> {
-    sources: Vec<CssSourceSnapshot>,
+    bank: bank::SourceBank,
     usage: CssSourceStorageUsage,
     bytes: usize,
     visits: usize,
@@ -308,7 +322,7 @@ pub struct CssSourceRetention<'admit> {
 impl std::fmt::Debug for CssSourceRetention<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CssSourceRetention")
-            .field("sources", &self.sources.len())
+            .field("sources", &self.bank.len())
             .field("usage", &self.usage)
             .field("bytes", &self.bytes)
             .field("visits", &self.visits)
@@ -324,12 +338,12 @@ impl<'admit> CssSourceRetention<'admit> {
     /// Constructs a collector without a caller admission predicate.
     ///
     /// `bytes` bounds the cumulative retained storage of the distinct snapshots recorded,
-    /// `maximum_visits` bounds the charged steps and the storage banks, and `maximum_depth`
+    /// `maximum_visits` bounds the charged steps and the snapshot bank, and `maximum_depth`
     /// bounds the owner nesting depth.
     #[must_use]
     pub const fn new(bytes: usize, maximum_visits: usize, maximum_depth: usize) -> Self {
         Self {
-            sources: Vec::new(),
+            bank: bank::SourceBank::new(),
             usage: CssSourceStorageUsage(0),
             bytes,
             visits: 0,
@@ -359,7 +373,7 @@ impl<'admit> CssSourceRetention<'admit> {
     /// Construct a collector borrowing the caller's finite admission policy.
     ///
     /// The first Scratch action admits the collector's fixed metadata before
-    /// formation. Later reports include actual bank capacity and replacement
+    /// formation. Later reports include actual bank and index capacity and replacement
     /// overlap. Keep that admission live until this collector has been dropped.
     /// A false predicate result is terminal, including when a visitor swallows
     /// the returned error. The predicate may retain its original typed error in
@@ -414,42 +428,35 @@ impl<'admit> CssSourceRetention<'admit> {
     }
     /// Records one source snapshot as retained backing.
     ///
-    /// Charges a step, plus one per snapshot or shared original backing identity compared, and
-    /// ignores a snapshot already recorded (identity, not text). Otherwise it adds the storage to
-    /// the cumulative usage, refusing with [`CssSourceRetentionResource::RetainedBytes`] beyond the
-    /// byte bound, with [`CssSourceRetentionResource::Storage`] when the snapshot bank's size
-    /// overflows or would exceed the visit bound, and with [`CssSourceRetentionError::allocation`]
-    /// when the allocator cannot provide it. A caller-admission refusal of the bank's scratch
-    /// storage is returned unchanged.
+    /// Charges one step, whether the snapshot is new, already recorded or shares an original
+    /// UTF16 backing with a recorded one: the lookups go through identity indexes, so the step
+    /// bounds the work and the total of a walk does not depend on its order or on how many
+    /// snapshots are recorded. A snapshot already recorded is ignored (identity, not text).
+    /// Otherwise it adds the storage to the cumulative usage, refusing with
+    /// [`CssSourceRetentionResource::RetainedBytes`] beyond the byte bound, with
+    /// [`CssSourceRetentionResource::Storage`] when the size of the snapshot bank or its indexes
+    /// overflows or the bank would exceed the visit bound, and with
+    /// [`CssSourceRetentionError::allocation`] when the allocator cannot provide it. A
+    /// caller-admission refusal of the collector's scratch storage is returned unchanged.
     pub fn source(&mut self, source: &CssSourceSnapshot) -> Result<(), CssSourceRetentionError> {
         self.charge_step()?;
-        let mut original = self
-            .admission
-            .share_original_utf16
-            .then(|| source.original_utf16())
-            .flatten();
-        let mut shared_original_bytes = 0;
-        for index in 0..self.sources.len() {
-            self.charge_step()?;
-            if self.sources[index].same_snapshot(source) {
-                return Ok(());
-            }
-            if let Some(original_backing) = original
-                && self.sources[index].original_utf16().is_some()
-            {
-                self.charge_step()?;
-                if self.sources[index]
-                    .original_utf16()
-                    .is_some_and(|recorded_backing| {
-                        std::sync::Arc::ptr_eq(original_backing, recorded_backing)
-                    })
-                {
-                    shared_original_bytes =
-                        original_backing.capacity() * std::mem::size_of::<u16>();
-                    original = None;
-                }
-            }
+        if self.bank.contains(source) {
+            return Ok(());
         }
+        let shared_original_bytes = match source.original_utf16() {
+            Some(original)
+                if self.admission.share_original_utf16
+                    && self.bank.first_sharing_original(source).is_some() =>
+            {
+                original
+                    .capacity()
+                    .checked_mul(std::mem::size_of::<u16>())
+                    .ok_or(CssSourceRetentionError::limit(
+                        CssSourceRetentionResource::RetainedBytes,
+                    ))?
+            }
+            _ => 0,
+        };
         let snapshot_bytes = source
             .storage_usage()
             .retained_bytes()
@@ -464,59 +471,42 @@ impl<'admit> CssSourceRetention<'admit> {
             .ok_or(CssSourceRetentionError::limit(
                 CssSourceRetentionResource::RetainedBytes,
             ))?;
-        if self.sources.len() == self.sources.capacity() {
-            let required =
-                self.sources
-                    .len()
-                    .checked_add(1)
-                    .ok_or(CssSourceRetentionError::limit(
-                        CssSourceRetentionResource::Storage,
-                    ))?;
-            let capacity = self
-                .sources
-                .capacity()
-                .saturating_mul(2)
-                .max(required)
-                .min(self.maximum_visits);
-            self.reserve_sources(capacity)?;
+        if let Some(growth) = self.bank.growth(source, self.maximum_visits)? {
+            self.grow(&growth)?;
         }
-        self.sources.push(source.clone());
+        self.bank.record(source)?;
         self.usage = usage;
         Ok(())
     }
-    fn reserve_sources(&mut self, capacity: usize) -> Result<(), CssSourceRetentionError> {
-        let scratch = |new_capacity: usize| {
-            self.sources
-                .capacity()
-                .checked_add(new_capacity)
-                .and_then(|count| count.checked_mul(std::mem::size_of::<CssSourceSnapshot>()))
-                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Self>()))
-                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<CssSourceSnapshot>>()))
-                .ok_or(CssSourceRetentionError::limit(
-                    CssSourceRetentionResource::Storage,
-                ))
+    /// Replaces the bank storage `growth` names. The requested simultaneous live bytes are
+    /// admitted before anything is allocated and the actual ones before the new storage is used.
+    fn grow(&mut self, growth: &bank::Growth) -> Result<(), CssSourceRetentionError> {
+        let live = |bank: &bank::SourceBank, replaced| {
+            bank.live_bytes(replaced).and_then(|bytes| {
+                bytes.checked_add(std::mem::size_of::<Self>()).ok_or(
+                    CssSourceRetentionError::limit(CssSourceRetentionResource::Storage),
+                )
+            })
         };
         self.admission.action(CssSourceRetentionAction::Scratch {
-            live_bytes: scratch(capacity)?,
+            live_bytes: live(&self.bank, growth.requested())?,
         })?;
-        let mut replacement = Vec::new();
-        replacement
-            .try_reserve_exact(capacity)
-            .map_err(|_| CssSourceRetentionError::allocation())?;
+        let replacement = self.bank.allocate(growth)?;
         // An allocator may grant more capacity than requested. Admit that actual
         // simultaneous extent before copying/using it; refusal drops it while
         // the caller still retains the requested reservation and the old bank.
         self.admission.action(CssSourceRetentionAction::Scratch {
-            live_bytes: scratch(replacement.capacity())?,
+            live_bytes: live(&self.bank, replacement.actual())?,
         })?;
-        if replacement.capacity() > self.maximum_visits {
+        if replacement
+            .bank_capacity()
+            .is_some_and(|capacity| capacity > self.maximum_visits)
+        {
             return Err(CssSourceRetentionError::limit(
                 CssSourceRetentionResource::Storage,
             ));
         }
-        replacement.append(&mut self.sources);
-        self.sources = replacement;
-        Ok(())
+        self.bank.adopt(replacement)
     }
 
     /// Complete source payload in this retained snapshot-identity domain.
@@ -524,8 +514,8 @@ impl<'admit> CssSourceRetention<'admit> {
     /// Includes private source payload headers and backing, and each exact shared
     /// original UTF16 Vec header/backing once, even across distinct snapshots.
     /// Excludes this collector's own bank, opaque Arc control blocks and allocator
-    /// overhead. Existing backing-only usage/quota and visit tariffs are unchanged.
-    /// The caller admits each source observation and original-identity comparison
+    /// overhead. Existing backing-only usage/quota is unchanged.
+    /// The caller admits each source observation and original-identity lookup
     /// before operands are read. No allocation or source-text comparison occurs.
     /// This read-only observation has its own explicit admission budget,
     /// independently of the optional traversal predicate and its terminal state.
@@ -534,7 +524,7 @@ impl<'admit> CssSourceRetention<'admit> {
         &self,
         mut admit: impl FnMut() -> Result<(), E>,
     ) -> Result<usize, CssRetainedPayloadError<E>> {
-        complete_payload_bytes(&self.sources, &mut admit)
+        self.bank.payload_bytes(&mut admit)
     }
 
     /// Measure complete source payload through this collector's same admission
@@ -545,11 +535,9 @@ impl<'admit> CssSourceRetention<'admit> {
         &mut self,
     ) -> Result<usize, CssRetainedPayloadError<CssSourceRetentionError>> {
         let Self {
-            sources, admission, ..
+            bank, admission, ..
         } = self;
-        complete_payload_bytes(sources, &mut || {
-            admission.action(CssSourceRetentionAction::Step)
-        })
+        bank.payload_bytes(&mut || admission.action(CssSourceRetentionAction::Step))
     }
 
     /// Returns the cumulative storage usage of the distinct snapshots recorded so far.
@@ -628,40 +616,6 @@ impl<'admit> CssSourceRetention<'admit> {
         result
     }
 }
-fn complete_payload_bytes<E>(
-    sources: &[CssSourceSnapshot],
-    admit: &mut impl FnMut() -> Result<(), E>,
-) -> Result<usize, CssRetainedPayloadError<E>> {
-    admit().map_err(CssRetainedPayloadError::admission)?;
-    let mut total = 0usize;
-    for index in 0..sources.len() {
-        admit().map_err(CssRetainedPayloadError::admission)?;
-        let source = &sources[index];
-        let mut include_original = true;
-        if let Some(original) = source.original_utf16() {
-            for previous in sources.iter().take(index) {
-                admit().map_err(CssRetainedPayloadError::admission)?;
-                if previous
-                    .original_utf16()
-                    .is_some_and(|previous| std::sync::Arc::ptr_eq(previous, original))
-                {
-                    include_original = false;
-                    break;
-                }
-            }
-        }
-        admit().map_err(CssRetainedPayloadError::admission)?;
-        total = total
-            .checked_add(
-                source
-                    .payload_bytes(include_original)
-                    .ok_or_else(CssRetainedPayloadError::capacity_overflow)?,
-            )
-            .ok_or_else(CssRetainedPayloadError::capacity_overflow)?;
-    }
-    Ok(total)
-}
-
 impl<T: CssRetainedSources> CssRetainedSources for [T] {
     fn visit_retained_sources(
         &self,
@@ -1369,6 +1323,7 @@ impl CssRetainedSources for CssRule {
 }
 #[cfg(test)]
 pub(crate) mod admission_tests;
+mod bank;
 #[cfg(test)]
 #[path = "source_retention/charge_walk_tests.rs"]
 mod charge_walk_tests;

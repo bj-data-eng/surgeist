@@ -216,12 +216,7 @@ impl<'a> Adoption<'a> {
                 let extended = census.extend(self.state, &inserted, self.limits);
                 #[cfg(test)]
                 if probe::cross_check() {
-                    census.assert_matches_whole_state(
-                        &extended,
-                        self.state,
-                        self.limits,
-                        probe::exact_steps(),
-                    );
+                    census.assert_matches_whole_state(&extended, self.state, self.limits);
                 }
                 match extended? {
                     Extension::Applied => census,

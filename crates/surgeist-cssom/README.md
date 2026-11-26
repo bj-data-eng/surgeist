@@ -204,8 +204,9 @@ against the current state's logical quota; this is not process RSS accounting.
 Linked snapshots actively retained by the current context or selector-input
 contexts do count, including their transitive complete retained states. A link's
 selected sheet does not narrow the snapshot's owned data.
-`max_source_traversal_steps` (16 Mi steps) charges payload/state/table visits and
-identity comparisons into one cumulative bank; `max_source_traversal_depth`
+`max_source_traversal_steps` (16 Mi steps) charges payload/state/table visits,
+one step for each source snapshot reached and one for each check of a linked state
+already walked into one cumulative bank; `max_source_traversal_depth`
 (2048) bounds CSS representation walking independently of CSS nesting. These
 finite defaults are storage-admission policy, not CSS grammar limits.
 

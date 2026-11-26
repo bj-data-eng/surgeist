@@ -1,4 +1,4 @@
-//! Requested and actual collector-bank admission precede use and retain old custody.
+//! Requested and actual collector-storage admission precede use and retain old custody.
 #![forbid(unsafe_code)]
 
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
@@ -11,7 +11,16 @@ static GLOBAL: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
 
 #[test]
 fn refused_requested_or_actual_replacement_disposes_only_new_backing_before_return() {
+    // A growth step replaces the snapshot bank and its identity index: two
+    // allocations, made after the requested admission and before the actual one.
+    // Sources of UTF-8 text have no original backing, so no second index exists.
+    const REPLACEMENT_ALLOCATIONS: usize = 2;
     for stop in [1, 2] {
+        let allocated = if stop == 1 {
+            0
+        } else {
+            REPLACEMENT_ALLOCATIONS
+        };
         let first = CssParser::default()
             .parse_sheet("a {}")
             .syntax()
@@ -53,12 +62,15 @@ fn refused_requested_or_actual_replacement_disposes_only_new_backing_before_retu
         assert_eq!(result, Err(CssSourceRetentionError::caller_admission()));
         assert_eq!(collector.usage(), original);
         assert_eq!(at_refusal_deallocations.get(), before.deallocations);
-        assert_eq!(at_refusal_allocations.get() - before.allocations, stop - 1);
-        assert_eq!(after.allocations - before.allocations, stop - 1);
-        assert_eq!(after.deallocations - before.deallocations, stop - 1);
+        assert_eq!(at_refusal_allocations.get() - before.allocations, allocated);
+        assert_eq!(after.allocations - before.allocations, allocated);
+        assert_eq!(after.deallocations - before.deallocations, allocated);
         assert_eq!(after.reallocations, before.reallocations);
-        // The original bank remains until its real collector owner disposes it.
+        // The original bank and index remain until their real collector owner disposes them.
         drop(collector);
-        assert_eq!(region.change().deallocations - after.deallocations, 1);
+        assert_eq!(
+            region.change().deallocations - after.deallocations,
+            REPLACEMENT_ALLOCATIONS
+        );
     }
 }

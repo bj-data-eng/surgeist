@@ -76,7 +76,11 @@ fn index_and_touched_payload_costs_are_distinct_from_unrelated_payloads() {
         ));
         assert_eq!(store.snapshot().revision(), before.revision());
         assert!(opened.bytes_allocated <= 4096);
-        assert!(repeated.bytes_allocated <= 4096);
+        // The repeated edit runs one census, whose source collector records one
+        // snapshot per sheet. Each growth step of its bank and identity index
+        // allocates 8 + 16 bytes for each snapshot of room, and the steps sum to
+        // twice the final room: 48 bytes for each snapshot.
+        assert!(repeated.bytes_allocated <= 48 * count + 1024);
         report("sheet_index", count, "open", opened);
         // This first mutation legitimately copies the whole touched sheet index.
         report("sheet_index", count, "first_flag_stage", first);

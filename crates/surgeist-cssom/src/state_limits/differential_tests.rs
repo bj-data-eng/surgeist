@@ -181,14 +181,8 @@ fn edit<T>(
 }
 
 impl Scenario {
-    /// Whether every retained payload shares one source snapshot, so that the
-    /// walk steps do not depend on the order objects are walked in.
-    fn one_snapshot(&self) -> bool {
-        matches!(self, Scenario::Create { .. })
-    }
     fn run(&self, limits: &CssomLimits, whole_state: bool) -> Run {
         probe::set_whole_state(whole_state);
-        probe::set_exact_steps(self.one_snapshot());
         let context = match self {
             Scenario::Create { linked: true, .. } => linked_context(),
             _ => CssomContext::default(),
@@ -388,9 +382,6 @@ fn every_single_limit_around_its_smallest_value_gives_the_reference_outcome() {
     let mut runs = 0usize;
     for (name, scenario) in scenarios() {
         for field in Field::CHECKED.into_iter().chain([Field::Identity]) {
-            if field == Field::SourceSteps && !scenario.one_snapshot() {
-                continue;
-            }
             for value in singles(scenario.smallest(field)) {
                 scenario.assert_agrees(&[(field, value)]);
                 runs += 1;
@@ -407,7 +398,6 @@ fn every_pair_of_limits_around_their_smallest_values_gives_the_reference_outcome
     for (name, scenario) in scenarios() {
         let fields = Field::CHECKED
             .into_iter()
-            .filter(|field| *field != Field::SourceSteps || scenario.one_snapshot())
             .map(|field| (field, halves(scenario.smallest(field))))
             .collect::<Vec<_>>();
         for (index, (first, first_values)) in fields.iter().enumerate() {
