@@ -167,3 +167,4 @@ partial shared units and collapsed ranges, exact source/placement admission,
 LTR/RTL, zero-rectangle retention and failure atomicity. No bidi-ordering change
 or browser-number substitution follows from this policy.
 
+## Numbers, errors and publication
