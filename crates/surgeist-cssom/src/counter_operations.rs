@@ -171,7 +171,7 @@ impl CssomBatch {
                 }
             }
             let current = this.staged.blocks.get_mut(&block).expect("owned block");
-            let edits = std::sync::Arc::make_mut(&mut current.counter_edits);
+            let edits = crate::part::Part::make_mut(&mut current.counter_edits);
             edits.retain(|entry| entry.kind() != kind);
             edits.push(value);
             if !this.counter_changes.contains(&block) {

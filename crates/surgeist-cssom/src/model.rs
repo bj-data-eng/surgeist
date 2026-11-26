@@ -1,3 +1,4 @@
+use crate::part::Part;
 use crate::shared_table::SharedTable;
 use crate::*;
 use std::{fmt, sync::Arc};
@@ -489,17 +490,17 @@ pub enum CssomParent {
 #[derive(Clone, Debug)]
 pub struct CssomRule {
     pub(crate) parent: CssomParent,
-    pub(crate) data: Arc<CssomRuleData>,
-    pub(crate) authored: Arc<CssomAuthoredRule>,
+    pub(crate) data: Part<CssomRuleData>,
+    pub(crate) authored: Part<CssomAuthoredRule>,
     pub(crate) insertion_origin: Option<CssParsedOrigin>,
     pub(crate) selector_input: Option<CssParsedOrigin>,
     pub(crate) selector_inputs: Option<Arc<CssomContext>>,
     pub(crate) selector_namespaces: Option<Arc<CssNamespaceContext>>,
-    pub(crate) admission_diagnostics: Arc<Vec<CssRecoveryDiagnostic>>,
+    pub(crate) admission_diagnostics: Part<Vec<CssRecoveryDiagnostic>>,
 }
 impl CssomRule {
     pub(crate) fn data_mut(&mut self) -> &mut CssomRuleData {
-        Arc::make_mut(&mut self.data)
+        Part::make_mut(&mut self.data)
     }
     /// Recovery from the latest successful rule or selector admission. Initial
     /// sheet ingress retains its complete ordered report on the owning sheet.
@@ -538,8 +539,8 @@ pub struct CssomSheet {
     pub(crate) media: CssomMediaListId,
     pub(crate) owner_rule: Option<CssomRuleId>,
     pub(crate) namespaces: Arc<CssNamespaceContext>,
-    pub(crate) authored: Arc<CssSheet>,
-    pub(crate) diagnostics: Arc<Vec<CssRecoveryDiagnostic>>,
+    pub(crate) authored: Part<CssSheet>,
+    pub(crate) diagnostics: Part<Vec<CssRecoveryDiagnostic>>,
 }
 impl CssomSheet {
     pub fn inputs(&self) -> &CssomSheetInputs {
@@ -678,19 +679,19 @@ pub struct CssomBlock {
     pub(crate) parent: Option<CssomRuleId>,
     pub(crate) binding: crate::inline_context::BlockBinding,
     pub(crate) flags: CssomBlockFlags,
-    pub(crate) data: Arc<CssomBlockData>,
+    pub(crate) data: Part<CssomBlockData>,
     pub(crate) admission_inputs: Arc<Vec<CssomInputVersion>>,
-    pub(crate) counter_edits: Arc<Vec<CssCounterStyleDescriptorValue>>,
-    pub(crate) replacement_input: Option<Arc<CssomDeclarationInput>>,
+    pub(crate) counter_edits: Part<Vec<CssCounterStyleDescriptorValue>>,
+    pub(crate) replacement_input: Option<Part<CssomDeclarationInput>>,
     pub(crate) selected_font_face: Option<
-        Arc<
+        Part<
             CssomProjection<CssSpecifiedFontFaceDeclarationBlock, CssFontFaceDeclarationBlockError>,
         >,
     >,
 }
 impl CssomBlock {
     pub(crate) fn data_mut(&mut self) -> &mut CssomBlockData {
-        Arc::make_mut(&mut self.data)
+        Part::make_mut(&mut self.data)
     }
     pub(crate) fn admission_inputs_mut(&mut self) -> &mut Vec<CssomInputVersion> {
         Arc::make_mut(&mut self.admission_inputs)
@@ -748,7 +749,7 @@ pub struct CssomFeatureEntry {
 pub struct CssomFeatureMap {
     pub(crate) kind: CssFontFeatureValueKind,
     pub(crate) entries: Vec<CssomFeatureEntry>,
-    pub(crate) authored: Arc<Vec<CssFontFeatureValueDefinition>>,
+    pub(crate) authored: Part<Vec<CssFontFeatureValueDefinition>>,
 }
 impl CssomFeatureMap {
     pub const fn kind(&self) -> CssFontFeatureValueKind {

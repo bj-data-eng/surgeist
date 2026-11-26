@@ -4,9 +4,7 @@
 //! string bytes and the sources its payloads retain. Each kind of record is
 //! measured alone ([`measure`]), so a census over the whole state is the sum of
 //! those measurements followed by the threshold checks.
-use crate::source_retention::{
-    Sources, source_refusal, walk_block, walk_map, walk_media, walk_rule,
-};
+use crate::source_retention::{Sources, source_refusal};
 use crate::{model::State, *};
 use measure::{Counts, Refusal};
 use std::collections::HashSet;
@@ -409,16 +407,16 @@ impl Census {
         // Resolved objects reach no linked state, so no context joins the walk.
         (|| {
             for rule in &inserted.rules {
-                self.sources.record(0, |walk| walk_rule(walk, rule))?;
+                self.sources.record(0, *rule)?;
             }
             for block in &inserted.blocks {
-                self.sources.record(0, |walk| walk_block(walk, block))?;
+                self.sources.record(0, *block)?;
             }
             for media in &inserted.media {
-                self.sources.record(0, |walk| walk_media(walk, media))?;
+                self.sources.record(0, *media)?;
             }
             for map in &inserted.maps {
-                self.sources.record(0, |walk| walk_map(walk, map))?;
+                self.sources.record(0, *map)?;
             }
             Ok(())
         })()

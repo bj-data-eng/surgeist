@@ -1009,7 +1009,7 @@ impl CssomBatch {
                         )?;
                         let selected = authored.try_specified(prepared.budget.provider()?)?;
                         this.staged.blocks.get_mut(id).expect("owned block").data =
-                            Arc::new(CssomBlockData::Page {
+                            crate::part::Part::new(CssomBlockData::Page {
                                 authored,
                                 selected: CssomProjection::Available(selected),
                             });
@@ -1098,7 +1098,7 @@ impl CssomBatch {
                     if !unchanged {
                         let block = this.staged.blocks.get_mut(id).expect("owned block");
                         block.admission_inputs = Arc::new(admission_inputs);
-                        block.replacement_input = prepared.input.take().map(Arc::new);
+                        block.replacement_input = prepared.input.take().map(crate::part::Part::new);
                     }
                     if previous_input != this.staged.block(id)?.replacement_input
                         || !previous_empty

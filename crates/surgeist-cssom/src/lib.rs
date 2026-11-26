@@ -25,6 +25,7 @@ mod objects;
 mod operation_work;
 mod owner_effect;
 mod parser_resources;
+mod part;
 mod property_reflections;
 mod publication;
 mod query_results;

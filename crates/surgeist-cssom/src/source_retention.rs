@@ -5,6 +5,7 @@
 //! is measured alone, and the measurements are added up in the order a single
 //! collector would have walked the state in. [`Sources`] is that sum: the steps
 //! charged and a ledger of the distinct snapshots recorded.
+use crate::part::Part;
 use crate::{model::State, *};
 use std::collections::HashSet;
 use std::hash::{BuildHasherDefault, DefaultHasher};
@@ -143,16 +144,199 @@ impl CssRetainedSources for CssomBlockData {
     }
 }
 
+/// What a walk of one record does: it charges steps and reports the payloads
+/// the record retains.
+///
+/// A collector runs it directly. [`Account`] runs it against the measurements
+/// of the payload parts a record holds, which are kept while the parts are shared.
+pub(crate) trait Walk {
+    /// Charges one step of the walk's own traversal.
+    fn charge(&mut self) -> Result<(), CssSourceRetentionError>;
+    /// Visits a payload the record holds.
+    fn visit<T: CssRetainedSources + ?Sized>(
+        &mut self,
+        value: &T,
+    ) -> Result<(), CssSourceRetentionError>;
+    /// Visits a payload part the record shares, with `visit`.
+    fn part<T>(
+        &mut self,
+        part: &Part<T>,
+        visit: impl FnOnce(&mut CssSourceRetention<'_>, &T) -> Result<(), CssSourceRetentionError>,
+    ) -> Result<(), CssSourceRetentionError>;
+}
+
+impl Walk for CssSourceRetention<'_> {
+    fn charge(&mut self) -> Result<(), CssSourceRetentionError> {
+        self.charge_step()
+    }
+    fn visit<T: CssRetainedSources + ?Sized>(
+        &mut self,
+        value: &T,
+    ) -> Result<(), CssSourceRetentionError> {
+        CssSourceRetention::visit(self, value)
+    }
+    fn part<T>(
+        &mut self,
+        part: &Part<T>,
+        visit: impl FnOnce(&mut CssSourceRetention<'_>, &T) -> Result<(), CssSourceRetentionError>,
+    ) -> Result<(), CssSourceRetentionError> {
+        visit(self, part)
+    }
+}
+
+/// A record whose retained sources a walk reaches.
+pub(crate) trait Walkable {
+    fn walk<W: Walk>(&self, walker: &mut W) -> Result<(), CssSourceRetentionError>;
+}
+impl Walkable for CssomSheet {
+    fn walk<W: Walk>(&self, walker: &mut W) -> Result<(), CssSourceRetentionError> {
+        walk_sheet(walker, self)
+    }
+}
+impl Walkable for CssomRule {
+    fn walk<W: Walk>(&self, walker: &mut W) -> Result<(), CssSourceRetentionError> {
+        walk_rule(walker, self)
+    }
+}
+impl Walkable for CssomBlock {
+    fn walk<W: Walk>(&self, walker: &mut W) -> Result<(), CssSourceRetentionError> {
+        walk_block(walker, self)
+    }
+}
+impl Walkable for CssMediaQueryList {
+    fn walk<W: Walk>(&self, walker: &mut W) -> Result<(), CssSourceRetentionError> {
+        walk_media(walker, self)
+    }
+}
+impl Walkable for CssomFeatureMap {
+    fn walk<W: Walk>(&self, walker: &mut W) -> Result<(), CssSourceRetentionError> {
+        walk_map(walker, self)
+    }
+}
+/// A media list a batch has displaced, which is only visited.
+pub(crate) struct Displaced<'a>(pub(crate) &'a CssMediaQueryList);
+impl Walkable for Displaced<'_> {
+    fn walk<W: Walk>(&self, walker: &mut W) -> Result<(), CssSourceRetentionError> {
+        walker.visit(self.0)
+    }
+}
+
+/// A walk of one record that adds what it retains to a ledger as it goes, or
+/// takes it out again.
+///
+/// The steps and the nesting of the record are summed from the measurements of
+/// its parts and of the payloads it holds directly. The walk is refused as soon
+/// as its steps or its nesting would pass what is left of the limits: the
+/// record is then run again on a collector, which gives the refusal a single walk gives.
+struct Account<'a> {
+    ledger: &'a mut CssSourceLedger,
+    meter: &'a mut CssSourceMeter,
+    /// The bounds a part is measured under: no bound on bytes, which the ledger answers to.
+    parts: CssSourceBounds,
+    /// The steps the record may still charge.
+    remaining: usize,
+    /// The depth the record is walked at.
+    depth: usize,
+    steps: usize,
+    reach: usize,
+    /// The additions to the ledger made, or removals when undoing.
+    done: usize,
+    /// When undoing, the number of additions to remove.
+    undoing: Option<usize>,
+}
+
+impl Account<'_> {
+    /// Refuses the walk once it passes what is left of the steps or the depth.
+    fn within(&self) -> Result<(), CssSourceRetentionError> {
+        if self.steps > self.remaining {
+            return Err(CssSourceRetentionError::limit(
+                CssSourceRetentionResource::Visits,
+            ));
+        }
+        if self.depth.saturating_add(self.reach) > self.parts.depth() {
+            return Err(CssSourceRetentionError::limit(
+                CssSourceRetentionResource::Depth,
+            ));
+        }
+        Ok(())
+    }
+
+    /// Adds what the meter measured, or removes it when undoing.
+    fn metered(&mut self) -> Result<(), CssSourceRetentionError> {
+        match self.undoing {
+            None => {
+                self.steps = self.steps.saturating_add(self.meter.steps());
+                self.reach = self.reach.max(self.meter.depth());
+                self.within()?;
+                self.ledger.add_metered(self.meter)?;
+            }
+            Some(limit) => {
+                if self.done >= limit {
+                    return Err(CssSourceRetentionError::limit(
+                        CssSourceRetentionResource::Visits,
+                    ));
+                }
+                self.ledger.remove_metered(self.meter);
+            }
+        }
+        self.done = self.done.saturating_add(1);
+        Ok(())
+    }
+}
+
+impl Walk for Account<'_> {
+    fn charge(&mut self) -> Result<(), CssSourceRetentionError> {
+        if self.undoing.is_some() {
+            return Ok(());
+        }
+        self.steps = self.steps.saturating_add(1);
+        self.within()
+    }
+    fn visit<T: CssRetainedSources + ?Sized>(
+        &mut self,
+        value: &T,
+    ) -> Result<(), CssSourceRetentionError> {
+        self.meter.measure(0, |sources| sources.visit(value))?;
+        self.metered()
+    }
+    fn part<T>(
+        &mut self,
+        part: &Part<T>,
+        visit: impl FnOnce(&mut CssSourceRetention<'_>, &T) -> Result<(), CssSourceRetentionError>,
+    ) -> Result<(), CssSourceRetentionError> {
+        let measurement = part.measurement(self.parts, visit)?;
+        match self.undoing {
+            None => {
+                self.steps = self.steps.saturating_add(measurement.steps());
+                self.reach = self.reach.max(measurement.depth());
+                self.within()?;
+                self.ledger.add(measurement)?;
+            }
+            Some(limit) => {
+                if self.done >= limit {
+                    return Err(CssSourceRetentionError::limit(
+                        CssSourceRetentionResource::Visits,
+                    ));
+                }
+                self.ledger.remove(measurement);
+            }
+        }
+        self.done = self.done.saturating_add(1);
+        Ok(())
+    }
+}
+
 /// The sum of the accounts of the sources a walk has reached: the steps it has
 /// charged and the distinct snapshots it has recorded, under the limits of the walk.
 ///
-/// A record is measured alone and added when its figures fit. A record that
-/// would take the walk beyond a limit is run again as a collector that had
-/// visited everything added so far would run it, so the refusal is the one a
-/// single collector walking the state in this order raises, after the same steps.
+/// A record is accounted from the measurements of its parts and added when its
+/// figures fit. A record that would take the walk beyond a limit is run again as
+/// a collector that had visited everything added so far would run it, so the
+/// refusal is the one a single collector walking the state in this order raises,
+/// after the same steps.
 pub(crate) struct Sources {
     ledger: CssSourceLedger,
-    /// Measures one record after another; it holds no byte bound, which the ledger's total answers to.
+    /// Measures the payloads a record holds directly, one after another.
     meter: CssSourceMeter,
     steps: usize,
     bounds: CssSourceBounds,
@@ -212,27 +396,47 @@ impl Sources {
         self.charge(context.linked.len().saturating_add(1))
     }
 
-    /// Adds what `walk` retains when run at `depth`.
+    /// Adds what the walk of `record` retains when run at `depth`.
     pub(crate) fn record(
         &mut self,
         depth: usize,
-        walk: impl Fn(&mut CssSourceRetention<'_>) -> Result<(), CssSourceRetentionError>,
+        record: &impl Walkable,
     ) -> Result<(), CssSourceRetentionError> {
         let remaining = self.bounds.steps().saturating_sub(self.steps);
-        if self.meter.measure(depth, &walk).is_ok()
-            && self.meter.steps() <= remaining
-            && self.ledger.add_metered(&self.meter).is_ok()
-        {
-            if self.ledger.bytes() <= self.bounds.bytes() {
-                self.steps = self.steps.saturating_add(self.meter.steps());
-                return Ok(());
-            }
-            self.ledger.remove_metered(&self.meter);
+        let mut account = Account {
+            ledger: &mut self.ledger,
+            meter: &mut self.meter,
+            parts: CssSourceBounds::new(usize::MAX, self.bounds.steps(), self.bounds.depth()),
+            remaining,
+            depth,
+            steps: 0,
+            reach: 0,
+            done: 0,
+            undoing: None,
+        };
+        let walked = record.walk(&mut account);
+        let (steps, done) = (account.steps, account.done);
+        if walked.is_ok() && self.ledger.bytes() <= self.bounds.bytes() {
+            self.steps = self.steps.saturating_add(steps);
+            return Ok(());
         }
+        // Take back what the walk added, and let a collector answer.
+        let mut undo = Account {
+            ledger: &mut self.ledger,
+            meter: &mut self.meter,
+            parts: CssSourceBounds::new(usize::MAX, self.bounds.steps(), self.bounds.depth()),
+            remaining,
+            depth,
+            steps: 0,
+            reach: 0,
+            done: 0,
+            undoing: Some(done),
+        };
+        let _ = record.walk(&mut undo);
         let replay = self.ledger.replay(
             CssSourceBounds::new(self.bounds.bytes(), remaining, self.bounds.depth()),
             depth,
-            &walk,
+            |sources| record.walk(sources),
         );
         self.steps = self.steps.saturating_add(replay.steps());
         match replay.result() {
@@ -291,29 +495,29 @@ impl State {
             sources.charge_context(&state.context)?;
             enqueue(&mut pending, &state.context, depth, maximum)?;
             for sheet in state.sheets.values() {
-                sources.record(depth, |walk| walk_sheet(walk, sheet))?;
+                sources.record(depth, sheet)?;
             }
             for rule in state.rules.values() {
-                sources.record(depth, |walk| walk_rule(walk, rule))?;
+                sources.record(depth, rule)?;
                 if let Some(context) = rule.selector_inputs.as_deref() {
                     enqueue(&mut pending, context, depth, maximum)?;
                 }
             }
             for block in state.blocks.values() {
-                sources.record(depth, |walk| walk_block(walk, block))?;
+                sources.record(depth, block)?;
                 if let Some(context) = block.inline_context() {
                     enqueue(&mut pending, context.context(), depth, maximum)?;
                 }
             }
             for media in state.media.values() {
-                sources.record(depth, |walk| walk_media(walk, media))?;
+                sources.record(depth, media)?;
             }
             for map in state.maps.values() {
-                sources.record(depth, |walk| walk_map(walk, map))?;
+                sources.record(depth, map)?;
             }
         }
         for media in displaced {
-            sources.record(0, |walk| walk.visit(media))?;
+            sources.record(0, &Displaced(media))?;
         }
         Ok(())
     }
@@ -352,33 +556,21 @@ pub(crate) fn source_refusal(error: CssSourceRetentionError, limits: &CssomLimit
     }
 }
 
-/// Visits the payload of a part a record holds behind a shared handle, which
-/// the probe counts as one part measured.
-fn part<T: ?Sized>(
-    sources: &mut CssSourceRetention<'_>,
-    value: &T,
-    visit: impl FnOnce(&mut CssSourceRetention<'_>, &T) -> Result<(), CssSourceRetentionError>,
-) -> Result<(), CssSourceRetentionError> {
-    #[cfg(test)]
-    crate::state_limits::probe::part_measured();
-    visit(sources, value)
-}
-
-/// Charges the context of a record or state, and each input it links.
-fn charge_context(
-    sources: &mut CssSourceRetention,
+/// Charges the context of a record, and each input it links.
+fn charge_context<W: Walk>(
+    sources: &mut W,
     context: &CssomContext,
 ) -> Result<(), CssSourceRetentionError> {
-    sources.charge_step()?;
+    sources.charge()?;
     for _ in &context.linked {
-        sources.charge_step()?;
+        sources.charge()?;
     }
     Ok(())
 }
 
 /// Charges and visits the sources of one sheet record.
-pub(crate) fn walk_sheet(
-    sources: &mut CssSourceRetention,
+pub(crate) fn walk_sheet<W: Walk>(
+    sources: &mut W,
     sheet: &CssomSheet,
 ) -> Result<(), CssSourceRetentionError> {
     let CssomSheet {
@@ -404,19 +596,17 @@ pub(crate) fn walk_sheet(
         disallow_modification: _,
         media,
     } = inputs;
-    sources.charge_step()?;
-    part(sources, authored.as_ref(), |sources, value| {
-        sources.visit(value)
-    })?;
-    part(sources, diagnostics.as_slice(), |sources, value| {
-        sources.visit(value)
+    sources.charge()?;
+    sources.part(authored, |sources, value| sources.visit(value))?;
+    sources.part(diagnostics, |sources, value| {
+        sources.visit(value.as_slice())
     })?;
     sources.visit(media)
 }
 
 /// Charges and visits the sources of one rule record.
-pub(crate) fn walk_rule(
-    sources: &mut CssSourceRetention,
+pub(crate) fn walk_rule<W: Walk>(
+    sources: &mut W,
     rule: &CssomRule,
 ) -> Result<(), CssSourceRetentionError> {
     let CssomRule {
@@ -429,30 +619,24 @@ pub(crate) fn walk_rule(
         selector_namespaces: _,
         admission_diagnostics,
     } = rule;
-    sources.charge_step()?;
+    sources.charge()?;
     if let Some(context) = selector_inputs.as_deref() {
         charge_context(sources, context)?;
     }
-    part(sources, authored.as_ref(), |sources, value| {
-        sources.visit(value)
-    })?;
-    part(sources, data.as_ref(), |sources, value| {
-        sources.visit(value)
-    })?;
+    sources.part(authored, |sources, value| sources.visit(value))?;
+    sources.part(data, |sources, value| sources.visit(value))?;
     if let Some(origin) = insertion_origin {
         sources.visit(origin)?;
     }
     sources.visit(selector_input)?;
-    part(
-        sources,
-        admission_diagnostics.as_slice(),
-        |sources, value| sources.visit(value),
-    )
+    sources.part(admission_diagnostics, |sources, value| {
+        sources.visit(value.as_slice())
+    })
 }
 
 /// Charges and visits the sources of one block record.
-pub(crate) fn walk_block(
-    sources: &mut CssSourceRetention,
+pub(crate) fn walk_block<W: Walk>(
+    sources: &mut W,
     block: &CssomBlock,
 ) -> Result<(), CssSourceRetentionError> {
     let CssomBlock {
@@ -465,44 +649,40 @@ pub(crate) fn walk_block(
         replacement_input,
         selected_font_face,
     } = block;
-    sources.charge_step()?;
+    sources.charge()?;
     if let crate::inline_context::BlockBinding::Inline(context) = binding {
         charge_context(sources, context.context())?;
     }
-    part(sources, data.as_ref(), |sources, value| {
-        sources.visit(value)
+    sources.part(data, |sources, value| sources.visit(value))?;
+    sources.part(counter_edits, |sources, value| {
+        sources.visit(value.as_slice())
     })?;
-    part(sources, counter_edits.as_slice(), |sources, value| {
-        sources.visit(value)
-    })?;
-    if let Some(value) = replacement_input {
-        part(sources, value.as_ref(), |sources, value| {
+    if let Some(part) = replacement_input {
+        sources.part(part, |sources, value| {
             if let Some(source) = value.parse_source() {
                 sources.source(source.source())?;
             }
             sources.visit(value.diagnostics())
         })?;
     }
-    if let Some(value) = selected_font_face {
-        part(sources, value.as_ref(), |sources, value| {
-            sources.visit(value)
-        })?;
+    if let Some(part) = selected_font_face {
+        sources.part(part, |sources, value| sources.visit(value))?;
     }
     Ok(())
 }
 
 /// Charges and visits the sources of one media list.
-pub(crate) fn walk_media(
-    sources: &mut CssSourceRetention,
+pub(crate) fn walk_media<W: Walk>(
+    sources: &mut W,
     media: &CssMediaQueryList,
 ) -> Result<(), CssSourceRetentionError> {
-    sources.charge_step()?;
+    sources.charge()?;
     sources.visit(media)
 }
 
 /// Charges and visits the sources of one feature map.
-pub(crate) fn walk_map(
-    sources: &mut CssSourceRetention,
+pub(crate) fn walk_map<W: Walk>(
+    sources: &mut W,
     map: &CssomFeatureMap,
 ) -> Result<(), CssSourceRetentionError> {
     let CssomFeatureMap {
@@ -510,13 +690,11 @@ pub(crate) fn walk_map(
         entries,
         authored,
     } = map;
-    sources.charge_step()?;
-    part(sources, authored.as_slice(), |sources, value| {
-        sources.visit(value)
-    })?;
+    sources.charge()?;
+    sources.part(authored, |sources, value| sources.visit(value.as_slice()))?;
     for entry in entries {
         let CssomFeatureEntry { key: _, value } = entry;
-        sources.charge_step()?;
+        sources.charge()?;
         if let CssomFeatureValue::Authored(value) = value {
             sources.visit(value)?;
         }
