@@ -961,22 +961,22 @@ mod cpu_tests {
             // Exact source preservation is the adapter's artifact contract.
             // Independent GPU fixtures own the numeric blend/SetLum evidence.
             let source = fine_shader_source(&cpu, shader, msaa8).unwrap();
-            let mut expected = shader
-                .wgsl
-                .code
-                .replace(SET_LUM_REPLACEMENT.from, SET_LUM_REPLACEMENT.to)
-                .replace(BLEND_RESULT_REPLACEMENT.from, BLEND_RESULT_REPLACEMENT.to)
-                .replace(NORMAL_BLEND_REPLACEMENT.from, NORMAL_BLEND_REPLACEMENT.to)
-                .replace(
-                    ZERO_CIRCLE_NORM_REPLACEMENT.from,
-                    ZERO_CIRCLE_NORM_REPLACEMENT.to,
-                )
-                .replace(CIRCULAR_NORM_REPLACEMENT.from, CIRCULAR_NORM_REPLACEMENT.to);
-            for replacement in GRADIENT_ENDPOINT_REPLACEMENTS {
+            // Each replacement scans the whole original source once.
+            let mut expected = shader.wgsl.code.to_string();
+            let mut replacements = 0;
+            for replacement in [
+                SET_LUM_REPLACEMENT,
+                BLEND_RESULT_REPLACEMENT,
+                NORMAL_BLEND_REPLACEMENT,
+                ZERO_CIRCLE_NORM_REPLACEMENT,
+                CIRCULAR_NORM_REPLACEMENT,
+            ]
+            .iter()
+            .chain(&GRADIENT_ENDPOINT_REPLACEMENTS)
+            .chain(&BLEND_MATH_REPLACEMENTS)
+            {
                 expected = expected.replace(replacement.from, replacement.to);
-            }
-            for replacement in BLEND_MATH_REPLACEMENTS {
-                expected = expected.replace(replacement.from, replacement.to);
+                replacements += 1;
             }
             if msaa8 {
                 expected = expected
@@ -988,10 +988,11 @@ mod cpu_tests {
                         "round(8.0 * (xy1.y - f32(y)))",
                         "round(8.0 * (xy1.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
                     );
+                replacements += 2;
             }
             assert_eq!(std::str::from_utf8(&source).unwrap(), expected);
             total_emitted += source.len() as u64;
-            total_scanned += shader.wgsl.code.len() as u64 * if msaa8 { 15 } else { 13 };
+            total_scanned += shader.wgsl.code.len() as u64 * replacements;
             largest_capacity = largest_capacity.max(source.capacity() as u64);
             let usage = owner.snapshot().unwrap().usage();
             assert_eq!(usage.work(RenderWork::SerializedBytes), total_emitted);
