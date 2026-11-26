@@ -211,7 +211,7 @@ fn glyphs<S: LayoutScalar>(
     for run in batch.placed_text()[placed].layout().run_views() {
         assert_eq!(
             run.face().bytes(),
-            include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf")
+            include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf")
         );
         assert_eq!(run.effective_instance().unwrap().font_size(), 10.0);
         for glyph in run.glyphs().filter(|glyph| glyph.advance() > 0.0) {

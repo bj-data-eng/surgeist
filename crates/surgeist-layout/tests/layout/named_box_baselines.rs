@@ -1359,7 +1359,7 @@ fn fractional_nested_named_references_use_actual_final_border_origins_f64() {
 fn actual_text_unknown<S: l::scalar::LayoutScalar>() {
     const AHEM: &[u8] = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+        "/tests/fixtures/fonts/ahem/Ahem.ttf"
     ));
     let style = t::style::Style {
         font: t::style::Font::new().family("Ahem"),
@@ -2918,7 +2918,7 @@ fn known_size_float_avoidance_cache_preserves_real_grid_unknown_baselines_f64() 
 fn packet_text_float_binding() -> l::text_layout::TextParagraphBinding<u32> {
     const AHEM: &[u8] = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+        "/tests/fixtures/fonts/ahem/Ahem.ttf"
     ));
     let style = t::style::Style {
         font: t::style::Font::new().family("Ahem"),

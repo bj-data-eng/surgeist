@@ -8,8 +8,8 @@ use crate::{
 use surgeist_text as text;
 
 const PHRASE_FONT: &[u8] =
-    include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf");
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+    include_bytes!("../../../tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Ending {

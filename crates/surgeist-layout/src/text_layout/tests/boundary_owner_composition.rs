@@ -14,9 +14,8 @@ mod shared_unit_endpoints;
 #[path = "boundary_owner_composition/float_end_prefix_controls.rs"]
 mod float_end_prefix_controls;
 
-const PHRASE: &[u8] =
-    include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf");
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const PHRASE: &[u8] = include_bytes!("../../../tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn style(
     word: text::style::WordBreak,

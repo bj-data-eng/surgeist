@@ -808,7 +808,7 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
         let font = super::canonical::fonts::with_advances(
             include_bytes!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+                "/tests/fixtures/fonts/ahem/Ahem.ttf"
             )),
             &[
                 (35, 0),

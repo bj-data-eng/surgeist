@@ -15,7 +15,7 @@ use text::capture::{
     ComputedLineBoundaryInput as Cause, SourceBoxSide as Side, SourceProcessingEvent as E,
 };
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 struct Fixture {
     processed: Arc<text::processing::ProcessedSource>,

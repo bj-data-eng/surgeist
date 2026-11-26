@@ -1269,7 +1269,7 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
 fn assert_retained_zero_prefix<S: LayoutScalar>() {
     let style = ahem_style(10.0, 10.0);
     let font = super::canonical::fonts::with_advances(
-        include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"),
+        include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf"),
         &[(35, 0)],
     );
     let zero = style.clone();

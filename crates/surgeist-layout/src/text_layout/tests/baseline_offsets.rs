@@ -11,7 +11,7 @@ use std::cell::RefCell;
 use surgeist_text as text;
 use surgeist_text::font::FontBaseline;
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn word(bytes: &[u8], at: usize) -> u16 {
     u16::from_be_bytes(bytes[at..at + 2].try_into().unwrap())

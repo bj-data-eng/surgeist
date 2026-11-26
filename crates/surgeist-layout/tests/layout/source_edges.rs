@@ -5,7 +5,7 @@ use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+    "/tests/fixtures/fonts/ahem/Ahem.ttf"
 ));
 
 struct Host<S: layout::scalar::LayoutScalar> {

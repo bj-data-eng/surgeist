@@ -6,7 +6,7 @@ use crate::test_support::readback::{self, Phase};
 use crate::value::SizingOperation;
 use surgeist_text as text;
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn paragraph() -> PreparedParagraph {
     let style = text::style::Style {

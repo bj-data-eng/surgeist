@@ -27,7 +27,7 @@ use text::{
     style::Wrap,
 };
 
-const AHEM: &[u8] = include_bytes!("../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 pub(crate) struct Fixture {
     pub(crate) binding: TextParagraphBinding<u32>,

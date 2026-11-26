@@ -2,7 +2,7 @@
 use super::*;
 use crate::value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation};
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn style(hyphens: text::hyphenation::Hyphens) -> text::style::Style {
     text::style::Style {

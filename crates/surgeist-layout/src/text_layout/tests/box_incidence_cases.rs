@@ -12,7 +12,7 @@ use crate::{
 };
 use std::sync::Arc;
 use surgeist_text as text;
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 #[derive(Clone, Copy)]
 enum Shape {

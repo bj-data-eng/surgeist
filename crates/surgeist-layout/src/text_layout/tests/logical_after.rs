@@ -4,7 +4,7 @@ use crate::test_support::readback::{self, Phase};
 use crate::value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation};
 use surgeist_text as text;
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 const ORIGINAL: [u16; 6] = [65, 66, 173, 67, 68, 69];
 
 fn analyzed(placement: text::hyphenation::HyphenationPlacement) -> text::analyzed::AnalyzedSource {

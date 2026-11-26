@@ -9,7 +9,7 @@ use std::{convert::Infallible, sync::Arc};
 use surgeist_layout as layout;
 use surgeist_text as text;
 
-const AHEM: &[u8] = include_bytes!("../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 // Consumer-owned cmap/metrics over the unchanged licensed Ahem outlines. Hebrew
 // letters and Ogham use existing glyphs; full-width X and U3000 have

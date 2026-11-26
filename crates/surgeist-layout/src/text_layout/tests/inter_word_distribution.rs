@@ -2,7 +2,7 @@
 use super::*;
 use surgeist_text as text;
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn compute<S: LayoutScalar>(
     paragraph: &PreparedParagraph,

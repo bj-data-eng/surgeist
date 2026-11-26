@@ -362,7 +362,7 @@ fn custody_assert_simple<S: LayoutScalar>(
             run.font().bytes(),
             include_bytes!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+                "/tests/fixtures/fonts/ahem/Ahem.ttf"
             ))
             .as_slice()
         );
@@ -624,7 +624,7 @@ fn custody_inner_named_recompute<S: LayoutScalar>() {
         .register_fonts(
             include_bytes!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+                "/tests/fixtures/fonts/ahem/Ahem.ttf"
             ))
             .to_vec(),
             surgeist_test::fixtures::FONT_LIMITS,
@@ -707,7 +707,7 @@ fn custody_inner_named_recompute<S: LayoutScalar>() {
                 run.font().bytes(),
                 include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+                    "/tests/fixtures/fonts/ahem/Ahem.ttf"
                 ))
                 .as_slice()
             );

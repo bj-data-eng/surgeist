@@ -31,6 +31,12 @@ Its embedded bytes are retained from Taffy's pinned browser-test support.
 The included `COPYING` is the original declaration from
 [Kozea/Ahem revision `7f4a69f546fd7bb7ba7031536d8470fbe87f4e26`](https://github.com/Kozea/Ahem/tree/7f4a69f546fd7bb7ba7031536d8470fbe87f4e26).
 
+Layout tests read an unchanged W3C-distributed
+[Ahem.ttf](tests/fixtures/fonts/ahem/Ahem.ttf) and its derivative
+[PhraseAhem.ttf](tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf), both copied from
+the Text fixtures; their provenance files record the hashes. The same
+public-domain/CC0 declaration applies to these bytes.
+
 The prepared-text corpus also includes an unchanged W3C-distributed
 [Ahem.ttf](tests/layout/browser_parity/fonts/Ahem.ttf), copied from the existing
 Text fixture. Its [provenance](tests/layout/browser_parity/fonts/PROVENANCE.md)

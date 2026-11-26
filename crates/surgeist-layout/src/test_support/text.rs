@@ -27,7 +27,7 @@ use crate::{
     },
 };
 
-const AHEM: &[u8] = include_bytes!("../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 /// Licensed Ahem has a one-em advance and ascender/descender 0.8em/0.2em.
 /// The absolute line height is supplied explicitly, independently of its size.

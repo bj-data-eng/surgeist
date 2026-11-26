@@ -166,7 +166,7 @@ fn fractional_atomic_source_and_font<S: LayoutScalar>(
             run.font().bytes(),
             include_bytes!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+                "/tests/fixtures/fonts/ahem/Ahem.ttf"
             ))
             .as_slice()
         );

@@ -9,7 +9,7 @@ use super::*;
 use crate::test_support::readback::{self, Phase};
 use crate::value::{AvailableSpaceOf, AxisSizingRequestOf, SizingOperation};
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn native_batch<S: LayoutScalar>(
     source: &str,

@@ -10,7 +10,7 @@ use surgeist_text::{
     style::{OverflowWrap, WhiteSpace},
 };
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 /// Actual rectangular shape x=0..40/y=10..30 in a leading 40x30 float.
 /// In particular [0,10) does not intersect it; [0,20) does.

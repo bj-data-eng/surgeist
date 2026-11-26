@@ -6,7 +6,7 @@ use crate::test_support::text::{ahem_style, in_flat_wrapping_context};
 use surgeist_text as text;
 use surgeist_text::font::FontBaseline;
 
-const AHEM: &[u8] = include_bytes!("../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn n<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)

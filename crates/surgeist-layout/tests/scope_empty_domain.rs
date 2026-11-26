@@ -156,7 +156,7 @@ fn prepare() -> Vec<text::prepared::PreparedText> {
     let mut system = text::System::default();
     system
         .register_fonts(
-            include_bytes!("../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
             surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
@@ -525,7 +525,7 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
     let mut system = text::System::default();
     system
         .register_fonts(
-            include_bytes!("../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
             surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();

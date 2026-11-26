@@ -17,7 +17,7 @@ use surgeist_text as text;
 
 const PHRASE_FONT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../surgeist-text/tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf"
+    "/tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf"
 ));
 
 fn ordinary_facts(lines: &[FinalizedLine]) -> Vec<(usize, f64)> {

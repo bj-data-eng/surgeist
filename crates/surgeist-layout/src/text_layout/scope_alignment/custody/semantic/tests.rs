@@ -86,8 +86,7 @@ fn captured(raw: &str) -> PreparedText {
     let mut system = text::System::default();
     system
         .register_fonts(
-            include_bytes!("../../../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf")
-                .to_vec(),
+            include_bytes!("../../../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
             surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();

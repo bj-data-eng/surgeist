@@ -102,7 +102,7 @@ fn selected<S: LayoutScalar>(
         for run in line.run_views() {
             assert_eq!(
                 run.face().bytes(),
-                include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf")
+                include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf")
             );
             assert_eq!(run.face().index(), 0);
             assert_eq!(run.font_size(), 10.0);

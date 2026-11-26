@@ -4,7 +4,7 @@ use crate::test_support::readback::{self, Phase};
 
 const AHEM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+    "/tests/fixtures/fonts/ahem/Ahem.ttf"
 ));
 
 fn paragraph() -> PreparedParagraph {

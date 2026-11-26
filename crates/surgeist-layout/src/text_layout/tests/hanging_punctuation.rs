@@ -3,7 +3,7 @@ use super::*;
 use crate::value::SizingOperation;
 use surgeist_text as text;
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn paragraph(source: &str, style: text::style::Style) -> PreparedParagraph {
     PreparedParagraph::plain(
