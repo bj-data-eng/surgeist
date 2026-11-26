@@ -208,6 +208,10 @@ impl SourceBank {
     pub(super) const fn len(&self) -> usize {
         self.sources.len()
     }
+    /// The recorded snapshots, in the order they were first recorded.
+    pub(super) fn recorded(&self) -> &[CssSourceSnapshot] {
+        &self.sources
+    }
     #[cfg(test)]
     pub(super) fn capacity(&self) -> usize {
         self.sources.capacity()

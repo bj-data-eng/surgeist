@@ -175,6 +175,9 @@ struct Admission<'a> {
     callback: Option<&'a mut dyn FnMut(CssSourceRetentionAction) -> bool>,
     refused: bool,
     share_original_utf16: bool,
+    /// The deepest nesting the collector has reached, saturating. It sits
+    /// beside the two flags so that it adds nothing to the size of the collector.
+    deepest: u32,
 }
 impl Admission<'_> {
     fn check(&self) -> Result<(), CssSourceRetentionError> {
@@ -354,6 +357,7 @@ impl<'admit> CssSourceRetention<'admit> {
                 callback: None,
                 refused: false,
                 share_original_utf16: false,
+                deepest: 0,
             },
         }
     }
@@ -409,10 +413,20 @@ impl<'admit> CssSourceRetention<'admit> {
             ));
         }
         self.depth += 1;
+        self.note_depth();
         let result = value.visit_retained_sources(self);
         self.depth -= 1;
         self.admission.check()?;
         result
+    }
+    /// Notes that the collector is at its current depth.
+    fn note_depth(&mut self) {
+        let depth = u32::try_from(self.depth).unwrap_or(u32::MAX);
+        self.admission.deepest = self.admission.deepest.max(depth);
+    }
+    /// The deepest nesting the collector has reached.
+    fn deepest(&self) -> usize {
+        usize::try_from(self.admission.deepest).unwrap_or(usize::MAX)
     }
     /// Charges one actual consumer traversal action into this same work bank.
     pub fn charge_step(&mut self) -> Result<(), CssSourceRetentionError> {
@@ -610,6 +624,7 @@ impl<'admit> CssSourceRetention<'admit> {
         }
         let previous = self.depth;
         self.depth = depth;
+        self.note_depth();
         let result = visit(self);
         self.depth = previous;
         self.admission.check()?;
@@ -1324,6 +1339,8 @@ impl CssRetainedSources for CssRule {
 #[cfg(test)]
 pub(crate) mod admission_tests;
 mod bank;
+mod measure;
+pub use measure::{CssSourceBounds, CssSourceLedger, CssSourceMeasurement, CssSourceReplay};
 #[cfg(test)]
 #[path = "source_retention/charge_walk_tests.rs"]
 mod charge_walk_tests;
