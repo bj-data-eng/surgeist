@@ -103,6 +103,11 @@ fn columns_tree<S: LayoutScalar>(
     )
 }
 
+/// A labelled edit of the subgrid's style, and the expectation it carries.
+type Edit<S> = fn(&mut NodeInputOf<S>);
+type Case<'a, S> = (&'a str, Edit<S>);
+type SizedCase<'a, S> = (&'a str, Edit<S>, f64);
+
 fn nothing<S: LayoutScalar>(_: &mut NodeInputOf<S>) {}
 
 // Each case runs in both scalar lanes: `mod name { f32, f64 }`.
@@ -305,7 +310,7 @@ scalar_tests!(
 // the item at the start of its column; a minimum below the stretched width
 // does not change it.
 fn assert_row_subgrid_keeps_its_width_bounds<S: LayoutScalar>() {
-    let cases: [(&str, fn(&mut NodeInputOf<S>), f64); 3] = [
+    let cases: [SizedCase<S>; 3] = [
         (
             "width 40",
             |style| style.size.width = PreferredSizeOf::px(S::from_f64(40.0)),
@@ -344,7 +349,7 @@ scalar_tests!(
 // width, min-width or max-width say. Rows are not subgridded: node 1 and node 0
 // are the leaf's 10px tall.
 fn assert_column_subgrid_ignores<S: LayoutScalar>() {
-    let cases: [(&str, fn(&mut NodeInputOf<S>)); 4] = [
+    let cases: [Case<S>; 4] = [
         ("width 80", |style| {
             style.size.width = PreferredSizeOf::px(S::from_f64(80.0))
         }),
@@ -378,7 +383,7 @@ scalar_tests!(
 // A fixed 60px column: the subgrid is 60px wide whatever it specifies, and its
 // justify-self (centre) does not move it.
 fn assert_column_subgrid_in_a_fixed_column<S: LayoutScalar>() {
-    let cases: [(&str, fn(&mut NodeInputOf<S>)); 2] = [
+    let cases: [Case<S>; 2] = [
         ("width 5", |style| {
             style.size.width = PreferredSizeOf::px(S::from_f64(5.0))
         }),
@@ -406,7 +411,7 @@ scalar_tests!(
 // Controls for the columns: the height axis is not subgridded, so height and
 // min-height apply. Node 0 grows to the subgrid's row.
 fn assert_column_subgrid_keeps_its_height_bounds<S: LayoutScalar>() {
-    let cases: [(&str, fn(&mut NodeInputOf<S>), f64); 2] = [
+    let cases: [SizedCase<S>; 2] = [
         (
             "height 4",
             |style| style.size.height = PreferredSizeOf::px(S::from_f64(4.0)),
@@ -438,7 +443,7 @@ scalar_tests!(
 // A subgrid in both axes ignores both sets of specified sizes. Node 0's single
 // column is 70px, and its row takes the leaf's 10px.
 fn assert_both_axes_subgrid_ignores<S: LayoutScalar>() {
-    let cases: [(&str, fn(&mut NodeInputOf<S>)); 3] = [
+    let cases: [Case<S>; 3] = [
         ("width 40, height 4", |style| {
             style.size = Size::new(
                 PreferredSizeOf::px(S::from_f64(40.0)),
@@ -697,4 +702,98 @@ fn assert_bordered_scrolled_row_chain<S: LayoutScalar>() {
 scalar_tests!(
     bordered_scrolled_row_subgrid_chain_lays_out_inside_its_border,
     assert_bordered_scrolled_row_chain
+);
+
+// Orthogonal subgrids. Node 1 is a scroll container in `vertical-rl` under a
+// horizontal-tb Grid (node 0, 100px wide) and holds a leaf (node 2). Its
+// column axis is its inline axis, which runs vertically, so `grid-template-
+// columns: subgrid` subgrids node 0's rows (physical height); `grid-template-
+// rows: subgrid`, along its block axis, subgrids node 0's columns (physical
+// width). The subgridded dimension is the physical axis of the parent's track
+// it shares (section 9 above), not the axis the child's own `width` or
+// `height` names in its own writing mode: a size below the gutter in that
+// physical axis must leave the layout unchanged, and a size in the other
+// physical axis applies.
+fn orthogonal_tree<S: LayoutScalar>(
+    subgrid_columns: bool,
+    edit: impl FnOnce(&mut NodeInputOf<S>),
+) -> PublicLayoutTreeOf<S> {
+    let mut style = NodeInputOf::<S> {
+        display: Display::Grid,
+        writing_mode: WritingMode::VerticalRl,
+        grid_column: lines(1, 2),
+        grid_row: lines(1, 2),
+        ..NodeInputOf::default()
+    };
+    if subgrid_columns {
+        style.grid_template_columns = subgrid_track_of();
+    } else {
+        style.grid_template_rows = subgrid_track_of();
+    }
+    scrolled(&mut style);
+    edit(&mut style);
+    PublicLayoutTreeOf::new()
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Grid,
+                ..NodeInputOf::default()
+            },
+        )
+        .style(1, style)
+        .style(2, leaf_style(30.0, 10.0))
+        .children(0, [1])
+        .children(1, [2])
+}
+
+fn assert_orthogonal_subgrid_ignores_a_size_below_its_gutter<S: LayoutScalar>() {
+    // Rows of node 0 are subgridded: its physical height is ignored.
+    assert_eq!(
+        used_geometry(
+            &orthogonal_tree::<S>(true, |style| {
+                style.size.height = PreferredSizeOf::px(S::from_f64(4.0));
+            }),
+            3
+        ),
+        used_geometry(&orthogonal_tree::<S>(true, nothing), 3),
+        "columns subgridded, height 4"
+    );
+    // Columns of node 0 are subgridded: its physical width is ignored.
+    assert_eq!(
+        used_geometry(
+            &orthogonal_tree::<S>(false, |style| {
+                style.size.width = PreferredSizeOf::px(S::from_f64(5.0));
+            }),
+            3
+        ),
+        used_geometry(&orthogonal_tree::<S>(false, nothing), 3),
+        "rows subgridded, width 5"
+    );
+}
+scalar_tests!(
+    orthogonal_scrolled_subgrid_ignores_a_size_below_its_gutter,
+    assert_orthogonal_subgrid_ignores_a_size_below_its_gutter
+);
+
+// Controls: the physical axis the orthogonal subgrid does not subgrid keeps
+// its specified size.
+fn assert_orthogonal_subgrid_keeps_its_size_in_the_other_axis<S: LayoutScalar>() {
+    let wide = used_geometry(
+        &orthogonal_tree::<S>(true, |style| {
+            style.size.width = PreferredSizeOf::px(S::from_f64(50.0));
+        }),
+        3,
+    );
+    assert_eq!(wide[1].2, 50.0, "columns subgridded, width 50");
+    let tall = used_geometry(
+        &orthogonal_tree::<S>(false, |style| {
+            style.size.height = PreferredSizeOf::px(S::from_f64(50.0));
+        }),
+        3,
+    );
+    assert_eq!(tall[1].3, 50.0, "rows subgridded, height 50");
+}
+scalar_tests!(
+    orthogonal_scrolled_subgrid_keeps_its_size_in_the_other_axis,
+    assert_orthogonal_subgrid_keeps_its_size_in_the_other_axis
 );
