@@ -379,14 +379,20 @@ fn row_subgrid_over_two_rows_with_a_border_lays_out_f64() {
     assert_row_chain_over_two_rows::<f64>(3.0);
 }
 
-// A scrollbar gutter wider than the used content box of the middle subgrid.
-// Node 2 is a row subgrid with `overflow: scroll`, a 15px scrollbar, a
-// `height` of 0 and a `min-height` of 20px, no border and no padding. Grid
-// Level 2 section 9 (pinned edition CRD-css-grid-2-20250326) stretches a
-// subgrid in its subgridded dimension and ignores its specified width and
-// height constraints there, so these sizes do not change the track sizing;
-// node 2 is still as tall as row 1. Only the facts on which the spec and
-// WebKit (Safari 26.5, Playwright build 2327) agree are asserted:
+// A scrollbar gutter on a row subgrid whose specified height is 0 and whose
+// specified min-height is 20px. Node 2 is a row subgrid with `overflow:
+// scroll`, a 15px scrollbar, no border and no padding. Grid Level 2 section 9
+// (pinned edition CRD-css-grid-2-20250326) stretches a subgrid in its
+// subgridded dimension and ignores its specified width and height constraints
+// there, so neither the height nor the min-height applies to node 2's block
+// axis: its border box there is the area its tracks span, and the layout is
+// the one the chain has without them. Applied, the min-height would raise the
+// scroll box's border box to 20px while the explicit outer size stayed 0,
+// which gives a negative content extent; ignored, they leave that saturation
+// to `bordered_scrolled_row_subgrid_chain_lays_out_inside_its_border`, and
+// this test is the regression for the ignored sizes. Only the facts
+// on which the spec and WebKit (Safari 26.5, Playwright build 2327) agree are
+// asserted:
 // - The vertical scrollbar reserves 15px of node 2's inline axis, so its
 //   content box is 100 - 15 = 85 wide and node 3, spanning both of node 2's
 //   implicit columns, is 85 wide at x = 0 (the gutter is at the inline end).

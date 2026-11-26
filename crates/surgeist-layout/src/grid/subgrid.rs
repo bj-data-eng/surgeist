@@ -2936,7 +2936,9 @@ where
         item_report.row.can_inherit(),
     );
     let intrinsic_minimum = standalone_intrinsic_minimum_phases(&nested_container_style, inherited);
-    let mut gutter_container = *nested_container;
+    // The subgrid's specified sizes do not apply in its subgridded axes, so
+    // they must not bound the reservation either.
+    let mut gutter_container = (*nested_container).with_inherited_axes(inherited);
     gutter_container.suppress_intrinsic_minimum(intrinsic_minimum.map(|minimum| minimum.is_some()));
     let gutter_style = gutter_container.projection();
     let gutter_input = prepared.with_run_mode(RunMode::ComputeSize);
