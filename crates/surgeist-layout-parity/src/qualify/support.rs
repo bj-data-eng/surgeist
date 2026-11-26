@@ -3201,7 +3201,10 @@ sha256 = "{}"
             .unwrap(),
             bytes
         );
-        assert_eq!(inventory.global_inputs, [reference.path.clone()]);
+        assert_eq!(
+            inventory.global_inputs,
+            std::slice::from_ref(&reference.path)
+        );
         assert_eq!(inventory.expected_inputs[&reference.path], reference.sha256);
         let mut inventory = fresh_inventory();
         register_semantic_input(
