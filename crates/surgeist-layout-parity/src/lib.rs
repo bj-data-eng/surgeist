@@ -33,6 +33,7 @@ mod qualify;
 
 use browser_parity_modules::*;
 
+#[doc(inline)]
 pub use browser_parity::portable_qualification;
 use browser_parity::support::capture_authority::SpecializedProfile;
 
@@ -46,6 +47,8 @@ pub fn prepared_atomic_percentage_root() -> &'static str {
 pub const AHEM_TTF: &[u8] = pinned_font::BYTES;
 
 #[cfg(feature = "browser-corpus")]
+#[doc(inline)]
 pub use generate::run as run_generator;
 #[cfg(feature = "browser-corpus")]
+#[doc(inline)]
 pub use qualify::run as run_qualification;

@@ -1098,14 +1098,15 @@ impl Size {
     }
 }
 
-/// A failure to read, parse or observe a parity input.
+/// An error that a placement observer reports to stop the run.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Error {
     message: String,
 }
 
 impl Error {
-    fn new(message: impl Into<String>) -> Self {
+    /// An error carrying `message`.
+    pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
         }

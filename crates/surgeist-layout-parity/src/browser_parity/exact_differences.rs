@@ -7,6 +7,7 @@ use surgeist_text::font::FontBaseline;
 
 /// Why an edition did not admit or qualify.
 #[derive(Debug, PartialEq)]
+#[non_exhaustive]
 pub enum QualificationError {
     /// A recorded input no longer has its pinned identity.
     IdentityChanged {

@@ -25,8 +25,10 @@ use support::exact_differences::{
 use support::{ObservedPlacement, capture_authority, parse_root_context};
 
 /// The error of a placement observer.
+#[doc(inline)]
 pub use support::Error as ObserverError;
 /// The error of admitting or running a registered edition.
+#[doc(inline)]
 pub use support::exact_differences::QualificationError;
 
 #[path = "qualification_catalogue.rs"]

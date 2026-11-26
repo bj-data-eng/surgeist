@@ -3,7 +3,7 @@
 
 pub mod surgeist_layout_parity
 pub mod surgeist_layout_parity::portable_qualification
-pub enum surgeist_layout_parity::portable_qualification::QualificationError
+#[non_exhaustive] pub enum surgeist_layout_parity::portable_qualification::QualificationError
 pub surgeist_layout_parity::portable_qualification::QualificationError::ComparisonFailure
 pub surgeist_layout_parity::portable_qualification::QualificationError::ComparisonFailure::reason: alloc::string::String
 pub surgeist_layout_parity::portable_qualification::QualificationError::DifferenceSetChanged
@@ -44,6 +44,8 @@ impl surgeist_layout_parity::portable_qualification::EditionRun
 pub fn surgeist_layout_parity::portable_qualification::EditionRun::cases(&self) -> &[surgeist_layout_parity::portable_qualification::CaseOutcome]
 pub fn surgeist_layout_parity::portable_qualification::EditionRun::selected_cases_passed(&self) -> bool
 pub struct surgeist_layout_parity::portable_qualification::ObserverError
+impl surgeist_layout_parity::portable_qualification::ObserverError
+pub fn surgeist_layout_parity::portable_qualification::ObserverError::new(message: impl core::convert::Into<alloc::string::String>) -> Self
 impl core::error::Error for surgeist_layout_parity::portable_qualification::ObserverError
 impl core::fmt::Display for surgeist_layout_parity::portable_qualification::ObserverError
 pub fn surgeist_layout_parity::portable_qualification::ObserverError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
