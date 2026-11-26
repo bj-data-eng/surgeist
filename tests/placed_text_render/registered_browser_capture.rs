@@ -12,6 +12,10 @@ use surgeist::render;
 mod browser_parity_modules;
 pub use browser_parity_modules::*;
 #[path = "../../crates/surgeist-layout/tests/layout/browser_parity/portable_qualification.rs"]
+#[expect(
+    dead_code,
+    reason = "this example admits only the registered editions; Layout's browser-parity tests use the rest"
+)]
 pub mod portable_qualification;
 #[path = "../../crates/surgeist-layout/tests/layout/browser_parity/support.rs"]
 pub mod support;
