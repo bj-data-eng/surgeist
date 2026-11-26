@@ -13,8 +13,8 @@ CSS parsing/style resolution, retained identity, text shaping, rendering, and
 live scrolling remain outside this crate. The browser-parity corpus, golden
 generator and comparison tests belong to
 [surgeist-layout-parity](../surgeist-layout-parity/AGENTS.md), which depends on
-this crate's public API. The private fixture adapter is a constrained test
-bridge, not another CSS front door.
+this crate's public API, and so does its browser fixture adapter, a constrained
+test bridge and not another CSS front door.
 
 ## Discover The Current Structure
 

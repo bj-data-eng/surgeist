@@ -75,10 +75,11 @@ original character positions beyond 255.
 
 ### Ahem
 
-The layout, render and text crates include Ahem test fonts. Layout embeds WOFF2 bytes
+The layout, render and text crates include Ahem test fonts. The Layout parity crate embeds WOFF2 bytes
 retained from Taffy's browser-test support and credits Todd Fahrner and Paul
 Nelson through Kozea/Ahem. Render bundles a W3C-distributed TTF, also copied
-unchanged into Text's fixtures and Layout's prepared-text browser corpus, and
+unchanged into Text's fixtures and the Layout parity crate's prepared-text browser
+corpus, and
 credits Todd Fahrner and Myles C. Maxfield in the included upstream README.
 
 * License: [Public domain with the upstream Creative Commons Zero fallback](licenses/ahem/COPYING)
@@ -90,7 +91,7 @@ All three crates carry byte-identical `COPYING` declarations, shared here. Layou
 identifies the declaration's Kozea revision; render's
 [fixture provenance](https://github.com/bj-data-eng/surgeist-render/blob/e44860e7df530795fef2d423024723d5fa5dc447/tests/fixtures/fonts/ahem/PROVENANCE.md)
 records its font and notice hashes. These fonts are test assets.
-Layout's [TTF provenance](crates/surgeist-layout-parity/tests/layout/browser_parity/fonts/PROVENANCE.md)
+The parity crate's [TTF provenance](crates/surgeist-layout-parity/tests/layout/browser_parity/fonts/PROVENANCE.md)
 identifies the exact shared bytes separately from its embedded WOFF2.
 
 ### BudouX 0.9.3 adapted source and Japanese model
@@ -449,7 +450,7 @@ retains bounded FontCoreText.cpp excerpts with its complete
 
 ### Web Platform Tests
 
-The layout crate includes subgrid and grid-lanes browser fixtures adapted from
+The surgeist-layout-parity crate includes subgrid and grid-lanes browser fixtures adapted from
 Web Platform Tests (WPT), distributed by the web-platform-tests contributors,
 and generated expectations derived from those fixtures.
 
@@ -548,6 +549,7 @@ transitive binary-release inventory.
 | surgeist-html-parser | [NOTICE.md](crates/surgeist-html-parser/NOTICE.md) |
 | surgeist-html-semantics | [NOTICE.md](crates/surgeist-html-semantics/NOTICE.md) |
 | surgeist-layout | [NOTICE.md](crates/surgeist-layout/NOTICE.md) |
+| surgeist-layout-parity | [NOTICE.md](crates/surgeist-layout-parity/NOTICE.md) |
 | surgeist-paint | [MIT License](LICENSE); authored in this repository |
 | surgeist-render | [NOTICE.md](crates/surgeist-render/NOTICE.md) |
 | surgeist-runtime | [NOTICE.md](crates/surgeist-runtime/NOTICE.md) |

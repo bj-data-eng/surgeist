@@ -286,8 +286,12 @@ reviewed seal change. The earlier `root-context-v4` publication remains a
 distinct immutable edition.
 
 Browser generation and source import require the shared generator's supported
-mutation host, Apple-Silicon macOS. Default layout builds remain independent of
-this tooling requirement.
+mutation host, Apple-Silicon macOS. Default builds of this crate and of
+`surgeist-layout` remain independent of this tooling requirement.
+
+Run the generator commands in this section from the `crates/surgeist-layout-parity`
+directory: the generator resolves `tests/layout/browser_parity` and `tmp/` against
+the working directory.
 
 Regenerate XML fixtures from constrained HTML fixtures:
 
@@ -351,7 +355,7 @@ quarantined/generation-failure accounting. XML remains comment-free.
 attestations, source/resource/artifact hashes, paths, inventory, and accounting
 without requiring either cache. Browser-selection variables and generation
 filters do not affect this command. XML parsing and semantic comparison remain
-layout-owned tests; the generic engine treats artifact bytes as opaque.
+tests of this crate; the generic engine treats artifact bytes as opaque.
 
 HTML fixtures are the human-readable source of truth. The constrained `html/`
 fixtures are runnable today. XML fixtures are generated browser expectations for
@@ -366,7 +370,7 @@ enabled by the `browser-corpus` feature. The feature forwards to the sibling
 workspace `surgeist-generator` at version `=0.2.0`; default builds, including the
 facade's, do not include the browser tooling graph. `surgeist-layout` does not
 depend on this crate. The shared crate owns acquisition,
-browser processes, provenance, accounting, and publication. Layout owns
+browser processes, provenance, accounting, and publication. This crate owns
 document/helper preparation, measurement decoding, unsupported classification,
 and XML serialization.
 `scripts/gentest` remains helper-only: `test_helper.js` and `test_base_style.css`.

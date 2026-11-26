@@ -38,18 +38,19 @@ example. Layout fixtures that the layout tests read live in `surgeist-layout`.
 ## Layout Of The Crate
 
 All Rust sources are in `src/`. The library holds the parity support, the
-generator and the qualification driver; the binary and the example are one-line
-callers, so each test runs in the library's unit-test target only. The generator
-and the qualification driver (`generate`, `qualify`, `run_generator`,
-`run_qualification`, the binary and the example) need the `browser-corpus`
-feature; the default build serves the root facade without the browser engine. Tests of the
-private support sit in `*_tests.rs` modules beside their owners. The strict raw
-verdict is `browser_parity::tests::runs_all_checked_in_browser_parity_xml`.
+generator (`generate`) and the qualification driver (`qualify`).
+`src/bin/surgeist-layout-generate.rs` calls `run_generator` and
+`examples/qualify-root-context.rs` calls `run_qualification`. The generator, the
+qualification driver, the binary and the example require the `browser-corpus`
+feature; the default build has no browser engine. Every test is in the library's
+unit-test target, and tests of the private support sit in `*_tests.rs` modules
+beside their owners. The strict raw verdict is
+`browser_parity::tests::runs_all_checked_in_browser_parity_xml`.
 
 The directories `tests/layout/browser_parity`, `tests/bin/surgeist-layout-generate`,
 `examples/qualify-root-context` and `semantic` hold corpus data, scripts and
-guides, not Rust. Corpus reports and manifests record these crate-relative paths,
-so the directories keep their names. Never hand-edit generated XML or reports.
+guides, not Rust. Corpus reports and manifests record these crate-relative paths.
+Never hand-edit generated XML or reports.
 
 ## Command Inventory
 

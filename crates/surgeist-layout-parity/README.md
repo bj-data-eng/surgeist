@@ -10,8 +10,10 @@ qualification driver need the `browser-corpus` feature. It is not published.
 
 ## Try a parity check
 
-From this checkout, with the locked dependencies available, validate the checked-in
-corpus without a browser or a source cache:
+From this crate's directory, with the locked dependencies available, validate the
+checked-in corpus without a browser or a source cache. The generator resolves
+`tests/layout/browser_parity` against the working directory; the Justfile recipes
+and the scripts change to the crate directory first.
 
 ```sh
 cargo run --locked --offline -j 1 -p surgeist-layout-parity --features browser-corpus --bin surgeist-layout-generate -- check-corpus

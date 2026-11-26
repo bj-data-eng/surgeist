@@ -1548,8 +1548,8 @@ Setting `CARGO_NET_OFFLINE=true` keeps Cargo dependency resolution offline.
 | `just check` / `just test` / `just clippy` | Cargo check, tests, or strict Clippy |
 | `just verify` | Formatting, check, test, and Clippy sequence |
 
-Clippy recipes use `-F unsafe-code -D warnings`; Cargo recipes use `-j 1 --offline
---locked`. The browser-parity recipes are in the
+Clippy recipes use `-F unsafe-code -D warnings`; the check, test and Clippy recipes
+use `-j 1 --offline --locked`; the format recipes run `cargo fmt -p`. The browser-parity recipes are in the
 [parity crate reference](../../surgeist-layout-parity/docs/reference.md#local-commands).
 
 ### Unfragmented element-terminal hyphenation

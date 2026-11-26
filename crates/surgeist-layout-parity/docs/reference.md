@@ -39,8 +39,10 @@ The corpus pins its Chrome-for-Testing version, launch settings, and report
 inventory in [the corpus manifest](../tests/layout/browser_parity/corpus.toml). `generate` may acquire the
 managed browser; `generate-existing` requires `SURGEIST_BROWSER_PATH` to name a
 repository-relative executable below the declared cache and never fetches.
-Source checkouts live in `tmp/surgeist-sources/<id>/<revision>/`; browsers live in
-`tmp/surgeist-browser/`. Repository `tmp/` is ignored and survives `cargo clean`.
+Source checkouts live in `tmp/surgeist-sources/<id>/<revision>/` and browsers in
+`tmp/surgeist-browser/`, both below the crate directory's `tmp/`, which the generator
+resolves against its working directory. The crate's `tmp/` is ignored and survives
+`cargo clean`.
 
 `check-corpus` validates the live schema-4 report, ownership, and persisted
 source-import attestation without a browser or source checkout. The producer
@@ -79,6 +81,6 @@ Setting `CARGO_NET_OFFLINE=true` keeps Cargo dependency resolution offline.
 | `just corpus-check` | Browser-free `check-corpus` with corpus and browser overrides cleared |
 | `just taffy-check` | Validate the existing pinned source cache and imported Taffy corpus |
 
-Clippy recipes use `-F unsafe-code -D warnings`; Cargo recipes use `-j 1 --offline
---locked`. `corpus-check` and `taffy-check` enable `browser-corpus`. Browser commands and environment variables are described in the
+Clippy recipes use `-F unsafe-code -D warnings`; the check, test and Clippy recipes
+use `-j 1 --offline --locked`; the format recipes run `cargo fmt -p`. `corpus-check` and `taffy-check` enable `browser-corpus`. Browser commands and environment variables are described in the
 [browser parity guide](../tests/layout/browser_parity/README.md).

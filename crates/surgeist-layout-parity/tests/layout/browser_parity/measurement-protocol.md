@@ -65,7 +65,7 @@ with zero displacement; original static positioning remains in XML/provenance.
 Other static/offset profiles refuse.
 
 The public Native `PositionedRootContext` remains separate for
-containing-frame placement; see the [Native root contexts](../../../src/output.rs).
+containing-frame placement; see the [Native root contexts](../../../../surgeist-layout/src/output.rs).
 V4 has no `positioned-auto-insets` wire alias. Native root-local padding/border
 admission requires a definite preferred width under its sizing resolver. Browser
 absolute-local source admission permits padding/border only when the actual
@@ -286,7 +286,7 @@ the complete case rather than becoming a numeric difference.
 ### Functional qualification before adoption
 
 Use the real [qualification example](../../../examples/qualify-root-context.rs)
-with `layout-golden-generate` and a verified cached browser. Its single source
+with the `browser-corpus` feature and a verified cached browser. Its single source
 records own scheduling, declared outcomes and historical observation hashes.
 It uses the actual Layout adapter/public BrowserCorpus rather than a source or
 cascade mock. Follow the [corpus procedures](README.md) and

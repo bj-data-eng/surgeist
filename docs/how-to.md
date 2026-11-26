@@ -127,7 +127,8 @@ review. Missing prerequisites or an unexplained delta stop the refresh handoff.
 
 Run this command from the workspace root. It replays the registered Layout
 capture, read from the [Layout parity corpus](../crates/surgeist-layout-parity/README.md),
-and passes its completed Text placement through headless Render admission. The witness checks the actual stored glyph draws.
+and passes its completed Text placement through headless Render admission. The
+witness checks the stored glyph draws.
 
 ```sh
 cargo run --offline --locked -j 1 -p surgeist --features render-text --example qualify-registered-text-render

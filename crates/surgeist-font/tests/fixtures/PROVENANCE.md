@@ -8,7 +8,7 @@ and their independent table contents remain the expectations.
 ## Original Ahem 1.1
 
 `ahem-original/Ahem.woff2` is extracted without modification from the embedded
-data URL in Layout's [base CSS](../../../surgeist-layout-parity/tests/layout/browser_parity/scripts/gentest/test_base_style.css).
+data URL in the Layout parity crate's [base CSS](../../../surgeist-layout-parity/tests/layout/browser_parity/scripts/gentest/test_base_style.css).
 It is the 1,496-byte Ahem 1.1 resource retained from the existing browser corpus,
 not the distinct Ahem 1.50 TTF. License and authorship are preserved by the
 repository's [Ahem notice](../../../../NOTICE.md#ahem),

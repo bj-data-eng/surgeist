@@ -26,7 +26,8 @@ downstream consumers. Caller-shaped widths and local segment IDs cannot replace
 this preparation.
 Layout does not parse authored CSS or resolve computed style. Its consuming
 adapters own lowering producer facts into these normalized inputs.
-The browser fixture adapter serves this same finite input boundary for tests.
+The browser fixture adapter in `surgeist-layout-parity` serves this same finite
+input boundary for tests.
 The browser-parity corpus and the generator that produces it belong to
 [surgeist-layout-parity](../../surgeist-layout-parity/README.md), which depends on
 this crate's public API; see its [runtime reference](../../surgeist-layout-parity/docs/reference.md#browser-parity-runtime).
@@ -68,8 +69,8 @@ baseline sharing and fragmentation are unsupported.
 
 Layout owns lowering consumed producer facts into these finite inputs; CSS
 parsing and computed-value resolution remain with their respective owners. The
-browser fixture adapter is a constrained layout-ready test bridge, not another
-CSS front door.
+browser fixture adapter in `surgeist-layout-parity` is a constrained test bridge,
+not another CSS front door.
 
 ## Fragmentation scheduling
 
