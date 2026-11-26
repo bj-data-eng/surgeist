@@ -12,11 +12,11 @@ use crate::test_support::readback::{self, Phase};
 // indefinite block size, horizontal-tb and ltr. The root is a Grid with no
 // tracks and no size.
 
-fn lines(start: isize, end: isize) -> GridPlacement {
+pub(super) fn lines(start: isize, end: isize) -> GridPlacement {
     GridPlacement::try_lines(start, end).unwrap()
 }
 
-fn standalone_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
+pub(super) fn standalone_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
     let width = NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap();
     LayoutRootRequestOf::standalone(
         SizingRequestOf::new(
@@ -112,12 +112,12 @@ fn chain<S: LayoutScalar>(axis: Axis, inset: Inset) -> PublicLayoutTreeOf<S> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct Expected {
+pub(super) struct Expected {
     location: (f64, f64),
     size: (f64, f64),
 }
 
-fn expect(x: f64, y: f64, width: f64, height: f64) -> Expected {
+pub(super) fn expect(x: f64, y: f64, width: f64, height: f64) -> Expected {
     Expected {
         location: (x, y),
         size: (width, height),
@@ -126,7 +126,7 @@ fn expect(x: f64, y: f64, width: f64, height: f64) -> Expected {
 
 // The unrounded phase carries the used geometry; the final phase would round
 // the 0.5px insets to whole pixels.
-fn assert_layout<S: LayoutScalar>(
+pub(super) fn assert_layout<S: LayoutScalar>(
     tree: &PublicLayoutTreeOf<S>,
     label: &str,
     expected: &[Expected],

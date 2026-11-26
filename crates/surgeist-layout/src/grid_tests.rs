@@ -98,6 +98,8 @@ mod subgrid_border_basis;
 mod subgrid_clamping_contracts;
 #[path = "grid_tests/subgrid_share_tests.rs"]
 mod subgrid_share;
+#[path = "grid_tests/subgrid_specified_size_tests.rs"]
+mod subgrid_specified_size;
 #[path = "grid_tests/topology_placement_tests.rs"]
 mod topology_placement;
 #[path = "grid_tests/tracks_intrinsic_tests.rs"]
