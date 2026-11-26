@@ -1,14 +1,18 @@
 //! Synchronous admission accounting for complete retained CSSOM state.
 //!
 //! The census adds up what the retained state holds: objects, entries, host
-//! string bytes and the sources its payloads retain. Each kind of object
-//! contributes through its own function, so a census over the whole state is
-//! the sum of those contributions followed by the threshold checks.
-use crate::source_retention::{Links, source_refusal, walk_block, walk_map, walk_media, walk_rule};
+//! string bytes and the sources its payloads retain. Each kind of record is
+//! measured alone ([`measure`]), so a census over the whole state is the sum of
+//! those measurements followed by the threshold checks.
+use crate::source_retention::{
+    Sources, source_refusal, walk_block, walk_map, walk_media, walk_rule,
+};
 use crate::{model::State, *};
-use std::{collections::HashSet, sync::Arc};
+use measure::{Counts, Refusal};
+use std::collections::HashSet;
 use surgeist_css::query::media::CssMediaQueryList;
-use surgeist_css::source::CssSourceRetention;
+
+pub(crate) mod measure;
 
 /// The entries and host string bytes the retained state accounts for. A sum
 /// that overflows is `None` and is refused by its threshold check.
@@ -48,276 +52,78 @@ impl Totals {
         self.counted = self.counted.saturating_add(count);
         self.entries = self.entries.and_then(|total| total.checked_add(count));
     }
-    fn add_strings(&mut self, count: usize) {
-        self.strings = self.strings.and_then(|total| total.checked_add(count));
+    /// Adds what one record accounts for.
+    fn add(&mut self, counts: &Counts) {
+        self.add_entries(counts.entries);
+        self.strings = self
+            .strings
+            .and_then(|total| total.checked_add(counts.strings));
     }
-    fn version(&mut self, value: &CssomInputVersion) {
-        self.add_strings(value.identity.len());
+    /// The refusal of a record, after the entries it had counted.
+    fn refused(&mut self, refusal: Refusal) -> CssomError {
+        self.counted = self.counted.saturating_add(refusal.counted);
+        refusal.error
     }
     /// The inputs and linked inputs of one context.
     fn context(&mut self, context: &CssomContext) -> Result<(), CssomError> {
-        for input in &context.inputs {
-            self.input(input);
-        }
-        for linked in &context.linked {
-            self.version(&linked.version);
-            linked.snapshot.sheet(&linked.sheet)?;
-            self.add_entries(1);
-        }
+        let counts = measure::context(context).map_err(|refusal| self.refused(refusal))?;
+        self.add(&counts);
         Ok(())
-    }
-    fn input(&mut self, input: &CssomInput) {
-        self.version(&input.version);
-        self.add_entries(1);
-        match &input.data {
-            CssomInputData::Document { identity } => self.add_strings(identity.len()),
-            CssomInputData::Window { identity, document } => {
-                self.add_strings(identity.len());
-                self.add_strings(document.len());
-            }
-            CssomInputData::Origin { origin, profile } => {
-                self.add_strings(origin.len());
-                self.add_strings(profile.len());
-            }
-            CssomInputData::Layer { path, .. } => {
-                self.add_entries(path.len());
-                for part in path {
-                    self.add_strings(part.len());
-                }
-            }
-            CssomInputData::Base { url, location } => {
-                for value in [url, location].into_iter().flatten() {
-                    self.add_strings(value.len());
-                }
-            }
-            CssomInputData::Owner {
-                identity,
-                attribute,
-            } => {
-                self.add_strings(identity.len());
-                if let Some(v) = attribute {
-                    self.add_strings(v.len());
-                }
-            }
-            CssomInputData::Import { resolved_location } => {
-                if let Some(v) = resolved_location {
-                    self.add_strings(v.len());
-                }
-            }
-            CssomInputData::ParserMode(_) => {}
-            CssomInputData::Support(support) => self.add_entries(
-                support.properties().len()
-                    + support.page_descriptors().len()
-                    + support.font_face_descriptors().len()
-                    + usize::from(support.svg_glyph_orientation_vertical().is_some()),
-            ),
-        }
     }
     /// One sheet record. `bases` holds the base URL identities already counted.
     fn sheet(
         &mut self,
         sheet: &CssomSheet,
-        bases: &mut HashSet<*const Vec<u16>>,
+        bases: &mut HashSet<usize>,
         limits: &CssomLimits,
     ) -> Result<(), CssomError> {
         self.examine();
-        if let Some(input) = sheet.authored.parse_source()
-            && input.source().as_str().len() > limits.max_input_bytes
+        let counts = measure::sheet(sheet);
+        counts
+            .check(limits)
+            .map_err(|refusal| self.refused(refusal))?;
+        if let Some(base) = counts.base
+            && !bases.contains(&base.identity)
         {
-            return Err(CssomError::Limit {
-                resource: "parse input bytes",
-                maximum: limits.max_input_bytes,
-            });
-        }
-        // Retained raw input includes imports filtered from constructed sheets.
-        self.add_entries(sheet.authored.rules().len());
-        self.version(&sheet.inputs.version);
-        let title_bytes =
-            sheet
-                .inputs
-                .title
-                .capacity()
-                .checked_mul(2)
-                .ok_or(CssomError::Limit {
-                    resource: "host and live string bytes",
-                    maximum: limits.max_string_bytes,
-                })?;
-        self.add_strings(title_bytes);
-        if let Some(base) = &sheet.inputs.base_url {
-            let identity = Arc::as_ptr(base);
-            if !bases.contains(&identity) {
-                bases.try_reserve(1).map_err(|_| CssomError::Limit {
+            if bases.try_reserve(1).is_err() {
+                self.counted = self.counted.saturating_add(counts.entries_before_base());
+                return Err(CssomError::Limit {
                     resource: "base URL source identities",
                     maximum: limits.max_objects,
-                })?;
-                bases.insert(identity);
-                self.strings = self.strings.and_then(|total| {
-                    base.capacity()
-                        .checked_mul(size_of::<u16>())
-                        .and_then(|bytes| total.checked_add(bytes))
                 });
             }
+            bases.insert(base.identity);
+            self.strings = self
+                .strings
+                .and_then(|total| base.bytes.and_then(|bytes| total.checked_add(bytes)));
         }
-        for text in [
-            &sheet.inputs.location,
-            &sheet.inputs.constructor_document,
-            &sheet.inputs.owner,
-        ]
-        .into_iter()
-        .flatten()
-        {
-            self.add_strings(text.len());
-        }
-        self.add_entries(sheet.diagnostics.len());
+        self.add(&counts);
         Ok(())
     }
     /// One rule list holding `members` rule identities.
     fn list(&mut self, members: usize) {
         self.examine();
-        self.add_entries(members);
+        self.add(&measure::list(members));
     }
     fn media(&mut self, media: &CssMediaQueryList) {
         self.examine();
-        self.add_entries(media.queries().len());
+        self.add(&measure::media(media));
     }
     fn block(&mut self, block: &CssomBlock) {
         self.examine();
-        self.add_entries(block.counter_edits.len());
-        for value in block.counter_edits.iter() {
-            if let Some(origin) = value.origin() {
-                self.add_strings(origin.source().as_str().len());
-            }
-        }
-        if let Some(CssomProjection::Available(selected)) = block.selected_font_face.as_deref() {
-            self.add_entries(selected.entries().len());
-        }
-        if let Some(input) = &block.replacement_input {
-            self.add_strings(input.source().len());
-            self.add_entries(input.diagnostics().len());
-        }
-        self.add_entries(block.admission_inputs.len());
-        for input in block.admission_inputs.iter() {
-            self.version(input);
-        }
-        if block.inline_context().is_none()
-            && let Some(owner) = block.owner()
-        {
-            self.version(owner);
-        }
-        match block.data() {
-            CssomBlockData::Properties {
-                authored, selected, ..
-            } => {
-                self.add_entries(match authored {
-                    CssomPropertyOccurrences::Ordinary(v)
-                    | CssomPropertyOccurrences::RawContents(v) => v.len(),
-                    CssomPropertyOccurrences::Keyframe(v) => v.len(),
-                    CssomPropertyOccurrences::Margin(v) => v.properties().len(),
-                });
-                if let CssomProjection::Available(v) = selected {
-                    self.add_entries(v.entries().len());
-                }
-            }
-            CssomBlockData::Page { authored, selected } => {
-                self.add_entries(authored.occurrences().len());
-                if let CssomProjection::Available(v) = selected {
-                    self.add_entries(v.entries().len());
-                }
-            }
-            CssomBlockData::CounterStyle(v) => self.add_entries(v.occurrences().len()),
-            CssomBlockData::FontFace(v) => self.add_entries(v.occurrences().len()),
-        }
+        self.add(&measure::block(block));
     }
     fn map(&mut self, map: &CssomFeatureMap) {
         self.examine();
-        self.add_entries(map.authored.len());
-        self.add_entries(map.entries.len());
-        for entry in &map.entries {
-            self.add_strings(entry.key.len());
-            if let CssomFeatureValue::Unsigned(v) = &entry.value {
-                self.add_entries(v.len());
-            }
-        }
+        self.add(&measure::map(map));
     }
     fn rule(&mut self, rule: &CssomRule, limits: &CssomLimits) -> Result<(), CssomError> {
         self.examine();
-        self.add_entries(rule.admission_diagnostics.len());
-        if let Some(origin) = &rule.selector_input {
-            if origin.source().as_str().len() > limits.max_input_bytes {
-                return Err(CssomError::Limit {
-                    resource: "retained selector input bytes",
-                    maximum: limits.max_input_bytes,
-                });
-            }
-            self.add_strings(origin.source().as_str().len());
-        }
-        match rule.data() {
-            CssomRuleData::NamedSupports { name, body, .. } => {
-                self.add_strings(name.as_str().len());
-                self.add_strings(crate::named_supports_operations::retained_test_input_bytes(
-                    name.origin(),
-                    limits,
-                )?);
-                self.add_entries(body.local_recovery_origins().len());
-                for child in body.children() {
-                    let (count, bytes) =
-                        crate::named_supports_operations::test_child_storage(child, limits)?;
-                    self.add_entries(count);
-                    self.add_strings(bytes);
-                }
-            }
-            CssomRuleData::SupportsTestChild(child) => {
-                let (count, bytes) =
-                    crate::named_supports_operations::test_child_storage(child.as_ref(), limits)?;
-                self.add_entries(count);
-                self.add_strings(bytes);
-                // Current and historical checked payloads are retained separately.
-                self.add_entries(count);
-                self.add_strings(bytes);
-            }
-            CssomRuleData::CounterStyle { name, .. } => self.add_strings(name.len()),
-            CssomRuleData::CustomMedia { name, .. } => self.add_strings(name.as_str().len()),
-            CssomRuleData::FontFeatureValues {
-                families,
-                family_input,
-                ..
-            } => {
-                self.add_entries(families.len());
-                for family in families {
-                    self.add_strings(family.as_str().len());
-                }
-                if let Some(input) = family_input {
-                    self.add_strings(input.source_bytes());
-                    self.add_entries(input.diagnostics().len());
-                    self.add_entries(input.inputs().len());
-                    for input in input.inputs() {
-                        self.version(input);
-                    }
-                }
-            }
-            CssomRuleData::Keyframes { name, .. } => self.add_strings(match name {
-                surgeist_css::rule::keyframes::CssKeyframesName::Ident(value) => {
-                    value.as_str().len()
-                }
-                surgeist_css::rule::keyframes::CssKeyframesName::String(value) => {
-                    value.as_str().len()
-                }
-                _ => 0,
-            }),
-            CssomRuleData::Import {
-                resolved_location,
-                input,
-                ..
-            } => {
-                if let Some(v) = resolved_location {
-                    self.add_strings(v.len());
-                }
-                if let Some(v) = input {
-                    self.version(v);
-                }
-            }
-            _ => {}
-        }
+        let counts = measure::rule(rule);
+        counts
+            .check(limits)
+            .map_err(|refusal| self.refused(refusal))?;
+        self.add(&counts);
         Ok(())
     }
     fn check_entries(&self, limits: &CssomLimits) -> Result<(), CssomError> {
@@ -347,7 +153,7 @@ pub(crate) struct Figures {
 /// payloads retain, collected once.
 pub(crate) struct Census {
     totals: Totals,
-    sources: CssSourceRetention<'static>,
+    sources: Sources,
     /// The objects of the state, the state itself included.
     objects: usize,
 }
@@ -503,7 +309,8 @@ impl Census {
                     examined,
                     counted,
                 },
-                sources: census.sources,
+                // The reference accounts for its sources in a collector of its own.
+                sources: Sources::new(limits),
                 objects: census.objects,
             }
         })
@@ -517,7 +324,7 @@ impl Census {
             entries,
             strings,
             objects: self.objects,
-            retained_bytes: self.sources.usage().retained_bytes(),
+            retained_bytes: self.sources.bytes(),
             steps: self.sources.steps(),
         }
     }
@@ -597,27 +404,25 @@ impl Census {
         Ok(Extension::Applied)
     }
 
-    /// Walks the retained sources of the inserted objects into the collector.
+    /// Walks the retained sources of the inserted objects into the sources of this census.
     fn walk(&mut self, inserted: &Resolved<'_>, limits: &CssomLimits) -> Result<(), CssomError> {
-        // Resolved objects reach no linked state, so nothing joins `links`.
-        let mut links = Links::new(limits.max_source_traversal_steps);
-        self.sources
-            .at_depth(0, |sources| {
-                for rule in &inserted.rules {
-                    walk_rule(sources, &mut links, 0, rule)?;
-                }
-                for block in &inserted.blocks {
-                    walk_block(sources, &mut links, 0, block)?;
-                }
-                for media in &inserted.media {
-                    walk_media(sources, media)?;
-                }
-                for map in &inserted.maps {
-                    walk_map(sources, map)?;
-                }
-                Ok(())
-            })
-            .map_err(|error| source_refusal(error, limits))
+        // Resolved objects reach no linked state, so no context joins the walk.
+        (|| {
+            for rule in &inserted.rules {
+                self.sources.record(0, |walk| walk_rule(walk, rule))?;
+            }
+            for block in &inserted.blocks {
+                self.sources.record(0, |walk| walk_block(walk, block))?;
+            }
+            for media in &inserted.media {
+                self.sources.record(0, |walk| walk_media(walk, media))?;
+            }
+            for map in &inserted.maps {
+                self.sources.record(0, |walk| walk_map(walk, map))?;
+            }
+            Ok(())
+        })()
+        .map_err(|error| source_refusal(error, limits))
     }
 
     /// Panics unless `outcome`, the answer of extending this census over the
@@ -636,8 +441,8 @@ impl Census {
             (Ok(Extension::Applied), Ok(whole)) => {
                 assert_eq!(self.totals.sums(), whole.totals.sums(), "totals");
                 assert_eq!(
-                    self.sources.usage(),
-                    whole.sources.usage(),
+                    self.sources.bytes(),
+                    whole.sources.usage().retained_bytes(),
                     "retained bytes"
                 );
                 assert_eq!(self.sources.steps(), whole.sources.steps(), "walk steps");
@@ -724,14 +529,7 @@ impl State {
     /// refusing an oversized sheet or rule input, a missing linked sheet and an
     /// oversized test payload.
     fn add_totals(&self, totals: &mut Totals, limits: &CssomLimits) -> Result<(), CssomError> {
-        for context in std::iter::once(self.context.as_ref())
-            .chain(
-                self.rules
-                    .values()
-                    .filter_map(|rule| rule.selector_inputs.as_deref()),
-            )
-            .chain(self.inline_contexts())
-        {
+        for context in measure::contexts(self) {
             totals.context(context)?;
         }
         let mut bases = HashSet::new();
@@ -778,6 +576,12 @@ pub(crate) mod probe {
         static CROSS_CHECK: Cell<bool> = const { Cell::new(true) };
         static REFERENCE: Cell<bool> = const { Cell::new(false) };
         static LAST_RUN: Cell<Option<Run>> = const { Cell::new(None) };
+        static PARTS: Cell<usize> = const { Cell::new(0) };
+    }
+
+    /// One payload part has been measured.
+    pub(crate) fn part_measured() {
+        PARTS.with(|total| total.set(total.get().saturating_add(1)));
     }
 
     /// Whether every census of a whole state is the reference's instead of the
@@ -860,6 +664,7 @@ pub(crate) mod probe {
         STEPS.with(|total| total.set(0));
         EXTENSIONS.with(|total| total.set(0));
         WHOLE_RUNS.with(|total| total.set(0));
+        PARTS.with(|total| total.set(0));
     }
     pub(crate) fn read() -> Work {
         Work {

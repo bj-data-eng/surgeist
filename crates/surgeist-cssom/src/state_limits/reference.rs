@@ -551,7 +551,7 @@ impl<'a> Links<'a> {
 /// Count actual retained payload entries without interpreting CSS grammar or
 /// estimating the native writer's tariff. Source bytes are charged per retained
 /// direct occurrence, as a logical input bound rather than allocator accounting.
-fn test_child_storage(
+pub(super) fn test_child_storage(
     child: CssSupportsTestChildRef<'_>,
     limits: &CssomLimits,
 ) -> Result<(usize, usize), CssomError> {

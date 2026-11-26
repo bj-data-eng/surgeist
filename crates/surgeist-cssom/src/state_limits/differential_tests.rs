@@ -547,3 +547,50 @@ fn inserted_objects_that_link_states_or_are_missing_leave_the_census_to_the_whol
     assert_eq!(census.totals.sums(), before.sums());
     assert_eq!(census.sources.steps(), steps);
 }
+
+#[test]
+fn the_storage_of_a_test_child_measured_alone_is_the_reference_under_every_limit() {
+    let rich = "@supports-condition --x { first: a b(c d) [e f]; @future (x y) { inner: 1; @deep { z } } last: z; }
+@supports-condition --y { color: red }
+";
+    let mut store = CssomStore::new(CssomLimits::default(), CssomContext::default()).unwrap();
+    let mut batch = store
+        .batch(CssomEditGuard::from_snapshot(&store.snapshot()))
+        .unwrap();
+    batch
+        .create_parsed_sheet(rich, CssomSheetInputs::external(version("a"), true))
+        .unwrap();
+    store.commit(batch).unwrap();
+    let mut children = Vec::new();
+    for rule in store.state.rules.values() {
+        match rule.data() {
+            CssomRuleData::NamedSupports { body, .. } => children.extend(body.children()),
+            CssomRuleData::SupportsTestChild(child) => children.push(child.as_ref()),
+            _ => {}
+        }
+    }
+    assert!(children.len() > 4, "{}", children.len());
+    let mut compared = 0usize;
+    for child in children {
+        let storage = crate::named_supports_operations::measure_test_child(child);
+        let (entries, bytes) = (storage.entries(), storage.bytes());
+        for max_entries in (0..=entries + 2).chain([usize::MAX]) {
+            for max_input_bytes in [0, bytes.saturating_sub(1), bytes, bytes + 1, usize::MAX] {
+                let limits = CssomLimits {
+                    max_entries,
+                    max_input_bytes,
+                    ..CssomLimits::default()
+                };
+                let measured = storage.check(&limits);
+                let reference = super::reference::test_child_storage(child, &limits);
+                assert_eq!(
+                    format!("{measured:?}"),
+                    format!("{reference:?}"),
+                    "entries {max_entries}, input bytes {max_input_bytes}"
+                );
+                compared += 1;
+            }
+        }
+    }
+    assert!(compared > 100, "{compared}");
+}
