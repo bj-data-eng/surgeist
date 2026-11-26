@@ -583,6 +583,10 @@ pub(crate) mod probe {
     pub(crate) fn part_measured() {
         PARTS.with(|total| total.set(total.get().saturating_add(1)));
     }
+    /// The payload parts measured on this thread since the last reset.
+    pub(crate) fn parts() -> usize {
+        PARTS.with(Cell::get)
+    }
 
     /// Whether every census of a whole state is the reference's instead of the
     /// measured census.
@@ -676,6 +680,8 @@ pub(crate) mod probe {
 
 #[cfg(test)]
 mod differential_tests;
+#[cfg(test)]
+mod memo_tests;
 #[cfg(test)]
 mod reference;
 
