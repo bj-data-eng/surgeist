@@ -3725,4 +3725,97 @@ mod tests {
         assert_lane::<f32>();
         assert_lane::<f64>();
     }
+
+    // A basis that is negative or not finite is reported as an invalid numeric
+    // value by every resolver that forms a percentage basis; none asserts.
+    fn assert_invalid_basis_is_an_error<S: LayoutScalar>(invalid: S) {
+        use super::resolve::{
+            SizingResolutionError, fixed_fallback_maximum, fixed_fallback_minimum,
+            fixed_fallback_preferred, resolve_flex_basis, resolve_maximum_optional,
+            resolve_minimum_optional, resolve_preferred_sizing,
+        };
+        let expected = SizingResolutionError::Status(LengthResolutionStatus::InvalidNumeric {
+            value: invalid,
+        });
+        let half = S::from_f64(0.5);
+        let algorithm = SizingAlgorithm::Grid;
+        let axis = PhysicalAxis::Vertical;
+        assert_eq!(
+            resolve_preferred_sizing(
+                &PreferredSizeOf::percent(half),
+                algorithm,
+                axis,
+                Some(invalid),
+                true
+            )
+            .err(),
+            Some(expected)
+        );
+        assert_eq!(
+            resolve_minimum_optional(
+                &MinSizeOf::value(
+                    LengthPercentageOf::from_coefficients(S::ZERO, half)
+                        .expect("finite percentage"),
+                ),
+                algorithm,
+                axis,
+                Some(invalid),
+                true
+            )
+            .err(),
+            Some(expected)
+        );
+        assert_eq!(
+            resolve_maximum_optional(
+                &MaxSizeOf::percent(half),
+                algorithm,
+                axis,
+                Some(invalid),
+                true
+            )
+            .err(),
+            Some(expected)
+        );
+        assert_eq!(
+            resolve_flex_basis(&FlexBasisOf::percent(half), axis, Some(invalid)).err(),
+            Some(expected)
+        );
+        assert_eq!(
+            fixed_fallback_preferred(
+                &PreferredSizeOf::percent(half),
+                algorithm,
+                axis,
+                Some(invalid)
+            )
+            .err(),
+            Some(expected)
+        );
+        assert_eq!(
+            fixed_fallback_minimum(
+                &MinSizeOf::value(
+                    LengthPercentageOf::from_coefficients(S::ZERO, half)
+                        .expect("finite percentage"),
+                ),
+                algorithm,
+                axis,
+                Some(invalid)
+            )
+            .err(),
+            Some(expected)
+        );
+        assert_eq!(
+            fixed_fallback_maximum(&MaxSizeOf::percent(half), algorithm, axis, Some(invalid)).err(),
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn negative_percentage_basis_is_an_error_f32() {
+        assert_invalid_basis_is_an_error::<f32>(-6.0);
+    }
+
+    #[test]
+    fn negative_percentage_basis_is_an_error_f64() {
+        assert_invalid_basis_is_an_error::<f64>(-6.0);
+    }
 }

@@ -124,6 +124,8 @@ fn expect(x: f64, y: f64, width: f64, height: f64) -> Expected {
     }
 }
 
+// The unrounded phase carries the used geometry; the final phase would round
+// the 0.5px insets to whole pixels.
 fn assert_layout<S: LayoutScalar>(
     tree: &PublicLayoutTreeOf<S>,
     label: &str,
@@ -132,7 +134,7 @@ fn assert_layout<S: LayoutScalar>(
     let batch = compute_layout(tree, 0, standalone_request())
         .unwrap_or_else(|error| panic!("{label}: layout failed: {error:?}"));
     for (node, expected) in expected.iter().enumerate() {
-        let output = readback::single_box_output(&batch, node as u32, Phase::Final);
+        let output = readback::single_box_output(&batch, node as u32, Phase::Unrounded);
         let actual = Expected {
             location: (output.location.x.to_f64(), output.location.y.to_f64()),
             size: (output.size.width.to_f64(), output.size.height.to_f64()),
@@ -405,7 +407,7 @@ fn assert_row_chain_with_a_gutter_wider_than_the_content<S: LayoutScalar>() {
     tree = tree.style(2, style);
     let batch = compute_layout(&tree, 0, standalone_request())
         .unwrap_or_else(|error| panic!("layout failed: {error:?}"));
-    let output = |node| readback::single_box_output(&batch, node, Phase::Final);
+    let output = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
     for node in 0..3 {
         let output = output(node);
         assert_eq!(
@@ -439,4 +441,115 @@ fn row_subgrid_chain_with_a_gutter_wider_than_the_content_box_lays_out_f32() {
 #[test]
 fn row_subgrid_chain_with_a_gutter_wider_than_the_content_box_lays_out_f64() {
     assert_row_chain_with_a_gutter_wider_than_the_content::<f64>();
+}
+
+fn constants_with<S: LayoutScalar>(
+    outer: Size<Option<S>>,
+    available: Size<Option<S>>,
+    inset: Edges<S>,
+) -> Constants<S> {
+    Constants {
+        flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        explicit_definite_outer_size: outer,
+        indefinite_percentage_axis: None,
+        child_orthogonal_fallback: OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unknown),
+        ),
+        fallback_minimum_outer: Size::splat(FixedFallbackSource::Unqualified),
+        fallback_maximum_outer: Size::splat(FixedFallbackSource::Unqualified),
+        node_outer_size: outer,
+        node_inner_size: Size::NONE,
+        node_min_size: Size::NONE,
+        node_definite_min_size: Size::NONE,
+        node_max_size: Size::NONE,
+        available_outer_size: available,
+        content_box_inset: inset,
+        scrollbar_gutter: Edges::ZERO,
+        padding: Edges::ZERO,
+        border: Edges::ZERO,
+    }
+}
+
+fn scroll_box_over<S: LayoutScalar>(border_box: f64, border: f64) -> CanonicalScrollBoxOf<S> {
+    canonical_scroll_box_from_source(CanonicalScrollBoxSourceOf {
+        flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        computed_overflow: ComputedOverflow::VISIBLE,
+        item_is_replaced: false,
+        border_box_size: Size::splat(S::from_f64(border_box)),
+        border: Edges::all(S::from_f64(border)),
+        padding: Edges::ZERO,
+        scrollbar_gutter: ScrollbarGutter::Auto,
+        scrollbar_width: ScrollbarWidthOf::ZERO,
+        settled_auto_scrollbars: crate::scroll::SettledAutoScrollbarState::INITIAL,
+    })
+    .unwrap()
+}
+
+// The explicit and available content boxes are never negative, and they follow
+// the inset of the used scroll box. A content box is the border box less the
+// inset, and never smaller than zero (CSS Sizing 3).
+//
+// - A 0px border box under a requested inset of 6px (3px borders) has an empty
+//   content box. Used against a border box of 0px, the 3px borders saturate to
+//   0px (the border cannot exceed the box), so the used content box is also
+//   empty; adding the 6px inset difference back onto the clamped requested
+//   content box would report 6px instead.
+// - A 10px border box under the same requested inset has a 4px content box;
+//   used against a 10px border box with 1px borders (inset 2px) it is 8px.
+fn assert_content_boxes_follow_the_used_inset<S: LayoutScalar>() {
+    let scalar = S::from_f64;
+    let requested = Edges::all(scalar(3.0));
+
+    let constants = constants_with(
+        Size::new(Some(S::ZERO), Some(S::ZERO)),
+        Size::new(Some(scalar(4.0)), Some(S::ZERO)),
+        requested,
+    );
+    assert_eq!(
+        constants.explicit_definite_content_size(),
+        Size::new(Some(S::ZERO), Some(S::ZERO))
+    );
+    // 4px available under the requested 6px inset leaves no content box.
+    assert_eq!(
+        constants.available_inner_size(),
+        Size::new(Some(S::ZERO), Some(S::ZERO))
+    );
+    let used = constants.for_used_scroll_box(scroll_box_over::<S>(0.0, 3.0));
+    assert_eq!(
+        used.explicit_definite_content_size(),
+        Size::new(Some(S::ZERO), Some(S::ZERO))
+    );
+    // The 4px available width has no inset left against a 0px border box.
+    assert_eq!(
+        used.available_inner_size(),
+        Size::new(Some(scalar(4.0)), Some(S::ZERO))
+    );
+
+    let constants = constants_with(
+        Size::splat(Some(scalar(10.0))),
+        Size::splat(Some(scalar(10.0))),
+        requested,
+    );
+    assert_eq!(
+        constants.explicit_definite_content_size(),
+        Size::splat(Some(scalar(4.0)))
+    );
+    let used = constants.for_used_scroll_box(scroll_box_over::<S>(10.0, 1.0));
+    assert_eq!(
+        used.explicit_definite_content_size(),
+        Size::splat(Some(scalar(8.0)))
+    );
+    assert_eq!(used.available_inner_size(), Size::splat(Some(scalar(8.0))));
+}
+
+#[test]
+fn explicit_and_available_content_boxes_follow_the_used_inset_f32() {
+    assert_content_boxes_follow_the_used_inset::<f32>();
+}
+
+#[test]
+fn explicit_and_available_content_boxes_follow_the_used_inset_f64() {
+    assert_content_boxes_follow_the_used_inset::<f64>();
 }

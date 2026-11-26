@@ -1181,7 +1181,7 @@ fn effective_available<Node, S: LayoutScalar>(
         return Ok(available.with_operation(operation));
     }
     let available_inner = axis_available(
-        flow.logical_size(input.constants.available_inner_size),
+        flow.logical_size(input.constants.available_inner_size()),
         axis,
     );
     let Some(remaining) = available_inner else {
