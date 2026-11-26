@@ -388,13 +388,14 @@ pub const fn fixture_skip_policy_filters_unsupported_constructs() -> bool {
 }
 
 fn fixture_root(relative_dir: &str) -> Result<PathBuf, Error> {
-    let root = relative_crate_root()
-        .ok_or_else(|| Error::new("failed to locate surgeist-layout crate from relative paths"))?;
+    let root = relative_crate_root().ok_or_else(|| {
+        Error::new("failed to locate surgeist-layout-parity crate from relative paths")
+    })?;
     Ok(root.join("tests/layout/browser_parity").join(relative_dir))
 }
 
 fn relative_crate_root() -> Option<PathBuf> {
-    [Path::new("."), Path::new("crates/surgeist-layout")]
+    [Path::new("."), Path::new("crates/surgeist-layout-parity")]
         .into_iter()
         .find(|root| root.join("tests/layout/browser_parity/xml").is_dir())
         .map(Path::to_path_buf)

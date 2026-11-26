@@ -717,7 +717,7 @@ mod tests {
         assert!(!child.status.success());
         assert!(
             String::from_utf8_lossy(&child.stdout)
-                .contains("failed to locate surgeist-layout crate")
+                .contains("failed to locate surgeist-layout-parity crate")
         );
     }
 
