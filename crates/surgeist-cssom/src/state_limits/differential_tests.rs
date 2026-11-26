@@ -1,15 +1,22 @@
-//! The incremental census of adoption against the census of the whole state
-//! after every adopted rule, which is the reference.
+//! The census of a retained state against the frozen reference census of the
+//! whole state.
 //!
-//! Every run builds the same store twice, once with each check, and compares
-//! the outcome, the whole error value, the identities issued and the staged
-//! state left behind. The limits come from the smallest value of each limit
-//! that admits the operation (found with the reference) and values around it,
-//! alone and in pairs. While the incremental check runs, every adopted rule is
-//! also cross-checked against a census of the whole state.
+//! Every run builds the same store twice, once with the census the crate runs
+//! (the incremental check of adoption included) and once with the reference
+//! in its place, and compares the outcome, the whole error value, the
+//! identities issued and the staged state left behind. The limits come from
+//! the smallest value of each limit that admits the operation (found with the
+//! reference) and values around it, alone and in pairs. While the incremental
+//! check runs, every adopted rule is also cross-checked against the reference.
+//!
+//! [`edits`] runs every class of edit the store offers, and seeded sequences of
+//! them, on stores that retain several source snapshots, and compares the
+//! census of each state the edits leave with the reference.
 use super::{Census, Extension, Inserted, probe};
 use crate::{model::State, *};
 use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
+
+mod edits;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Field {
@@ -115,6 +122,18 @@ struct Run {
     state: Vec<String>,
 }
 
+/// A context rendered without the tables of the snapshots it links.
+fn stable_context(context: Option<&CssomContext>) -> String {
+    context.map_or_else(String::new, |context| {
+        let linked = context
+            .linked
+            .iter()
+            .map(|linked| (&linked.version, &linked.sheet, linked.snapshot.revision()))
+            .collect::<Vec<_>>();
+        format!("{:?} linked {linked:?}", context.inputs)
+    })
+}
+
 fn fingerprint(state: &State) -> Vec<String> {
     let mut lines = vec![
         format!("allocation {}", state.last_allocation),
@@ -127,12 +146,19 @@ fn fingerprint(state: &State) -> Vec<String> {
             .iter()
             .map(|(id, record)| (id.serial, format!("sheet {id:?} {record:?}"))),
     );
-    records.extend(
-        state
-            .rules
-            .iter()
-            .map(|(id, record)| (id.serial, format!("rule {id:?} {record:?}"))),
-    );
+    records.extend(state.rules.iter().map(|(id, record)| {
+        // A linked snapshot prints its tables in hash order, which differs between
+        // stores, so the selector inputs are shown by what identifies them.
+        let mut shown = record.clone();
+        let inputs = shown.selector_inputs.take();
+        (
+            id.serial,
+            format!(
+                "rule {id:?} {shown:?} inputs {}",
+                stable_context(inputs.as_deref())
+            ),
+        )
+    }));
     records.extend(
         state
             .blocks
@@ -181,8 +207,9 @@ fn edit<T>(
 }
 
 impl Scenario {
-    fn run(&self, limits: &CssomLimits, whole_state: bool) -> Run {
-        probe::set_whole_state(whole_state);
+    fn run(&self, limits: &CssomLimits, reference: bool) -> Run {
+        probe::set_whole_state(reference);
+        probe::set_reference(reference);
         let context = match self {
             Scenario::Create { linked: true, .. } => linked_context(),
             _ => CssomContext::default(),

@@ -332,6 +332,17 @@ impl Totals {
     }
 }
 
+/// What a census of a whole state accounted for.
+#[cfg(test)]
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct Figures {
+    pub(crate) entries: Option<usize>,
+    pub(crate) strings: Option<usize>,
+    pub(crate) objects: usize,
+    pub(crate) retained_bytes: usize,
+    pub(crate) steps: usize,
+}
+
 /// What the census of a state accounts for: its totals and the sources its
 /// payloads retain, collected once.
 pub(crate) struct Census {
@@ -444,6 +455,10 @@ impl Census {
         limits: &CssomLimits,
         displaced: impl Iterator<Item = &'a CssMediaQueryList> + Clone,
     ) -> Result<Self, CssomError> {
+        #[cfg(test)]
+        if probe::reference() {
+            return Self::of_reference(state, limits, displaced);
+        }
         let mut totals = Totals::new(state.sheet_order.len());
         let mut steps = 0;
         let mut objects = 0;
@@ -460,11 +475,51 @@ impl Census {
             Ok(sources)
         })();
         crate::operation_work::census(totals.examined, totals.counted, steps);
+        #[cfg(test)]
+        probe::census_run(totals.examined, totals.counted, steps);
         census.map(|sources| Self {
             totals,
             sources,
             objects,
         })
+    }
+
+    /// The census of the whole state computed by the reference, charged as a
+    /// census run is.
+    #[cfg(test)]
+    fn of_reference<'a>(
+        state: &State,
+        limits: &CssomLimits,
+        displaced: impl Iterator<Item = &'a CssMediaQueryList> + Clone,
+    ) -> Result<Self, CssomError> {
+        let run = reference::of(state, limits, displaced);
+        crate::operation_work::census(run.examined, run.counted, run.steps);
+        run.result.map(|census| {
+            let (entries, strings, examined, counted) = census.totals.parts();
+            Self {
+                totals: Totals {
+                    entries,
+                    strings,
+                    examined,
+                    counted,
+                },
+                sources: census.sources,
+                objects: census.objects,
+            }
+        })
+    }
+
+    /// What this census accounted for.
+    #[cfg(test)]
+    pub(crate) fn figures(&self) -> Figures {
+        let (entries, strings) = self.totals.sums();
+        Figures {
+            entries,
+            strings,
+            objects: self.objects,
+            retained_bytes: self.sources.usage().retained_bytes(),
+            steps: self.sources.steps(),
+        }
     }
 
     /// The size of the state this census accounted for, which its limits admitted.
@@ -575,7 +630,7 @@ impl Census {
         state: &State,
         limits: &CssomLimits,
     ) {
-        let whole = Self::of(state, limits, std::iter::empty());
+        let whole = reference::of(state, limits, std::iter::empty()).result;
         match (outcome, whole) {
             (Ok(Extension::WholeStateNeeded), _) => {}
             (Ok(Extension::Applied), Ok(whole)) => {
@@ -721,6 +776,38 @@ pub(crate) mod probe {
         static WHOLE_RUNS: Cell<usize> = const { Cell::new(0) };
         static WHOLE_STATE: Cell<bool> = const { Cell::new(false) };
         static CROSS_CHECK: Cell<bool> = const { Cell::new(true) };
+        static REFERENCE: Cell<bool> = const { Cell::new(false) };
+        static LAST_RUN: Cell<Option<Run>> = const { Cell::new(None) };
+    }
+
+    /// Whether every census of a whole state is the reference's instead of the
+    /// measured census.
+    pub(crate) fn reference() -> bool {
+        REFERENCE.with(Cell::get)
+    }
+    pub(crate) fn set_reference(value: bool) {
+        REFERENCE.with(|flag| flag.set(value));
+    }
+
+    /// The work of one census run of a whole state, as it charged it.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub(crate) struct Run {
+        pub(crate) examined: usize,
+        pub(crate) counted: usize,
+        pub(crate) steps: usize,
+    }
+    pub(crate) fn census_run(examined: usize, counted: usize, steps: usize) {
+        LAST_RUN.with(|run| {
+            run.set(Some(Run {
+                examined,
+                counted,
+                steps,
+            }));
+        });
+    }
+    /// The work of the last census run of a whole state on this thread.
+    pub(crate) fn last_run() -> Option<Run> {
+        LAST_RUN.with(Cell::get)
     }
 
     /// Whether adoption runs the census of the whole state after every rule
@@ -784,6 +871,8 @@ pub(crate) mod probe {
 
 #[cfg(test)]
 mod differential_tests;
+#[cfg(test)]
+mod reference;
 
 #[cfg(test)]
 mod bounded_work_tests {
