@@ -90,7 +90,7 @@ All three crates carry byte-identical `COPYING` declarations, shared here. Layou
 identifies the declaration's Kozea revision; render's
 [fixture provenance](https://github.com/bj-data-eng/surgeist-render/blob/e44860e7df530795fef2d423024723d5fa5dc447/tests/fixtures/fonts/ahem/PROVENANCE.md)
 records its font and notice hashes. These fonts are test assets.
-Layout's [TTF provenance](crates/surgeist-layout/tests/layout/browser_parity/fonts/PROVENANCE.md)
+Layout's [TTF provenance](crates/surgeist-layout-parity/tests/layout/browser_parity/fonts/PROVENANCE.md)
 identifies the exact shared bytes separately from its embedded WOFF2.
 
 ### BudouX 0.9.3 adapted source and Japanese model
@@ -260,7 +260,7 @@ It owns canonical tree identity, atomic mutation and immutable captures.
 
 The source checkout includes surgeist-generator, distributed by bj-data-eng.
 It supplies shared CSS corpus tooling and browser-corpus infrastructure, used
-by the layout corpus adapter; it is not a dependency of the root facade.
+by the layout-parity corpus adapter; it is not a dependency of the root facade.
 
 * License: [MIT](licenses/surgeist/LICENSE)
 * Homepage: [surgeist-generator](https://github.com/bj-data-eng/surgeist-generator)
@@ -277,8 +277,9 @@ The root facade depends on surgeist-layout, distributed by bj-data-eng.
 * License: [MIT](licenses/surgeist/LICENSE)
 * Homepage: [surgeist-layout](https://github.com/bj-data-eng/surgeist-layout)
 
-The crate records adaptation from Taffy 0.10.1 and continued use of Taffy layout
-fixtures and browser-test support. The [retained adaptation notice](licenses/taffy/NOTICE.md)
+The crate records adaptation from Taffy 0.10.1. The Taffy layout fixtures and
+browser-test support are used by the
+[surgeist-layout-parity](crates/surgeist-layout-parity/NOTICE.md) corpus. The [retained adaptation notice](licenses/taffy/NOTICE.md)
 records that source lineage; the
 [snapshot source notice](https://github.com/bj-data-eng/surgeist-layout/blob/b65a18c042655f47d0870f712c7b5e647b5e28a6/NOTICE.md#taffy)
 identifies the incorporated material and fixture pins. The current

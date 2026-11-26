@@ -63,56 +63,12 @@ The [verification script](../scripts/run-verification.sh) runs formatting,
 check, test, and strict lint checks. Success is a zero exit after all four stages;
 a missing prerequisite or a failed stage leaves verification incomplete.
 
-## Verify the optional generator configuration
+## Check browser parity
 
-With the generator feature's pinned dependencies available locally and Node.js
-on `PATH` for the [helper protocol tests](../tests/bin/surgeist-layout-generate/helper_protocol_tests.rs),
-run:
-
-```sh
-CARGO_NET_OFFLINE=true just verify-generator
-```
-
-Expected: all-targets compilation, tests, and strict Clippy pass with
-`layout-golden-generate`. This verifies the optional tooling configuration; it
-does not execute a browser generation run.
-
-## Validate the checked-in corpus provenance
-
-With `just` and the generator feature dependencies available, run:
-
-```sh
-CARGO_NET_OFFLINE=true just corpus-check
-```
-
-`check-corpus` validates the checked-in live report, ownership, source
-attestation, hashes, paths, and accounting without a browser or source checkout.
-The recipe clears corpus and browser overrides. See the
-[runtime reference](reference.md#browser-parity-runtime) for the schema and
-ownership boundary.
-
-## Compare all checked-in browser expectations
-
-With the default test dependencies available, run:
-
-```sh
-CARGO_NET_OFFLINE=true just parity-all
-```
-
-The recipe clears `SURGEIST_PARITY_FILTER` and selects the strict raw verdict.
-It reports every raw mismatch and missing authority across the historical,
-registered, and live inventories as a failure. The ordinary suite checks the
-complete census and reports live Native parity separately.
-
-Ordinary tests traverse the same inventory and require complete historical
-accounting and current qualification. Both commands use existing XML.
-
-## Work with browser generation or the source cache
-
-Use the [browser parity guide](../tests/layout/browser_parity/README.md) when
-your goal is to generate XML or maintain imported sources. Its command and cache
-sections describe `generate`, `generate-existing`, `import-taffy`, and
-`check-taffy-corpus`, along with their required paths and verification behavior.
-The [runtime reference](reference.md#browser-parity-runtime) distinguishes
-managed acquisition from existing-cache operations, full from filtered
-publication, and provenance checks from semantic comparisons.
+The browser-parity corpus, the golden generator and the tests that compare layout
+output with the checked-in browser expectations belong to
+[surgeist-layout-parity](../../surgeist-layout-parity/README.md). Its
+[reference](../../surgeist-layout-parity/docs/reference.md) lists the recipes for
+the strict raw verdict, the browser-free corpus check and the Taffy cache check,
+and its [browser parity guide](../../surgeist-layout-parity/tests/layout/browser_parity/README.md)
+covers generation and the source cache.

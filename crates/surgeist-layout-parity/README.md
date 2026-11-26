@@ -24,7 +24,8 @@ checked-in case is the test
 env -u SURGEIST_PARITY_FILTER SURGEIST_PARITY_RAW_EXACT=1 cargo test --locked --offline -j 1 -p surgeist-layout-parity --lib browser_parity::tests::runs_all_checked_in_browser_parity_xml -- --exact
 ```
 
-The [corpus guide](tests/layout/browser_parity/README.md) documents every
+The [reference](docs/reference.md) lists the targets, the runtime and the recipes. The
+[corpus guide](tests/layout/browser_parity/README.md) documents every
 generation, import and qualification command, and the
 [measurement protocol](tests/layout/browser_parity/measurement-protocol.md) records
 the private browser protocol. The [crate guide](AGENTS.md) lists the layout of the

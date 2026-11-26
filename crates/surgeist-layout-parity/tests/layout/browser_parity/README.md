@@ -1,7 +1,7 @@
 # Surgeist Layout Browser Parity
 
-This harness runs Surgeist layout against browser-derived parity fixtures under
-`tests/layout/browser_parity`.
+This harness, owned by `surgeist-layout-parity`, runs Surgeist layout against
+browser-derived parity fixtures under `tests/layout/browser_parity`.
 
 - `html/` contains the pinned Taffy baseline and Surgeist-authored sources.
 - `xml/` retains the historical XML, report, and ownership ledger.
@@ -27,7 +27,7 @@ parsing and lowering.
 
 The prepared Text profile uses the exact [pinned Ahem TTF](fonts/PROVENANCE.md)
 at face index zero. The original fixed-width Flex parent profile uses the
-[Ahem WOFF2](../../../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2)
+[Ahem WOFF2](../../fixtures/ahem-original/Ahem.woff2)
 embedded in the pinned base CSS and validates the loaded face. Source capture and browser Range
 observations are separate channels. Historical measured-width text tuples are
 schema-only; the native production reader rejects them. The complete
@@ -85,7 +85,7 @@ observations and unqualified live results contribute zero registered coverage.
 Run the strict raw verdict with the existing XML.
 
 ```sh
-env -u SURGEIST_PARITY_FILTER SURGEIST_PARITY_RAW_EXACT=1 cargo test --offline --locked -j 1 -p surgeist-layout --test layout layout::browser_parity::runs_all_checked_in_browser_parity_xml -- --exact
+env -u SURGEIST_PARITY_FILTER SURGEIST_PARITY_RAW_EXACT=1 cargo test --offline --locked -j 1 -p surgeist-layout-parity --lib browser_parity::tests::runs_all_checked_in_browser_parity_xml -- --exact
 ```
 
 The strict verdict fails on every raw mismatch and authority refusal across
@@ -140,8 +140,8 @@ Native census to a new file for review.
 mkdir -p tmp
 env -u SURGEIST_PARITY_FILTER -u SURGEIST_PARITY_RAW_EXACT \
   SURGEIST_PARITY_WRITE_LIVE_RECEIPT="$PWD/tmp/live-native-observations.json" \
-  cargo test --offline --locked -j 1 -p surgeist-layout --test layout \
-  layout::browser_parity::records_live_native_observations -- --ignored --exact
+  cargo test --offline --locked -j 1 -p surgeist-layout-parity --lib \
+  browser_parity::tests::records_live_native_observations -- --ignored --exact
 ```
 
 The [original Block axis edition](../../../examples/qualify-root-context/README.md#original-block-axes-qualification)
@@ -183,7 +183,7 @@ check each historical association and complete geometry.
 The [FRI08 wrapped-text Subgrid edition](captured/fri08-wrapped-subgrid-text/qualification.json)
 covers eight variants of the two sibling-footer sources. The focused manifest
 test checks all historical box rectangles, the text ranges from the
-stylesheet's [Ahem WOFF2](../../../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2),
+stylesheet's [Ahem WOFF2](../../fixtures/ahem-original/Ahem.woff2),
 and the hidden leaves' client and scroll extents. Native Grid sizing uses
 prepared Text measurements at the widths requested by Layout.
 
@@ -207,10 +207,10 @@ geometry for the authenticated pair. The original differences remain in the
 diagnostic receipt. The Grid Lanes axis test checks the original both-template
 topology and executes the mapped controls.
 
-The ordinary default-feature test target runs all registered editions.
+The ordinary library test target runs all registered editions.
 
 ```sh
-cargo test --offline --locked -j 1 -p surgeist-layout --test layout runs_registered_current_browser_parity_qualification
+cargo test --offline --locked -j 1 -p surgeist-layout-parity --lib runs_registered_current_browser_parity_qualification
 ```
 
 The [canonical box edition](captured/canonical-box-differences/qualification.json)
@@ -259,16 +259,16 @@ qualification test reports partial coverage when filtered.
 The publication owner creates and validates each immutable edition.
 
 ```sh
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-canonical-box-differences
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-canonical-box-differences
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-measured-grid-differences
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-measured-grid-differences
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-flex-text-differences
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-flex-text-differences
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-prepared-range-qualification
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-prepared-range-qualification
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-flex-composition-qualification
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-flex-composition-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-canonical-box-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-canonical-box-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-measured-grid-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-measured-grid-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-flex-text-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-flex-text-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-prepared-range-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-prepared-range-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-flex-composition-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-flex-composition-qualification
 ```
 
 Publication uses the already-acquired pinned browser and refuses an existing
@@ -292,8 +292,8 @@ this tooling requirement.
 Regenerate XML fixtures from constrained HTML fixtures:
 
 ```sh
-cargo run --locked -p surgeist-layout --features layout-golden-generate --bin surgeist-layout-generate -- generate
-CARGO_NET_OFFLINE=true SURGEIST_BROWSER_PATH=tmp/surgeist-browser/.../Google\ Chrome\ for\ Testing cargo run --locked --offline -p surgeist-layout --features layout-golden-generate --bin surgeist-layout-generate -- generate-existing
+cargo run --locked --offline -j 1 -p surgeist-layout-parity --bin surgeist-layout-generate -- generate
+CARGO_NET_OFFLINE=true SURGEIST_BROWSER_PATH=tmp/surgeist-browser/.../Google\ Chrome\ for\ Testing cargo run --locked --offline -j 1 -p surgeist-layout-parity --bin surgeist-layout-generate -- generate-existing
 ```
 
 `generate` resolves the manifest-owned Chrome-for-Testing pin and may use the
@@ -315,8 +315,8 @@ corpus verification evidence.
 Import or verify the pinned Taffy green baseline:
 
 ```sh
-cargo run -p surgeist-layout --features layout-golden-generate --bin surgeist-layout-generate -- import-taffy
-cargo run -p surgeist-layout --features layout-golden-generate --bin surgeist-layout-generate -- check-taffy-corpus
+cargo run --locked --offline -j 1 -p surgeist-layout-parity --bin surgeist-layout-generate -- import-taffy
+cargo run --locked --offline -j 1 -p surgeist-layout-parity --bin surgeist-layout-generate -- check-taffy-corpus
 ```
 
 The Taffy baseline is acquired at the exact repository/revision declared in
@@ -361,10 +361,9 @@ Unsupported browser features are not silently skipped. A fixture outside the
 closed native source/font/context profile remains visible with a classified
 unsupported result; historical measured-width text cannot enter production Text.
 
-The supported entry point is layout's thin `surgeist-layout-generate` binary,
-enabled by `layout-golden-generate`. It depends on the sibling workspace
-`surgeist-generator` at version `=0.2.0` with `browser-corpus`; default layout
-builds do not include that tooling graph. The shared crate owns acquisition,
+The supported entry point is this crate's thin `surgeist-layout-generate` binary.
+The crate depends on the sibling workspace `surgeist-generator` at version
+`=0.2.0` with `browser-corpus`; `surgeist-layout` does not depend on this crate. The shared crate owns acquisition,
 browser processes, provenance, accounting, and publication. Layout owns
 document/helper preparation, measurement decoding, unsupported classification,
 and XML serialization.
@@ -429,8 +428,8 @@ compares the full report byte for byte. The
 defines the policy and source bindings.
 
 ```sh
-cargo test --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context prepared_range_qualification_accepts_only_the_declared_rtl_pdi_differences
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --prepared-range-capture --fixture html/block/prepared_text_continuity_bidi.html
+cargo test --offline --locked -j 1 -p surgeist-layout-parity --lib prepared_range_qualification_accepts_only_the_declared_rtl_pdi_differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --prepared-range-capture --fixture html/block/prepared_text_continuity_bidi.html
 ```
 
 The second command selects the prepared Range profile, uses the pinned browser,
@@ -446,9 +445,9 @@ compares two bands per variant across eight original variants. Its font comes fr
 See the [prepared-input and observation contract](measurement-protocol.md#authentic-prepared-text-input).
 
 ```sh
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-horizontal-br-font-band-qualification
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-vertical-br-font-band-qualification
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-empty-line-br-font-band-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-horizontal-br-font-band-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-vertical-br-font-band-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-empty-line-br-font-band-qualification
 ```
 
 Root-context capture is versioned separately from the unchanged prepared font/source
@@ -470,7 +469,7 @@ and the exact differences assigned to each policy.
 Run the browser-free replay from the workspace root.
 
 ```sh
-cargo test --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context retained_sideways_flex_replay_qualifies_all_four_variants
+cargo test --offline --locked -j 1 -p surgeist-layout-parity --lib retained_sideways_flex_replay_qualifies_all_four_variants
 ```
 
 To regenerate the comparison, run the focused capture with the pinned browser
@@ -485,7 +484,7 @@ environment and its exact per-variant input projections. Published replay
 checks its separate publication contract and producing inputs.
 
 ```sh
-cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --fixture html/flex/fri07_flex_composition.html
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --fixture html/flex/fri07_flex_composition.html
 ```
 
 On macOS arm64, the separate
@@ -495,5 +494,5 @@ WebSocket client. Its JSON output matches the retained
 [collapse-disabled control](captured/flex-composition-differences/gutter-control.json).
 
 ```sh
-pisct run --timeout-seconds 55 -- node crates/surgeist-layout/tests/layout/browser_parity/scripts/diagnose-flex-composition-gutter.mjs
+pisct run --timeout-seconds 55 -- node crates/surgeist-layout-parity/tests/layout/browser_parity/scripts/diagnose-flex-composition-gutter.mjs
 ```

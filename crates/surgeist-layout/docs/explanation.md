@@ -27,8 +27,9 @@ this preparation.
 Layout does not parse authored CSS or resolve computed style. Its consuming
 adapters own lowering producer facts into these normalized inputs.
 The browser fixture adapter serves this same finite input boundary for tests.
-The shared generator owns browser and artifact lifecycle, while layout owns
-measurement decoding and XML semantics; see the [runtime reference](reference.md#browser-parity-runtime).
+The browser-parity corpus and the generator that produces it belong to
+[surgeist-layout-parity](../../surgeist-layout-parity/README.md), which depends on
+this crate's public API; see its [runtime reference](../../surgeist-layout-parity/docs/reference.md#browser-parity-runtime).
 
 ## Normalized grid boundary
 
@@ -196,5 +197,5 @@ writing mode. The same CSS size can produce a different device-pixel size
 after a position change. [Resize Observer draft](https://www.w3.org/TR/2020/WD-resize-observer-1-20200211/#calculate-box-size)
 
 These boundaries describe the represented behavior; they do not establish broad
-CSS conformance. The [browser parity guide](../tests/layout/browser_parity/README.md)
+CSS conformance. The [browser parity guide](../../surgeist-layout-parity/tests/layout/browser_parity/README.md)
 describes the checked-in evidence and its classified unsupported cases.

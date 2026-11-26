@@ -106,8 +106,10 @@ feature and platform checks are chosen for the affected boundary under the
 `surgeist-test` owns shared verification contracts. `surgeist-generator` owns
 CSS/browser-corpus mechanics; consumers keep semantic expectations and adapters.
 `surgeist-fuzz` supplies bounded campaign/process/evidence tooling while
-consumers own their cases and regressions. These tools are outside facade
-production dependencies and default verification.
+consumers own their cases and regressions. `surgeist-layout-parity` owns the
+Layout browser-parity corpus, golden generator and comparison support, built on
+Layout's public API. These tools are outside facade production dependencies and
+default verification.
 
 The API generator and optional layout Dylint catalog are separate workspaces.
 Their rustdoc/compiler tooling serves explicit audits, not ordinary product

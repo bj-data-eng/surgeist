@@ -2,7 +2,7 @@
 
 Run one existing test through the public `compute_leaf` boundary and see how
 measured content becomes a layout box. This guide is for a local checkout of
-`surgeist-layout`; it does not require a browser or the generator feature.
+`surgeist-layout`; it does not require a browser.
 
 ## Prerequisites
 
