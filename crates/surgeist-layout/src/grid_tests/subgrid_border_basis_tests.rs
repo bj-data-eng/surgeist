@@ -376,3 +376,67 @@ fn row_subgrid_over_two_rows_with_a_border_lays_out_f32() {
 fn row_subgrid_over_two_rows_with_a_border_lays_out_f64() {
     assert_row_chain_over_two_rows::<f64>(3.0);
 }
+
+// A scrollbar gutter wider than the used content box of the middle subgrid.
+// Node 2 is a row subgrid with `overflow: scroll`, a 15px scrollbar, a
+// `height` of 0 and a `min-height` of 20px, no border and no padding. Grid
+// Level 2 section 9 (pinned edition CRD-css-grid-2-20250326) stretches a
+// subgrid in its subgridded dimension and ignores its specified width and
+// height constraints there, so these sizes do not change the track sizing;
+// node 2 is still as tall as row 1. Only the facts on which the spec and
+// WebKit (Safari 26.5, Playwright build 2327) agree are asserted:
+// - The vertical scrollbar reserves 15px of node 2's inline axis, so its
+//   content box is 100 - 15 = 85 wide and node 3, spanning both of node 2's
+//   implicit columns, is 85 wide at x = 0 (the gutter is at the inline end).
+// - Node 3 is an empty row subgrid inside a content box that has no block
+//   extent: it is 0 tall at y = 0 (the horizontal scrollbar sits at the block
+//   end, so the start edge adds no extra margin).
+// - Nodes 0, 1 and 2 are 100 wide at (0, 0).
+// The heights of nodes 0 to 2 are not asserted: the spec text counts the
+// block-end scrollbar gutter in the contribution of the edge track (15px),
+// while WebKit does not (0px).
+fn assert_row_chain_with_a_gutter_wider_than_the_content<S: LayoutScalar>() {
+    let mut tree = chain::<S>(Axis::Rows, Inset::Border(0.0));
+    let mut style = subgrid_item::<S>(Axis::Rows, lines(1, 2), lines(1, 2), Inset::Border(0.0));
+    style.overflow = ComputedOverflow::try_new(Overflow::Scroll, Overflow::Scroll).unwrap();
+    style.scrollbar_width = ScrollbarWidthOf::try_new(S::from_f64(15.0)).unwrap();
+    style.size.height = PreferredSizeOf::px(S::ZERO);
+    style.min_size.height = MinSizeOf::px(S::from_f64(20.0));
+    tree = tree.style(2, style);
+    let batch = compute_layout(&tree, 0, standalone_request())
+        .unwrap_or_else(|error| panic!("layout failed: {error:?}"));
+    let output = |node| readback::single_box_output(&batch, node, Phase::Final);
+    for node in 0..3 {
+        let output = output(node);
+        assert_eq!(
+            (
+                output.location.x.to_f64(),
+                output.location.y.to_f64(),
+                output.size.width.to_f64()
+            ),
+            (0.0, 0.0, 100.0),
+            "node {node}"
+        );
+    }
+    let innermost = output(3);
+    assert_eq!(
+        (
+            innermost.location.x.to_f64(),
+            innermost.location.y.to_f64(),
+            innermost.size.width.to_f64(),
+            innermost.size.height.to_f64()
+        ),
+        (0.0, 0.0, 85.0, 0.0),
+        "node 3"
+    );
+}
+
+#[test]
+fn row_subgrid_chain_with_a_gutter_wider_than_the_content_box_lays_out_f32() {
+    assert_row_chain_with_a_gutter_wider_than_the_content::<f32>();
+}
+
+#[test]
+fn row_subgrid_chain_with_a_gutter_wider_than_the_content_box_lays_out_f64() {
+    assert_row_chain_with_a_gutter_wider_than_the_content::<f64>();
+}
