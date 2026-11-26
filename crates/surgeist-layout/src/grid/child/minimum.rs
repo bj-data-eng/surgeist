@@ -1,4 +1,5 @@
 use super::*;
+use crate::sizing::MaxSizeOf;
 use crate::sizing::resolve::{ResolvedPreferredSize, resolve_preferred_sizing};
 use crate::{
     output::{ComputeInputOf, SizingMode},
@@ -278,6 +279,10 @@ pub(in crate::grid) struct GridMinimumContext<'a, 'input, S: LayoutScalar> {
     pub(in crate::grid) opposite_fixed_max_span: Option<S>,
     /// Actual requested inherited axes in the child's own logical frame.
     pub(in crate::grid) subgrid_requests: Size<bool>,
+    /// The axes the item actually subgrids, in its own logical frame (column,
+    /// then row); a requested axis that does not share the parent's tracks is
+    /// not one.
+    pub(in crate::grid) subgridded: Size<bool>,
     pub(in crate::grid) algorithm: SizingAlgorithm,
 }
 
@@ -445,8 +450,39 @@ pub(in crate::grid) fn plan_grid_minimum<S: LayoutScalar>(
         PhysicalAxis::Vertical => PhysicalAxis::Horizontal,
     };
     let parent = context.prepared.parent();
+    // A subgrid is stretched in its subgridded axes: its specified sizes do
+    // not apply there (CSS Grid 2, section 9).
+    let subgridded = subgridded_physical_axes(item.flow_axes, context.subgridded);
+    let auto_size = PreferredSizeOf::AUTO;
+    let auto_minimum = MinSizeOf::AUTO;
+    let no_maximum = MaxSizeOf::NONE;
+    let is_subgridded = |axis| match axis {
+        PhysicalAxis::Horizontal => subgridded.width,
+        PhysicalAxis::Vertical => subgridded.height,
+    };
+    let size_of = |axis| {
+        if is_subgridded(axis) {
+            &auto_size
+        } else {
+            axis_ref(item.size, axis)
+        }
+    };
+    let minimum_of = |axis| {
+        if is_subgridded(axis) {
+            &auto_minimum
+        } else {
+            axis_ref(item.min_size, axis)
+        }
+    };
+    let maximum_of = |axis| {
+        if is_subgridded(axis) {
+            &no_maximum
+        } else {
+            axis_ref(item.max_size, axis)
+        }
+    };
     let preferred = resolve_preferred_sizing(
-        axis_ref(item.size, physical),
+        size_of(physical),
         context.algorithm,
         physical,
         axis_value(parent, physical),
@@ -454,9 +490,7 @@ pub(in crate::grid) fn plan_grid_minimum<S: LayoutScalar>(
     )?;
     // A resolved percentage remains container-dependent. Conversely an
     // intrinsic keyword is not collapsed into Auto by an optional resolver.
-    if !axis_ref(item.size, physical).depends_on_basis()
-        && !matches!(preferred, ResolvedPreferredSize::Auto)
-    {
+    if !size_of(physical).depends_on_basis() && !matches!(preferred, ResolvedPreferredSize::Auto) {
         return Ok(GridMinimumPlan::ReuseMinContent);
     }
 
@@ -468,7 +502,7 @@ pub(in crate::grid) fn plan_grid_minimum<S: LayoutScalar>(
     let padding_border = finite(axis_value((padding + border).sum_axes(), physical))?;
     let adjustment = finite(axis_value(box_sizing_adjustment, physical))?;
     let minimum = resolve_standalone_subgrid_item_minimum_optional(
-        axis_ref(item.min_size, physical),
+        minimum_of(physical),
         item,
         context.subgrid_requests,
         context.algorithm,
@@ -492,7 +526,7 @@ pub(in crate::grid) fn plan_grid_minimum<S: LayoutScalar>(
             },
         ));
     }
-    if !axis_ref(item.min_size, physical).is_auto() {
+    if !minimum_of(physical).is_auto() {
         return Ok(GridMinimumPlan::KnownBorder(border_known(
             minimum.resolved().unwrap_or(S::ZERO),
             adjustment,
@@ -508,7 +542,7 @@ pub(in crate::grid) fn plan_grid_minimum<S: LayoutScalar>(
     }
 
     let maximum = resolve_maximum_optional(
-        axis_ref(item.max_size, physical),
+        maximum_of(physical),
         context.algorithm,
         physical,
         axis_value(parent, physical),
@@ -541,7 +575,7 @@ pub(in crate::grid) fn plan_grid_minimum<S: LayoutScalar>(
     }
 
     let opposite_minimum = resolve_standalone_subgrid_item_minimum_optional(
-        axis_ref(item.min_size, opposite),
+        minimum_of(opposite),
         item,
         context.subgrid_requests,
         context.algorithm,
@@ -551,7 +585,7 @@ pub(in crate::grid) fn plan_grid_minimum<S: LayoutScalar>(
     )?
     .resolved();
     let opposite_maximum = resolve_maximum_optional(
-        axis_ref(item.max_size, opposite),
+        maximum_of(opposite),
         context.algorithm,
         opposite,
         axis_value(parent, opposite),
@@ -566,7 +600,7 @@ pub(in crate::grid) fn plan_grid_minimum<S: LayoutScalar>(
         // Only the actual opposite preferred property establishes a transfer.
         // A span/stretch known dimension is deliberately not inspected here.
         let opposite_preferred = resolve_preferred_sizing(
-            axis_ref(item.size, opposite),
+            size_of(opposite),
             context.algorithm,
             opposite,
             axis_value(parent, opposite),
@@ -585,7 +619,8 @@ pub(in crate::grid) fn plan_grid_minimum<S: LayoutScalar>(
             let transferred = transfer(value)?;
             // Grid's transfer cap resolves an indefinite percentage against
             // zero; this is separate from ordinary intrinsic basis resolution.
-            let transfer_cap = replaced_cap(&context, physical)?;
+            let transfer_cap =
+                replaced_cap(&context, physical, size_of(physical), maximum_of(physical))?;
             let transferred = clamp(transferred, None, transfer_cap);
             return Ok(GridMinimumPlan::KnownBorder(border_known(
                 transferred,
@@ -598,7 +633,7 @@ pub(in crate::grid) fn plan_grid_minimum<S: LayoutScalar>(
     // All represented replaced items are compressible under the retained
     // sizing rule. No control identity is inferred for non-replaced inputs.
     let maximum = if item.item_is_replaced {
-        replaced_cap(&context, physical)?
+        replaced_cap(&context, physical, size_of(physical), maximum_of(physical))?
     } else {
         maximum
     };
@@ -618,22 +653,12 @@ pub(in crate::grid) fn plan_grid_minimum<S: LayoutScalar>(
 fn replaced_cap<S: LayoutScalar>(
     context: &GridMinimumContext<'_, '_, S>,
     axis: PhysicalAxis,
+    size: &PreferredSizeOf<S>,
+    maximum: &MaxSizeOf<S>,
 ) -> Result<Option<S>, SizingResolutionError<S>> {
     let basis = Some(axis_value(context.prepared.parent(), axis).unwrap_or(S::ZERO));
-    let preferred = resolve_preferred_sizing(
-        axis_ref(context.item.size, axis),
-        context.algorithm,
-        axis,
-        basis,
-        false,
-    )?;
-    let maximum = resolve_maximum_optional(
-        axis_ref(context.item.max_size, axis),
-        context.algorithm,
-        axis,
-        basis,
-        false,
-    )?;
+    let preferred = resolve_preferred_sizing(size, context.algorithm, axis, basis, false)?;
+    let maximum = resolve_maximum_optional(maximum, context.algorithm, axis, basis, false)?;
     Ok(match preferred {
         ResolvedPreferredSize::Definite(value) => Some(clamp(value, None, maximum)),
         ResolvedPreferredSize::Auto

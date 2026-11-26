@@ -3507,6 +3507,45 @@ fn allocation_error<Node, S: LayoutScalar, M>(node: Node) -> LayoutErrorOf<Node,
     )
 }
 
+/// The border-box size of a subgrid along each axis it inherits from a parent
+/// whose allocation of the span is final: that allocation's content extent plus
+/// the subgrid's own border and padding. An already known size is kept.
+fn inherited_axes_known_size<'input, Tree, M>(
+    tree: &Tree,
+    node: Tree::Node,
+    container_style: &GridContainerProjection<'input, Tree::Scalar>,
+    parent_context: &GridParentContext<Tree::Scalar, Tree::Node>,
+    input: ComputeInputOf<Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, ComputeInputOf<Tree::Scalar>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let (padding, border) = resolve_containing_padding_border(
+        input.containing_flow_axes(),
+        input.parent(),
+        *container_style.padding,
+        *container_style.border,
+        resolve_length_or_zero,
+        |edges| edges.transpose_with_node(tree, node),
+    )?;
+    let inset = (padding + border).sum_axes();
+    let flow = FlowAxes::new(container_style.writing_mode, container_style.direction);
+    let mut known = input.known();
+    for (axis, kind) in [
+        (&parent_context.columns, GridAxisKind::Column),
+        (&parent_context.rows, GridAxisKind::Row),
+    ] {
+        let Some(extent) = axis.as_ref().and_then(|axis| axis.content_extent) else {
+            continue;
+        };
+        match grid_axis_physical_axis(flow, kind) {
+            PhysicalAxis::Horizontal => known.width = known.width.or(Some(extent + inset.width)),
+            PhysicalAxis::Vertical => known.height = known.height.or(Some(extent + inset.height)),
+        }
+    }
+    Ok(input.with_known(known))
+}
+
 fn start_wrapper_resolution<'input, Tree, M>(
     tree: &mut Tree,
     identity: &WrapperResolutionIdentity<'input, '_, Tree::Node, Tree::Scalar>,
@@ -3533,9 +3572,17 @@ where
         parent_context.columns.is_some(),
         parent_context.rows.is_some(),
     );
+    // A subgrid's specified sizes do not apply in its subgridded axes. Where
+    // the parent's allocation of its span is final, that allocation is the
+    // known size there, so a percentage basis comes from the area.
+    let sizing_input = if lane_track {
+        sizing_input
+    } else {
+        inherited_axes_known_size(tree, node, container_style, parent_context, sizing_input)?
+    };
     let intrinsic_minimum = standalone_intrinsic_minimum_phases(container_style, inherited);
     let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
-    let mut traversal_input = *nested_container;
+    let mut traversal_input = (*nested_container).with_inherited_axes(inherited);
     traversal_input.suppress_intrinsic_minimum(intrinsic_axes);
     let mut traversal_style = traversal_input.projection();
     traversal_style.baseline_references = container_style.baseline_references;
@@ -4666,6 +4713,7 @@ pub(super) fn intrinsic_subgrid_axis_parent_context_for_span<Node, S: LayoutScal
         parent_start,
         parent_end,
         reversed: mapping.reversed,
+        content_extent: None,
     }))
 }
 

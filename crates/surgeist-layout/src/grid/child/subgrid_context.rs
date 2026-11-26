@@ -933,6 +933,7 @@ fn subgrid_child_axis_context<'input, Node: Copy + PartialEq, S: LayoutScalar>(
         }
     }
 
+    let content_extent = Some(geometry.total_extent());
     let (named_lines, area_facts) = input
         .report
         .parent_name_context(parent_axis.named_lines, input.parent_area_facts);
@@ -967,6 +968,7 @@ fn subgrid_child_axis_context<'input, Node: Copy + PartialEq, S: LayoutScalar>(
         parent_start: start_line - 1,
         parent_end: end_line - 1,
         reversed: mapping.reversed,
+        content_extent,
     }))
 }
 

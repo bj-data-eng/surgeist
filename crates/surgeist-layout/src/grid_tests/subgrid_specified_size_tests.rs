@@ -797,3 +797,56 @@ scalar_tests!(
     orthogonal_scrolled_subgrid_keeps_its_size_in_the_other_axis,
     assert_orthogonal_subgrid_keeps_its_size_in_the_other_axis
 );
+
+// A requested subgrid that does not share its parent's tracks is an ordinary
+// item: node 0 is a Grid Lanes container with a 100px column track, so rows
+// are its stacking axis and `grid-template-rows: subgrid` on node 1 does not
+// subgrid them (Grid 3 lanes). Node 1's specified height and min-height apply
+// there, as WebKit (Safari 26.5, Playwright build 2327) lays out `display:
+// grid-lanes` with a 100px column: nodes 0 and 1 are 100 x 50 and the leaf
+// keeps its 30 x 10.
+fn assert_stacking_axis_subgrid_request_keeps_its_sizes<S: LayoutScalar>() {
+    let cases: [Case<S>; 2] = [
+        ("height 50", |style| {
+            style.size.height = PreferredSizeOf::px(S::from_f64(50.0));
+        }),
+        ("min-height 50", |style| {
+            style.min_size.height = MinSizeOf::px(S::from_f64(50.0));
+        }),
+    ];
+    for (label, edit) in cases {
+        let mut item = NodeInputOf::<S> {
+            display: Display::Grid,
+            grid_template_rows: subgrid_track_of(),
+            ..NodeInputOf::default()
+        };
+        edit(&mut item);
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    grid_lanes_flow: GridLanesFlow::new(GridAxisKind::Column, false, false),
+                    grid_template_columns: px_track(100.0),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(1, item)
+            .style(2, leaf_style(30.0, 10.0))
+            .children(0, [1])
+            .children(1, [2]);
+        assert_layout(
+            &tree,
+            label,
+            &[
+                expect(0.0, 0.0, 100.0, 50.0),
+                expect(0.0, 0.0, 100.0, 50.0),
+                expect(0.0, 0.0, 30.0, 10.0),
+            ],
+        );
+    }
+}
+scalar_tests!(
+    stacking_axis_subgrid_request_keeps_its_specified_height,
+    assert_stacking_axis_subgrid_request_keeps_its_sizes
+);

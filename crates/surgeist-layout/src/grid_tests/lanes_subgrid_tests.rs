@@ -5281,6 +5281,7 @@ fn vertical_intrinsic_subgrid_final_sizing_keeps_definite_physical_height() {
             parent_start: 0,
             parent_end: 1,
             reversed: false,
+            content_extent: None,
         }),
     };
 
@@ -10797,6 +10798,7 @@ fn test_inherited_axis(
         parent_start,
         parent_end,
         reversed,
+        content_extent: None,
     }
 }
 

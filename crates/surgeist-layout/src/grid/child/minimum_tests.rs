@@ -47,6 +47,7 @@ fn plan<S: LayoutScalar>(
         span: GridMinimumTrackFunctions::new(tracks, None).span_facts(S::ZERO)?,
         opposite_fixed_max_span: None,
         subgrid_requests: Size::new(false, false),
+        subgridded: Size::new(false, false),
         algorithm: SizingAlgorithm::Grid,
     })
 }

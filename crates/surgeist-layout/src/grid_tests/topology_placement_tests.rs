@@ -6534,6 +6534,7 @@ fn shared_grid_contexts_accept_non_default_scalar() {
         parent_start: 0,
         parent_end: 2,
         reversed: false,
+        content_extent: None,
     };
     let parent_context = GridParentContext::<f64, usize> {
         columns: Some(inherited_axis),

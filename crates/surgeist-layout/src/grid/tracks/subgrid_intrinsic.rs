@@ -160,6 +160,9 @@ where
                 .map_err(|error| sizing_resolution_error(child, error))?,
             opposite_fixed_max_span,
             subgrid_requests,
+            subgridded: args.subgrid_item.map_or(Size::new(false, false), |item| {
+                Size::new(item.column.can_inherit(), item.row.can_inherit())
+            }),
             algorithm: sizing_algorithm_for_grid_display(grid.style.display),
         },
     )
@@ -994,6 +997,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> SubgridContributionFinish<'input,
                         span: frame.span,
                         opposite_fixed_max_span: frame.opposite_fixed_max_span,
                         subgrid_requests,
+                        subgridded: Size::new(false, false),
                         algorithm: frame.algorithm,
                     },
                 )?

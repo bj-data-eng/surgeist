@@ -7,6 +7,7 @@ use crate::geometry::{
 use crate::layout_math::MaxBeforeMinOptionalSizeClampExt;
 use crate::output::PhysicalBaseline;
 use crate::scroll::{ScrollContributionAccumulatorOf, UsedOverflow};
+use crate::sizing::MaxSizeOf;
 use crate::sizing::resolve::{
     SizingResolutionError, resolve_maximum_optional, resolve_minimum_optional,
     resolve_preferred_optional,
@@ -1684,6 +1685,24 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
     })
 }
 
+/// The physical axes along which an item subgrids its parent, given its
+/// per-axis requests in its own logical frame (column, then row).
+pub(super) fn subgridded_physical_axes(child_flow: FlowAxes, requests: Size<bool>) -> Size<bool> {
+    let mut axes = Size::new(false, false);
+    for (kind, requested) in [
+        (GridAxisKind::Column, requests.width),
+        (GridAxisKind::Row, requests.height),
+    ] {
+        if requested {
+            match grid_axis_physical_axis(child_flow, kind) {
+                PhysicalAxis::Horizontal => axes.width = true,
+                PhysicalAxis::Vertical => axes.height = true,
+            }
+        }
+    }
+    axes
+}
+
 pub(super) fn grid_item_sizing_with_optional_alignment<'input, S: LayoutScalar>(
     child_style: &GridItemProjection<'input, S>,
     container_style: &GridContainerProjection<'_, S>,
@@ -1694,6 +1713,36 @@ pub(super) fn grid_item_sizing_with_optional_alignment<'input, S: LayoutScalar>(
 ) -> Result<GridItemSizing<S, Option<S>>, SizingResolutionError<S>> {
     let container_flow_axes =
         crate::geometry::FlowAxes::new(container_style.writing_mode, container_style.direction);
+    // A subgrid is stretched in its subgridded axes: its specified sizes and
+    // self-alignment do not apply there (CSS Grid 2, section 9). The other axis
+    // keeps them.
+    let inherited_axes = subgridded_physical_axes(child_style.flow_axes, subgrid_requests);
+    let size = Size::new(&child_style.size.width, &child_style.size.height).zip_map(
+        inherited_axes,
+        |value, inherited| {
+            if inherited {
+                PreferredSizeOf::AUTO
+            } else {
+                value.clone()
+            }
+        },
+    );
+    let min_size_style = Size::new(&child_style.min_size.width, &child_style.min_size.height)
+        .zip_map(inherited_axes, |value, inherited| {
+            if inherited {
+                MinSizeOf::AUTO
+            } else {
+                value.clone()
+            }
+        });
+    let max_size_style = Size::new(&child_style.max_size.width, &child_style.max_size.height)
+        .zip_map(inherited_axes, |value, inherited| {
+            if inherited {
+                MaxSizeOf::NONE
+            } else {
+                value.clone()
+            }
+        });
     let unresolved_margin =
         transpose_edges_result(container_flow_axes.zip_physical_edges_with_inline_extent(
             child_style.margin,
@@ -1727,14 +1776,14 @@ pub(super) fn grid_item_sizing_with_optional_alignment<'input, S: LayoutScalar>(
     let algorithm = sizing_algorithm_for_grid_display(container_style.display);
     let raw_preferred = Size::new(
         resolve_preferred_optional(
-            &child_style.size.width,
+            &size.width,
             algorithm,
             PhysicalAxis::Horizontal,
             area_parent.width,
             true,
         )?,
         resolve_preferred_optional(
-            &child_style.size.height,
+            &size.height,
             algorithm,
             PhysicalAxis::Vertical,
             area_parent.height,
@@ -1746,7 +1795,7 @@ pub(super) fn grid_item_sizing_with_optional_alignment<'input, S: LayoutScalar>(
         .add_optional(box_sizing_adjustment);
     let minimum = Size::new(
         resolve_standalone_subgrid_item_minimum_optional(
-            &child_style.min_size.width,
+            &min_size_style.width,
             child_style,
             subgrid_requests,
             algorithm,
@@ -1755,7 +1804,7 @@ pub(super) fn grid_item_sizing_with_optional_alignment<'input, S: LayoutScalar>(
             true,
         )?,
         resolve_standalone_subgrid_item_minimum_optional(
-            &child_style.min_size.height,
+            &min_size_style.height,
             child_style,
             subgrid_requests,
             algorithm,
@@ -1771,14 +1820,14 @@ pub(super) fn grid_item_sizing_with_optional_alignment<'input, S: LayoutScalar>(
     let raw_min = Size::new(minimum.width.resolved(), minimum.height.resolved());
     let raw_max = Size::new(
         resolve_maximum_optional(
-            &child_style.max_size.width,
+            &max_size_style.width,
             algorithm,
             PhysicalAxis::Horizontal,
             area_parent.width,
             true,
         )?,
         resolve_maximum_optional(
-            &child_style.max_size.height,
+            &max_size_style.height,
             algorithm,
             PhysicalAxis::Vertical,
             area_parent.height,
@@ -1805,8 +1854,7 @@ pub(super) fn grid_item_sizing_with_optional_alignment<'input, S: LayoutScalar>(
         .apply_aspect_ratio(preferred_ratio)
         .add_optional(box_sizing_adjustment);
     let logical_inherent_size = grid_flow_axes.logical_size(inherent_size);
-    let logical_style_size =
-        grid_flow_axes.logical_size(Size::new(&child_style.size.width, &child_style.size.height));
+    let logical_style_size = grid_flow_axes.logical_size(Size::new(&size.width, &size.height));
     let justify_self = resolve_grid_item_normal_alignment(
         child_style.justify_self,
         container_style.justify_items,
@@ -1827,10 +1875,7 @@ pub(super) fn grid_item_sizing_with_optional_alignment<'input, S: LayoutScalar>(
             || !logical_style_size.block.is_auto()
             || (child_style.aspect_ratio.is_some()
                 && grid_flow_axes
-                    .logical_size(Size::new(
-                        &child_style.min_size.width,
-                        &child_style.min_size.height,
-                    ))
+                    .logical_size(Size::new(&min_size_style.width, &min_size_style.height))
                     .block
                     .is_auto())
         {
@@ -1839,6 +1884,17 @@ pub(super) fn grid_item_sizing_with_optional_alignment<'input, S: LayoutScalar>(
             AlignItems::Stretch
         },
     );
+    let logical_inherited = grid_flow_axes.logical_size(inherited_axes);
+    let justify_self = if logical_inherited.inline {
+        AlignItems::Stretch
+    } else {
+        justify_self
+    };
+    let align_self = if logical_inherited.block {
+        AlignItems::Stretch
+    } else {
+        align_self
+    };
     let logical_unresolved_margin = grid_flow_axes.logical_edges(unresolved_margin);
     let inline_stretches = !logical_deferred.inline
         && logical_unresolved_margin.inline_start.is_some()
@@ -1861,10 +1917,7 @@ pub(super) fn grid_item_sizing_with_optional_alignment<'input, S: LayoutScalar>(
         && logical_known.block.is_some()
         && block_stretches
         && !grid_flow_axes
-            .logical_size(Size::new(
-                &child_style.min_size.width,
-                &child_style.min_size.height,
-            ))
+            .logical_size(Size::new(&min_size_style.width, &min_size_style.height))
             .block
             .is_auto()
     {

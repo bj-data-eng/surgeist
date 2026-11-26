@@ -1194,6 +1194,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicRole<Node, S> {
                 subgrid_requests: lane_child_subgrid_requests(
                     placements.child_input(source_slot).nested_container(),
                 ),
+                subgridded: Size::new(false, false),
                 algorithm: sizing_algorithm_for_grid_display(container_style.display),
             };
             let (prepared, query) = prepare_lane_contribution(child, minimum, purpose)?;
@@ -2106,6 +2107,7 @@ where
                     span: frame.span,
                     opposite_fixed_max_span: frame.opposite_fixed_max_span,
                     subgrid_requests: lane_child_subgrid_requests(execution.child_container),
+                    subgridded: Size::new(false, false),
                 },
                 purpose,
                 |tree, input| compute_prepared_intrinsic_grid_child(tree, child, execution, input),
