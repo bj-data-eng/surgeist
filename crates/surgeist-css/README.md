@@ -188,9 +188,20 @@ each reached observation; errors distinguish admission refusal and byte overflow
 identity bank, adding actual source payload headers and original UTF16 Vec headers
 to backing. Exact original UTF16 Arc aliases count once across distinct snapshots;
 equal contents in different owners count separately. Existing backing-only source
-quotas and visit tariffs are unchanged. The complete observation excludes the
-collector's bank, opaque Arc control blocks and allocator overhead; it allocates
-nothing and admits each reached source observation and identity comparison.
+quotas are unchanged. The complete observation excludes the collector's bank
+and identity indexes, opaque Arc control blocks and allocator overhead; it
+allocates nothing and admits each reached source observation, original-backing
+identity lookup and payload.
+
+`CssSourceRetention::source` charges one step, whether the snapshot is new,
+already recorded or shares an original UTF16 backing with a recorded one, so the
+steps of a walk are the number of its `visit`, `charge_step` and `source` calls,
+whatever the order of the walk or the number of snapshots recorded. The
+collector finds a recorded snapshot and a shared original backing through
+identity indexes (open-addressing tables of bank positions over a fixed integer
+mix of the identity address, no hash seed), so the work behind a step is
+bounded. The indexes are collector storage that `CssSourceRetentionAction::Scratch`
+reports with the bank.
 
 Authored Shapes 1 retains `shape-outside` with images, the eight shared basic
 shapes and four reference boxes; `shape-image-threshold` keeps unrestricted
