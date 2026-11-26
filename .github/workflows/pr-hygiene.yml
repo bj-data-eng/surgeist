@@ -126,12 +126,12 @@ jobs:
 
           # Retained specification captures and README files are exempt.
           word_paths=(. ':(exclude)references' ':(exclude,glob)**/README' ':(exclude,glob)**/README.*')
-          # The Layout corpus records byte hashes for retained captures,
+          # The Layout parity corpus records byte hashes for retained captures,
           # measurement helpers and semantic policy inputs.
           corpus_paths=(
-            ':(exclude)crates/surgeist-layout/tests/layout/browser_parity/captured'
-            ':(exclude)crates/surgeist-layout/tests/layout/browser_parity/scripts/gentest'
-            ':(exclude)crates/surgeist-layout/semantic'
+            ':(exclude)crates/surgeist-layout-parity/tests/layout/browser_parity/captured'
+            ':(exclude)crates/surgeist-layout-parity/tests/layout/browser_parity/scripts/gentest'
+            ':(exclude)crates/surgeist-layout-parity/semantic'
           )
           while IFS= read -r match; do
             file=${match%%:*}
