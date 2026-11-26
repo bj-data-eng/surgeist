@@ -1,0 +1,39 @@
+# List available recipes.
+default:
+    @just --list
+
+# Format Rust sources.
+fmt:
+    @./scripts/run-cargo-task.sh fmt
+
+# Check Rust formatting without changing files.
+fmt-check:
+    @./scripts/run-cargo-task.sh fmt-check
+
+# Check every target.
+check:
+    @./scripts/run-cargo-task.sh check
+
+# Test the library and its doctests.
+test:
+    @./scripts/run-cargo-task.sh test
+
+# Lint every target.
+clippy:
+    @./scripts/run-cargo-task.sh clippy
+
+# Run all verification checks.
+verify:
+    @./scripts/run-verification.sh
+
+# Run the full checked-in browser-parity corpus.
+parity-all:
+    @./scripts/run-browser-parity-task.sh parity-all
+
+# Validate the checked-in browser-parity corpus.
+corpus-check:
+    @./scripts/run-browser-parity-task.sh corpus-check
+
+# Validate the checked-in Taffy parity corpus.
+taffy-check:
+    @./scripts/run-browser-parity-task.sh taffy-check

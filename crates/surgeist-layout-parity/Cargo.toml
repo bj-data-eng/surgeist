@@ -1,0 +1,29 @@
+[package]
+name = "surgeist-layout-parity"
+readme = "README.md"
+description = "Browser-parity tooling and corpus for surgeist-layout."
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "surgeist_layout_parity"
+path = "src/lib.rs"
+
+[dependencies]
+surgeist-font = { path = "../surgeist-font", version = "=0.1.0" }
+surgeist-generator = { path = "../surgeist-generator", version = "=0.2.0", default-features = false, features = ["browser-corpus"] }
+surgeist-layout = { path = "../surgeist-layout", version = "=0.1.0" }
+surgeist-test = { path = "../surgeist-test", version = "=0.1.0" }
+surgeist-text = { path = "../surgeist-text", version = "=0.1.0", default-features = false }
+roxmltree = "=0.21.1"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.151", features = ["float_roundtrip", "raw_value"] }
+serde_path_to_error = "=0.1.20"
+sha2 = "=0.10.9"
+
+[lints]
+workspace = true

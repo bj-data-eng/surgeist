@@ -16,29 +16,11 @@ path = "src/lib.rs"
 [dependencies]
 surgeist-ledger = { path = "../surgeist-ledger", version = "=0.1.0" }
 surgeist-text = { path = "../surgeist-text", version = "=0.1.0", default-features = false }
-surgeist-generator = { path = "../surgeist-generator", version = "=0.2.0", default-features = false, features = ["browser-corpus"], optional = true }
-serde = { version = "=1.0.229", features = ["derive"], optional = true }
-serde_json = { version = "=1.0.151", features = ["float_roundtrip", "raw_value"], optional = true }
-serde_path_to_error = { version = "=0.1.20", optional = true }
-
-[features]
-default = []
-layout-golden-generate = [
-    "dep:surgeist-generator",
-    "dep:serde",
-    "dep:serde_json",
-    "dep:serde_path_to_error",
-]
 
 [dev-dependencies]
 surgeist-font = { path = "../surgeist-font", version = "=0.1.0" }
 surgeist-test = { path = "../surgeist-test", version = "=0.1.0" }
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
-roxmltree = "=0.21.1"
-serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = { version = "=1.0.151", features = ["float_roundtrip", "raw_value"] }
-sha2 = "=0.10.9"
-surgeist-generator = { path = "../surgeist-generator", version = "=0.2.0", default-features = false }
 
 [[bench]]
 name = "structure"
@@ -47,13 +29,3 @@ harness = false
 [[bench]]
 name = "text"
 harness = false
-
-[[bin]]
-name = "surgeist-layout-generate"
-path = "tests/bin/surgeist-layout-generate.rs"
-required-features = ["layout-golden-generate"]
-
-[[example]]
-name = "qualify-root-context"
-path = "examples/qualify-root-context.rs"
-required-features = ["layout-golden-generate"]

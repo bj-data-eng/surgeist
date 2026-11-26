@@ -1,4 +1,3 @@
-mod browser_parity;
 mod intrinsic_grid_gutters;
 mod native_scope_projection;
 mod node_free_completion;
@@ -26,4 +25,4 @@ mod text_group_text;
 #[path = "../support/native_request.rs"]
 mod native_request;
 
-use self::browser_parity::support::observation;
+mod observation;

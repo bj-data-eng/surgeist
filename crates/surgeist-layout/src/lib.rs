@@ -262,12 +262,6 @@
 //! use surgeist_layout::scroll::{ScrollGeometry, ScrollbarGutterRects};
 //! ```
 
-#[cfg(test)]
-#[path = "../tests/layout/browser_parity_modules.rs"]
-mod browser_parity_modules;
-#[cfg(test)]
-use browser_parity_modules::*;
-
 pub mod baseline;
 pub mod batch;
 pub mod box_model;
