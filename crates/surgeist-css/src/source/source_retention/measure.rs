@@ -241,17 +241,21 @@ impl CssSourceMeter {
     }
 }
 
-/// A snapshot held by a ledger.
+/// A snapshot held by a ledger and the number of measurements that hold it.
 #[derive(Debug)]
 struct Held {
-    source: CssMeasuredSource,
-    references: usize,
+    snapshot: CssSourceSnapshot,
+    references: u32,
 }
 
-/// The snapshots that share one original UTF-16 backing.
-#[derive(Debug)]
-struct Shared {
-    users: usize,
+/// A fixed integer mix of an identity (the finalizer of splitmix64), whose
+/// high half selects the first slot of a probe.
+fn mix(identity: usize) -> usize {
+    let mut value = u64::try_from(identity).unwrap_or(u64::MAX);
+    value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    value ^= value >> 31;
+    usize::try_from(value >> 32).unwrap_or(0)
 }
 
 /// The distinct snapshots of many measurements, counted by reference, and the
@@ -261,11 +265,24 @@ struct Shared {
 /// original UTF-16 backing for every snapshot sharing it beyond the first.
 /// They are the same for every order of [`Self::add`] and [`Self::remove`]
 /// that leaves the same measurements added.
+///
+/// A snapshot costs the ledger 16 bytes of entry and 8 bytes of index, as many as the
+/// collector's bank and index cost for it. The index is an open-addressing
+/// table of entry positions, at most half full, probed linearly from a fixed
+/// integer mix of the snapshot's address; a snapshot that leaves is removed
+/// by shifting back the entries that follow it in its probe.
 #[derive(Debug, Default)]
 pub struct CssSourceLedger {
-    snapshots: HashMap<usize, Held>,
-    backings: HashMap<usize, Shared>,
+    entries: Vec<Held>,
+    /// Entry positions plus one, or zero for a free slot; its length is zero or a power of two.
+    slots: Vec<u32>,
+    /// The number of held snapshots sharing each original UTF-16 backing.
+    backings: HashMap<usize, usize>,
     bytes: usize,
+}
+
+fn allocation() -> CssSourceRetentionError {
+    CssSourceRetentionError::allocation()
 }
 
 impl CssSourceLedger {
@@ -284,13 +301,13 @@ impl CssSourceLedger {
     /// The number of distinct snapshots held.
     #[cfg(test)]
     fn len(&self) -> usize {
-        self.snapshots.len()
+        self.entries.len()
     }
 
     /// Whether the ledger holds no snapshot.
     #[cfg(test)]
     fn is_empty(&self) -> bool {
-        self.snapshots.is_empty()
+        self.entries.is_empty()
     }
 
     /// Adds the snapshots of `measurement`, each reference counted.
@@ -340,9 +357,70 @@ impl CssSourceLedger {
         }
     }
 
+    /// The slot and entry position of the snapshot identified by `key`.
+    fn find(&self, key: usize) -> Option<(usize, usize)> {
+        let mask = self.slots.len().checked_sub(1)?;
+        let mut at = mix(key) & mask;
+        for _ in 0..self.slots.len() {
+            let position = usize::try_from(*self.slots.get(at)?).ok()?.checked_sub(1)?;
+            if self
+                .entries
+                .get(position)
+                .is_some_and(|held| identity(&held.snapshot) == key)
+            {
+                return Some((at, position));
+            }
+            at = at.wrapping_add(1) & mask;
+        }
+        None
+    }
+
+    /// Names the entry at `position`, whose identity is `key`, in the first
+    /// free slot of its probe.
+    fn name(slots: &mut [u32], key: usize, position: usize) -> Result<(), CssSourceRetentionError> {
+        let mask = slots.len().checked_sub(1).ok_or_else(allocation)?;
+        let named = u32::try_from(position.checked_add(1).ok_or_else(allocation)?)
+            .map_err(|_| allocation())?;
+        let mut at = mix(key) & mask;
+        for _ in 0..slots.len() {
+            let slot = slots.get_mut(at).ok_or_else(allocation)?;
+            if *slot == 0 {
+                *slot = named;
+                return Ok(());
+            }
+            at = at.wrapping_add(1) & mask;
+        }
+        Err(allocation())
+    }
+
+    /// Makes room for one more entry, doubling the entries and the index.
+    fn grow(&mut self) -> Result<(), CssSourceRetentionError> {
+        let room = self.entries.len().saturating_add(1);
+        if room <= self.entries.capacity() && room.saturating_mul(2) <= self.slots.len() {
+            return Ok(());
+        }
+        let capacity = self.entries.capacity().saturating_mul(2).max(4).max(room);
+        let length = capacity
+            .checked_mul(2)
+            .and_then(usize::checked_next_power_of_two)
+            .ok_or_else(allocation)?;
+        let mut slots = Vec::new();
+        slots.try_reserve_exact(length).map_err(|_| allocation())?;
+        slots.resize(length, 0);
+        self.entries
+            .try_reserve_exact(capacity - self.entries.len())
+            .map_err(|_| allocation())?;
+        for (position, held) in self.entries.iter().enumerate() {
+            Self::name(&mut slots, identity(&held.snapshot), position)?;
+        }
+        self.slots = slots;
+        Ok(())
+    }
+
     fn add_source(&mut self, source: &CssMeasuredSource) -> Result<(), CssSourceRetentionError> {
         let key = identity(&source.snapshot);
-        if let Some(held) = self.snapshots.get_mut(&key) {
+        if let Some((_, position)) = self.find(key) {
+            let held = self.entries.get_mut(position).ok_or_else(allocation)?;
             held.references =
                 held.references
                     .checked_add(1)
@@ -365,29 +443,20 @@ impl CssSourceLedger {
             .ok_or(CssSourceRetentionError::limit(
                 CssSourceRetentionResource::RetainedBytes,
             ))?;
-        self.snapshots
-            .try_reserve(1)
-            .map_err(|_| CssSourceRetentionError::allocation())?;
-        if let Some(backing) = source.backing
-            && !self.backings.contains_key(&backing.identity)
-        {
-            self.backings
-                .try_reserve(1)
-                .map_err(|_| CssSourceRetentionError::allocation())?;
-            self.backings.insert(backing.identity, Shared { users: 0 });
+        if source.backing.is_some() {
+            self.backings.try_reserve(1).map_err(|_| allocation())?;
         }
-        if let Some(backing) = source.backing
-            && let Some(shared) = self.backings.get_mut(&backing.identity)
-        {
-            shared.users = shared.users.saturating_add(1);
+        self.grow()?;
+        let position = self.entries.len();
+        Self::name(&mut self.slots, key, position)?;
+        self.entries.push(Held {
+            snapshot: source.snapshot.clone(),
+            references: 1,
+        });
+        if let Some(backing) = source.backing {
+            let users = self.backings.entry(backing.identity).or_insert(0);
+            *users = users.saturating_add(1);
         }
-        self.snapshots.insert(
-            key,
-            Held {
-                source: source.clone(),
-                references: 1,
-            },
-        );
         self.bytes = bytes;
         Ok(())
     }
@@ -404,22 +473,29 @@ impl CssSourceLedger {
 
     fn remove_source(&mut self, source: &CssMeasuredSource) {
         let key = identity(&source.snapshot);
-        let Some(held) = self.snapshots.get_mut(&key) else {
+        let Some((slot, position)) = self.find(key) else {
+            return;
+        };
+        let Some(held) = self.entries.get_mut(position) else {
             return;
         };
         held.references = held.references.saturating_sub(1);
         if held.references > 0 {
             return;
         }
-        let Some(held) = self.snapshots.remove(&key) else {
-            return;
-        };
+        self.unname(slot);
+        // The last entry takes the place of the removed one.
+        let last = self.entries.len().saturating_sub(1);
+        if position != last {
+            self.rename(last, position);
+        }
+        let removed = CssMeasuredSource::new(&self.entries.swap_remove(position).snapshot);
         let mut still_shared = 0;
-        if let Some(backing) = held.source.backing
-            && let Some(shared) = self.backings.get_mut(&backing.identity)
+        if let Some(backing) = removed.backing
+            && let Some(users) = self.backings.get_mut(&backing.identity)
         {
-            shared.users = shared.users.saturating_sub(1);
-            if shared.users == 0 {
+            *users = users.saturating_sub(1);
+            if *users == 0 {
                 self.backings.remove(&backing.identity);
             } else {
                 still_shared = backing.bytes;
@@ -427,12 +503,75 @@ impl CssSourceLedger {
         }
         self.bytes = self
             .bytes
-            .saturating_sub(held.source.bytes.saturating_sub(still_shared));
+            .saturating_sub(removed.bytes.saturating_sub(still_shared));
+    }
+
+    /// Frees `slot`, shifting back the entries that follow it in their probes
+    /// so that none is left beyond a free slot.
+    fn unname(&mut self, slot: usize) {
+        let Some(mask) = self.slots.len().checked_sub(1) else {
+            return;
+        };
+        let mut hole = slot;
+        let mut next = slot.wrapping_add(1) & mask;
+        for _ in 0..self.slots.len() {
+            let Some(position) = self
+                .slots
+                .get(next)
+                .and_then(|value| usize::try_from(*value).ok())
+                .and_then(|value| value.checked_sub(1))
+            else {
+                break;
+            };
+            let Some(held) = self.entries.get(position) else {
+                break;
+            };
+            let home = mix(identity(&held.snapshot)) & mask;
+            // The entry moves into the hole when the hole is in its probe, before it.
+            if next.wrapping_sub(home) & mask >= next.wrapping_sub(hole) & mask {
+                let named = self.slots.get(next).copied().unwrap_or(0);
+                if let Some(target) = self.slots.get_mut(hole) {
+                    *target = named;
+                }
+                hole = next;
+            }
+            next = next.wrapping_add(1) & mask;
+        }
+        if let Some(target) = self.slots.get_mut(hole) {
+            *target = 0;
+        }
+    }
+
+    /// Names the entry at `to` in the slot that names the entry at `from`.
+    fn rename(&mut self, from: usize, to: usize) {
+        let Some(key) = self.entries.get(from).map(|held| identity(&held.snapshot)) else {
+            return;
+        };
+        let Some(mask) = self.slots.len().checked_sub(1) else {
+            return;
+        };
+        let (Some(old), Some(new)) = (
+            u32::try_from(from.saturating_add(1)).ok(),
+            u32::try_from(to.saturating_add(1)).ok(),
+        ) else {
+            return;
+        };
+        let mut at = mix(key) & mask;
+        for _ in 0..self.slots.len() {
+            let Some(slot) = self.slots.get_mut(at) else {
+                return;
+            };
+            if *slot == old {
+                *slot = new;
+                return;
+            }
+            at = at.wrapping_add(1) & mask;
+        }
     }
 
     /// The distinct snapshots held, in no particular order.
     fn snapshots(&self) -> impl Iterator<Item = &CssSourceSnapshot> {
-        self.snapshots.values().map(|held| &held.source.snapshot)
+        self.entries.iter().map(|held| &held.snapshot)
     }
 
     /// Runs `walk` as a collector that has recorded every snapshot of this
@@ -450,7 +589,7 @@ impl CssSourceLedger {
         base_depth: usize,
         walk: impl FnOnce(&mut CssSourceRetention<'_>) -> Result<(), CssSourceRetentionError>,
     ) -> CssSourceReplay {
-        let held = self.snapshots.len();
+        let held = self.entries.len();
         let mut collector = CssSourceRetention::with_shared_original_utf16(
             bounds.bytes,
             bounds.steps.saturating_add(held),
@@ -496,6 +635,99 @@ impl CssSourceReplay {
 #[cfg(test)]
 #[path = "measure_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+impl CssSourceLedger {
+    /// Panics unless every held snapshot is found where the index says it is, and
+    /// the index names nothing else.
+    fn assert_consistent(&self) {
+        for (position, held) in self.entries.iter().enumerate() {
+            assert_eq!(
+                self.find(identity(&held.snapshot)).map(|(_, found)| found),
+                Some(position)
+            );
+        }
+        let named = self.slots.iter().filter(|slot| **slot != 0).count();
+        assert_eq!(named, self.entries.len());
+        assert!(self.slots.len() >= self.entries.len() * 2);
+    }
+}
+
+#[cfg(test)]
+mod index_tests {
+    use super::*;
+
+    fn snapshots(count: usize) -> Vec<CssSourceSnapshot> {
+        (0..count)
+            .map(|index| {
+                crate::CssParser::default()
+                    .parse_sheet(format!(".s{index} {{ color: red }}"))
+                    .syntax()
+                    .parse_source()
+                    .unwrap()
+                    .source()
+                    .clone()
+            })
+            .collect()
+    }
+
+    fn one(snapshot: &CssSourceSnapshot) -> CssSourceMeasurement {
+        CssSourceMeasurement::of(
+            CssSourceBounds::new(usize::MAX, usize::MAX, 4),
+            0,
+            |sources| sources.source(snapshot),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn the_index_finds_every_snapshot_after_any_additions_and_removals() {
+        let pool = snapshots(700);
+        let measurements = pool.iter().map(one).collect::<Vec<_>>();
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            usize::try_from(seed % 700).unwrap()
+        };
+        let mut ledger = CssSourceLedger::new();
+        let mut references = vec![0usize; 700];
+        for round in 0..4000 {
+            let index = next();
+            // Grow first, then churn, then drain.
+            let remove = round > 700 && references[index] > 0 && (round % 3 != 0 || round > 3000);
+            if remove {
+                ledger.remove(&measurements[index]);
+                references[index] -= 1;
+            } else {
+                ledger.add(&measurements[index]).unwrap();
+                references[index] += 1;
+            }
+            if round % 97 == 0 {
+                ledger.assert_consistent();
+            }
+        }
+        ledger.assert_consistent();
+        let held = references.iter().filter(|count| **count > 0).count();
+        assert_eq!(ledger.len(), held);
+        let expected = references
+            .iter()
+            .zip(&pool)
+            .filter(|(count, _)| **count > 0)
+            .map(|(_, snapshot)| snapshot.storage_usage().retained_bytes())
+            .sum::<usize>();
+        assert_eq!(ledger.bytes(), expected);
+        for (index, count) in references.iter().enumerate() {
+            for _ in 0..*count {
+                ledger.remove(&measurements[index]);
+            }
+        }
+        ledger.assert_consistent();
+        assert!(ledger.is_empty());
+        assert_eq!(ledger.bytes(), 0);
+    }
+}
 
 #[cfg(test)]
 mod meter_tests {
