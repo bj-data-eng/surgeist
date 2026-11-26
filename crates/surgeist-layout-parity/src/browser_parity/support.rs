@@ -1098,6 +1098,7 @@ impl Size {
     }
 }
 
+/// A failure to read, parse or observe a parity input.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Error {
     message: String,

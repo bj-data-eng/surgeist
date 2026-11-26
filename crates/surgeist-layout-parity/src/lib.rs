@@ -6,11 +6,21 @@
 //! browser geometry. It depends on `surgeist-layout`'s public API only; layout
 //! does not depend on it.
 //!
-//! The public surface is the registered-edition admission that other crates use
-//! to qualify one captured case. The `browser-corpus` feature adds the generator
-//! and the qualification driver, which need the browser engine, with the entry
-//! points of the two executables. Everything else is private to the crate's own
-//! binary, example and tests.
+//! The default build exposes:
+//!
+//! - The module [`portable_qualification`]. Its function
+//!   [`admit_registered`](portable_qualification::admit_registered) authenticates
+//!   the registered editions under a corpus owner directory, and the returned
+//!   registry runs selected cases and lends each completed placement to an
+//!   observer;
+//! - The constant [`AHEM_TTF`], the pinned Ahem font bytes of the captures;
+//! - The function [`prepared_atomic_percentage_root`], the artifact root of the
+//!   prepared atomic percentage edition.
+//!
+//! The `browser-corpus` feature adds the generator and the qualification driver,
+//! which need the browser engine, as `run_generator` and `run_qualification`.
+//! The `surgeist-layout-generate` binary and the `qualify-root-context` example
+//! are separate targets that call these two functions.
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 

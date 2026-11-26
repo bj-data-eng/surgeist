@@ -5,39 +5,64 @@ use super::*;
 use serde::{Deserialize, Serialize};
 use surgeist_text::font::FontBaseline;
 
+/// Why an edition did not admit or qualify.
 #[derive(Debug, PartialEq)]
 pub enum QualificationError {
+    /// A recorded input no longer has its pinned identity.
     IdentityChanged {
+        /// The input whose identity changed.
         component: String,
     },
+    /// The edition's declaration is not well formed.
     MalformedDeclaration {
+        /// What is malformed.
         reason: String,
     },
+    /// The declaration does not represent a key completely.
     IncompleteRepresentation {
+        /// The key that is not completely represented.
         key: String,
     },
+    /// The authored Native oracle does not cover a key.
     IncompleteNativeOracle {
+        /// The key without a complete oracle.
         key: String,
     },
+    /// The authored Native oracle no longer matches Layout.
     NativeOracleChanged {
+        /// The key whose value changed.
         key: String,
+        /// The authored value.
         expected: String,
+        /// The value Layout produced.
         actual: String,
     },
+    /// An observation falls outside what the owner supports.
     UnsupportedObservation {
+        /// The owner of the observation.
         owner: String,
+        /// The unsupported category.
         category: String,
     },
+    /// A key appears more than once.
     DuplicateKey {
+        /// The repeated key.
         key: String,
     },
+    /// A case declared as different matched the browser.
     UnexpectedPass,
+    /// The observed differences differ from the declared set.
     DifferenceSetChanged {
+        /// Declared differences that no longer occur.
         missing: Vec<String>,
+        /// Differences that occur but are not declared.
         extra: Vec<String>,
+        /// Declared differences whose values changed.
         changed: Vec<String>,
     },
+    /// The comparison could not complete.
     ComparisonFailure {
+        /// Why the comparison failed.
         reason: String,
     },
 }

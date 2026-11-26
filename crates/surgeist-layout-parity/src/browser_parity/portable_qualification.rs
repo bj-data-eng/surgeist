@@ -18,11 +18,16 @@ use support::capture_authority::{
     identity_from_verified_inputs, semantic_record_digest, sha256,
 };
 use support::exact_differences::{
-    CaptureAuthority, ExactDifferenceSpec, PublishedEdition, QualificationError,
-    QualifiedComparison, QualifiedVerdict, RawVerdict, complete_captured_comparison,
-    flex_composition_qualification as flex, verify_wrapping_world_predecessor,
+    CaptureAuthority, ExactDifferenceSpec, PublishedEdition, QualifiedComparison, QualifiedVerdict,
+    RawVerdict, complete_captured_comparison, flex_composition_qualification as flex,
+    verify_wrapping_world_predecessor,
 };
 use support::{ObservedPlacement, capture_authority, parse_root_context};
+
+/// The error of a placement observer.
+pub use support::Error as ObserverError;
+/// The error of admitting or running a registered edition.
+pub use support::exact_differences::QualificationError;
 
 #[path = "qualification_catalogue.rs"]
 pub(crate) mod qualification_catalogue;
@@ -371,7 +376,7 @@ enum AdmittedComparison {
 }
 
 /// One authenticated edition of registered cases.
-pub struct AdmittedEdition {
+pub(crate) struct AdmittedEdition {
     freshness: Freshness,
     diagnostic_freshness: Option<Freshness>,
     cases: Vec<AdmittedCase>,
@@ -386,11 +391,6 @@ pub struct CaseOutcome {
 }
 
 impl CaseOutcome {
-    /// The crate-relative path of the case's checked-in XML.
-    pub fn output(&self) -> &str {
-        &self.output
-    }
-
     /// The raw field differences, or why the comparison could not run.
     pub fn raw_differences(&self) -> std::result::Result<&[String], &str> {
         self.raw.as_deref().map_err(String::as_str)
@@ -398,13 +398,14 @@ impl CaseOutcome {
 }
 
 /// The outcome of running the selected cases of an admitted edition.
+#[derive(Debug)]
 pub struct EditionRun {
     pub(super) cases: Vec<CaseOutcome>,
     /// The number of cases the edition's declaration registers.
-    pub declared_cases: usize,
+    pub(crate) declared_cases: usize,
     pub(super) freshness_error: Option<String>,
     /// Registered inputs that no selected case covers.
-    pub uncovered: Vec<String>,
+    pub(crate) uncovered: Vec<String>,
 }
 
 impl EditionRun {
@@ -441,12 +442,12 @@ impl EditionRun {
     }
 
     /// Whether every registered case ran and qualified.
-    pub fn registered_coverage_complete(&self) -> bool {
+    pub(crate) fn registered_coverage_complete(&self) -> bool {
         self.selected_cases_passed() && self.cases.len() == self.declared_cases
     }
 
     /// Whether every registered case qualified and no registered input is uncovered.
-    pub fn current_coverage_complete(&self) -> bool {
+    pub(crate) fn current_coverage_complete(&self) -> bool {
         self.registered_coverage_complete() && self.uncovered.is_empty()
     }
 }
@@ -469,7 +470,7 @@ impl AdmittedEdition {
     ///
     /// Returns an error when a selected output is outside the edition or the
     /// edition has changed since its registration.
-    pub fn execute_selected(&self, selected: &BTreeSet<String>) -> Result<EditionRun> {
+    pub(crate) fn execute_selected(&self, selected: &BTreeSet<String>) -> Result<EditionRun> {
         self.execute_selected_before_freshness(selected, || {})
     }
 
@@ -618,6 +619,15 @@ pub struct AdmittedRegistry {
     selected_records: BTreeMap<String, Value>,
 }
 
+impl std::fmt::Debug for AdmittedRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AdmittedRegistry")
+            .field("owner", &self.owner)
+            .field("editions", &self.editions.len())
+            .finish_non_exhaustive()
+    }
+}
+
 impl AdmittedRegistry {
     pub(super) fn outputs(&self) -> impl Iterator<Item = String> {
         self.editions.iter().flat_map(|edition| {
@@ -644,7 +654,7 @@ impl AdmittedRegistry {
     ///
     /// Returns an error when a selected output is outside the registry or an
     /// edition has changed since its registration.
-    pub fn execute_selected(&self, selected: &BTreeSet<String>) -> Result<EditionRun> {
+    pub(crate) fn execute_selected(&self, selected: &BTreeSet<String>) -> Result<EditionRun> {
         self.execute_selected_with_placement(selected, &mut |_| Ok(()))
     }
 

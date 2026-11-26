@@ -1,4 +1,5 @@
-//! Shared test-only module inventory for registered browser parity consumers.
+//! Crate-private modules that the parity support and the generator both use:
+//! shared fixture variants, pinned font bytes and the measurement profiles.
 
 #[path = "browser_parity/atomic_paragraph_metrics.rs"]
 pub mod atomic_paragraph_metrics;
