@@ -701,7 +701,7 @@ mod tests {
         let receipt = scratch.0.join("receipt.json");
         let child = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
-                "layout::browser_parity::runs_all_checked_in_browser_parity_xml",
+                "browser_parity::tests::runs_all_checked_in_browser_parity_xml",
                 "--exact",
             ])
             .current_dir(&scratch.0)
