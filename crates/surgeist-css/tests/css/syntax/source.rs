@@ -3,6 +3,7 @@
 mod leading_encoding_declaration;
 mod parser_context_mode;
 mod source_coordinates;
+mod source_lookup_charge;
 mod source_resource_preparation;
 mod source_retention_closure;
 mod source_storage;
