@@ -494,6 +494,16 @@ fn operations() -> Vec<(&'static str, Operation)> {
             b.set_style_selector_text(&rule, ".changed > .selector, #id")
                 .map(drop)
         }),
+        ("set a selector longer than the sheet text", |b, h| {
+            // The selector input is checked against the input limit after the
+            // sheet's own text, so it must be the longest input to be refused.
+            let rule = rule_where(&b.staged, |rule| {
+                matches!(rule.data(), CssomRuleData::Style { .. })
+                    && matches!(rule.parent(), CssomParent::Sheet(sheet) if *sheet == h.sheet_b)
+            })?;
+            let selector = format!(".{}", "x".repeat(2000));
+            b.set_style_selector_text(&rule, &selector).map(drop)
+        }),
         ("set a page selector", |b, _| {
             let rule = rule_where(&b.staged, |rule| {
                 matches!(rule.data(), CssomRuleData::Page { .. })
@@ -855,7 +865,11 @@ fn every_class_of_edit_leaves_a_state_the_reference_census_agrees_with() {
             "set the media of a group rule",
             "replace the media list of a group rule",
         ],
-        &["set a style selector", "set a page selector"],
+        &[
+            "set a style selector",
+            "set a selector longer than the sheet text",
+            "set a page selector",
+        ],
         &["set a keyframe key", "set a keyframes name"],
         &["set a counter style name", "set a counter style descriptor"],
         &["set the families of a font feature values rule"],
