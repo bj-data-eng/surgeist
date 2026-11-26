@@ -106,6 +106,13 @@ impl Index {
         }
         None
     }
+    /// Forgets every entry, keeping the slots.
+    fn clear(&mut self) {
+        if self.used > 0 {
+            self.slots.fill(0);
+            self.used = 0;
+        }
+    }
     /// Names the bank entry at `position`, whose identity is `identity`.
     fn insert(&mut self, identity: usize, position: usize) -> Result<(), CssSourceRetentionError> {
         if !self.has_room() {
@@ -207,6 +214,19 @@ impl SourceBank {
     }
     pub(super) const fn len(&self) -> usize {
         self.sources.len()
+    }
+    /// The largest bank whose storage `clear` keeps: a larger one is released.
+    const KEPT: usize = 256;
+    /// Forgets the snapshots recorded, keeping the storage of a small bank so
+    /// that the next snapshots are recorded without allocating.
+    pub(super) fn clear(&mut self) {
+        if self.room > Self::KEPT {
+            *self = Self::new();
+            return;
+        }
+        self.sources.clear();
+        self.snapshots.clear();
+        self.originals.clear();
     }
     /// The recorded snapshots, in the order they were first recorded.
     pub(super) fn recorded(&self) -> &[CssSourceSnapshot] {

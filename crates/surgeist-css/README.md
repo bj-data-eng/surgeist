@@ -215,6 +215,15 @@ distinct snapshots share it. The total does not depend on the order of `add` and
 the ledger's snapshots would, so a refusal arrives at the same step with the
 same resource.
 
+`CssSourceMeter` measures payloads one after another on a single collector it
+clears before each, so that a run of payloads that record few snapshots measures
+without allocating. A payload measured after another sees nothing the other
+recorded: a snapshot or original backing shared by two payloads is counted in
+each payload's own figure, and once in a ledger that holds both
+(`CssSourceLedger::add_metered`). The storage a meter keeps is bounded by the
+largest payload it measured, up to a bank of 256 snapshots, and a refused
+measurement leaves it empty.
+
 Authored Shapes 1 retains `shape-outside` with images, the eight shared basic
 shapes and four reference boxes; `shape-image-threshold` keeps unrestricted
 number/percentage values; `shape-margin` keeps exact nonnegative literals and

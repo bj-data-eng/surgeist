@@ -419,6 +419,15 @@ impl<'admit> CssSourceRetention<'admit> {
         self.admission.check()?;
         result
     }
+    /// Forgets everything charged and recorded, keeping the bounds and the
+    /// storage of a small bank.
+    fn clear(&mut self) {
+        self.bank.clear();
+        self.usage = CssSourceStorageUsage(0);
+        self.visits = 0;
+        self.depth = 0;
+        self.admission.deepest = 0;
+    }
     /// Notes that the collector is at its current depth.
     fn note_depth(&mut self) {
         let depth = u32::try_from(self.depth).unwrap_or(u32::MAX);
@@ -1340,7 +1349,9 @@ impl CssRetainedSources for CssRule {
 pub(crate) mod admission_tests;
 mod bank;
 mod measure;
-pub use measure::{CssSourceBounds, CssSourceLedger, CssSourceMeasurement, CssSourceReplay};
+pub use measure::{
+    CssSourceBounds, CssSourceLedger, CssSourceMeasurement, CssSourceMeter, CssSourceReplay,
+};
 #[cfg(test)]
 #[path = "source_retention/charge_walk_tests.rs"]
 mod charge_walk_tests;

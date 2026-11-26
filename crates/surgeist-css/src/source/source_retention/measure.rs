@@ -163,6 +163,84 @@ impl CssSourceMeasurement {
     }
 }
 
+/// A collector that measures one payload after another, reusing its storage.
+///
+/// [`CssSourceMeasurement::of`] builds a collector for every payload it
+/// measures. A meter keeps one, clears it before each payload and lets the
+/// result be read, or added to a [`CssSourceLedger`], without storing it: a
+/// run of payloads that record few snapshots measures without allocating.
+/// The storage a meter keeps is that of the largest payload it measured, up to a
+/// bank of 256 snapshots; the storage of a larger one is released before the
+/// next payload.
+#[derive(Debug)]
+pub struct CssSourceMeter {
+    collector: CssSourceRetention<'static>,
+    base_depth: usize,
+}
+
+impl CssSourceMeter {
+    /// A meter whose payloads are measured under `bounds`.
+    #[must_use]
+    pub const fn new(bounds: CssSourceBounds) -> Self {
+        Self {
+            collector: CssSourceRetention::with_shared_original_utf16(
+                bounds.bytes,
+                bounds.steps,
+                bounds.depth,
+            ),
+            base_depth: 0,
+        }
+    }
+
+    /// Measures what `walk` retains, run at `base_depth`, in place of the
+    /// previous measurement.
+    ///
+    /// Nothing recorded by an earlier measurement counts as recorded: each
+    /// payload is measured alone, and sharing between payloads is the
+    /// ledger's to count.
+    ///
+    /// # Errors
+    ///
+    /// The first refusal the collector reports, unchanged. The meter is left
+    /// empty and can measure the next payload.
+    pub fn measure(
+        &mut self,
+        base_depth: usize,
+        walk: impl FnOnce(&mut CssSourceRetention<'_>) -> Result<(), CssSourceRetentionError>,
+    ) -> Result<(), CssSourceRetentionError> {
+        self.collector.clear();
+        self.base_depth = base_depth;
+        let result = self.collector.at_depth(base_depth, walk);
+        if result.is_err() {
+            self.collector.clear();
+        }
+        result
+    }
+
+    /// Returns the steps the last measurement charged.
+    #[must_use]
+    pub const fn steps(&self) -> usize {
+        self.collector.visits
+    }
+
+    /// Returns the deepest nesting the last measurement reached below its base depth.
+    #[must_use]
+    pub fn depth(&self) -> usize {
+        self.collector.deepest().saturating_sub(self.base_depth)
+    }
+
+    /// The distinct snapshots the last measurement recorded, in the order they were first recorded.
+    fn recorded(&self) -> &[CssSourceSnapshot] {
+        self.collector.bank.recorded()
+    }
+
+    /// The last measurement as a value.
+    #[cfg(test)]
+    fn to_measurement(&self) -> Result<CssSourceMeasurement, CssSourceRetentionError> {
+        CssSourceMeasurement::of_collector(&self.collector, 0, self.base_depth)
+    }
+}
+
 /// A snapshot held by a ledger.
 #[derive(Debug)]
 struct Held {
@@ -235,6 +313,31 @@ impl CssSourceLedger {
             }
         }
         Ok(())
+    }
+
+    /// Adds the snapshots `meter` recorded, each reference counted.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::add`].
+    pub fn add_metered(&mut self, meter: &CssSourceMeter) -> Result<(), CssSourceRetentionError> {
+        let recorded = meter.recorded();
+        for (added, snapshot) in recorded.iter().enumerate() {
+            if let Err(error) = self.add_source(&CssMeasuredSource::new(snapshot)) {
+                for snapshot in recorded.get(..added).unwrap_or_default() {
+                    self.remove_source(&CssMeasuredSource::new(snapshot));
+                }
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+
+    /// Removes the snapshots `meter` recorded, which an earlier [`Self::add_metered`] added.
+    pub fn remove_metered(&mut self, meter: &CssSourceMeter) {
+        for snapshot in meter.recorded() {
+            self.remove_source(&CssMeasuredSource::new(snapshot));
+        }
     }
 
     fn add_source(&mut self, source: &CssMeasuredSource) -> Result<(), CssSourceRetentionError> {
@@ -393,3 +496,139 @@ impl CssSourceReplay {
 #[cfg(test)]
 #[path = "measure_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod meter_tests {
+    use super::*;
+    use crate::source::source_retention::CssRetainedSources;
+
+    struct Records<'a>(&'a [&'a CssSourceSnapshot]);
+    impl CssRetainedSources for Records<'_> {
+        fn visit_retained_sources(
+            &self,
+            sources: &mut CssSourceRetention<'_>,
+        ) -> Result<(), CssSourceRetentionError> {
+            for snapshot in self.0 {
+                sources.source(snapshot)?;
+            }
+            Ok(())
+        }
+    }
+
+    fn snapshot(original: &Arc<Vec<u16>>) -> CssSourceSnapshot {
+        crate::CssParser::default()
+            .parse_sheet_utf16(
+                original.clone(),
+                crate::source::CssUtf16InputLimits::default(),
+                || Ok::<_, ()>(()),
+            )
+            .unwrap()
+            .syntax()
+            .parse_source()
+            .unwrap()
+            .source()
+            .clone()
+    }
+
+    const BOUNDS: CssSourceBounds = CssSourceBounds::new(usize::MAX, usize::MAX, 16);
+
+    #[test]
+    fn a_metered_payload_is_the_measurement_of_that_payload() {
+        let original = Arc::new(".a { color: red }".encode_utf16().collect::<Vec<_>>());
+        let (first, second) = (snapshot(&original), snapshot(&original));
+        let walk = |sources: &mut CssSourceRetention<'_>| {
+            sources.visit(&Records(&[&first, &second, &first]))
+        };
+        let mut meter = CssSourceMeter::new(BOUNDS);
+        meter.measure(2, walk).unwrap();
+        let alone = CssSourceMeasurement::of(BOUNDS, 2, walk).unwrap();
+        assert_eq!(meter.steps(), alone.steps());
+        assert_eq!(meter.depth(), alone.depth());
+        let kept = meter.to_measurement().unwrap();
+        assert_eq!(kept.steps(), alone.steps());
+        assert_eq!(kept.sources().len(), 2);
+        let (mut by_meter, mut by_value) = (CssSourceLedger::new(), CssSourceLedger::new());
+        by_meter.add_metered(&meter).unwrap();
+        by_value.add(&alone).unwrap();
+        assert_eq!(by_meter.bytes(), by_value.bytes());
+        by_meter.remove_metered(&meter);
+        assert!(by_meter.is_empty());
+        assert_eq!(by_meter.bytes(), 0);
+    }
+
+    #[test]
+    fn payloads_measured_in_turn_share_nothing_but_the_ledger_counts_a_shared_backing_once() {
+        let original = Arc::new(".s { margin: 1px }".encode_utf16().collect::<Vec<_>>());
+        let backing = original.capacity() * size_of::<u16>();
+        let (left, right) = (snapshot(&original), snapshot(&original));
+        for order in [[&left, &right], [&right, &left]] {
+            let mut meter = CssSourceMeter::new(BOUNDS);
+            let mut ledger = CssSourceLedger::new();
+            let mut figures = Vec::new();
+            for snapshot in order {
+                meter
+                    .measure(0, |sources| sources.visit(&Records(&[snapshot])))
+                    .unwrap();
+                // The earlier payload's snapshot and backing are not recorded here.
+                assert_eq!(meter.recorded().len(), 1);
+                assert_eq!(meter.steps(), 2);
+                let mut alone = CssSourceLedger::new();
+                alone.add_metered(&meter).unwrap();
+                figures.push(alone.bytes());
+                ledger.add_metered(&meter).unwrap();
+            }
+            // Each payload counts the backing in its own figure.
+            assert_eq!(figures[0], order[0].storage_usage().retained_bytes());
+            assert_eq!(figures[1], order[1].storage_usage().retained_bytes());
+            // The ledger counts it once.
+            assert_eq!(ledger.bytes(), figures[0] + figures[1] - backing);
+        }
+    }
+
+    #[test]
+    fn a_refused_measurement_leaves_the_meter_empty_and_usable() {
+        let original = Arc::new(".r { color: blue }".encode_utf16().collect::<Vec<_>>());
+        let snapshot = snapshot(&original);
+        let mut meter = CssSourceMeter::new(CssSourceBounds::new(usize::MAX, 2, 16));
+        let refused = meter.measure(0, |sources| {
+            sources.visit(&Records(&[&snapshot, &snapshot]))
+        });
+        assert_eq!(
+            refused.unwrap_err().exhausted_limit(),
+            Some(CssSourceRetentionResource::Visits)
+        );
+        assert_eq!(
+            (meter.steps(), meter.depth(), meter.recorded().len()),
+            (0, 0, 0)
+        );
+        meter
+            .measure(0, |sources| sources.visit(&Records(&[&snapshot])))
+            .unwrap();
+        assert_eq!((meter.steps(), meter.recorded().len()), (2, 1));
+    }
+
+    #[test]
+    fn the_storage_a_meter_keeps_is_bounded_by_the_largest_small_payload() {
+        let originals = (0..300_u16)
+            .map(|index| Arc::new(vec![u16::from(b'a') + index % 20, index]))
+            .collect::<Vec<_>>();
+        let snapshots = originals.iter().map(snapshot).collect::<Vec<_>>();
+        let refs = snapshots.iter().collect::<Vec<_>>();
+        let mut meter = CssSourceMeter::new(BOUNDS);
+        meter
+            .measure(0, |sources| sources.visit(&Records(&refs[..3])))
+            .unwrap();
+        let small = meter.collector.bank.capacity();
+        assert!((3..16).contains(&small));
+        meter
+            .measure(0, |sources| sources.visit(&Records(&refs)))
+            .unwrap();
+        assert_eq!(meter.recorded().len(), 300);
+        // A payload past the kept size releases its storage before the next one.
+        meter
+            .measure(0, |sources| sources.visit(&Records(&refs[..1])))
+            .unwrap();
+        assert!(meter.collector.bank.capacity() < 16);
+        assert_eq!(meter.recorded().len(), 1);
+    }
+}
