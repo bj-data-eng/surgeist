@@ -74,19 +74,19 @@ fn shared_utf16_original_is_unique_across_distinct_snapshots_including_empty_hea
         let legacy_bytes =
             first.storage_usage().retained_bytes() + second.storage_usage().retained_bytes();
         assert_eq!(retained.usage().retained_bytes(), legacy_bytes);
-        assert_eq!(retained.steps(), 3);
+        assert_eq!(retained.steps(), 2);
         assert_eq!(
             retained.complete_payload_bytes_with(|| Ok::<_, ()>(())),
             Ok(expected)
         );
         let shared_bytes = legacy_bytes - capacity * std::mem::size_of::<u16>();
-        let mut shared = CssSourceRetention::with_shared_original_utf16(shared_bytes, 4, 10);
+        let mut shared = CssSourceRetention::with_shared_original_utf16(shared_bytes, 2, 10);
         shared.source(&first).unwrap();
         shared.source(&second).unwrap();
         assert_eq!(shared.usage().retained_bytes(), shared_bytes);
-        assert_eq!(shared.steps(), 4);
+        assert_eq!(shared.steps(), 2);
 
-        let mut short = CssSourceRetention::with_shared_original_utf16(shared_bytes, 3, 10);
+        let mut short = CssSourceRetention::with_shared_original_utf16(shared_bytes, 1, 10);
         short.source(&first).unwrap();
         assert_eq!(
             short.source(&second).unwrap_err().exhausted_limit(),
@@ -138,6 +138,57 @@ fn payload_observation_admits_each_action_and_leaves_collector_unchanged_on_refu
     }
     assert_eq!(
         retained.complete_payload_bytes_with(|| Ok::<_, usize>(())),
+        Ok(expected)
+    );
+}
+#[test]
+fn many_snapshots_of_few_originals_are_measured_in_actions_proportional_to_their_number() {
+    let originals = (0..3_u16)
+        .map(|index| Arc::new(vec![u16::from(b'a') + index; 4 + usize::from(index)]))
+        .collect::<Vec<_>>();
+    let snapshots = (0..90)
+        .map(|index| source(originals[index % 3].clone()))
+        .collect::<Vec<_>>();
+    // The first snapshot of each original counts its backing; the others share it.
+    let repeated = (3..snapshots.len())
+        .map(|index| originals[index % 3].capacity() * std::mem::size_of::<u16>())
+        .sum::<usize>();
+    let all = snapshots
+        .iter()
+        .map(|snapshot| snapshot.storage_usage().retained_bytes())
+        .sum::<usize>();
+    let mut shared = CssSourceRetention::with_shared_original_utf16(usize::MAX, usize::MAX, 10);
+    for snapshot in &snapshots {
+        shared.source(snapshot).unwrap();
+    }
+    assert_eq!(shared.steps(), snapshots.len());
+    assert_eq!(shared.usage().retained_bytes(), all - repeated);
+    let expected = snapshots.iter().map(observed_snapshot).sum::<usize>()
+        + originals
+            .iter()
+            .map(|original| {
+                std::mem::size_of::<Vec<u16>>() + original.capacity() * std::mem::size_of::<u16>()
+            })
+            .sum::<usize>();
+    // The payload observation admits its entry, then each snapshot's observation,
+    // the lookup of its original backing and its payload.
+    let mut actions = 0;
+    assert_eq!(
+        shared.complete_payload_bytes_with(|| {
+            actions += 1;
+            Ok::<_, ()>(())
+        }),
+        Ok(expected)
+    );
+    assert_eq!(actions, 1 + 3 * snapshots.len());
+    // The collector that does not share backing in its quota measures the same payload.
+    let mut plain = CssSourceRetention::new(usize::MAX, usize::MAX, 10);
+    for snapshot in snapshots.iter().rev() {
+        plain.source(snapshot).unwrap();
+    }
+    assert_eq!(plain.usage().retained_bytes(), all);
+    assert_eq!(
+        plain.complete_payload_bytes_with(|| Ok::<_, ()>(())),
         Ok(expected)
     );
 }

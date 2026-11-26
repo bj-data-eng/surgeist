@@ -78,9 +78,10 @@ fn a_walk_charges_the_steps_it_took() {
     }
 }
 
-/// A collector keeps counting across walks, and comparing a snapshot with
-/// those already recorded is a step, so a walk's steps depend on what came
-/// before it; each walk is charged what the collector counted during it.
+/// A collector keeps counting across walks, and each walk is charged what the
+/// collector counted during it. A snapshot an earlier walk recorded costs the
+/// same step as a new one, so what a walk is charged does not depend on what
+/// came before it.
 #[test]
 fn a_walk_charges_only_the_steps_taken_during_it() {
     let first = sheet("a { color: red }");
@@ -99,7 +100,7 @@ fn a_walk_charges_only_the_steps_taken_during_it() {
         visits(&ledger),
         u64::try_from(after_first_walk - before).unwrap()
     );
-    assert!(visits(&ledger) >= smallest_steps(&second));
+    assert_eq!(visits(&ledger), smallest_steps(&second));
     sources
         .charge_walk(&host, |sources| sources.visit(&first))
         .unwrap()
@@ -107,6 +108,10 @@ fn a_walk_charges_only_the_steps_taken_during_it() {
     assert_eq!(
         visits(&ledger),
         u64::try_from(sources.steps() - before).unwrap()
+    );
+    assert_eq!(
+        visits(&ledger),
+        smallest_steps(&second) + smallest_steps(&first)
     );
     assert!(sources.steps() > after_first_walk);
 }

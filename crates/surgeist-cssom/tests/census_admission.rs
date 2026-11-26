@@ -392,8 +392,8 @@ const SMALLEST: [(&str, Field, u64, &str); 99] = [
     (
         "flat",
         Field::SourceSteps,
-        1442,
-        "retained source traversal steps 1441",
+        1197,
+        "retained source traversal steps 1196",
     ),
     (
         "flat",
@@ -421,8 +421,8 @@ const SMALLEST: [(&str, Field, u64, &str); 99] = [
     (
         "nested",
         Field::SourceSteps,
-        1251,
-        "retained source traversal steps 1250",
+        1058,
+        "retained source traversal steps 1057",
     ),
     (
         "nested",
@@ -450,8 +450,8 @@ const SMALLEST: [(&str, Field, u64, &str); 99] = [
     (
         "groups",
         Field::SourceSteps,
-        2100,
-        "retained source traversal steps 2099",
+        1764,
+        "retained source traversal steps 1763",
     ),
     (
         "groups",
@@ -479,8 +479,8 @@ const SMALLEST: [(&str, Field, u64, &str); 99] = [
     (
         "mixed",
         Field::SourceSteps,
-        2268,
-        "retained source traversal steps 2267",
+        1894,
+        "retained source traversal steps 1893",
     ),
     (
         "mixed",
@@ -513,8 +513,8 @@ const SMALLEST: [(&str, Field, u64, &str); 99] = [
     (
         "named_supports",
         Field::SourceSteps,
-        858,
-        "retained source traversal steps 857",
+        721,
+        "retained source traversal steps 720",
     ),
     (
         "named_supports",
@@ -547,8 +547,8 @@ const SMALLEST: [(&str, Field, u64, &str); 99] = [
     (
         "custom_media",
         Field::SourceSteps,
-        604,
-        "retained source traversal steps 603",
+        505,
+        "retained source traversal steps 504",
     ),
     (
         "custom_media",
@@ -576,8 +576,8 @@ const SMALLEST: [(&str, Field, u64, &str); 99] = [
     (
         "layers",
         Field::SourceSteps,
-        424,
-        "retained source traversal steps 423",
+        365,
+        "retained source traversal steps 364",
     ),
     (
         "layers",
@@ -605,8 +605,8 @@ const SMALLEST: [(&str, Field, u64, &str); 99] = [
     (
         "imports",
         Field::SourceSteps,
-        514,
-        "retained source traversal steps 513",
+        433,
+        "retained source traversal steps 432",
     ),
     (
         "imports",
@@ -634,8 +634,8 @@ const SMALLEST: [(&str, Field, u64, &str); 99] = [
     (
         "recovery",
         Field::SourceSteps,
-        331,
-        "retained source traversal steps 330",
+        281,
+        "retained source traversal steps 280",
     ),
     (
         "recovery",
@@ -663,8 +663,8 @@ const SMALLEST: [(&str, Field, u64, &str); 99] = [
     (
         "insert",
         Field::SourceSteps,
-        1466,
-        "retained source traversal steps 1465",
+        1088,
+        "retained source traversal steps 1087",
     ),
     (
         "insert",
@@ -692,8 +692,8 @@ const SMALLEST: [(&str, Field, u64, &str); 99] = [
     (
         "replace",
         Field::SourceSteps,
-        1550,
-        "retained source traversal steps 1549",
+        1260,
+        "retained source traversal steps 1259",
     ),
     (
         "replace",
@@ -712,15 +712,15 @@ const PINNED: [(&str, u64, u64, &str, u64); 8] = [
     (
         "objects after steps",
         58,
-        951,
-        "retained source traversal steps 951",
+        802,
+        "retained source traversal steps 802",
         28,
     ),
     (
         "entries after steps",
         73,
-        951,
-        "retained source traversal steps 951",
+        802,
+        "retained source traversal steps 802",
         28,
     ),
     (
@@ -739,7 +739,7 @@ const PINNED: [(&str, u64, u64, &str, u64); 8] = [
     ),
     (
         "steps after strings",
-        4893,
+        3994,
         25,
         "host and live string bytes 25",
         18,
@@ -747,8 +747,8 @@ const PINNED: [(&str, u64, u64, &str, u64); 8] = [
     (
         "insert objects after steps",
         67,
-        1456,
-        "retained source traversal steps 1456",
+        1100,
+        "retained source traversal steps 1100",
         37,
     ),
     ("replace objects after entries", 64, 29, "entries 29", 43),

@@ -1,6 +1,8 @@
 //! CSS owns source payload traversal and accounting; this adapter supplies the
 //! actual retained canonical tables, including detached objects and edited data.
 use crate::{model::State, *};
+use std::collections::HashSet;
+use std::hash::{BuildHasherDefault, DefaultHasher};
 use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::rule::CssImportTarget;
 use surgeist_css::source::{
@@ -154,22 +156,14 @@ impl State {
             sources.charge_step()?;
             links.reserve()?;
             links.pending.push((self, 0usize));
-            let mut seen = Vec::<&State>::new();
+            let mut seen = SeenStates::new(limits.max_source_traversal_steps);
             while let Some((state, depth)) = links.pending.pop() {
                 sources.charge_step()?;
-                let mut duplicate = false;
-                for old in &seen {
-                    sources.charge_step()?;
-                    if std::ptr::eq(*old, state) {
-                        duplicate = true;
-                        break;
-                    }
-                }
-                if duplicate {
+                // One step for the identity check, whatever the states walked so far.
+                sources.charge_step()?;
+                if !seen.insert(state)? {
                     continue;
                 }
-                reserve(&mut seen, limits.max_source_traversal_steps)?;
-                seen.push(state);
                 sources.at_depth(depth, |sources| {
                     links.enqueue(state.context.as_ref(), sources, depth)?;
                     for sheet in state.sheets.values() {
@@ -235,16 +229,6 @@ pub(crate) fn source_refusal(error: CssSourceRetentionError, limits: &CssomLimit
             maximum: limits.max_source_traversal_steps,
         },
     }
-}
-
-/// Whether `error` is one of the refusals [`source_refusal`] returns.
-#[cfg(test)]
-pub(crate) fn is_source_refusal(error: &CssomError) -> bool {
-    matches!(
-        error,
-        CssomError::Limit { resource, .. }
-            if [BYTES_RESOURCE, DEPTH_RESOURCE, STORAGE_RESOURCE, STEPS_RESOURCE].contains(resource)
-    )
 }
 
 /// Charges and visits the sources of one sheet record.
@@ -328,6 +312,39 @@ pub(crate) fn walk_map(
         }
     }
     Ok(())
+}
+
+/// The states a walk has visited, by identity. A check costs one step however
+/// many states the walk has seen: the set's hash is a fixed function of the
+/// state's address, without a random seed. The set holds at most `maximum`
+/// states, the step limit, and reserves each insertion fallibly.
+struct SeenStates {
+    states: HashSet<usize, BuildHasherDefault<DefaultHasher>>,
+    maximum: usize,
+}
+impl SeenStates {
+    fn new(maximum: usize) -> Self {
+        Self {
+            states: HashSet::default(),
+            maximum,
+        }
+    }
+    /// Records `state`, and returns whether it was not recorded before.
+    fn insert(&mut self, state: &State) -> Result<bool, CssSourceRetentionError> {
+        let identity = std::ptr::from_ref(state).addr();
+        if self.states.contains(&identity) {
+            return Ok(false);
+        }
+        if self.states.len() >= self.maximum {
+            return Err(CssSourceRetentionError::limit(
+                CssSourceRetentionResource::Storage,
+            ));
+        }
+        self.states
+            .try_reserve(1)
+            .map_err(|_| CssSourceRetentionError::allocation())?;
+        Ok(self.states.insert(identity))
+    }
 }
 
 fn reserve<T>(values: &mut Vec<T>, maximum: usize) -> Result<(), CssSourceRetentionError> {

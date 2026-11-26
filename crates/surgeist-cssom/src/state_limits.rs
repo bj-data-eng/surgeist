@@ -482,8 +482,7 @@ impl Census {
     ///
     /// The result equals [`Census::of`] on `state` when this census accounted
     /// for `state` before the insertions and only `inserted` has happened since.
-    /// Refusals are the same; the source walk steps are the same when the
-    /// retained payloads share one source snapshot. After a refusal this census
+    /// Refusals and source walk steps are the same. After a refusal this census
     /// accounts for neither state.
     pub(crate) fn extend(
         &mut self,
@@ -568,15 +567,13 @@ impl Census {
 
     /// Panics unless `outcome`, the answer of extending this census over the
     /// insertions into `state`, agrees with a census of the whole `state`:
-    /// equal totals and retained source bytes, equal walk steps when `steps`,
-    /// and the same refusal.
+    /// equal totals, retained source bytes and walk steps, and the same refusal.
     #[cfg(test)]
     pub(crate) fn assert_matches_whole_state(
         &self,
         outcome: &Result<Extension, CssomError>,
         state: &State,
         limits: &CssomLimits,
-        steps: bool,
     ) {
         let whole = Self::of(state, limits, std::iter::empty());
         match (outcome, whole) {
@@ -588,21 +585,10 @@ impl Census {
                     whole.sources.usage(),
                     "retained bytes"
                 );
-                if steps {
-                    assert_eq!(self.sources.steps(), whole.sources.steps(), "walk steps");
-                }
+                assert_eq!(self.sources.steps(), whole.sources.steps(), "walk steps");
             }
             (Err(extended), Err(whole)) => {
-                // The step total of a state with several source snapshots depends on
-                // the order its tables are walked in, so two source walk refusals
-                // (bytes, depth, storage, steps) need not agree there. With exact
-                // steps every refusal must be equal as a whole value.
-                let comparable = steps
-                    || !(crate::source_retention::is_source_refusal(extended)
-                        && crate::source_retention::is_source_refusal(&whole));
-                if comparable {
-                    assert_eq!(format!("{extended:?}"), format!("{whole:?}"), "refusal");
-                }
+                assert_eq!(format!("{extended:?}"), format!("{whole:?}"), "refusal");
             }
             (outcome, whole) => panic!(
                 "extended census answered {outcome:?}, whole state answered {:?}",
@@ -735,7 +721,6 @@ pub(crate) mod probe {
         static WHOLE_RUNS: Cell<usize> = const { Cell::new(0) };
         static WHOLE_STATE: Cell<bool> = const { Cell::new(false) };
         static CROSS_CHECK: Cell<bool> = const { Cell::new(true) };
-        static EXACT_STEPS: Cell<bool> = const { Cell::new(false) };
     }
 
     /// Whether adoption runs the census of the whole state after every rule
@@ -754,14 +739,6 @@ pub(crate) mod probe {
     }
     pub(crate) fn set_cross_check(value: bool) {
         CROSS_CHECK.with(|flag| flag.set(value));
-    }
-    /// Whether that comparison includes the walk steps, which agree only when
-    /// the retained payloads share one source snapshot (off by default).
-    pub(crate) fn exact_steps() -> bool {
-        EXACT_STEPS.with(Cell::get)
-    }
-    pub(crate) fn set_exact_steps(value: bool) {
-        EXACT_STEPS.with(|flag| flag.set(value));
     }
 
     /// Objects the census has examined and source walk steps it has charged.

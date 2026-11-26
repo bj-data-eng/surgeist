@@ -122,7 +122,7 @@ fn swallowed_refusal_stays_terminal_without_later_callbacks_or_visitor_work() {
 }
 
 #[test]
-fn comparison_refusal_stops_before_duplicate_or_distinct_source_decision() {
+fn source_step_refusal_stops_before_duplicate_or_distinct_source_decision() {
     let first = CssSourceSnapshot::new("a");
     let distinct = CssSourceSnapshot::new("a");
     for candidate in [&first, &distinct] {
@@ -131,7 +131,7 @@ fn comparison_refusal_stops_before_duplicate_or_distinct_source_decision() {
             if action == CssSourceRetentionAction::Step {
                 steps.set(steps.get() + 1);
             }
-            steps.get() != 3
+            steps.get() != 2
         };
         let mut collector = CssSourceRetention::with_admission(4096, 10, 10, &mut admit).unwrap();
         collector.source(&first).unwrap();
@@ -143,14 +143,14 @@ fn comparison_refusal_stops_before_duplicate_or_distinct_source_decision() {
             collector.source(candidate),
             Err(CssSourceRetentionError::caller_admission())
         );
-        assert_eq!(collector.sources.len(), 1);
-        assert_eq!(collector.steps(), 2);
+        assert_eq!(collector.bank.len(), 1);
+        assert_eq!(collector.steps(), 1);
         assert_eq!(collector.usage(), usage);
         assert_eq!(
             collector.complete_payload_bytes_with(|| Ok::<_, ()>(())),
             Ok(prefix_payload)
         );
-        assert_eq!(steps.get(), 3);
+        assert_eq!(steps.get(), 2);
     }
 }
 
@@ -159,12 +159,12 @@ fn admitted_collector_keeps_identity_visit_depth_and_payload_policies() {
     let first = CssSourceSnapshot::new("a");
     let distinct = CssSourceSnapshot::new("a");
     let mut admit = |_| true;
-    let mut collector = CssSourceRetention::with_admission(4096, 5, 1, &mut admit).unwrap();
+    let mut collector = CssSourceRetention::with_admission(4096, 3, 1, &mut admit).unwrap();
     collector.source(&first).unwrap(); // One source action.
-    collector.source(&first).unwrap(); // Source action plus identity comparison.
-    collector.source(&distinct).unwrap(); // Same two actions, distinct identity.
-    assert_eq!(collector.steps(), 5);
-    assert_eq!(collector.sources.len(), 2);
+    collector.source(&first).unwrap(); // One source action, recorded identity.
+    collector.source(&distinct).unwrap(); // One source action, distinct identity.
+    assert_eq!(collector.steps(), 3);
+    assert_eq!(collector.bank.len(), 2);
     assert_eq!(
         collector.usage().retained_bytes(),
         first.storage_usage().retained_bytes() + distinct.storage_usage().retained_bytes()
@@ -173,14 +173,14 @@ fn admitted_collector_keeps_identity_visit_depth_and_payload_policies() {
         .complete_payload_bytes_with(|| Ok::<_, ()>(()))
         .unwrap();
     assert_eq!(collector.complete_payload_bytes_admitted(), Ok(payload));
-    assert_eq!(collector.steps(), 5);
+    assert_eq!(collector.steps(), 3);
     assert_eq!(
         collector.source(&first),
         Err(CssSourceRetentionError::limit(
             crate::source::CssSourceRetentionResource::Visits
         ))
     );
-    assert_eq!(collector.steps(), 5);
+    assert_eq!(collector.steps(), 3);
     let reads = Cell::new(0);
     let mut depth_admit = |_| true;
     let mut depth = CssSourceRetention::with_admission(4096, 10, 1, &mut depth_admit).unwrap();
@@ -269,6 +269,17 @@ fn recursive_css_uses_the_same_tariff_and_stops_at_each_refused_action() {
     }
 }
 
+/// The length of an identity index for a bank of `capacity` snapshots: none
+/// for an empty bank, otherwise the smallest power of two that is at least
+/// twice the capacity.
+fn index_slots(capacity: usize) -> usize {
+    if capacity == 0 {
+        0
+    } else {
+        (capacity * 2).next_power_of_two()
+    }
+}
+
 #[test]
 fn replacement_scratch_reports_the_live_old_new_and_fixed_metadata_union() {
     let first = CssSourceSnapshot::new("a");
@@ -282,28 +293,124 @@ fn replacement_scratch_reports_the_live_old_new_and_fixed_metadata_union() {
     };
     let mut collector = CssSourceRetention::with_admission(4096, 1000, 10, &mut admit).unwrap();
     collector.source(&first).unwrap();
-    let first_capacity = collector.sources.capacity();
+    let first_capacity = collector.bank.capacity();
     for index in 1..first_capacity {
         collector
             .source(&CssSourceSnapshot::new(&index.to_string()))
             .unwrap();
     }
     collector.source(&second).unwrap();
-    let second_capacity = collector.sources.capacity();
+    let second_capacity = collector.bank.capacity();
     drop(collector);
     let fixed = std::mem::size_of::<CssSourceRetention<'_>>();
-    let temporary_header = std::mem::size_of::<Vec<CssSourceSnapshot>>();
+    let bank_header = std::mem::size_of::<Vec<CssSourceSnapshot>>();
+    let index_header = std::mem::size_of::<Vec<usize>>();
     let slot = std::mem::size_of::<CssSourceSnapshot>();
+    let word = std::mem::size_of::<usize>();
+    // Snapshots without an original backing need the bank and the snapshot index
+    // only. Each growth step requests, then receives, the new bank and index
+    // beside the old ones, with the temporary header of each.
+    let headers = bank_header + index_header;
+    let grown =
+        |old: usize, new: usize| (old + new) * slot + (index_slots(old) + index_slots(new)) * word;
     assert_eq!(reports.len(), 5);
     assert_eq!(reports[0], fixed);
-    assert_eq!(reports[1], fixed + temporary_header + slot);
-    assert_eq!(reports[2], fixed + temporary_header + first_capacity * slot);
+    assert_eq!(reports[1], fixed + headers + grown(0, 1));
+    assert_eq!(reports[2], reports[1]);
     assert_eq!(
         reports[3],
-        fixed + temporary_header + (first_capacity + first_capacity * 2) * slot
+        fixed + headers + grown(first_capacity, first_capacity * 2)
     );
     assert_eq!(
         reports[4],
-        fixed + temporary_header + (first_capacity + second_capacity) * slot
+        fixed + headers + grown(first_capacity, second_capacity)
     );
+}
+
+fn utf16_source(original: &std::sync::Arc<Vec<u16>>) -> CssSourceSnapshot {
+    crate::CssParser::default()
+        .parse_sheet_utf16(
+            original.clone(),
+            crate::source::CssUtf16InputLimits::default(),
+            || Ok::<_, ()>(()),
+        )
+        .unwrap()
+        .syntax()
+        .parse_source()
+        .unwrap()
+        .source()
+        .clone()
+}
+
+#[test]
+fn the_original_backing_index_is_allocated_and_reported_with_the_first_original() {
+    let word = std::mem::size_of::<usize>();
+    let slot = std::mem::size_of::<CssSourceSnapshot>();
+    let fixed = std::mem::size_of::<CssSourceRetention<'_>>();
+    let bank_header = std::mem::size_of::<Vec<CssSourceSnapshot>>();
+    let index_header = std::mem::size_of::<Vec<usize>>();
+    let original = std::sync::Arc::new(vec![97_u16]);
+    // Three snapshots of UTF-8 text, then one that has an original backing.
+    let plain = (0..3)
+        .map(|index| CssSourceSnapshot::new(&index.to_string()))
+        .collect::<Vec<_>>();
+    let backed = utf16_source(&original);
+    let mut reports = Vec::new();
+    let mut admit = |action| {
+        if let CssSourceRetentionAction::Scratch { live_bytes } = action {
+            reports.push(live_bytes);
+        }
+        true
+    };
+    let mut collector =
+        CssSourceRetention::with_admission(usize::MAX, 1000, 10, &mut admit).unwrap();
+    for source in &plain {
+        collector.source(source).unwrap();
+    }
+    // The bank holds three snapshots in room for four; its tables have eight slots.
+    assert_eq!(collector.bank.capacity(), 4);
+    let before = collector.bank.capacity();
+    collector.source(&backed).unwrap();
+    assert_eq!(collector.bank.capacity(), before);
+    drop(collector);
+    // Four growth steps happened for the first three snapshots (1, 2 and 4 snapshots of
+    // room, each requested and then actual), and one for the fourth snapshot, which
+    // allocates only the original index, sized for the room of four.
+    assert_eq!(reports.len(), 1 + 2 * 3 + 2);
+    let held = 4 * slot + 8 * word;
+    let original_index = 8 * word;
+    assert_eq!(
+        reports[7],
+        fixed + held + original_index + index_header,
+        "requested"
+    );
+    assert_eq!(reports[8], reports[7], "actual");
+    assert_eq!(
+        reports[6],
+        fixed + (2 + 4) * slot + (4 + 8) * word + bank_header + index_header
+    );
+}
+
+#[test]
+fn an_original_backing_with_the_first_snapshot_replaces_bank_and_both_indexes() {
+    let word = std::mem::size_of::<usize>();
+    let slot = std::mem::size_of::<CssSourceSnapshot>();
+    let fixed = std::mem::size_of::<CssSourceRetention<'_>>();
+    let headers =
+        std::mem::size_of::<Vec<CssSourceSnapshot>>() + 2 * std::mem::size_of::<Vec<usize>>();
+    let backed = utf16_source(&std::sync::Arc::new(vec![97_u16]));
+    let mut reports = Vec::new();
+    let mut admit = |action| {
+        if let CssSourceRetentionAction::Scratch { live_bytes } = action {
+            reports.push(live_bytes);
+        }
+        true
+    };
+    let mut collector =
+        CssSourceRetention::with_admission(usize::MAX, 1000, 10, &mut admit).unwrap();
+    collector.source(&backed).unwrap();
+    drop(collector);
+    // Room for one snapshot: two slots in each of the two indexes.
+    let expected = fixed + slot + 4 * word + headers;
+    assert_eq!(reports, [fixed, expected, expected]);
 }

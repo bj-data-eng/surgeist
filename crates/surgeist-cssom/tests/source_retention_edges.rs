@@ -188,10 +188,12 @@ fn linked_input_retains_the_entire_snapshot_and_deduplicates_repeated_links() {
 
 #[test]
 fn source_free_owner_has_exact_independent_traversal_work_and_no_byte_charge() {
+    // The walk charges one step to begin, one to pop the root state, one to check
+    // it against the states walked and one for its context: four steps.
     CssomStore::new(
         CssomLimits {
             max_retained_source_bytes: 0,
-            max_source_traversal_steps: 3,
+            max_source_traversal_steps: 4,
             max_source_traversal_depth: 0,
             ..Default::default()
         },
@@ -202,14 +204,14 @@ fn source_free_owner_has_exact_independent_traversal_work_and_no_byte_charge() {
         CssomStore::new(
             CssomLimits {
                 max_retained_source_bytes: 0,
-                max_source_traversal_steps: 2,
+                max_source_traversal_steps: 3,
                 ..Default::default()
             },
             CssomContext::default()
         ),
         Err(CssomError::Limit {
             resource: "retained source traversal steps",
-            maximum: 2
+            maximum: 3
         })
     ));
 }
