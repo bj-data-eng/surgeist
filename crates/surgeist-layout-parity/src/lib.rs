@@ -7,14 +7,18 @@
 //! does not depend on it.
 //!
 //! The public surface is the registered-edition admission that other crates use
-//! to qualify one captured case, and the entry points of the two executables.
-//! Everything else is private to the crate's own binary, example and tests.
+//! to qualify one captured case. The `browser-corpus` feature adds the generator
+//! and the qualification driver, which need the browser engine, with the entry
+//! points of the two executables. Everything else is private to the crate's own
+//! binary, example and tests.
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 mod browser_parity;
 mod browser_parity_modules;
+#[cfg(feature = "browser-corpus")]
 mod generate;
+#[cfg(feature = "browser-corpus")]
 mod qualify;
 
 use browser_parity_modules::*;
@@ -31,5 +35,7 @@ pub fn prepared_atomic_percentage_root() -> &'static str {
 /// The pinned Ahem font bytes that the registered browser captures were taken with.
 pub const AHEM_TTF: &[u8] = pinned_font::BYTES;
 
+#[cfg(feature = "browser-corpus")]
 pub use generate::run as run_generator;
+#[cfg(feature = "browser-corpus")]
 pub use qualify::run as run_qualification;

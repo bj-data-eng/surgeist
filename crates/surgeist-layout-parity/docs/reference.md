@@ -11,15 +11,19 @@ linked source files own their current definitions.
 | Package / library | `surgeist-layout-parity` / `surgeist_layout_parity` |
 | Version | `0.1.0` |
 | Rust edition / minimum version | `2024` / `1.99.1` |
-| Features | None |
-| Generator binary | `surgeist-layout-generate` |
-| Qualification example | `qualify-root-context` |
+| Default features | None |
+| Optional feature | `browser-corpus` |
+| Generator binary | `surgeist-layout-generate`, requiring `browser-corpus` |
+| Qualification example | `qualify-root-context`, requiring `browser-corpus` |
 | Publication | Not published |
 
 The library holds the parity support, the generator and the qualification driver.
-The binary and the example call it. Its public surface is the registered-edition
-admission in `portable_qualification`, the pinned Ahem font bytes, the root of the
-prepared atomic percentage edition, and the entry points of the two executables.
+The binary and the example call it. The default build holds the parity support and
+its public surface: the registered-edition admission in `portable_qualification`,
+the pinned Ahem font bytes and the root of the prepared atomic percentage edition.
+It builds `surgeist-generator` without its browser engine. The optional feature
+enables the browser engine, the `generate` and `qualify` modules and the entry
+points `run_generator` and `run_qualification`.
 The path/version requirements are in the manifest; resolved dependencies are in
 the shared [Cargo.lock](../../../Cargo.lock).
 
@@ -54,7 +58,7 @@ current captures, and live XML. It requires complete historical and live
 accounting and fresh registered qualification. The live census compares all
 generated captures through Native Layout and reports its failures separately.
 The named strict raw verdict uses the same inventory and fails on every raw
-mismatch or authority refusal. The generator's helper tests require Node.js.
+mismatch or authority refusal. The generator's and the qualification driver's tests require the `browser-corpus` feature, and the generator's helper tests also require Node.js.
 
 ## Local commands
 
@@ -67,12 +71,14 @@ Setting `CARGO_NET_OFFLINE=true` keeps Cargo dependency resolution offline.
 | Recipe | Observable operation |
 | --- | --- |
 | `just fmt` / `just fmt-check` | Format Rust / check Rust formatting |
-| `just check` / `just test` / `just clippy` | Cargo check, tests, or strict Clippy over the crate |
-| `just verify` | Formatting, check, test, and Clippy sequence |
+| `just check` / `just test` / `just clippy` | Cargo check, tests, or strict Clippy over the default configuration |
+| `just verify` | Default formatting, check, test, and Clippy sequence |
+| `just browser-check` / `just browser-test` / `just browser-clippy` | Corresponding all-target checks with `browser-corpus` |
+| `just verify-browser` | Browser-corpus check, test, and Clippy sequence |
 | `just parity-all` | Traverse the full checked-in corpus and enforce the strict raw verdict |
 | `just corpus-check` | Browser-free `check-corpus` with corpus and browser overrides cleared |
 | `just taffy-check` | Validate the existing pinned source cache and imported Taffy corpus |
 
 Clippy recipes use `-F unsafe-code -D warnings`; Cargo recipes use `-j 1 --offline
---locked`. Browser commands and environment variables are described in the
+--locked`. `corpus-check` and `taffy-check` enable `browser-corpus`. Browser commands and environment variables are described in the
 [browser parity guide](../tests/layout/browser_parity/README.md).

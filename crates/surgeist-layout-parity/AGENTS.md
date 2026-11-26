@@ -19,7 +19,7 @@ example. Layout fixtures that the layout tests read live in `surgeist-layout`.
 
 | Fact | Authoritative source |
 | --- | --- |
-| Package identity, dependencies and targets | [Cargo.toml](Cargo.toml) |
+| Package identity, dependencies, the `browser-corpus` feature and targets | [Cargo.toml](Cargo.toml) |
 | Public surface and module inventory | [src/lib.rs](src/lib.rs), [src/browser_parity_modules.rs](src/browser_parity_modules.rs) |
 | Golden parsing, the layout adapter and exact comparison | [src/browser_parity/](src/browser_parity/) with root [src/browser_parity.rs](src/browser_parity.rs) |
 | Registered-edition admission | [src/browser_parity/portable_qualification.rs](src/browser_parity/portable_qualification.rs) |
@@ -39,7 +39,10 @@ example. Layout fixtures that the layout tests read live in `surgeist-layout`.
 
 All Rust sources are in `src/`. The library holds the parity support, the
 generator and the qualification driver; the binary and the example are one-line
-callers, so each test runs in the library's unit-test target only. Tests of the
+callers, so each test runs in the library's unit-test target only. The generator
+and the qualification driver (`generate`, `qualify`, `run_generator`,
+`run_qualification`, the binary and the example) need the `browser-corpus`
+feature; the default build serves the root facade without the browser engine. Tests of the
 private support sit in `*_tests.rs` modules beside their owners. The strict raw
 verdict is `browser_parity::tests::runs_all_checked_in_browser_parity_xml`.
 
@@ -69,8 +72,11 @@ digest.
 
 ```sh
 cargo check -j 1 --offline --locked -p surgeist-layout-parity --all-targets
+cargo check -j 1 --offline --locked -p surgeist-layout-parity --features browser-corpus --all-targets
 cargo test -j 1 --offline --locked -p surgeist-layout-parity
+cargo test -j 1 --offline --locked -p surgeist-layout-parity --features browser-corpus
 cargo clippy -j 1 --offline --locked -p surgeist-layout-parity --all-targets -- -F unsafe-code -D warnings
+cargo clippy -j 1 --offline --locked -p surgeist-layout-parity --features browser-corpus --all-targets -- -F unsafe-code -D warnings
 cargo fmt -p surgeist-layout-parity -- --check
 ```
 
@@ -79,6 +85,6 @@ env -u SURGEIST_PARITY_FILTER SURGEIST_PARITY_RAW_EXACT=1 cargo test -j 1 --offl
 ```
 
 ```sh
-cargo run -j 1 --offline --locked -p surgeist-layout-parity --bin surgeist-layout-generate -- check-corpus
-cargo run -j 1 --offline --locked -p surgeist-layout-parity --bin surgeist-layout-generate -- check-taffy-corpus
+cargo run -j 1 --offline --locked -p surgeist-layout-parity --features browser-corpus --bin surgeist-layout-generate -- check-corpus
+cargo run -j 1 --offline --locked -p surgeist-layout-parity --features browser-corpus --bin surgeist-layout-generate -- check-taffy-corpus
 ```

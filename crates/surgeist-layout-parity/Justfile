@@ -10,7 +10,7 @@ fmt:
 fmt-check:
     @./scripts/run-cargo-task.sh fmt-check
 
-# Check every target.
+# Check every target of the default configuration.
 check:
     @./scripts/run-cargo-task.sh check
 
@@ -18,13 +18,29 @@ check:
 test:
     @./scripts/run-cargo-task.sh test
 
-# Lint every target.
+# Lint every target of the default configuration.
 clippy:
     @./scripts/run-cargo-task.sh clippy
 
-# Run all verification checks.
+# Run all default verification checks.
 verify:
-    @./scripts/run-verification.sh
+    @./scripts/run-verification.sh default
+
+# Check the browser-corpus feature configuration.
+browser-check:
+    @./scripts/run-cargo-task.sh browser-check
+
+# Test the browser-corpus feature configuration.
+browser-test:
+    @./scripts/run-cargo-task.sh browser-test
+
+# Lint the browser-corpus feature configuration.
+browser-clippy:
+    @./scripts/run-cargo-task.sh browser-clippy
+
+# Run all browser-corpus verification checks.
+verify-browser:
+    @./scripts/run-verification.sh browser
 
 # Run the full checked-in browser-parity corpus.
 parity-all:

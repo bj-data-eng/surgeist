@@ -5,7 +5,7 @@ This example uses the maintained Layout adapter, [source inventory](corpus.toml)
 Run one ordinary declared source with:
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --fixture html/subgrid/subgrid_baseline_inline_column_inner_col1_first.html
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --fixture html/subgrid/subgrid_baseline_inline_column_inner_col1_first.html
 ~~~
 
 Omitting the fixture selects the ordinary geometry cohort. The original Grid
@@ -24,13 +24,13 @@ rounding phase and raw DOM-size invariance. It does not admit the separate
 ElementScrollSizes Native channel for nonhorizontal boxes.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --paired-geometry-capture --fixture html/qualification/fixed-orthogonal-translation-0-75.html
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --paired-geometry-capture --fixture html/qualification/fixed-orthogonal-translation-0-75.html
 ~~~
 
 ## Element scroll sizes
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --element-scroll-size-diagnostics --fixture html/grid/grid_fit_content_percent_indefinite_max_content_hidden.html
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --element-scroll-size-diagnostics --fixture html/grid/grid_fit_content_percent_indefinite_max_content_hidden.html
 ~~~
 
 This explicit request adds the actual DOM `clientWidth`, `clientHeight`,
@@ -51,7 +51,7 @@ must agree while the declared world-corner phase change remains observable.
 ## Stylesheet custody
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --stylesheet-custody --fixture html/qualification/fixed-grid.html
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --stylesheet-custody --fixture html/qualification/fixed-grid.html
 ~~~
 
 This mode requires one Generated declaration without named-font certificates. It checks successful repeated setup, actual CSSOM rule changes without text changes, unknown and adopted sheets, and replacement by an identical STYLE clone. It restores the original STYLE node and real rules after each mutation, then compares a fresh complete capture with the pristine capture.
@@ -61,7 +61,7 @@ Detaching a stylesheet can create a new browser FontFace generation even when th
 ## Loaded-font custody
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --font-custody --fixture html/subgrid/subgrid_baseline_inline_column_inner_col1_first.html
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --font-custody --fixture html/subgrid/subgrid_baseline_inline_column_inner_col1_first.html
 ~~~
 
 This mode requires a Generated declaration with a positive named-font demand: atomic paragraph certificates, own-Grid reference records, or both. The one source inventory declares their separate counts/owner paths, and every variant must carry the actual complete profile. Grid-only sources such as `html/qualification/grid-reference-mixed.html` use the same command and retained loaded face; Grid name selection does not borrow paragraph zero-strut metrics. It does not detach or replace the stylesheet. It adds one real competing FontFace from the already owned Ahem rule, requires the exact competing-resource refusal, repeats the actual configure and font-preparation owners, deletes only the introduced face, and requires recovery with the same original loaded face/state. A temporary observer delegates the retained face's actual load method and rejects any reload during repetition/recovery; its original method property is restored afterward.
@@ -77,9 +77,9 @@ From the repository root, first verify the actual offline source import using th
 explicit corpus path (the generator default is relative to its working directory):
 
 ~~~sh
-SURGEIST_LAYOUT_BROWSER_PARITY_ROOT=crates/surgeist-layout-parity/tests/layout/browser_parity cargo run --offline --locked -j 1 -p surgeist-layout-parity --bin surgeist-layout-generate -- check-taffy-corpus
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-root-context-v4
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-root-context-v4
+SURGEIST_LAYOUT_BROWSER_PARITY_ROOT=crates/surgeist-layout-parity/tests/layout/browser_parity cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --bin surgeist-layout-generate -- check-taffy-corpus
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --publish-root-context-v4
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-root-context-v4
 ~~~
 
 Publish exclusively creates the fixed final directory
@@ -151,9 +151,9 @@ Use the named derivation command to revalidate a stored Exact, Specialized or
 Matching edition without capturing new browser observations:
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --derive-published-qualification grid-static-position-differences > /tmp/grid-static-position-qualification.json
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --derive-published-qualification prepared-range-qualification > /tmp/prepared-range-qualification.json
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --derive-published-qualification box-controls > /tmp/box-controls-qualification.json
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --derive-published-qualification grid-static-position-differences > /tmp/grid-static-position-qualification.json
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --derive-published-qualification prepared-range-qualification > /tmp/prepared-range-qualification.json
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --derive-published-qualification box-controls > /tmp/box-controls-qualification.json
 ~~~
 
 The command retains the producing helper and all source, history, XML, report,
@@ -188,8 +188,8 @@ directory, the verified original source import, and the cached pinned browser.
 Check an existing edition with the second command.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-matching-geometry box-controls
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-matching-geometry box-controls
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --publish-matching-geometry box-controls
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-matching-geometry box-controls
 ~~~
 
 Publication uses the same Generator lifecycle and retains failed candidates without a
@@ -210,7 +210,7 @@ the variant. Historical XML retains the basename and variant. See the
 for the retained font's resource and license information.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-matching-geometry fri05-computed-overflow
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-matching-geometry fri05-computed-overflow
 ~~~
 
 The [FRI06 Subgrid edition](../../tests/layout/browser_parity/captured/fri06-subgrid-representatives/qualification.json)
@@ -219,7 +219,7 @@ The comparison checks ordinary box geometry, the six loaded-font paragraph
 and BR observations, and the declared Grid references for each case.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-matching-geometry fri06-subgrid-representatives
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-matching-geometry fri06-subgrid-representatives
 ~~~
 
 The [FRI07 ordinary Flex box edition](../../tests/layout/browser_parity/captured/fri07-ordinary-flex-boxes/qualification.json)
@@ -231,7 +231,7 @@ authored automatic margins and insets and compare the complete historical
 rectangle trees.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-matching-geometry fri07-ordinary-flex-boxes
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-matching-geometry fri07-ordinary-flex-boxes
 ~~~
 
 The [FRI07 intrinsic Flex Text edition](../../tests/layout/browser_parity/captured/fri07-intrinsic-flex-text/qualification.json)
@@ -245,7 +245,7 @@ The edition also retains the shared capture TTF described in the
 [canonical TTF provenance](../../tests/layout/browser_parity/fonts/PROVENANCE.md).
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-matching-geometry fri07-intrinsic-flex-text
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-matching-geometry fri07-intrinsic-flex-text
 ~~~
 
 The [original inline Subgrid alignment edition](../../tests/layout/browser_parity/captured/original-inline-subgrid-alignment/qualification.json)
@@ -257,7 +257,7 @@ indefinite block space. It compares every historical box, including the item
 offsets in the horizontal and orthogonal Subgrids.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-matching-geometry original-inline-subgrid-alignment
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-matching-geometry original-inline-subgrid-alignment
 ~~~
 
 The [positioned RTL Subgrid edition](../../tests/layout/browser_parity/captured/original-relative-rtl-subgrid-positioned/qualification.json)
@@ -268,7 +268,7 @@ comparison covers the Body and every Grid box, with a wider text advance
 control for the same geometry.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-matching-geometry original-relative-rtl-subgrid-positioned
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-matching-geometry original-relative-rtl-subgrid-positioned
 ~~~
 
 The [FRI08 plain-box manifest edition](../../tests/layout/browser_parity/captured/fri08-manifest-plain-box-predecessors/qualification.json)
@@ -277,7 +277,7 @@ column autoflow. The focused manifest test checks active membership and
 replays all twelve source-bound historical rectangle trees.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-matching-geometry fri08-manifest-plain-box-predecessors
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-matching-geometry fri08-manifest-plain-box-predecessors
 ~~~
 
 The [remaining plain-box manifest edition](../../tests/layout/browser_parity/captured/fri08-manifest-plain-box-sources/qualification.json)
@@ -285,7 +285,7 @@ covers forty variants across ten Grid, Grid Lanes, and Subgrid sources.
 Together the two plain-box editions cover all 52 active plain-box variants.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-matching-geometry fri08-manifest-plain-box-sources
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-matching-geometry fri08-manifest-plain-box-sources
 ~~~
 
 The [FRI08 wrapped-text Subgrid edition](../../tests/layout/browser_parity/captured/fri08-wrapped-subgrid-text/qualification.json)
@@ -298,7 +298,7 @@ records the stylesheet font source and license. The shared capture input
 inventory also retains the separate Ahem TTF.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-matching-geometry fri08-wrapped-subgrid-text
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-matching-geometry fri08-wrapped-subgrid-text
 ~~~
 
 The [FRI08 intrinsic Grid Lanes edition](../../tests/layout/browser_parity/captured/fri08-grid-lanes-monospace-text/qualification.json)
@@ -311,7 +311,7 @@ Replay uses these measurements at the original Layout constraints and
 checks all historical box observations.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-matching-geometry fri08-grid-lanes-monospace-text
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-matching-geometry fri08-grid-lanes-monospace-text
 ~~~
 
 ## Grid Lanes original diagnostics
@@ -325,7 +325,7 @@ matching authority.
 Check the retained edition without a browser:
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-grid-lanes-original-diagnostics
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-grid-lanes-original-diagnostics
 ~~~
 
 The receipt records the validator at issuance. The check authenticates that
@@ -344,7 +344,7 @@ axis in each of its two Grid Lanes containers.
 Check the matching edition and its original diagnostics without a browser:
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-matching-geometry grid-lanes-axis-controls
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-matching-geometry grid-lanes-axis-controls
 ~~~
 
 The check requires zero browser comparison differences for every control. It
@@ -364,8 +364,8 @@ observations and both Native packet channels. Browser XML matches the sealed
 root-context capture byte for byte.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-grid-static-position-differences
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-grid-static-position-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --publish-grid-static-position-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-grid-static-position-differences
 ~~~
 
 ## Relative inset edition
@@ -376,8 +376,8 @@ checks every requested coordinate and size, both Native packet channels, and
 the three exact block-axis differences per variant.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-relative-inset-differences
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-relative-inset-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --publish-relative-inset-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-relative-inset-differences
 ~~~
 
 ## Wrapping world-corner edition
@@ -389,8 +389,8 @@ and retains both Native packet channels for every box. The catalogue pins
 the superseded reference map and selects this edition for all four variants.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-wrapping-world-corner-differences
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-wrapping-world-corner-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --publish-wrapping-world-corner-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-wrapping-world-corner-differences
 ~~~
 
 ## Original fixed-width Flex parent qualification
@@ -403,8 +403,8 @@ Grid-local subtree, and Native replay compares the whole parent tree with the
 signed Grid offset.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --fixture html/grid/grid_available_space_smaller_than_min_content.html
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-original-flex-parent-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --fixture html/grid/grid_available_space_smaller_than_min_content.html
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-original-flex-parent-qualification
 ~~~
 
 The first command captures one original with the cached browser. The second
@@ -421,8 +421,8 @@ retain the historical Grid-local geometry. Each browser rectangle agrees
 before and after rounding, and Native replay compares both phases.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --fixture html/grid/chrome_issue_325928327.html
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-original-percentage-flex-parent-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --fixture html/grid/chrome_issue_325928327.html
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-original-percentage-flex-parent-qualification
 ~~~
 
 The first command captures the four variants with the pinned browser. The
@@ -439,7 +439,7 @@ static offsets. The comparison checks the complete root-local rectangle trees
 against the historical observations and Native layout.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-original-block-axes-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-original-block-axes-qualification
 ~~~
 
 The check replays the retained edition without a browser. The publisher
@@ -456,7 +456,7 @@ comparison checks all 80 root-local rectangle trees against the historical
 observations and Native layout.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-original-flex-axes-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-original-flex-axes-qualification
 ~~~
 
 The check replays the retained edition without a browser. The publisher
@@ -472,7 +472,7 @@ writing modes and static frame in the 800 × 600 initial containing block.
 Qualification compares complete historical and Native rectangle trees.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-original-grid-axes-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-original-grid-axes-qualification
 ~~~
 
 The check replays the retained edition without a browser. The publisher
@@ -488,7 +488,7 @@ frame, fixed Grid tracks and gaps, inherited axes and diagonal cell placement.
 Qualification compares complete historical and Native rectangle trees.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-original-subgrid-axes-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-original-subgrid-axes-qualification
 ~~~
 
 The check replays the retained edition without a browser. The publisher
@@ -504,8 +504,8 @@ body-relative placement and all 16 Grid subtree boxes. Separate capture rules
 select direction and box sizing for each variant.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --fixture html/subgrid/subgrid_gap_percentage_border_bottom.html
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-original-subgrid-body-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --fixture html/subgrid/subgrid_gap_percentage_border_bottom.html
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-original-subgrid-body-qualification
 ~~~
 
 The first command runs a focused live capture. The second replays the
@@ -524,8 +524,8 @@ across both directions and box modes. The historical generic-font captures
 supply a separate check of the container and atomic sizes.
 
 ~~~sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --fixture html/block/fri06_atomic_inline_percentage_block_size.html
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-prepared-atomic-percentage-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --fixture html/block/fri06_atomic_inline_percentage_block_size.html
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-prepared-atomic-percentage-qualification
 ~~~
 
 The first command captures from the cached browser. The second replays the

@@ -25,5 +25,3 @@ pub fn surgeist_layout_parity::portable_qualification::EditionRun::selected_case
 pub fn surgeist_layout_parity::portable_qualification::admit_registered(owner: &std::path::Path) -> core::result::Result<surgeist_layout_parity::portable_qualification::AdmittedRegistry, surgeist_layout_parity::browser_parity::support::exact_differences::QualificationError>
 pub const surgeist_layout_parity::AHEM_TTF: &[u8]
 pub fn surgeist_layout_parity::prepared_atomic_percentage_root() -> &'static str
-pub fn surgeist_layout_parity::run_generator() -> std::process::ExitCode
-pub fn surgeist_layout_parity::run_qualification() -> core::result::Result<(), alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>>

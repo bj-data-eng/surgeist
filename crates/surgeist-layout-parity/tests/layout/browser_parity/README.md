@@ -259,16 +259,16 @@ qualification test reports partial coverage when filtered.
 The publication owner creates and validates each immutable edition.
 
 ```sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-canonical-box-differences
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-canonical-box-differences
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-measured-grid-differences
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-measured-grid-differences
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-flex-text-differences
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-flex-text-differences
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-prepared-range-qualification
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-prepared-range-qualification
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --publish-flex-composition-qualification
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-flex-composition-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --publish-canonical-box-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-canonical-box-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --publish-measured-grid-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-measured-grid-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --publish-flex-text-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-flex-text-differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --publish-prepared-range-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-prepared-range-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --publish-flex-composition-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-flex-composition-qualification
 ```
 
 Publication uses the already-acquired pinned browser and refuses an existing
@@ -292,8 +292,8 @@ this tooling requirement.
 Regenerate XML fixtures from constrained HTML fixtures:
 
 ```sh
-cargo run --locked --offline -j 1 -p surgeist-layout-parity --bin surgeist-layout-generate -- generate
-CARGO_NET_OFFLINE=true SURGEIST_BROWSER_PATH=tmp/surgeist-browser/.../Google\ Chrome\ for\ Testing cargo run --locked --offline -j 1 -p surgeist-layout-parity --bin surgeist-layout-generate -- generate-existing
+cargo run --locked --offline -j 1 -p surgeist-layout-parity --features browser-corpus --bin surgeist-layout-generate -- generate
+CARGO_NET_OFFLINE=true SURGEIST_BROWSER_PATH=tmp/surgeist-browser/.../Google\ Chrome\ for\ Testing cargo run --locked --offline -j 1 -p surgeist-layout-parity --features browser-corpus --bin surgeist-layout-generate -- generate-existing
 ```
 
 `generate` resolves the manifest-owned Chrome-for-Testing pin and may use the
@@ -315,8 +315,8 @@ corpus verification evidence.
 Import or verify the pinned Taffy green baseline:
 
 ```sh
-cargo run --locked --offline -j 1 -p surgeist-layout-parity --bin surgeist-layout-generate -- import-taffy
-cargo run --locked --offline -j 1 -p surgeist-layout-parity --bin surgeist-layout-generate -- check-taffy-corpus
+cargo run --locked --offline -j 1 -p surgeist-layout-parity --features browser-corpus --bin surgeist-layout-generate -- import-taffy
+cargo run --locked --offline -j 1 -p surgeist-layout-parity --features browser-corpus --bin surgeist-layout-generate -- check-taffy-corpus
 ```
 
 The Taffy baseline is acquired at the exact repository/revision declared in
@@ -361,9 +361,11 @@ Unsupported browser features are not silently skipped. A fixture outside the
 closed native source/font/context profile remains visible with a classified
 unsupported result; historical measured-width text cannot enter production Text.
 
-The supported entry point is this crate's thin `surgeist-layout-generate` binary.
-The crate depends on the sibling workspace `surgeist-generator` at version
-`=0.2.0` with `browser-corpus`; `surgeist-layout` does not depend on this crate. The shared crate owns acquisition,
+The supported entry point is this crate's thin `surgeist-layout-generate` binary,
+enabled by the `browser-corpus` feature. The feature forwards to the sibling
+workspace `surgeist-generator` at version `=0.2.0`; default builds, including the
+facade's, do not include the browser tooling graph. `surgeist-layout` does not
+depend on this crate. The shared crate owns acquisition,
 browser processes, provenance, accounting, and publication. Layout owns
 document/helper preparation, measurement decoding, unsupported classification,
 and XML serialization.
@@ -428,8 +430,8 @@ compares the full report byte for byte. The
 defines the policy and source bindings.
 
 ```sh
-cargo test --offline --locked -j 1 -p surgeist-layout-parity --lib prepared_range_qualification_accepts_only_the_declared_rtl_pdi_differences
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --prepared-range-capture --fixture html/block/prepared_text_continuity_bidi.html
+cargo test --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --lib prepared_range_qualification_accepts_only_the_declared_rtl_pdi_differences
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --prepared-range-capture --fixture html/block/prepared_text_continuity_bidi.html
 ```
 
 The second command selects the prepared Range profile, uses the pinned browser,
@@ -445,9 +447,9 @@ compares two bands per variant across eight original variants. Its font comes fr
 See the [prepared-input and observation contract](measurement-protocol.md#authentic-prepared-text-input).
 
 ```sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-horizontal-br-font-band-qualification
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-vertical-br-font-band-qualification
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --check-published-empty-line-br-font-band-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-horizontal-br-font-band-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-vertical-br-font-band-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --check-published-empty-line-br-font-band-qualification
 ```
 
 Root-context capture is versioned separately from the unchanged prepared font/source
@@ -469,7 +471,7 @@ and the exact differences assigned to each policy.
 Run the browser-free replay from the workspace root.
 
 ```sh
-cargo test --offline --locked -j 1 -p surgeist-layout-parity --lib retained_sideways_flex_replay_qualifies_all_four_variants
+cargo test --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --lib retained_sideways_flex_replay_qualifies_all_four_variants
 ```
 
 To regenerate the comparison, run the focused capture with the pinned browser
@@ -484,7 +486,7 @@ environment and its exact per-variant input projections. Published replay
 checks its separate publication contract and producing inputs.
 
 ```sh
-cargo run --offline --locked -j 1 -p surgeist-layout-parity --example qualify-root-context -- --fixture html/flex/fri07_flex_composition.html
+cargo run --offline --locked -j 1 -p surgeist-layout-parity --features browser-corpus --example qualify-root-context -- --fixture html/flex/fri07_flex_composition.html
 ```
 
 On macOS arm64, the separate

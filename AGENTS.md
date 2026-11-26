@@ -81,7 +81,8 @@ codecs, expectations, seeds and regressions; benchmarking is outside its scope.
 Generator owns shared CSS/browser-corpus mechanics; consumers retain semantic
 conversion and corpus adapters. `surgeist-layout-parity` owns Layout's browser
 corpus, golden generator and parity support over Layout's public API; the facade
-uses it only as a development dependency of one example.
+uses it only as a development dependency of one example, without its
+`browser-corpus` feature.
 
 The former retained owner and style implementation are removed. Planned
 selectors, cascade and rebuilt style retain their separate matching, precedence

@@ -28,7 +28,7 @@ case "${task}" in
         unset SURGEIST_BROWSER_PATH
         unset SURGEIST_BROWSER_CACHE
         unset SURGEIST_BROWSER_VERSION
-        exec cargo run -j 1 --offline --locked -p surgeist-layout-parity --bin surgeist-layout-generate -- check-corpus
+        exec cargo run -j 1 --offline --locked -p surgeist-layout-parity --features browser-corpus --bin surgeist-layout-generate -- check-corpus
         ;;
     taffy-check)
         unset SURGEIST_LAYOUT_BROWSER_PARITY_ROOT
@@ -36,7 +36,7 @@ case "${task}" in
         unset SURGEIST_BROWSER_PATH
         unset SURGEIST_BROWSER_CACHE
         unset SURGEIST_BROWSER_VERSION
-        exec cargo run -j 1 --offline --locked -p surgeist-layout-parity --bin surgeist-layout-generate -- check-taffy-corpus
+        exec cargo run -j 1 --offline --locked -p surgeist-layout-parity --features browser-corpus --bin surgeist-layout-generate -- check-taffy-corpus
         ;;
     *)
         printf 'Unknown task: %s\n' "${task}" >&2
