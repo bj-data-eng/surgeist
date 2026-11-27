@@ -38,12 +38,20 @@ spelling report only Attributes. Failed/cancelled edits roll back both domains.
 
 ## Frame and Iframe
 
-Native HTML Frame retains the actual initially null child-content relationship,
-read through `frame_null_content()`. Its content document/window are null; it
-potentially delays load by type but causes no actual child load delay. Frame
-post-connection runs after insertion/common steps and only when still
-shadow-including connected, using the actual node document's known-null browsing
-context. That source guard returns before creating a child or processing src.
+The ordinary and namespace-aware factories initialize detached Frame and
+Iframe nodes in the receiving Document, including after hosted teardown.
+Their creation Global comes from that Document's qualified retained facts.
+Connection uses the existing hosted child hook when the current Document
+qualifies. Authored fragment installation into an ever-hosted Document
+requires its own composed child hook before it can admit Frame or Iframe.
+Clone/import retains its separate destination admission.
+
+Native HTML Frame starts with a null child-content relationship, read through
+`child_navigable()`. Its initial content Document and Window are null. Frame
+potentially delays load by type, and the null child contributes no load delay.
+Frame post-connection runs after insertion and common steps while the node is
+still shadow-including connected. A known-null browsing context in the current
+node Document returns before creating a child or processing src.
 Exact null-namespace src changes and removing steps consume HTML's null-content
 decisions without URL interpretation, child destruction or navigation effects.
 Removal visits the actual ordinary and owned shadow subtree after detachment.
@@ -52,18 +60,18 @@ adoption preserves state and IDs while changing the real node document. Frame
 owns no additional strings and fabricates no Window, child identity or host
 capability.
 
-Native HTML Iframe retains HTML's actual fresh never-browsing-context,
-unprocessed/null-child state, read through `iframe_native_state()`. Its lazy
-navigation flag is false; pending timing fields and lazy-load resumption are
-null. It potentially delays load but has no actual child load delay. Frame and
+Native HTML Iframe exposes its fresh intrinsic tuple through
+`iframe_initial_state()` and its null child through `child_navigable()`. Its
+lazy navigation flag starts false. Pending timing fields and lazy-load
+resumption start null. It potentially delays load by type, and the null child
+contributes no load delay. Frame and
 Iframe share the canonical connected-subtree and removing hooks, with each
 family consuming its own HTML decision. The actual current node document's
 absent browsing context returns before sandbox parsing and child creation.
-Exact src/srcdoc/sandbox changes preserve the null-child phase; loading changes
-consume the shared language interpreter and eager-transition guard before the
-actual null resumption returns. Raw sandbox absence, empty content and tokens
-remain distinct attributes, not a numeric live sandbox policy. This admits no
-navigation, resource handle, active policy or context-creation transition.
+While the child is null, exact src/srcdoc/sandbox changes preserve that phase.
+Loading changes consume the shared language interpreter and eager-transition
+guard before the actual null resumption returns. Raw sandbox absence, empty
+content and tokens remain distinct attribute values.
 Clone/import-as-clone creates a fresh element and applies copied
 attributes; adoption and immutable copying preserve existing family state.
 Current null content alone never justifies resetting processed retained history.

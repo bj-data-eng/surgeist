@@ -27,6 +27,13 @@ pub(crate) use groups::{
     FormedElement, HostedContent, NonceSlot, NonceUpdate,
 };
 
+pub(crate) enum NativeElementPurpose {
+    DetachedFactory,
+    AuthoredInstallation,
+    Clone,
+    RegisteredConstructor,
+}
+
 fn original_string(
     value: &DocumentString,
     budget: Option<&Formation>,
@@ -264,12 +271,13 @@ impl DomElement {
         name: Arc<Payload<ElementName>>,
         saved_is: Option<&DocumentString>,
         environment: crate::internal::document::DomDocumentEnvironment,
+        purpose: NativeElementPurpose,
         formation: ElementFormation<'_>,
     ) -> Result<FormedElement, DomError> {
         let saved_is = saved_is
             .map(|value| formation::share_listed(value, formation.budget, formation.cancel))
             .transpose()?;
-        Self::initialize(name, saved_is, environment, formation)
+        Self::initialize(name, saved_is, environment, purpose, formation)
     }
 
     pub(crate) fn failed_autonomous_construction(
@@ -311,7 +319,13 @@ impl DomElement {
             .saved_is()
             .map(|value| formation::share_listed(value, formation.budget, formation.cancel))
             .transpose()?;
-        Self::initialize(name, saved_is, environment, formation)
+        Self::initialize(
+            name,
+            saved_is,
+            environment,
+            NativeElementPurpose::Clone,
+            formation,
+        )
     }
 
     /// Form the native state for one content attribute mutation.
@@ -364,6 +378,7 @@ impl DomElement {
         name: Arc<Payload<ElementName>>,
         saved_is: Option<DocumentString>,
         environment: crate::internal::document::DomDocumentEnvironment,
+        purpose: NativeElementPurpose,
         mut formation: ElementFormation<'_>,
     ) -> Result<FormedElement, DomError> {
         let budget = formation.budget;
@@ -372,21 +387,18 @@ impl DomElement {
             &name.value.value,
             |_| formation::step(budget, cancelled),
         )?;
-        if environment.has_ever_had_navigable()
+        let requirement = initialization.requirement();
+        let frame_outside_factory = !matches!(purpose, NativeElementPurpose::DetachedFactory)
             && matches!(
-                initialization.requirement(),
-                Requirement::KnownHtml(KnownHtmlElement::Iframe)
-                    | Requirement::HtmlFrame
-                    | Requirement::SvgScript
-            )
+                requirement,
+                Requirement::HtmlFrame | Requirement::KnownHtml(KnownHtmlElement::Iframe)
+            );
+        if environment.has_ever_had_navigable()
+            && (requirement == Requirement::SvgScript || frame_outside_factory)
         {
-            // Child creation and SVG execution/notification owners are not
-            // supplied by the admitted native Global/Details profile.
-            return Err(DomError::NativeInitializationRequired(
-                initialization.requirement(),
-            ));
+            return Err(DomError::NativeInitializationRequired(requirement));
         }
-        let family = match initialization.requirement() {
+        let family = match requirement {
             Requirement::GenericElement
             | Requirement::CommonHtml
             | Requirement::CommonSvg
@@ -403,9 +415,6 @@ impl DomElement {
                 )?)
             }
             Requirement::KnownHtml(KnownHtmlElement::Iframe) => {
-                // Every admitted target Document has the actual native never-BC
-                // environment. This is fresh element creation, not reconstruction
-                // from current null content or missing imported metadata.
                 NativeFamily::Iframe(family::IframeState::fresh())
             }
             Requirement::KnownHtml(KnownHtmlElement::Script) => NativeFamily::Script,

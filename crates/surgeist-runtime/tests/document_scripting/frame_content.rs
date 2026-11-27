@@ -355,6 +355,51 @@ pub(super) fn frame_content_follows_native_child_edges_and_identity() {
     ));
 }
 
+pub(super) fn hosted_frame_factory_admits_customized_options() {
+    use surgeist_html::{elements::native::HtmlElementClass, vocabulary::KnownHtmlElement};
+
+    let (session, top) = setup();
+    let mut host = attach(session, top);
+    let permit = host.permit().unwrap();
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+            class FactoryIframe extends HTMLIFrameElement {}
+            globalThis.FactoryIframe = FactoryIframe;
+            customElements.define('x-factory-iframe', FactoryIframe, {extends: 'iframe'});
+            const iframe = document.createElement('iframe', {is: 'x-factory-iframe'});
+            if (!(iframe instanceof FactoryIframe) || iframe.ownerDocument !== document ||
+                iframe.parentNode !== null || iframe.contentWindow !== null)
+                return 'the customized Document factory must admit detached iframe state';
+            return 'ok';
+        })()"#
+        ),
+        "ok"
+    );
+    let before = host.snapshot().unwrap();
+    let result = host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&"new FactoryIframe()".encode_utf16().collect::<Vec<_>>())
+            .map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("expected the standalone native construction boundary: {result:?}");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(
+                DomError::NativeInitializationRequired(HtmlElementClass::KnownHtml(
+                    KnownHtmlElement::Iframe
+                ))
+            ))
+        ))
+    ));
+    assert_eq!(host.snapshot().unwrap().stamp(), before.stamp());
+}
+
 pub(super) fn sandboxed_iframe_content_distinguishes_null_from_unavailable_proxy() {
     let (mut session, top) = setup();
     let document = top.document();

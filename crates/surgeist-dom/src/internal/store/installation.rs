@@ -478,7 +478,7 @@ impl Dom {
                 let key = if let HtmlNodeKind::Element(element) = original.kind() {
                     control.name(element.name())?;
                     let formed = draft
-                        .native_element_components(
+                        .form_authored_element(
                             element.name(),
                             draft
                                 .document_metadata(document)

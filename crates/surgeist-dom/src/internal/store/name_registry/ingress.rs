@@ -1,7 +1,7 @@
 //! Canonical name binding at DOM-owned ingress. Language validation and case
 //! processing finish before immutable owner-qualified values enter a node.
 use super::super::*;
-use crate::internal::name::DomQualifiedName;
+use crate::internal::{element::NativeElementPurpose, name::DomQualifiedName};
 use surgeist_html::values::HtmlNameInput;
 use surgeist_html::values::{Namespace, QualifiedName};
 
@@ -309,6 +309,7 @@ impl Draft {
             name,
             options.is.as_ref(),
             document.document_environment(),
+            NativeElementPurpose::DetachedFactory,
             budget,
             cancel,
         )
@@ -431,7 +432,7 @@ impl Draft {
         Ok(name)
     }
 
-    pub(in crate::internal::store) fn native_element_components(
+    pub(in crate::internal::store) fn form_authored_element(
         &self,
         raw: &(impl HtmlNameInput + ?Sized),
         environment: crate::internal::document::DomDocumentEnvironment,
@@ -443,6 +444,7 @@ impl Draft {
             self.bind_name(raw, budget, cancel)?,
             None,
             environment,
+            NativeElementPurpose::AuthoredInstallation,
             budget,
             cancel,
         )
@@ -453,6 +455,7 @@ impl Draft {
         name: DomQualifiedName,
         saved_is: Option<&DocumentString>,
         environment: crate::internal::document::DomDocumentEnvironment,
+        purpose: NativeElementPurpose,
         budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<crate::internal::element::FormedElement, DomError> {
@@ -468,7 +471,7 @@ impl Draft {
             cancel,
             &mut admit,
         );
-        let mut formed = DomElement::native(name, saved_is, environment, formation)?;
+        let mut formed = DomElement::native(name, saved_is, environment, purpose, formation)?;
         formed.children.name = Some(custody);
         Ok(formed)
     }

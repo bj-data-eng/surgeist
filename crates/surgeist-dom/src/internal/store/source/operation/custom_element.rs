@@ -574,6 +574,7 @@ impl Operation {
                 self.draft
                     .document_metadata(document)?
                     .document_environment(),
+                crate::internal::element::NativeElementPurpose::DetachedFactory,
                 budget.as_ref(),
                 cancel,
             )?;
@@ -1230,10 +1231,19 @@ impl Dom {
         let draft_limits = draft
             .source_limits
             .ok_or(DomError::InvalidSourceOperation)?;
+        let purpose = match form_association {
+            FormAssociationTiming::PendingFactoryResult => {
+                crate::internal::element::NativeElementPurpose::DetachedFactory
+            }
+            FormAssociationTiming::AcceptedConstruction { .. } => {
+                crate::internal::element::NativeElementPurpose::RegisteredConstructor
+            }
+        };
         let formed = draft.form_native_element(
             name,
             saved_is.as_ref(),
             draft.document_metadata(document)?.document_environment(),
+            purpose,
             budget.as_ref(),
             cancel,
         )?;

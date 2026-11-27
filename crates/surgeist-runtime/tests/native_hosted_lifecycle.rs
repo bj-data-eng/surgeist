@@ -1472,10 +1472,8 @@ fn unsupported_child_navigable_and_svg_processing_profiles_refuse_connection_ato
             DomError::SvgScriptProcessingUnavailable,
         ),
     ] {
-        // The selected native hosted profile refuses direct initialization; it
-        // does not manufacture closed-environment family evidence in this Doc.
-        let before = session.snapshot();
-        {
+        if local == "script" {
+            let before = session.snapshot();
             let mut dom = session.dom();
             let usage = dom.usage();
             let mut batch = DomBatch::new();
@@ -1503,6 +1501,15 @@ fn unsupported_child_navigable_and_svg_processing_profiles_refuse_connection_ato
         let before = session.snapshot();
         let mut dom = session.dom();
         let usage = dom.usage();
+        let mut import = DomBatch::new();
+        import.import_node(&before, node, top.document(), false);
+        assert_eq!(
+            dom.apply(import, &cancel()).unwrap_err(),
+            DomError::NativeInitializationRequired(requirement)
+        );
+        assert_eq!(dom.snapshot().stamp(), before.stamp());
+        assert_eq!(dom.usage(), usage);
+
         let mut batch = DomBatch::new();
         batch.set_attribute(parent, "data-unpublished", "prefix");
         batch.adopt(node, top.document());

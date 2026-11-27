@@ -2582,6 +2582,7 @@ fn main() {
             "class-list-realm" => class_list::class_list_keeps_its_element_creation_realm(),
             "class-list-reactions" => class_list::class_list_uses_native_attribute_reactions_once(),
             "frame-content" => frame_content::frame_content_follows_native_child_edges_and_identity(),
+            "frame-content-factories" => frame_content::hosted_frame_factory_admits_customized_options(),
             "iframe-content-opaque" => frame_content::sandboxed_iframe_content_distinguishes_null_from_unavailable_proxy(),
             "document-default-view" => document_default_view::default_view_follows_the_native_document_context(),
             "document-create-range-realm" => document_create_range::borrowed_range_factory_uses_the_receiving_document_realm(),
@@ -2795,6 +2796,7 @@ fn main() {
     document_create_range::borrowed_range_factory_uses_the_receiving_document_realm();
     document_default_view::default_view_follows_the_native_document_context();
     frame_content::frame_content_follows_native_child_edges_and_identity();
+    frame_content::hosted_frame_factory_admits_customized_options();
     frame_content::sandboxed_iframe_content_distinguishes_null_from_unavailable_proxy();
     class_list::class_list_observes_and_edits_the_canonical_attribute();
     class_list::class_list_uses_native_attribute_reactions_once();
