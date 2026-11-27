@@ -17,6 +17,22 @@ pub(crate) type WrappingContextLoan<'a, Node> = (
 pub(crate) type UnroundedEntryResult<Node, S, M> =
     LayoutResultOf<Node, LayoutOutputEntryOf<Node, S>, S, M>;
 
+/// A host whose computations of a child run on the native stack, nested in the
+/// computation that asks. A request executor never is one: its children run on
+/// the executor's own stack, so work that waits on a child on the native stack
+/// (the synchronous Grid owner) takes only a `SynchronousCompute` host.
+///
+/// Production has one, the empty sizing box, which has no children. Test builds
+/// make every `Compute` one, so the test hosts and the session's own tests can
+/// drive the synchronous owner.
+pub(crate) trait SynchronousCompute<'input, M = core::convert::Infallible>:
+    Compute<'input, M>
+{
+}
+
+#[cfg(test)]
+impl<'input, M, T: Compute<'input, M>> SynchronousCompute<'input, M> for T {}
+
 // Input loans refer to immutable request storage, independently of temporary
 // borrows of the mutable output/cache computation facade.
 pub(crate) trait Compute<'input, M = core::convert::Infallible>:

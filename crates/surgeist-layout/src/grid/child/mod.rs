@@ -256,7 +256,7 @@ pub(super) fn layout_grid_child_items<'input, Tree, M>(
     ) -> GridItemDisposition<Tree::Scalar>,
 ) -> PendingGridItemsResult<'input, Tree::Node, Tree::Scalar, M>
 where
-    Tree: Compute<'input, M>,
+    Tree: SynchronousCompute<'input, M>,
 {
     let mut collection = GridItemCollection::new(&input);
     while let Some(mut child) = collection.next(tree, node, &input, &mut place)? {

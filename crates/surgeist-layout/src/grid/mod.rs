@@ -35,7 +35,7 @@ use crate::sizing::resolve::{
     resolve_preferred_optional, resolve_preferred_sizing,
 };
 use crate::{
-    engine::contracts::Compute,
+    engine::contracts::{Compute, SynchronousCompute},
     error::{
         LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant,
         LayoutInvalidInputOf, LayoutOperation, LayoutResultOf, SizingAlgorithm,
@@ -200,7 +200,7 @@ pub(crate) fn compute_grid<'input, Tree, M>(
     input: ComputeInputOf<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<'input, M>,
+    Tree: SynchronousCompute<'input, M>,
 {
     Ok(compute_grid_with_report(tree, node, input)?.into_parts().0)
 }
@@ -212,7 +212,7 @@ pub(crate) fn compute_grid_with_report<'input, Tree, M>(
     input: ComputeInputOf<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputationOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<'input, M>,
+    Tree: SynchronousCompute<'input, M>,
 {
     let invocation = GridInvocation {
         container: input::project_grid_container!(tree, node),
@@ -894,7 +894,7 @@ fn compute_grid_with_scrollbar_settlement<'input, Tree, M>(
     stage: GridSizingStage,
 ) -> GridComputeOutcome<Tree::Node, Tree::Scalar, M>
 where
-    Tree: Compute<'input, M>,
+    Tree: SynchronousCompute<'input, M>,
 {
     let initial_input = input.with_settled_auto_scrollbars(initial_state);
     let contained_size =
@@ -1036,7 +1036,7 @@ impl<'input, Node, S: LayoutScalar> GridOverflowProbe<'input, '_, Node, S> {
         node: Node,
     ) -> LayoutResultOf<Node, GridOverflowObservation<S>, S, M>
     where
-        Tree: Compute<'input, M, Scalar = S> + Traverse<Node = Node>,
+        Tree: SynchronousCompute<'input, M, Scalar = S> + Traverse<Node = Node>,
         Node: Copy + Eq,
     {
         let children = match self.layout {
@@ -1095,7 +1095,7 @@ fn observe_grid_child_layout<'input, Tree, M>(
     layout: GridOverflowLayout<'input, '_, Tree::Node, Tree::Scalar>,
 ) -> GridChildrenLayoutResult<Tree::Node, Tree::Scalar, M>
 where
-    Tree: Compute<'input, M>,
+    Tree: SynchronousCompute<'input, M>,
 {
     let GridOverflowObservation::Children(observation) =
         tree.observe_grid_overflow(node, GridOverflowProbe { layout })?
@@ -1278,7 +1278,7 @@ fn compute_grid_with_context<'input, Tree, M>(
     parent_context: GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<'input, M>,
+    Tree: SynchronousCompute<'input, M>,
 {
     let container =
         input::project_grid_container!(tree, node).with_inherited_axes(LogicalSizeOf::new(
@@ -1316,7 +1316,7 @@ fn compute_grid_with_context_source<'input, Tree, M>(
     >,
 ) -> GridComputeOutcome<Tree::Node, Tree::Scalar, M>
 where
-    Tree: Compute<'input, M>,
+    Tree: SynchronousCompute<'input, M>,
 {
     tree.meter()
         .charge(LayoutWork::ContextualGridComputation, 1);
@@ -1559,13 +1559,20 @@ enum GridPlaced<'input, Node, S: LayoutScalar> {
     Done(Box<GridComputeResult<Node, S>>),
 }
 
-/// Whether a Grid Lanes container sized without layout observes its children
-/// in a disposable session on the native stack, or places them as a pass.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum LanesPlacement {
-    Pass,
-    SynchronousObservation,
-}
+/// How a Grid Lanes container sized without layout observes its children in a
+/// disposable session on the native stack. Only a synchronous host has one: the
+/// observation is `observe_grid_child_layout`, which takes such a host. A
+/// placement without one is a pass, which a request executor runs.
+type LanesObserver<'input, Tree, M> = for<'a> fn(
+    &mut Tree,
+    <Tree as Traverse>::Node,
+    GridOverflowLayout<'input, 'a, <Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+) -> LayoutResultOf<
+    <Tree as Traverse>::Node,
+    GridChildrenLayout<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    <Tree as Traverse>::Scalar,
+    M,
+>;
 
 struct GridPlacedLayout<'input, Node, S: LayoutScalar> {
     output: GridPassOutput<'input, Node, S>,
@@ -1579,7 +1586,7 @@ type GridPassStep<'input, Node, S, M> =
 impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPass<'input, Node, S> {
     fn compute<Tree, M>(mut self, tree: &mut Tree) -> GridComputeOutcome<Node, S, M>
     where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Node = Node, Scalar = S>,
     {
         while let Some(mut child) = self.next(tree)? {
             if let Some(request) = child.take_context_request() {
@@ -1861,7 +1868,7 @@ fn compute_grid_with_context_result<'input, Tree, M>(
     contained_size: Size<Option<Tree::Scalar>>,
 ) -> GridComputeOutcome<Tree::Node, Tree::Scalar, M>
 where
-    Tree: Compute<'input, M>,
+    Tree: SynchronousCompute<'input, M>,
 {
     let tracks = match prepare_grid_pass(
         tree,
@@ -2653,7 +2660,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridAcceptedSizing<'input, Node, 
     /// Runs the track sizing to its end on the native stack.
     fn drive_sync<Tree, M>(&mut self, tree: &mut Tree) -> LayoutResultOf<Node, (), S, M>
     where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Node = Node, Scalar = S>,
     {
         let node = self.source.output.node;
         let result = (|| {
@@ -2747,7 +2754,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridAcceptedSource<'input, Node, 
                 })),
             )));
         }
-        match self.place(tree, tracks, LanesPlacement::Pass)? {
+        match self.place(tree, tracks, None)? {
             GridPlaced::Layout(placed) => placed
                 .output
                 .finish(Some((placed.scroll_box, placed.layout)))
@@ -2761,7 +2768,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridAcceptedSource<'input, Node, 
         self,
         tree: &mut Tree,
         tracks: FinalGridLayoutTracks<S>,
-        lanes: LanesPlacement,
+        observer: Option<LanesObserver<'input, Tree, M>>,
     ) -> LayoutResultOf<Node, GridPlaced<'input, Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
@@ -2855,14 +2862,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridAcceptedSource<'input, Node, 
                 sizing_stage: sizing_phases.limit,
                 stacking_operation,
             };
-            if lanes == LanesPlacement::SynchronousObservation
+            if let Some(observe) = observer
                 && !input.run_mode().is_perform_layout()
             {
-                let child_layout = observe_grid_child_layout(
-                    tree,
-                    node,
-                    GridOverflowLayout::Lanes(lanes_input, context),
-                )?;
+                let child_layout =
+                    observe(tree, node, GridOverflowLayout::Lanes(lanes_input, context))?;
                 return GridPassOutput {
                     node,
                     input,
@@ -3395,7 +3399,55 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPlacementContext<'input, Node
 type GridTrackInitialization<'input, Node, S, M> =
     LayoutResultOf<Node, InitializedGridTracks<'input, Node, S>, S, M>;
 
+/// The tracks of a Grid for the test drivers, which run an intrinsic repeat
+/// probe to its end on the native stack.
+#[cfg(test)]
 fn initialize_grid_tracks<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    style: &GridContainerProjection<'input, Tree::Scalar>,
+    constants: &Constants<Tree::Scalar>,
+    parent_context: &GridParentContext<Tree::Scalar, Tree::Node>,
+    input: ComputeInputOf<Tree::Scalar>,
+    contained_inline: Option<Tree::Scalar>,
+) -> GridTrackInitialization<'input, Tree::Node, Tree::Scalar, M>
+where
+    Tree: SynchronousCompute<'input, M>,
+{
+    let track_available = grid_track_available(node, style, constants, input)?;
+    let repeat = match lane_repeat::prepare_intrinsic_repeat(
+        tree,
+        node,
+        style,
+        constants,
+        parent_context,
+        track_available,
+        contained_inline,
+    )? {
+        ControlFlow::Break(repeat) => repeat,
+        ControlFlow::Continue(mut probe) => {
+            Some(probe.compute(tree, node, style, parent_context)?)
+        }
+    };
+    initialize_qualified_grid_tracks(
+        tree,
+        node,
+        style,
+        constants,
+        parent_context,
+        GridTrackConstraints {
+            available: track_available,
+            contained_inline,
+        },
+        repeat,
+    )
+}
+
+/// The tracks of a subgrid wrapper. A wrapper inherits an axis, and a Grid Lanes
+/// container can inherit only its lane axis (`subgrid_eligibility`), where its
+/// template is `subgrid`, never a repeat. No intrinsic repeat probe therefore
+/// begins here, and one that did is refused.
+fn initialize_wrapper_grid_tracks<'input, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
     style: &GridContainerProjection<'input, Tree::Scalar>,
@@ -3418,9 +3470,7 @@ where
         contained_inline,
     )? {
         ControlFlow::Break(repeat) => repeat,
-        ControlFlow::Continue(mut probe) => {
-            Some(probe.compute(tree, node, style, parent_context)?)
-        }
+        ControlFlow::Continue(_) => return Err(minimum_source_error(node)),
     };
     initialize_qualified_grid_tracks(
         tree,
@@ -4478,7 +4528,7 @@ impl<S: LayoutScalar> OrdinaryGridTracks<S> {
         pending: PendingGridItems<'input, Tree::Node, S>,
     ) -> GridChildPlacementResult<'input, Tree::Node, S, M>
     where
-        Tree: Compute<'input, M, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Scalar = S>,
     {
         let mut finishing = self.begin_finish(node, placement, context, pending)?;
         while let Some(request) = finishing.next(tree, node, context)? {
@@ -4507,7 +4557,7 @@ fn layout_grid_container_children<'input, Tree, M>(
     input: GridChildLayoutInput<'input, '_, Tree::Node, Tree::Scalar>,
 ) -> GridChildPlacementResult<'input, Tree::Node, Tree::Scalar, M>
 where
-    Tree: Compute<'input, M>,
+    Tree: SynchronousCompute<'input, M>,
 {
     let source = OrdinaryGridPlacementContext {
         execution_input: input.execution_input,
@@ -4636,7 +4686,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> FinalGridTrackSizing<'input, Node
     ) -> LayoutResultOf<Node, (), S, M>
     where
         'input: 'a,
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Node = Node, Scalar = S>,
     {
         let result = (|| {
             while let ControlFlow::Continue(request) = self.advance(tree, node, source())? {

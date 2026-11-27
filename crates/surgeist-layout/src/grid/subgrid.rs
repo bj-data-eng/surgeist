@@ -3706,7 +3706,7 @@ where
     } else {
         None
     };
-    let initialized = initialize_grid_tracks::<Tree, M>(
+    let initialized = initialize_wrapper_grid_tracks::<Tree, M>(
         tree,
         node,
         container_style,

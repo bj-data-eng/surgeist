@@ -1,8 +1,8 @@
 use super::contextual_grid_children::{assert_box, px_size, subgrid};
 use super::*;
 use crate::{
-    node_input::{AlignContent, AlignItems, FlexDirection, GridPlacement},
-    value::TrackComponentOf,
+    node_input::{AlignContent, AlignItems, FlexDirection, GridLanesFlow, GridPlacement},
+    value::{TrackComponentOf, TrackRepetitionOf},
 };
 
 // The live browser-parity corpus holds supported inputs of seven source box
@@ -399,3 +399,111 @@ fn deep_scrolled_lane_chain_observes_overflow_and_sizes_lanes_from_leaves_f64() 
         || assert_scrolled_lane_chain::<f64>(SCROLLED_LANE_DEPTH),
     );
 }
+
+// A Grid Lanes item with `repeat(auto-fill, max-content)` lanes and subgrid rows
+// cannot be a subgrid wrapper: a Grid Lanes container inherits only its lane
+// axis, and `subgrid_eligibility` excludes the stacking axis, so the item lays
+// out as an ordinary one and its repeat probe runs on the request executor.
+//
+// Node `3k` is a Grid with one automatic column and row, node `3k + 1` its
+// 120px-wide Grid Lanes item and node `3k + 2` a 20x10 leaf in that item. The
+// last Grid is the next level `3k + 3` of the Lanes item above it.
+fn repeat_lanes_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
+    let flow = GridLanesFlow::new(crate::grid::GridAxisKind::Column, false, false);
+    let mut tree = PublicLayoutTreeOf::<S>::new();
+    for level in 0..=depth {
+        let grid = 3 * level;
+        let mut style = NodeInputOf {
+            display: Display::Grid,
+            grid_template_columns: vec![TrackComponentOf::AUTO],
+            grid_template_rows: vec![TrackComponentOf::AUTO],
+            ..NodeInputOf::default()
+        };
+        if level == 0 {
+            style.size = Size::new(
+                PreferredSizeOf::px(S::from_f64(300.0)),
+                PreferredSizeOf::AUTO,
+            );
+        }
+        let lanes = NodeInputOf {
+            display: Display::GridLanes,
+            grid_lanes_flow: flow,
+            grid_column: line(1),
+            grid_row: line(1),
+            size: Size::new(
+                PreferredSizeOf::px(S::from_f64(120.0)),
+                PreferredSizeOf::AUTO,
+            ),
+            grid_template_columns: vec![TrackComponentOf::Repeat(
+                TrackRepetitionOf::auto_fill_components(vec![TrackComponentOf::MAX_CONTENT])
+                    .unwrap(),
+            )],
+            grid_template_rows: subgrid(),
+            justify_content: Some(AlignContent::Start),
+            align_content: Some(AlignContent::Start),
+            ..NodeInputOf::default()
+        };
+        let leaf = NodeInputOf {
+            size: px_size(20.0, 10.0),
+            ..NodeInputOf::default()
+        };
+        let items = if level < depth {
+            vec![grid + 2, grid + 3]
+        } else {
+            vec![grid + 2]
+        };
+        tree = tree
+            .style(grid, style)
+            .style(grid + 1, lanes)
+            .style(grid + 2, leaf)
+            .children(grid, [grid + 1])
+            .children(grid + 1, items);
+    }
+    tree
+}
+
+// CSS Grid Lanes: the 120px-wide item has room for one lane of its widest item,
+// the next level's Grid, which is 120px wide, so the 20x10 leaf and the next
+// Grid stack in that lane, the leaf first. A level holds its leaf and the next
+// level, so it is `10 * (levels at and below it)` high.
+fn assert_repeat_lanes_chain<S: LayoutScalar>(depth: u32) {
+    let tree = repeat_lanes_chain::<S>(depth);
+    let batch = compute_layout(&tree, 0, standalone()).expect("repeat lane chain lays out");
+    assert_eq!(batch.node_layouts().len(), 3 * depth as usize + 3);
+    for level in 0..=depth {
+        let grid = 3 * level;
+        let height = 10.0 * f64::from(depth + 1 - level);
+        let (at, width) = if level == 0 {
+            ((0.0, 0.0), 300.0)
+        } else {
+            ((0.0, 10.0), 120.0)
+        };
+        assert_box(&batch, grid, at, (width, height));
+        assert_box(&batch, grid + 1, (0.0, 0.0), (120.0, height));
+        assert_box(&batch, grid + 2, (0.0, 0.0), (20.0, 10.0));
+    }
+}
+
+#[test]
+fn shallow_repeat_lanes_chain_stacks_the_leaf_and_the_next_level() {
+    on_bounded_stack(
+        "engine::depth_tests::owner_audit::shallow_repeat_lanes_chain_stacks_the_leaf_and_the_next_level",
+        || {
+            assert_repeat_lanes_chain::<f32>(2);
+            assert_repeat_lanes_chain::<f64>(2);
+        },
+    );
+}
+
+#[test]
+fn deep_repeat_lanes_chain_stacks_the_leaf_and_the_next_level() {
+    on_bounded_stack(
+        "engine::depth_tests::owner_audit::deep_repeat_lanes_chain_stacks_the_leaf_and_the_next_level",
+        || {
+            assert_repeat_lanes_chain::<f32>(REPEAT_LANES_DEPTH);
+            assert_repeat_lanes_chain::<f64>(REPEAT_LANES_DEPTH);
+        },
+    );
+}
+
+const REPEAT_LANES_DEPTH: u32 = 24;

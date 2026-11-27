@@ -33,7 +33,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridObservation<'input, Node, S> 
     /// the tree.
     pub(super) fn compute<Tree, M>(self, tree: &mut Tree) -> GridComputeOutcome<Node, S, M>
     where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Node = Node, Scalar = S>,
     {
         match self {
             Self::Ordinary(observation) => observation.compute(tree),
@@ -61,7 +61,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> LanesGridObservation<'input, Node
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        let work = match self.source.place(tree, self.tracks, LanesPlacement::Pass)? {
+        let work = match self.source.place(tree, self.tracks, None)? {
             GridPlaced::Layout(placed) => GridPass {
                 children: Some(GridPassChildren::EmptyLanes(Box::new(placed.layout))),
                 output: placed.output,
@@ -77,12 +77,13 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> LanesGridObservation<'input, Node
 
     fn compute<Tree, M>(self, tree: &mut Tree) -> GridComputeOutcome<Node, S, M>
     where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Node = Node, Scalar = S>,
     {
-        match self
-            .source
-            .place(tree, self.tracks, LanesPlacement::SynchronousObservation)?
-        {
+        match self.source.place(
+            tree,
+            self.tracks,
+            Some(observe_grid_child_layout::<Tree, M>),
+        )? {
             GridPlaced::Layout(placed) => placed
                 .output
                 .finish(Some((placed.scroll_box, placed.layout))),
@@ -224,7 +225,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridObservation<'input, N
 
     pub(super) fn compute<Tree, M>(self, tree: &mut Tree) -> GridComputeOutcome<Node, S, M>
     where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Node = Node, Scalar = S>,
     {
         let Self {
             source_constants,

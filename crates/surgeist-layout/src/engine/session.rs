@@ -65,7 +65,7 @@ enum ChildAdmission<Node, S: LayoutScalar> {
 
 /// What an uncached child is, which decides how its computation begins. Only a
 /// leaf the host measures can be computed without the request executor, and
-/// only `UncachedKind::of` makes one.
+/// only `UncachedKind::new` makes one.
 #[derive(Clone, Copy)]
 enum UncachedKind {
     Leaf(UncachedLeaf),
@@ -79,23 +79,37 @@ enum UncachedKind {
 struct UncachedLeaf(());
 
 impl UncachedKind {
-    /// The kind of a node with `display`, or `None` for a box that generates
-    /// no layout: `Display::None`.
-    fn of(display: Display, leaf: bool) -> Option<Self> {
-        if display == Display::None {
-            return None;
-        }
+    /// What a node is once the host has said whether it is a measured leaf.
+    fn new(container: ContainerKind, leaf: bool) -> Self {
         if leaf {
-            return Some(Self::Leaf(UncachedLeaf(())));
+            return Self::Leaf(UncachedLeaf(()));
         }
-        match display.inner_display() {
-            Display::Block => Some(Self::Block),
+        match container {
+            ContainerKind::Block => Self::Block,
+            ContainerKind::Flex => Self::Flex,
+            ContainerKind::Grid => Self::Grid,
+        }
+    }
+}
+
+/// The formatting context that lays out a box that generates layout, which
+/// every display but `Display::None` does.
+#[derive(Clone, Copy)]
+enum ContainerKind {
+    Block,
+    Flex,
+    Grid,
+}
+
+impl ContainerKind {
+    fn of(display: Display) -> Option<Self> {
+        match display {
+            Display::Block | Display::InlineBlock => Some(Self::Block),
             Display::Flex => Some(Self::Flex),
-            Display::Grid | Display::GridLanes => Some(Self::Grid),
-            Display::None => None,
-            Display::InlineBlock | Display::InlineGrid | Display::InlineGridLanes => {
-                unreachable!("inner_display removes inline display variants")
+            Display::Grid | Display::GridLanes | Display::InlineGrid | Display::InlineGridLanes => {
+                Some(Self::Grid)
             }
+            Display::None => None,
         }
     }
 }
@@ -1904,8 +1918,8 @@ where
 
     /// What an uncached child is. Asking the host whether a node is a measured
     /// leaf is a measurement query, so it waits until the child is computed.
-    fn uncached_kind(&self, node: Tree::Node, display: Display) -> Option<UncachedKind> {
-        UncachedKind::of(display, self.tree.has_leaf_measurement(node))
+    fn uncached_kind(&self, node: Tree::Node, container: ContainerKind) -> UncachedKind {
+        UncachedKind::new(container, self.tree.has_leaf_measurement(node))
     }
 
     /// Admits a child of a hidden node: it is laid out hidden, whatever it is.
@@ -1948,10 +1962,11 @@ where
 
         let input = self.prepare_child_input(node, input)?;
         let style = self.tree.node_input(node);
-        let display = style.display;
-        if input.run_mode() == RunMode::PerformHiddenLayout || display == Display::None {
+        let container = ContainerKind::of(style.display)
+            .filter(|_| input.run_mode() != RunMode::PerformHiddenLayout);
+        let Some(container) = container else {
             return Ok(ChildAdmission::Hidden(self.hidden_admission(node, input)));
-        }
+        };
 
         if let Some(memo) = &self.entry_sources {
             let funding = self.entry_funding(node)?;
@@ -1967,11 +1982,8 @@ where
                     )
                 })?;
             if measured {
-                let Some(kind) = self.uncached_kind(node, display) else {
-                    return Ok(ChildAdmission::Hidden(self.hidden_admission(node, input)));
-                };
                 return Ok(ChildAdmission::Uncached {
-                    kind,
+                    kind: self.uncached_kind(node, container),
                     input,
                     cache: None,
                     memo: None,
@@ -2028,11 +2040,8 @@ where
             // scrollbar pass. Hidden traversal and ready hits returned above.
             observer.record_uncached_admission(node, input, admission_context);
         }
-        let Some(kind) = self.uncached_kind(node, display) else {
-            return Ok(ChildAdmission::Hidden(self.hidden_admission(node, input)));
-        };
         Ok(ChildAdmission::Uncached {
-            kind,
+            kind: self.uncached_kind(node, container),
             input: uncached_input,
             cache,
             memo,
@@ -2274,7 +2283,7 @@ where
 
     /// Computes a leaf the host measures. A leaf is the one node an uncached
     /// child can be computed for without the request executor, and its witness
-    /// comes only from `UncachedKind::of`.
+    /// comes only from `UncachedKind::new`.
     fn compute_leaf_uncached(
         &mut self,
         _leaf: UncachedLeaf,
@@ -2514,9 +2523,10 @@ where
         node: Self::Node,
         input: ComputeInputOf<Self::Scalar>,
     ) -> SessionResult<Tree, ComputeOutputOf<Self::Scalar>> {
-        let Some(UncachedKind::Leaf(leaf)) = UncachedKind::of(
-            self.tree.node_input(node).display,
-            self.tree.has_leaf_measurement(node),
+        let UncachedKind::Leaf(leaf) = self.uncached_kind(
+            node,
+            ContainerKind::of(self.tree.node_input(node).display)
+                .ok_or_else(|| crate::block::float_context::missing(node))?,
         ) else {
             return Err(crate::block::float_context::missing(node));
         };
@@ -2937,6 +2947,29 @@ where
         self.drive_child(node, input)
     }
 
+    /// The synchronous observation of a Grid overflow, which waits on children on
+    /// the native stack. The request executor stages its observations instead,
+    /// so only test builds, which make a session a `SynchronousCompute` host,
+    /// run one here.
+    #[cfg(not(test))]
+    fn observe_grid_overflow(
+        &mut self,
+        node: Self::Node,
+        _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+    ) -> LayoutResultOf<
+        Self::Node,
+        crate::grid::GridOverflowObservation<Self::Scalar>,
+        Self::Scalar,
+        Tree::MeasureError,
+    > {
+        Err(LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::ChildLayout,
+            LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::InvalidGridTrackSizing),
+        ))
+    }
+
+    #[cfg(test)]
     fn observe_grid_overflow(
         &mut self,
         node: Self::Node,

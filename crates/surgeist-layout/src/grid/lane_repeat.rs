@@ -228,7 +228,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> LaneRepeatProbe<'input, Node, S> 
         parent: &GridParentContext<S, Node>,
     ) -> LayoutResultOf<Node, LaneRepeatExpansion<'static>, S, M>
     where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Node = Node, Scalar = S>,
     {
         let result = (|| {
             loop {

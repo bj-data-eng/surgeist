@@ -314,7 +314,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> LanePackingChild<'input, Node, S>
         tree: &mut Tree,
     ) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M>
     where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Node = Node, Scalar = S>,
     {
         match self.take_context() {
             Some(request) => Ok(request.compute_sync(tree)?.into_output()),
@@ -2731,7 +2731,7 @@ impl<S: LayoutScalar> LanePlacementGeometry<S> {
         pending: PendingGridItems<'input, Tree::Node, S>,
     ) -> GridChildPlacementResult<'input, Tree::Node, S, M>
     where
-        Tree: Compute<'input, M, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Scalar = S>,
     {
         let mut finishing = self.begin_finish(node, input, pending)?;
         while let Some(request) = finishing.next(tree, node, input)? {
@@ -2930,7 +2930,7 @@ pub(super) fn layout_grid_lanes_children<'input, Tree, M>(
     context: GridContainerContext<Tree::Scalar>,
 ) -> GridChildPlacementStart<'input, Tree::Node, Tree::Scalar, M>
 where
-    Tree: Compute<'input, M>,
+    Tree: SynchronousCompute<'input, M>,
 {
     let mut packing = match begin_lane_placement(tree, node, &input, context)? {
         ControlFlow::Break(layout) => return Ok(ControlFlow::Break(layout)),

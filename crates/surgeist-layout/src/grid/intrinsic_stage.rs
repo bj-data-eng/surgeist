@@ -374,7 +374,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TrackChildRequest<'input, Node, S
         tree: &mut Tree,
     ) -> LayoutResultOf<Node, GridComputeResult<Node, S>, S, M>
     where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Node = Node, Scalar = S>,
     {
         match self.context {
             Some(request) => request.compute_sync(tree),
@@ -842,7 +842,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'input, Node, S> 
         input: &GridTrackResolutionInput<'input, '_, Node, S>,
     ) -> LayoutResultOf<Node, (), S, M>
     where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Node = Node, Scalar = S>,
     {
         let result = (|| {
             while let ControlFlow::Continue(request) = self.advance(tree, node, input)? {
