@@ -84,6 +84,9 @@ The Form collection's `named_item` selects exact nonempty IDs and names.
 A multiple result retains its full query backing and follows the Form as the
 matched members change. Its RadioNodeList value borrows the first checked Radio
 Button's exact current value, including the default `on` for absent attributes.
+The value setter is a Source edit that selects the first exact matching Radio
+Button in current tree order and normalizes its native radio group. Existing
+dirty checkedness flags follow their own Input transitions.
 
 `DomNode::html_will_validate_with` reads live candidacy for Button, Input,
 Select and TextArea from the caller's current published Source segment. It

@@ -8,6 +8,7 @@ use surgeist_dom::{
     form::{DomFormNamedValue, DomHtmlFormControlsCollection},
     identity::NodeId,
     limits::{DomLimits, DomNameLimits, DomResource},
+    source::{DomSourceEdit, DomSourceLimits, DomSourceProgress},
     tree::{DomHtmlCollection, DomHtmlCollectionLimits},
 };
 use surgeist_html::values::{DocumentString, Namespace, TextBlock};
@@ -328,4 +329,86 @@ fn named_item_retains_live_exact_matches_and_reads_the_first_checked_radio_value
             .len(),
         0
     );
+}
+
+#[test]
+fn radio_node_list_value_changes_only_checkedness_and_normalizes_the_actual_group() {
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let form = append(&mut batch, &document, &document, "form");
+    let empty = append(&mut batch, &document, &form, "input");
+    let default_on = append(&mut batch, &document, &form, "input");
+    let explicit_on = append(&mut batch, &document, &form, "input");
+    for radio in [&empty, &default_on, &explicit_on] {
+        batch.set_attribute(radio, "type", "radio");
+        batch.set_attribute(radio, "name", "group");
+    }
+    batch.set_attribute(&empty, "value", "");
+    batch.set_attribute(&empty, "checked", "");
+    batch.set_attribute(&explicit_on, "value", "on");
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let [form, empty, default_on, explicit_on] = [form, empty, default_on, explicit_on]
+        .map(|ticket| commit.created(&ticket).unwrap().unwrap());
+    let controls = dom.form_elements(form, &cancel).unwrap();
+    let DomFormNamedValue::List(list) = dom
+        .read_html_form_controls_collection(
+            &controls,
+            READ_LIMITS,
+            || Ok::<_, DomError>(()),
+            &cancel,
+        )
+        .unwrap()
+        .named_item(&"group".into(), 64)
+        .unwrap()
+    else {
+        panic!("expected all three controls in a retained list");
+    };
+    let limits = DomSourceLimits::new(16_000_000, 1_000_000, 1_000_000, 8, 8, 16, 1);
+    let apply = |dom: &mut Dom, value: &str| {
+        let edit = DomSourceEdit::set_radio_node_list_value(&list, value).unwrap();
+        let mut source = dom.begin_source_edit(edit, limits, &cancel).unwrap();
+        let DomSourceProgress::Complete(completion) = source.advance(&cancel).unwrap() else {
+            panic!("expected canonical completion of the RadioNodeList value setter");
+        };
+        assert!(!completion.cancellation_requested());
+    };
+    let states = |snapshot: &surgeist_dom::DomSnapshot| {
+        [empty, default_on, explicit_on].map(|node| {
+            let flags = snapshot
+                .node(node)
+                .unwrap()
+                .as_input()
+                .unwrap()
+                .state()
+                .flags();
+            (flags.checkedness(), flags.dirty_checkedness())
+        })
+    };
+    let initial = dom.snapshot();
+    apply(&mut dom, "on");
+    assert_eq!(
+        states(&initial),
+        [(true, false), (false, false), (false, false)]
+    );
+    assert_eq!(
+        states(&dom.snapshot()),
+        [(false, false), (true, false), (false, false)]
+    );
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(default_on, "checked", "");
+    batch.remove_attribute_ns(default_on, Namespace::none(), "checked");
+    dom.apply(batch, &cancel).unwrap();
+    assert_eq!(states(&dom.snapshot()), [(false, false); 3]);
+
+    apply(&mut dom, "");
+    assert_eq!(
+        states(&dom.snapshot()),
+        [(true, false), (false, false), (false, false)]
+    );
+    let stamp = dom.snapshot().stamp();
+    apply(&mut dom, "unmatched");
+    assert_eq!(dom.snapshot().stamp(), stamp);
 }

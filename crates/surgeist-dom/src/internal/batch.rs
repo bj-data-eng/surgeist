@@ -197,6 +197,11 @@ pub(crate) enum Command {
         node: NodeOperand,
         value: bool,
     },
+    SetRadioNodeListValue {
+        form: NodeOperand,
+        name: DocumentString,
+        value: DocumentString,
+    },
     SetInputIndeterminate {
         node: NodeOperand,
         value: bool,

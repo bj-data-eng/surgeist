@@ -3203,6 +3203,8 @@ pub fn surgeist_dom::source::DomSourceEdit::replace_with(node: surgeist_dom::ide
 pub fn surgeist_dom::source::DomSourceEdit::set_document_title(document: surgeist_dom::identity::DocumentId, value: surgeist_html::internal::values::document_string::DocumentString) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart, value: core::option::Option<surgeist_dom::identity::NodeId>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_text_content(node: surgeist_dom::identity::NodeId, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
+impl surgeist_dom::source::DomSourceEdit
+pub fn surgeist_dom::source::DomSourceEdit::set_radio_node_list_value(list: &surgeist_dom::form::DomRadioNodeList, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> core::result::Result<Self, surgeist_dom::DomError>
 impl core::convert::From<surgeist_dom::source::DomSourceEdit> for surgeist_dom::source::DomSourceInput
 pub fn surgeist_dom::source::DomSourceInput::from(edit: surgeist_dom::source::DomSourceEdit) -> Self
 pub struct surgeist_dom::source::DomSourceFailure

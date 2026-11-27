@@ -1,8 +1,69 @@
 //! Identity-bearing Form map transitions in the same canonical draft.
 use super::*;
-use crate::internal::form::FormPastName;
+use crate::internal::{form::FormPastName, names::same_code_units};
+use surgeist_html::{attributes::HtmlInputType, vocabulary::KnownHtmlAttribute};
 
 impl Draft {
+    pub(super) fn set_radio_node_list_value(
+        &mut self,
+        form: Key,
+        name: &DocumentString,
+        value: &DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        let form = self.live_key(form);
+        if !self
+            .node(form)?
+            .element()
+            .is_some_and(|element| element.form_state().is_some())
+        {
+            return Err(DomError::WrongNodeKind);
+        }
+        let root = crate::internal::slot::root(self, form, cancel)?;
+        let mut candidate = Some(root);
+        while let Some(key) = candidate {
+            self.source_step(cancel)?;
+            let node = self.node(key)?;
+            if node.control_owner().map(|owner| self.live_key(owner)) == Some(form)
+                && node
+                    .element()
+                    .and_then(|element| element.language().input_state())
+                    .is_some_and(|input| input.input_type() == HtmlInputType::Radio)
+                && self.form_named_attributes_match(key, name, cancel)?
+            {
+                let raw = self.control_attribute(key, KnownHtmlAttribute::Value, cancel)?;
+                let current = HtmlInputType::Radio
+                    .value_mode()
+                    .readback(&[], raw.map(DocumentString::code_units), None)
+                    .ok_or(DomError::InputInapplicable)?;
+                if same_code_units(current, value.code_units(), || self.source_step(cancel))? {
+                    return self.select_radio_from_node_list(key, cancel);
+                }
+            }
+            candidate = crate::internal::slot::next(self, root, key, cancel)?;
+        }
+        Ok(())
+    }
+
+    fn form_named_attributes_match(
+        &self,
+        key: Key,
+        name: &DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        for attribute in [KnownHtmlAttribute::Id, KnownHtmlAttribute::Name] {
+            if let Some(candidate) = self.control_attribute(key, attribute, cancel)?
+                && same_code_units(candidate.code_units(), name.code_units(), || {
+                    self.source_step(cancel)
+                })?
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     /// HTML877d33343: remove every alias for this exact former control. The
     /// map is read at the intermediate owner state, before any later lookup.
     pub(super) fn remove_form_aliases(

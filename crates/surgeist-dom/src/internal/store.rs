@@ -4179,6 +4179,10 @@ impl Draft {
                 let node = self.resolve(node.clone())?;
                 self.set_input_checked(node, *value, cancelled)?;
             }
+            Command::SetRadioNodeListValue { form, name, value } => {
+                let form = self.resolve(form.clone())?;
+                self.set_radio_node_list_value(form, name, value, cancelled)?;
+            }
             Command::SetInputIndeterminate { node, value } => {
                 let node = self.resolve(node.clone())?;
                 self.set_input_indeterminate(node, *value, cancelled)?;

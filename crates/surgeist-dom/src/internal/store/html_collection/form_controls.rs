@@ -5,7 +5,9 @@ use super::{
     ElementMatches, ElementNameScope, Filter,
 };
 use crate::internal::{
+    batch::Command,
     identity::NodeId,
+    source::DomSourceEdit,
     store::{Dom, DomError, DomResource, admit},
 };
 use std::{ops::ControlFlow, sync::atomic::AtomicBool};
@@ -31,6 +33,29 @@ pub enum DomFormNamedValue {
 /// A live RadioNodeList retaining the exact Form and named filter.
 #[derive(Debug)]
 pub struct DomRadioNodeList(DomHtmlCollection);
+
+impl DomSourceEdit {
+    /// Set the checkedness of the first represented Radio Button whose
+    /// current value exactly matches. An unmatched value changes no Input.
+    ///
+    /// # Errors
+    /// Returns an error when the retained list has no qualified filter.
+    pub fn set_radio_node_list_value(
+        list: &DomRadioNodeList,
+        value: impl Into<DocumentString>,
+    ) -> Result<Self, DomError> {
+        let Filter::NamedFormControls(name) = &list.0.filter else {
+            return Err(DomError::WrongNodeKind);
+        };
+        Ok(Self {
+            command: Command::SetRadioNodeListValue {
+                form: list.0.root.into(),
+                name: name.clone(),
+                value: value.into(),
+            },
+        })
+    }
+}
 
 /// A qualified read of the RadioNodeList's current members and value.
 pub struct DomRadioNodeListRead<'dom, A>(DomHtmlCollectionRead<'dom, A>);
