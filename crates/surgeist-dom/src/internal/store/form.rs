@@ -388,6 +388,44 @@ mod tests {
     use super::*;
 
     mod custody_tests;
+
+    #[test]
+    fn alias_pruning_admits_each_examined_entry_even_without_a_match() {
+        use crate::internal::source::DomSourceLimits;
+
+        let (mut dom, document, form, _, _) = fixture();
+        let cancel = AtomicBool::new(false);
+        let mut batch = DomBatch::new();
+        let unrelated =
+            batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "button");
+        batch.insert_before(&unrelated, form, None);
+        let commit = dom.apply(batch, &cancel).unwrap();
+        let unrelated = commit.created(&unrelated).unwrap().unwrap();
+        for work in [2, 3] {
+            let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+            draft.source_limits = Some(DomSourceLimits::new(
+                16_000_000, 1_000_000, work, 8, 8, 16, 1,
+            ));
+            let result =
+                draft.remove_form_aliases(Key::Existing(form), Key::Existing(unrelated), &cancel);
+            if work == 2 {
+                assert_eq!(result, Err(DomError::SourceWorkLimit { limit: 2 }));
+            } else {
+                assert_eq!(result, Ok(()));
+            }
+            assert_eq!(draft.source_work.load(Ordering::Relaxed), work);
+            assert_eq!(
+                draft
+                    .node(Key::Existing(form))
+                    .unwrap()
+                    .form_past_names()
+                    .unwrap()
+                    .len(),
+                3
+            );
+        }
+    }
+
     fn fixture() -> (Dom, DocumentId, NodeId, NodeId, NodeId) {
         let mut dom = Dom::new(
             DomLimits::new(
