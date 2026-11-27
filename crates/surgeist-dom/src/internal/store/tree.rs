@@ -466,14 +466,16 @@ impl Draft {
         Ok(())
     }
 
-    pub(super) fn next_sibling(&self, node: Key) -> Option<Key> {
-        let parent = self.node(node).expect("staged node").parent()?;
-        let children = self.node(parent).expect("staged parent").children();
-        let position = children
-            .iter()
-            .position(|child| child == node)
-            .expect("staged child");
-        children.get(position + 1)
+    pub(super) fn next_sibling(
+        &self,
+        node: Key,
+        cancel: &AtomicBool,
+    ) -> Result<Option<Key>, DomError> {
+        let Some(parent) = self.node(node)?.parent() else {
+            return Ok(None);
+        };
+        let position = self.child_list_position(parent, node, cancel)?;
+        Ok(self.node(parent)?.children().get(position + 1))
     }
 
     pub(super) fn ensure_pre_insert(
@@ -539,12 +541,9 @@ impl Draft {
             _ => {}
         }
         let children = self.node(parent)?.children();
-        let reference = child.map(|child| {
-            children
-                .iter()
-                .position(|key| key == child)
-                .expect("validated reference")
-        });
+        let reference = child
+            .map(|child| self.child_list_position(parent, child, cancelled))
+            .transpose()?;
         for (position, candidate) in children.iter().enumerate() {
             self.effect_step(cancelled)?;
             let candidate_kind = self.node(candidate)?.kind();
@@ -577,7 +576,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.ensure_pre_insert(node, parent, before, None, false, cancelled)?;
         if before == Some(node) {
-            before = self.next_sibling(node);
+            before = self.next_sibling(node, cancelled)?;
         }
         self.insert_validated(node, parent, before, limits, cancelled)
     }
@@ -591,9 +590,9 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         self.ensure_pre_insert(node, parent, Some(child), Some(child), false, cancelled)?;
-        let mut before = self.next_sibling(child);
+        let mut before = self.next_sibling(child, cancelled)?;
         if before == Some(node) {
-            before = self.next_sibling(node);
+            before = self.next_sibling(node, cancelled)?;
         }
         self.push_effect(
             select::Effect::Tree(Frame::Replace {
@@ -688,7 +687,10 @@ impl Draft {
         if fragment {
             let children = self.node(node)?.children();
             self.select_reserve(&mut moving, children.len(), cancelled)?;
-            moving.extend(children.iter());
+            for child in children.iter() {
+                self.effect_step(cancelled)?;
+                moving.push(child);
+            }
         } else {
             self.select_reserve(&mut moving, 1, cancelled)?;
             moving.push(node);
@@ -1318,14 +1320,12 @@ impl Draft {
                         )?;
                         self.adopt(child, document, limits, cancel)?;
                     } else {
-                        let target = self.node(frame.parent)?;
-                        let index = frame.before.map_or(target.children().len(), |reference| {
-                            target
-                                .children()
-                                .iter()
-                                .position(|key| key == reference)
-                                .expect("retained reference")
-                        });
+                        let index = match frame.before {
+                            Some(reference) => {
+                                self.child_list_position(frame.parent, reference, cancel)?
+                            }
+                            None => self.node(frame.parent)?.children().len(),
+                        };
                         let legend =
                             self.capture_form_associated_legend_fence(child, frame.parent, cancel)?;
                         self.relations_insert(
@@ -1387,7 +1387,10 @@ impl Draft {
                 } else if !frame.moving.is_empty() {
                     let mut roots = self.effect_vec();
                     self.select_reserve(&mut roots, frame.moving.len(), cancel)?;
-                    roots.extend(frame.moving.iter().copied());
+                    for &root in frame.moving.iter() {
+                        self.effect_step(cancel)?;
+                        roots.push(root);
+                    }
                     self.push_effect(
                         select::Effect::Tree(Frame::ReleaseMoving(frame)),
                         self.effect_scoped,
@@ -1517,8 +1520,12 @@ mod tests {
             16_000_000, 10_000, 1, 1, 1, 1, 1,
         ));
 
-        assert_eq!(draft.next_sibling(target), Some(next));
+        assert_eq!(draft.next_sibling(target, &cancel).unwrap(), Some(next));
         assert_eq!(draft.source_work.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            draft.next_sibling(target, &cancel),
+            Err(DomError::SourceWorkLimit { limit: 1 }),
+        );
     }
 
     #[test]

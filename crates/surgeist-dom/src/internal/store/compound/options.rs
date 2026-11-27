@@ -297,6 +297,7 @@ impl Draft {
         self.source_step(cancel)?;
         let document = self.node(select)?.document();
         let fragment = self.allocate(NewNode::DocumentFragment, document, limits, cancel)?;
+        self.mark_source_private(fragment, cancel)?;
         self.push_effect(
             select::Effect::SelectOptions(Frame::Fill {
                 select,
@@ -343,6 +344,7 @@ impl Draft {
             } => {
                 let document = self.node(fragment)?.document();
                 let option = self.create_blank_html_option(document, limits, cancel)?;
+                self.mark_source_private(option, cancel)?;
                 self.push_effect(
                     select::Effect::SelectOptions(Frame::Fill {
                         select,

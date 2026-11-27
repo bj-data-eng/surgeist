@@ -135,7 +135,9 @@ impl Draft {
             Some(0) => Ok(parent.map(|parent| (parent, Some(receiver)))),
             Some(1) => Ok(Some((receiver, self.node(receiver)?.children().first()))),
             Some(2) => Ok(Some((receiver, None))),
-            Some(3) => Ok(parent.map(|parent| (parent, self.next_sibling(receiver)))),
+            Some(3) => parent
+                .map(|parent| Ok((parent, self.next_sibling(receiver, cancel)?)))
+                .transpose(),
             _ => Err(DomError::InvalidAdjacentPosition),
         }
     }
@@ -210,7 +212,7 @@ impl Draft {
                     return self.compound_error(error);
                 }
                 if before == Some(node) {
-                    before = self.next_sibling(node);
+                    before = self.next_sibling(node, cancel)?;
                 }
                 self.register_node_ticket(
                     NodeTicket::AdjacentElement(receiver, Some(*element)),
