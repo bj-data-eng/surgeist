@@ -77,6 +77,9 @@ pub(crate) enum TextSelectionEdit {
 }
 #[derive(Clone, Debug)]
 pub(crate) enum Edit {
+    FormReset {
+        form: NodeId,
+    },
     InputFiles {
         input: NodeId,
         files: Option<crate::file::DomFileList>,
@@ -135,6 +138,7 @@ pub(crate) enum Edit {
 impl Edit {
     pub(crate) fn receiver(&self) -> NodeId {
         match self {
+            Self::FormReset { form } => *form,
             Self::InputStep { input, .. }
             | Self::InputFiles { input, .. }
             | Self::UserFileSelection { input, .. } => *input,
@@ -151,6 +155,14 @@ impl Edit {
     }
 }
 impl DomSourceEdit {
+    /// Reset the original Form through its cancelable event and current
+    /// resettable controls. The original Source executor delivers the event.
+    pub fn reset_form(form: NodeId) -> Self {
+        Self {
+            command: Command::Compound(Edit::FormReset { form }),
+        }
+    }
+
     /// Assign the supplied FileList to File Upload state. A null argument or
     /// a different Input state leaves the existing selection unchanged.
     /// This assignment dispatches no input or change event.

@@ -594,6 +594,14 @@ impl DomElement {
             _ => None,
         }
     }
+    pub(crate) fn form_state_mut(
+        &mut self,
+    ) -> Option<&mut surgeist_html::elements::form::HtmlFormNativeState> {
+        match &mut self.family {
+            NativeFamily::Form(state) => Some(state),
+            _ => None,
+        }
+    }
     /// Actual stored Fieldset state, or inapplicability for another family.
     pub fn fieldset_state(&self) -> Option<&crate::internal::fieldset::DomFieldsetState> {
         match &self.family {

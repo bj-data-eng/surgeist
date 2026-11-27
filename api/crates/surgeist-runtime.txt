@@ -687,6 +687,7 @@ pub const surgeist_runtime::event::DomEventType::CLOSE: Self
 pub const surgeist_runtime::event::DomEventType::ERROR: Self
 pub const surgeist_runtime::event::DomEventType::INPUT: Self
 pub const surgeist_runtime::event::DomEventType::LOAD: Self
+pub const surgeist_runtime::event::DomEventType::RESET: Self
 pub const surgeist_runtime::event::DomEventType::SELECT: Self
 pub const surgeist_runtime::event::DomEventType::TOGGLE: Self
 pub fn surgeist_runtime::event::DomEventType::code_units(&self) -> &[u16]

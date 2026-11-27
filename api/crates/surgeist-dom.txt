@@ -177,6 +177,7 @@ pub surgeist_dom::custom_element::DomCustomElementReactionKind::FormAssociated
 pub surgeist_dom::custom_element::DomCustomElementReactionKind::FormAssociated::form: core::option::Option<surgeist_dom::identity::NodeId>
 pub surgeist_dom::custom_element::DomCustomElementReactionKind::FormDisabled
 pub surgeist_dom::custom_element::DomCustomElementReactionKind::FormDisabled::disabled: bool
+pub surgeist_dom::custom_element::DomCustomElementReactionKind::FormReset
 pub surgeist_dom::custom_element::DomCustomElementReactionKind::Upgrade
 pub enum surgeist_dom::custom_element::DomElementDefinition
 pub surgeist_dom::custom_element::DomElementDefinition::Definition(surgeist_dom::custom_element::DomRegistryDefinitionId)
@@ -706,6 +707,7 @@ pub enum surgeist_dom::event::DomSourceEventKind
 pub surgeist_dom::event::DomSourceEventKind::BeforeToggle
 pub surgeist_dom::event::DomSourceEventKind::Cancel
 pub surgeist_dom::event::DomSourceEventKind::Close
+pub surgeist_dom::event::DomSourceEventKind::Reset
 pub surgeist_dom::event::DomSourceEventKind::Toggle
 pub enum surgeist_dom::event::DomSourceEventOutcome
 pub surgeist_dom::event::DomSourceEventOutcome::Canceled
@@ -3142,6 +3144,7 @@ pub fn surgeist_dom::source::DomSourceEdit::queue_input_file_selection(input: su
 pub fn surgeist_dom::source::DomSourceEdit::remove_select_option(select: surgeist_dom::identity::NodeId, index: i32) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::replace_children(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::replace_with(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::reset_form(form: surgeist_dom::identity::NodeId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_document_title(document: surgeist_dom::identity::DocumentId, value: surgeist_html::internal::values::document_string::DocumentString) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart, value: core::option::Option<surgeist_dom::identity::NodeId>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_range_text(receiver: surgeist_dom::identity::NodeId, replacement: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, target: surgeist_html::internal::elements::input_selection::HtmlRangeTextTarget) -> Self

@@ -5,6 +5,7 @@ use super::{checkpoint, formation};
 
 pub(in crate::internal::store) enum Entry<'a> {
     Command(&'a Command),
+    ReachedEffects,
     VerifiedAttribute(&'a super::operation::attribute::Pending),
     Native {
         wrapper: Key,
@@ -255,6 +256,7 @@ impl Draft {
                 restore.draft.seed_headroom(cancel)?;
                 match entry {
                     Entry::Command(command) => restore.draft.apply(command, dom.limits, cancel),
+                    Entry::ReachedEffects => restore.draft.run_effects(dom.limits, cancel),
                     Entry::VerifiedAttribute(pending) => {
                         pending.apply(restore.draft, dom.limits, cancel)
                     }

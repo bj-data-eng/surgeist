@@ -1138,7 +1138,17 @@ impl Operation {
         self.draft.source_admit(0, cancel)
     }
     fn admit_current_command(&mut self, dom: &Dom, cancel: &AtomicBool) -> Result<(), DomError> {
-        let entry = if let Some(select) = &self.select {
+        let entry = if self.started
+            && matches!(
+                self.commands.get(self.index),
+                Some(Command::Compound(
+                    crate::internal::compound::Edit::FormReset { .. }
+                ))
+            ) {
+            // The reset event and lock already took effect. Scan the actual
+            // selected control continuation rather than reentering the lock.
+            headroom::Entry::ReachedEffects
+        } else if let Some(select) = &self.select {
             headroom::Entry::Select {
                 targets: select
                     .targets
@@ -2357,7 +2367,7 @@ impl DomSourceLease<'_> {
             .as_ref()
             .is_some_and(|op| op.observation().is_some())
         {
-            return self.advance_dialog_observation(execution, cancel);
+            return self.advance_event_observation(execution, cancel);
         }
         if self
             .dom
@@ -2727,6 +2737,19 @@ impl DomSourceLease<'_> {
                     Ok(())
                 }
             })();
+            if result.is_ok()
+                && let Some(crate::internal::store::method::Frame::FormReset(form)) =
+                    op.draft.method
+            {
+                op.started = true;
+                let result = op.observe_form_reset(self.dom, form, execution.hosted_events, cancel);
+                if op.observation().is_none() {
+                    checkpoint.restore(&mut op.draft);
+                    op.restore_external_receipt(external_applied);
+                    op.started = started;
+                }
+                return result;
+            }
             if result.is_ok()
                 && let Some(request) = op.waiting_custom_element()
             {

@@ -90,6 +90,9 @@ fn limits() -> DomSessionLimits {
     }
 }
 fn session() -> DomSession {
+    session_with_limits(limits())
+}
+fn session_with_limits(limits: DomSessionLimits) -> DomSession {
     let dom = Dom::new(
         DomLimits::new(
             512,
@@ -113,7 +116,7 @@ fn session() -> DomSession {
         .unwrap(),
     )
     .unwrap();
-    DomSession::new(dom, limits()).unwrap()
+    DomSession::new(dom, limits).unwrap()
 }
 fn create(session: &mut DomSession) -> DomHostedTopLevel {
     let mut hosted = session.hosted_execution();
@@ -3004,6 +3007,200 @@ fn retiring_object_cannot_retarget_its_queued_task() {
             .object_representation()
             .is_none()
     );
+}
+
+#[test]
+fn native_form_reset_retains_an_accepted_event_across_source_refusal() {
+    use surgeist_dom::{
+        edit::DomChange,
+        event::DomSourceEventKind,
+        source::{DomSourcePhase, DomSourceRequest},
+    };
+    use surgeist_runtime::source::{
+        DomSourceDriveError, DomSourceEventServiceLimits, DomSourceEventServiceProgress,
+        DomSourceRuntimeError, DomSourceUnavailable,
+    };
+
+    let mut settings = limits();
+    settings.source_events.jobs = 4;
+    let mut session = session_with_limits(settings);
+    let top = create(&mut session);
+    let root = body(&session.snapshot(), top.document());
+    let (form, controls) = {
+        let mut batch = DomBatch::new();
+        let form = batch.create_element_ns(top.document(), Namespace::html(), "form");
+        let inputs = ["left", "right"].map(|label| {
+            let input = batch.create_element_ns(top.document(), Namespace::html(), "input");
+            batch.set_attribute(&input, "value", label);
+            batch.set_input_value(&input, "dirty");
+            batch.insert_before(&input, &form, None);
+            input
+        });
+        batch.insert_before(&form, root, None);
+        let created = session.dom().apply(batch, &cancel()).unwrap();
+        (
+            created.created(&form).unwrap().unwrap(),
+            inputs.map(|input| created.created(&input).unwrap().unwrap()),
+        )
+    };
+    let locked = move |snapshot: &DomSnapshot| {
+        snapshot
+            .node(form)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .form_state()
+            .unwrap()
+            .locked_for_reset()
+    };
+    let read = move |snapshot: &DomSnapshot| {
+        controls.map(|id| {
+            String::from_utf16(snapshot.node(id).unwrap().as_input().unwrap().value()).unwrap()
+        })
+    };
+    let initial = session.snapshot();
+    assert!(!locked(&initial));
+    assert_eq!(read(&initial), ["dirty", "dirty"]);
+    let mut events = registry();
+    let mut context = Context {
+        element_tasks: session.element_task_execution(),
+        seen: Vec::new(),
+    };
+    events
+        .add_listener(
+            &mut session.dom(),
+            DomEventTarget::Node(form),
+            DomEventType::RESET,
+            DomEventCallback::new(move |dom, _, context: &mut Context, event| {
+                assert_eq!(event.target(), Some(DomEventTarget::Node(form)));
+                assert!(event.is_trusted());
+                assert!(event.bubbles());
+                assert!(event.cancelable());
+                assert!(!event.composed());
+                assert!(locked(&dom.snapshot()));
+                assert_eq!(read(&dom.snapshot()), ["dirty", "dirty"]);
+                context.seen.push(Observation {
+                    label: "reset",
+                    current: event.current_target(),
+                    target: Some(form),
+                    phase: event.phase(),
+                    payload: None,
+                    bubbles: event.bubbles(),
+                });
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let limits =
+        |work, phases| DomSourceLimits::new(16_000_000, 1_000_000, work, phases, 4096, 4096, 1);
+    let roomy = limits(10_000_000, 2);
+    let mut style_policy = |_: &DomStyleSource| None;
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut style_policy,
+        url: None,
+    };
+    let mut execution = session.source_execution();
+    assert!(matches!(
+        execution.apply(
+            &mut session.dom(),
+            DomSourceEdit::reset_form(form),
+            limits(10_000_000, 1),
+            &mut services,
+            &cancel()
+        ),
+        Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+            DomError::SourcePublicationLimit
+        )))
+    ));
+    assert_eq!(session.snapshot().stamp(), initial.stamp());
+    assert!(!locked(&session.snapshot()));
+    assert!(session.dom().pending_source_edit().is_none());
+    let DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::Event(request),
+        reason: DomSourceUnavailable::Event,
+    } = execution
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::reset_form(form),
+            roomy,
+            &mut services,
+            &cancel(),
+        )
+        .unwrap()
+    else {
+        panic!("the reset event must be exposed by the original operation")
+    };
+    assert_eq!(request.subject(), form);
+    assert_eq!(request.kind(), DomSourceEventKind::Reset);
+    assert!(request.cancelable());
+    assert!(request.toggle_event().is_none());
+    let marker = session.snapshot();
+    assert!(locked(&marker));
+    assert_eq!(read(&marker), ["dirty", "dirty"]);
+
+    let DomSourceEventServiceProgress::Serviced { receipt } = execution
+        .service_event(
+            &mut session.dom(),
+            &request,
+            &mut events,
+            &mut context,
+            DomSourceEventServiceLimits {
+                source: roomy,
+                dispatch: event_limits(),
+            },
+            &cancel(),
+        )
+        .unwrap()
+    else {
+        panic!("the native reset event must deliver once")
+    };
+    assert_eq!(receipt.event_type(), DomEventType::RESET);
+    assert_eq!(receipt.callbacks(), 1);
+    assert!(receipt.failures().is_empty());
+    let accepted = session.dom().pending_source_edit().unwrap();
+    assert_eq!(accepted.phase(), DomSourcePhase::EventReceiptAccepted);
+    let cap = accepted.spent_work() + 2;
+    assert!(matches!(execution.resume(
+        &mut session.dom(), request.operation(), limits(cap, 2), &mut services, &cancel()),
+        Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+            DomError::SourceWorkLimit { limit }
+        ))) if limit == cap));
+    assert_eq!(session.snapshot().stamp(), marker.stamp());
+    assert_eq!(read(&session.snapshot()), ["dirty", "dirty"]);
+    assert_eq!(context.seen.len(), 1);
+
+    let DomSourceDriveProgress::Complete(done) = execution
+        .resume(
+            &mut session.dom(),
+            request.operation(),
+            roomy,
+            &mut services,
+            &cancel(),
+        )
+        .unwrap()
+    else {
+        panic!("the original reset must finish without a second event")
+    };
+    assert_eq!(done.operation(), request.operation());
+    for input in controls {
+        assert!(
+            done.commit()
+                .changes()
+                .changes()
+                .contains(&DomChange::ElementState(input))
+        );
+    }
+    assert_eq!(done.commit().changes().from(), marker.stamp());
+    let current = session.snapshot();
+    assert_eq!(done.commit().changes().to(), current.stamp());
+    assert_eq!(read(&current), ["left", "right"]);
+    assert!(!locked(&current));
+    assert_eq!(context.seen.len(), 1);
+    assert_eq!(read(&marker), ["dirty", "dirty"]);
+    assert!(session.dom().pending_source_edit().is_none());
 }
 
 #[test]

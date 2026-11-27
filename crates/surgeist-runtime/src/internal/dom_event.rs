@@ -2148,6 +2148,7 @@ enum EventData {
     StyleLoad,
     StyleError,
     DialogClose,
+    FormReset,
     TextSelection,
     FileSelection(FileSelectionEvent),
     DialogCancel {
@@ -2190,6 +2191,7 @@ pub(crate) enum NativeEventCause {
     DialogToggle,
     DialogCancel,
     DialogClose,
+    FormReset,
     TextSelection,
     FileSelection(FileSelectionEvent),
     SignalAbort,
@@ -2214,6 +2216,7 @@ impl NativeEventCause {
             Self::DialogBeforeToggle => DomEventType::BEFORE_TOGGLE,
             Self::DialogCancel => DomEventType::CANCEL,
             Self::DialogClose => DomEventType::CLOSE,
+            Self::FormReset => DomEventType::RESET,
             Self::TextSelection => DomEventType::SELECT,
             Self::FileSelection(FileSelectionEvent::Input) => DomEventType::INPUT,
             Self::FileSelection(FileSelectionEvent::Change) => DomEventType::CHANGE,
@@ -2847,6 +2850,15 @@ impl EventInvocationOwner {
                 EventPayload::None,
                 default_init,
             ),
+            EventData::FormReset => (
+                NativeEventCause::FormReset,
+                EventPayload::None,
+                DomEventInit {
+                    bubbles: true,
+                    cancelable: true,
+                    ..default_init
+                },
+            ),
             EventData::TextSelection => (
                 NativeEventCause::TextSelection,
                 EventPayload::None,
@@ -3246,6 +3258,14 @@ impl NativeDomEvent {
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
         EventInvocationOwner::new(target, EventData::DialogClose, creation, backing)
+    }
+
+    pub(crate) fn form_reset(
+        target: NodeId,
+        creation: Result<EventCreation, DomEventTimestampUnavailable>,
+        backing: EventBodyCustody,
+    ) -> EventInvocationOwner {
+        EventInvocationOwner::new(target, EventData::FormReset, creation, backing)
     }
 
     pub(crate) fn text_selection(

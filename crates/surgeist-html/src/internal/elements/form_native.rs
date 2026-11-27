@@ -36,6 +36,27 @@ impl HtmlFormNativeState {
         self.locked_for_reset
     }
 
+    /// Mark an unlocked Form for the original reset method. A nested method
+    /// on the same locked Form returns without reaching the reset algorithm.
+    pub const fn begin_reset(self) -> Option<Self> {
+        if self.locked_for_reset {
+            None
+        } else {
+            Some(Self {
+                locked_for_reset: true,
+                ..self
+            })
+        }
+    }
+
+    /// Release the mark after the reset algorithm ends.
+    pub const fn finish_reset(self) -> Self {
+        Self {
+            locked_for_reset: false,
+            ..self
+        }
+    }
+
     /// Whether entry-list construction is in progress in this actual state.
     pub const fn constructing_entry_list(self) -> bool {
         self.constructing_entry_list

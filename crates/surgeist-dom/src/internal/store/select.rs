@@ -1085,6 +1085,7 @@ pub(super) enum Effect {
         stage: u8,
     },
     Output(output::Frame),
+    FormReset(super::form::ResetFrame),
     SelectStart {
         key: Key,
         operation: HtmlSelectOperation,
@@ -1156,6 +1157,7 @@ impl Effect {
             Self::Tree(frame) => frame.freeze_worklists(draft, cancel),
             Self::Compound(frame) => frame.freeze(draft, cancel),
             Self::SelectOptions(frame) => frame.freeze(draft, cancel),
+            Self::FormReset(frame) => frame.members.freeze(draft, cancel),
             Self::Normalize(frame) => frame.freeze(draft, cancel),
             _ => Ok(()),
         }
@@ -1227,6 +1229,11 @@ impl EffectFrame {
                 stage: *stage,
             },
             Effect::Output(frame) => Effect::Output(frame.clone()),
+            Effect::FormReset(frame) => Effect::FormReset(super::form::ResetFrame {
+                form: frame.form,
+                members: frame.members.checkpoint(a, cancel)?,
+                next: frame.next,
+            }),
             Effect::SelectStart {
                 key,
                 operation,
@@ -1493,6 +1500,7 @@ impl Draft {
                         self.children_changed_effect(parent, stage, limits, cancel)?
                     }
                     Effect::Output(frame) => self.output_effect(frame, payload, limits, cancel)?,
+                    Effect::FormReset(frame) => self.form_reset_effect(frame, limits, cancel)?,
                     Effect::SelectStart {
                         key,
                         operation,

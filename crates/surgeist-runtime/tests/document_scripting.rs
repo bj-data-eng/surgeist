@@ -2636,6 +2636,7 @@ fn main() {
             "ordinary-reflections-source-refusal" => ordinary_reflections::attached_reflection_setter_preserves_source_refusal(),
             "form-attributes" => form_attributes::attached_form_settings_reflect_live_native_attributes(),
             "form-reset" => form_reset::attached_form_reset_uses_live_post_event_owners_and_a_per_form_lock(),
+            "form-reset-families" => form_reset::attached_form_reset_restores_all_native_families_before_face_callbacks(),
             "fieldset-attributes" => fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity(),
             "output-values" => output_values::attached_output_reads_native_values_and_stores_custom_validity(),
             "button-attributes" => button_attributes::attached_button_attributes_use_live_submitter_and_form_state(),
@@ -2840,6 +2841,7 @@ fn main() {
     ordinary_reflections::attached_reflection_setter_preserves_source_refusal();
     form_attributes::attached_form_settings_reflect_live_native_attributes();
     form_reset::attached_form_reset_uses_live_post_event_owners_and_a_per_form_lock();
+    form_reset::attached_form_reset_restores_all_native_families_before_face_callbacks();
     fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity();
     output_values::attached_output_reads_native_values_and_stores_custom_validity();
     button_attributes::attached_button_attributes_use_live_submitter_and_form_state();

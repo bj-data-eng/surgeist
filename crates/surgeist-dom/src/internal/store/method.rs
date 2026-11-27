@@ -9,6 +9,7 @@ use super::*;
 pub(super) enum Frame {
     CompoundFailure(DomError),
     Dialog(dialog::MethodFrame),
+    FormReset(Key),
     DesignMode(design_mode::Frame),
     FullscreenExit(Option<crate::internal::fullscreen::DomFullscreenExitReturn>),
 }
@@ -17,7 +18,7 @@ impl Frame {
         match self {
             Self::CompoundFailure(_) => false,
             Self::FullscreenExit(result) => result.is_none(),
-            Self::Dialog(_) => true,
+            Self::Dialog(_) | Self::FormReset(_) => true,
             Self::DesignMode(frame) => {
                 frame.cursor.action()
                     != surgeist_html::elements::native::HtmlDesignModeAction::Complete
