@@ -92,10 +92,14 @@ mod named_line_errors;
 mod oracle_comparison;
 #[path = "grid_tests/scroll_composition_tests.rs"]
 mod scroll_composition;
+#[path = "grid_tests/subgrid_border_basis_tests.rs"]
+mod subgrid_border_basis;
 #[path = "grid_tests/subgrid_clamping_contracts_tests.rs"]
 mod subgrid_clamping_contracts;
 #[path = "grid_tests/subgrid_share_tests.rs"]
 mod subgrid_share;
+#[path = "grid_tests/subgrid_specified_size_tests.rs"]
+mod subgrid_specified_size;
 #[path = "grid_tests/topology_placement_tests.rs"]
 mod topology_placement;
 #[path = "grid_tests/tracks_intrinsic_tests.rs"]

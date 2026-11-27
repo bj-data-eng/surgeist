@@ -77,7 +77,7 @@ where
         return Ok(ControlFlow::Break(used(1)));
     }
     let initial_size = constants.initial_track_basis(constants.node_inner_size);
-    let initial_available = constants.initial_track_basis(constants.available_inner_size);
+    let initial_available = constants.initial_track_basis(constants.available_inner_size());
     let basis = track_expansion_basis(
         components,
         axis.component(flow.logical_size(initial_size)),

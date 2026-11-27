@@ -456,6 +456,9 @@ pub(super) struct GridMinimumWrapperInput<'input, 'a, Node, S: LayoutScalar> {
     /// Traversal geometry only; never promoted into property/known authority.
     /// A wrapper-direct caller without an allocated opposite axis supplies None.
     pub(super) content_box_estimate: Option<Size<S>>,
+    /// The subgrid's border-box extent along each physical axis it inherits
+    /// from a parent whose allocation of the span is final.
+    pub(super) known_extent: Size<Option<S>>,
     pub(super) traversal: GridMinimumWrapperTraversal,
     /// Actual resolved gap for a geometry-only traversal, which has no child
     /// preparation/property basis. Prepared traversal uses its canonical gap.
@@ -2267,6 +2270,7 @@ struct WrapperLevelRequest<'input, Node, S: LayoutScalar> {
     prepared: ComputeInputOf<S>,
     containing_flow_axes: crate::geometry::FlowAxes,
     content_box_size: Size<S>,
+    known_extent: Size<Option<S>>,
     traversal: GridMinimumWrapperTraversal,
     /// The query without its track slices, which the allocation flags record.
     query: IntrinsicGridQuery<'static, S>,
@@ -2283,6 +2287,7 @@ impl<'input, Node, S: LayoutScalar> WrapperLevelRequest<'input, Node, S> {
             prepared: self.prepared,
             containing_flow_axes: self.containing_flow_axes,
             content_box_estimate: Some(self.content_box_size),
+            known_extent: self.known_extent,
             traversal: self.traversal,
             query: IntrinsicGridQuery {
                 columns: self
@@ -2936,7 +2941,9 @@ where
         item_report.row.can_inherit(),
     );
     let intrinsic_minimum = standalone_intrinsic_minimum_phases(&nested_container_style, inherited);
-    let mut gutter_container = *nested_container;
+    // The subgrid's specified sizes do not apply in its subgridded axes, so
+    // they must not bound the reservation either.
+    let mut gutter_container = (*nested_container).with_inherited_axes(inherited);
     gutter_container.suppress_intrinsic_minimum(intrinsic_minimum.map(|minimum| minimum.is_some()));
     let gutter_style = gutter_container.projection();
     let gutter_input = prepared.with_run_mode(RunMode::ComputeSize);
@@ -3231,6 +3238,33 @@ where
         columns: axis_context(GridAxisKind::Column, item_report.column)?,
         rows: axis_context(GridAxisKind::Row, item_report.row)?,
     };
+    // The subgrid's border box along an inherited axis whose allocation is final:
+    // the adjusted tracks span its content box, so its used border, padding and
+    // scrollbar gutter bring that to the border box.
+    let child_flow = FlowAxes::new(
+        wrapper_source.child_style.writing_mode,
+        wrapper_source.child_style.direction,
+    );
+    let inset = (wrapper_source.border + wrapper_source.padding + wrapper_source.scrollbar_gutter)
+        .sum_axes();
+    let mut known_extent = Size::NONE;
+    for (axis, kind, report) in [
+        (
+            &parent_context.columns,
+            GridAxisKind::Column,
+            item_report.column,
+        ),
+        (&parent_context.rows, GridAxisKind::Row, item_report.row),
+    ] {
+        let Some(axis) = axis.as_ref().filter(|_| allocated(report)) else {
+            continue;
+        };
+        let extent = axis.geometry.total_extent();
+        match grid_axis_physical_axis(child_flow, kind) {
+            PhysicalAxis::Horizontal => known_extent.width = Some(extent + inset.width),
+            PhysicalAxis::Vertical => known_extent.height = Some(extent + inset.height),
+        }
+    }
     Ok(WrapperLevelRequest {
         axis: queried_axis,
         container: *nested_container,
@@ -3238,6 +3272,7 @@ where
         prepared,
         containing_flow_axes,
         content_box_size,
+        known_extent,
         traversal,
         query: IntrinsicGridQuery {
             purpose: query.purpose,
@@ -3335,6 +3370,9 @@ struct WrapperResolutionIdentity<'input, 'a, Node, S: LayoutScalar> {
     parent_context: &'a GridParentContext<S, Node>,
     prepared: ComputeInputOf<S>,
     lane_track: bool,
+    /// The subgrid's known border-box extent along each inherited physical axis
+    /// whose allocation is final.
+    known_extent: Size<Option<S>>,
     containing_flow_axes: FlowAxes,
     stage: GridSizingStage,
 }
@@ -3346,6 +3384,7 @@ struct WrapperResolutionKey<'input, Node, S: LayoutScalar> {
     parent_context: GridParentContext<S, Node>,
     prepared: ComputeInputOf<S>,
     lane_track: bool,
+    known_extent: Size<Option<S>>,
     containing_flow_axes: FlowAxes,
     stage: GridSizingStage,
 }
@@ -3358,6 +3397,7 @@ impl<Node: Copy + PartialEq, S: LayoutScalar> WrapperResolutionKey<'_, Node, S> 
             && self.parent_context == *identity.parent_context
             && self.prepared == identity.prepared
             && self.lane_track == identity.lane_track
+            && self.known_extent == identity.known_extent
             && self.containing_flow_axes == identity.containing_flow_axes
             && self.stage == identity.stage
     }
@@ -3413,6 +3453,7 @@ impl<'input, Node: Copy, S: LayoutScalar> WrapperResolutionKey<'input, Node, S> 
             parent_context: identity.parent_context.clone(),
             prepared: identity.prepared,
             lane_track: identity.lane_track,
+            known_extent: identity.known_extent,
             containing_flow_axes: identity.containing_flow_axes,
             stage: identity.stage,
         }
@@ -3523,6 +3564,7 @@ where
         parent_context,
         prepared,
         lane_track,
+        known_extent,
         containing_flow_axes,
         stage: query_stage,
     } = *identity;
@@ -3531,9 +3573,14 @@ where
         parent_context.columns.is_some(),
         parent_context.rows.is_some(),
     );
+    // A subgrid's specified sizes do not apply in its subgridded axes. Where
+    // the parent's allocation of its span is final, the border box that
+    // allocation gives (the area less the margins) is the known size there, so
+    // a percentage basis comes from the area.
+    let sizing_input = sizing_input.with_known(sizing_input.known().or(known_extent));
     let intrinsic_minimum = standalone_intrinsic_minimum_phases(container_style, inherited);
     let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
-    let mut traversal_input = *nested_container;
+    let mut traversal_input = (*nested_container).with_inherited_axes(inherited);
     traversal_input.suppress_intrinsic_minimum(intrinsic_axes);
     let mut traversal_style = traversal_input.projection();
     traversal_style.baseline_references = container_style.baseline_references;
@@ -3988,6 +4035,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperLevel<'input, Node, S> {
             prepared,
             containing_flow_axes,
             content_box_estimate,
+            known_extent,
             traversal,
             query,
         } = request;
@@ -4009,6 +4057,12 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperLevel<'input, Node, S> {
             parent_context,
             prepared,
             lane_track: traversal.uses_lane_track_sizing(),
+            // Only a Grid wrapper reads the allocation as its known size.
+            known_extent: if traversal.uses_lane_track_sizing() {
+                Size::NONE
+            } else {
+                known_extent
+            },
             containing_flow_axes,
             stage: query.stage,
         };

@@ -9593,6 +9593,20 @@ fn vertical_grid_child_percentage_padding_uses_unequal_physical_area_height_basi
 
 #[test]
 fn orthogonal_subgrid_grandchild_percentage_edges_use_immediate_containing_flow() {
+    assert_orthogonal_subgrid_grandchild_percentage_edges(PreferredSize::px(100.0));
+}
+
+// Node 2 subgrids its columns, which share the parent's auto row: its physical
+// width is the stretched 100px of that row whatever width it specifies (CSS
+// Grid 2, section 9), so the grandchild's percentage edges resolve against the
+// same 100px.
+#[test]
+fn subgrid_grandchild_percentage_edges_ignore_the_subgrids_specified_width() {
+    assert_orthogonal_subgrid_grandchild_percentage_edges(PreferredSize::px(50.0));
+    assert_orthogonal_subgrid_grandchild_percentage_edges(PreferredSize::AUTO);
+}
+
+fn assert_orthogonal_subgrid_grandchild_percentage_edges(outer_width: PreferredSize) {
     let parent_style = NodeInput {
         display: Display::Grid,
         writing_mode: WritingMode::VerticalRl,
@@ -9603,7 +9617,7 @@ fn orthogonal_subgrid_grandchild_percentage_edges_use_immediate_containing_flow(
     };
     let outer_style = NodeInput {
         display: Display::Grid,
-        size: Size::new(PreferredSize::px(100.0), PreferredSize::px(200.0)),
+        size: Size::new(outer_width, PreferredSize::px(200.0)),
         grid_template_columns: subgrid_track(),
         grid_template_rows: vec![TrackComponent::percent(1.0)],
         ..NodeInput::default()

@@ -57,12 +57,16 @@ pub(crate) enum ResolvedFlexBasis<S: LayoutScalar> {
     Definite(S),
 }
 
-fn percentage_basis<S: LayoutScalar>(basis: Option<S>) -> PercentageBasisOf<S> {
-    basis.map_or(PercentageBasisOf::MISSING, |value| {
-        let Ok(basis) = PercentageBasisOf::definite(value) else {
-            unreachable!("validated compute inputs carry non-negative finite parent sizes")
-        };
-        basis
+/// The percentage basis of an optional extent. Resolution inputs are built
+/// from used geometry that callers keep non-negative and finite; an extent that
+/// is not is reported as an invalid numeric value rather than asserted.
+fn percentage_basis<S: LayoutScalar>(
+    basis: Option<S>,
+) -> Result<PercentageBasisOf<S>, SizingResolutionError<S>> {
+    basis.map_or(Ok(PercentageBasisOf::MISSING), |value| {
+        PercentageBasisOf::definite(value).map_err(|_| {
+            SizingResolutionError::Status(LengthResolutionStatus::InvalidNumeric { value })
+        })
     })
 }
 
@@ -102,7 +106,7 @@ pub(crate) fn resolve_preferred_sizing<S: LayoutScalar>(
     basis: Option<S>,
     missing_basis_is_indefinite: bool,
 ) -> Result<ResolvedPreferredSize<S>, SizingResolutionError<S>> {
-    let basis = percentage_basis(basis);
+    let basis = percentage_basis(basis)?;
     match dispatch_preferred_size(value, algorithm, axis, basis) {
         SizingDispatch::Unsupported(unsupported) => {
             Err(SizingResolutionError::Unsupported(unsupported))
@@ -356,7 +360,7 @@ pub(crate) fn resolve_minimum_optional<S: LayoutScalar>(
     basis: Option<S>,
     missing_basis_is_indefinite: bool,
 ) -> Result<Option<S>, SizingResolutionError<S>> {
-    let basis = percentage_basis(basis);
+    let basis = percentage_basis(basis)?;
     match dispatch_minimum_size(value, algorithm, axis, basis) {
         SizingDispatch::Unsupported(unsupported) => {
             Err(SizingResolutionError::Unsupported(unsupported))
@@ -374,7 +378,7 @@ pub(crate) fn resolve_maximum_optional<S: LayoutScalar>(
     basis: Option<S>,
     missing_basis_is_indefinite: bool,
 ) -> Result<Option<S>, SizingResolutionError<S>> {
-    let basis = percentage_basis(basis);
+    let basis = percentage_basis(basis)?;
     match dispatch_maximum_size(value, algorithm, axis, basis) {
         SizingDispatch::Unsupported(unsupported) => {
             Err(SizingResolutionError::Unsupported(unsupported))
@@ -390,7 +394,7 @@ pub(crate) fn resolve_flex_basis<S: LayoutScalar>(
     axis: PhysicalAxis,
     basis: Option<S>,
 ) -> Result<ResolvedFlexBasis<S>, SizingResolutionError<S>> {
-    let percentage_basis = percentage_basis(basis);
+    let percentage_basis = percentage_basis(basis)?;
     match dispatch_flex_basis(value, SizingAlgorithm::Flex, axis, percentage_basis) {
         SizingDispatch::Unsupported(unsupported) => {
             Err(SizingResolutionError::Unsupported(unsupported))
@@ -471,7 +475,7 @@ pub(crate) fn fixed_fallback_preferred<S: LayoutScalar>(
         }
         _ => {}
     }
-    let basis = percentage_basis(admitted_basis);
+    let basis = percentage_basis(admitted_basis)?;
     fixed_fallback_dispatch(
         dispatch_preferred_size(value, algorithm, axis, basis),
         basis,
@@ -503,7 +507,7 @@ pub(crate) fn fixed_fallback_minimum<S: LayoutScalar>(
         }
         _ => {}
     }
-    let basis = percentage_basis(admitted_basis);
+    let basis = percentage_basis(admitted_basis)?;
     fixed_fallback_dispatch(dispatch_minimum_size(value, algorithm, axis, basis), basis)
 }
 
@@ -532,6 +536,6 @@ pub(crate) fn fixed_fallback_maximum<S: LayoutScalar>(
         }
         _ => {}
     }
-    let basis = percentage_basis(admitted_basis);
+    let basis = percentage_basis(admitted_basis)?;
     fixed_fallback_dispatch(dispatch_maximum_size(value, algorithm, axis, basis), basis)
 }

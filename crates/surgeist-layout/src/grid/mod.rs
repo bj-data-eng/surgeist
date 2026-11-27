@@ -2251,7 +2251,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPassSource<'input, Node, S> {
                 let fixed_body = self
                     .constants
                     .flow_axes
-                    .logical_size(self.constants.explicit_definite_content_size);
+                    .logical_size(self.constants.explicit_definite_content_size());
                 let operation = if axis.component(fixed_body).is_some() {
                     SizingOperation::Normal
                 } else {
@@ -2401,7 +2401,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPassSource<'input, Node, S> {
                 sizing_flow_axes.logical_size(Size::new(&style.size.width, &style.size.height));
             let logical_node_inner_size = sizing_flow_axes.logical_size(constants.node_inner_size);
             let logical_available_inner_size =
-                sizing_flow_axes.logical_size(constants.available_inner_size);
+                sizing_flow_axes.logical_size(constants.available_inner_size());
             LogicalSizeOf::new(
                 intrinsic_sizing_axis_content_size(IntrinsicSizingAxisInput {
                     operation: prepared_available.inline.operation(),
@@ -3028,7 +3028,7 @@ fn grid_requested_operations<S: LayoutScalar>(
     input: ComputeInputOf<S>,
 ) -> LogicalSizeOf<SizingOperation> {
     let requested = flow.logical_size(input.sizing_request().axes());
-    let fixed = flow.logical_size(constants.explicit_definite_content_size);
+    let fixed = flow.logical_size(constants.explicit_definite_content_size());
     LogicalSizeOf::new(
         if fixed.inline.is_some() {
             SizingOperation::Normal
@@ -3447,7 +3447,7 @@ where
     let sizing_flow_axes = constants.flow_axes;
     let container_style = *style;
     let initial_size = constants.initial_track_basis(constants.node_inner_size);
-    let initial_available = constants.initial_track_basis(constants.available_inner_size);
+    let initial_available = constants.initial_track_basis(constants.available_inner_size());
     let gap_basis = initial_size.map(|extent| Some(extent.unwrap_or(Tree::Scalar::ZERO)));
     let resolved_gap = Size::new(
         resolve_grid_gap(container_style.gap.width, gap_basis.width),
@@ -4902,7 +4902,9 @@ fn qualify_grid_fallback<Node: Copy, S: LayoutScalar, M>(
 #[derive(Clone, Copy, PartialEq)]
 struct Constants<S: LayoutScalar = DefaultScalar> {
     pub(super) flow_axes: crate::geometry::FlowAxes,
-    explicit_definite_content_size: Size<Option<S>>,
+    /// The border box a percentage basis refers to, where one is definite. The
+    /// content box derived from it follows the used `content_box_inset`.
+    explicit_definite_outer_size: Size<Option<S>>,
     indefinite_percentage_axis: Option<PhysicalAxis>,
     child_orthogonal_fallback: OrthogonalFallbackOf<S>,
     fallback_minimum_outer: Size<FixedFallbackSource<S>>,
@@ -4912,7 +4914,7 @@ struct Constants<S: LayoutScalar = DefaultScalar> {
     node_min_size: Size<Option<S>>,
     node_definite_min_size: Size<Option<S>>,
     node_max_size: Size<Option<S>>,
-    available_inner_size: Size<Option<S>>,
+    available_outer_size: Size<Option<S>>,
     content_box_inset: Edges<S>,
     scrollbar_gutter: Edges<S>,
     padding: Edges<S>,
@@ -4920,6 +4922,23 @@ struct Constants<S: LayoutScalar = DefaultScalar> {
 }
 
 impl<S: LayoutScalar> Constants<S> {
+    /// The content box of the definite outer size under the used inset. A
+    /// content box is never smaller than zero (CSS Sizing 3), so an outer size
+    /// below the inset leaves an empty content box, not a negative extent.
+    fn explicit_definite_content_size(&self) -> Size<Option<S>> {
+        self.explicit_definite_outer_size
+            .sub_optional_unchecked(self.content_box_inset.sum_axes())
+            .max_optional(Size::ZERO.map(Some))
+    }
+
+    /// The content box of the available outer size under the used inset,
+    /// never smaller than zero.
+    fn available_inner_size(&self) -> Size<Option<S>> {
+        self.available_outer_size
+            .sub_optional_unchecked(self.content_box_inset.sum_axes())
+            .max_optional(Size::ZERO.map(Some))
+    }
+
     fn initial_track_basis(&self, size: Size<Option<S>>) -> Size<Option<S>> {
         omit_indefinite_percentage_axis(size, self.indefinite_percentage_axis)
     }
@@ -4986,15 +5005,13 @@ impl<S: LayoutScalar> Constants<S> {
     fn for_used_scroll_box(&self, scroll_box: CanonicalScrollBoxOf<S>) -> Self {
         let content_box_inset = scroll_box.content_box_inset();
         // Intrinsic sizing needs the requested inset, while placement uses the
-        // final allocated box's saturated inset. Rebase the inner quantities
+        // final allocated box's saturated inset. Rebase the inner quantity
         // without changing which outer dimensions were originally definite.
+        // The explicit and available content boxes follow the used inset by
+        // construction: each derives from its stored outer size.
         let inset_difference = self.content_box_inset.sum_axes() - content_box_inset.sum_axes();
         Self {
-            explicit_definite_content_size: self
-                .explicit_definite_content_size
-                .add_optional(inset_difference),
             node_inner_size: self.node_inner_size.add_optional(inset_difference),
-            available_inner_size: self.available_inner_size.add_optional(inset_difference),
             content_box_inset,
             scrollbar_gutter: scroll_box.effective_gutter(),
             ..*self
@@ -5220,8 +5237,6 @@ impl<S: LayoutScalar> Constants<S> {
         let scrollbar_gutter = scroll_box.effective_gutter();
         let explicit_definite_outer_size =
             input.descendant_percentage_basis(input.known().or(style_size));
-        let explicit_definite_content_size =
-            explicit_definite_outer_size.sub_optional_unchecked(content_box_inset.sum_axes());
         let GridFixedFallback {
             descendants: child_orthogonal_fallback,
             minimum_outer: fallback_minimum_outer,
@@ -5231,19 +5246,20 @@ impl<S: LayoutScalar> Constants<S> {
             .known()
             .or(style_size.clamp_min_before_max_optional(min_size, max_size))
             .max_optional(padding_border_size.map(Some));
-        let node_inner_size = node_outer_size.sub_optional_unchecked(content_box_inset.sum_axes());
+        // A content box is never smaller than zero (CSS Sizing 3).
+        let node_inner_size = node_outer_size
+            .sub_optional_unchecked(content_box_inset.sum_axes())
+            .max_optional(Size::ZERO.map(Some));
         let available_size = input
             .sizing_request()
             .axes()
             .zip_map(max_size, intrinsic_available_size_for_axis)
             .clamp_min_before_max_optional(min_size, max_size)
             .max_optional(padding_border_size.map(Some));
-        let available_inner_size =
-            available_size.sub_optional_unchecked(content_box_inset.sum_axes());
 
         Ok(Self {
             flow_axes,
-            explicit_definite_content_size,
+            explicit_definite_outer_size,
             indefinite_percentage_axis: input.indefinite_percentage_axis(),
             child_orthogonal_fallback,
             fallback_minimum_outer,
@@ -5253,7 +5269,7 @@ impl<S: LayoutScalar> Constants<S> {
             node_min_size: min_size,
             node_definite_min_size: resolved_min_size,
             node_max_size: max_size,
-            available_inner_size,
+            available_outer_size: available_size,
             content_box_inset,
             scrollbar_gutter,
             padding,

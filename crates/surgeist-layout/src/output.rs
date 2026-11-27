@@ -424,6 +424,12 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
     }
 
     #[must_use]
+    pub(crate) const fn with_known(mut self, known: Size<Option<S>>) -> Self {
+        self.known = known;
+        self
+    }
+
+    #[must_use]
     pub(crate) const fn with_run_mode(mut self, run_mode: RunMode) -> Self {
         self.run_mode = run_mode;
         self
