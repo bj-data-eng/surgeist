@@ -54,7 +54,12 @@ fn retiring_an_exact_previous_focus_target_clears_only_its_surviving_referrers()
     let [left, right, unrelated, target, other] =
         tickets.map(|ticket| made.created(&ticket).unwrap().unwrap());
     dom.edit_native_state(&cancel, |draft| {
-        for (receiver, remembered) in [(left, target), (right, target), (unrelated, other)] {
+        for (receiver, remembered) in [
+            (left, target),
+            (right, target),
+            (target, target),
+            (unrelated, other),
+        ] {
             stage_previous_focus(
                 draft,
                 Key::Existing(receiver),
@@ -68,6 +73,7 @@ fn retiring_an_exact_previous_focus_target_clears_only_its_surviving_referrers()
     let before = dom.snapshot();
     assert_eq!(observed_focus(&before, left), Some(target));
     assert_eq!(observed_focus(&before, right), Some(target));
+    assert_eq!(observed_focus(&before, target), Some(target));
     assert_eq!(observed_focus(&before, unrelated), Some(other));
 
     let mut retire = DomBatch::new();
@@ -167,4 +173,108 @@ fn retiring_a_staged_previous_focus_target_does_not_require_a_public_id() {
     assert_eq!(commit.created(&target).unwrap(), None);
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(observed_focus(&dom.snapshot(), receiver), None);
+}
+#[test]
+fn source_subtree_retirement_clears_at_publication_and_never_follows_reuse() {
+    use crate::source::{DomSourceEdit, DomSourceLimits, DomSourceProgress};
+
+    let cancel = AtomicBool::new(false);
+    let mut dom = focus_dom();
+    let mut setup = DomBatch::new();
+    let doc = setup.create_document();
+    let other = setup.create_document();
+    let root = setup.create_element_ns(&doc, Namespace::html(), "section");
+    let target = setup.create_element_ns(&doc, Namespace::html(), "input");
+    let receiver = setup.create_element_ns(&doc, Namespace::html(), "div");
+    setup.insert_before(&target, &root, None);
+    let made = dom.apply(setup, &cancel).unwrap();
+    let other = made.document(&other).unwrap();
+    let [root, target, receiver] =
+        [root, target, receiver].map(|ticket| made.created(&ticket).unwrap().unwrap());
+    dom.edit_native_state(&cancel, |draft| {
+        stage_previous_focus(
+            draft,
+            Key::Existing(receiver),
+            Key::Existing(target),
+            &cancel,
+        )
+    })
+    .unwrap();
+
+    let mut move_tree = DomBatch::new();
+    move_tree.adopt(root, other.node());
+    dom.apply(move_tree, &cancel).unwrap();
+    let before = dom.snapshot();
+    assert_eq!(observed_focus(&before, receiver), Some(target));
+    let usage = dom.usage();
+    let mut edit = DomBatch::new();
+    edit.destroy(root);
+    let prepared = dom.prepare(edit, &cancel).unwrap();
+    assert!(prepared.changes.contains(&DomChange::Destroyed(target)));
+    assert!(
+        prepared
+            .changes
+            .contains(&DomChange::ElementState(receiver))
+    );
+    cancel.store(true, Ordering::Relaxed);
+    assert_eq!(
+        dom.publish(prepared, &cancel).unwrap_err(),
+        DomError::Cancelled
+    );
+    cancel.store(false, Ordering::Relaxed);
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.usage(), usage);
+    assert_eq!(observed_focus(&dom.snapshot(), receiver), Some(target));
+    assert!(dom.snapshot().node(target).is_ok());
+
+    let refused = DomSourceLimits::new(10_000_000, 100_000, 1_000_000, 0, 64, 64, 1);
+    {
+        let mut lease = dom
+            .begin_source_edit(DomSourceEdit::destroy(root), refused, &cancel)
+            .unwrap();
+        assert!(matches!(
+            lease.advance(&cancel),
+            Err(DomError::SourcePublicationLimit)
+        ));
+    }
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.usage(), usage);
+    assert_eq!(observed_focus(&dom.snapshot(), receiver), Some(target));
+    assert!(dom.snapshot().node(target).is_ok());
+
+    let limits = DomSourceLimits::new(10_000_000, 100_000, 1_000_000, 8, 64, 64, 1);
+    let mut lease = dom
+        .begin_source_edit(DomSourceEdit::destroy(root), limits, &cancel)
+        .unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        panic!("the original subtree retirement must complete");
+    };
+    for change in [
+        DomChange::Destroyed(root),
+        DomChange::Destroyed(target),
+        DomChange::ElementState(receiver),
+    ] {
+        assert!(done.commit().changes().changes().contains(&change));
+    }
+    drop(lease);
+    let after = dom.snapshot();
+    assert!(matches!(after.node(target), Err(DomError::StaleNode)));
+    assert_eq!(observed_focus(&after, receiver), None);
+    assert_eq!(observed_focus(&before, receiver), Some(target));
+
+    let mut replace = DomBatch::new();
+    let replacements =
+        ["input", "input"].map(|tag| replace.create_element_ns(other, Namespace::html(), tag));
+    let commit = dom.apply(replace, &cancel).unwrap();
+    let replacement = replacements
+        .into_iter()
+        .map(|ticket| commit.created(&ticket).unwrap().unwrap())
+        .find(|node| node.slot == target.slot)
+        .expect("retired target slot reused");
+    assert_ne!(replacement, target);
+    assert_eq!(observed_focus(&dom.snapshot(), receiver), None);
+    assert!(matches!(
+        dom.snapshot().node(target),
+        Err(DomError::StaleNode)
+    ));
 }

@@ -1122,6 +1122,29 @@ impl Draft {
             cancel,
         )
     }
+
+    pub(super) fn clear_retired_previous_focus(
+        &mut self,
+        target: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let referrers = self.inbound_keys(target, cancel)?;
+        for &referrer in referrers.iter() {
+            self.source_step(cancel)?;
+            let remembered = self.node(referrer)?.element().and_then(|element| {
+                element
+                    .common_state()
+                    .html()?
+                    .previously_focused_element()
+                    .copied()
+            });
+            if remembered.map(|key| self.live_key(key)) == Some(target) {
+                self.clear_previously_focused_element(referrer, cancel)?;
+            }
+        }
+        Ok(())
+    }
+
     pub(in crate::internal::store) fn replace_character_data_retained(
         &mut self,
         key: Key,

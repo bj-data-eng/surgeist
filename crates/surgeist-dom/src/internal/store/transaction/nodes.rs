@@ -807,7 +807,10 @@ impl Draft {
             .counts
             .checked_replace(Counts::node(self.node(key)?)?, Counts::default())?;
         let units = self.node(key)?.logical_units()?;
-        let style = matches!(self.node(key)?.kind(),super::KindRead::Element(e) if e.style_state().is_some());
+        let (element, style) = match self.node(key)?.kind() {
+            super::KindRead::Element(element) => (true, element.style_state().is_some()),
+            _ => (false, false),
+        };
         let document = self.node(key)?.document();
         let undo = self.prepare_undo_slots(9, cancel)?;
         let inbound = self.prepare_inbound_node(key, self.node(key)?, false, cancel)?;
@@ -886,6 +889,11 @@ impl Draft {
                 private_units: oldprivateunits,
                 private_counts: oldprivatecounts,
             });
+        }
+        if element {
+            // The outgoing-reference plan is committed and the target record
+            // is gone. The remaining incoming entries identify live referrers.
+            self.clear_retired_previous_focus(key, cancel)?;
         }
         Ok(RetiredNode { style, document })
     }
