@@ -74,16 +74,24 @@ impl HostedState {
         &mut self,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
-        if self.destruction.invocations.len() < self.destruction.invocations.capacity() {
-            return Ok(());
-        }
-        let retained = self.retained_bytes(cancel)?;
+        self.reserve_invocations(1, cancel)
+    }
+
+    pub(super) fn reserve_invocations(
+        &mut self,
+        additional: usize,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedRuntimeError> {
         let required = self
             .destruction
             .invocations
             .len()
-            .checked_add(1)
+            .checked_add(additional)
             .ok_or(DomHostedRuntimeError::Admission)?;
+        if required <= self.destruction.invocations.capacity() {
+            return Ok(());
+        }
+        let retained = self.retained_bytes(cancel)?;
         let requested = required
             .checked_mul(size_of::<Invocation>())
             .ok_or(DomHostedRuntimeError::Admission)?;

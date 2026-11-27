@@ -25,6 +25,7 @@ pub(crate) mod fullscreen;
 #[cfg(test)]
 mod fullscreen_tests;
 pub(in crate::internal::store) mod hosted;
+pub(crate) mod hosted_removals;
 #[cfg(test)]
 mod pending_identity_tests;
 mod request_close;
@@ -177,6 +178,8 @@ pub(in crate::internal::store) struct Operation {
     context: Option<(u64, Arc<DomStyleSource>)>,
     request: Option<DomStyleRequest>,
     child: Option<hosted::Child>,
+    hosted_removals: hosted_removals::Removals,
+    reset_body: Option<hosted_removals::ResetBody>,
     hosted_global: Option<(
         Key,
         crate::internal::hosted::DomHostedGlobalId,
@@ -639,6 +642,8 @@ impl Dom {
             context: None,
             request: None,
             child: None,
+            hosted_removals: hosted_removals::Removals::default(),
+            reset_body: None,
             hosted_global: None,
             receipt: None,
             owner_binding: None,
@@ -990,6 +995,8 @@ impl Operation {
                 crate::internal::source::DomSourcePhase::AttributeAttachmentOutput
             } else if self.draft.fullscreen_exit.is_some() {
                 crate::internal::source::DomSourcePhase::FullscreenExitHandoff
+            } else if self.pending_hosted_removals().is_some() {
+                crate::internal::source::DomSourcePhase::HostedRemovals
             } else if self.draft.pending_autofocus().is_some() {
                 crate::internal::source::DomSourcePhase::AutofocusInsertionService
             } else if matches!(self.draft.method.as_ref(), Some(crate::internal::store::method::Frame::DesignMode(frame)) if frame.cursor.action() != surgeist_html::elements::native::HtmlDesignModeAction::Complete)
@@ -1138,17 +1145,7 @@ impl Operation {
         self.draft.source_admit(0, cancel)
     }
     fn admit_current_command(&mut self, dom: &Dom, cancel: &AtomicBool) -> Result<(), DomError> {
-        let entry = if self.started
-            && matches!(
-                self.commands.get(self.index),
-                Some(Command::Compound(
-                    crate::internal::compound::Edit::FormReset { .. }
-                ))
-            ) {
-            // The reset event and lock already took effect. Scan the actual
-            // selected control continuation rather than reentering the lock.
-            headroom::Entry::ReachedEffects
-        } else if let Some(select) = &self.select {
+        let entry = if let Some(select) = &self.select {
             headroom::Entry::Select {
                 targets: select
                     .targets
@@ -2463,6 +2460,7 @@ impl DomSourceLease<'_> {
         // An observer may create the first binding after this Source
         // began. Refresh operational membership before any resumed mutation.
         op.refresh_inline_execution(self.dom, execution.resolver.is_some())?;
+        op.cancel_private_form_body(cancel)?;
         if !op.event_exposed
             && let OperationRoot::DialogTask(task) = op.commands
         {
@@ -2568,6 +2566,11 @@ impl DomSourceLease<'_> {
             return Ok(DomSourceProgress::Request(DomSourceRequest::HostedChild(
                 child.request.clone(),
             )));
+        }
+        if let Some(request) = op.pending_hosted_removals() {
+            return Ok(DomSourceProgress::Request(
+                DomSourceRequest::HostedRemovals(request),
+            ));
         }
         if let Some(request) = &op.request
             && op.receipt.is_none()
@@ -2790,6 +2793,17 @@ impl DomSourceLease<'_> {
                 ));
             }
             match result {
+                Err(error)
+                    if op.reset_body.is_some()
+                        && !matches!(error, DomError::HostedCompositionRequired) =>
+                {
+                    // A reset body stays private at an unavailable service.
+                    // Earlier writes cannot ride its ordinary prefix.
+                    checkpoint.restore(&mut op.draft);
+                    op.restore_external_receipt(external_applied);
+                    op.started = started;
+                    return Err(error.into());
+                }
                 Err(
                     boundary @ (DomError::ScriptPreparationRequired
                     | DomError::MetaCspProcessingRequired
@@ -3139,6 +3153,19 @@ impl DomSourceLease<'_> {
                     return Ok(DomSourceProgress::Request(DomSourceRequest::Style(request)));
                 }
                 Err(DomError::HostedCompositionRequired) => {
+                    match op.collect_form_removal(self.dom, cancel) {
+                        Ok(true) => {
+                            op.started = true;
+                            continue;
+                        }
+                        Ok(false) => {}
+                        Err(error) => {
+                            checkpoint.restore(&mut op.draft);
+                            op.restore_external_receipt(external_applied);
+                            op.started = started;
+                            return Err(error.into());
+                        }
+                    }
                     if !op.command_admitted {
                         checkpoint.restore(&mut op.draft);
                         op.restore_external_receipt(external_applied);
@@ -3233,6 +3260,20 @@ impl DomSourceLease<'_> {
                         op.request_close_result = None;
                         op.receipt = None;
                         continue;
+                    }
+                    match op.hosted_removal_request() {
+                        Ok(Some(request)) => {
+                            return Ok(DomSourceProgress::Request(
+                                DomSourceRequest::HostedRemovals(request),
+                            ));
+                        }
+                        Ok(None) => {}
+                        Err(error) => {
+                            checkpoint.restore(&mut op.draft);
+                            op.restore_external_receipt(external_applied);
+                            op.started = started;
+                            return Err(error.into());
+                        }
                     }
                     let completed_method = matches!(
                         op.draft.method,
@@ -4253,6 +4294,8 @@ impl Dom {
                 context: None,
                 request: None,
                 child: None,
+                hosted_removals: hosted_removals::Removals::default(),
+                reset_body: None,
                 hosted_global: None,
                 receipt: None,
                 owner_binding: None,
@@ -7637,7 +7680,9 @@ pub(in crate::internal::store) mod accounting_tests {
                     Ok(DomSourceProgress::Request(DomSourceRequest::Style(_))) => {
                         panic!("Slot assignment has no external Style work")
                     }
-                    Ok(DomSourceProgress::Request(DomSourceRequest::HostedChild(_))) => {
+                    Ok(DomSourceProgress::Request(
+                        DomSourceRequest::HostedChild(_) | DomSourceRequest::HostedRemovals(_),
+                    )) => {
                         panic!("Slot assignment fixture has no navigable-container hooks")
                     }
                     Ok(DomSourceProgress::Request(

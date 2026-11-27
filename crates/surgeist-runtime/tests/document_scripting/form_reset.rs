@@ -273,3 +273,257 @@ pub(super) fn attached_form_reset_removes_a_real_hosted_output_child() {
         "publish the lock, then all control resets together"
     );
 }
+
+pub(super) fn hosted_form_reset_admits_every_removal_before_publication() {
+    use surgeist_dom::edit::DomChange;
+
+    let (session, top) = reset_session();
+    let mut host = attach_reset_guest(session, top, Arc::new(cancel()));
+    let permit = host.permit().unwrap();
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+                const add = (parent, tag) => parent.appendChild(document.createElement(tag));
+                const form = add(document.body, 'form');
+                const input = add(form, 'input');
+                input.defaultValue = 'reset value';
+                input.value = 'dirty';
+                const output = add(form, 'output');
+                output.defaultValue = 'reset output';
+                output.value = 'dirty output';
+                return [add(output, 'iframe'), add(output, 'iframe')].every(frame =>
+                    frame.contentDocument !== null && frame.contentWindow !== null
+                ) ? 'ok' : 'real hosted children are required';
+            })()"#,
+        ),
+        "ok",
+    );
+    let mut session = host.stop().into_session().unwrap();
+    let cancel = cancel();
+    let mut hosted = session.hosted_execution();
+    let drain = |hosted: &mut HostedRuntime, dom: &mut DomEventDom<'_>| {
+        for _ in 0..64 {
+            if matches!(
+                hosted.run_next(dom, top.navigable(), &cancel).unwrap(),
+                DomHostedTaskProgress::Idle
+            ) {
+                return;
+            }
+        }
+        panic!("original hosted work did not settle");
+    };
+    drain(&mut hosted, &mut session.dom());
+
+    let initial = session.snapshot();
+    let root = initial
+        .document(top.document())
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let body = *initial.node(root).unwrap().children().last().unwrap();
+    let form = *initial.node(body).unwrap().children().last().unwrap();
+    let &[input, output] = initial.node(form).unwrap().children() else {
+        panic!("original Form control order");
+    };
+    let frames: Vec<_> = initial
+        .node(output)
+        .unwrap()
+        .children()
+        .iter()
+        .copied()
+        .filter(|node| initial.node(*node).unwrap().as_element().is_some())
+        .collect();
+    assert_eq!(frames.len(), 2);
+    let contents = |snapshot: &DomSnapshot, frame| {
+        snapshot
+            .node(frame)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .child_navigable()
+            .unwrap()
+    };
+    let children: Vec<_> = frames
+        .iter()
+        .map(|&frame| contents(&initial, frame).unwrap())
+        .collect();
+    for &child in &children {
+        let nav = initial.hosted_navigable(child).unwrap();
+        assert_eq!(nav.parent(), Some(top.navigable()));
+        assert!(!nav.is_retiring());
+    }
+    let input_value = |snapshot: &DomSnapshot| {
+        String::from_utf16(snapshot.node(input).unwrap().as_input().unwrap().value()).unwrap()
+    };
+    let output_children = initial.node(output).unwrap().children().to_vec();
+    assert_eq!(input_value(&initial), "dirty");
+
+    let mut policy = limits().hosted;
+    policy.tasks = 1;
+    hosted
+        .set_limits(&mut session.dom(), policy, &cancel)
+        .unwrap();
+    let source_limits = DomSourceLimits::new(32_000_000, 1_000_000, 1_000_000, 2, 512, 512, 16);
+    let mut style = |_: &surgeist_dom::style::DomStyleSource| None;
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut style,
+        url: None,
+    };
+    let mut dispatcher = new_registry();
+    dispatcher.bind(&mut session.dom(), &cancel).unwrap();
+    let mut source = session.source_execution();
+    let DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::Event(event),
+        ..
+    } = source
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::reset_form(form),
+            source_limits,
+            &mut services,
+            &cancel,
+        )
+        .unwrap()
+    else {
+        panic!("the original reset event is required");
+    };
+    let DomSourceEventServiceProgress::Serviced { .. } = source
+        .service_event(
+            &mut session.dom(),
+            &event,
+            &mut dispatcher,
+            &mut (),
+            DomSourceEventServiceLimits {
+                source: source_limits,
+                dispatch: DomEventDispatchLimits {
+                    path_items: 16,
+                    ..guest_limits().dispatch
+                },
+            },
+            &cancel,
+        )
+        .unwrap()
+    else {
+        panic!("the reset event must be delivered");
+    };
+    let locked = session.snapshot();
+    let operation = event.operation();
+    assert!(matches!(
+        source.resume(
+            &mut session.dom(),
+            operation,
+            source_limits,
+            &mut services,
+            &cancel
+        ),
+        Err(DomSourceDriveError::Source(DomSourceRuntimeError::Hosted(
+            DomHostedRuntimeError::Admission
+        )))
+    ));
+    let refused = session.snapshot();
+    let unchanged = |snapshot: &DomSnapshot| {
+        assert_eq!(locked.stamp(), snapshot.stamp());
+        assert_eq!(input_value(snapshot), "dirty");
+        assert_eq!(snapshot.node(output).unwrap().children(), output_children);
+        for (&frame, &child) in frames.iter().zip(&children) {
+            assert_eq!(contents(snapshot, frame), Some(child));
+            assert_eq!(snapshot.node(frame).unwrap().parent(), Some(output));
+        }
+    };
+    unchanged(&refused);
+    assert_eq!(
+        session.dom().pending_source_edit().unwrap().phase(),
+        DomSourcePhase::HostedRemovals
+    );
+
+    // Two live removals each need history, invocation and cleanup roles.
+    // Admit the Runtime queues but refuse the aggregate canonical issuance.
+    let mut canonical_short = limits().hosted;
+    let canonical = canonical_short.canonical;
+    canonical_short.canonical = DomHostedLimits::new(
+        DomHostedRecordLimits::new(32, 32, 32, 32, 32, 5, 32),
+        canonical.retained_bytes(),
+        canonical.scratch_bytes(),
+        canonical.work(),
+    );
+    hosted
+        .set_limits(&mut session.dom(), canonical_short, &cancel)
+        .unwrap();
+    assert!(matches!(
+        source.resume(
+            &mut session.dom(),
+            operation,
+            source_limits,
+            &mut services,
+            &cancel
+        ),
+        Err(DomSourceDriveError::Source(DomSourceRuntimeError::Hosted(
+            DomHostedRuntimeError::Dom(DomHostedError::Limit {
+                resource: DomHostedResource::Operations,
+                limit: 5
+            })
+        )))
+    ));
+    unchanged(&session.snapshot());
+
+    hosted
+        .set_limits(&mut session.dom(), limits().hosted, &cancel)
+        .unwrap();
+    let DomSourceDriveProgress::Complete(done) = source
+        .resume(
+            &mut session.dom(),
+            operation,
+            source_limits,
+            &mut services,
+            &cancel,
+        )
+        .unwrap()
+    else {
+        panic!("admission resumes the same reset with no second event");
+    };
+    let published = session.snapshot();
+    assert_eq!(done.operation(), operation);
+    let changes = done.commit().changes();
+    assert_eq!(changes.from(), locked.stamp());
+    assert_eq!(changes.to(), published.stamp());
+    assert_eq!(
+        published.stamp().revision().get(),
+        locked.stamp().revision().get() + 1
+    );
+    for node in [input, output] {
+        assert!(changes.changes().contains(&DomChange::ElementState(node)));
+    }
+    assert_eq!(input_value(&published), "reset value");
+    for (frame, child) in frames.into_iter().zip(&children) {
+        assert_eq!(contents(&published, frame), None);
+        let nav = published.hosted_navigable(*child).unwrap();
+        assert_eq!(nav.parent(), None);
+        assert!(nav.is_retiring());
+        assert_eq!(contents(&locked, frame), Some(*child));
+    }
+    assert_eq!(input_value(&locked), "dirty");
+    assert!(session.dom().pending_source_edit().is_none());
+
+    drain(&mut hosted, &mut session.dom());
+    let retired = session.snapshot();
+    for child in children {
+        assert!(
+            published
+                .hosted_navigable(child)
+                .unwrap()
+                .active_document()
+                .is_some()
+        );
+        assert!(
+            retired
+                .hosted_navigable(child)
+                .unwrap()
+                .active_document()
+                .is_none()
+        );
+    }
+}

@@ -2,7 +2,7 @@
 
 pub(super) mod constructed_sheet;
 pub(in crate::internal::store) mod containers;
-mod destruction;
+pub(in crate::internal::store) mod destruction;
 pub(crate) mod history;
 pub(crate) mod local_html;
 pub(crate) mod local_html_load;
@@ -2167,6 +2167,7 @@ impl Dom {
         creation: DomHostedCreation,
         work: &Work,
         scratch_base: usize,
+        formation: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<Arc<CapturedChildren>, DomHostedError> {
         let graph = self
@@ -2195,6 +2196,9 @@ impl Dom {
             source.limits().scratch_bytes(),
             DomHostedResource::ScratchBytes,
         )?;
+        if let Some(formation) = formation {
+            formation.retain_bytes(requested, cancel)?;
+        }
         let retained = source.retain(requested, cancel)?;
         let mut children = CapturedChildren {
             values: Vec::new(),
@@ -2218,14 +2222,13 @@ impl Dom {
             source.limits().scratch_bytes(),
             DomHostedResource::ScratchBytes,
         )?;
-        children._retained.append(
-            source.retain(
-                actual
-                    .checked_sub(requested)
-                    .ok_or(DomHostedError::RepresentationExhausted)?,
-                cancel,
-            )?,
-        )?;
+        let extra = actual
+            .checked_sub(requested)
+            .ok_or(DomHostedError::RepresentationExhausted)?;
+        if let Some(formation) = formation {
+            formation.retain_bytes(extra, cancel)?;
+        }
+        children._retained.append(source.retain(extra, cancel)?)?;
         self.visit_hosted_children(graph, creation.navigable, work, cancel, |child| {
             work.step(cancel)?;
             let child = graph.navigable_with(child, || work.step(cancel))?;

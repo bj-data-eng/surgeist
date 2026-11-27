@@ -2163,10 +2163,16 @@ impl DomSourceLease<'_> {
             }
             Err(error) => return Err(error.into()),
         };
+        let mut reset_body = None;
         if form_reset {
             if let Some(key) = key {
                 let reset = !operation.cancelled
                     && observation.accepted == Some(DomSourceEventOutcome::NotCanceled);
+                if reset {
+                    reset_body = Some(super::hosted_removals::ResetBody::start(
+                        &mut draft, key, cancel,
+                    )?);
+                }
                 draft.stage_form_reset_tail(key, reset, cancel)?;
             }
         } else if let Some(mut frame) = frame {
@@ -2183,6 +2189,7 @@ impl DomSourceLease<'_> {
         let custody_bytes = self.dom.source_owner_custody_bytes()?;
         let custody_units = self.dom.fullscreen_custody_units()?;
         let mut operation = self.dom.source_operation.take().expect("retained observer");
+        operation.reset_body = reset_body;
         operation.prepare_rebased_inline(self.dom, &mut draft);
         let old = std::mem::replace(&mut operation.draft, OperationDraft::Segment(draft));
         let OperationDraft::Observed(observation) = old else {

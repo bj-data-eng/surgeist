@@ -87,7 +87,8 @@ use surgeist_dom::fullscreen::{
 use surgeist_dom::hosted::child::{
     DomHostedChildPreparation, DomHostedChildRemovalHandoff, DomHostedChildRemovalPublication,
     DomHostedChildRemovalRequest, DomHostedChildRequest, DomHostedChildStep, DomHostedEmbedderKind,
-    DomHostedEmbedderPolicyInputs, DomHostedPreparedChild,
+    DomHostedEmbedderPolicyInputs, DomHostedPreparedChild, DomQueuedSourceHostedRemovals,
+    DomSourceHostedRemovalsRequest,
 };
 use surgeist_dom::hosted::destruction::{
     DomHostedDestructionInvocation, DomHostedDestructionInvocationRequest,

@@ -2637,6 +2637,7 @@ fn main() {
             "form-attributes" => form_attributes::attached_form_settings_reflect_live_native_attributes(),
             "form-reset" => form_reset::attached_form_reset_uses_live_post_event_owners_and_a_per_form_lock(),
             "form-reset-families" => form_reset::attached_form_reset_restores_all_native_families_before_face_callbacks(),
+            "form-reset-hosted-admission" => form_reset::hosted_form_reset_admits_every_removal_before_publication(),
             "form-reset-hosted-output" => form_reset::attached_form_reset_removes_a_real_hosted_output_child(),
             "fieldset-attributes" => fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity(),
             "output-values" => output_values::attached_output_reads_native_values_and_stores_custom_validity(),
@@ -2844,6 +2845,7 @@ fn main() {
     form_reset::attached_form_reset_uses_live_post_event_owners_and_a_per_form_lock();
     form_reset::attached_form_reset_restores_all_native_families_before_face_callbacks();
     form_reset::attached_form_reset_removes_a_real_hosted_output_child();
+    form_reset::hosted_form_reset_admits_every_removal_before_publication();
     fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity();
     output_values::attached_output_reads_native_values_and_stores_custom_validity();
     button_attributes::attached_button_attributes_use_live_submitter_and_form_state();

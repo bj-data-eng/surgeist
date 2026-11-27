@@ -139,6 +139,8 @@ pub enum DomSourcePhase {
     DesignModeService,
     /// Exact step8 scheduling join, before any invocation prefix is published.
     FullscreenExitHandoff,
+    /// A private Form reset awaits admission of its original hosted removals.
+    HostedRemovals,
     /// Original HTML Script preparation is parked in the private segment.
     ScriptPreparation,
     /// An original Meta CSP insertion awaits its policy processor.
@@ -198,6 +200,7 @@ pub enum DomSourceRequest {
     FullscreenExitHandoff(crate::internal::store::source::operation::fullscreen::DomSourceFullscreenExitHandoffRequest),
     Style(DomStyleRequest),
     HostedChild(crate::internal::hosted::DomHostedChildRequest),
+    HostedRemovals(crate::internal::store::source::operation::hosted_removals::DomSourceHostedRemovalsRequest),
     Event(DomSourceEventRequest),
     Dialog(DomSourceDialogRequest),
     ElementTaskQueue(crate::internal::store::source::operation::element_queue::DomSourceElementTaskQueueRequest),

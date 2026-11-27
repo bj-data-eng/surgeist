@@ -630,8 +630,13 @@ selection silently.
 `HTMLFormElement.reset()` enters the canonical Form reset Source operation.
 Runtime delivers its trusted plain `reset` event, which bubbles and can be
 canceled. The original Source accepts the dispatch receipt and resumes with
-the Form's current associated controls. Attached scripting delivers
-`formResetCallback()` after the method releases its reset lock.
+the Form's current associated controls. When resetting an Output detaches
+live child navigables, Runtime admits the reached traversal and destruction
+queue destinations before Source publishes the controls and child unlinking
+together. Later tasks run the retained history and destruction continuations.
+A refused admission retains the original reset and its event receipt for
+resumption. Attached scripting delivers `formResetCallback()` after the
+method releases its reset lock.
 
 The standard `close_dialog(receiver, result)` Source operation represents
 `close(optional returnValue)`, whose source is null. It retains omitted versus

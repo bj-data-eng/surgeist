@@ -98,11 +98,61 @@ impl Child {
         budget: Option<&formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<Self, DomError> {
-        operation.draft.source_step(cancel)?;
         let container = match hook.key() {
             Key::Existing(id) => id,
             Key::Created(i) => ids.get(i).ok_or(DomError::UnavailableCreation)?,
         };
+        let occurrence = operation
+            .draft
+            .source_invocation
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        let request = Self::qualify(
+            operation,
+            state,
+            basis,
+            super::hosted_removals::Occurrence {
+                container,
+                ordinal: occurrence,
+                hook,
+            },
+            budget,
+            cancel,
+        )?;
+        Ok(Self {
+            request,
+            hook,
+            phase: if matches!(hook, ChildHook::Remove { .. }) {
+                Phase::PrepareRemoval
+            } else {
+                Phase::Prepare
+            },
+            document: None,
+            declared_sandbox: None,
+            url: None,
+            url_charge: None,
+            observation: None,
+            prefix: None,
+            work_charge: None,
+            phase_charge: None,
+            handoff_charge: None,
+            inherited_policy: None,
+        })
+    }
+    pub(super) fn qualify(
+        operation: &super::Operation,
+        state: &State,
+        basis: DomStamp,
+        occurrence: super::hosted_removals::Occurrence,
+        budget: Option<&formation::Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedChildRequest, DomError> {
+        let super::hosted_removals::Occurrence {
+            container,
+            ordinal,
+            hook,
+        } = occurrence;
+        operation.draft.source_step(cancel)?;
         let node = state.node(basis.owner, container)?;
         let DomNodeKind::Document(metadata) =
             state.node(basis.owner, node.document().node())?.kind()
@@ -142,42 +192,20 @@ impl Child {
             return Err(DomError::HostedSourceUnavailable);
         }
         formation::step(budget, cancel)?;
-        let occurrence = operation
-            .draft
-            .source_invocation
-            .checked_add(1)
-            .ok_or(DomError::RepresentationExhausted)?;
-        Ok(Self {
-            request: DomHostedChildRequest {
-                operation: operation.id,
-                occurrence,
-                basis,
-                container,
-                document: DomDocumentStamp {
-                    store: basis,
-                    document: node.document(),
-                },
-                parent,
-                parent_global: association.global,
-                traversable: parent_row.traversable,
-                host: association.host,
+
+        Ok(DomHostedChildRequest {
+            operation: operation.id,
+            occurrence: ordinal,
+            basis,
+            container,
+            document: DomDocumentStamp {
+                store: basis,
+                document: node.document(),
             },
-            hook,
-            phase: if matches!(hook, ChildHook::Remove { .. }) {
-                Phase::PrepareRemoval
-            } else {
-                Phase::Prepare
-            },
-            document: None,
-            declared_sandbox: None,
-            url: None,
-            url_charge: None,
-            observation: None,
-            prefix: None,
-            work_charge: None,
-            phase_charge: None,
-            handoff_charge: None,
-            inherited_policy: None,
+            parent,
+            parent_global: association.global,
+            traversable: parent_row.traversable,
+            host: association.host,
         })
     }
     fn check(&self, request: &DomHostedChildRequest) -> Result<(), DomHostedError> {
@@ -1903,44 +1931,14 @@ impl DomSourceLease<'_> {
                 let input_bytes = operation.input_bytes()?;
                 let checkpoint = operation.draft.source_checkpoint(input_bytes, 0, cancel)?;
                 let attempt = (|| {
-                    let fresh = formation::Formation::new(&operation.draft, cancel)?;
-                    let context =
-                        canonical::history::Context::new(source, &original.work, cancel, 0);
-                    let context = if let Some(fresh) = &fresh {
-                        context.with_formation(fresh)
-                    } else {
-                        context
-                    };
-                    let graph = operation
-                        .draft
-                        .hosted_history
-                        .as_deref()
-                        .ok_or(DomHostedError::MissingPublication)?;
-                    let graph = graph.mark_retiring(removal.packet.creation.navigable, &context)?;
-                    operation
-                        .draft
-                        .set_hosted_history(Some(graph), fresh, cancel)?;
-                    let fresh = formation::Formation::new(&operation.draft, cancel)?;
-                    let context =
-                        canonical::history::Context::new(source, &original.work, cancel, 0);
-                    let context = if let Some(fresh) = &fresh {
-                        context.with_formation(fresh)
-                    } else {
-                        context
-                    };
-                    let graph = operation
-                        .draft
-                        .hosted_history
-                        .as_deref()
-                        .ok_or(DomHostedError::MissingPublication)?
-                        .unlink_child(
-                            removal.packet.creation.navigable,
-                            removal.packet.parent,
-                            &context,
-                        )?;
-                    operation
-                        .draft
-                        .set_hosted_history(Some(graph), fresh, cancel)?;
+                    operation.draft.stage_hosted_child_unlink(
+                        source,
+                        &original.work,
+                        removal.packet.creation.navigable,
+                        removal.packet.parent,
+                        0,
+                        cancel,
+                    )?;
                     operation.publication_with_hosted(
                         self.dom,
                         true,
@@ -2032,5 +2030,45 @@ impl DomSourceLease<'_> {
         operation.child = Some(child);
         self.dom.source_operation = Some(operation);
         result
+    }
+}
+
+impl Draft {
+    pub(super) fn stage_hosted_child_unlink(
+        &mut self,
+        source: &DomHostedSource,
+        work: &Work,
+        navigable: DomHostedNavigableId,
+        parent: DomHostedNavigableId,
+        scratch_base: usize,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedError> {
+        let fresh = formation::Formation::new(self, cancel)?;
+        let context = canonical::history::Context::new(source, work, cancel, scratch_base);
+        let context = if let Some(fresh) = &fresh {
+            context.with_formation(fresh)
+        } else {
+            context
+        };
+        let graph = self
+            .hosted_history
+            .as_deref()
+            .ok_or(DomHostedError::MissingPublication)?;
+        let graph = graph.mark_retiring(navigable, &context)?;
+        self.set_hosted_history(Some(graph), fresh, cancel)?;
+        let fresh = formation::Formation::new(self, cancel)?;
+        let context = canonical::history::Context::new(source, work, cancel, scratch_base);
+        let context = if let Some(fresh) = &fresh {
+            context.with_formation(fresh)
+        } else {
+            context
+        };
+        let graph = self
+            .hosted_history
+            .as_deref()
+            .ok_or(DomHostedError::MissingPublication)?
+            .unlink_child(navigable, parent, &context)?;
+        self.set_hosted_history(Some(graph), fresh, cancel)?;
+        Ok(())
     }
 }

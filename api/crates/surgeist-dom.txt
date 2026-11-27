@@ -1182,6 +1182,17 @@ pub fn surgeist_dom::hosted::child::DomHostedEmbedderPolicyInputs::sandbox(&self
 pub fn surgeist_dom::hosted::child::DomHostedEmbedderPolicyInputs::src(&self) -> core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_dom::hosted::child::DomHostedEmbedderPolicyInputs::srcdoc(&self) -> core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>
 pub struct surgeist_dom::hosted::child::DomHostedPreparedChild
+pub struct surgeist_dom::hosted::child::DomQueuedSourceHostedRemovals
+impl core::iter::traits::exact_size::ExactSizeIterator for surgeist_dom::hosted::child::DomQueuedSourceHostedRemovals
+impl core::iter::traits::iterator::Iterator for surgeist_dom::hosted::child::DomQueuedSourceHostedRemovals
+pub type surgeist_dom::hosted::child::DomQueuedSourceHostedRemovals::Item = surgeist_dom::hosted::child::DomHostedChildRemovalHandoff
+pub fn surgeist_dom::hosted::child::DomQueuedSourceHostedRemovals::next(&mut self) -> core::option::Option<Self::Item>
+pub fn surgeist_dom::hosted::child::DomQueuedSourceHostedRemovals::size_hint(&self) -> (usize, core::option::Option<usize>)
+pub struct surgeist_dom::hosted::child::DomSourceHostedRemovalsRequest
+impl surgeist_dom::hosted::child::DomSourceHostedRemovalsRequest
+pub const fn surgeist_dom::hosted::child::DomSourceHostedRemovalsRequest::count(self) -> usize
+pub const fn surgeist_dom::hosted::child::DomSourceHostedRemovalsRequest::parent_global(self) -> surgeist_dom::hosted::DomHostedGlobalId
+pub const fn surgeist_dom::hosted::child::DomSourceHostedRemovalsRequest::traversable(self) -> surgeist_dom::hosted::DomHostedNavigableId
 pub mod surgeist_dom::hosted::destruction
 pub enum surgeist_dom::hosted::destruction::DomHostedDestructionStep<'a>
 pub surgeist_dom::hosted::destruction::DomHostedDestructionStep::Cleanup(&'a surgeist_dom::hosted::destruction::DomHostedDestructionRequest)
@@ -3069,6 +3080,7 @@ pub surgeist_dom::source::DomSourcePhase::EventFiring
 pub surgeist_dom::source::DomSourcePhase::EventObservation
 pub surgeist_dom::source::DomSourcePhase::EventReceiptAccepted
 pub surgeist_dom::source::DomSourcePhase::FullscreenExitHandoff
+pub surgeist_dom::source::DomSourcePhase::HostedRemovals
 pub surgeist_dom::source::DomSourcePhase::MetaCsp
 pub surgeist_dom::source::DomSourcePhase::PendingCleanup
 pub surgeist_dom::source::DomSourcePhase::ScriptPreparation
@@ -3091,6 +3103,7 @@ pub surgeist_dom::source::DomSourceRequest::Event(surgeist_dom::event::DomSource
 pub surgeist_dom::source::DomSourceRequest::FocusDelegate(surgeist_dom::focus::DomSourceFocusDelegateRequest)
 pub surgeist_dom::source::DomSourceRequest::FullscreenExitHandoff(surgeist_dom::fullscreen::DomSourceFullscreenExitHandoffRequest)
 pub surgeist_dom::source::DomSourceRequest::HostedChild(surgeist_dom::hosted::child::DomHostedChildRequest)
+pub surgeist_dom::source::DomSourceRequest::HostedRemovals(surgeist_dom::hosted::child::DomSourceHostedRemovalsRequest)
 pub surgeist_dom::source::DomSourceRequest::MetaCsp(surgeist_dom::meta::DomSourceMetaCspRequest)
 pub surgeist_dom::source::DomSourceRequest::Script(surgeist_dom::script::DomSourceScriptRequest)
 pub surgeist_dom::source::DomSourceRequest::Style(surgeist_dom::style::DomStyleRequest)
@@ -3361,6 +3374,8 @@ pub fn surgeist_dom::source::DomSourceLease<'_>::finish_custom_element_with_watc
 pub fn surgeist_dom::source::DomSourceLease<'_>::finish_returned_custom_element(&mut self, request: surgeist_dom::custom_element::DomSourceCustomElementRequest, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::custom_element::DomSourceCustomElementReturn, surgeist_dom::DomError>
 impl surgeist_dom::source::DomSourceLease<'_>
 pub fn surgeist_dom::source::DomSourceLease<'_>::process_meta_csp<P: surgeist_html::internal::security::csp_policy::HtmlMetaCspProcessor>(&mut self, request: surgeist_dom::meta::DomSourceMetaCspRequest, processor: &mut P, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::meta::DomSourceMetaCspError<<P as surgeist_html::internal::security::csp_policy::HtmlMetaCspProcessor>::Error>>
+impl surgeist_dom::source::DomSourceLease<'_>
+pub fn surgeist_dom::source::DomSourceLease<'_>::publish_hosted_child_removals(&mut self, source: &mut surgeist_dom::hosted::DomHostedSource, request: surgeist_dom::hosted::child::DomSourceHostedRemovalsRequest, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(surgeist_dom::source::DomSourceCompletion, surgeist_dom::hosted::child::DomQueuedSourceHostedRemovals), surgeist_dom::hosted::DomHostedError>
 impl<'dom> surgeist_dom::source::DomSourceLease<'dom>
 pub fn surgeist_dom::source::DomSourceLease<'dom>::accept_dialog_task_queue(&mut self, request: &surgeist_dom::dialog::DomSourceDialogRequest, publication: &mut core::option::Option<surgeist_dom::dialog::DomDialogTaskQueuePublication>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::DomError>
 pub fn surgeist_dom::source::DomSourceLease<'dom>::dialog_task_prior_details<'snapshot>(&self, request: &surgeist_dom::dialog::DomSourceDialogRequest, snapshot: &'snapshot surgeist_dom::DomSnapshot) -> core::result::Result<&'snapshot [surgeist_dom::details::DomDetailsToggleIntention], surgeist_dom::DomError>
