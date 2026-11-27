@@ -2603,3 +2603,47 @@ fn canonical_adoption_style_resource_refusal_after_hosted_teardown_preserves_rea
     );
     assert_retired_adoption_destination(&mut session, destination, binding);
 }
+
+#[test]
+fn native_object_creation_queues_its_original_task_on_an_active_host() {
+    use surgeist_dom::task::DomElementTaskSourceKind;
+
+    let mut session = session();
+    let top = create(&mut session);
+    let mut execution = session.source_execution();
+    let tasks = session.element_task_execution();
+    let source = DomElementTaskSourceKind::DomManipulation;
+    assert_eq!(tasks.pending_tasks(source).unwrap(), 0);
+    let mut style_policy = |_: &DomStyleSource| None;
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut style_policy,
+        url: None,
+    };
+    let limits = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1);
+    let result = execution
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::create_element_ns(top.document().node(), Namespace::html(), "object"),
+            limits,
+            &mut services,
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceDriveProgress::Complete(completion) = result else {
+        panic!("the original task owner must admit the detached Object: {result:?}");
+    };
+    let object = completion.published_node().unwrap();
+    let snapshot = session.snapshot();
+    let node = snapshot.node(object).unwrap();
+    assert!(!node.is_connected());
+    assert_eq!(node.owner_document(), Some(top.document()));
+    let task = tasks.pending_task(source, 0).unwrap().unwrap();
+    assert_eq!(task.id().target(), object);
+    assert_eq!(task.source(), source);
+    let original = task.queue_association().unwrap();
+    assert_eq!(original.document(), top.document());
+    assert_eq!(original.global(), top.global());
+    assert_eq!(tasks.pending_tasks(source).unwrap(), 1);
+}
