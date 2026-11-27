@@ -1232,7 +1232,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<'input, Node,
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         loop {
-            match frames.step::<Tree, M>(tree, fold)? {
+            match frames.step::<Tree, M>(tree, fold, None)? {
                 FrameStep::Continue => {}
                 FrameStep::Request(request) => return Ok(Walk::Request(request)),
                 FrameStep::Idle => match self.next_wrapper::<Tree, M>(tree, node, grid, fold)? {
@@ -1352,7 +1352,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<'input, Node,
                 Ok(TraversalProgress::Request(request))
             }
             ControlFlow::Break(()) => {
-                let report = finishing.finish(tree, self.contribution_input(node, grid))?;
+                let report = finishing.finish::<M>(self.contribution_input(node, grid))?;
                 self.finished = Some(report);
                 Ok(TraversalProgress::Done)
             }

@@ -1,5 +1,5 @@
 use super::*;
-use crate::engine::block_scope::{Dispatch, ReceiptId, Requests, SourceViewId};
+use crate::engine::block_scope::{ComputeStop, Dispatch, ReceiptId, Requests, SourceViewId};
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::{
     block_fragmentation::{LayoutBoundRequestOf, input::LayoutSourceBasis},
@@ -399,4 +399,179 @@ fn assert_scoped_child_start_failure_releases_its_frame<S: LayoutScalar>(largest
 fn scoped_child_start_failure_releases_its_scope_frame_under_an_ordinary_parent() {
     assert_scoped_child_start_failure_releases_its_frame::<f32>(3.0e38);
     assert_scoped_child_start_failure_releases_its_frame::<f64>(1.0e308);
+}
+
+/// A Block spine from node 0 to `last`, with `last` failing as the existing
+/// start-failure fixture does: its size containment overflows the scalar range
+/// while its Block computation begins. `through` lists the display of each
+/// node from 1 up to `last`; node 0 is a Block.
+fn failing_spine<S: LayoutScalar>(largest: f64, through: &[Display]) -> PublicLayoutTreeOf<S> {
+    let huge = S::from_f64(largest);
+    let last = through.len() as u32;
+    let mut tree = PublicLayoutTreeOf::<S>::new().style(
+        0,
+        NodeInputOf {
+            display: Display::Block,
+            ..NodeInputOf::default()
+        },
+    );
+    for (index, display) in through.iter().enumerate() {
+        let node = index as u32 + 1;
+        let mut style = NodeInputOf {
+            display: *display,
+            ..NodeInputOf::default()
+        };
+        if node == last {
+            style.size_containment = SizeContainment::BothAxes;
+            style.size = Size::new(PreferredSizeOf::px(huge), PreferredSizeOf::px(huge));
+            style.padding = Edges::new(
+                LengthOf::px(huge),
+                LengthOf::px(huge),
+                LengthOf::px(huge),
+                LengthOf::px(huge),
+            );
+        }
+        tree = tree.style(node, style).children(node - 1, [node]);
+    }
+    tree
+}
+
+fn assert_nested_scoped_failure_releases_every_frame<S: LayoutScalar>(
+    largest: f64,
+    through: &[Display],
+) {
+    let tree = failing_spine::<S>(largest, through);
+    let last = through.len() as u32;
+    with_session(&tree, &[], &[0], |session| {
+        assert_eq!(session.block_scopes().unwrap().frames.len(), 0);
+        let error = session
+            .compute_child(0, request(60.0, RunMode::PerformLayout))
+            .unwrap_err();
+        assert_eq!(error.site(), LayoutErrorSiteOf::Node(last));
+        assert_eq!(
+            session.block_scopes().unwrap().frames.len(),
+            0,
+            "a failure below nested scoped Blocks releases every frame they pushed"
+        );
+    });
+}
+
+#[test]
+fn failure_below_nested_scoped_blocks_releases_every_scope_frame() {
+    let blocks = [Display::Block; 5];
+    assert_nested_scoped_failure_releases_every_frame::<f32>(3.0e38, &blocks);
+    assert_nested_scoped_failure_releases_every_frame::<f64>(1.0e308, &blocks);
+}
+
+#[test]
+fn failure_in_a_flex_item_below_nested_scoped_blocks_releases_every_scope_frame() {
+    let through = [
+        Display::Block,
+        Display::Block,
+        Display::Flex,
+        Display::Block,
+    ];
+    assert_nested_scoped_failure_releases_every_frame::<f32>(3.0e38, &through);
+    assert_nested_scoped_failure_releases_every_frame::<f64>(1.0e308, &through);
+}
+
+/// The spine 0 to 3 of Blocks whose node 3 owns a scope: the entry of node 3
+/// suspends the computation below the scoped Blocks 0, 1 and 2.
+fn suspended_spine<S: LayoutScalar>() -> PublicLayoutTreeOf<S> {
+    let block = || NodeInputOf {
+        display: Display::Block,
+        size: Size::new(
+            PreferredSizeOf::AUTO,
+            PreferredSizeOf::px(S::from_f64(10.0)),
+        ),
+        ..NodeInputOf::default()
+    };
+    PublicLayoutTreeOf::<S>::new()
+        .style(0, block())
+        .style(1, block())
+        .style(2, block())
+        .style(3, block())
+        .children(0, [1])
+        .children(1, [2])
+        .children(2, [3])
+}
+
+fn assert_suspension_moves_the_scoped_frames_into_the_request<S: LayoutScalar>() {
+    let tree = suspended_spine::<S>();
+    let (graph, invalidated) =
+        crate::engine::validation::validate_layout_request_with_text_graph(&tree, 0, &[], &[])
+            .unwrap();
+    let input = request::<S>(60.0, RunMode::PerformLayout);
+    let target = LayoutBoundRequestOf::continuous(
+        LayoutSourceBasis::fresh(),
+        LayoutRootRequestOf::standalone(
+            input.sizing_request(),
+            input.containing_flow_axes(),
+            Size::NONE,
+        ),
+    )
+    .target_basis();
+    let wrapping = crate::inline_wrapping::WrappingContext::new(
+        &tree,
+        &graph,
+        &WrappingInput::default(),
+        &[],
+        |_| false,
+    )
+    .unwrap();
+    let requests = std::rc::Rc::new(std::cell::RefCell::new(Requests::new()));
+    let mut session = ComputeSession::unobserved(&tree, invalidated);
+    session.bind_fragment_frame(target.clone(), Vec::new());
+    session
+        .install_block_scopes(
+            0,
+            Dispatch {
+                scope: ReceiptId(0),
+                view: SourceViewId(0),
+                target,
+                owners: [3].into(),
+                paths: [0, 1, 2].into(),
+                ready: Default::default(),
+                requests: requests.clone(),
+            },
+        )
+        .unwrap();
+    session.retain_block_bodies();
+    session.install_wrapping(Arc::new(wrapping), &graph);
+    session.enable_request_memo();
+    let stop = session
+        .compute_block_child(crate::block::scope::ChildRequest {
+            node: 0,
+            input,
+            entry: None,
+        })
+        .unwrap_err();
+    let ComputeStop::NeedScope(id) = stop else {
+        panic!("the owner's entry suspends the computation")
+    };
+    assert_eq!(
+        session.block_scopes().unwrap().frames.len(),
+        0,
+        "a suspension keeps its scope frames in the scope request"
+    );
+    let suspended = requests
+        .borrow_mut()
+        .take(id)
+        .expect("the driver owns the emitted request");
+    assert_eq!(suspended.entry.node, 3);
+    assert_eq!(
+        suspended
+            .frames
+            .iter()
+            .map(|frame| frame.node)
+            .collect::<Vec<_>>(),
+        [0, 1, 2],
+        "every scoped Block above the owner keeps its frame, outermost first"
+    );
+}
+
+#[test]
+fn suspension_below_nested_scoped_blocks_moves_every_scope_frame_into_the_request() {
+    assert_suspension_moves_the_scoped_frames_into_the_request::<f32>();
+    assert_suspension_moves_the_scoped_frames_into_the_request::<f64>();
 }

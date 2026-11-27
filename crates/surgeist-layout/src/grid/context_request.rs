@@ -267,7 +267,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContextRequest<'input, Node, 
     /// Computes the request on the native stack, for the synchronous drains.
     pub(super) fn compute_sync<Tree, M>(self, tree: &mut Tree) -> GridComputeOutcome<Node, S, M>
     where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Node = Node, Scalar = S>,
     {
         match self.run {
             ContextRun::Item => {
@@ -307,7 +307,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridContextRequest<'input, Node, 
         tree: &mut Tree,
     ) -> GridComputeOutcome<Node, S, M>
     where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Node = Node, Scalar = S>,
     {
         let Self {
             container,

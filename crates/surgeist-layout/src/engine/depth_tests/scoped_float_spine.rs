@@ -12,7 +12,7 @@ use crate::{
 /// leaf has a preceding left float sibling of 60x1px, so each in-flow Block
 /// child shares the float context of its parent. The float of spine node `k`
 /// is node `depth + k`.
-fn assert_float_sibling_spine<S: LayoutScalar>(depth: u32) {
+pub(super) fn assert_float_sibling_spine<S: LayoutScalar>(depth: u32) {
     let px = |value| PreferredSizeOf::px(S::from_f64(value));
     let mut tree = PublicLayoutTreeOf::<S>::new();
     for node in 0..=depth {

@@ -98,6 +98,13 @@ impl<Node: Copy + Eq, S: LayoutScalar> Traverse for EmptyBox<'_, Node, S> {
     }
 }
 
+/// The empty sizing box has no children, so nothing it computes waits on one.
+#[cfg(not(test))]
+impl<'input, Node: Copy + Eq + 'input, S: LayoutScalar, M>
+    super::contracts::SynchronousCompute<'input, M> for EmptyBox<'input, Node, S>
+{
+}
+
 impl<'input, Node: Copy + Eq + 'input, S: LayoutScalar, M> Compute<'input, M>
     for EmptyBox<'input, Node, S>
 {

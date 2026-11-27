@@ -11413,6 +11413,56 @@ fn subgrid_eligibility_classifies_grid_lanes_parent_stacking_axis() {
     assert_eq!(report, SubgridEligibility::Stacking);
 }
 
+// A Grid Lanes container can inherit only its lane axis (the axis of its
+// tracks), so a Grid Lanes wrapper never carries an intrinsic repeat in an axis
+// it inherits, and the wrapper level never begins a repeat probe.
+#[test]
+fn subgrid_eligibility_excludes_grid_lanes_child_in_its_stacking_axis() {
+    let flow = GridLanesFlow::new(GridAxisKind::Column, false, false);
+    let child = NodeInput {
+        display: Display::GridLanes,
+        grid_lanes_flow: flow,
+        grid_template_rows: subgrid_track(),
+        ..NodeInput::default()
+    };
+    let report = subgrid_eligibility(SubgridEligibilityInput {
+        axis: GridAxisKind::Row,
+        parent_style: &NodeInput {
+            display: Display::Grid,
+            ..NodeInput::default()
+        },
+        has_parent_grid: true,
+        child_style: &child,
+    });
+
+    assert_eq!(
+        report,
+        SubgridEligibility::Excluded(SubgridIneligibleReason::ChildStackingAxis)
+    );
+}
+
+#[test]
+fn subgrid_eligibility_allows_grid_lanes_child_in_its_lane_axis() {
+    let flow = GridLanesFlow::new(GridAxisKind::Column, false, false);
+    let child = NodeInput {
+        display: Display::GridLanes,
+        grid_lanes_flow: flow,
+        grid_template_columns: subgrid_track(),
+        ..NodeInput::default()
+    };
+    let report = subgrid_eligibility(SubgridEligibilityInput {
+        axis: GridAxisKind::Column,
+        parent_style: &NodeInput {
+            display: Display::Grid,
+            ..NodeInput::default()
+        },
+        has_parent_grid: true,
+        child_style: &child,
+    });
+
+    assert_eq!(report, SubgridEligibility::SharedTracks);
+}
+
 #[test]
 fn subgrid_eligibility_allows_grid_lanes_parent_in_grid_axis() {
     let report = subgrid_eligibility(SubgridEligibilityInput {

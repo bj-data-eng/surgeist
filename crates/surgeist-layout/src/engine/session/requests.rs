@@ -2,8 +2,8 @@ use std::{collections::TryReserveError, ops::ControlFlow};
 
 use super::memo::Capture;
 use super::{
-    ChildAdmission, ChildCacheRequest, ComputeSession, FloatChildTrial, ScopedChild,
-    ScopedChildStart, SessionResult,
+    ChildAdmission, ChildCacheRequest, ComputeSession, FloatChildTrial, HiddenAdmission,
+    ScopedChild, ScopedChildStart, SessionResult, UncachedKind,
 };
 use crate::block::intrinsic::{BlockAxisDemand, InlineContentChild};
 use crate::block::{
@@ -14,9 +14,8 @@ use crate::engine::block_scope::{ComputeResult, ComputeStop, ordinary};
 use crate::engine::hidden::{HiddenChildren, HiddenRequest};
 use crate::flex::{FlexChild, FlexComputation, begin_flex_computation};
 use crate::grid::{
-    GridChild, GridComputeResult, GridContextRequest, GridContinuation,
-    GridRequest as GridComputationRequest, OrdinaryGridObservation,
-    OrdinaryGridObservationCompletion, OrdinaryGridObservationRun, ProbeKey,
+    GridChild, GridComputeResult, GridContextRequest, GridContinuation, GridObservation,
+    GridObservationCompletion, GridObservationRun, GridRequest as GridComputationRequest, ProbeKey,
     begin_grid_computation, begin_grid_context_computation,
 };
 use crate::{
@@ -48,8 +47,8 @@ enum Request<'input, Node, S: LayoutScalar> {
     AdvanceGrid,
     /// A subgrid item's contextual Grid computation; it bypasses child admission.
     ContextGrid(Box<GridContextRequest<'input, Node, S>>),
-    GridObservation(Box<OrdinaryGridObservation<'input, Node, S>>),
-    GridObservationRun(Box<OrdinaryGridObservationRun<'input, Node, S>>),
+    GridObservation(GridObservation<'input, Node, S>),
+    GridObservationRun(Box<GridObservationRun<'input, Node, S>>),
     Qualify(crate::block::entry::EntryQuery<Node, S>),
     Entry(Box<crate::block::entry::FramedEntry<Node, S>>),
     FloatTrial(FloatTrialRequest<Node, S>),
@@ -64,7 +63,7 @@ struct FloatTrialRequest<Node, S: LayoutScalar> {
 
 enum RequestProgress<'input, Node, S: LayoutScalar> {
     Complete(CompletedRequest<'input, Node, S>),
-    GridObservation(Box<OrdinaryGridObservation<'input, Node, S>>),
+    GridObservation(GridObservation<'input, Node, S>),
     /// An intrinsic probe, which runs in an observation session of its own.
     GridProbe(Box<GridContextRequest<'input, Node, S>>),
     Qualification(crate::block::entry::EntryQuery<Node, S>),
@@ -93,7 +92,7 @@ impl OutputProjection {
 }
 
 enum CompletedRequest<'input, Node, S: LayoutScalar> {
-    GridObservation(Box<OrdinaryGridObservationCompletion<'input, Node, S>>),
+    GridObservation(Box<GridObservationCompletion<'input, Node, S>>),
     Context(Box<GridComputeResult<Node, S>>),
     Entry(Box<crate::block::entry::EntryObservation<Node, S>>),
     Layout(ComputeOutputOf<S>),
@@ -169,7 +168,7 @@ enum GridCompletion<Node, S: LayoutScalar> {
 }
 
 struct GridObservationRequest<'input, Node, S: LayoutScalar> {
-    computation: Box<OrdinaryGridObservationRun<'input, Node, S>>,
+    computation: Box<GridObservationRun<'input, Node, S>>,
     child: GridChild<'input, Node, S>,
 }
 
@@ -316,14 +315,6 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
             self.release_scope_frames(depth);
         }
         result.map(CompletedRequest::layout)
-    }
-
-    pub(super) fn drive_hidden(
-        &mut self,
-        request: HiddenRequest<Tree::Node>,
-    ) -> SessionResult<Tree, ComputeOutputOf<Tree::Scalar>> {
-        ordinary(self.drive_requests(Request::Hidden(request, OutputProjection::Layout)))
-            .map(CompletedRequest::layout)
     }
 
     pub(super) fn drive_axis(
@@ -805,25 +796,27 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                 } => match self.admit_child(node, input)? {
                     ChildAdmission::Ready(output) => projection.complete(output),
                     ChildAdmission::Hidden(request) => Request::Hidden(request, projection),
-                    ChildAdmission::Uncached { input, cache, memo } => {
+                    ChildAdmission::Uncached {
+                        kind,
+                        input,
+                        cache,
+                        memo,
+                    } => {
                         let capture = self.begin_memo(node, memo)?;
-                        let initial = self.begin_uncached_layout(node, input);
+                        self.begin_uncached_layout(node, input);
                         let completion = ChildCompletion { cache, capture };
-                        let container_display =
-                            (!initial.leaf).then(|| initial.style.display.inner_display());
-                        match container_display {
-                            Some(Display::Block) => {
+                        match kind {
+                            UncachedKind::Block => {
                                 self.begin_block(node, input, completion, projection, pending)?
                             }
-                            Some(Display::Flex) => {
+                            UncachedKind::Flex => {
                                 self.begin_flex(node, input, completion, projection, pending)?
                             }
-                            Some(Display::Grid | Display::GridLanes) => {
+                            UncachedKind::Grid => {
                                 self.begin_grid(node, input, completion, projection, pending)?
                             }
-                            _ => {
-                                let output =
-                                    self.compute_uncached_layout_body(node, input, initial)?;
+                            UncachedKind::Leaf(leaf) => {
+                                let output = self.compute_leaf_uncached(leaf, node, input)?;
                                 self.complete_child_request(node, completion, projection, output)?
                             }
                         }
@@ -1082,12 +1075,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         pending: &mut SessionPending<'input, Tree>,
     ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         let ScopedChild { node, input, depth } = child;
-        let initial = self.begin_uncached_layout(node, input);
-        if initial.leaf || initial.style.display.inner_display() != Display::Block {
-            let output = self.compute_uncached_layout_body(node, input, initial)?;
-            self.release_scope_frames(depth);
-            return Ok(Request::Complete(CompletedRequest::Layout(output)));
-        }
+        self.begin_uncached_layout(node, input);
         match begin_block_computation(self, node, input)? {
             ControlFlow::Break(output) => {
                 self.finish_uncached_layout(node, input, output)?;
@@ -1433,8 +1421,8 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
         pending: &mut SessionPending<'input, Tree>,
     ) -> StopResult<Tree, SessionRequest<'input, Tree>> {
         while let Some((node, input)) = children.next_box(self)? {
-            match self.admit_child(node, input)? {
-                ChildAdmission::Hidden(request) => {
+            match self.admit_hidden_child(node, input)? {
+                HiddenAdmission::Hidden(request) => {
                     if children.has_remaining() {
                         pending
                             .keep_hidden(children, projection)
@@ -1442,12 +1430,7 @@ impl<'input, Tree: LayoutTree> ComputeSession<'input, Tree> {
                     }
                     return Ok(Request::Hidden(request, projection));
                 }
-                ChildAdmission::Ready(_) => {}
-                ChildAdmission::Uncached { input, cache, memo } => {
-                    let capture = self.begin_memo(node, memo)?;
-                    let output = self.complete_admitted_child(node, input, cache)?;
-                    self.complete_memo(node, capture, output)?;
-                }
+                HiddenAdmission::Ready(_) => {}
             }
         }
         Ok(projection.complete(ComputeOutputOf::HIDDEN))

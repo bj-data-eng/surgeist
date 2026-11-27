@@ -29,8 +29,8 @@ pub(super) use ordinary::{
 #[cfg(test)]
 pub(super) use subgrid_intrinsic::needs_intrinsic_subgrid_context;
 pub(super) use subgrid_intrinsic::{
-    IntrinsicGridChildInput, compute_prepared_intrinsic_grid_child, intrinsic_stage_child_input,
-    item_inherits_parent_axis,
+    IntrinsicChildRequest, IntrinsicGridChildInput, intrinsic_stage_child_input,
+    item_inherits_parent_axis, prepare_intrinsic_grid_child_request,
 };
 pub(super) use validation::*;
 

@@ -362,6 +362,7 @@ impl<S: LayoutScalar> GridMinimumQuery<S> {
         })
     }
 
+    #[cfg(test)]
     pub(in crate::grid) fn compute<Node: Copy, M>(
         self,
         node: Node,

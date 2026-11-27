@@ -147,6 +147,9 @@ fn child_preferred_probe_axes<S: LayoutScalar>(
     axes.size_from_main_cross(main, cross)
 }
 
+/// Computes a Flex container with the synchronous owner, for the test host,
+/// which has no request executor.
+#[cfg(test)]
 pub(crate) fn compute_flex<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,

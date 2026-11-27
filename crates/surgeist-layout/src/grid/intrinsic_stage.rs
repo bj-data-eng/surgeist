@@ -120,7 +120,6 @@ impl<Node, S: LayoutScalar> GridTrackSizingReceipt<Node, S> {
 }
 
 pub(super) enum GridTrackRun<'input, 'source, 'a, Node, S: LayoutScalar> {
-    Intrinsic,
     AcceptedReceiver {
         source: &'a GridTrackExecutionFrame<'input, 'source, Node, S>,
         columns: Vec<S>,
@@ -338,21 +337,6 @@ impl<S: LayoutScalar> RepeatSizingFrame<S> {
     }
 }
 
-// A single source-ordered preparation serves full layout and bounded probes.
-pub(super) fn resolve_tracks<'input, 'source, Tree, M>(
-    tree: &mut Tree,
-    node: Tree::Node,
-    input: GridTrackResolutionInput<'input, 'source, Tree::Node, Tree::Scalar>,
-    run: GridTrackRun<'input, 'source, '_, Tree::Node, Tree::Scalar>,
-) -> GridTrackResolutionResult<Tree::Node, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let mut sizing = GridTrackSizing::begin(node, &input, run)?;
-    sizing.drive_sync::<Tree, M>(tree, node, &input)?;
-    sizing.finish(node, input)
-}
-
 /// A computation a track sizing step waits on: an ordinary child, or a
 /// contextual Grid its executor may suspend.
 pub(crate) struct TrackChildRequest<'input, Node, S: LayoutScalar> {
@@ -390,7 +374,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TrackChildRequest<'input, Node, S
         tree: &mut Tree,
     ) -> LayoutResultOf<Node, GridComputeResult<Node, S>, S, M>
     where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Node = Node, Scalar = S>,
     {
         match self.context {
             Some(request) => request.compute_sync(tree),
@@ -477,78 +461,71 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'input, Node, S> 
         input: &GridTrackResolutionInput<'input, 'source, Node, S>,
         run: GridTrackRun<'input, 'source, '_, Node, S>,
     ) -> LayoutResultOf<Node, Self, S, M> {
-        let (columns, rows, column_preparation, row_preparation, spaces, receiver, unchanged) =
-            match run {
-                GridTrackRun::Intrinsic => return Ok(Self::intrinsic()),
-                GridTrackRun::AcceptedReceiver {
-                    source,
-                    columns,
-                    rows,
-                    column_preparation,
-                    row_preparation,
-                    spaces,
-                } => {
-                    if source.receipt.owner != node
-                        || source.stage != input.stage
-                        || source.receipt.columns.as_deref() != Some(columns.as_slice())
-                        || source.receipt.rows.as_deref() != Some(rows.as_slice())
-                        || source.receipt.requests.inline != Some(column_preparation.available)
-                        || source.receipt.requests.block != Some(row_preparation.available)
-                        || source.receipt.finishing.inline
-                            != Some(column_preparation.finishing_available)
-                        || source.receipt.finishing.block
-                            != Some(row_preparation.finishing_available)
-                    {
-                        return Err(grid_track_sizing_error(
-                            node,
-                            SpanningContributionError::InvalidIncidence,
-                        ));
+        let GridTrackRun::AcceptedReceiver {
+            source,
+            columns,
+            rows,
+            column_preparation,
+            row_preparation,
+            spaces,
+        } = run;
+        let (columns, rows, column_preparation, row_preparation, spaces, receiver, unchanged) = {
+            if source.receipt.owner != node
+                || source.stage != input.stage
+                || source.receipt.columns.as_deref() != Some(columns.as_slice())
+                || source.receipt.rows.as_deref() != Some(rows.as_slice())
+                || source.receipt.requests.inline != Some(column_preparation.available)
+                || source.receipt.requests.block != Some(row_preparation.available)
+                || source.receipt.finishing.inline != Some(column_preparation.finishing_available)
+                || source.receipt.finishing.block != Some(row_preparation.finishing_available)
+            {
+                return Err(grid_track_sizing_error(
+                    node,
+                    SpanningContributionError::InvalidIncidence,
+                ));
+            }
+            for (space, request) in [
+                (spaces.inline, input.available.inline),
+                (spaces.block, input.available.block),
+            ] {
+                let valid = match space {
+                    GridAxisTrackSpace::Intrinsic => request.operation() != SizingOperation::Normal,
+                    GridAxisTrackSpace::FinalUsed(value) => {
+                        request.operation() == SizingOperation::Normal
+                            && request
+                                .space()
+                                .definite_size()
+                                .is_some_and(|extent| extent.get() == value)
                     }
-                    for (space, request) in [
-                        (spaces.inline, input.available.inline),
-                        (spaces.block, input.available.block),
-                    ] {
-                        let valid = match space {
-                            GridAxisTrackSpace::Intrinsic => {
-                                request.operation() != SizingOperation::Normal
-                            }
-                            GridAxisTrackSpace::FinalUsed(value) => {
-                                request.operation() == SizingOperation::Normal
-                                    && request
-                                        .space()
-                                        .definite_size()
-                                        .is_some_and(|extent| extent.get() == value)
-                            }
-                        };
-                        if !valid {
-                            return Err(grid_track_sizing_error(
-                                node,
-                                SpanningContributionError::InvalidIncidence,
-                            ));
-                        }
-                    }
-                    let unchanged = source.constants == input.constants
-                        && source.flow == input.sizing_flow_axes
-                        && &source.receipt.context == input.context.as_ref()
-                        && source.style == *input.style
-                        && source.column_tracks == input.column_tracks
-                        && source.row_tracks == input.row_tracks
-                        && source.minimum_functions == input.minimum_functions
-                        && core::ptr::eq(source.placements, input.placements)
-                        && core::ptr::eq(source.subgrid_report, input.subgrid_report)
-                        && source.receipt.requests.inline == Some(input.available.inline)
-                        && source.receipt.requests.block == Some(input.available.block);
-                    (
-                        Some(columns),
-                        Some(rows),
-                        Some(column_preparation),
-                        Some(row_preparation),
-                        spaces,
-                        true,
-                        unchanged,
-                    )
+                };
+                if !valid {
+                    return Err(grid_track_sizing_error(
+                        node,
+                        SpanningContributionError::InvalidIncidence,
+                    ));
                 }
-            };
+            }
+            let unchanged = source.constants == input.constants
+                && source.flow == input.sizing_flow_axes
+                && &source.receipt.context == input.context.as_ref()
+                && source.style == *input.style
+                && source.column_tracks == input.column_tracks
+                && source.row_tracks == input.row_tracks
+                && source.minimum_functions == input.minimum_functions
+                && core::ptr::eq(source.placements, input.placements)
+                && core::ptr::eq(source.subgrid_report, input.subgrid_report)
+                && source.receipt.requests.inline == Some(input.available.inline)
+                && source.receipt.requests.block == Some(input.available.block);
+            (
+                Some(columns),
+                Some(rows),
+                Some(column_preparation),
+                Some(row_preparation),
+                spaces,
+                true,
+                unchanged,
+            )
+        };
         Ok(Self {
             columns,
             rows,
@@ -865,7 +842,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridTrackSizing<'input, Node, S> 
         input: &GridTrackResolutionInput<'input, '_, Node, S>,
     ) -> LayoutResultOf<Node, (), S, M>
     where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Tree: SynchronousCompute<'input, M, Node = Node, Scalar = S>,
     {
         let result = (|| {
             while let ControlFlow::Continue(request) = self.advance(tree, node, input)? {
@@ -1393,16 +1370,16 @@ fn lane_intrinsic_input<'input, 'a, Node: Copy, S: LayoutScalar>(
     })
 }
 
-enum TrackContributionRequest<Node, S: LayoutScalar> {
+enum TrackContributionRequest<'input, Node, S: LayoutScalar> {
     Grid(IntrinsicTrackChild<Node, S>),
-    Lanes(LaneIntrinsicChild<Node, S>),
+    Lanes(LaneIntrinsicChild<'input, Node, S>),
 }
 
 enum ContributionRole<'input, Node, S: LayoutScalar> {
     /// An ordinary role collecting the contributions of its subgrid items.
     GridBegin(Box<IntrinsicTrackBegin<'input, Node, S>>),
     Grid(IntrinsicTrackRole<Node, S>),
-    Lanes(LaneIntrinsicRole<Node, S>),
+    Lanes(LaneIntrinsicRole<'input, Node, S>),
 }
 
 struct ActiveContributionRole<'input, Node, S: LayoutScalar> {
@@ -1435,7 +1412,7 @@ struct ContributionCollection<'input, Node, S: LayoutScalar> {
     lanes: [Option<LanePurposeContributions<Node, S>>; 3],
     combined: Option<CombinedGridContributions<Node, S>>,
     role: Option<ActiveContributionRole<'input, Node, S>>,
-    pending: Option<TrackContributionRequest<Node, S>>,
+    pending: Option<TrackContributionRequest<'input, Node, S>>,
     saved_observation: Option<MinContentObservation<Node, S>>,
 }
 
@@ -1639,7 +1616,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> ContributionCollection<'input, No
                             })?
                             .map(TrackContributionRequest::Lanes);
                     }
-                    if let Some(TrackContributionRequest::Lanes(child)) = &self.pending {
+                    if let Some(TrackContributionRequest::Lanes(child)) = &mut self.pending {
                         return Ok(DeferredContribution::Child(child.request(input)));
                     }
                     let Some(ActiveContributionRole {
@@ -1734,6 +1711,13 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> ContributionCollection<'input, No
         if let Some(beginning) = self.beginning_mut() {
             beginning.take_captures(starts);
         }
+        if let Some(ActiveContributionRole {
+            role: ContributionRole::Lanes(role),
+            ..
+        }) = self.role.as_mut()
+        {
+            role.take_captures(starts);
+        }
     }
 
     fn beginning_mut(&mut self) -> Option<&mut IntrinsicTrackBegin<'input, Node, S>> {
@@ -1807,7 +1791,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> ContributionCollection<'input, No
             (ContributionRole::Lanes(role), Some(TrackContributionRequest::Lanes(child))) => {
                 let input = lane_intrinsic_input(source.input, grid, source.frame)
                     .expect("lane request retains its input");
-                role.accept_child(input, child, output)?
+                role.accept_child(input, child, output, gutter)?
             }
             _ => unreachable!("intrinsic child receipt belongs to the active role"),
         };

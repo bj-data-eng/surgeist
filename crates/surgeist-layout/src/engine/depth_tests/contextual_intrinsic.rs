@@ -322,7 +322,7 @@ fn auto_lane_chain<S: LayoutScalar>(depth: u32) -> PublicLayoutTreeOf<S> {
 // sizing of the parent's automatic lanes, so each lane is 20px wide, which
 // fills the 40px width. Every subgrid spans both lanes, is 40px wide, and its
 // automatic block size is that of its longest lane, 5 + 9 = 14px.
-fn assert_auto_lane_chain<S: LayoutScalar>(depth: u32) {
+pub(super) fn assert_auto_lane_chain<S: LayoutScalar>(depth: u32) {
     let tree = auto_lane_chain::<S>(depth);
     let batch = layout_of(&tree, depth as usize + 4);
     assert_box(&batch, 0, (0.0, 0.0), (40.0, 14.0));
