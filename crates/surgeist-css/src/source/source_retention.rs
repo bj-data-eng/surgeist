@@ -1350,7 +1350,8 @@ pub(crate) mod admission_tests;
 mod bank;
 mod measure;
 pub use measure::{
-    CssSourceBounds, CssSourceLedger, CssSourceMeasurement, CssSourceMeter, CssSourceReplay,
+    CssSourceBounds, CssSourceDelta, CssSourceLedger, CssSourceMeasurement, CssSourceMeter,
+    CssSourceReplay,
 };
 #[cfg(test)]
 #[path = "source_retention/charge_walk_tests.rs"]

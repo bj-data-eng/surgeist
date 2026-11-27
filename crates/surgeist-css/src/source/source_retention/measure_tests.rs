@@ -1,7 +1,7 @@
 //! The measurement of one payload and the ledger of measurements against the
 //! collector that visits the same payloads, which is the independent figure of
 //! every test: its steps, the deepest nesting it reaches and the bytes it retains.
-use super::{CssSourceBounds, CssSourceLedger, CssSourceMeasurement};
+use super::{CssSourceBounds, CssSourceDelta, CssSourceLedger, CssSourceMeasurement};
 use crate::CssParser;
 use crate::source::source_retention::{
     Admission, CssRetainedSources, CssSourceRetention, CssSourceRetentionAction,
@@ -280,6 +280,107 @@ fn an_addition_that_overflows_the_bytes_leaves_the_ledger_unchanged() {
         Some(CssSourceRetentionResource::RetainedBytes)
     );
     assert_eq!((ledger.bytes(), ledger.len()), before);
+}
+
+#[test]
+fn a_delta_of_a_payload_removed_and_added_again_changes_nothing() {
+    let pool = pool();
+    let payload = payload(&pool, &[4, 5, 0], 0);
+    let measurement = measure(&payload);
+    let mut delta = CssSourceDelta::new();
+    delta.remove(&measurement).unwrap();
+    delta.add(&measurement).unwrap();
+    assert!(delta.is_empty());
+    let mut ledger = CssSourceLedger::new();
+    ledger.add(&measurement).unwrap();
+    let held = (ledger.bytes(), ledger.len());
+    ledger.apply(&delta).unwrap();
+    assert_eq!((ledger.bytes(), ledger.len()), held);
+}
+
+#[test]
+fn a_delta_applied_gives_the_ledger_the_collector_counts_for_the_payloads_that_remain() {
+    let pool = pool();
+    let payloads = [
+        payload(&pool, &[0, 4, 5], 1),
+        payload(&pool, &[5, 6, 7, 1], 0),
+        payload(&pool, &[7, 8, 9, 10], 2),
+        payload(&pool, &[2, 10, 11, 4, 0], 1),
+    ];
+    let measurements = payloads.iter().map(measure).collect::<Vec<_>>();
+    // Start with the first two, replace the second by the third and fourth.
+    let mut ledger = CssSourceLedger::new();
+    ledger.add(&measurements[0]).unwrap();
+    ledger.add(&measurements[1]).unwrap();
+    let mut delta = CssSourceDelta::new();
+    delta.remove(&measurements[1]).unwrap();
+    delta.add(&measurements[2]).unwrap();
+    delta.add(&measurements[3]).unwrap();
+    assert!(!delta.is_empty());
+    ledger.apply(&delta).unwrap();
+    let collector = collect(&[&payloads[0], &payloads[2], &payloads[3]]);
+    assert_eq!(ledger.bytes(), collector.usage().retained_bytes());
+    assert_eq!(ledger.len(), collector.bank.len());
+    ledger.assert_consistent();
+    // Inverted, the delta restores the first two payloads.
+    delta.invert();
+    ledger.apply(&delta).unwrap();
+    let collector = collect(&[&payloads[0], &payloads[1]]);
+    assert_eq!(ledger.bytes(), collector.usage().retained_bytes());
+    assert_eq!(ledger.len(), collector.bank.len());
+    ledger.assert_consistent();
+}
+
+#[test]
+fn merged_deltas_make_the_change_of_both() {
+    let pool = pool();
+    let (first, second) = (
+        measure(&payload(&pool, &[0, 4, 5], 1)),
+        measure(&payload(&pool, &[5, 6, 7], 0)),
+    );
+    let mut ledger = CssSourceLedger::new();
+    ledger.add(&first).unwrap();
+    // One delta removes the first payload, the other adds it back and adds the second.
+    let (mut removal, mut addition) = (CssSourceDelta::new(), CssSourceDelta::new());
+    removal.remove(&first).unwrap();
+    addition.add(&first).unwrap();
+    addition.add(&second).unwrap();
+    removal.merge(&addition).unwrap();
+    ledger.apply(&removal).unwrap();
+    let mut alone = CssSourceLedger::new();
+    alone.add(&first).unwrap();
+    alone.add(&second).unwrap();
+    assert_eq!((ledger.bytes(), ledger.len()), (alone.bytes(), alone.len()));
+    // A delta merged with its own inverse changes nothing.
+    let mut cancelled = CssSourceDelta::new();
+    cancelled.add(&second).unwrap();
+    let mut inverse = CssSourceDelta::new();
+    inverse.remove(&second).unwrap();
+    cancelled.merge(&inverse).unwrap();
+    assert!(cancelled.is_empty());
+}
+
+#[test]
+fn a_delta_of_a_ledger_adds_each_distinct_snapshot_once() {
+    let pool = pool();
+    let payload = payload(&pool, &[4, 5, 0], 0);
+    let measurement = measure(&payload);
+    let mut inner = CssSourceLedger::new();
+    inner.add(&measurement).unwrap();
+    inner.add(&measurement).unwrap();
+    let mut outer = CssSourceLedger::new();
+    let mut delta = CssSourceDelta::new();
+    delta.add_ledger(&inner).unwrap();
+    delta.add_ledger(&inner).unwrap();
+    outer.apply(&delta).unwrap();
+    assert_eq!((outer.bytes(), outer.len()), (inner.bytes(), inner.len()));
+    // Two references were added: one removal leaves them held.
+    let mut once = CssSourceDelta::new();
+    once.remove_ledger(&inner).unwrap();
+    outer.apply(&once).unwrap();
+    assert_eq!((outer.bytes(), outer.len()), (inner.bytes(), inner.len()));
+    outer.apply(&once).unwrap();
+    assert_eq!((outer.bytes(), outer.len()), (0, 0));
 }
 
 /// The measurement of a payload that records `snapshots` in turn.

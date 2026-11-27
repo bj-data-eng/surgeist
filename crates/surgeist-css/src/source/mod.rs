@@ -29,7 +29,7 @@ pub use provenance::same_provenance;
 pub(crate) use provenance::{Layout, LayoutEq, Provenance, Uncompared, Verbatim, VerbatimEq};
 #[doc(inline)]
 pub use source_retention::{
-    CssRetainedPayloadError, CssRetainedSources, CssSourceBounds, CssSourceLedger,
+    CssRetainedPayloadError, CssRetainedSources, CssSourceBounds, CssSourceDelta, CssSourceLedger,
     CssSourceMeasurement, CssSourceMeter, CssSourceReplay, CssSourceRetention,
     CssSourceRetentionAction, CssSourceRetentionError, CssSourceRetentionResource,
 };
