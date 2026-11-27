@@ -23,6 +23,49 @@ pub(crate) struct Measured {
     pub(crate) walk: Option<CssSourceRetentionError>,
 }
 
+/// The rows a record contributes to the input manifest of its state: a sheet's version,
+/// a block's owner, an import's input; the inline declaration context of a block; the
+/// versions the declarations of a block, the families of a rule and the selectors of a
+/// rule were admitted under.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Rows {
+    pub(crate) version: Option<CssomInputVersion>,
+    pub(crate) inline: Option<CssomInlineDeclarationContext>,
+    pub(crate) admissions: Option<Vec<CssomInputVersion>>,
+    pub(crate) families: Option<Vec<CssomInputVersion>>,
+    pub(crate) selectors: Option<Vec<CssomInputVersion>>,
+}
+
+/// The versions of the inputs of a context, then of its linked inputs.
+pub(crate) fn versions(context: &CssomContext) -> impl Iterator<Item = &CssomInputVersion> {
+    context
+        .inputs
+        .iter()
+        .map(|input| &input.version)
+        .chain(context.linked.iter().map(|linked| &linked.version))
+}
+
+/// The input an import rule is associated under.
+pub(crate) fn import_input(rule: &CssomRule) -> Option<&CssomInputVersion> {
+    match rule.data() {
+        CssomRuleData::Import {
+            input: Some(input), ..
+        } => Some(input),
+        _ => None,
+    }
+}
+
+/// The inputs a font feature values rule's families were admitted under.
+pub(crate) fn family_inputs(rule: &CssomRule) -> Option<&[CssomInputVersion]> {
+    match rule.data() {
+        CssomRuleData::FontFeatureValues {
+            family_input: Some(input),
+            ..
+        } => Some(input.inputs()),
+        _ => None,
+    }
+}
+
 /// What a record contributed when it was last settled, and what the ledger of
 /// retained snapshots must give back for it.
 #[derive(Clone, Debug)]
@@ -35,11 +78,18 @@ pub(crate) struct Before {
     /// The refusal of measuring the record, when what it retained could not be counted: the
     /// contribution is then short, and the settle that takes it out refuses.
     pub(crate) walk: Option<CssSourceRetentionError>,
+    /// The rows the record contributed to the manifest.
+    pub(crate) rows: Rows,
 }
 
 impl Before {
     /// What `measured` took from a record, with the snapshots `measurer` collected.
-    fn of(measured: Measured, mut measurer: Measurer, context: Option<&Arc<CssomContext>>) -> Self {
+    fn of(
+        measured: Measured,
+        mut measurer: Measurer,
+        context: Option<&Arc<CssomContext>>,
+        rows: Rows,
+    ) -> Self {
         crate::operation_work::walked(measurer.work());
         let removal = std::mem::take(measurer.delta());
         #[cfg(test)]
@@ -56,6 +106,7 @@ impl Before {
             removal: (!removal.is_empty()).then(|| Arc::new(removal)),
             context: context.cloned(),
             walk: measured.walk,
+            rows,
         }
     }
 }
@@ -155,14 +206,22 @@ impl Journaled for CssomSheet {
     fn before(&self) -> Before {
         let mut measurer = Measurer::unbounded();
         let measured = sheet(&mut measurer, self, Sign::Remove);
-        Before::of(measured, measurer, None)
+        Before::of(
+            measured,
+            measurer,
+            None,
+            Rows {
+                version: Some(self.inputs.version.clone()),
+                ..Rows::default()
+            },
+        )
     }
 }
 
 impl Journaled for Vec<CssomRuleId> {
     type Before = Before;
     fn before(&self) -> Before {
-        Before::of(list(self), Measurer::unbounded(), None)
+        Before::of(list(self), Measurer::unbounded(), None, Rows::default())
     }
 }
 
@@ -171,7 +230,7 @@ impl Journaled for CssMediaQueryList {
     fn before(&self) -> Before {
         let mut measurer = Measurer::unbounded();
         let measured = media(&mut measurer, self, Sign::Remove);
-        Before::of(measured, measurer, None)
+        Before::of(measured, measurer, None, Rows::default())
     }
 }
 
@@ -180,7 +239,7 @@ impl Journaled for CssomFeatureMap {
     fn before(&self) -> Before {
         let mut measurer = Measurer::unbounded();
         let measured = map(&mut measurer, self, Sign::Remove);
-        Before::of(measured, measurer, None)
+        Before::of(measured, measurer, None, Rows::default())
     }
 }
 
@@ -189,7 +248,18 @@ impl Journaled for CssomBlock {
     fn before(&self) -> Before {
         let mut measurer = Measurer::unbounded();
         let measured = block(&mut measurer, self, Sign::Remove);
-        Before::of(measured, measurer, block_context(self))
+        Before::of(
+            measured,
+            measurer,
+            block_context(self),
+            Rows {
+                version: self.owner().cloned(),
+                inline: self.inline_context().cloned(),
+                admissions: Some(self.admission_inputs.to_vec())
+                    .filter(|inputs| !inputs.is_empty()),
+                ..Rows::default()
+            },
+        )
     }
 }
 
@@ -198,6 +268,19 @@ impl Journaled for CssomRule {
     fn before(&self) -> Before {
         let mut measurer = Measurer::unbounded();
         let measured = rule(&mut measurer, self, Sign::Remove);
-        Before::of(measured, measurer, self.selector_inputs.as_ref())
+        Before::of(
+            measured,
+            measurer,
+            self.selector_inputs.as_ref(),
+            Rows {
+                version: import_input(self).cloned(),
+                families: family_inputs(self).map(<[_]>::to_vec),
+                selectors: self
+                    .selector_inputs
+                    .as_deref()
+                    .map(|context| versions(context).cloned().collect()),
+                ..Rows::default()
+            },
+        )
     }
 }

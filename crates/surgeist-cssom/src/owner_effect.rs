@@ -174,7 +174,7 @@ impl CssomStore {
             return Err(CssomError::EffectAlreadyConsumed);
         }
         if self.state.revision != effect.revision
-            || self.snapshot().inputs() != *effect.inputs
+            || !crate::publication::same_manifest(self.state.figures.manifest(), &effect.inputs)
             || self.state.block(&effect.block)?.owner() != Some(&effect.owner)
         {
             return Err(CssomError::StaleOwnerEffect);
@@ -213,7 +213,7 @@ impl CssomStore {
         if batch.owner_updates.is_empty() {
             return Ok((effects, next));
         }
-        let inputs = Arc::new(batch.staged.input_manifest());
+        let inputs = batch.staged.figures.manifest().clone();
         for (id, budget) in &batch.owner_updates {
             let block = batch.staged.block(id)?;
             let Some(owner) = block.owner() else {

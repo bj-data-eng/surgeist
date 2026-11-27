@@ -142,6 +142,10 @@ pub(crate) struct Figures {
     link_depths: BTreeMap<usize, usize>,
     /// The context of the state that the figures account for.
     context: Option<Arc<CssomContext>>,
+    /// The input manifest of the state, which a settle patches with the rows of the
+    /// records it touched. It is shared with the history of changes and with the
+    /// states that have the same rows.
+    manifest: Arc<CssomInputManifest>,
 }
 
 impl fmt::Debug for Figures {
@@ -176,7 +180,18 @@ impl Figures {
             link_visits: 0,
             link_depths: BTreeMap::new(),
             context: None,
+            manifest: Arc::new(CssomInputManifest::empty()),
         }
+    }
+
+    /// The input manifest of the state: what an `input_manifest` of every record would give.
+    pub(crate) fn manifest(&self) -> &Arc<CssomInputManifest> {
+        &self.manifest
+    }
+    /// The manifest to patch with a row that changed. It is copied when the history or
+    /// another state shares it.
+    pub(crate) fn manifest_mut(&mut self) -> &mut CssomInputManifest {
+        Arc::make_mut(&mut self.manifest)
     }
 
     pub(crate) const fn is_poisoned(&self) -> bool {

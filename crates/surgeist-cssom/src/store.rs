@@ -145,6 +145,10 @@ impl CssomStore {
             },
             |size| retained.changes(*size, true),
         )?;
+        #[cfg(test)]
+        if crate::state_limits::probe::cross_check() {
+            assert_eq!(**state.figures.manifest(), state.input_manifest());
+        }
         crate::operation_work::Acquisition::acquired(host.as_ref(), retained, size)
             .publish(&mut retained);
         Ok(Self {
@@ -215,7 +219,10 @@ impl CssomStore {
             return CssomChanges::FullRecompute(CssomRecomputeReason::FutureRevision);
         }
         if before.revision() == &self.state.revision {
-            return if before.inputs() == self.snapshot().inputs() {
+            return if crate::publication::same_manifest(
+                before.state.figures.manifest(),
+                self.state.figures.manifest(),
+            ) {
                 CssomChanges::Unchanged
             } else {
                 CssomChanges::FullRecompute(CssomRecomputeReason::ContextMismatch)
@@ -230,11 +237,12 @@ impl CssomStore {
             if summary.from != cursor {
                 return CssomChanges::FullRecompute(CssomRecomputeReason::CoverageGap);
             }
-            if result
-                .as_ref()
-                .map_or_else(|| before.inputs(), |v| v.after_inputs.clone())
-                != summary.before_inputs
-            {
+            if !crate::publication::same_manifest(
+                result
+                    .as_ref()
+                    .map_or_else(|| before.state.figures.manifest(), |v| &v.after_inputs),
+                &summary.before_inputs,
+            ) {
                 return CssomChanges::FullRecompute(CssomRecomputeReason::ContextMismatch);
             }
             if let Some(total) = &mut result {

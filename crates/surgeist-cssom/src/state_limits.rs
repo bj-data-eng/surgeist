@@ -15,7 +15,7 @@
 //! as the figure of the steps of the walk that reaches its sources, and the
 //! measurement of one payload part. The traversal depth of a state that several
 //! linked inputs reach is the greatest depth of the paths that reach it.
-use crate::contribute::{self, Before, Measured};
+use crate::contribute::{self, Before, Measured, Rows};
 use crate::figures::{Contribution, Figures, Refused, contribution_of_context, widen};
 use crate::model::State;
 use crate::shared_table::SharedTable;
@@ -169,6 +169,7 @@ impl Settle<'_> {
         pending: &mut Pending<'_>,
     ) {
         for (key, before) in journal {
+            self.sheet_rows(&key, before.as_ref().map(|b| &b.rows), table.get(&key));
             let after = table.get(&key).map(|sheet| {
                 (
                     contribute::sheet(&mut self.measurer, sheet, Sign::Add),
@@ -238,6 +239,7 @@ impl Settle<'_> {
     ) {
         for (key, before) in journal {
             let block = table.get(&key);
+            self.block_rows(&key, before.as_ref().map(|b| &b.rows), block);
             let after = block.map(|block| {
                 (
                     contribute::block(&mut self.measurer, block, Sign::Add),
@@ -263,6 +265,7 @@ impl Settle<'_> {
         pending: &mut Pending<'_>,
     ) {
         for (key, before) in journal {
+            self.rule_rows(&key, before.as_ref().map(|b| &b.rows), table.get(&key));
             let after = table.get(&key).map(|rule| {
                 (
                     contribute::rule(&mut self.measurer, rule, Sign::Add),
@@ -276,6 +279,104 @@ impl Settle<'_> {
                 }
                 self.apply(&contribution, Sign::Add);
             }
+        }
+    }
+}
+
+/// Sets the row of the record with `serial` in the rows of a manifest, which are in
+/// the order of their serials: it replaces the row, adds one or removes it.
+fn set_row<K: Clone, R>(
+    rows: &mut Vec<(K, R)>,
+    key: &K,
+    serial_of: impl Fn(&K) -> u64,
+    row: Option<R>,
+) {
+    let serial = serial_of(key);
+    match (
+        rows.binary_search_by_key(&serial, |(held, _)| serial_of(held)),
+        row,
+    ) {
+        (Ok(at), Some(row)) => {
+            if let Some(held) = rows.get_mut(at) {
+                held.1 = row;
+            }
+        }
+        (Ok(at), None) => {
+            rows.remove(at);
+        }
+        (Err(at), Some(row)) => rows.insert(at, (key.clone(), row)),
+        (Err(_), None) => {}
+    }
+}
+
+impl Settle<'_> {
+    /// Patches the manifest with the row a sheet contributed, now and before.
+    fn sheet_rows(
+        &mut self,
+        key: &CssomSheetId,
+        before: Option<&Rows>,
+        after: Option<&CssomSheet>,
+    ) {
+        let before = before.and_then(|rows| rows.version.as_ref());
+        let after = after.map(|sheet| &sheet.inputs.version);
+        if before != after {
+            let rows = &mut self.figures.manifest_mut().sheets;
+            set_row(rows, key, |id| id.serial, after.cloned());
+        }
+    }
+
+    /// Patches the manifest with the rows a block contributed, now and before.
+    fn block_rows(
+        &mut self,
+        key: &CssomBlockId,
+        before: Option<&Rows>,
+        after: Option<&CssomBlock>,
+    ) {
+        let owner = after.and_then(CssomBlock::owner);
+        if before.and_then(|rows| rows.version.as_ref()) != owner {
+            let rows = &mut self.figures.manifest_mut().blocks;
+            set_row(rows, key, |id| id.serial, owner.cloned());
+        }
+        let inline = after.and_then(CssomBlock::inline_context);
+        if before.and_then(|rows| rows.inline.as_ref()) != inline {
+            let rows = &mut self.figures.manifest_mut().inline_declarations;
+            set_row(rows, key, |id| id.serial, inline.cloned());
+        }
+        let admitted = after
+            .map(|block| block.admission_inputs.as_slice())
+            .filter(|inputs| !inputs.is_empty());
+        if before.and_then(|rows| rows.admissions.as_deref()) != admitted {
+            let rows = &mut self.figures.manifest_mut().declaration_admissions;
+            set_row(rows, key, |id| id.serial, admitted.map(<[_]>::to_vec));
+        }
+    }
+
+    /// Patches the manifest with the rows a rule contributed, now and before.
+    fn rule_rows(&mut self, key: &CssomRuleId, before: Option<&Rows>, after: Option<&CssomRule>) {
+        let import = after.and_then(contribute::import_input);
+        if before.and_then(|rows| rows.version.as_ref()) != import {
+            let rows = &mut self.figures.manifest_mut().imports;
+            set_row(rows, key, |id| id.serial, import.cloned());
+        }
+        let families = after.and_then(contribute::family_inputs);
+        if before.and_then(|rows| rows.families.as_deref()) != families {
+            let rows = &mut self.figures.manifest_mut().font_family_admissions;
+            set_row(rows, key, |id| id.serial, families.map(<[_]>::to_vec));
+        }
+        let selectors = after.and_then(|rule| rule.selector_inputs.as_deref());
+        let differs = match (before.and_then(|rows| rows.selectors.as_deref()), selectors) {
+            (None, None) => false,
+            (Some(held), Some(context)) => !held.iter().eq(contribute::versions(context)),
+            _ => true,
+        };
+        if differs {
+            let rows = &mut self.figures.manifest_mut().selector_admissions;
+            set_row(
+                rows,
+                key,
+                |id| id.serial,
+                selectors.map(|context| contribute::versions(context).cloned().collect()),
+            );
         }
     }
 }
@@ -397,6 +498,7 @@ impl State {
             pending.contexts[STATE_CONTEXT] = refusal;
             pending.validate.push(context.as_ref());
             settle.figures.set_context(context.clone());
+            settle.figures.manifest_mut().context = (**context).clone();
         }
         settle.sheets(sheets, journals.0, &mut pending);
         settle.lists(lists, journals.1);
@@ -665,6 +767,9 @@ pub(crate) mod probe {
     /// The input manifest of a whole state has been built from nothing.
     pub(crate) fn manifest_built() {
         MANIFESTS.with(|total| total.set(total.get().saturating_add(1)));
+    }
+    pub(crate) fn set_manifests(count: usize) {
+        MANIFESTS.with(|total| total.set(count));
     }
     /// The input manifests built from nothing on this thread since the last reset.
     pub(crate) fn manifests() -> usize {

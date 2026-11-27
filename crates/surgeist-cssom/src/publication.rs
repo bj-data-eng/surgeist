@@ -1,5 +1,6 @@
 use crate::*;
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 /// Conservative facts for downstream invalidation; CSSOM does not choose a cascade.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -40,9 +41,27 @@ pub struct CssomInputManifest {
     pub font_family_admissions: Vec<(CssomRuleId, Vec<CssomInputVersion>)>,
     pub selector_admissions: Vec<(CssomRuleId, Vec<CssomInputVersion>)>,
 }
+impl CssomInputManifest {
+    /// The manifest of a state without records and with the default context.
+    pub(crate) fn empty() -> Self {
+        Self {
+            context: CssomContext::default(),
+            sheets: Vec::new(),
+            blocks: Vec::new(),
+            inline_declarations: Vec::new(),
+            imports: Vec::new(),
+            declaration_admissions: Vec::new(),
+            font_family_admissions: Vec::new(),
+            selector_admissions: Vec::new(),
+        }
+    }
+}
+
 impl crate::model::State {
+    /// The manifest of every record of the state, built from nothing: the reference the
+    /// manifest the settles keep is compared with under test.
+    #[cfg(test)]
     pub(crate) fn input_manifest(&self) -> CssomInputManifest {
-        #[cfg(test)]
         crate::state_limits::probe::manifest_built();
         let mut sheets = self
             .sheets
@@ -128,7 +147,7 @@ impl crate::model::State {
 
 impl CssomSnapshot {
     pub fn inputs(&self) -> CssomInputManifest {
-        self.state.input_manifest()
+        (**self.state.figures.manifest()).clone()
     }
 }
 
@@ -140,8 +159,8 @@ pub struct CssomChangeSummary {
     pub(crate) to: CssomRevision,
     pub(crate) categories: BTreeSet<CssomChange>,
     pub(crate) affected: Vec<CssomObjectId>,
-    pub(crate) before_inputs: CssomInputManifest,
-    pub(crate) after_inputs: CssomInputManifest,
+    pub(crate) before_inputs: Arc<CssomInputManifest>,
+    pub(crate) after_inputs: Arc<CssomInputManifest>,
     pub(crate) full_recompute: bool,
 }
 impl CssomChangeSummary {
@@ -176,9 +195,17 @@ impl CssomChangeSummary {
             && after.owner() == &self.owner
             && before.revision() == &self.from
             && after.revision() == &self.to
-            && before.inputs() == self.before_inputs
-            && after.inputs() == self.after_inputs
+            && same_manifest(before.state.figures.manifest(), &self.before_inputs)
+            && same_manifest(after.state.figures.manifest(), &self.after_inputs)
     }
+}
+
+/// Whether two manifests hold the same inputs.
+pub(crate) fn same_manifest(
+    left: &Arc<CssomInputManifest>,
+    right: &Arc<CssomInputManifest>,
+) -> bool {
+    Arc::ptr_eq(left, right) || **left == **right
 }
 
 #[derive(Clone, Debug)]

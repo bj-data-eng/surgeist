@@ -174,6 +174,13 @@ fn thresholds(state: &State, displaced: &[&CssMediaQueryList]) -> Vec<(Field, u6
 /// limits around each threshold and under pairs of them, and, when `maintained`, the
 /// figures the state keeps with those of the reference.
 fn compare_state(state: &State, displaced: &[&CssMediaQueryList], at: &str, maintained: bool) {
+    if maintained {
+        assert_eq!(
+            **state.figures.manifest(),
+            state.input_manifest(),
+            "{at}: the manifest kept"
+        );
+    }
     if maintained
         && displaced.is_empty()
         && let Answer::Admitted(figures) = frozen(state, &CssomLimits::default(), displaced)
