@@ -4,12 +4,14 @@
 //! ancestry and atomic publication. It performs no cascade, evaluation or loading.
 #![forbid(unsafe_code)]
 
+mod contribute;
 mod counter_operations;
 pub mod css;
 mod css_adapter;
 mod declaration;
 mod declaration_budget;
 mod declaration_support;
+mod figures;
 mod font_operations;
 mod identity;
 mod inline_context;

@@ -790,6 +790,8 @@ pub(crate) struct State {
     pub lists: SharedTable<CssomRuleListId, Vec<CssomRuleId>>,
     pub media: SharedTable<CssomMediaListId, CssMediaQueryList>,
     pub maps: SharedTable<CssomFeatureMapId, CssomFeatureMap>,
+    /// What the records above add up to, which each settle brings up to date.
+    pub figures: crate::figures::Figures,
 }
 impl State {
     pub(crate) fn sheet(&self, id: &CssomSheetId) -> Result<&CssomSheet, CssomError> {
@@ -825,6 +827,7 @@ impl State {
             .inline_context()
             .map_or(&self.context, CssomInlineDeclarationContext::shared_context))
     }
+    #[cfg(test)]
     pub(crate) fn inline_contexts(&self) -> impl Iterator<Item = &CssomContext> {
         self.blocks
             .values()
@@ -947,7 +950,7 @@ impl CssomSnapshot {
         self.rules(&sheet.rules)
     }
 }
-fn lookup<'a, K: Eq + std::hash::Hash, V>(
+fn lookup<'a, K: Eq + std::hash::Hash, V: crate::shared_table::Journaled>(
     map: &'a SharedTable<K, V>,
     id: &K,
     owner: &CssomOwnerId,

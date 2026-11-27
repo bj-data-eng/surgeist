@@ -131,14 +131,16 @@ impl CssomStore {
             lists: crate::shared_table::SharedTable::new(),
             media: crate::shared_table::SharedTable::new(),
             maps: crate::shared_table::SharedTable::new(),
+            figures: crate::figures::Figures::new(),
         };
         let mut retained = crate::operation_work::Retained::default();
+        let mut state = state;
         let size = crate::operation_work::charged_before_publication(
             state.owner.key(),
             host.as_deref(),
             || {
-                crate::state_limits::Census::of(&state, &limits, std::iter::empty())
-                    .map(|census| census.retained())
+                state.settle(&limits, &[])?;
+                Ok::<_, CssomError>(state.retained())
             },
             |size| retained.changes(*size, true),
         )?;
@@ -389,13 +391,13 @@ impl CssomBatch {
         let (owner, host) = (self.staged.owner.key(), self.host.clone());
         let result = crate::operation_work::charged(owner, host.as_deref(), || {
             operation(self).and_then(|value| {
+                let displaced = self
+                    .media_restorations
+                    .values()
+                    .filter_map(crate::media_operations::MediaRestoration::displaced)
+                    .collect::<Vec<_>>();
                 self.staged
-                    .check_limits_with_displaced_media(
-                        &self.limits,
-                        self.media_restorations
-                            .values()
-                            .filter_map(crate::media_operations::MediaRestoration::displaced),
-                    )
+                    .settle(&self.limits, &displaced)
                     .map(|()| value)
                     .map_err(E::from)
             })

@@ -12,9 +12,9 @@
 //! [`edits`] runs every class of edit the store offers, and seeded sequences of
 //! them, on stores that retain several source snapshots, and compares the
 //! census of each state the edits leave with the reference.
-use super::{Census, Extension, Inserted, probe};
-use crate::{model::State, *};
-use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
+use super::{probe, verified::is_decision};
+use crate::*;
+use std::sync::{atomic::AtomicBool, atomic::Ordering};
 
 mod edits;
 
@@ -159,12 +159,18 @@ fn fingerprint(state: &State) -> Vec<String> {
             ),
         )
     }));
-    records.extend(
-        state
-            .blocks
-            .iter()
-            .map(|(id, record)| (id.serial, format!("block {id:?} {record:?}"))),
-    );
+    records.extend(state.blocks.iter().map(|(id, record)| {
+        // The same holds for the snapshots an inline declaration context links.
+        let mut shown = record.clone();
+        let inline = record.inline_context().map(|context| context.context());
+        if inline.is_some() {
+            shown.binding = crate::inline_context::BlockBinding::Store(None);
+        }
+        (
+            id.serial,
+            format!("block {id:?} {shown:?} inline {}", stable_context(inline)),
+        )
+    }));
     records.extend(
         state
             .lists
@@ -206,9 +212,23 @@ fn edit<T>(
     (result, issued, state)
 }
 
+/// Asserts that two runs are equal, or refuse the same operation with limits
+/// whose choice among several that are exceeded is a decision of the settle.
+fn assert_runs_agree(settled: &Run, reference: &Run, at: &str) {
+    if settled == reference {
+        return;
+    }
+    match (&settled.result, &reference.result) {
+        (Err(kept), Err(whole)) if is_decision(kept) && is_decision(whole) => {
+            assert_eq!(settled.issued, reference.issued, "{at}: identities issued");
+            assert_eq!(settled.state, reference.state, "{at}: the staged state");
+        }
+        _ => assert_eq!(settled, reference, "{at}"),
+    }
+}
+
 impl Scenario {
     fn run(&self, limits: &CssomLimits, reference: bool) -> Run {
-        probe::set_whole_state(reference);
         probe::set_reference(reference);
         let context = match self {
             Scenario::Create { linked: true, .. } => linked_context(),
@@ -299,7 +319,7 @@ impl Scenario {
         }
         let reference = self.run(&limits, true);
         let incremental = self.run(&limits, false);
-        assert_eq!(incremental, reference, "limits {fields:?}");
+        assert_runs_agree(&incremental, &reference, &format!("limits {fields:?}"));
     }
 }
 
@@ -442,110 +462,34 @@ fn every_pair_of_limits_around_their_smallest_values_gives_the_reference_outcome
     assert!(runs > 2000, "{runs} pair comparisons");
 }
 
-/// The rules each adoption of a scenario adopts, counted from its text: every
-/// rule record created, nested rules, margin rules, keyframe blocks and test
-/// children included. Creating a sheet is one adoption; an insert and a
-/// replacement are a second one after the base sheet.
-fn adopted_rules(name: &str) -> &'static [usize] {
-    match name {
-        // Six rules.
-        "flat" => &[6],
-        // The donor store whose snapshot the context links adopts one rule; then six.
-        "linked context" => &[1, 6],
-        // `.a .b .c` and `.d .e &:hover`.
-        "nested" => &[6],
-        // `@media` with `.a`, `@supports` and `.b`; `@supports` with `.c`; `@container`
-        // with `.d`; `@layer` with `.e`; `@scope` with `.h`.
-        "groups" => &[12],
-        // `@font-face`; `@keyframes` and three blocks; `@page` and one margin rule;
-        // `@counter-style`; `@font-feature-values`; `.after`.
-        "mixed" => &[10],
-        // `--x` and three test children; `--y` and one; `.a`.
-        "named supports" => &[7],
-        // Three `@custom-media`; `@media` with `.a`.
-        "custom media" => &[5],
-        // `@layer base, theme;`; two layer blocks with one rule each.
-        "layers" => &[5],
-        // Two `@import`; `.a`.
-        "imports" => &[3],
-        // Recovery keeps two of the three rules.
-        "recovery" => &[2],
-        // Thirty rules, each with one nested rule.
-        "many nested" => &[60],
-        // The base sheet of two rules, then `@media` with `.x`, `@supports`, `.y` and `.z`.
-        "insert" => &[2, 5],
-        // The base sheet of two rules, then `@media` with `.x` and `.y`, `.z`, and
-        // `@keyframes` with two blocks.
-        "replace" => &[2, 7],
-        other => panic!("no adopted rule count for {other}"),
-    }
-}
-
+/// Settles do the work of the records they touch: creating a sheet examines each
+/// record it creates a few times at most, as the adoption of each rule and the
+/// operation's own check account for it, and never the records it did not touch.
 #[test]
-fn every_scenario_walks_the_whole_state_once_per_adoption_and_extends_for_every_other_rule() {
+fn every_scenario_examines_each_record_it_creates_a_bounded_number_of_times() {
+    probe::set_cross_check(false);
     for (name, scenario) in scenarios() {
-        let adoptions = adopted_rules(name);
         probe::reset();
         let run = scenario.run(&CssomLimits::default(), false);
         assert_eq!(run.result, Ok(()), "{name}");
-        // The first check of an adoption is the census of the whole state; each
-        // later check of it extends that census.
-        assert_eq!(
-            probe::whole_runs(),
-            adoptions.len(),
-            "{name}: whole-state runs"
-        );
-        assert_eq!(
-            probe::extensions(),
-            adoptions.iter().map(|rules| rules - 1).sum::<usize>(),
-            "{name}: extensions"
+        let examined = probe::read().examined;
+        // Every record is examined when created, a list again when a rule joins it, and
+        // a rule again when its parent is set: at most three times.
+        let records = run
+            .state
+            .iter()
+            .filter(|line| {
+                ["sheet", "rule", "block", "list", "media", "map"]
+                    .iter()
+                    .any(|kind| line.starts_with(&format!("{kind} ")))
+            })
+            .count();
+        assert!(
+            examined <= 3 * records + 8,
+            "{name}: {examined} records examined for {records} created"
         );
     }
-}
-
-fn staged_state() -> (State, CssomLimits) {
-    let store = CssomStore::new(CssomLimits::default(), CssomContext::default()).unwrap();
-    ((*store.state).clone(), CssomLimits::default())
-}
-
-fn rule(source: &str) -> CssomAuthoredRule {
-    let (sheet, _) = surgeist_css::CssParser::default()
-        .parse_sheet(source)
-        .into_parts();
-    CssomAuthoredRule::Rule(sheet.rules()[0].clone())
-}
-
-#[test]
-fn inserted_objects_that_link_states_or_are_missing_leave_the_census_to_the_whole_state() {
-    let (mut state, limits) = staged_state();
-    let id = state
-        .adopt(rule("a { color: red }"), CssomParent::Detached, 1, &limits)
-        .unwrap();
-    let mut census = Census::of(&state, &limits, std::iter::empty()).unwrap();
-    let before = census.totals.clone();
-    let steps = census.sources.steps();
-
-    // A rule with selector inputs reaches the states its inputs link.
-    state.rules.get_mut(&id).unwrap().selector_inputs = Some(Arc::new(CssomContext::default()));
-    let mut inserted = Inserted::default();
-    inserted.rule(id.clone());
-    assert_eq!(
-        census.extend(&state, &inserted, &limits).unwrap(),
-        Extension::WholeStateNeeded
-    );
-
-    // An identity the state does not hold.
-    let mut inserted = Inserted::default();
-    inserted.block(CssomBlockId {
-        owner: state.owner.clone(),
-        serial: u64::MAX,
-    });
-    assert_eq!(
-        census.extend(&state, &inserted, &limits).unwrap(),
-        Extension::WholeStateNeeded
-    );
-    assert_eq!(census.totals.sums(), before.sums());
-    assert_eq!(census.sources.steps(), steps);
+    probe::set_cross_check(true);
 }
 
 #[test]

@@ -1,7 +1,7 @@
 //! The payload parts the census measures are measured once for as long as they
 //! are shared and unchanged, so a state whose parts have been measured is not
 //! measured again, and an edit costs the parts it replaces.
-use super::{Census, probe};
+use super::probe;
 use crate::{model::State, *};
 
 fn inputs() -> CssomSheetInputs {
@@ -69,7 +69,8 @@ fn a_state_whose_parts_are_measured_is_not_measured_again() {
     probe::reset();
     let limits = CssomLimits::default();
     for _ in 0..2 {
-        Census::of(&store.state, &limits, std::iter::empty()).unwrap();
+        // Settling every record again, as a state accounted for from nothing is.
+        store.state.unsettled_copy().settle(&limits, &[]).unwrap();
     }
     assert_eq!(probe::parts(), 0);
 }

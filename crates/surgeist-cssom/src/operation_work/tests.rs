@@ -1,11 +1,12 @@
 //! What the operations of a store with a host charge.
 //!
-//! The independent figures are the smallest limits under which the same work
-//! succeeds without a host: `max_entries` admits exactly the entries a census
-//! counts, `max_source_traversal_steps` the steps of its walk, `max_objects`
-//! the objects it examines and the state itself, and `max_nodes` the rule
-//! nodes a formatting prepares. Where an operation runs several censuses, the
-//! test-only census probe gives the counts.
+//! A census run is one settle of a state: the records it measures, the entry
+//! lists their measurement examines and the source walk steps it measures are
+//! its work, counted where they are measured by the test-only probe, which is the
+//! independent figure the charges are compared with. The size of the state a
+//! check accounts for is not work: the smallest limits under which an operation
+//! succeeds, `max_entries`, `max_source_traversal_steps` and `max_objects`, give
+//! it, and `max_nodes` gives the rule nodes a formatting prepares.
 
 use surgeist_ledger::{Limits, Operation, ProfileMode, ScopeReport};
 
@@ -108,63 +109,79 @@ pub(super) fn with_sheet(
     Ok((store, sheet))
 }
 
-/// One census of the store `with_sheet` builds, run by disabling its sheet.
-fn disabled_sheet(limits: CssomLimits) -> bool {
-    with_sheet(limits, None)
-        .and_then(|(store, sheet)| store.batch(guard(&store))?.set_disabled(&sheet, true))
-        .is_ok()
+/// The charges since `before` as the probe counts the work: runs, objects, entries and steps.
+fn probed(work: probe::Work) -> [u64; 5] {
+    [work.runs, work.examined, work.entries, work.steps, 0]
+        .map(|count| u64::try_from(count).unwrap())
 }
 
 #[test]
-fn a_store_with_a_host_charges_its_first_census() {
+fn a_store_with_a_host_charges_its_first_check() {
     let (ledger, host) = open_host();
+    probe::reset();
     CssomStore::with_host(CssomLimits::default(), CssomContext::default(), host).unwrap();
+    // The state has no record to measure, and its walk is not measured: one run.
+    assert_eq!(probed(probe::read()), [1, 0, 0, 0, 0]);
+    assert_eq!(charged(&ledger), probed(probe::read()));
+    // The size of the state is what the limits admit: its object, and the steps of its walk.
     let new = |limits| CssomStore::new(limits, CssomContext::default()).is_ok();
-    let objects = smallest(|max_objects| {
-        new(CssomLimits {
-            max_objects,
-            ..CssomLimits::default()
-        })
-    });
     let steps = smallest(|max_source_traversal_steps| {
         new(CssomLimits {
             max_source_traversal_steps,
             ..CssomLimits::default()
         })
     });
-    assert_eq!(charged(&ledger), [1, objects - 1, 0, steps, 0]);
+    assert_eq!(steps, 4);
+}
+
+/// What the charges equal the probe's counts shows is that the work is charged as it is
+/// counted: the counters sit in the functions that charge the host. This test derives
+/// the charges of one commit from the structure of the record it changes, and from a
+/// source collector of the CSS crate, which counts a visit of the sheet's media list
+/// without any code of this crate.
+///
+/// The sheet record of `with_sheet` is walked twice by `set_disabled`: its before-image is
+/// measured when the table is first asked for mutable access, and its after-image at the
+/// check of the operation. Each walk charges one step for the record and visits its media
+/// list; the two payload parts the record holds (the authored tree and the diagnostics) were
+/// measured when the sheet was created and cost nothing. The after-image is the one record
+/// measured, and it counts two entry lists: its rules and its diagnostics. The commit's own
+/// check finds no record touched.
+#[test]
+fn one_flag_commit_charges_what_the_structure_of_its_record_gives() {
+    let media_steps = {
+        let mut collector =
+            surgeist_css::source::CssSourceRetention::new(usize::MAX, usize::MAX, 16);
+        collector
+            .visit(&surgeist_css::query::media::CssMediaQueryList::new(
+                Vec::new(),
+            ))
+            .unwrap();
+        collector.steps()
+    };
+    let (ledger, host) = open_host();
+    let (mut store, sheet) = with_sheet(CssomLimits::default(), Some(host)).unwrap();
+    let mut edit = store.batch(guard(&store)).unwrap();
+    let before = charged(&ledger);
+    assert!(edit.set_disabled(&sheet, true).unwrap());
+    store.commit(edit).unwrap();
+    let steps = u64::try_from(2 * (1 + media_steps)).unwrap();
+    assert_eq!(since(before, charged(&ledger)), [2, 1, 2, steps, 0]);
 }
 
 #[test]
-fn a_batch_operation_charges_the_census_of_the_state_it_leaves() {
+fn a_batch_operation_charges_the_record_it_measured() {
     let (ledger, host) = open_host();
     let (store, sheet) = with_sheet(CssomLimits::default(), Some(host)).unwrap();
     let mut edit = store.batch(guard(&store)).unwrap();
     let before = charged(&ledger);
+    probe::reset();
     edit.set_disabled(&sheet, true).unwrap();
-    let objects = smallest(|max_objects| {
-        disabled_sheet(CssomLimits {
-            max_objects,
-            ..CssomLimits::default()
-        })
-    });
-    let entries = smallest(|max_entries| {
-        disabled_sheet(CssomLimits {
-            max_entries,
-            ..CssomLimits::default()
-        })
-    });
-    let steps = smallest(|max_source_traversal_steps| {
-        disabled_sheet(CssomLimits {
-            max_source_traversal_steps,
-            ..CssomLimits::default()
-        })
-    });
-    assert!(objects > 4 && entries > 4 && steps > 4);
-    assert_eq!(
-        since(before, charged(&ledger)),
-        [1, objects - 1, entries, steps, 0]
-    );
+    let work = probe::read();
+    // One check, which measured the sheet record the flag changed.
+    assert_eq!((work.runs, work.examined), (1, 1));
+    assert!(work.entries > 0 && work.steps > 0);
+    assert_eq!(since(before, charged(&ledger)), probed(work));
 }
 
 /// What `set_disabled` on the sheet of a store of `rules` rules, and its commit,
@@ -200,7 +217,7 @@ fn disabling_a_sheet_charges_the_host_the_same_work_whatever_the_rule_count() {
 }
 
 #[test]
-fn a_sheet_creation_charges_every_census_run_its_adoption_makes() {
+fn a_sheet_creation_charges_every_check_its_adoption_makes() {
     probe::set_cross_check(false);
     let (ledger, host) = open_host();
     let store = make(CssomLimits::default(), Some(host)).unwrap();
@@ -210,14 +227,10 @@ fn a_sheet_creation_charges_every_census_run_its_adoption_makes() {
     edit.create_parsed_sheet(SOURCE, CssomSheetInputs::external(version("sheet"), true))
         .unwrap();
     let work = probe::read();
-    let runs = probe::whole_runs() + probe::extensions() + 1;
-    let charged = since(before, charged(&ledger));
-    assert!(probe::extensions() > 2);
-    assert_eq!(
-        [charged[0], charged[1], charged[3], charged[4]],
-        [runs, work.examined, work.steps, 0].map(|count| u64::try_from(count).unwrap())
-    );
-    assert!(charged[2] > 0);
+    // Each adopted rule is checked, and the operation is checked once more.
+    assert!(work.runs > 5, "{work:?}");
+    assert_eq!(since(before, charged(&ledger)), probed(work));
+    assert!(work.entries > 0 && work.steps > 0);
 }
 
 #[test]
@@ -318,30 +331,19 @@ fn linked_context() -> CssomContext {
 fn a_limit_refusal_is_charged_the_work_before_it() {
     let context = linked_context();
     let admitted = |limits| CssomStore::new(limits, context.clone()).is_ok();
-    let entries = smallest(|max_entries| {
-        admitted(CssomLimits {
-            max_entries,
-            ..CssomLimits::default()
-        })
-    });
-    let steps = smallest(|max_source_traversal_steps| {
-        admitted(CssomLimits {
-            max_source_traversal_steps,
-            ..CssomLimits::default()
-        })
-    });
     let strings = smallest(|max_string_bytes| {
         admitted(CssomLimits {
             max_string_bytes,
             ..CssomLimits::default()
         })
     });
-    assert!(entries > 0 && steps > 0 && strings > 0);
+    assert!(strings > 0);
     let (ledger, host) = open_host();
     let limits = CssomLimits {
         max_string_bytes: usize::try_from(strings).unwrap() - 1,
         ..CssomLimits::default()
     };
+    probe::reset();
     let refused = CssomStore::with_host(limits, context, host);
     assert!(
         matches!(
@@ -354,25 +356,22 @@ fn a_limit_refusal_is_charged_the_work_before_it() {
         "{:?}",
         refused.err()
     );
-    // The string bytes are checked last, after the totals and the walk.
-    assert_eq!(charged(&ledger), [1, 0, entries, steps, 0]);
+    // The string bytes are checked last, after the measurements.
+    assert_eq!(charged(&ledger), probed(probe::read()));
+    assert_eq!(charged(&ledger)[0], 1);
 }
 
 #[test]
-fn a_refused_walk_is_charged_the_steps_it_took() {
-    let context = linked_context();
-    let admitted = |limits| CssomStore::new(limits, context.clone()).is_ok();
-    let entries = smallest(|max_entries| {
-        admitted(CssomLimits {
-            max_entries,
-            ..CssomLimits::default()
-        })
-    });
+fn a_refused_check_is_charged_the_steps_it_measured() {
     let steps = smallest(|max_source_traversal_steps| {
-        admitted(CssomLimits {
-            max_source_traversal_steps,
-            ..CssomLimits::default()
-        })
+        with_sheet(
+            CssomLimits {
+                max_source_traversal_steps,
+                ..CssomLimits::default()
+            },
+            None,
+        )
+        .is_ok()
     });
     assert!(steps > 1);
     let (ledger, host) = open_host();
@@ -380,10 +379,23 @@ fn a_refused_walk_is_charged_the_steps_it_took() {
         max_source_traversal_steps: usize::try_from(steps).unwrap() - 1,
         ..CssomLimits::default()
     };
-    let refused = CssomStore::with_host(limits, context, host);
-    assert!(matches!(refused, Err(CssomError::Limit { .. })));
-    // The step the limit refused is not taken.
-    assert_eq!(charged(&ledger), [1, 0, entries, steps - 1, 0]);
+    let store = make(limits, Some(host)).unwrap();
+    let mut edit = store.batch(guard(&store)).unwrap();
+    let before = charged(&ledger);
+    probe::reset();
+    let inputs = CssomSheetInputs::constructed(version("document"), "document".into(), None);
+    let refused = edit.create_parsed_sheet(SOURCE, inputs);
+    assert!(matches!(
+        refused,
+        Err(CssomError::Limit {
+            resource: "retained source traversal steps",
+            ..
+        })
+    ));
+    let work = probe::read();
+    assert!(work.steps > 0, "{work:?}");
+    assert_eq!(since(before, charged(&ledger)), probed(work));
+    drop(store);
 }
 
 #[test]
@@ -554,28 +566,33 @@ fn finishing_and_cancelling_a_replacement_are_charged_once_each() {
 
 #[test]
 fn an_operation_of_another_store_inside_one_charges_only_its_own_host() {
-    use super::{census, charged as operation};
+    use super::{census, charged as operation, walked};
     let (outer_ledger, outer) = open_host();
     let (inner_ledger, inner) = open_host();
     let result: Result<(), CssomError> = operation(1, Some(&outer), || {
-        census(1, 10, 100);
+        census(1, 10);
+        walked(100);
         // Another store without a host: its work is charged to no one.
         operation(2, None, || {
-            census(2, 20, 200);
+            census(2, 20);
+            walked(200);
             Ok::<(), CssomError>(())
         })?;
         // Another store with a host: its work is charged to its own host.
         operation(3, Some(&inner), || {
-            census(3, 30, 300);
+            census(3, 30);
+            walked(300);
             // Its own nested operation adds to its record.
             operation(3, Some(&inner), || {
-                census(4, 40, 400);
+                census(4, 40);
+                walked(400);
                 Ok::<(), CssomError>(())
             })
         })?;
         // Back in the outer store, whose record was set aside.
         operation(1, Some(&outer), || {
-            census(5, 50, 500);
+            census(5, 50);
+            walked(500);
             Ok::<(), CssomError>(())
         })
     });

@@ -1,19 +1,21 @@
-//! The source walk steps of a census of a store whose rules were each inserted
-//! from their own text, so that every rule retains its own source snapshot.
+//! The source walk steps of a store whose rules were each inserted from their
+//! own text, so that every rule retains its own source snapshot.
 //!
-//! The figure is what one census of the state charges a host as
-//! `SourceVisit`: the host-charged steps of a `set_disabled` operation, which
-//! runs one census of the state it leaves. Building a state creates its tables
-//! anew, and a table's iteration order differs from one creation to the next
-//! within a process, so a census whose steps depended on the order it walks
-//! the tables in would charge a different figure for each build of the same
-//! state.
+//! Two figures describe the steps. What a check charges a host as `SourceVisit` is
+//! the work of measuring the records it touches: the host-charged steps of a
+//! `set_disabled` operation are those of the one sheet record it changes, however
+//! many rules the store retains. The size of the walk that reaches the state's
+//! sources is what `max_source_traversal_steps` admits: the smallest value at which
+//! the store can be built. Building a state creates its tables anew, and a table's
+//! iteration order differs from one creation to the next within a process, so
+//! figures that depended on the order of the tables would differ for each build of the
+//! same state.
 
 use std::sync::atomic::AtomicBool;
 use surgeist_cssom::accounting::{CssFront, CssHostScope, CssLedger, CssLimits, CssWork};
 use surgeist_cssom::{
-    CssomContext, CssomEditGuard, CssomInputRole, CssomInputVersion, CssomLimits, CssomSheetId,
-    CssomSheetInputs, CssomStore,
+    CssomContext, CssomEditGuard, CssomError, CssomInputRole, CssomInputVersion, CssomLimits,
+    CssomSheetId, CssomSheetInputs, CssomStore,
 };
 
 fn host() -> (CssLedger, CssHostScope) {
@@ -50,9 +52,20 @@ fn rule_text(index: usize) -> String {
 /// A store holding one constructed sheet that has `rules` style rules, each
 /// inserted from its own text.
 fn store_of(rules: usize, host: CssHostScope) -> (CssomStore, CssomSheetId) {
-    let mut store =
-        CssomStore::with_host(CssomLimits::default(), CssomContext::default(), host).unwrap();
-    let mut edit = store.batch(guard(&store)).unwrap();
+    built(rules, CssomLimits::default(), Some(host)).unwrap()
+}
+
+/// The store of `store_of` under `limits`, or the refusal that stops its building.
+fn built(
+    rules: usize,
+    limits: CssomLimits,
+    host: Option<CssHostScope>,
+) -> Result<(CssomStore, CssomSheetId), CssomError> {
+    let mut store = match host {
+        Some(host) => CssomStore::with_host(limits, CssomContext::default(), host)?,
+        None => CssomStore::new(limits, CssomContext::default())?,
+    };
+    let mut edit = store.batch(guard(&store))?;
     let inputs = CssomSheetInputs::constructed(
         CssomInputVersion {
             role: CssomInputRole::Document,
@@ -62,20 +75,19 @@ fn store_of(rules: usize, host: CssHostScope) -> (CssomStore, CssomSheetId) {
         "document".into(),
         None,
     );
-    let ticket = edit.create_parsed_sheet("", inputs).unwrap();
-    let sheet = store.commit(edit).unwrap().sheet(&ticket).unwrap().clone();
-    let mut edit = store.batch(guard(&store)).unwrap();
+    let ticket = edit.create_parsed_sheet("", inputs)?;
+    let sheet = store.commit(edit)?.sheet(&ticket)?.clone();
+    let mut edit = store.batch(guard(&store))?;
     let cancel = AtomicBool::new(false);
     for index in 0..rules {
         let text = rule_text(index);
-        edit.insert_sheet_rule(&sheet, text.as_str(), index, &cancel)
-            .unwrap();
+        edit.insert_sheet_rule(&sheet, text.as_str(), index, &cancel)?;
     }
-    store.commit(edit).unwrap();
-    (store, sheet)
+    store.commit(edit)?;
+    Ok((store, sheet))
 }
 
-/// The steps one census of a freshly built store of `rules` rules charges.
+/// The steps one `set_disabled` on a freshly built store of `rules` rules charges.
 fn census_steps(rules: usize) -> u64 {
     let (ledger, host) = host();
     let (store, sheet) = store_of(rules, host);
@@ -85,24 +97,68 @@ fn census_steps(rules: usize) -> u64 {
     visits(&ledger) - before
 }
 
+/// The smallest `max_source_traversal_steps` under which a store of `rules` rules is built.
+fn admitted_steps(rules: usize) -> usize {
+    let admits = |max_source_traversal_steps| {
+        built(
+            rules,
+            CssomLimits {
+                max_source_traversal_steps,
+                ..CssomLimits::default()
+            },
+            None,
+        )
+        .is_ok()
+    };
+    let (mut low, mut high) = (0, 1 << 24);
+    assert!(admits(high));
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if admits(middle) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low
+}
+
 #[test]
-fn the_same_state_built_repeatedly_charges_the_same_census_steps() {
+fn the_same_state_built_repeatedly_charges_the_same_steps() {
     let figures = (0..8).map(|_| census_steps(40)).collect::<Vec<_>>();
     assert!(
         figures.iter().all(|steps| *steps == figures[0]),
-        "census steps of eight builds of one state: {figures:?}"
+        "steps charged by eight builds of one state: {figures:?}"
+    );
+    let admitted = (0..4).map(|_| admitted_steps(40)).collect::<Vec<_>>();
+    assert!(
+        admitted.iter().all(|steps| *steps == admitted[0]),
+        "steps admitted for four builds of one state: {admitted:?}"
     );
 }
 
 #[test]
-fn the_census_steps_of_individually_inserted_rules_grow_at_most_linearly() {
+fn a_check_charges_the_steps_of_the_record_it_changes_whatever_the_rule_count() {
     let base = census_steps(25);
+    assert!(base > 0, "{base}");
+    for rules in [50, 100] {
+        assert_eq!(
+            census_steps(rules),
+            base,
+            "steps charged by one set_disabled at {rules} rules and at 25"
+        );
+    }
+}
+
+#[test]
+fn the_steps_a_store_is_admitted_under_grow_at_most_linearly() {
+    let base = admitted_steps(25);
     assert!(base > 25, "{base}");
     for factor in [2, 4] {
-        let steps = census_steps(25 * factor as usize);
+        let steps = admitted_steps(25 * factor);
         assert!(
             steps <= base * factor,
-            "census steps of {} rules: {steps}, of 25 rules: {base}",
+            "steps admitted for {} rules: {steps}, for 25 rules: {base}",
             25 * factor
         );
     }

@@ -1,9 +1,6 @@
 //! CSS-owned checked syntax enters one live owner without text reconstruction.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::part::Part;
-#[cfg(test)]
-use crate::state_limits::probe;
-use crate::state_limits::{Census, Extension, Inserted};
 use crate::{model::State, *};
 use std::sync::atomic::Ordering;
 use surgeist_css::component::CssComponentValueLimits;
@@ -107,8 +104,6 @@ impl State {
         Adoption {
             state: self,
             limits,
-            census: None,
-            inserted: Inserted::default(),
         }
     }
     /// Adopts one rule, with the rules it contains, into this state.
@@ -125,25 +120,13 @@ impl State {
 
 /// A run of rule adoptions into one staged state.
 ///
-/// After each adopted rule the state is checked against the limits. The first
-/// check is the census of the whole state; it is kept as `census`. Each later
-/// check extends `census` by what the adoption inserted since the previous
-/// check, recorded in `inserted`, instead of walking the whole state again.
-///
-/// The census is exact because this value owns the only access to the state
-/// for its whole lifetime: the state is borrowed mutably and reachable only
-/// for reading, and every change adoption makes (a rule, block, media list or
-/// feature map inserted, a member appended to a rule list) goes through a
-/// method that records it. No other change to the state can happen between
-/// two checks, so `census` plus `inserted` always equals the whole state. A
-/// refusal drops `census`, so any later check starts from the whole state
-/// again. The value is not part of the state, is not cloned with it and is
-/// not reachable from a snapshot; it ends with the adoption.
+/// After each adopted rule the state is settled: the records the adoption
+/// inserted since the last check, and nothing else, are accounted for, and the
+/// state is checked against the limits. A refusal leaves the state's figures unusable,
+/// so any later check answers [`CssomError::BatchAborted`].
 pub(crate) struct Adoption<'a> {
     state: &'a mut State,
     limits: &'a CssomLimits,
-    census: Option<Census>,
-    inserted: Inserted,
 }
 
 impl std::ops::Deref for Adoption<'_> {
@@ -165,9 +148,7 @@ impl<'a> Adoption<'a> {
         self.state.list(self.limits)
     }
     fn media_list(&mut self, value: CssMediaQueryList) -> Result<CssomMediaListId, CssomError> {
-        let id = self.state.media_list(value, self.limits)?;
-        self.inserted.media(id.clone());
-        Ok(id)
+        self.state.media_list(value, self.limits)
     }
     fn block_record(
         &mut self,
@@ -176,19 +157,14 @@ impl<'a> Adoption<'a> {
         owner: Option<CssomInputVersion>,
         flags: CssomBlockFlags,
     ) -> Result<CssomBlockId, CssomError> {
-        let id = self
-            .state
-            .block_record(data, parent, owner, flags, self.limits)?;
-        self.inserted.block(id.clone());
-        Ok(id)
+        self.state
+            .block_record(data, parent, owner, flags, self.limits)
     }
     fn insert_rule(&mut self, id: CssomRuleId, rule: CssomRule) {
-        self.state.rules.insert(id.clone(), rule);
-        self.inserted.rule(id);
+        self.state.rules.insert(id, rule);
     }
     fn insert_map(&mut self, id: CssomFeatureMapId, map: CssomFeatureMap) {
-        self.state.maps.insert(id.clone(), map);
-        self.inserted.map(id);
+        self.state.maps.insert(id, map);
     }
     /// Appends an adopted rule to the list of its parent.
     pub(crate) fn push_child(&mut self, list: &CssomRuleListId, child: CssomRuleId) {
@@ -197,37 +173,10 @@ impl<'a> Adoption<'a> {
             .get_mut(list)
             .expect("new list")
             .push(child);
-        self.inserted.member();
-    }
-    /// The census of the whole state as the adoption has left it.
-    fn whole_census(&self) -> Result<Census, CssomError> {
-        #[cfg(test)]
-        probe::whole_run();
-        Census::of(self.state, self.limits, std::iter::empty())
     }
     /// Refuses the state as the adoption has left it when it exceeds the limits.
     fn check(&mut self) -> Result<(), CssomError> {
-        #[cfg(test)]
-        if probe::whole_state() {
-            return self.state.check_limits(self.limits);
-        }
-        let inserted = std::mem::take(&mut self.inserted);
-        let census = match self.census.take() {
-            Some(mut census) => {
-                let extended = census.extend(self.state, &inserted, self.limits);
-                #[cfg(test)]
-                if probe::cross_check() {
-                    census.assert_matches_whole_state(&extended, self.state, self.limits);
-                }
-                match extended? {
-                    Extension::Applied => census,
-                    Extension::WholeStateNeeded => self.whole_census()?,
-                }
-            }
-            None => self.whole_census()?,
-        };
-        self.census = Some(census);
-        Ok(())
+        self.state.settle(self.limits, &[])
     }
 }
 
@@ -704,7 +653,7 @@ mod adoption_tests {
     }
 
     #[test]
-    fn a_refusal_drops_the_census_so_the_next_check_starts_from_the_whole_state() {
+    fn a_refusal_leaves_the_figures_unusable_so_the_next_check_aborts() {
         let store = CssomStore::new(Default::default(), Default::default()).unwrap();
         let mut state = (*store.state).clone();
         // The state, then a rule, its block and its children list fit; a second rule does not.
@@ -716,7 +665,6 @@ mod adoption_tests {
         adoption
             .adopt(rule("a { color: red }"), CssomParent::Detached, 1)
             .unwrap();
-        assert!(adoption.census.is_some());
         let refusal = adoption
             .adopt(rule("b { color: red }"), CssomParent::Detached, 1)
             .unwrap_err();
@@ -727,17 +675,8 @@ mod adoption_tests {
                 maximum: 4
             }
         ));
-        assert!(adoption.census.is_none());
-        assert!(adoption.inserted.is_empty());
-        // Checking again measures the whole state, which still exceeds the limit.
-        assert!(matches!(
-            adoption.check(),
-            Err(CssomError::Limit {
-                resource: "objects",
-                maximum: 4
-            })
-        ));
-        assert!(adoption.census.is_none());
+        assert!(matches!(adoption.check(), Err(CssomError::BatchAborted)));
+        assert!(state.figures.is_poisoned());
     }
 }
 

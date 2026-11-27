@@ -23,15 +23,10 @@ fn unsupported_test_child() -> CssomError {
 
 /// The entries and host string bytes the retained state accounts for. A sum
 /// that overflows is `None` and is refused by its threshold check.
-///
-/// It also counts the objects and entries the census runs that built it
-/// examined, which are not part of what the state accounts for.
 #[derive(Clone, Debug)]
 pub(super) struct Totals {
     entries: Option<usize>,
     strings: Option<usize>,
-    examined: usize,
-    counted: usize,
 }
 
 impl Totals {
@@ -40,16 +35,9 @@ impl Totals {
         Self {
             entries: Some(sheet_order),
             strings: Some(0),
-            examined: 0,
-            counted: sheet_order,
         }
     }
-    /// One object examined.
-    fn examine(&mut self) {
-        self.examined = self.examined.saturating_add(1);
-    }
     fn add_entries(&mut self, count: usize) {
-        self.counted = self.counted.saturating_add(count);
         self.entries = self.entries.and_then(|total| total.checked_add(count));
     }
     fn add_strings(&mut self, count: usize) {
@@ -124,7 +112,6 @@ impl Totals {
         bases: &mut HashSet<*const Vec<u16>>,
         limits: &CssomLimits,
     ) -> Result<(), CssomError> {
-        self.examine();
         if let Some(input) = sheet.authored.parse_source()
             && input.source().as_str().len() > limits.max_input_bytes
         {
@@ -177,15 +164,12 @@ impl Totals {
     }
     /// One rule list holding `members` rule identities.
     fn list(&mut self, members: usize) {
-        self.examine();
         self.add_entries(members);
     }
     fn media(&mut self, media: &CssMediaQueryList) {
-        self.examine();
         self.add_entries(media.queries().len());
     }
     fn block(&mut self, block: &CssomBlock) {
-        self.examine();
         self.add_entries(block.counter_edits.len());
         for value in block.counter_edits.iter() {
             if let Some(origin) = value.origin() {
@@ -233,7 +217,6 @@ impl Totals {
         }
     }
     fn map(&mut self, map: &CssomFeatureMap) {
-        self.examine();
         self.add_entries(map.authored.len());
         self.add_entries(map.entries.len());
         for entry in &map.entries {
@@ -244,7 +227,6 @@ impl Totals {
         }
     }
     fn rule(&mut self, rule: &CssomRule, limits: &CssomLimits) -> Result<(), CssomError> {
-        self.examine();
         self.add_entries(rule.admission_diagnostics.len());
         if let Some(origin) = &rule.selector_input {
             if origin.source().as_str().len() > limits.max_input_bytes {
@@ -666,9 +648,9 @@ pub(super) struct Census {
 
 impl Census {
     /// What this census accounted for.
-    pub(super) fn figures(&self) -> super::Figures {
+    pub(super) fn figures(&self) -> super::verified::WholeFigures {
         let (entries, strings) = self.totals.sums();
-        super::Figures {
+        super::verified::WholeFigures {
             entries,
             strings,
             objects: self.objects,
@@ -678,22 +660,15 @@ impl Census {
     }
 }
 
-/// One census run: its answer and the work it did, which the walk charges even
-/// when it refuses.
+/// One census run: its answer.
 pub(super) struct Run {
     pub(super) result: Result<Census, CssomError>,
-    pub(super) examined: usize,
-    pub(super) counted: usize,
-    pub(super) steps: usize,
 }
 
 impl Totals {
     /// The entries and string bytes the state accounts for.
     pub(super) fn sums(&self) -> (Option<usize>, Option<usize>) {
         (self.entries, self.strings)
-    }
-    pub(super) fn parts(&self) -> (Option<usize>, Option<usize>, usize, usize) {
-        (self.entries, self.strings, self.examined, self.counted)
     }
 }
 
@@ -720,16 +695,12 @@ pub(super) fn of<'a>(
         totals.check_strings(limits)?;
         Ok(sources)
     })();
-    let (examined, counted) = (totals.examined, totals.counted);
     Run {
         result: census.map(|sources| Census {
             totals,
             sources,
             objects,
         }),
-        examined,
-        counted,
-        steps,
     }
 }
 

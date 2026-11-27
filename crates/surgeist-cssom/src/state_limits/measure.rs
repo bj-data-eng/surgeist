@@ -6,32 +6,26 @@
 //! the checks against the limits need to know. A record is destructured
 //! completely, so a field added to it fails to compile here until it is
 //! accounted for or named as accounting for nothing. [`Counts::check`] raises
-//! the refusals a record causes under a set of limits, naming the entries the
-//! record had counted before it was refused.
+//! the refusals a record causes under a set of limits.
 //!
-//! The census of a state is the sum of these counts followed by the threshold
-//! checks, in that order.
+//! The figures of a state are the sum of these counts over its records, tested
+//! against the thresholds afterwards.
 use crate::named_supports_operations::{TestStorage, measure_test_child, test_input_bytes};
-use crate::{model::State, *};
+use crate::*;
 use std::sync::Arc;
 use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::rule::keyframes::CssKeyframesName;
 
 /// The identity and bytes of the base URL a sheet holds. The bytes are counted
 /// once for every identity, however many sheets share it.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub(crate) struct Base {
     /// The address of the shared base URL units.
     pub(crate) identity: usize,
-    /// Their bytes, or `None` when the sum overflows.
-    pub(crate) bytes: Option<usize>,
-}
-
-/// A record refused by a check, and the entries it had counted before.
-#[derive(Debug)]
-pub(crate) struct Refusal {
-    pub(crate) error: CssomError,
-    pub(crate) counted: usize,
+    /// The shared base URL units, kept so that the address stays theirs while they are counted.
+    pub(crate) units: Arc<Vec<u16>>,
+    /// Their bytes, which can exceed what a `usize` holds.
+    pub(crate) bytes: u128,
 }
 
 /// What one record accounts for, and what the checks of its limits need.
@@ -43,6 +37,10 @@ pub(crate) struct Counts {
     pub(crate) strings: usize,
     /// The base URL of a sheet.
     pub(crate) base: Option<Base>,
+    /// The entry lists the measurement examined, one for each list and for each
+    /// element it looped over: the work of measuring the record, which does not
+    /// depend on how many entries a list it only counts holds.
+    pub(crate) work: usize,
     check: Check,
 }
 
@@ -54,14 +52,10 @@ enum Check {
     Sheet {
         /// The bytes of the exact parse source of the sheet.
         parse_input: Option<usize>,
-        /// The entries counted before the title and the base URL.
-        entries_before_title: usize,
         /// Whether the bytes of the title overflow.
         title_overflows: bool,
     },
     Rule {
-        /// The entries of the admission diagnostics, counted first.
-        diagnostics: usize,
         /// The bytes of the latest selector input.
         selector_input: Option<usize>,
         payload: Payload,
@@ -73,11 +67,9 @@ enum Check {
 enum Payload {
     #[default]
     Nothing,
-    /// A named-supports body: the bytes of the name's origin, the entries of
-    /// the recovery origins and the storage of each child, counted in turn.
+    /// A named-supports body: the bytes of the name's origin and the storage of each child.
     Named {
         name_bytes: usize,
-        recovery: usize,
         children: Vec<TestStorage>,
     },
     /// An inert test child.
@@ -87,6 +79,7 @@ enum Payload {
 impl Counts {
     fn add_entries(&mut self, count: usize) {
         self.entries = self.entries.saturating_add(count);
+        self.work = self.work.saturating_add(1);
     }
     fn add_strings(&mut self, count: usize) {
         self.strings = self.strings.saturating_add(count);
@@ -94,92 +87,64 @@ impl Counts {
     fn version(&mut self, value: &CssomInputVersion) {
         self.add_strings(value.identity.len());
     }
-
-    /// The entries a sheet had counted when its base URL was reached.
-    pub(crate) fn entries_before_base(&self) -> usize {
-        match &self.check {
-            Check::Sheet {
-                entries_before_title,
-                ..
-            } => *entries_before_title,
-            Check::Nothing | Check::Rule { .. } => 0,
-        }
+    /// Adds what `other` accounts for, the base URL aside.
+    pub(crate) fn absorb(&mut self, other: &Self) {
+        self.entries = self.entries.saturating_add(other.entries);
+        self.strings = self.strings.saturating_add(other.strings);
+        self.work = self.work.saturating_add(other.work);
     }
 
     /// Refuses the record when it exceeds `limits`: an oversized sheet or
     /// rule input, a title or test payload that does not fit.
-    pub(crate) fn check(&self, limits: &CssomLimits) -> Result<(), Refusal> {
+    pub(crate) fn check(&self, limits: &CssomLimits) -> Result<(), CssomError> {
         match &self.check {
             Check::Nothing => Ok(()),
             Check::Sheet {
                 parse_input,
-                entries_before_title,
                 title_overflows,
             } => {
                 if parse_input.is_some_and(|bytes| bytes > limits.max_input_bytes) {
-                    return Err(Refusal {
-                        error: CssomError::Limit {
-                            resource: "parse input bytes",
-                            maximum: limits.max_input_bytes,
-                        },
-                        counted: 0,
+                    return Err(CssomError::Limit {
+                        resource: "parse input bytes",
+                        maximum: limits.max_input_bytes,
                     });
                 }
                 if *title_overflows {
-                    return Err(Refusal {
-                        error: CssomError::Limit {
-                            resource: "host and live string bytes",
-                            maximum: limits.max_string_bytes,
-                        },
-                        counted: *entries_before_title,
+                    return Err(CssomError::Limit {
+                        resource: "host and live string bytes",
+                        maximum: limits.max_string_bytes,
                     });
                 }
                 Ok(())
             }
             Check::Rule {
-                diagnostics,
                 selector_input,
                 payload,
             } => {
                 if selector_input.is_some_and(|bytes| bytes > limits.max_input_bytes) {
-                    return Err(Refusal {
-                        error: CssomError::Limit {
-                            resource: "retained selector input bytes",
-                            maximum: limits.max_input_bytes,
-                        },
-                        counted: *diagnostics,
+                    return Err(CssomError::Limit {
+                        resource: "retained selector input bytes",
+                        maximum: limits.max_input_bytes,
                     });
                 }
-                let mut counted = *diagnostics;
                 match payload {
                     Payload::Nothing => {}
                     Payload::Named {
                         name_bytes,
-                        recovery,
                         children,
                     } => {
                         if *name_bytes > limits.max_input_bytes {
-                            return Err(Refusal {
-                                error: CssomError::Limit {
-                                    resource: "retained test input bytes",
-                                    maximum: limits.max_input_bytes,
-                                },
-                                counted,
+                            return Err(CssomError::Limit {
+                                resource: "retained test input bytes",
+                                maximum: limits.max_input_bytes,
                             });
                         }
-                        counted = counted.saturating_add(*recovery);
                         for child in children {
-                            let (entries, _) = child
-                                .check(limits)
-                                .map_err(|error| Refusal { error, counted })?;
-                            counted = counted.saturating_add(entries);
+                            child.check(limits)?;
                         }
                     }
                     Payload::Child(storage) => {
-                        storage.check(limits).map_err(|error| Refusal {
-                            error,
-                            counted: *diagnostics,
-                        })?;
+                        storage.check(limits)?;
                     }
                 }
                 Ok(())
@@ -240,7 +205,7 @@ fn input(counts: &mut Counts, input: &CssomInput) {
 
 /// The inputs and linked inputs of one context, refused when a linked sheet
 /// is missing from the snapshot it names.
-pub(crate) fn context(context: &CssomContext) -> Result<Counts, Refusal> {
+pub(crate) fn context(context: &CssomContext) -> Result<Counts, CssomError> {
     let CssomContext { inputs, linked } = context;
     let mut counts = Counts::default();
     for value in inputs {
@@ -253,10 +218,7 @@ pub(crate) fn context(context: &CssomContext) -> Result<Counts, Refusal> {
             sheet,
         } = value;
         counts.version(version);
-        snapshot.sheet(sheet).map_err(|error| Refusal {
-            error,
-            counted: counts.entries,
-        })?;
+        snapshot.sheet(sheet)?;
         counts.add_entries(1);
     }
     Ok(counts)
@@ -296,7 +258,10 @@ pub(crate) fn sheet(sheet: &CssomSheet) -> Counts {
     counts.add_strings(title_bytes.unwrap_or(0));
     counts.base = base_url.as_ref().map(|base| Base {
         identity: Arc::as_ptr(base).addr(),
-        bytes: base.capacity().checked_mul(size_of::<u16>()),
+        units: base.clone(),
+        bytes: u128::try_from(base.capacity())
+            .unwrap_or(u128::MAX)
+            .saturating_mul(size_of::<u16>() as u128),
     });
     for text in [location, constructor_document, owner]
         .into_iter()
@@ -309,7 +274,6 @@ pub(crate) fn sheet(sheet: &CssomSheet) -> Counts {
         parse_input: authored
             .parse_source()
             .map(|input| input.source().as_str().len()),
-        entries_before_title: rules,
         title_overflows: title_bytes.is_none(),
     };
     counts
@@ -317,18 +281,16 @@ pub(crate) fn sheet(sheet: &CssomSheet) -> Counts {
 
 /// One rule list holding `members` rule identities.
 pub(crate) fn list(members: usize) -> Counts {
-    Counts {
-        entries: members,
-        ..Counts::default()
-    }
+    let mut counts = Counts::default();
+    counts.add_entries(members);
+    counts
 }
 
 /// One media list.
 pub(crate) fn media(media: &CssMediaQueryList) -> Counts {
-    Counts {
-        entries: media.queries().len(),
-        ..Counts::default()
-    }
+    let mut counts = Counts::default();
+    counts.add_entries(media.queries().len());
+    counts
 }
 
 /// One block record.
@@ -442,8 +404,7 @@ pub(crate) fn rule(rule: &CssomRule) -> Counts {
             counts.add_strings(name.as_str().len());
             let name_bytes = test_input_bytes(name.origin());
             counts.add_strings(name_bytes);
-            let recovery = body.local_recovery_origins().len();
-            counts.add_entries(recovery);
+            counts.add_entries(body.local_recovery_origins().len());
             let mut children = Vec::new();
             for child in body.children() {
                 let storage = measure_test_child(child);
@@ -453,7 +414,6 @@ pub(crate) fn rule(rule: &CssomRule) -> Counts {
             }
             Payload::Named {
                 name_bytes,
-                recovery,
                 children,
             }
         }
@@ -530,22 +490,8 @@ pub(crate) fn rule(rule: &CssomRule) -> Counts {
         | CssomRuleData::Leaf { .. } => Payload::Nothing,
     };
     counts.check = Check::Rule {
-        diagnostics: admission_diagnostics.len(),
         selector_input,
         payload,
     };
     counts
-}
-
-/// Every context the census accounts for: the state's, those the selector
-/// inputs of its rules hold and those its inline declaration blocks hold.
-pub(crate) fn contexts(state: &State) -> impl Iterator<Item = &CssomContext> {
-    std::iter::once(state.context.as_ref())
-        .chain(
-            state
-                .rules
-                .values()
-                .filter_map(|rule| rule.selector_inputs.as_deref()),
-        )
-        .chain(state.inline_contexts())
 }
