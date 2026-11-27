@@ -130,6 +130,11 @@ Value/index setters preserve the first exact match and intentionally leave no
 selection after no match. Both ordinary and Slot-supplemented semantic captures
 retain actual Option flags and canonical Select form association.
 
+`Dom::select_options` and `Dom::selected_options` form live collections tied
+to the exact Select. Both use its maintained Option order. The selected
+collection filters that order by current selectedness. The same collection
+can reopen after reordering, selection changes or adoption.
+
 `DomSelect::selected_index_with` and `DomOption::index_with` read the maintained
 option list and its order in the captured published segment. The caller admits
 each reached lookup and qualifies live access during Source callbacks. The

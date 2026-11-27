@@ -1,6 +1,7 @@
 //! Source-ordered Select-family adaptation over the canonical staged tree.
 use super::*;
 use crate::internal::select::TaskTargets;
+use std::ops::ControlFlow;
 use surgeist_html::bounded::{
     numeric::HtmlIntegerPrefixScanner,
     select::{
@@ -28,6 +29,28 @@ use surgeist_html::{
 pub(in crate::internal::store) use source::scratch::ScratchVec;
 
 impl State {
+    pub(super) fn visit_select_options_with<T, E, Step>(
+        &self,
+        select: NodeId,
+        step: &mut Step,
+        mut visit: impl FnMut(NodeId, &mut Step) -> Result<ControlFlow<T>, E>,
+    ) -> Result<Option<T>, E>
+    where
+        E: From<DomError>,
+        Step: FnMut() -> Result<(), E>,
+    {
+        let mut result = None;
+        self.family_index
+            .find_option_with(select, step, |id, step| {
+                if let ControlFlow::Break(value) = visit(id, step)? {
+                    result = Some(value);
+                    return Ok(true);
+                }
+                Ok(false)
+            })?;
+        Ok(result)
+    }
+
     pub(crate) fn first_selected_option_with<E: From<DomError>>(
         &self,
         select: NodeId,

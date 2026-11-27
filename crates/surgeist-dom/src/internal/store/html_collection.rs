@@ -141,6 +141,9 @@ pub struct DomHtmlCollection {
 #[derive(Debug)]
 enum Filter {
     Children,
+    SelectOptions {
+        selected_only: bool,
+    },
     FormControls,
     FieldsetControls,
     NamedForm {
@@ -305,6 +308,47 @@ impl<A> std::fmt::Debug for DomHtmlCollectionRead<'_, A> {
 }
 
 impl Dom {
+    /// Form a live collection of the exact Select's current list of Options.
+    ///
+    /// # Errors
+    /// Returns the first Source, identity, cancellation, or receiver failure.
+    pub fn select_options(
+        &self,
+        select: NodeId,
+        cancel: &AtomicBool,
+    ) -> Result<DomHtmlCollection, DomError> {
+        self.select_option_collection(select, false, cancel)
+    }
+
+    /// Form a live collection of the exact Select's currently selected Options.
+    ///
+    /// # Errors
+    /// Returns the first Source, identity, cancellation, or receiver failure.
+    pub fn selected_options(
+        &self,
+        select: NodeId,
+        cancel: &AtomicBool,
+    ) -> Result<DomHtmlCollection, DomError> {
+        self.select_option_collection(select, true, cancel)
+    }
+
+    fn select_option_collection(
+        &self,
+        select: NodeId,
+        selected_only: bool,
+        cancel: &AtomicBool,
+    ) -> Result<DomHtmlCollection, DomError> {
+        self.with_collection_root(select, cancel, |_, node, step| {
+            step()?;
+            node.as_select().ok_or(DomError::WrongNodeKind)?;
+            Ok(())
+        })?;
+        Ok(DomHtmlCollection {
+            root: select,
+            filter: Filter::SelectOptions { selected_only },
+        })
+    }
+
     /// Form a live tag-name collection and admit the query's complete backing.
     pub fn get_elements_by_tag_name(
         &self,
@@ -814,6 +858,28 @@ where
         mut can_match: impl FnMut(DomNode<'read>) -> Result<bool, E>,
         mut visit: impl FnMut(DomNode<'read>) -> Result<ControlFlow<T>, E>,
     ) -> Result<Option<T>, E> {
+        if let Filter::SelectOptions { selected_only } = self.collection.filter {
+            let snapshot = &self.view.snapshot;
+            return snapshot.state.visit_select_options_with(
+                self.collection.root,
+                &mut || self.view.meter.step(),
+                |id, step| {
+                    let node = snapshot.node_with(id, &mut *step)?;
+                    if selected_only {
+                        step()?;
+                        let option = node.as_option().ok_or(DomError::SelectProtocol)?;
+                        if !option.state().flags().selectedness() {
+                            return Ok(ControlFlow::Continue(()));
+                        }
+                    }
+                    if can_match(node)? {
+                        visit(node)
+                    } else {
+                        Ok(ControlFlow::Continue(()))
+                    }
+                },
+            );
+        }
         if matches!(&self.collection.filter, Filter::Children) {
             let root = self.view.node(self.collection.root)?;
             return self
@@ -848,6 +914,7 @@ where
                 && can_match(node)?
             {
                 let matches = match &self.collection.filter {
+                    Filter::SelectOptions { .. } => return Err(DomError::SelectProtocol.into()),
                     Filter::TagName {
                         qualified_name,
                         class,

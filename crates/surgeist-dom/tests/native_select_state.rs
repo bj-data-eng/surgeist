@@ -1640,3 +1640,85 @@ fn selectedcontent_clone_and_clear_queue_their_single_replace_all_records() {
     assert!(records[0].added_nodes().is_empty());
     assert_eq!(records[0].removed_nodes(), replacement);
 }
+
+#[test]
+fn retained_select_collections_follow_membership_and_current_selectedness() {
+    use surgeist_dom::tree::{DomHtmlCollection, DomHtmlCollectionLimits};
+
+    let mut dom = Dom::new(limits()).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let target = batch.create_document();
+    let select = batch.create_element_ns(&document, Namespace::html(), "select");
+    batch.set_attribute(&select, "multiple", "");
+    let group = batch.create_element_ns(&document, Namespace::html(), "optgroup");
+    let nested = batch.create_element_ns(&document, Namespace::html(), "select");
+    let separator = batch.create_element_ns(&document, Namespace::html(), "hr");
+    let direct = batch.create_element_ns(&document, Namespace::html(), "option");
+    let grouped = batch.create_element_ns(&document, Namespace::html(), "option");
+    let nested_option = batch.create_element_ns(&document, Namespace::html(), "option");
+    let blocked_option = batch.create_element_ns(&document, Namespace::html(), "option");
+    batch.set_attribute(&direct, "id", "direct");
+    batch.set_attribute(&grouped, "name", "grouped");
+    batch.set_attribute(&nested_option, "id", "nested");
+    batch.set_attribute(&blocked_option, "id", "blocked");
+    for child in [&direct, &group, &nested, &separator] {
+        batch.insert_before(child, &select, None);
+    }
+    batch.insert_before(&grouped, &group, None);
+    batch.insert_before(&nested_option, &nested, None);
+    batch.insert_before(&blocked_option, &separator, None);
+    batch.set_option_selected(&grouped, true);
+    batch.set_option_selected(&nested_option, true);
+    batch.set_option_selected(&blocked_option, true);
+    batch.insert_before(&select, &document, None);
+    let commit = apply(&mut dom, batch);
+    let target = commit.document(&target).unwrap();
+    let [select, group, direct, grouped] =
+        [select, group, direct, grouped].map(|node| commit.created(&node).unwrap().unwrap());
+    let cancel = cancel();
+    let options = dom.select_options(select, &cancel).unwrap();
+    let selected = dom.selected_options(select, &cancel).unwrap();
+    let policy = DomHtmlCollectionLimits::new(100_000, 16, 128);
+    let admission = || Ok::<_, DomError>(());
+    let assert_members = |dom: &Dom, collection: &DomHtmlCollection, members: &[NodeId]| {
+        let read = dom
+            .read_html_collection(collection, policy, admission, &cancel)
+            .unwrap();
+        assert_eq!(read.length().unwrap(), members.len());
+        for (index, &id) in members.iter().enumerate() {
+            assert_eq!(read.item(index).unwrap(), Some(id));
+        }
+        assert_eq!(read.item(members.len()).unwrap(), None);
+    };
+    assert_members(&dom, &options, &[direct, grouped]);
+    assert_members(&dom, &selected, &[grouped]);
+    let read = dom
+        .read_html_collection(&options, policy, admission, &cancel)
+        .unwrap();
+    assert_eq!(read.named_item(&"grouped".into()).unwrap(), Some(grouped));
+    assert_eq!(read.named_item(&"nested".into()).unwrap(), None);
+    assert_eq!(read.named_item(&"blocked".into()).unwrap(), None);
+
+    let mut batch = DomBatch::new();
+    batch.insert_before(group, select, Some(direct.into()));
+    batch.set_option_selected(direct, true);
+    apply(&mut dom, batch);
+    assert_members(&dom, &options, &[grouped, direct]);
+    assert_members(&dom, &selected, &[grouped, direct]);
+
+    let mut batch = DomBatch::new();
+    batch.adopt(select, target);
+    batch.set_option_selected(grouped, false);
+    apply(&mut dom, batch);
+    assert_members(&dom, &options, &[grouped, direct]);
+    assert_members(&dom, &selected, &[direct]);
+
+    let mut batch = DomBatch::new();
+    batch.destroy(select);
+    apply(&mut dom, batch);
+    assert!(matches!(
+        dom.read_html_collection(&selected, policy, admission, &cancel),
+        Err(DomError::StaleNode)
+    ));
+}
