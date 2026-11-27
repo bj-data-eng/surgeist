@@ -74,7 +74,8 @@ use surgeist_dom::form::select::{
     DomSelectedcontent,
 };
 use surgeist_dom::form::{
-    DomButton, DomButtonState, DomFieldset, DomFieldsetState, DomForm, DomInput, DomInputState,
+    DomButton, DomButtonState, DomFieldset, DomFieldsetState, DomForm,
+    DomHtmlFormControlsCollection, DomHtmlFormControlsCollectionRead, DomInput, DomInputState,
     DomOutput, DomOutputState, DomTextarea, DomTextareaReadLimits, DomTextareaState,
 };
 use surgeist_dom::fullscreen::{

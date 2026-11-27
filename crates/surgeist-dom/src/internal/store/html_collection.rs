@@ -27,6 +27,9 @@ const ID: &[u16] = &[0x69, 0x64];
 const NAME: &[u16] = &[0x6e, 0x61, 0x6d, 0x65];
 const WILDCARD: &[u16] = &[0x2a];
 
+mod form_controls;
+pub use form_controls::{DomHtmlFormControlsCollection, DomHtmlFormControlsCollectionRead};
+
 fn document_metadata<'a, E: From<DomError>>(
     snapshot: &'a DomSnapshot,
     root: DomNode<'a>,
@@ -134,6 +137,8 @@ pub struct DomHtmlCollection {
 #[derive(Debug)]
 enum Filter {
     Children,
+    FormControls,
+    FieldsetControls,
     TagName {
         qualified_name: DocumentString,
         class: DomDocumentClass,
@@ -815,7 +820,7 @@ where
         {
             return Ok(None);
         }
-        self.view.descendants(self.collection.root, |node| {
+        let visit_included = |node: DomNode<'_>| {
             if let Some(element) = node.as_element() {
                 let matches = match &self.collection.filter {
                     Filter::TagName {
@@ -850,6 +855,11 @@ where
                         .document_names(node, |candidate| self.name_match(candidate, name, ()))?
                         .is_break(),
                     Filter::Children | Filter::All => true,
+                    Filter::FormControls => node
+                        .is_listed_by_form_with(self.collection.root, || self.view.meter.step())?,
+                    Filter::FieldsetControls => {
+                        node.is_listed_control_with(|| self.view.meter.step())?
+                    }
                     Filter::AllName(name) => {
                         self.element_matches_name(node, name, ElementNameScope::All)?
                     }
@@ -860,7 +870,16 @@ where
                 }
             }
             Ok(ControlFlow::Continue(()))
-        })
+        };
+        if matches!(&self.collection.filter, Filter::FormControls) {
+            let root = self
+                .view
+                .node(self.collection.root)?
+                .root_with(false, || self.view.meter.step())?;
+            self.view.inclusive_tree(root, visit_included)
+        } else {
+            self.view.descendants(self.collection.root, visit_included)
+        }
     }
 
     fn matches_classes(&self, node: DomNode<'_>, query: &DocumentString) -> Result<bool, E> {

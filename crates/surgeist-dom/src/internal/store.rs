@@ -138,7 +138,8 @@ pub(crate) use bank::{Bank, Iter as BankIter};
 pub use html_collection::{
     DomDescendantQueryRoot, DomDocumentNamedValue, DomHtmlAllCollection, DomHtmlAllCollectionRead,
     DomHtmlAllNamedValue, DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionNames,
-    DomHtmlCollectionRead, DomWindowNamedElements, DomWindowNamedValue,
+    DomHtmlCollectionRead, DomHtmlFormControlsCollection, DomHtmlFormControlsCollectionRead,
+    DomWindowNamedElements, DomWindowNamedValue,
 };
 pub use node_list::{DomNodeList, DomNodeListRead};
 pub(crate) use shared::SharedVec;

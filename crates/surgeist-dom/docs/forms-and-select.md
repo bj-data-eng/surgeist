@@ -70,6 +70,16 @@ The finite subject and work budgets admit these records and their context
 validation.
 Fieldset collections, Legend delegation, first-Legend disabledness and constraint
 candidacy are HTML semantic queries over the current captured tree.
+
+The live `Dom::form_elements` collection follows its exact Form into its current
+ordinary root. It uses stored ownership, including associated controls outside
+the Form's descendants. Image Button Inputs are excluded. The current
+collection length, index and supported names share one read allowance.
+`Dom::fieldset_elements` forms an HTMLCollection of listed ordinary
+descendants, including Image Button Inputs and those owned by another Form.
+A retained collection can reopen after edits or adoption and refuses a retired
+receiver.
+
 `DomNode::html_will_validate_with` reads live candidacy for Button, Input,
 Select and TextArea from the caller's current published Source segment. It
 uses ordinary ancestry and the shared first-Legend disabledness rule. Slot

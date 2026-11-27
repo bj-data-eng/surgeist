@@ -2,13 +2,9 @@
 
 use super::{
     DescendantSearch, DomError, DomNode, NodeId, ReservedDescendantSearch,
-    element_id::NonemptyElementId,
+    element_id::NonemptyElementId, form_association::CustomFormAssociation,
 };
-use crate::internal::{
-    element::DomElementDefinition,
-    form::DomForm,
-    names::{in_html_namespace_with, same_code_units},
-};
+use crate::internal::{form::DomForm, names::in_html_namespace_with};
 use surgeist_html::{
     elements::form::{HtmlNativeFormAssociationKind, native_labelability_with},
     vocabulary::KnownHtmlElement,
@@ -218,35 +214,11 @@ impl<'a> DomNode<'a> {
             return Ok(labelable.then_some(LabeledControl::Native(self, kind)));
         }
 
-        step()?;
-        if element.form_associated_custom_disabled().is_some() {
-            return Ok(Some(LabeledControl::Custom(self)));
-        }
-        let DomElementDefinition::Definition(definition) = element.custom_element_definition()
-        else {
-            return Ok(None);
-        };
-        let registry = self
-            .snapshot
-            .state
-            .registries
-            .as_ref()
-            .ok_or(DomError::StaleNode)?
-            .get_with(definition.registry(), &mut *step)?;
-        step()?;
-        let facts = registry
-            .definition(definition.ordinal())
-            .map_err(|_| DomError::StaleNode)?;
-        if facts.form_associated()
-            && same_code_units(
-                facts.name().code_units(),
-                facts.local_name().code_units(),
-                &mut *step,
-            )?
-            && same_code_units(facts.local_name().code_units(), local, step)?
-        {
-            return Ok(Some(LabeledControl::UnsettledCustom(self)));
-        }
-        Ok(None)
+        Ok(self
+            .custom_form_association_with(element, step)?
+            .map(|state| match state {
+                CustomFormAssociation::Initialized => LabeledControl::Custom(self),
+                CustomFormAssociation::Defined => LabeledControl::UnsettledCustom(self),
+            }))
     }
 }
