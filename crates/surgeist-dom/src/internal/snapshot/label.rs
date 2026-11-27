@@ -1,6 +1,6 @@
 //! HTML Label association over the ordinary tree in an admitted snapshot.
 
-use super::{Descendant, DomError, DomNode, NodeId};
+use super::{Descendant, DocumentString, DomError, DomNode, NodeId};
 use crate::internal::{
     element::DomElementDefinition,
     form::DomForm,
@@ -81,21 +81,11 @@ impl<'a> DomNode<'a> {
         mut step: impl FnMut() -> Result<(), E>,
         reserve: impl FnMut(usize) -> Result<Backing, E>,
     ) -> Result<Option<LabeledControl<'a>>, E> {
-        step()?;
-        let element = self.as_element().ok_or(DomError::WrongNodeKind)?;
-        let name = element.name();
-        if !in_html_namespace_with(name, &mut step)? {
+        if !self.is_html_label_with(&mut step)? {
             return Err(DomError::WrongNodeKind.into());
         }
-        step()?;
-        if KnownHtmlElement::from_units(name.local_name().code_units())
-            != Some(KnownHtmlElement::Label)
-        {
-            return Err(DomError::WrongNodeKind.into());
-        }
-        let attributes = self.attributes().ok_or(DomError::WrongNodeKind)?;
-        if let Some(target) = attributes.get_null_namespace_attribute_with(FOR, &mut step)? {
-            let target = target.value().code_units();
+        if let Some(target) = self.label_for_with(&mut step)? {
+            let target = target.code_units();
             if target.is_empty() {
                 return Ok(None);
             }
@@ -114,6 +104,72 @@ impl<'a> DomNode<'a> {
         })
     }
 
+    pub(crate) fn is_html_label_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        step()?;
+        let Some(element) = self.as_element() else {
+            return Ok(false);
+        };
+        let name = element.name();
+        if !in_html_namespace_with(name, &mut step)? {
+            return Ok(false);
+        }
+        step()?;
+        Ok(KnownHtmlElement::from_units(name.local_name().code_units())
+            == Some(KnownHtmlElement::Label))
+    }
+
+    pub(crate) fn label_for_with<E: From<DomError>>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<&'a DocumentString>, E> {
+        let attributes = self.attributes().ok_or(DomError::WrongNodeKind)?;
+        Ok(attributes
+            .get_null_namespace_attribute_with(FOR, step)?
+            .map(|attribute| attribute.value()))
+    }
+
+    pub(crate) fn native_label_list_applicable_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        step()?;
+        let element = self.as_element().ok_or(DomError::WrongNodeKind)?;
+        let name = element.name();
+        if !in_html_namespace_with(name, &mut step)? {
+            return Err(DomError::WrongNodeKind.into());
+        }
+        step()?;
+        let kind = KnownHtmlElement::from_units(name.local_name().code_units())
+            .ok_or(DomError::WrongNodeKind)?;
+        let labelable = self.native_labelable_with(kind, &mut step)?;
+        if !labelable && kind != KnownHtmlElement::Input {
+            return Err(DomError::WrongNodeKind.into());
+        }
+        Ok(labelable)
+    }
+
+    pub(crate) fn is_labelable_control_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        Ok(self.as_labeled_control(&mut step)?.is_some())
+    }
+
+    fn native_labelable_with<E: From<DomError>>(
+        self,
+        kind: KnownHtmlElement,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        native_labelability_with(kind, || {
+            self.as_input()
+                .ok_or(DomError::WrongNodeKind)?
+                .input_type_with(step)
+        })
+    }
+
     fn as_labeled_control<E: From<DomError>>(
         self,
         step: &mut impl FnMut() -> Result<(), E>,
@@ -129,11 +185,7 @@ impl<'a> DomNode<'a> {
         step()?;
         let local = name.local_name().code_units();
         if let Some(kind) = KnownHtmlElement::from_units(local) {
-            let labelable = native_labelability_with(kind, || {
-                self.as_input()
-                    .ok_or(DomError::WrongNodeKind)?
-                    .input_type_with(&mut *step)
-            })?;
+            let labelable = self.native_labelable_with(kind, step)?;
             return Ok(labelable.then_some(LabeledControl::Native(self, kind)));
         }
 

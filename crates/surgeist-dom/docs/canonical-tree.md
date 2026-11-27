@@ -191,6 +191,15 @@ qualifying callback scope closes or its authority retires. Supported-name
 results retain their vector and text occurrences through a separate result
 limit. Source custody remains with each result until it is dropped.
 
+`Dom::control_labels` forms a live NodeList keyed by the exact native control.
+A Hidden Input returns no list. A list obtained earlier is empty while the
+Input is Hidden and follows that same Input when its type changes again. Each
+read uses the control's current inclusive ordinary root, including after
+adoption. A present `for` selects the first exact nonempty ID match before
+labelability. Without `for`, a Label selects its first labelable ordinary
+descendant. Indexed reads stop when they reach the requested Label. A retired
+control makes its list unavailable.
+
 [Pinned qualified-name filter](https://github.com/whatwg/dom/blob/3071e5f269448350fdea79bb284eedaf17bc431e/dom.bs#L5008-L5032) · [Pinned HTMLCollection](https://github.com/whatwg/dom/blob/3071e5f269448350fdea79bb284eedaf17bc431e/dom.bs#L3481-L3544) · [Pinned Window named objects](https://github.com/whatwg/html/blob/877d6146487f15b15bc8dd0e3c625063a37b456a/source#L98165-L98229).
 
 ## Table parts

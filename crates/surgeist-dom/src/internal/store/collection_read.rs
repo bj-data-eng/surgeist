@@ -160,10 +160,10 @@ where
         Ok(None)
     }
 
-    pub(super) fn descendants<T>(
-        &self,
+    pub(super) fn descendants<'read, T>(
+        &'read self,
         root: NodeId,
-        mut visit: impl FnMut(DomNode<'_>) -> Result<ControlFlow<T>, E>,
+        mut visit: impl FnMut(DomNode<'read>) -> Result<ControlFlow<T>, E>,
     ) -> Result<Option<T>, E> {
         let mut at = self.child(root, 0)?;
         while let Some(id) = at {
@@ -177,6 +177,17 @@ where
             };
         }
         Ok(None)
+    }
+
+    pub(super) fn inclusive_tree<T>(
+        &self,
+        root: DomNode<'_>,
+        mut visit: impl FnMut(DomNode<'_>) -> Result<ControlFlow<T>, E>,
+    ) -> Result<Option<T>, E> {
+        if let ControlFlow::Break(value) = visit(root)? {
+            return Ok(Some(value));
+        }
+        self.descendants(root.id(), visit)
     }
 }
 

@@ -26,6 +26,7 @@ mod reflected_element;
 mod tabindex;
 mod table_rows;
 mod translation;
+pub(crate) use element_id::NonemptyElementId;
 pub use namespace::DomNamespaceUri;
 pub use position::DomDocumentPosition;
 

@@ -13,7 +13,8 @@
 //! `DomHtmlCollection` retains one exact root and an ordinary element filter.
 //! Qualify a new `DomHtmlCollectionRead` to read its current members.
 //! `DomDocumentNamedValue` represents the native branches of Document named access.
-//! `DomNodeList` retains a node's ordinary children or a Document name filter.
+//! `DomNodeList` retains a node's ordinary children, a Document name filter or a
+//! native control's Label filter.
 //! `DomNodeListRead` provides its current length and indexed members.
 //!
 //! Views are immutable and keep the snapshot lifetime; reading creates no node. A

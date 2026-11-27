@@ -8,7 +8,8 @@ use surgeist_dom::{
     Dom, DomBatch, DomCommit, DomError, DomSnapshot,
     edit::CreatedNode,
     identity::NodeId,
-    limits::{DomLimits, DomNameLimits},
+    limits::{DomLimits, DomNameLimits, DomResource},
+    tree::DomNodeList,
 };
 use surgeist_html::values::{DocumentString, Namespace};
 
@@ -54,6 +55,183 @@ fn relation(snapshot: &DomSnapshot, label: NodeId) -> (Option<NodeId>, Option<No
         .unwrap()
         .map(|owner| owner.id());
     (control, form)
+}
+
+fn assert_labels(dom: &Dom, list: &DomNodeList, expected: &[NodeId]) {
+    let cancel = AtomicBool::new(false);
+    let read = dom
+        .read_node_list(list, 100_000, || Ok::<_, DomError>(()), &cancel)
+        .unwrap();
+    assert_eq!(read.length().unwrap(), expected.len());
+    for (index, &id) in expected.iter().enumerate() {
+        assert_eq!(read.item(index).unwrap(), Some(id));
+    }
+    assert_eq!(read.item(expected.len()).unwrap(), None);
+}
+
+#[test]
+fn reverse_labels_follow_the_current_inclusive_ordinary_root_and_input_type() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let root = batch.create_element_ns(&document, Namespace::html(), "label");
+    let duplicate = append(&mut batch, &document, &root, "div");
+    let input = append(&mut batch, &document, &root, "input");
+    let explicit = append(&mut batch, &document, &root, "s:label");
+    let exact = DocumentString::from_utf16([0x0041, 0xd800, 0x0000]);
+    batch.set_attribute(&duplicate, "id", exact.clone());
+    batch.set_attribute(&input, "id", exact.clone());
+    batch.set_attribute(&explicit, "for", exact);
+    let created = apply(&mut dom, batch);
+    let [root, duplicate, input, explicit] =
+        [root, duplicate, input, explicit].map(|ticket| created.created(&ticket).unwrap().unwrap());
+    let cancel = AtomicBool::new(false);
+    let list = dom.control_labels(input, &cancel).unwrap().unwrap();
+    assert_labels(&dom, &list, &[root]);
+
+    let mut batch = DomBatch::new();
+    batch.detach(duplicate);
+    apply(&mut dom, batch);
+    assert_labels(&dom, &list, &[root, explicit]);
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "HiDdEn");
+    apply(&mut dom, batch);
+    assert!(dom.control_labels(input, &cancel).unwrap().is_none());
+    assert_labels(&dom, &list, &[]);
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "invalid type");
+    apply(&mut dom, batch);
+    assert_labels(&dom, &list, &[root, explicit]);
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "id", "different");
+    apply(&mut dom, batch);
+    assert_labels(&dom, &list, &[root]);
+}
+
+#[test]
+fn reverse_label_lists_follow_adoption_and_refuse_retired_generations() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let first = batch.create_document();
+    let second = batch.create_document();
+    let first_root = append(&mut batch, &first, &first, "div");
+    let second_root = append(&mut batch, &second, &second, "div");
+    let first_label = append(&mut batch, &first, &first_root, "label");
+    let second_label = append(&mut batch, &second, &second_root, "label");
+    let control = append(&mut batch, &first, &first_root, "button");
+    batch.set_attribute(&control, "id", "key");
+    batch.set_attribute(&first_label, "for", "key");
+    batch.set_attribute(&second_label, "for", "key");
+    let created = apply(&mut dom, batch);
+    let second = created.document(&second).unwrap();
+    let [control, first_label, second_label, second_root] =
+        [control, first_label, second_label, second_root]
+            .map(|ticket| created.created(&ticket).unwrap().unwrap());
+    let cancel = AtomicBool::new(false);
+    let list = dom.control_labels(control, &cancel).unwrap().unwrap();
+    assert_labels(&dom, &list, &[first_label]);
+
+    let mut batch = DomBatch::new();
+    batch.adopt(control, second);
+    batch.insert_before(control, second_root, None);
+    apply(&mut dom, batch);
+    assert_labels(&dom, &list, &[second_label]);
+
+    let old = dom.snapshot();
+    let mut batch = DomBatch::new();
+    batch.detach(control);
+    batch.destroy(control);
+    apply(&mut dom, batch);
+    assert!(matches!(
+        dom.read_node_list(&list, 100_000, || Ok::<_, DomError>(()), &cancel),
+        Err(DomError::StaleNode)
+    ));
+    assert_eq!(relation(&old, second_label).0, Some(control));
+}
+
+#[test]
+fn reverse_label_reads_stop_at_the_requested_prefix_and_preserve_refusals() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let doc = batch.create_document();
+    let root = append(&mut batch, &doc, &doc, "div");
+    let label = append(&mut batch, &doc, &root, "label");
+    let control = append(&mut batch, &doc, &label, "meter");
+    let other = append(&mut batch, &doc, &root, "label");
+    for _ in 0..12 {
+        append(&mut batch, &doc, &other, "span");
+    }
+    let created = apply(&mut dom, batch);
+    let [label, control] =
+        [label, control].map(|ticket| created.created(&ticket).unwrap().unwrap());
+    let cancel = AtomicBool::new(false);
+    assert!(matches!(
+        dom.control_labels(label, &cancel),
+        Err(DomError::WrongNodeKind)
+    ));
+    let list = dom.control_labels(control, &cancel).unwrap().unwrap();
+    let calls = Cell::new(0_u64);
+    let measured = dom
+        .read_node_list(
+            &list,
+            100_000,
+            || {
+                calls.set(calls.get() + 1);
+                Ok::<_, DomError>(())
+            },
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(measured.item(0).unwrap(), Some(label));
+    let prefix = calls.get();
+    assert_eq!(
+        dom.read_node_list(&list, prefix, || Ok::<_, DomError>(()), &cancel)
+            .unwrap()
+            .item(0),
+        Ok(Some(label))
+    );
+    assert_eq!(
+        dom.read_node_list(&list, prefix - 1, || Ok::<_, DomError>(()), &cancel)
+            .unwrap()
+            .item(0),
+        Err(DomError::WorkLimit {
+            resource: DomResource::NodeListWork,
+            limit: prefix - 1,
+        })
+    );
+    assert_eq!(
+        dom.read_node_list(&list, prefix, || Ok::<_, DomError>(()), &cancel)
+            .unwrap()
+            .length(),
+        Err(DomError::WorkLimit {
+            resource: DomResource::NodeListWork,
+            limit: prefix,
+        })
+    );
+    let calls = Cell::new(0_u64);
+    let read = dom
+        .read_node_list(
+            &list,
+            prefix,
+            || {
+                if calls.get() == prefix - 1 {
+                    return Err(ReadError::Work);
+                }
+                calls.set(calls.get() + 1);
+                Ok(())
+            },
+            &cancel,
+        )
+        .unwrap();
+    assert_eq!(read.item(0), Err(ReadError::Work));
+    let read = dom
+        .read_node_list(&list, 100_000, || Ok::<_, DomError>(()), &cancel)
+        .unwrap();
+    cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert_eq!(read.item(0), Err(DomError::Cancelled));
 }
 
 #[test]
@@ -210,11 +388,18 @@ fn explicit_for_can_resolve_the_inclusive_detached_root() {
     let detached = dom.snapshot();
     assert!(detached.node(root).unwrap().parent().is_none());
     assert_eq!(relation(&detached, label), (Some(root), None));
+    let cancel = AtomicBool::new(false);
+    let root_labels = dom.control_labels(root, &cancel).unwrap().unwrap();
+    let descendant_labels = dom.control_labels(descendant, &cancel).unwrap().unwrap();
+    assert_labels(&dom, &root_labels, &[label]);
+    assert_labels(&dom, &descendant_labels, &[]);
 
     let mut batch = DomBatch::new();
     batch.detach(label);
     apply(&mut dom, batch);
     assert_eq!(relation(&dom.snapshot(), label), (Some(descendant), None));
+    assert_labels(&dom, &root_labels, &[]);
+    assert_labels(&dom, &descendant_labels, &[label]);
 
     let mut batch = DomBatch::new();
     batch.remove_attribute_ns(descendant, Namespace::none(), "id");
