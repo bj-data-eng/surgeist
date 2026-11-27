@@ -15,6 +15,30 @@ pub enum HtmlInitialMediaState {
     Video,
 }
 
+/// HTML mode of a text track, independent of its load readiness.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlTextTrackMode {
+    /// The track is disabled.
+    Disabled,
+    /// The track is active without showing its cues.
+    Hidden,
+    /// The track is active and its cues can be shown.
+    Showing,
+}
+
+/// HTML readiness of an out-of-band text track.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlTextTrackReadiness {
+    /// The track has not started loading.
+    NotLoaded,
+    /// The track is loading.
+    Loading,
+    /// The track has loaded successfully.
+    Loaded,
+    /// The track failed to load.
+    FailedToLoad,
+}
+
 /// Current state of an admitted media element before loading or playback.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlUnloadedMediaState {

@@ -61,6 +61,7 @@ mod html_credits;
 mod hyperlink;
 mod text;
 use history::HistoryEntry;
+mod embedded;
 mod image;
 mod import;
 mod inline_style;
@@ -498,6 +499,8 @@ pub enum DomError {
     ImageProcessingUnavailable,
     MediaResourceEffectUnavailable(surgeist_html::elements::media::HtmlMediaResourceEffect),
     MediaRemovalStableStateUnavailable,
+    EmbedSetupUnavailable,
+    TrackMembershipUnavailable,
     ImageUpdateExhausted,
     HyperlinkProcessingUnavailable,
     EncodingUrlFacts(crate::internal::hyperlink::DomEncodingUrlFactsError),
@@ -699,6 +702,8 @@ impl std::fmt::Display for DomError {
             Self::ImageProcessingUnavailable => f.write_str("image processing is unavailable for this operation"),
             Self::MediaResourceEffectUnavailable(..) => f.write_str("the media resource effect needs a service that is unavailable"),
             Self::MediaRemovalStableStateUnavailable => f.write_str("the stable-state step of media removal is unavailable"),
+            Self::EmbedSetupUnavailable => f.write_str("the Embed element's hosted setup is unavailable"),
+            Self::TrackMembershipUnavailable => f.write_str("the Track element's media membership is unavailable"),
             Self::ImageUpdateExhausted => f.write_str("no image update identities remain"),
             Self::HyperlinkProcessingUnavailable => f.write_str("hyperlink processing is unavailable for this operation"),
             Self::EncodingUrlFacts(..) => f.write_str("the encoding and URL facts were refused"),
@@ -966,6 +971,8 @@ impl std::error::Error for DomError {
             | Self::ImageProcessingUnavailable
             | Self::MediaResourceEffectUnavailable(..)
             | Self::MediaRemovalStableStateUnavailable
+            | Self::EmbedSetupUnavailable
+            | Self::TrackMembershipUnavailable
             | Self::ImageUpdateExhausted
             | Self::HyperlinkProcessingUnavailable
             | Self::EncodingUrlWorkLimit { .. }

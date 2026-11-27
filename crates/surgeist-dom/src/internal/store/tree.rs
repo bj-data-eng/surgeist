@@ -448,6 +448,7 @@ impl Draft {
                     cancelled,
                 )?;
             }
+            self.embedded_adoption(node, cancelled)?;
             if let Some(contents) =
                 self.template_adoption_target(node, document, limits, cancelled)?
             {
@@ -1173,13 +1174,16 @@ impl Draft {
                         0 => self.navigable_removing_node(key, cancel)?,
                         1 => self.script_removing_node(key, cancel)?,
                         2 => self.select_removal(key, limits, cancel)?,
-                        3 => self.image_tree_change(
-                            key,
-                            surgeist_html::elements::image::HtmlImageTreeChange::Removed,
-                            root,
-                            Some(parent),
-                            cancel,
-                        )?,
+                        3 => {
+                            self.image_tree_change(
+                                key,
+                                surgeist_html::elements::image::HtmlImageTreeChange::Removed,
+                                root,
+                                Some(parent),
+                                cancel,
+                            )?;
+                            self.embedded_tree_change(key, root, Some(parent), cancel)?;
+                        }
                         4 => self.control_removing_node(key, cancel)?,
                         5 => self.base_tree_change(key, limits, cancel)?,
                         6 => self.hyperlink_tree_change(key, Some(parent), cancel)?,
@@ -1226,13 +1230,16 @@ impl Draft {
                     match stage {
                         0 => self.insertion_nonce(key, cancel)?,
                         1 => self.control_insertion_node(key, cancel)?,
-                        2 => self.image_tree_change(
-                            key,
-                            surgeist_html::elements::image::HtmlImageTreeChange::Inserted,
-                            root,
-                            None,
-                            cancel,
-                        )?,
+                        2 => {
+                            self.image_tree_change(
+                                key,
+                                surgeist_html::elements::image::HtmlImageTreeChange::Inserted,
+                                root,
+                                None,
+                                cancel,
+                            )?;
+                            self.embedded_tree_change(key, root, None, cancel)?;
+                        }
                         3 => self.base_tree_change(key, limits, cancel)?,
                         4 => self.hyperlink_tree_change(key, None, cancel)?,
                         5 => self.select_insertion(key, limits, cancel)?,

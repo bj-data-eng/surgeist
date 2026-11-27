@@ -559,6 +559,47 @@ fn parsed_unloaded_media_installs_native_audio_and_video_with_the_original_owner
 }
 
 #[test]
+fn parsed_embed_and_track_require_their_own_sealed_state() {
+    use surgeist_html::{elements::native::HtmlElementClass, vocabulary::KnownHtmlElement};
+
+    for (markup, name, family) in [
+        (
+            "<!doctype html><p>prefix</p><embed>",
+            "embed",
+            KnownHtmlElement::Embed,
+        ),
+        (
+            "<!doctype html><p>prefix</p><track>",
+            "track",
+            KnownHtmlElement::Track,
+        ),
+    ] {
+        let report = parse(HtmlSource::utf8(markup));
+        let expected = source_element(&report, name);
+        let (mut dom, environment) = setup();
+        let before = dom.snapshot().stamp();
+        let usage = dom.usage();
+        let error = dom
+            .install_parsed_html_document(
+                before,
+                report,
+                environment,
+                limits(),
+                &AtomicBool::new(false),
+            )
+            .unwrap_err();
+        assert!(
+            matches!(error, DomParsedHtmlInstallError::FamilyStateUnavailable {
+                subject, class: HtmlElementClass::KnownHtml(found),
+            } if subject == expected && found == family),
+            "{error:?}"
+        );
+        assert_eq!(dom.snapshot().stamp(), before);
+        assert_eq!(dom.usage(), usage);
+    }
+}
+
+#[test]
 fn reached_media_load_refuses_after_an_admitted_prefix_without_publishing_any_state() {
     let markup = "<!doctype html><div>private prefix</div><audio src><track></audio>";
     let report = parse(HtmlSource::utf8(markup));

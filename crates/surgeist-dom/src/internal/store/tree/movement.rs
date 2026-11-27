@@ -225,6 +225,7 @@ impl Draft {
                 Some(old_parent),
                 cancel,
             )?;
+            self.embedded_tree_change(node, root, Some(old_parent), cancel)?;
             self.hyperlink_moving_node(node, cancel)?;
             self.push_effect(
                 select::Effect::Tree(Frame::Node {

@@ -328,6 +328,17 @@ pub(crate) fn expanded_equals_with<E>(
     )
 }
 
+pub(crate) fn same_string<E>(
+    left: &DocumentString,
+    right: &DocumentString,
+    step: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    if left.shares_storage_with(right) {
+        return Ok(true);
+    }
+    same_code_units(left.code_units(), right.code_units(), step)
+}
+
 pub(crate) fn same_code_units<E>(
     left: &[u16],
     right: &[u16],

@@ -830,6 +830,16 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             "the stable-state step of media removal is unavailable",
         ),
         (
+            "EmbedSetupUnavailable",
+            DomError::EmbedSetupUnavailable,
+            "the Embed element's hosted setup is unavailable",
+        ),
+        (
+            "TrackMembershipUnavailable",
+            DomError::TrackMembershipUnavailable,
+            "the Track element's media membership is unavailable",
+        ),
+        (
             "ImageUpdateExhausted",
             DomError::ImageUpdateExhausted,
             "no image update identities remain",
@@ -1171,6 +1181,8 @@ variants! {
     ImageProcessingUnavailable unit,
     MediaResourceEffectUnavailable tuple,
     MediaRemovalStableStateUnavailable unit,
+    EmbedSetupUnavailable unit,
+    TrackMembershipUnavailable unit,
     ImageUpdateExhausted unit,
     HyperlinkProcessingUnavailable unit,
     EncodingUrlFacts tuple,

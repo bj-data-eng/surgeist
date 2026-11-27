@@ -1507,8 +1507,8 @@ total_enum_rule!(FORM_ENCTYPE, FORM_ENCTYPE_DEFAULTS, HtmlFormEnctype, Enctype, 
     HtmlFormEnctype::UrlEncoded, HtmlFormEnctype::UrlEncoded, None,
     ["application/x-www-form-urlencoded" => ("application/x-www-form-urlencoded", HtmlFormEnctype::UrlEncoded),
      "multipart/form-data" => ("multipart/form-data", HtmlFormEnctype::MultipartFormData), "text/plain" => ("text/plain", HtmlFormEnctype::PlainText)]);
-enum_rule!(TRACK_KIND, HtmlTrackKind, Kind, Context::Elements(&[KnownHtmlElement::Track]), [85], "attr-track-kind",
-    Some(HtmlTrackKind::Subtitles), Some(HtmlTrackKind::Metadata), None,
+total_enum_rule!(TRACK_KIND, TRACK_KIND_DEFAULTS, HtmlTrackKind, Kind, Context::Elements(&[KnownHtmlElement::Track]), [85], "attr-track-kind",
+    HtmlTrackKind::Subtitles, HtmlTrackKind::Metadata, None,
     ["subtitles" => ("subtitles", HtmlTrackKind::Subtitles), "captions" => ("captions", HtmlTrackKind::Captions),
      "descriptions" => ("descriptions", HtmlTrackKind::Descriptions), "chapters" => ("chapters", HtmlTrackKind::Chapters), "metadata" => ("metadata", HtmlTrackKind::Metadata)]);
 total_enum_rule!(INPUT_TYPE, INPUT_TYPE_DEFAULTS, HtmlInputType, Type, Context::Elements(&[KnownHtmlElement::Input]), [169], "attr-input-type",
@@ -2935,6 +2935,15 @@ pub(crate) mod bounded_rules {
         /// Exact-keyword matching also admits its next-unit/end observation
         /// through this action.
         KeywordPair,
+    }
+
+    /// Selects an out-of-band text track's kind from the exact content value.
+    /// Missing content selects subtitles. Empty or invalid content selects metadata.
+    pub fn track_kind_with<E>(
+        raw: Option<&[u16]>,
+        admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<HtmlTrackKind, E> {
+        total_enum_value_with(&TRACK_KIND, &TRACK_KIND_DEFAULTS, raw, admit)
     }
 
     /// Returns the canonical reflected keyword for a Template's exact

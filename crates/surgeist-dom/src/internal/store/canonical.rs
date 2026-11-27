@@ -226,7 +226,7 @@ impl<K> AttrNode<K> {
                 (Some(left), Some(right)) => (left, right),
                 _ => return Ok(false),
             };
-            if !attributes::same_string(left, right, &mut step)? {
+            if !crate::internal::names::same_string(left, right, &mut step)? {
                 return Ok(false);
             }
         }

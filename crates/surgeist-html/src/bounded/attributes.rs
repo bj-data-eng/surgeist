@@ -22,7 +22,7 @@ pub use crate::internal::attributes::bounded_rules::{
     input_submitter_context, inputmode_keyword_with, loading_processing_with, popover_keyword_with,
     referrerpolicy_processing_with, stylesheet_link_context_work_bound,
     template_shadow_root_mode_keyword_with, template_shadow_root_slot_assignment_keyword_with,
-    translate_processing_with,
+    track_kind_with, translate_processing_with,
 };
 pub use crate::internal::attributes::command::{
     button_command_readback_with, popover_target_action_with,

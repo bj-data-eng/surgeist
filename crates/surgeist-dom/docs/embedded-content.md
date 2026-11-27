@@ -1,6 +1,8 @@
 # Native embedded-content state
 
-Canvas, Marquee, Frame, Iframe and Img retain their HTML-owned state under native creation and canonical mutation. [Hosted documents](hosted-documents.md) supply the separate controlled child-creation path.
+Native embedded-content families retain their HTML-owned state under native
+creation and canonical mutation. [Hosted documents](hosted-documents.md)
+supply the controlled child-creation path.
 
 ## Canvas and Marquee
 
@@ -67,6 +69,34 @@ attributes; adoption and immutable copying preserve existing family state.
 Current null content alone never justifies resetting processed retained history.
 Semantic captures retain this state in their source snapshot; the semantic
 schema has no child-navigable field to synthesize.
+
+## Inactive Embed and out-of-band Track
+
+Fresh Embed represents nothing. Native creation, clone/import and authored
+fragment installation apply the actual attribute and tree hooks.
+`DomElement::is_inactive_embed()` identifies the admitted state. Published
+ordinary Document membership distinguishes a fresh detached or shadow-tree
+Embed from one that may still qualify through the previous event-loop step.
+In hosted Documents, an edit that reaches candidate setup without the required
+loop or rendering facts returns `DomError::EmbedSetupUnavailable` before
+publication. Adoption preserves history and checks the destination Document.
+
+`DomNode::out_of_band_text_track()` observes the single associated text track.
+It starts disabled, not loaded and with an empty cue list. Kind, label,
+language and identifier follow exact current null-namespace attributes at the
+captured revision. Adoption preserves the association. Clone/import and
+authored installation create a fresh one and process the copied attributes.
+Retirement preserves older captures with the original identity.
+
+Setting a nonempty `src` uses a qualified encoding-URL observation for the
+actual node Document. An observed parse failure or setting an empty value
+stores an empty URL. Removing `src` reaches the cue-clearing step and
+preserves the last URL assignment. A media-parent change requiring
+membership and media-element tasks returns
+`DomError::TrackMembershipUnavailable` before publication.
+
+[Pinned Embed](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-embed-element) ·
+[Pinned out-of-band text tracks](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#sourcing-out-of-band-text-tracks)
 
 ## Img and Picture/Source updates
 

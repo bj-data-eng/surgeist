@@ -17,7 +17,6 @@ use surgeist_html::{
     elements::media::{HtmlInitialMediaState, HtmlMediaResourceEffect},
     elements::native::HtmlElementClass as Requirement,
     security::nonce::HtmlBrowsingContextPresence,
-    vocabulary::KnownHtmlElement,
 };
 
 const HTML: &str = "http://www.w3.org/1999/xhtml";
@@ -191,6 +190,176 @@ fn namespace_element_validation_uses_element_context_and_preserves_utf16() {
     assert_eq!(
         dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
         DomError::InvalidCharacter
+    );
+}
+
+#[test]
+fn fresh_native_embed_retains_inactive_attributes_through_clone_and_retirement() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let embed = batch.create_element_ns(&document, Namespace::html(), "embed");
+    batch.set_attribute(&embed, "src", "relative.svg");
+    batch.set_attribute(&embed, "type", "image/svg+xml");
+    let commit = apply(&mut dom, batch);
+    let document = commit.document(&document).unwrap();
+    let embed = commit.created(&embed).unwrap().unwrap();
+    let captured = dom.snapshot();
+    let node = captured.node(embed).unwrap();
+    assert_eq!(node.node_name(), "embed".into());
+    assert!(node.as_element().unwrap().is_inactive_embed());
+    assert_eq!(node.owner_document(), Some(document));
+    assert!(!node.is_connected());
+    assert_eq!(node.attribute(&"src".into()), Some(&"relative.svg".into()));
+
+    let mut batch = DomBatch::new();
+    let copy = batch.clone_node(embed, false);
+    batch.destroy(embed);
+    let copy = apply(&mut dom, batch).created(&copy).unwrap().unwrap();
+    assert_ne!(copy, embed);
+    let current = dom.snapshot();
+    assert!(matches!(current.node(embed), Err(DomError::StaleNode)));
+    assert_eq!(
+        current.node(copy).unwrap().attribute(&"type".into()),
+        Some(&"image/svg+xml".into())
+    );
+    assert_eq!(
+        captured.node(embed).unwrap().attribute(&"src".into()),
+        Some(&"relative.svg".into())
+    );
+}
+
+#[test]
+fn fresh_native_track_retains_its_node_across_adoption_and_import_gets_a_new_node() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let source = batch.create_document();
+    let destination = batch.create_document();
+    let track = batch.create_element_ns(&source, Namespace::html(), "track");
+    batch.set_attribute(&track, "kind", "CaPtIoNs");
+    batch.set_attribute(
+        &track,
+        "label",
+        DocumentString::from_utf16(vec![0x43, 0xd800]),
+    );
+    batch.set_attribute(&track, "srclang", "es");
+    batch.set_attribute(&track, "id", "captions");
+    batch.set_attribute_ns(
+        &track,
+        Namespace::from_uri("urn:other"),
+        "p:kind",
+        "chapters",
+    );
+    let commit = apply(&mut dom, batch);
+    let source = commit.document(&source).unwrap();
+    let destination = commit.document(&destination).unwrap();
+    let track = commit.created(&track).unwrap().unwrap();
+    let captured = dom.snapshot();
+    assert_eq!(captured.node(track).unwrap().owner_document(), Some(source));
+    assert!(!captured.node(track).unwrap().is_connected());
+    let original = captured
+        .node(track)
+        .unwrap()
+        .out_of_band_text_track()
+        .unwrap();
+    let admit = || Ok::<(), DomError>(());
+
+    let mut batch = DomBatch::new();
+    batch.adopt(track, destination);
+    let copy = batch.import_node(&captured, track, destination, false);
+    let copy = apply(&mut dom, batch).created(&copy).unwrap().unwrap();
+    assert_ne!(copy, track);
+    let current = dom.snapshot();
+    for id in [track, copy] {
+        let node = current.node(id).unwrap();
+        assert_eq!(node.owner_document(), Some(destination));
+        assert_eq!(node.attribute(&"kind".into()), Some(&"CaPtIoNs".into()));
+        assert_eq!(
+            node.attribute(&"label".into()),
+            Some(&DocumentString::from_utf16(vec![0x43, 0xd800]))
+        );
+        let text = node.out_of_band_text_track().unwrap();
+        assert_eq!(
+            text.kind_with(admit).unwrap(),
+            surgeist_html::attributes::HtmlTrackKind::Captions
+        );
+        assert_eq!(text.label_with(admit).unwrap(), &[0x43, 0xd800]);
+        assert_eq!(text.language_with(admit).unwrap(), &[0x65, 0x73]);
+        assert_eq!(
+            text.identifier_with(admit).unwrap(),
+            "captions".encode_utf16().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            text.mode(),
+            surgeist_html::elements::media::HtmlTextTrackMode::Disabled
+        );
+        assert_eq!(
+            text.readiness(),
+            surgeist_html::elements::media::HtmlTextTrackReadiness::NotLoaded
+        );
+        assert_eq!(text.cue_count(), 0);
+        assert!(text.url().is_empty());
+        assert_eq!(text.id() == original.id(), id == track);
+    }
+    assert_eq!(captured.node(track).unwrap().owner_document(), Some(source));
+    let mut batch = DomBatch::new();
+    batch.set_attribute(track, "kind", "unknown");
+    batch.remove_attribute(track, "srclang");
+    batch.destroy(copy);
+    apply(&mut dom, batch);
+    let next = dom.snapshot();
+    let text = next.node(track).unwrap().out_of_band_text_track().unwrap();
+    assert_eq!(
+        text.kind_with(admit).unwrap(),
+        surgeist_html::attributes::HtmlTrackKind::Metadata
+    );
+    assert!(text.language_with(admit).unwrap().is_empty());
+    assert_eq!(text.id(), original.id());
+    assert!(matches!(next.node(copy), Err(DomError::StaleNode)));
+    assert_eq!(original.language_with(admit).unwrap(), &[0x65, 0x73]);
+}
+
+#[test]
+fn changing_track_to_a_media_parent_refuses_the_entire_native_edit() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let track = batch.create_element_ns(&document, Namespace::html(), "track");
+    let div = batch.create_element_ns(&document, Namespace::html(), "div");
+    let audio = batch.create_element_ns(&document, Namespace::html(), "audio");
+    batch.insert_before(&track, &div, None);
+    let commit = apply(&mut dom, batch);
+    let track = commit.created(&track).unwrap().unwrap();
+    let audio = commit.created(&audio).unwrap().unwrap();
+    let div = commit.created(&div).unwrap().unwrap();
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    let mut batch = DomBatch::new();
+    batch.set_attribute(track, "label", "private prefix");
+    batch.insert_before(track, audio, None);
+    let cancelled = AtomicBool::new(false);
+    assert_eq!(
+        dom.apply(batch, &cancelled).unwrap_err(),
+        DomError::TrackMembershipUnavailable
+    );
+    let current = dom.snapshot();
+    assert_eq!(current.stamp(), before.stamp());
+    assert_eq!(dom.usage(), usage);
+    let node = current.node(track).unwrap();
+    assert_eq!(node.parent(), Some(div));
+    let text = node.out_of_band_text_track().unwrap();
+    assert!(
+        text.label_with(|| Ok::<(), DomError>(()))
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        text.kind_with(|| Ok::<(), DomError>(())).unwrap(),
+        surgeist_html::attributes::HtmlTrackKind::Subtitles
+    );
+    assert_eq!(
+        text.kind_with(|| Err(DomError::Cancelled)),
+        Err(DomError::Cancelled)
     );
 }
 
@@ -493,32 +662,19 @@ fn source_media_creation_retains_its_exact_native_result() {
 #[test]
 fn unmet_builtin_profiles_reject_the_whole_batch_with_the_actual_requirement() {
     let mut dom = dom();
-    for (ns, name, requirement) in [
-        (
-            HTML,
-            "track",
-            Requirement::KnownHtml(KnownHtmlElement::Track),
-        ),
-        (
-            HTML,
-            "object",
-            Requirement::FormAssociated(
-                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Object,
-            ),
-        ),
-    ] {
-        let before = dom.snapshot();
-        let mut batch = DomBatch::new();
-        let document = batch.create_document();
-        batch.create_element(&document, "not-published");
-        batch.create_element_ns(&document, Namespace::from_uri(ns), name);
-        assert_eq!(
-            dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
-            DomError::NativeInitializationRequired(requirement)
-        );
-        assert_eq!(dom.snapshot().stamp(), before.stamp());
-        assert_eq!(dom.usage().managed_nodes(), 0);
-    }
+    let before = dom.snapshot();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    batch.create_element(&document, "not-published");
+    batch.create_element_ns(&document, Namespace::html(), "object");
+    assert_eq!(
+        dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
+        DomError::NativeInitializationRequired(Requirement::FormAssociated(
+            surgeist_html::elements::form::HtmlNativeFormAssociationKind::Object,
+        ))
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.usage().managed_nodes(), 0);
 }
 
 #[test]
