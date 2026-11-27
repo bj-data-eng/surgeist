@@ -199,8 +199,14 @@ pub(crate) enum Command {
     },
     SetRadioNodeListValue {
         form: NodeOperand,
+        scope: crate::internal::form::FormNamedScope,
         name: DocumentString,
         value: DocumentString,
+    },
+    LookupFormNamed {
+        form: NodeOperand,
+        name: DocumentString,
+        max_retained_query_units: usize,
     },
     SetInputIndeterminate {
         node: NodeOperand,

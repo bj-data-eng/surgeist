@@ -16,14 +16,15 @@ empty form attribute is distinct from absence. ID-bearing removal uses the actua
 post-removal non-Document-tree predicate, without an old-connected prerequisite.
 Native HTML Form retains HTML's three fresh false scalar values and an actual
 past names map. `DomNode::as_form()` reads its scalars and retained exact-name
-aliases. Native creation/clone starts the map empty. The current public fronts
-cannot insert past-name history or perform named-property lookup; map cleanup
-handles actual retained aliases without treating the map as permanently empty.
+aliases. Native creation and cloning start the map empty. The Form's own
+`form_named_item` Source operation selects current listed controls, then
+associated legacy Images, then an exact past alias. It installs or replaces
+the alias only for a reached current singleton.
 Every owner change removes all aliases for the control from its former Form at
 the intermediate owner state, before later lookup or reassociation. Thus even an
 A→null→A reset can change the Form map. Ordinary nearest-owner retention and
 unrelated name edits preserve aliases. Retained name units count independently
-of attributes; the public API has no growing-history front.
+of attributes.
 
 Form owners live once in the canonical Node/Draft relation, using real NodeIds
 and staged Keys respectively. Same-batch/private imported Forms resolve through
@@ -87,6 +88,12 @@ Button's exact current value, including the default `on` for absent attributes.
 The value setter is a Source edit that selects the first exact matching Radio
 Button in current tree order and normalizes its native radio group. Existing
 dirty checkedness flags follow their own Input transitions.
+
+The Form's `form_supported_names` read combines current IDs, names and past
+aliases in element tree order. Within one element it emits ID, name and past
+aliases in age order. It retains the first occurrence of each nonempty value.
+A multiple named property result retains the selected current filter, including
+the legacy Image tier.
 
 `DomNode::html_will_validate_with` reads live candidacy for Button, Input,
 Select and TextArea from the caller's current published Source segment. It

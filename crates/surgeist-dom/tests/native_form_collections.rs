@@ -4,7 +4,7 @@ use std::{cell::Cell, sync::atomic::AtomicBool};
 
 use surgeist_dom::{
     Dom, DomBatch, DomError,
-    edit::CreatedNode,
+    edit::{CreatedNode, DomChange},
     form::{DomFormNamedValue, DomHtmlFormControlsCollection},
     identity::NodeId,
     limits::{DomLimits, DomNameLimits, DomResource},
@@ -14,6 +14,8 @@ use surgeist_dom::{
 use surgeist_html::values::{DocumentString, Namespace, TextBlock};
 
 const READ_LIMITS: DomHtmlCollectionLimits = DomHtmlCollectionLimits::new(100_000, 32, 4_096);
+const SOURCE_LIMITS: DomSourceLimits =
+    DomSourceLimits::new(16_000_000, 1_000_000, 1_000_000, 8, 8, 16, 1);
 
 fn dom() -> Dom {
     Dom::new(
@@ -365,10 +367,9 @@ fn radio_node_list_value_changes_only_checkedness_and_normalizes_the_actual_grou
     else {
         panic!("expected all three controls in a retained list");
     };
-    let limits = DomSourceLimits::new(16_000_000, 1_000_000, 1_000_000, 8, 8, 16, 1);
     let apply = |dom: &mut Dom, value: &str| {
         let edit = DomSourceEdit::set_radio_node_list_value(&list, value).unwrap();
-        let mut source = dom.begin_source_edit(edit, limits, &cancel).unwrap();
+        let mut source = dom.begin_source_edit(edit, SOURCE_LIMITS, &cancel).unwrap();
         let DomSourceProgress::Complete(completion) = source.advance(&cancel).unwrap() else {
             panic!("expected canonical completion of the RadioNodeList value setter");
         };
@@ -411,4 +412,160 @@ fn radio_node_list_value_changes_only_checkedness_and_normalizes_the_actual_grou
     let stamp = dom.snapshot().stamp();
     apply(&mut dom, "unmatched");
     assert_eq!(dom.snapshot().stamp(), stamp);
+}
+
+#[test]
+fn form_named_singletons_publish_aliases_and_owner_changes_remove_them() {
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let root = append(&mut batch, &document, &document, "div");
+    let form = append(&mut batch, &document, &root, "form");
+    let other = append(&mut batch, &document, &root, "form");
+    let button = append(&mut batch, &document, &form, "button");
+    batch.set_attribute(&button, "id", "old-id");
+    batch.set_attribute(&button, "name", "old-name");
+    let image = append(&mut batch, &document, &form, "img");
+    batch.set_attribute(&image, "name", "legacy");
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let [form, other, button] =
+        [form, other, button].map(|ticket| commit.created(&ticket).unwrap().unwrap());
+    let initial = dom.snapshot();
+    let no_outputs = DomSourceLimits::new(16_000_000, 1_000_000, 1_000_000, 8, 0, 16, 1);
+    assert!(matches!(
+        dom.form_named_item(form, "old-id", 0, no_outputs, &cancel),
+        Err(DomError::SourceOutputLimit)
+    ));
+    assert_eq!(dom.snapshot().stamp(), initial.stamp());
+    assert_eq!(
+        dom.snapshot()
+            .node(form)
+            .unwrap()
+            .as_form()
+            .unwrap()
+            .past_names()
+            .len(),
+        0
+    );
+
+    let (value, change) = dom
+        .form_named_item(form, "old-id", 0, SOURCE_LIMITS, &cancel)
+        .unwrap();
+    assert!(matches!(value, DomFormNamedValue::Element(id) if id == button));
+    assert_eq!(change.changes().changes(), &[DomChange::ElementState(form)]);
+    let (value, _) = dom
+        .form_named_item(form, "old-name", 0, SOURCE_LIMITS, &cancel)
+        .unwrap();
+    assert!(matches!(value, DomFormNamedValue::Element(id) if id == button));
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(button, "id", "current-id");
+    batch.set_attribute(button, "name", "current-name");
+    dom.apply(batch, &cancel).unwrap();
+    let expected =
+        ["current-id", "current-name", "old-id", "old-name", "legacy"].map(DocumentString::from);
+    assert_eq!(
+        dom.form_supported_names(form, READ_LIMITS, || Ok::<_, DomError>(()), &cancel)
+            .unwrap()
+            .as_slice(),
+        &expected
+    );
+    let aliased = dom.snapshot();
+    let (value, _) = dom
+        .form_named_item(form, "old-id", 0, SOURCE_LIMITS, &cancel)
+        .unwrap();
+    assert!(matches!(value, DomFormNamedValue::Element(id) if id == button));
+    assert_eq!(dom.snapshot().stamp(), aliased.stamp());
+
+    let mut batch = DomBatch::new();
+    batch.insert_before(button, other, None);
+    dom.apply(batch, &cancel).unwrap();
+    let (value, _) = dom
+        .form_named_item(form, "old-id", 0, SOURCE_LIMITS, &cancel)
+        .unwrap();
+    assert!(matches!(value, DomFormNamedValue::Absent));
+    assert_eq!(
+        dom.snapshot()
+            .node(form)
+            .unwrap()
+            .as_form()
+            .unwrap()
+            .past_names()
+            .len(),
+        0
+    );
+    assert_eq!(
+        aliased
+            .node(form)
+            .unwrap()
+            .as_form()
+            .unwrap()
+            .past_names()
+            .map(|(name, target)| (name.clone(), target))
+            .collect::<Vec<_>>(),
+        vec![("old-id".into(), button), ("old-name".into(), button)]
+    );
+}
+
+#[test]
+fn form_named_lookup_retains_the_reached_legacy_image_filter() {
+    let mut dom = dom();
+    let cancel = AtomicBool::new(false);
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let form = append(&mut batch, &document, &document, "form");
+    let first = append(&mut batch, &document, &form, "img");
+    let second = append(&mut batch, &document, &form, "img");
+    let listed = append(&mut batch, &document, &form, "input");
+    batch.set_attribute(&first, "name", "shared");
+    batch.set_attribute(&second, "id", "shared");
+    batch.set_attribute(&listed, "name", "shared");
+    batch.set_attribute(&listed, "type", "radio");
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let [form, first, second, listed] =
+        [form, first, second, listed].map(|ticket| commit.created(&ticket).unwrap().unwrap());
+    let lookup = |dom: &mut Dom, retained| {
+        dom.form_named_item(form, "shared", retained, SOURCE_LIMITS, &cancel)
+    };
+    let (value, _) = lookup(&mut dom, 0).unwrap();
+    assert!(matches!(value, DomFormNamedValue::Element(id) if id == listed));
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(listed, "name", "other");
+    dom.apply(batch, &cancel).unwrap();
+    let before = dom.snapshot().stamp();
+    assert!(matches!(
+        lookup(&mut dom, 0),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::HtmlCollectionQueryUnits,
+            limit: 0,
+        })
+    ));
+    assert_eq!(dom.snapshot().stamp(), before);
+    let (DomFormNamedValue::List(images), _) = lookup(&mut dom, 64).unwrap() else {
+        panic!("legacy image membership should take precedence over the past alias");
+    };
+    assert_eq!(dom.snapshot().stamp(), before);
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(listed, "name", "shared");
+    dom.apply(batch, &cancel).unwrap();
+    {
+        let read = dom
+            .read_radio_node_list(&images, READ_LIMITS, || Ok::<_, DomError>(()), &cancel)
+            .unwrap();
+        assert_eq!(read.length().unwrap(), 2);
+        assert_eq!(read.item(0).unwrap(), Some(first));
+        assert_eq!(read.item(1).unwrap(), Some(second));
+        assert_eq!(read.value().unwrap(), &[]);
+    }
+    let stamp = dom.snapshot().stamp();
+    let edit = DomSourceEdit::set_radio_node_list_value(&images, "on").unwrap();
+    let mut source = dom.begin_source_edit(edit, SOURCE_LIMITS, &cancel).unwrap();
+    assert!(matches!(
+        source.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    assert_eq!(source.snapshot().stamp(), stamp);
 }

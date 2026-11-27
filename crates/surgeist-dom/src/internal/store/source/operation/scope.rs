@@ -145,6 +145,7 @@ impl OperationRoot {
             | Command::SetInputValue { node, .. }
             | Command::SetInputChecked { node, .. }
             | Command::SetRadioNodeListValue { form: node, .. }
+            | Command::LookupFormNamed { form: node, .. }
             | Command::SetInputIndeterminate { node, .. }
             | Command::ResetInput { node }
             | Command::SetReflectedTarget { node, .. }

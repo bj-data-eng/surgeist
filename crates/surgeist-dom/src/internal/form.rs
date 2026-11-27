@@ -4,6 +4,12 @@ use surgeist_html::values::DocumentString;
 #[cfg(test)]
 pub(crate) mod allocation_observation;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FormNamedScope {
+    Controls,
+    LegacyImages,
+}
+
 /// Checked native Form view at one immutable canonical revision.
 #[derive(Clone, Copy, Debug)]
 pub struct DomForm<'a> {
@@ -20,8 +26,8 @@ impl<'a> DomForm<'a> {
             .form_state()
             .expect("checked Form")
     }
-    /// Retained exact-name aliases. Native creation/clone starts empty; this
-    /// surface does not perform named lookup or install past-name history.
+    /// Retained exact-name aliases. Native creation and cloning start empty.
+    /// [`crate::Dom::form_named_item`] records reached current singletons.
     pub fn past_names(self) -> impl ExactSizeIterator<Item = (&'a DocumentString, NodeId)> {
         self.node
             .node

@@ -8,6 +8,7 @@ use super::{
 };
 use crate::internal::{
     document::{DomDocumentClass, DomDocumentMetadata},
+    form::FormNamedScope,
     hosted::{DomHostedBrowsingContextId, DomHostedEntry, DomHostedError, DomHostedGlobalId},
     names::{ascii_lower, in_html_namespace_with, qualified_equals_with, same_code_units},
     snapshot::{DomNode, DomNodeKind, DomSiblingDirection},
@@ -142,7 +143,11 @@ enum Filter {
     Children,
     FormControls,
     FieldsetControls,
-    NamedFormControls(DocumentString),
+    NamedForm {
+        name: DocumentString,
+        scope: FormNamedScope,
+    },
+    FormNamedProperties,
     TagName {
         qualified_name: DocumentString,
         class: DomDocumentClass,
@@ -874,20 +879,23 @@ where
                     Filter::DocumentName(name) => self
                         .document_names(node, |candidate| self.name_match(candidate, name, ()))?
                         .is_break(),
-                    Filter::Children | Filter::All => true,
+                    Filter::Children | Filter::All | Filter::FormNamedProperties => true,
                     Filter::FormControls => node
                         .is_listed_by_form_with(self.collection.root, || self.view.meter.step())?,
                     Filter::FieldsetControls => {
                         node.is_listed_control_with(|| self.view.meter.step())?
                     }
-                    Filter::NamedFormControls(name) => {
-                        node.is_listed_by_form_with(self.collection.root, || {
-                            self.view.meter.step()
-                        })? && self.element_matches_name(
-                            node,
-                            name,
-                            ElementNameScope::Collection,
-                        )?
+                    Filter::NamedForm { name, scope } => {
+                        let step = || self.view.meter.step();
+                        self.element_matches_name(node, name, ElementNameScope::Collection)?
+                            && match scope {
+                                FormNamedScope::Controls => {
+                                    node.is_listed_by_form_with(self.collection.root, step)?
+                                }
+                                FormNamedScope::LegacyImages => {
+                                    node.is_legacy_image_of_form_with(self.collection.root, step)?
+                                }
+                            }
                     }
                     Filter::AllName(name) => {
                         self.element_matches_name(node, name, ElementNameScope::All)?
@@ -902,7 +910,7 @@ where
         };
         if matches!(
             &self.collection.filter,
-            Filter::FormControls | Filter::NamedFormControls(_)
+            Filter::FormControls | Filter::NamedForm { .. } | Filter::FormNamedProperties
         ) {
             let root = self
                 .view

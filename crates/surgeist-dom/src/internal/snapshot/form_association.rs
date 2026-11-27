@@ -1,10 +1,7 @@
 //! Qualified association facts from one canonical snapshot.
 
 use super::{DomElement, DomError, DomNode, NodeId};
-use crate::internal::{
-    element::DomElementDefinition,
-    names::{in_html_namespace_with, same_code_units},
-};
+use crate::internal::{element::DomElementDefinition, names::in_html_namespace_with};
 use surgeist_html::{attributes::HtmlInputType, elements::form::HtmlNativeFormAssociationKind};
 
 pub(super) enum CustomFormAssociation {
@@ -44,18 +41,7 @@ impl DomNode<'_> {
         let facts = registry
             .definition(definition.ordinal())
             .map_err(|_| DomError::StaleNode)?;
-        if facts.form_associated()
-            && same_code_units(
-                facts.name().code_units(),
-                facts.local_name().code_units(),
-                &mut *step,
-            )?
-            && same_code_units(
-                facts.local_name().code_units(),
-                element.name().local_name().code_units(),
-                step,
-            )?
-        {
+        if element.matches_autonomous_form_definition_with(facts, step)? {
             return Ok(Some(CustomFormAssociation::Defined));
         }
         Ok(None)
@@ -113,5 +99,23 @@ impl DomNode<'_> {
             Some(_) => Ok(owner.is_some()),
             None => Ok(false),
         }
+    }
+
+    pub(crate) fn has_form_owner_with<E: From<DomError>>(
+        self,
+        form: NodeId,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        step()?;
+        Ok(self.node.control_owner() == Some(form))
+    }
+
+    pub(crate) fn is_legacy_image_of_form_with<E: From<DomError>>(
+        self,
+        form: NodeId,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        step()?;
+        Ok(self.as_img().is_some() && self.node.control_owner() == Some(form))
     }
 }
