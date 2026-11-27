@@ -10,7 +10,7 @@ use surgeist_layout as layout;
 use surgeist_text as text;
 
 const JAPANESE: &str = "今日は天気です。";
-const AHEM: &[u8] = include_bytes!("../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 struct Tree {
     children: Vec<usize>,

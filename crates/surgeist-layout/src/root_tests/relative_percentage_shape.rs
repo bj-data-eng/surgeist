@@ -87,7 +87,7 @@ fn percentage_shape_facts<S: LayoutScalar>(
             run.face().bytes(),
             include_bytes!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+                "/tests/fixtures/fonts/ahem/Ahem.ttf"
             ))
             .as_slice()
         );

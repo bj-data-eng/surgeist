@@ -10,7 +10,7 @@ use surgeist_text::{
 
 const AHEM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+    "/tests/fixtures/fonts/ahem/Ahem.ttf"
 ));
 
 fn paragraph(text: &str, y_adjustment: f64) -> (PreparedParagraph, Vec<u8>) {

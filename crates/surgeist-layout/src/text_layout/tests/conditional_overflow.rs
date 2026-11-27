@@ -19,7 +19,7 @@ use surgeist_text::{
     style::{OverflowWrap, Wrap},
 };
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 #[derive(Clone, Debug, PartialEq)]
 struct LineFact {

@@ -6,7 +6,7 @@ use crate::value::SizingOperation;
 use surgeist_text as text;
 use surgeist_text::font::FontBaseline;
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 const WIDTH: f64 = 100_000_000.0;
 const SPACER: f64 = WIDTH - 16.0;
 

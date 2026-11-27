@@ -3,7 +3,7 @@
 use super::*;
 use surgeist_text as text;
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn style(word_spacing: f64) -> text::style::Style {
     text::style::Style {

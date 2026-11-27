@@ -6,7 +6,7 @@ mod vertical_writing_modes;
 
 const AHEM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+    "/tests/fixtures/fonts/ahem/Ahem.ttf"
 ));
 
 struct Captured {

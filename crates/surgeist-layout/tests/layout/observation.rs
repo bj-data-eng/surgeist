@@ -1,5 +1,5 @@
 //! Test observations preserve the distinction between actual boxes and non-box metadata.
-use super::layout as l;
+use surgeist_layout as l;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Kind {

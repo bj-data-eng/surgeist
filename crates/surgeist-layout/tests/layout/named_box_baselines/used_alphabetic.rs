@@ -6,7 +6,7 @@ mod joins;
 const ALPHA: t::font::FontBaseline = t::font::FontBaseline::Alphabetic;
 const AHEM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+    "/tests/fixtures/fonts/ahem/Ahem.ttf"
 ));
 
 fn u16_at(bytes: &[u8], at: usize) -> u16 {

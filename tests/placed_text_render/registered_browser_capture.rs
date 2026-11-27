@@ -5,25 +5,13 @@
 
 use std::{collections::BTreeSet, path::Path};
 
-use support::capture_authority::SpecializedProfile;
 use surgeist::render;
-
-#[path = "../../crates/surgeist-layout/tests/layout/browser_parity_modules.rs"]
-mod browser_parity_modules;
-pub use browser_parity_modules::*;
-#[path = "../../crates/surgeist-layout/tests/layout/browser_parity/portable_qualification.rs"]
-#[expect(
-    dead_code,
-    reason = "this example admits only the registered editions; Layout's browser-parity tests use the rest"
-)]
-pub mod portable_qualification;
-#[path = "../../crates/surgeist-layout/tests/layout/browser_parity/support.rs"]
-pub mod support;
+use surgeist_layout_parity::{portable_qualification, prepared_atomic_percentage_root};
 
 fn main() {
-    let owner = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/surgeist-layout");
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/surgeist-layout-parity");
     let registry = portable_qualification::admit_registered(&owner).unwrap();
-    let root = SpecializedProfile::PreparedAtomicPercentage.artifact_root();
+    let root = prepared_atomic_percentage_root();
     let output =
         format!("{root}/xml/block/fri06_atomic_inline_percentage_block_size__border_box_ltr.xml");
     let mut observed = 0;
@@ -40,13 +28,9 @@ fn main() {
         observed, 1,
         "the selected case must lend one actual placement"
     );
-    assert_eq!(result.cases.len(), 1);
-    assert!(
-        result.selected_cases_passed(),
-        "{:?}",
-        result.cases[0].qualified,
-    );
-    assert!(result.cases[0].raw.as_ref().unwrap().is_empty());
+    assert_eq!(result.cases().len(), 1);
+    assert!(result.selected_cases_passed(), "{:?}", result.cases()[0],);
+    assert!(result.cases()[0].raw_differences().unwrap().is_empty());
     println!("Qualified one registered browser capture through Native Render");
 }
 
@@ -92,7 +76,7 @@ fn verify_render(placed: &surgeist_text::layout::Layout) {
             face.resource().identity(),
             source.face().admitted_face().resource().identity()
         );
-        assert_eq!(face.resource().bytes(), pinned_font::BYTES);
+        assert_eq!(face.resource().bytes(), surgeist_layout_parity::AHEM_TTF);
         assert_eq!(face.index(), 0);
         assert_eq!(run.instance().size(), 16.0);
         assert!(run.instance().coordinates().is_empty());

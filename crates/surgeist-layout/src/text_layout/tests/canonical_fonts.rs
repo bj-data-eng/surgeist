@@ -1,10 +1,10 @@
 //! Real OpenType fixture builders adapted from Text src/test_fonts.rs and
 //! src/test_fonts/shaping.rs. The licensed base resource and its provenance are
-//! crates/surgeist-text/tests/fixtures/fonts/ahem/{Ahem.ttf,PROVENANCE.md}.
+//! tests/fixtures/fonts/ahem/{Ahem.ttf,PROVENANCE.md}.
 //! Only authored GSUB/GPOS/GDEF/cmap/hmtx tables differ; registered Text shaping
 //! executes them. No glyph rows or measured geometry are supplied by this helper.
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn u16_at(bytes: &[u8], offset: usize) -> u16 {
     u16::from_be_bytes(bytes[offset..offset + 2].try_into().unwrap())

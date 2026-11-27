@@ -10,7 +10,7 @@ use surgeist_text::{
     source::{Range, Text},
     style::WhiteSpace,
 };
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 fn style(white: WhiteSpace, indication: &str) -> surgeist_text::style::Style {
     let mut value = ahem_style(10.0, 10.0);
     value.locale = Some("en-US".into());

@@ -4449,10 +4449,6 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 name = "surgeist"
 version = "0.1.0"
 dependencies = [
- "roxmltree",
- "serde",
- "serde_json",
- "sha2",
  "surgeist-animation",
  "surgeist-color",
  "surgeist-css",
@@ -4461,11 +4457,11 @@ dependencies = [
  "surgeist-dialog",
  "surgeist-dom",
  "surgeist-font",
- "surgeist-generator",
  "surgeist-html",
  "surgeist-html-parser",
  "surgeist-html-semantics",
  "surgeist-layout",
+ "surgeist-layout-parity",
  "surgeist-ledger",
  "surgeist-paint",
  "surgeist-render",
@@ -4684,6 +4680,16 @@ name = "surgeist-layout"
 version = "0.1.0"
 dependencies = [
  "proptest",
+ "surgeist-font",
+ "surgeist-ledger",
+ "surgeist-test",
+ "surgeist-text",
+]
+
+[[package]]
+name = "surgeist-layout-parity"
+version = "0.1.0"
+dependencies = [
  "roxmltree",
  "serde",
  "serde_json",
@@ -4691,7 +4697,7 @@ dependencies = [
  "sha2",
  "surgeist-font",
  "surgeist-generator",
- "surgeist-ledger",
+ "surgeist-layout",
  "surgeist-test",
  "surgeist-text",
 ]

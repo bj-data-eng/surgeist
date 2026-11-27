@@ -111,7 +111,7 @@ fn fixture<S: LayoutScalar>(
         .register_fonts(
             include_bytes!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+                "/tests/fixtures/fonts/ahem/Ahem.ttf"
             ))
             .to_vec(),
             surgeist_test::fixtures::FONT_LIMITS,

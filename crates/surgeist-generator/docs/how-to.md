@@ -108,8 +108,8 @@ See [source import APIs](../src/browser/source_import.rs) for operation contract
 
 Version 0.2 removes `layout-browser`, `surgeist_generator::layout`, and this
 crate's `surgeist-layout-generate` executable. Layout users invoke the thin
-binary in `surgeist-layout`, which enables `browser-corpus` and supplies its
-private measurement/lowering adapter. Other callers supply their own adapter.
+binary in `surgeist-layout-parity`, built with its `browser-corpus` feature, which
+supplies its private measurement/lowering adapter. Other callers supply their own adapter.
 This crate contains no layout XML schema or browser helper protocol.
 
 For a legacy browser report, supply checked `PriorOwnership` for one full

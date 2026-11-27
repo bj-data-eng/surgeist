@@ -12,9 +12,8 @@ use crate::{
 use std::{cell::Cell, collections::HashMap, ops::Range, sync::Arc};
 use surgeist_text as text;
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
-const PHRASE: &[u8] =
-    include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
+const PHRASE: &[u8] = include_bytes!("../../../tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf");
 
 struct Captured {
     binding: TextParagraphBinding<u32>,

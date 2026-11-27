@@ -15,7 +15,7 @@ use surgeist_text::{
     style::OverflowWrap,
 };
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 const SOURCE_ID: u64 = 6602;
 const SOURCE_REVISION: u64 = 9;
 

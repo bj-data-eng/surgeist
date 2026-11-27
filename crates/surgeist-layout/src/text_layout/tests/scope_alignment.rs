@@ -14,7 +14,7 @@ use super::*;
 use std::sync::Arc;
 use surgeist_text as text;
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn table(tag: [u8; 4]) -> &'static [u8] {
     let word = |at| u16::from_be_bytes(AHEM[at..at + 2].try_into().unwrap());

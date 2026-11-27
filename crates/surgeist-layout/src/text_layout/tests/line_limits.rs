@@ -9,7 +9,7 @@ use surgeist_text::{
     style::OverflowWrap,
 };
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 fn paragraph(source: &str, indication: &str, overflow: OverflowWrap) -> PreparedParagraph {
     let mut style = ahem_style(10.0, 10.0);
     style.hyphens = Hyphens::Auto;

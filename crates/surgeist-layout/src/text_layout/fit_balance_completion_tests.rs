@@ -246,7 +246,7 @@ fn assert_completion(
         for run in line.finalized.run_views() {
             assert_eq!(
                 run.face().bytes(),
-                include_bytes!("../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf")
+                include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf")
             );
             assert_eq!(run.font_size(), 10.0);
             assert!(

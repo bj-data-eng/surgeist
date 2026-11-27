@@ -5,7 +5,7 @@ use crate::value::SizingOperation;
 use std::{ops::Range, sync::Arc};
 use surgeist_text as text;
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 struct Fixture {
     binding: TextParagraphBinding<u32>,

@@ -5,7 +5,7 @@ use crate::test_support::readback::{self, Phase};
 use crate::value::{AvailableSpaceOf, AxisSizingRequestOf, NonNegativeFiniteOf, SizingOperation};
 use surgeist_text as text;
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 const DECLARED_OVERFLOW: [text::style::OverflowWrap; 3] = [
     text::style::OverflowWrap::Normal,
     text::style::OverflowWrap::Anywhere,

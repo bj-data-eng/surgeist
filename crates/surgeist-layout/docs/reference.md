@@ -11,14 +11,11 @@ files own their current definitions.
 | Package / library | `surgeist-layout` / `surgeist_layout` |
 | Version | `0.1.0` |
 | Rust edition / minimum version | `2024` / `1.99.1` |
-| Default features | None |
-| Optional feature | `layout-golden-generate` |
-| Generator binary | `surgeist-layout-generate`, requiring `layout-golden-generate` |
+| Features | None |
 
-The optional feature enables the local `surgeist-generator` browser-corpus
-engine and its Serde dependencies. The path/version requirement is in the
-manifest; resolved dependencies are in the shared [Cargo.lock](../../../Cargo.lock).
-The package excludes the separate `tools/surgeist-layout-audits` tree.
+The path/version requirements are in the manifest; resolved dependencies are in
+the shared [Cargo.lock](../../../Cargo.lock). The package excludes the separate
+`tools/surgeist-layout-audits` tree.
 
 ## Scalar precision
 
@@ -33,8 +30,9 @@ provide generic `*Of<S>` forms, and `LayoutScalar` is implemented for both
 do not mix `f32` and `f64` values inside one tree, cache, traversal, or layout
 run.
 
-Browser parity XML and its generator remain a default-precision fixture
-boundary. Use those fixtures to check the default `f32` contract; add separate
+Browser parity XML and its generator, which
+[surgeist-layout-parity](../../surgeist-layout-parity/README.md) owns, remain a
+default-precision fixture boundary. Use those fixtures to check the default `f32` contract; add separate
 crate-local tests when a behavior specifically needs `f64` coverage.
 
 ## Public API map
@@ -1529,61 +1527,30 @@ layers should provide metrics from computed style and text/font measurement
 before constructing `LineBreakInputOf<S>`. Its explicit reference follows the
 [numeric baseline contract](#numeric-inline-baseline-references).
 
-## Browser parity runtime
+## Browser parity
 
-The feature-gated `surgeist-layout-generate` binary supplies a private layout
-adapter to the local `surgeist-generator` workspace dependency. The shared crate
-owns acquisition, browser processes, input protection, reports, and atomic
-publication. Layout owns helper preparation, measurement decoding, unsupported
-classification, and XML serialization. Default layout builds omit this tooling.
-
-The corpus pins its Chrome-for-Testing version, launch settings, and report
-inventory in [the corpus manifest](../tests/layout/browser_parity/corpus.toml). `generate` may acquire the
-managed browser; `generate-existing` requires `SURGEIST_BROWSER_PATH` to name a
-repository-relative executable below the declared cache and never fetches.
-Source checkouts live in `tmp/surgeist-sources/<id>/<revision>/`; browsers live in
-`tmp/surgeist-browser/`. Repository `tmp/` is ignored and survives `cargo clean`.
-
-`check-corpus` validates the live schema-4 report, ownership, and persisted
-source-import attestation without a browser or source checkout. The producer
-publishes under `live-xml/` using the shared source manifest and live counts.
-Explicit `check-taffy-corpus`
-verifies the existing pinned source cache; `import-taffy` may acquire that source
-and publishes verified imports plus attestation. Full generation validates
-accounting before publishing. Filtered generation does not rewrite full reports.
-XML bytes remain layout-owned and comment-free; semantic parsing and comparison
-remain in layout tests. See the [browser parity guide](../tests/layout/browser_parity/README.md)
-for commands, cache behavior, and current provenance requirements.
-
-Ordinary `cargo test -p surgeist-layout` traverses historical XML, registered
-current captures, and live XML. It requires complete historical and live
-accounting and fresh registered qualification. The live census compares all
-generated captures through Native Layout and reports its failures separately.
-The named strict raw verdict uses the same inventory and fails on every raw
-mismatch or authority refusal.
+The browser-parity corpus, the golden generator, the qualification driver and the
+tests that compare layout output with captured browser geometry belong to
+[surgeist-layout-parity](../../surgeist-layout-parity/README.md), which depends on
+this crate's public API. Its [reference](../../surgeist-layout-parity/docs/reference.md#browser-parity-runtime)
+describes the runtime and its commands.
 
 ## Local commands
 
 Run these recipes from the crate directory with `just` already available. The
-[Justfile](../Justfile), [Cargo task script](../scripts/run-cargo-task.sh),
-[verification script](../scripts/run-verification.sh), and
-[browser-parity task script](../scripts/run-browser-parity-task.sh) define them.
+[Justfile](../Justfile), [Cargo task script](../scripts/run-cargo-task.sh), and
+[verification script](../scripts/run-verification.sh) define them.
 Setting `CARGO_NET_OFFLINE=true` keeps Cargo dependency resolution offline.
 
 | Recipe | Observable operation |
 | --- | --- |
 | `just fmt` / `just fmt-check` | Format Rust / check Rust formatting |
-| `just check` / `just test` / `just clippy` | Default Cargo check, tests, or strict Clippy |
-| `just verify` | Default formatting, check, test, and Clippy sequence |
-| `just generator-check` / `just generator-test` / `just generator-clippy` | Corresponding all-targets checks with `layout-golden-generate` |
-| `just verify-generator` | Generator-feature check, tests, and Clippy sequence |
-| `just parity-all` | Traverse the full checked-in corpus and enforce the strict raw verdict |
-| `just corpus-check` | Browser-free `check-corpus` with corpus and browser overrides cleared |
-| `just taffy-check` | Validate the existing pinned source cache and imported Taffy corpus |
+| `just check` / `just test` / `just clippy` | Cargo check, tests, or strict Clippy |
+| `just verify` | Formatting, check, test, and Clippy sequence |
 
-Clippy recipes use `-F unsafe-code -D warnings`; Cargo check, test, and Clippy
-recipes use `--locked`. Browser commands and environment variables are described
-in the [browser parity guide](../tests/layout/browser_parity/README.md).
+Clippy recipes use `-F unsafe-code -D warnings`; the check, test and Clippy recipes
+use `-j 1 --offline --locked`; the format recipes run `cargo fmt -p`. The browser-parity recipes are in the
+[parity crate reference](../../surgeist-layout-parity/docs/reference.md#local-commands).
 
 ### Unfragmented element-terminal hyphenation
 

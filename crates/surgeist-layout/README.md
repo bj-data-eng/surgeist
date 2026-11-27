@@ -34,7 +34,7 @@ are in [getting started](docs/getting-started.md).
 ## Documentation
 
 - [Getting started](docs/getting-started.md): run and understand the first calculation.
-- [How-to](docs/how-to.md): choose scalar precision and run layout or corpus checks.
+- [How-to](docs/how-to.md): choose scalar precision and run layout checks.
 - [Reference](docs/reference.md): public APIs, value contracts, features, and commands.
 - [Explanation](docs/explanation.md): ownership, grid scope, and physical geometry.
 

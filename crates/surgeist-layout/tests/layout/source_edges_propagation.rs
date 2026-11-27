@@ -11,7 +11,7 @@ use surgeist_text as t;
 
 const AHEM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+    "/tests/fixtures/fonts/ahem/Ahem.ttf"
 ));
 // Original Ahem cmap/hmtx: P50/A35/Q51 each advance1000, UPEM1000;
 // hhea ascent800/descent-200 independently qualifies the 10px 8/2 font frame.

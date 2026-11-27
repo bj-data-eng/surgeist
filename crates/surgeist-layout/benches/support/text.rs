@@ -23,7 +23,7 @@ use surgeist_text as t;
 
 use super::host::{Host, boxed};
 
-const AHEM: &[u8] = include_bytes!("../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 /// Font size and line height of every generated paragraph, in px.
 pub const EM: f32 = 10.0;

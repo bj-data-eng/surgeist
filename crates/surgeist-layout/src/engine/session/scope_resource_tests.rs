@@ -39,7 +39,7 @@ use std::sync::Arc;
 use surgeist_text as text;
 use surgeist_text::font::FontBaseline;
 
-const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 const WORK: usize = 4_194_304;
 // Limit discovery visits one actual normalized row. Payload admission adds
 // normalized key1+1, two line descriptors2 and two frame keys2*(1+1).

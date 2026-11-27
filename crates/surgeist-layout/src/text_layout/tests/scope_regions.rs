@@ -5,7 +5,7 @@ use std::sync::Arc;
 use surgeist_text as text;
 
 const JAPANESE: &str = "今日は天気です。";
-const FONT: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+const FONT: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn styles() -> (text::style::Style, text::style::Style, text::style::Style) {
     let mut plain = ahem_style(10.0, 10.0);
