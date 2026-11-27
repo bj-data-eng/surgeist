@@ -856,13 +856,13 @@ scalar_tests!(
 // the subgrid's border (CSS Grid 2, section 9: the edge border acts as extra
 // margin on its items): with a 100px area and 3px borders a 50% grandchild is
 // 47px (50% of 94) at (3, 3), as WebKit (Safari 26.5, Playwright build 2327)
-// also lays it out. With a scrollbar the pinned text does not say how the
-// gutter enters that basis, so only what must hold either way is asserted: a
-// gutter that is reserved (`overflow: scroll`) and one that appears because the
-// content overflows (`overflow: auto`, settled in a second scrollbar pass)
-// give the same extent, which is no larger than the gutter-free one. (WebKit
-// leaves the gutter out of the basis, 47px; the engine takes it out once,
-// 39.5px.)
+// also lays it out. Section 9 applies the subgrid's margin, padding, scrollbar
+// gutter and border at each edge as extra margin to the items there, so a 15px
+// scrollbar gutter also comes out of the basis once: 50% of 100 - 6 - 15 is
+// 39.5px, whether the gutter is reserved (`overflow: scroll`) or appears
+// because the content overflows (`overflow: auto`, settled in a second
+// scrollbar pass). WebKit leaves the gutter out of the basis (47px); the pinned
+// text decides.
 fn percentage_grandchild_extent<S: LayoutScalar>(
     subgrid_columns: bool,
     overflow: Overflow,
@@ -924,8 +924,8 @@ fn assert_percentage_grandchild_basis_in_a_bordered_subgrid<S: LayoutScalar>() {
         assert_eq!(gutter_free, 47.0, "columns {subgrid_columns}, no scrollbar");
         let reserved = percentage_grandchild_extent::<S>(subgrid_columns, Overflow::Scroll, false);
         let settled = percentage_grandchild_extent::<S>(subgrid_columns, Overflow::Auto, true);
-        assert_eq!(reserved, settled, "columns {subgrid_columns}, gutter paths");
-        assert!(reserved <= gutter_free, "columns {subgrid_columns}, gutter");
+        assert_eq!(reserved, 39.5, "columns {subgrid_columns}, reserved gutter");
+        assert_eq!(settled, 39.5, "columns {subgrid_columns}, settled gutter");
     }
 }
 scalar_tests!(

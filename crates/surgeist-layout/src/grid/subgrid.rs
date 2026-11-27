@@ -3574,8 +3574,9 @@ where
         parent_context.rows.is_some(),
     );
     // A subgrid's specified sizes do not apply in its subgridded axes. Where
-    // the parent's allocation of its span is final, that allocation is the
-    // known size there, so a percentage basis comes from the area.
+    // the parent's allocation of its span is final, the border box that
+    // allocation gives (the area less the margins) is the known size there, so
+    // a percentage basis comes from the area.
     let sizing_input = sizing_input.with_known(sizing_input.known().or(known_extent));
     let intrinsic_minimum = standalone_intrinsic_minimum_phases(container_style, inherited);
     let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
