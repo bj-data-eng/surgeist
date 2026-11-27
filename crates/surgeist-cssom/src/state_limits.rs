@@ -1,557 +1,583 @@
-//! Synchronous admission accounting for complete retained CSSOM state.
+//! Synchronous admission accounting for the retained CSSOM state.
 //!
-//! The census adds up what the retained state holds: objects, entries, host
-//! string bytes and the sources its payloads retain. Each kind of record is
-//! measured alone ([`measure`]), so a census over the whole state is the sum of
-//! those measurements followed by the threshold checks.
-use crate::source_retention::{Sources, source_refusal};
-use crate::{model::State, *};
-use measure::{Counts, Refusal};
-use std::collections::HashSet;
+//! The state keeps its figures ([`crate::figures`]): the sums of what its
+//! records contribute. A check of the state, a *settle*, replaces the
+//! contribution of every record its tables journaled since the last one by the
+//! contribution of the record the key holds now, and then tests the thresholds in
+//! a fixed order: the contexts, the object count, the conditions of each record
+//! touched, the entries, the retained sources and the string bytes. What a settle
+//! measures is what changed, so its work does not depend on how many records the
+//! state holds.
+//!
+//! The retained sources are refused in a fixed order when several limits are
+//! exceeded at once: the traversal depth, the retained bytes, the traversal
+//! steps, the traversal storage. The step limit bounds the size of the state
+//! as the figure of the steps of the walk that reaches its sources, and the
+//! measurement of one payload part. The traversal depth of a state that several
+//! linked inputs reach is the greatest depth of the paths that reach it.
+use crate::contribute::{self, Before, Measured, Rows};
+use crate::figures::{Contribution, Figures, Refused, contribution_of_context, widen};
+use crate::model::State;
+use crate::shared_table::SharedTable;
+use crate::source_retention::{
+    BYTES_RESOURCE, DEPTH_RESOURCE, Measurer, STEPS_RESOURCE, STORAGE_RESOURCE, Sign,
+};
+use crate::*;
+use measure::Counts;
+use std::sync::Arc;
 use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::source::{CssSourceRetentionError, CssSourceRetentionResource};
 
 pub(crate) mod measure;
 
-/// The entries and host string bytes the retained state accounts for. A sum
-/// that overflows is `None` and is refused by its threshold check.
-///
-/// It also counts the objects and entries the census runs that built it
-/// examined, which are not part of what the state accounts for.
-#[derive(Clone, Debug)]
-pub(crate) struct Totals {
-    entries: Option<usize>,
-    strings: Option<usize>,
-    examined: usize,
-    counted: usize,
+/// The limits of the retained sources a measurement was refused by.
+#[derive(Clone, Copy, Debug, Default)]
+struct Refusals {
+    depth: bool,
+    bytes: bool,
+    steps: bool,
+    storage: bool,
 }
 
-impl Totals {
-    /// The totals of a state without objects: the sheet order is its only entry list.
-    fn new(sheet_order: usize) -> Self {
-        Self {
-            entries: Some(sheet_order),
-            strings: Some(0),
-            examined: 0,
-            counted: sheet_order,
+impl Refusals {
+    /// Notes the refusal of a measurement or of the ledger.
+    fn note(&mut self, error: CssSourceRetentionError) {
+        match error.exhausted_limit() {
+            Some(CssSourceRetentionResource::RetainedBytes) => self.bytes = true,
+            Some(CssSourceRetentionResource::Depth) => self.depth = true,
+            Some(CssSourceRetentionResource::Storage) | None => self.storage = true,
+            Some(_) => self.steps = true,
         }
     }
-    /// The entries and string bytes, without the census work.
-    #[cfg(test)]
-    fn sums(&self) -> (Option<usize>, Option<usize>) {
-        (self.entries, self.strings)
+}
+
+/// The media lists a batch has displaced: their entries, the steps of their
+/// walk and the nesting below them, which count while the batch checks itself.
+#[derive(Clone, Copy, Debug, Default)]
+struct Extra {
+    entries: u128,
+    steps: u128,
+    reach: usize,
+}
+
+/// The work of one settle.
+#[derive(Clone, Copy, Debug, Default)]
+struct Work {
+    /// Records whose contribution was measured.
+    examined: usize,
+    /// Entry lists their measurement examined.
+    entries: usize,
+}
+
+/// What a settle collected about the records it measured, to test them after
+/// every contribution has been replaced.
+#[derive(Default)]
+struct Pending<'a> {
+    /// The contexts to validate: the state's, then each inline declaration context.
+    validate: Vec<&'a CssomContext>,
+    /// The refusal of a context that links a sheet its snapshot lacks: the
+    /// state's, a rule's, a block's.
+    contexts: [Option<CssomError>; 3],
+    /// Each sheet's counts, or the refusal to count its base URL.
+    sheets: Vec<Result<Counts, CssomError>>,
+    rules: Vec<Counts>,
+}
+
+/// The measurement of the records a settle touches.
+struct Settle<'a> {
+    figures: &'a mut Figures,
+    measurer: Measurer,
+    refusals: Refusals,
+    work: Work,
+}
+
+const STATE_CONTEXT: usize = 0;
+const RULE_CONTEXT: usize = 1;
+const BLOCK_CONTEXT: usize = 2;
+
+impl Settle<'_> {
+    /// Adds `contribution` to the figures or takes it out.
+    fn apply(&mut self, contribution: &Contribution, sign: Sign) -> Option<CssomError> {
+        match self
+            .figures
+            .apply(contribution, sign, self.measurer.delta())
+        {
+            Ok(()) => None,
+            Err(Refused::Base(error)) => Some(error),
+            Err(Refused::Source(error)) => {
+                self.refusals.note(error);
+                None
+            }
+        }
     }
-    /// One object examined.
-    fn examine(&mut self) {
+
+    /// Takes out what a record contributed when it was last settled.
+    fn take_out(&mut self, before: &Before) {
+        if let Some(error) = before.walk {
+            // What the record retained could not be counted, so the figures are short of it.
+            self.refusals.note(error);
+        }
+        self.apply(&before.contribution, Sign::Remove);
+        if let Some(removal) = &before.removal
+            && let Err(error) = self.measurer.delta().merge(removal)
+        {
+            self.refusals.note(error);
+        }
+    }
+
+    /// Replaces what a record contributed, `before`, by what it contributes now,
+    /// `measured`, and gives back what the new contribution is tested by.
+    ///
+    /// The states a context links join the figures when the context joins them, and leave
+    /// when it does: a record that holds the same context before and after leaves them be.
+    fn replace(
+        &mut self,
+        before: Option<Before>,
+        after: Option<(Measured, Option<&Arc<CssomContext>>)>,
+    ) -> Option<(Contribution, Option<CssomError>)> {
+        let mut before = before;
+        let mut after = after;
+        if let (Some(before), Some((measured, context))) = (before.as_mut(), after.as_mut())
+            && let (Some(held), Some(now)) = (&before.context, context)
+            && Arc::ptr_eq(held, now)
+        {
+            before.contribution.links.roots.clear();
+            measured.contribution.links.roots.clear();
+        }
+        if let Some(before) = &before {
+            self.take_out(before);
+        }
+        let (measured, _) = after?;
+        if let Some(error) = measured.walk {
+            self.refusals.note(error);
+        }
+        self.work.examined = self.work.examined.saturating_add(1);
+        self.work.entries = self
+            .work
+            .entries
+            .saturating_add(measured.contribution.counts.work);
         #[cfg(test)]
         probe::examined(1);
-        self.examined = self.examined.saturating_add(1);
+        Some((measured.contribution, measured.context))
     }
-    fn add_entries(&mut self, count: usize) {
-        self.counted = self.counted.saturating_add(count);
-        self.entries = self.entries.and_then(|total| total.checked_add(count));
-    }
-    /// Adds what one record accounts for.
-    fn add(&mut self, counts: &Counts) {
-        self.add_entries(counts.entries);
-        self.strings = self
-            .strings
-            .and_then(|total| total.checked_add(counts.strings));
-    }
-    /// The refusal of a record, after the entries it had counted.
-    fn refused(&mut self, refusal: Refusal) -> CssomError {
-        self.counted = self.counted.saturating_add(refusal.counted);
-        refusal.error
-    }
-    /// The inputs and linked inputs of one context.
-    fn context(&mut self, context: &CssomContext) -> Result<(), CssomError> {
-        let counts = measure::context(context).map_err(|refusal| self.refused(refusal))?;
-        self.add(&counts);
-        Ok(())
-    }
-    /// One sheet record. `bases` holds the base URL identities already counted.
-    fn sheet(
+
+    /// Replaces what the sheet records the table journaled contributed.
+    fn sheets(
         &mut self,
-        sheet: &CssomSheet,
-        bases: &mut HashSet<usize>,
-        limits: &CssomLimits,
-    ) -> Result<(), CssomError> {
-        self.examine();
-        let counts = measure::sheet(sheet);
-        counts
-            .check(limits)
-            .map_err(|refusal| self.refused(refusal))?;
-        if let Some(base) = counts.base
-            && !bases.contains(&base.identity)
-        {
-            if bases.try_reserve(1).is_err() {
-                self.counted = self.counted.saturating_add(counts.entries_before_base());
-                return Err(CssomError::Limit {
-                    resource: "base URL source identities",
-                    maximum: limits.max_objects,
-                });
-            }
-            bases.insert(base.identity);
-            self.strings = self
-                .strings
-                .and_then(|total| base.bytes.and_then(|bytes| total.checked_add(bytes)));
-        }
-        self.add(&counts);
-        Ok(())
-    }
-    /// One rule list holding `members` rule identities.
-    fn list(&mut self, members: usize) {
-        self.examine();
-        self.add(&measure::list(members));
-    }
-    fn media(&mut self, media: &CssMediaQueryList) {
-        self.examine();
-        self.add(&measure::media(media));
-    }
-    fn block(&mut self, block: &CssomBlock) {
-        self.examine();
-        self.add(&measure::block(block));
-    }
-    fn map(&mut self, map: &CssomFeatureMap) {
-        self.examine();
-        self.add(&measure::map(map));
-    }
-    fn rule(&mut self, rule: &CssomRule, limits: &CssomLimits) -> Result<(), CssomError> {
-        self.examine();
-        let counts = measure::rule(rule);
-        counts
-            .check(limits)
-            .map_err(|refusal| self.refused(refusal))?;
-        self.add(&counts);
-        Ok(())
-    }
-    fn check_entries(&self, limits: &CssomLimits) -> Result<(), CssomError> {
-        limit(self.entries, limits.max_entries, "entries")
-    }
-    fn check_strings(&self, limits: &CssomLimits) -> Result<(), CssomError> {
-        limit(
-            self.strings,
-            limits.max_string_bytes,
-            "host and live string bytes",
-        )
-    }
-}
-
-/// What a census of a whole state accounted for.
-#[cfg(test)]
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) struct Figures {
-    pub(crate) entries: Option<usize>,
-    pub(crate) strings: Option<usize>,
-    pub(crate) objects: usize,
-    pub(crate) retained_bytes: usize,
-    pub(crate) steps: usize,
-}
-
-/// What the census of a state accounts for: its totals and the sources its
-/// payloads retain, collected once.
-pub(crate) struct Census {
-    totals: Totals,
-    sources: Sources,
-    /// The objects of the state, the state itself included.
-    objects: usize,
-}
-
-/// What adoption has inserted into a state, and the entries it has added to
-/// rule lists, since a census last accounted for that state.
-///
-/// Adoption only inserts: nothing it inserts replaces or changes an object
-/// that is already retained, except that a rule list gains members.
-#[derive(Debug, Default)]
-pub(crate) struct Inserted {
-    rules: Vec<CssomRuleId>,
-    blocks: Vec<CssomBlockId>,
-    media: Vec<CssomMediaListId>,
-    maps: Vec<CssomFeatureMapId>,
-    members: usize,
-}
-
-impl Inserted {
-    pub(crate) fn rule(&mut self, id: CssomRuleId) {
-        self.rules.push(id);
-    }
-    pub(crate) fn block(&mut self, id: CssomBlockId) {
-        self.blocks.push(id);
-    }
-    pub(crate) fn media(&mut self, id: CssomMediaListId) {
-        self.media.push(id);
-    }
-    pub(crate) fn map(&mut self, id: CssomFeatureMapId) {
-        self.maps.push(id);
-    }
-    /// One rule identity appended to a rule list.
-    pub(crate) fn member(&mut self) {
-        self.members = self.members.saturating_add(1);
-    }
-    #[cfg(test)]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.rules.is_empty()
-            && self.blocks.is_empty()
-            && self.media.is_empty()
-            && self.maps.is_empty()
-            && self.members == 0
-    }
-    /// The inserted objects as the state holds them, or `None` when one is
-    /// missing or reaches states of other snapshots: only a census of the whole
-    /// state accounts for those.
-    fn resolve<'a>(&self, state: &'a State) -> Option<Resolved<'a>> {
-        Some(Resolved {
-            rules: self
-                .rules
-                .iter()
-                .map(|id| {
-                    state
-                        .rules
-                        .get(id)
-                        .filter(|rule| rule.selector_inputs.is_none())
-                })
-                .collect::<Option<Vec<_>>>()?,
-            blocks: self
-                .blocks
-                .iter()
-                .map(|id| {
-                    state
-                        .blocks
-                        .get(id)
-                        .filter(|block| block.inline_context().is_none())
-                })
-                .collect::<Option<Vec<_>>>()?,
-            media: self
-                .media
-                .iter()
-                .map(|id| state.media.get(id))
-                .collect::<Option<Vec<_>>>()?,
-            maps: self
-                .maps
-                .iter()
-                .map(|id| state.maps.get(id))
-                .collect::<Option<Vec<_>>>()?,
-        })
-    }
-}
-
-struct Resolved<'a> {
-    rules: Vec<&'a CssomRule>,
-    blocks: Vec<&'a CssomBlock>,
-    media: Vec<&'a CssMediaQueryList>,
-    maps: Vec<&'a CssomFeatureMap>,
-}
-
-/// How [`Census::extend`] answered.
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) enum Extension {
-    /// The census accounts for the inserted objects.
-    Applied,
-    /// The inserted objects cannot be accounted for alone; the census is unchanged.
-    WholeStateNeeded,
-}
-
-impl Census {
-    /// The census of the whole `state` and of the `displaced` media lists, in the order the
-    /// refusals arise: the contexts, the object count, the entries, the retained
-    /// sources and the string bytes.
-    pub(crate) fn of<'a>(
-        state: &State,
-        limits: &CssomLimits,
-        displaced: impl Iterator<Item = &'a CssMediaQueryList> + Clone,
-    ) -> Result<Self, CssomError> {
-        #[cfg(test)]
-        if probe::reference() {
-            return Self::of_reference(state, limits, displaced);
-        }
-        let mut totals = Totals::new(state.sheet_order.len());
-        let mut steps = 0;
-        let mut objects = 0;
-        let census = (|| {
-            state.check_contexts(limits)?;
-            objects = state.check_object_count(limits)?;
-            state.add_totals(&mut totals, limits)?;
-            for media in displaced.clone() {
-                totals.add_entries(media.queries().len());
-            }
-            totals.check_entries(limits)?;
-            let sources = state.walk_sources(limits, displaced, &mut steps)?;
-            totals.check_strings(limits)?;
-            Ok(sources)
-        })();
-        crate::operation_work::census(totals.examined, totals.counted, steps);
-        #[cfg(test)]
-        probe::census_run(totals.examined, totals.counted, steps);
-        census.map(|sources| Self {
-            totals,
-            sources,
-            objects,
-        })
-    }
-
-    /// The census of the whole state computed by the reference, charged as a
-    /// census run is.
-    #[cfg(test)]
-    fn of_reference<'a>(
-        state: &State,
-        limits: &CssomLimits,
-        displaced: impl Iterator<Item = &'a CssMediaQueryList> + Clone,
-    ) -> Result<Self, CssomError> {
-        let run = reference::of(state, limits, displaced);
-        crate::operation_work::census(run.examined, run.counted, run.steps);
-        run.result.map(|census| {
-            let (entries, strings, examined, counted) = census.totals.parts();
-            Self {
-                totals: Totals {
-                    entries,
-                    strings,
-                    examined,
-                    counted,
-                },
-                // The reference accounts for its sources in a collector of its own.
-                sources: Sources::new(limits),
-                objects: census.objects,
-            }
-        })
-    }
-
-    /// What this census accounted for.
-    #[cfg(test)]
-    pub(crate) fn figures(&self) -> Figures {
-        let (entries, strings) = self.totals.sums();
-        Figures {
-            entries,
-            strings,
-            objects: self.objects,
-            retained_bytes: self.sources.bytes(),
-            steps: self.sources.steps(),
-        }
-    }
-
-    /// The size of the state this census accounted for, which its limits admitted.
-    pub(crate) fn retained(&self) -> crate::operation_work::Retained {
-        crate::operation_work::Retained::new(
-            self.objects,
-            self.totals.entries.unwrap_or(usize::MAX),
-            self.totals.strings.unwrap_or(usize::MAX),
-        )
-    }
-
-    /// Accounts for what adoption inserted into `state` since this census
-    /// accounted for it, and applies the thresholds in the order of the census
-    /// of the whole state.
-    ///
-    /// The result equals [`Census::of`] on `state` when this census accounted
-    /// for `state` before the insertions and only `inserted` has happened since.
-    /// Refusals and source walk steps are the same. After a refusal this census
-    /// accounts for neither state.
-    pub(crate) fn extend(
-        &mut self,
-        state: &State,
-        inserted: &Inserted,
-        limits: &CssomLimits,
-    ) -> Result<Extension, CssomError> {
-        let Some(resolved) = inserted.resolve(state) else {
-            return Ok(Extension::WholeStateNeeded);
-        };
-        let (examined, counted, steps) = (
-            self.totals.examined,
-            self.totals.counted,
-            self.sources.steps(),
-        );
-        let extension = self.extend_resolved(state, &resolved, inserted.members, limits);
-        crate::operation_work::census(
-            self.totals.examined.saturating_sub(examined),
-            self.totals.counted.saturating_sub(counted),
-            self.sources.steps().saturating_sub(steps),
-        );
-        extension
-    }
-
-    /// [`Census::extend`] once the inserted objects are resolved.
-    fn extend_resolved(
-        &mut self,
-        state: &State,
-        resolved: &Resolved<'_>,
-        members: usize,
-        limits: &CssomLimits,
-    ) -> Result<Extension, CssomError> {
-        self.objects = state.check_object_count(limits)?;
-        for media in &resolved.media {
-            self.totals.media(media);
-        }
-        for block in &resolved.blocks {
-            self.totals.block(block);
-        }
-        for map in &resolved.maps {
-            self.totals.map(map);
-        }
-        self.totals.add_entries(members);
-        for rule in &resolved.rules {
-            self.totals.rule(rule, limits)?;
-        }
-        self.totals.check_entries(limits)?;
-        #[cfg(test)]
-        let before = self.sources.steps();
-        let walked = self.walk(resolved, limits);
-        #[cfg(test)]
-        probe::steps(self.sources.steps().saturating_sub(before));
-        walked?;
-        self.totals.check_strings(limits)?;
-        #[cfg(test)]
-        probe::extended();
-        Ok(Extension::Applied)
-    }
-
-    /// Walks the retained sources of the inserted objects into the sources of this census.
-    fn walk(&mut self, inserted: &Resolved<'_>, limits: &CssomLimits) -> Result<(), CssomError> {
-        // Resolved objects reach no linked state, so no context joins the walk.
-        (|| {
-            for rule in &inserted.rules {
-                self.sources.record(0, *rule)?;
-            }
-            for block in &inserted.blocks {
-                self.sources.record(0, *block)?;
-            }
-            for media in &inserted.media {
-                self.sources.record(0, *media)?;
-            }
-            for map in &inserted.maps {
-                self.sources.record(0, *map)?;
-            }
-            Ok(())
-        })()
-        .map_err(|error| source_refusal(error, limits))
-    }
-
-    /// Panics unless `outcome`, the answer of extending this census over the
-    /// insertions into `state`, agrees with a census of the whole `state`:
-    /// equal totals, retained source bytes and walk steps, and the same refusal.
-    #[cfg(test)]
-    pub(crate) fn assert_matches_whole_state(
-        &self,
-        outcome: &Result<Extension, CssomError>,
-        state: &State,
-        limits: &CssomLimits,
+        table: &SharedTable<CssomSheetId, CssomSheet>,
+        journal: Vec<(CssomSheetId, Option<Before>)>,
+        pending: &mut Pending<'_>,
     ) {
-        let whole = reference::of(state, limits, std::iter::empty()).result;
-        match (outcome, whole) {
-            (Ok(Extension::WholeStateNeeded), _) => {}
-            (Ok(Extension::Applied), Ok(whole)) => {
-                assert_eq!(self.totals.sums(), whole.totals.sums(), "totals");
-                assert_eq!(
-                    self.sources.bytes(),
-                    whole.sources.usage().retained_bytes(),
-                    "retained bytes"
-                );
-                assert_eq!(self.sources.steps(), whole.sources.steps(), "walk steps");
+        for (key, before) in journal {
+            self.sheet_rows(&key, before.as_ref().map(|b| &b.rows), table.get(&key));
+            let after = table.get(&key).map(|sheet| {
+                (
+                    contribute::sheet(&mut self.measurer, sheet, Sign::Add),
+                    None,
+                )
+            });
+            if let Some((contribution, _)) = self.replace(before, after) {
+                pending.sheets.push(Ok(contribution.counts.clone()));
+                if let Some(error) = self.apply(&contribution, Sign::Add) {
+                    pending.sheets.push(Err(error));
+                }
             }
-            (Err(extended), Err(whole)) => {
-                assert_eq!(format!("{extended:?}"), format!("{whole:?}"), "refusal");
+        }
+    }
+
+    fn lists(
+        &mut self,
+        table: &SharedTable<CssomRuleListId, Vec<CssomRuleId>>,
+        journal: Vec<(CssomRuleListId, Option<Before>)>,
+    ) {
+        for (key, before) in journal {
+            let after = table.get(&key).map(|list| (contribute::list(list), None));
+            if let Some((contribution, _)) = self.replace(before, after) {
+                self.apply(&contribution, Sign::Add);
             }
-            (outcome, whole) => panic!(
-                "extended census answered {outcome:?}, whole state answered {:?}",
-                whole.map(|_| ())
-            ),
+        }
+    }
+
+    fn media(
+        &mut self,
+        table: &SharedTable<CssomMediaListId, CssMediaQueryList>,
+        journal: Vec<(CssomMediaListId, Option<Before>)>,
+    ) {
+        for (key, before) in journal {
+            let after = table.get(&key).map(|media| {
+                (
+                    contribute::media(&mut self.measurer, media, Sign::Add),
+                    None,
+                )
+            });
+            if let Some((contribution, _)) = self.replace(before, after) {
+                self.apply(&contribution, Sign::Add);
+            }
+        }
+    }
+
+    fn maps(
+        &mut self,
+        table: &SharedTable<CssomFeatureMapId, CssomFeatureMap>,
+        journal: Vec<(CssomFeatureMapId, Option<Before>)>,
+    ) {
+        for (key, before) in journal {
+            let after = table
+                .get(&key)
+                .map(|map| (contribute::map(&mut self.measurer, map, Sign::Add), None));
+            if let Some((contribution, _)) = self.replace(before, after) {
+                self.apply(&contribution, Sign::Add);
+            }
+        }
+    }
+
+    fn blocks<'t>(
+        &mut self,
+        table: &'t SharedTable<CssomBlockId, CssomBlock>,
+        journal: Vec<(CssomBlockId, Option<Before>)>,
+        pending: &mut Pending<'t>,
+    ) {
+        for (key, before) in journal {
+            let block = table.get(&key);
+            self.block_rows(&key, before.as_ref().map(|b| &b.rows), block);
+            let after = block.map(|block| {
+                (
+                    contribute::block(&mut self.measurer, block, Sign::Add),
+                    contribute::block_context(block),
+                )
+            });
+            if let Some((contribution, refusal)) = self.replace(before, after) {
+                if let Some(context) = block.and_then(CssomBlock::inline_context) {
+                    pending.validate.push(context.context());
+                }
+                if pending.contexts[BLOCK_CONTEXT].is_none() {
+                    pending.contexts[BLOCK_CONTEXT] = refusal;
+                }
+                self.apply(&contribution, Sign::Add);
+            }
+        }
+    }
+
+    fn rules(
+        &mut self,
+        table: &SharedTable<CssomRuleId, CssomRule>,
+        journal: Vec<(CssomRuleId, Option<Before>)>,
+        pending: &mut Pending<'_>,
+    ) {
+        for (key, before) in journal {
+            self.rule_rows(&key, before.as_ref().map(|b| &b.rows), table.get(&key));
+            let after = table.get(&key).map(|rule| {
+                (
+                    contribute::rule(&mut self.measurer, rule, Sign::Add),
+                    rule.selector_inputs.as_ref(),
+                )
+            });
+            if let Some((contribution, refusal)) = self.replace(before, after) {
+                pending.rules.push(contribution.counts.clone());
+                if pending.contexts[RULE_CONTEXT].is_none() {
+                    pending.contexts[RULE_CONTEXT] = refusal;
+                }
+                self.apply(&contribution, Sign::Add);
+            }
+        }
+    }
+}
+
+/// Sets the row of the record with `serial` in the rows of a manifest, which are in
+/// the order of their serials: it replaces the row, adds one or removes it.
+fn set_row<K: Clone, R>(
+    rows: &mut Vec<(K, R)>,
+    key: &K,
+    serial_of: impl Fn(&K) -> u64,
+    row: Option<R>,
+) {
+    let serial = serial_of(key);
+    match (
+        rows.binary_search_by_key(&serial, |(held, _)| serial_of(held)),
+        row,
+    ) {
+        (Ok(at), Some(row)) => {
+            if let Some(held) = rows.get_mut(at) {
+                held.1 = row;
+            }
+        }
+        (Ok(at), None) => {
+            rows.remove(at);
+        }
+        (Err(at), Some(row)) => rows.insert(at, (key.clone(), row)),
+        (Err(_), None) => {}
+    }
+}
+
+impl Settle<'_> {
+    /// Patches the manifest with the row a sheet contributed, now and before.
+    fn sheet_rows(
+        &mut self,
+        key: &CssomSheetId,
+        before: Option<&Rows>,
+        after: Option<&CssomSheet>,
+    ) {
+        let before = before.and_then(|rows| rows.version.as_ref());
+        let after = after.map(|sheet| &sheet.inputs.version);
+        if before != after {
+            let rows = &mut self.figures.manifest_mut().sheets;
+            set_row(rows, key, |id| id.serial, after.cloned());
+        }
+    }
+
+    /// Patches the manifest with the rows a block contributed, now and before.
+    fn block_rows(
+        &mut self,
+        key: &CssomBlockId,
+        before: Option<&Rows>,
+        after: Option<&CssomBlock>,
+    ) {
+        let owner = after.and_then(CssomBlock::owner);
+        if before.and_then(|rows| rows.version.as_ref()) != owner {
+            let rows = &mut self.figures.manifest_mut().blocks;
+            set_row(rows, key, |id| id.serial, owner.cloned());
+        }
+        let inline = after.and_then(CssomBlock::inline_context);
+        if before.and_then(|rows| rows.inline.as_ref()) != inline {
+            let rows = &mut self.figures.manifest_mut().inline_declarations;
+            set_row(rows, key, |id| id.serial, inline.cloned());
+        }
+        let admitted = after
+            .map(|block| block.admission_inputs.as_slice())
+            .filter(|inputs| !inputs.is_empty());
+        if before.and_then(|rows| rows.admissions.as_deref()) != admitted {
+            let rows = &mut self.figures.manifest_mut().declaration_admissions;
+            set_row(rows, key, |id| id.serial, admitted.map(<[_]>::to_vec));
+        }
+    }
+
+    /// Patches the manifest with the rows a rule contributed, now and before.
+    fn rule_rows(&mut self, key: &CssomRuleId, before: Option<&Rows>, after: Option<&CssomRule>) {
+        let import = after.and_then(contribute::import_input);
+        if before.and_then(|rows| rows.version.as_ref()) != import {
+            let rows = &mut self.figures.manifest_mut().imports;
+            set_row(rows, key, |id| id.serial, import.cloned());
+        }
+        let families = after.and_then(contribute::family_inputs);
+        if before.and_then(|rows| rows.families.as_deref()) != families {
+            let rows = &mut self.figures.manifest_mut().font_family_admissions;
+            set_row(rows, key, |id| id.serial, families.map(<[_]>::to_vec));
+        }
+        let selectors = after.and_then(|rule| rule.selector_inputs.as_deref());
+        let differs = match (before.and_then(|rows| rows.selectors.as_deref()), selectors) {
+            (None, None) => false,
+            (Some(held), Some(context)) => !held.iter().eq(contribute::versions(context)),
+            _ => true,
+        };
+        if differs {
+            let rows = &mut self.figures.manifest_mut().selector_admissions;
+            set_row(
+                rows,
+                key,
+                |id| id.serial,
+                selectors.map(|context| contribute::versions(context).cloned().collect()),
+            );
         }
     }
 }
 
 impl State {
-    pub(crate) fn check_limits(&self, limits: &CssomLimits) -> Result<(), CssomError> {
-        self.check_limits_with_displaced_media(limits, std::iter::empty())
-    }
-
-    /// Refuses a state that exceeds `limits`; see [`Census::of`].
-    pub(crate) fn check_limits_with_displaced_media<'a>(
-        &self,
-        limits: &CssomLimits,
-        displaced: impl Iterator<Item = &'a CssMediaQueryList> + Clone,
-    ) -> Result<(), CssomError> {
-        Census::of(self, limits, displaced).map(drop)
-    }
-
-    /// The contexts of the state and its inline declaration blocks: input
-    /// roles, and the depth and number of the snapshots they link.
-    fn check_contexts(&self, limits: &CssomLimits) -> Result<(), CssomError> {
-        for context in std::iter::once(self.context.as_ref()).chain(self.inline_contexts()) {
-            context.validate()?;
-        }
-        let mut linked = std::iter::once(self.context.as_ref())
-            .chain(self.inline_contexts())
-            .flat_map(|context| &context.linked)
-            .map(|v| (&v.snapshot, 1usize))
-            .collect::<Vec<_>>();
-        let mut visited = 0usize;
-        while let Some((snapshot, depth)) = linked.pop() {
-            if depth > limits.max_depth {
-                return Err(CssomError::Limit {
-                    resource: "linked input depth",
-                    maximum: limits.max_depth,
-                });
-            }
-            visited = visited.checked_add(1).ok_or(CssomError::Limit {
-                resource: "linked input visits",
-                maximum: limits.max_entries,
-            })?;
-            if visited > limits.max_entries {
-                return Err(CssomError::Limit {
-                    resource: "linked input visits",
-                    maximum: limits.max_entries,
-                });
-            }
-            linked.extend(
-                std::iter::once(snapshot.context())
-                    .chain(snapshot.state.inline_contexts())
-                    .flat_map(|context| &context.linked)
-                    .map(|v| (&v.snapshot, depth + 1)),
-            );
-        }
-        Ok(())
-    }
-
-    /// The state itself and every sheet, rule, block, list, media list and
-    /// feature map it holds, detached ones included.
-    fn check_object_count(&self, limits: &CssomLimits) -> Result<usize, CssomError> {
-        let objects = 1usize
+    /// The objects of the state: the state itself and every sheet, rule, block, list,
+    /// media list and feature map it holds, detached ones included.
+    fn objects(&self) -> Option<usize> {
+        1usize
             .checked_add(self.sheets.len())
             .and_then(|v| v.checked_add(self.rules.len()))
             .and_then(|v| v.checked_add(self.blocks.len()))
             .and_then(|v| v.checked_add(self.lists.len()))
             .and_then(|v| v.checked_add(self.media.len()))
-            .and_then(|v| v.checked_add(self.maps.len()));
-        limit(objects, limits.max_objects, "objects")?;
-        Ok(objects.unwrap_or(usize::MAX))
+            .and_then(|v| v.checked_add(self.maps.len()))
     }
 
-    /// Adds the entries and string bytes of the whole state to `totals`,
-    /// refusing an oversized sheet or rule input, a missing linked sheet and an
-    /// oversized test payload.
-    fn add_totals(&self, totals: &mut Totals, limits: &CssomLimits) -> Result<(), CssomError> {
-        for context in measure::contexts(self) {
-            totals.context(context)?;
+    /// Whether the figures account for every record the state holds: no table has
+    /// journaled a change since the last settle, and the last settle was not refused.
+    pub(crate) fn is_settled(&self) -> bool {
+        !self.figures.is_poisoned()
+            && self.sheets.is_settled()
+            && self.rules.is_settled()
+            && self.blocks.is_settled()
+            && self.lists.is_settled()
+            && self.media.is_settled()
+            && self.maps.is_settled()
+            && self
+                .figures
+                .context()
+                .is_some_and(|settled| Arc::ptr_eq(settled, &self.context))
+    }
+
+    /// The size of the state, as its figures account for it.
+    pub(crate) fn retained(&self) -> crate::operation_work::Retained {
+        self.figures
+            .retained(self.objects().unwrap_or(usize::MAX), self.sheet_order.len())
+    }
+
+    /// Accounts for what the tables of the state have journaled since the last
+    /// settle, and refuses the state when it exceeds `limits`.
+    ///
+    /// `displaced` are the media lists the batch holding this state has displaced,
+    /// which count for this check alone.
+    ///
+    /// A refused settle leaves the figures unusable: every later settle of this
+    /// state answers [`CssomError::BatchAborted`].
+    ///
+    /// # Errors
+    ///
+    /// The refusal of the state: the first threshold it exceeds, in the order of the
+    /// module documentation.
+    pub(crate) fn settle(
+        &mut self,
+        limits: &CssomLimits,
+        displaced: &[&CssMediaQueryList],
+    ) -> Result<(), CssomError> {
+        if self.figures.is_poisoned() {
+            return Err(CssomError::BatchAborted);
         }
-        let mut bases = HashSet::new();
-        for sheet in self.sheets.values() {
-            totals.sheet(sheet, &mut bases, limits)?;
+        self.figures.poison();
+        let mut work = Work::default();
+        let outcome = self.account(limits, displaced, &mut work);
+        crate::operation_work::census(work.examined, work.entries);
+        #[cfg(test)]
+        let outcome = self.verified(limits, displaced, outcome);
+        if outcome.is_ok() {
+            self.figures.heal();
         }
-        for list in self.lists.values() {
-            totals.list(list.len());
+        outcome
+    }
+
+    /// Replaces the contribution of every record touched, and tests the thresholds.
+    fn account(
+        &mut self,
+        limits: &CssomLimits,
+        displaced: &[&CssMediaQueryList],
+        work: &mut Work,
+    ) -> Result<(), CssomError> {
+        let Self {
+            context,
+            sheet_order,
+            sheets,
+            rules,
+            blocks,
+            lists,
+            media,
+            maps,
+            figures,
+            ..
+        } = self;
+        let journals = (
+            sheets.take_journal(),
+            lists.take_journal(),
+            media.take_journal(),
+            blocks.take_journal(),
+            maps.take_journal(),
+            rules.take_journal(),
+        );
+        let mut settle = Settle {
+            figures: &mut *figures,
+            measurer: Measurer::new(limits),
+            refusals: Refusals::default(),
+            work: Work::default(),
+        };
+        let mut pending = Pending::default();
+        if settle
+            .figures
+            .context()
+            .is_none_or(|settled| !Arc::ptr_eq(settled, context))
+        {
+            if let Some(old) = settle.figures.take_context() {
+                let (contribution, _) = Self::state_context(&old);
+                settle.apply(&contribution, Sign::Remove);
+            }
+            let (contribution, refusal) = Self::state_context(context);
+            settle.work.entries = settle.work.entries.saturating_add(contribution.counts.work);
+            settle.apply(&contribution, Sign::Add);
+            pending.contexts[STATE_CONTEXT] = refusal;
+            pending.validate.push(context.as_ref());
+            settle.figures.set_context(context.clone());
+            settle.figures.manifest_mut().context = (**context).clone();
         }
-        for media in self.media.values() {
-            totals.media(media);
+        settle.sheets(sheets, journals.0, &mut pending);
+        settle.lists(lists, journals.1);
+        settle.media(media, journals.2);
+        settle.blocks(blocks, journals.3, &mut pending);
+        settle.maps(maps, journals.4);
+        settle.rules(rules, journals.5, &mut pending);
+        // What the records retain joins the ledger of the state once.
+        let delta = std::mem::take(settle.measurer.delta());
+        if !delta.is_empty()
+            && let Err(error) = settle.figures.ledger_mut().apply(&delta)
+        {
+            settle.refusals.note(error);
         }
-        for block in self.blocks.values() {
-            totals.block(block);
+        // The media lists the batch has displaced join it for this check alone.
+        let mut extra = Extra::default();
+        for media in displaced {
+            extra.entries = extra.entries.saturating_add(widen(media.queries().len()));
+            match settle
+                .measurer
+                .walk(Sign::Add, &crate::source_retention::Displaced(media))
+            {
+                Ok(walked) => {
+                    extra.steps = extra.steps.saturating_add(widen(walked.steps));
+                    extra.reach = extra.reach.max(walked.reach);
+                }
+                Err(error) => settle.refusals.note(error),
+            }
         }
-        for map in self.maps.values() {
-            totals.map(map);
+        let mut undo = std::mem::take(settle.measurer.delta());
+        if !undo.is_empty() {
+            if let Err(error) = settle.figures.ledger_mut().apply(&undo) {
+                settle.refusals.note(error);
+            }
+            undo.invert();
         }
-        for rule in self.rules.values() {
-            totals.rule(rule, limits)?;
+        let (refusals, steps) = (settle.refusals, settle.measurer.work());
+        *work = settle.work;
+        crate::operation_work::walked(steps);
+        let outcome = (|| {
+            for context in &pending.validate {
+                context.validate()?;
+            }
+            check_links(figures, limits)?;
+            let objects = 1usize
+                .checked_add(sheets.len())
+                .and_then(|v| v.checked_add(rules.len()))
+                .and_then(|v| v.checked_add(blocks.len()))
+                .and_then(|v| v.checked_add(lists.len()))
+                .and_then(|v| v.checked_add(media.len()))
+                .and_then(|v| v.checked_add(maps.len()));
+            limit(objects, limits.max_objects, "objects")?;
+            if let Some(error) = pending.contexts.iter().flatten().next() {
+                return Err(error.clone());
+            }
+            for sheet in &pending.sheets {
+                match sheet {
+                    Ok(counts) => counts.check(limits)?,
+                    Err(error) => return Err(error.clone()),
+                }
+            }
+            for counts in &pending.rules {
+                counts.check(limits)?;
+            }
+            check_totals(figures, limits, sheet_order.len(), extra, refusals)
+        })();
+        // The displaced media lists leave the ledger again.
+        if !undo.is_empty() {
+            let _ = figures.ledger_mut().apply(&undo);
         }
-        Ok(())
+        outcome
+    }
+
+    /// The contribution of the context of the state: the walk charges it and each input it links.
+    fn state_context(context: &CssomContext) -> (Contribution, Option<CssomError>) {
+        contribution_of_context(context, true)
     }
 }
+
 fn limit(actual: Option<usize>, maximum: usize, resource: &'static str) -> Result<(), CssomError> {
     if actual.is_none_or(|v| v > maximum) {
         Err(CssomError::Limit { resource, maximum })
@@ -560,7 +586,105 @@ fn limit(actual: Option<usize>, maximum: usize, resource: &'static str) -> Resul
     }
 }
 
-/// Counts of the work census runs do on the calling thread.
+/// Refuses the state when the snapshots its contexts link are nested deeper than
+/// `max_depth`, and then when its depth-first walk of them visits more than `max_entries`.
+fn check_links(figures: &Figures, limits: &CssomLimits) -> Result<(), CssomError> {
+    if figures.link_depth() > limits.max_depth {
+        return Err(CssomError::Limit {
+            resource: "linked input depth",
+            maximum: limits.max_depth,
+        });
+    }
+    if figures.link_visits > widen(limits.max_entries) {
+        return Err(CssomError::Limit {
+            resource: "linked input visits",
+            maximum: limits.max_entries,
+        });
+    }
+    Ok(())
+}
+
+/// Refuses the state when its entries, retained sources or string bytes exceed `limits`.
+fn check_totals(
+    figures: &Figures,
+    limits: &CssomLimits,
+    sheet_order: usize,
+    extra: Extra,
+    refusals: Refusals,
+) -> Result<(), CssomError> {
+    let entries = figures
+        .entries()
+        .saturating_add(widen(sheet_order))
+        .saturating_add(extra.entries);
+    if entries > widen(limits.max_entries) {
+        return Err(CssomError::Limit {
+            resource: "entries",
+            maximum: limits.max_entries,
+        });
+    }
+    // Several sources limits are exceeded in one order: the depth, the bytes, the steps, the storage.
+    if refusals.depth || figures.source_depth().max(extra.reach) > limits.max_source_traversal_depth
+    {
+        return Err(CssomError::Limit {
+            resource: DEPTH_RESOURCE,
+            maximum: limits.max_source_traversal_depth,
+        });
+    }
+    if refusals.bytes || figures.retained_bytes() > limits.max_retained_source_bytes {
+        return Err(CssomError::Limit {
+            resource: BYTES_RESOURCE,
+            maximum: limits.max_retained_source_bytes,
+        });
+    }
+    if refusals.steps
+        || figures.walk_steps().saturating_add(extra.steps)
+            > widen(limits.max_source_traversal_steps)
+    {
+        return Err(CssomError::Limit {
+            resource: STEPS_RESOURCE,
+            maximum: limits.max_source_traversal_steps,
+        });
+    }
+    if refusals.storage {
+        return Err(CssomError::Limit {
+            resource: STORAGE_RESOURCE,
+            maximum: limits.max_source_traversal_steps,
+        });
+    }
+    if figures.strings() > widen(limits.max_string_bytes) {
+        return Err(CssomError::Limit {
+            resource: "host and live string bytes",
+            maximum: limits.max_string_bytes,
+        });
+    }
+    Ok(())
+}
+
+impl State {
+    /// Refuses the settled state when its totals exceed `limits`, which a store may
+    /// tighten for the objects and string bytes that pending replacements reserve.
+    ///
+    /// The conditions of single records were tested when each was admitted, under
+    /// limits a store never changes.
+    ///
+    /// # Errors
+    ///
+    /// The first threshold the figures exceed.
+    pub(crate) fn check_limits(&self, limits: &CssomLimits) -> Result<(), CssomError> {
+        crate::operation_work::census(0, 0);
+        check_links(&self.figures, limits)?;
+        limit(self.objects(), limits.max_objects, "objects")?;
+        check_totals(
+            &self.figures,
+            limits,
+            self.sheet_order.len(),
+            Extra::default(),
+            Refusals::default(),
+        )
+    }
+}
+
+/// Counts of the work settles do on the calling thread.
 #[cfg(test)]
 pub(crate) mod probe {
     use std::cell::Cell;
@@ -568,12 +692,14 @@ pub(crate) mod probe {
     thread_local! {
         static EXAMINED: Cell<usize> = const { Cell::new(0) };
         static STEPS: Cell<usize> = const { Cell::new(0) };
-        static EXTENSIONS: Cell<usize> = const { Cell::new(0) };
-        static WHOLE_RUNS: Cell<usize> = const { Cell::new(0) };
-        static WHOLE_STATE: Cell<bool> = const { Cell::new(false) };
+        static ENTRIES: Cell<usize> = const { Cell::new(0) };
+        static ROOTS: Cell<usize> = const { Cell::new(0) };
+        static MANIFESTS: Cell<usize> = const { Cell::new(0) };
+        static RUNS: Cell<usize> = const { Cell::new(0) };
         static CROSS_CHECK: Cell<bool> = const { Cell::new(true) };
         static REFERENCE: Cell<bool> = const { Cell::new(false) };
-        static LAST_RUN: Cell<Option<Run>> = const { Cell::new(None) };
+        static UNSETTLED_PUBLICATION: Cell<bool> = const { Cell::new(false) };
+        static UNMEASURABLE_BEFORE: Cell<bool> = const { Cell::new(false) };
         static PARTS: Cell<usize> = const { Cell::new(0) };
     }
 
@@ -586,47 +712,33 @@ pub(crate) mod probe {
         PARTS.with(Cell::get)
     }
 
-    /// Whether every census of a whole state is the reference's instead of the
-    /// measured census.
+    /// Whether a commit publishes the state it staged without settling it first,
+    /// which the publication then refuses to do.
+    pub(crate) fn unsettled_publication() -> bool {
+        UNSETTLED_PUBLICATION.with(Cell::get)
+    }
+    pub(crate) fn set_unsettled_publication(value: bool) {
+        UNSETTLED_PUBLICATION.with(|flag| flag.set(value));
+    }
+
+    /// Whether measuring what a record contributed, before it changes, fails as an
+    /// allocation failure does.
+    pub(crate) fn unmeasurable_before() -> bool {
+        UNMEASURABLE_BEFORE.with(Cell::get)
+    }
+    pub(crate) fn set_unmeasurable_before(value: bool) {
+        UNMEASURABLE_BEFORE.with(|flag| flag.set(value));
+    }
+
+    /// Whether every settle answers as the reference census of the whole state does.
     pub(crate) fn reference() -> bool {
         REFERENCE.with(Cell::get)
     }
     pub(crate) fn set_reference(value: bool) {
         REFERENCE.with(|flag| flag.set(value));
     }
-
-    /// The work of one census run of a whole state, as it charged it.
-    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-    pub(crate) struct Run {
-        pub(crate) examined: usize,
-        pub(crate) counted: usize,
-        pub(crate) steps: usize,
-    }
-    pub(crate) fn census_run(examined: usize, counted: usize, steps: usize) {
-        LAST_RUN.with(|run| {
-            run.set(Some(Run {
-                examined,
-                counted,
-                steps,
-            }));
-        });
-    }
-    /// The work of the last census run of a whole state on this thread.
-    pub(crate) fn last_run() -> Option<Run> {
-        LAST_RUN.with(Cell::get)
-    }
-
-    /// Whether adoption runs the census of the whole state after every rule
-    /// instead of extending one census: the reference the incremental check
-    /// must agree with.
-    pub(crate) fn whole_state() -> bool {
-        WHOLE_STATE.with(Cell::get)
-    }
-    pub(crate) fn set_whole_state(value: bool) {
-        WHOLE_STATE.with(|flag| flag.set(value));
-    }
-    /// Whether adoption compares each extended census with a census of the
-    /// whole state (on by default).
+    /// Whether each settle is compared with the reference census of the whole
+    /// state (on by default).
     pub(crate) fn cross_check() -> bool {
         CROSS_CHECK.with(Cell::get)
     }
@@ -634,11 +746,40 @@ pub(crate) mod probe {
         CROSS_CHECK.with(|flag| flag.set(value));
     }
 
-    /// Objects the census has examined and source walk steps it has charged.
+    /// The checks made, records measured, entry lists examined and source walk
+    /// steps measured.
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub(crate) struct Work {
+        pub(crate) runs: usize,
         pub(crate) examined: usize,
+        pub(crate) entries: usize,
         pub(crate) steps: usize,
+    }
+
+    /// A linked state has joined the states a state reaches, or left them.
+    pub(crate) fn root_reached() {
+        ROOTS.with(|total| total.set(total.get().saturating_add(1)));
+    }
+    /// The linked states that joined or left since the last reset.
+    pub(crate) fn roots() -> usize {
+        ROOTS.with(Cell::get)
+    }
+    /// The input manifest of a whole state has been built from nothing.
+    pub(crate) fn manifest_built() {
+        MANIFESTS.with(|total| total.set(total.get().saturating_add(1)));
+    }
+    pub(crate) fn set_manifests(count: usize) {
+        MANIFESTS.with(|total| total.set(count));
+    }
+    /// The input manifests built from nothing on this thread since the last reset.
+    pub(crate) fn manifests() -> usize {
+        MANIFESTS.with(Cell::get)
+    }
+
+    /// One check that examined `entries` entry lists.
+    pub(crate) fn ran(entries: usize) {
+        RUNS.with(|total| total.set(total.get().saturating_add(1)));
+        ENTRIES.with(|total| total.set(total.get().saturating_add(entries)));
     }
 
     pub(crate) fn examined(objects: usize) {
@@ -647,30 +788,20 @@ pub(crate) mod probe {
     pub(crate) fn steps(steps: usize) {
         STEPS.with(|total| total.set(total.get().saturating_add(steps)));
     }
-    /// One census was extended instead of walking the whole state.
-    pub(crate) fn extended() {
-        EXTENSIONS.with(|total| total.set(total.get().saturating_add(1)));
-    }
-    pub(crate) fn extensions() -> usize {
-        EXTENSIONS.with(Cell::get)
-    }
-    /// One adoption check walked the whole state.
-    pub(crate) fn whole_run() {
-        WHOLE_RUNS.with(|total| total.set(total.get().saturating_add(1)));
-    }
-    pub(crate) fn whole_runs() -> usize {
-        WHOLE_RUNS.with(Cell::get)
-    }
     pub(crate) fn reset() {
         EXAMINED.with(|total| total.set(0));
         STEPS.with(|total| total.set(0));
-        EXTENSIONS.with(|total| total.set(0));
-        WHOLE_RUNS.with(|total| total.set(0));
+        ENTRIES.with(|total| total.set(0));
+        ROOTS.with(|total| total.set(0));
+        RUNS.with(|total| total.set(0));
+        MANIFESTS.with(|total| total.set(0));
         PARTS.with(|total| total.set(0));
     }
     pub(crate) fn read() -> Work {
         Work {
+            runs: RUNS.with(Cell::get),
             examined: EXAMINED.with(Cell::get),
+            entries: ENTRIES.with(Cell::get),
             steps: STEPS.with(Cell::get),
         }
     }
@@ -679,9 +810,17 @@ pub(crate) mod probe {
 #[cfg(test)]
 mod differential_tests;
 #[cfg(test)]
+mod edit_work_tests;
+#[cfg(test)]
+mod index_copy_tests;
+#[cfg(test)]
 mod memo_tests;
 #[cfg(test)]
 mod reference;
+#[cfg(test)]
+mod settle_tests;
+#[cfg(test)]
+mod verified;
 
 #[cfg(test)]
 mod bounded_work_tests {

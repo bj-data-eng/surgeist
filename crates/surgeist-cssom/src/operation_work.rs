@@ -2,8 +2,8 @@
 //! scope.
 //!
 //! An operation of a store that holds a host opens a record on its thread; the
-//! census runs and rule formatting the operation does, including those of the
-//! operations it calls, add to it. When the outermost operation returns, the
+//! checks of the state (settles) and rule formatting the operation does,
+//! including those of the operations it calls, add to it. When the outermost operation returns, the
 //! record is charged as one batch. A commit inside an operation settles the
 //! record before it publishes, so that a refused charge publishes nothing.
 //! With no host no record is open, and adding to it does nothing.
@@ -19,7 +19,7 @@ use surgeist_css::accounting::{
     CssAccount, CssChange, CssFront, CssHostScope, CssResource, CssWork,
 };
 
-/// What the census runs and rule formatting of one operation did.
+/// What the checks of the state and rule formatting of one operation did.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct OperationWork {
     runs: usize,
@@ -73,15 +73,23 @@ fn add(note: impl FnOnce(&mut OperationWork)) {
     });
 }
 
-/// One census run that examined `objects` objects and `entries` entries and
-/// took `steps` steps of its source walk.
-pub(crate) fn census(objects: usize, entries: usize, steps: usize) {
+/// One census run, a settle, that measured `objects` records and examined
+/// `entries` entry lists in doing so.
+pub(crate) fn census(objects: usize, entries: usize) {
+    #[cfg(test)]
+    crate::state_limits::probe::ran(entries);
     add(|work| {
         work.runs = work.runs.saturating_add(1);
         work.objects = work.objects.saturating_add(objects);
         work.entries = work.entries.saturating_add(entries);
-        work.steps = work.steps.saturating_add(steps);
     });
+}
+
+/// `steps` steps of source walks that were measured, not taken from a kept measurement.
+pub(crate) fn walked(steps: usize) {
+    #[cfg(test)]
+    crate::state_limits::probe::steps(steps);
+    add(|work| work.steps = work.steps.saturating_add(steps));
 }
 
 /// One rule formatting that prepared `nodes` nodes.

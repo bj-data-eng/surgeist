@@ -1,7 +1,7 @@
 //! The measurement of one payload and the ledger of measurements against the
 //! collector that visits the same payloads, which is the independent figure of
 //! every test: its steps, the deepest nesting it reaches and the bytes it retains.
-use super::{CssSourceBounds, CssSourceLedger, CssSourceMeasurement};
+use super::{CssSourceBounds, CssSourceDelta, CssSourceLedger, CssSourceMeasurement};
 use crate::CssParser;
 use crate::source::source_retention::{
     Admission, CssRetainedSources, CssSourceRetention, CssSourceRetentionAction,
@@ -282,6 +282,107 @@ fn an_addition_that_overflows_the_bytes_leaves_the_ledger_unchanged() {
     assert_eq!((ledger.bytes(), ledger.len()), before);
 }
 
+#[test]
+fn a_delta_of_a_payload_removed_and_added_again_changes_nothing() {
+    let pool = pool();
+    let payload = payload(&pool, &[4, 5, 0], 0);
+    let measurement = measure(&payload);
+    let mut delta = CssSourceDelta::new();
+    delta.remove(&measurement).unwrap();
+    delta.add(&measurement).unwrap();
+    assert!(delta.is_empty());
+    let mut ledger = CssSourceLedger::new();
+    ledger.add(&measurement).unwrap();
+    let held = (ledger.bytes(), ledger.len());
+    ledger.apply(&delta).unwrap();
+    assert_eq!((ledger.bytes(), ledger.len()), held);
+}
+
+#[test]
+fn a_delta_applied_gives_the_ledger_the_collector_counts_for_the_payloads_that_remain() {
+    let pool = pool();
+    let payloads = [
+        payload(&pool, &[0, 4, 5], 1),
+        payload(&pool, &[5, 6, 7, 1], 0),
+        payload(&pool, &[7, 8, 9, 10], 2),
+        payload(&pool, &[2, 10, 11, 4, 0], 1),
+    ];
+    let measurements = payloads.iter().map(measure).collect::<Vec<_>>();
+    // Start with the first two, replace the second by the third and fourth.
+    let mut ledger = CssSourceLedger::new();
+    ledger.add(&measurements[0]).unwrap();
+    ledger.add(&measurements[1]).unwrap();
+    let mut delta = CssSourceDelta::new();
+    delta.remove(&measurements[1]).unwrap();
+    delta.add(&measurements[2]).unwrap();
+    delta.add(&measurements[3]).unwrap();
+    assert!(!delta.is_empty());
+    ledger.apply(&delta).unwrap();
+    let collector = collect(&[&payloads[0], &payloads[2], &payloads[3]]);
+    assert_eq!(ledger.bytes(), collector.usage().retained_bytes());
+    assert_eq!(ledger.len(), collector.bank.len());
+    ledger.assert_consistent();
+    // Inverted, the delta restores the first two payloads.
+    delta.invert();
+    ledger.apply(&delta).unwrap();
+    let collector = collect(&[&payloads[0], &payloads[1]]);
+    assert_eq!(ledger.bytes(), collector.usage().retained_bytes());
+    assert_eq!(ledger.len(), collector.bank.len());
+    ledger.assert_consistent();
+}
+
+#[test]
+fn merged_deltas_make_the_change_of_both() {
+    let pool = pool();
+    let (first, second) = (
+        measure(&payload(&pool, &[0, 4, 5], 1)),
+        measure(&payload(&pool, &[5, 6, 7], 0)),
+    );
+    let mut ledger = CssSourceLedger::new();
+    ledger.add(&first).unwrap();
+    // One delta removes the first payload, the other adds it back and adds the second.
+    let (mut removal, mut addition) = (CssSourceDelta::new(), CssSourceDelta::new());
+    removal.remove(&first).unwrap();
+    addition.add(&first).unwrap();
+    addition.add(&second).unwrap();
+    removal.merge(&addition).unwrap();
+    ledger.apply(&removal).unwrap();
+    let mut alone = CssSourceLedger::new();
+    alone.add(&first).unwrap();
+    alone.add(&second).unwrap();
+    assert_eq!((ledger.bytes(), ledger.len()), (alone.bytes(), alone.len()));
+    // A delta merged with its own inverse changes nothing.
+    let mut cancelled = CssSourceDelta::new();
+    cancelled.add(&second).unwrap();
+    let mut inverse = CssSourceDelta::new();
+    inverse.remove(&second).unwrap();
+    cancelled.merge(&inverse).unwrap();
+    assert!(cancelled.is_empty());
+}
+
+#[test]
+fn a_delta_of_a_ledger_adds_each_distinct_snapshot_once() {
+    let pool = pool();
+    let payload = payload(&pool, &[4, 5, 0], 0);
+    let measurement = measure(&payload);
+    let mut inner = CssSourceLedger::new();
+    inner.add(&measurement).unwrap();
+    inner.add(&measurement).unwrap();
+    let mut outer = CssSourceLedger::new();
+    let mut delta = CssSourceDelta::new();
+    delta.add_ledger(&inner).unwrap();
+    delta.add_ledger(&inner).unwrap();
+    outer.apply(&delta).unwrap();
+    assert_eq!((outer.bytes(), outer.len()), (inner.bytes(), inner.len()));
+    // Two references were added: one removal leaves them held.
+    let mut once = CssSourceDelta::new();
+    once.remove_ledger(&inner).unwrap();
+    outer.apply(&once).unwrap();
+    assert_eq!((outer.bytes(), outer.len()), (inner.bytes(), inner.len()));
+    outer.apply(&once).unwrap();
+    assert_eq!((outer.bytes(), outer.len()), (0, 0));
+}
+
 /// The measurement of a payload that records `snapshots` in turn.
 fn of_sources(snapshots: &[&CssSourceSnapshot]) -> CssSourceMeasurement {
     CssSourceMeasurement::of(BIG, 0, |sources| {
@@ -291,118 +392,6 @@ fn of_sources(snapshots: &[&CssSourceSnapshot]) -> CssSourceMeasurement {
         Ok(())
     })
     .unwrap()
-}
-
-/// The steps a collector takes, and how it ends, when it visits `walked` and
-/// then `payload` under `bounds`; compared with the ledger's replay of
-/// `payload` on top of what `walked` recorded.
-fn collector_then(
-    walked: &[&Payload<'_>],
-    payload: &Payload<'_>,
-    bounds: CssSourceBounds,
-    base: usize,
-) -> (usize, Option<CssSourceRetentionResource>) {
-    let mut collector = CssSourceRetention::with_shared_original_utf16(
-        bounds.bytes(),
-        bounds.steps(),
-        bounds.depth(),
-    );
-    for walked in walked {
-        collector.visit(*walked).unwrap();
-    }
-    let before = collector.steps();
-    let result = collector.at_depth(base, |sources| sources.visit(payload));
-    (
-        collector.steps() - before,
-        result.err().and_then(|error| error.exhausted_limit()),
-    )
-}
-
-#[test]
-fn a_replay_refuses_where_the_collector_that_walked_the_ledger_refuses() {
-    let pool = pool();
-    let walked = [payload(&pool, &[0, 4, 5], 1), payload(&pool, &[5, 6, 1], 0)];
-    let later = [
-        payload(&pool, &[5, 7, 8, 2], 2),
-        payload(&pool, &[9, 10, 3], 0),
-        payload(&pool, &[11, 4, 0, 6], 3),
-    ];
-    let mut ledger = CssSourceLedger::new();
-    for walked in &walked {
-        ledger.add(&measure(walked)).unwrap();
-    }
-    let walked_refs = walked.iter().collect::<Vec<_>>();
-    let spent = collect(&walked_refs);
-    let (spent_steps, spent_bytes) = (spent.steps(), spent.usage().retained_bytes());
-    for payload in &later {
-        let alone = measure(payload);
-        let mut all = ledger_with(&ledger, &alone);
-        let total_bytes = all.bytes();
-        let total_steps = spent_steps + alone.steps();
-        for base in [0usize, 2] {
-            for steps in [0, 1, total_steps / 2, total_steps - 1, total_steps] {
-                for depth in [0, 1, 2, 3, 5, 64] {
-                    for bytes in [
-                        spent_bytes,
-                        total_bytes.saturating_sub(1),
-                        total_bytes,
-                        usize::MAX,
-                    ] {
-                        // A collector that refuses its prior walks has no answer to compare.
-                        if bytes < spent_bytes || steps < spent_steps || depth < 2 {
-                            continue;
-                        }
-                        let bounds = CssSourceBounds::new(bytes, steps, depth);
-                        let expected = collector_then(&walked_refs, payload, bounds, base);
-                        let remaining =
-                            CssSourceBounds::new(bytes, steps.saturating_sub(spent_steps), depth);
-                        let replay =
-                            ledger.replay(remaining, base, |sources| sources.visit(payload));
-                        let got = (
-                            replay.steps(),
-                            replay
-                                .result()
-                                .as_ref()
-                                .err()
-                                .and_then(|error| error.exhausted_limit()),
-                        );
-                        assert_eq!(
-                            got, expected,
-                            "bytes {bytes}, steps {steps}, depth {depth}, base {base}"
-                        );
-                    }
-                }
-            }
-        }
-        all.remove(&alone);
-    }
-}
-
-/// A ledger holding what `ledger` holds and `measurement`.
-fn ledger_with(ledger: &CssSourceLedger, measurement: &CssSourceMeasurement) -> CssSourceLedger {
-    let mut copy = CssSourceLedger::new();
-    for snapshot in ledger.snapshots() {
-        copy.add(&of_sources(&[snapshot])).unwrap();
-    }
-    copy.add(measurement).unwrap();
-    copy
-}
-
-#[test]
-fn a_replay_that_does_not_refuse_reports_the_snapshots_the_ledger_did_not_hold() {
-    let pool = pool();
-    let walked = payload(&pool, &[0, 4], 0);
-    let later = payload(&pool, &[4, 5, 1], 1);
-    let mut ledger = CssSourceLedger::new();
-    ledger.add(&measure(&walked)).unwrap();
-    let replay = ledger.replay(BIG, 0, |sources| sources.visit(&later));
-    let alone = measure(&later);
-    let new = replay.result().as_ref().unwrap();
-    assert_eq!(replay.steps(), alone.steps());
-    assert_eq!(new.steps(), alone.steps());
-    assert_eq!(new.depth(), alone.depth());
-    // Of the snapshots of `later`, only those `walked` did not record are new.
-    assert_eq!(new.sources().len(), 2);
 }
 
 #[test]

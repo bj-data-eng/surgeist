@@ -73,11 +73,7 @@ fn a_commit_that_shrinks_the_state_releases_the_difference() {
     assert!(edit.remove_sheet(&sheet).unwrap());
     store.commit(edit).unwrap();
     let after = held(&ledger);
-    let census =
-        crate::state_limits::Census::of(&store.state, &CssomLimits::default(), std::iter::empty())
-            .unwrap()
-            .retained();
-    assert_eq!(super::Retained(after), census);
+    assert_eq!(super::Retained(after), store.state.whole_retained());
     assert!(after[1] < before[1], "{before:?} -> {after:?}");
 }
 
@@ -152,10 +148,6 @@ fn a_commit_inside_an_object_operation_holds_the_size_it_publishes() {
             &std::sync::atomic::AtomicBool::new(false),
         )
         .unwrap();
-    let census =
-        crate::state_limits::Census::of(&store.state, &CssomLimits::default(), std::iter::empty())
-            .unwrap()
-            .retained();
-    assert_eq!(super::Retained(held(&ledger)), census);
+    assert_eq!(super::Retained(held(&ledger)), store.state.whole_retained());
     assert!(held(&ledger)[1] > before[1]);
 }

@@ -11,12 +11,12 @@
 //!
 //! The totals of a ledger do not depend on the order measurements were added or
 //! removed in, so a ledger can follow a state that changes a payload at a time.
-//! [`CssSourceLedger::replay`] answers what the collector would have refused
-//! and after how many steps when a walk the ledger does not admit is run on top
-//! of everything the ledger holds.
+//! A [`CssSourceDelta`] collects the net change of many such steps, and
+//! [`CssSourceLedger::apply`] applies it.
 use super::{CssSourceRetention, CssSourceRetentionError, CssSourceRetentionResource};
 use crate::source::CssSourceSnapshot;
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, DefaultHasher};
 use std::sync::Arc;
 
 /// The bounds of a collector: retained bytes, steps and nesting depth.
@@ -123,23 +123,22 @@ impl CssSourceMeasurement {
             bounds.depth,
         );
         collector.at_depth(base_depth, walk)?;
-        Self::of_collector(&collector, 0, base_depth)
+        Self::of_collector(&collector, base_depth)
     }
 
-    /// The measurement of what `collector` recorded after its first `skipped` snapshots.
+    /// The measurement of what `collector` recorded.
     fn of_collector(
         collector: &CssSourceRetention<'_>,
-        skipped: usize,
         base_depth: usize,
     ) -> Result<Self, CssSourceRetentionError> {
-        let recorded = collector.bank.recorded().get(skipped..).unwrap_or_default();
+        let recorded = collector.bank.recorded();
         let mut sources = Vec::new();
         sources
             .try_reserve_exact(recorded.len())
             .map_err(|_| CssSourceRetentionError::allocation())?;
         sources.extend(recorded.iter().map(CssMeasuredSource::new));
         Ok(Self {
-            steps: collector.visits.saturating_sub(skipped),
+            steps: collector.visits,
             depth: collector.deepest().saturating_sub(base_depth),
             sources,
         })
@@ -237,12 +236,12 @@ impl CssSourceMeter {
     /// The last measurement as a value.
     #[cfg(test)]
     fn to_measurement(&self) -> Result<CssSourceMeasurement, CssSourceRetentionError> {
-        CssSourceMeasurement::of_collector(&self.collector, 0, self.base_depth)
+        CssSourceMeasurement::of_collector(&self.collector, self.base_depth)
     }
 }
 
 /// A snapshot held by a ledger and the number of measurements that hold it.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Held {
     snapshot: CssSourceSnapshot,
     references: u32,
@@ -271,7 +270,7 @@ fn mix(identity: usize) -> usize {
 /// table of entry positions, at most half full, probed linearly from a fixed
 /// integer mix of the snapshot's address; a snapshot that leaves is removed
 /// by shifting back the entries that follow it in its probe.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct CssSourceLedger {
     entries: Vec<Held>,
     /// Entry positions plus one, or zero for a free slot; its length is zero or a power of two.
@@ -418,12 +417,21 @@ impl CssSourceLedger {
     }
 
     fn add_source(&mut self, source: &CssMeasuredSource) -> Result<(), CssSourceRetentionError> {
+        self.add_source_references(source, 1)
+    }
+
+    /// Adds `references` references to the snapshot of `source`.
+    fn add_source_references(
+        &mut self,
+        source: &CssMeasuredSource,
+        references: u32,
+    ) -> Result<(), CssSourceRetentionError> {
         let key = identity(&source.snapshot);
         if let Some((_, position)) = self.find(key) {
             let held = self.entries.get_mut(position).ok_or_else(allocation)?;
             held.references =
                 held.references
-                    .checked_add(1)
+                    .checked_add(references)
                     .ok_or(CssSourceRetentionError::limit(
                         CssSourceRetentionResource::RetainedBytes,
                     ))?;
@@ -451,7 +459,7 @@ impl CssSourceLedger {
         Self::name(&mut self.slots, key, position)?;
         self.entries.push(Held {
             snapshot: source.snapshot.clone(),
-            references: 1,
+            references,
         });
         if let Some(backing) = source.backing {
             let users = self.backings.entry(backing.identity).or_insert(0);
@@ -472,6 +480,12 @@ impl CssSourceLedger {
     }
 
     fn remove_source(&mut self, source: &CssMeasuredSource) {
+        self.remove_source_references(source, 1);
+    }
+
+    /// Removes `references` references to the snapshot of `source`; the snapshot leaves
+    /// the ledger with its last reference.
+    fn remove_source_references(&mut self, source: &CssMeasuredSource, references: u32) {
         let key = identity(&source.snapshot);
         let Some((slot, position)) = self.find(key) else {
             return;
@@ -479,7 +493,7 @@ impl CssSourceLedger {
         let Some(held) = self.entries.get_mut(position) else {
             return;
         };
-        held.references = held.references.saturating_sub(1);
+        held.references = held.references.saturating_sub(references);
         if held.references > 0 {
             return;
         }
@@ -573,62 +587,178 @@ impl CssSourceLedger {
     fn snapshots(&self) -> impl Iterator<Item = &CssSourceSnapshot> {
         self.entries.iter().map(|held| &held.snapshot)
     }
+}
 
-    /// Runs `walk` as a collector that has recorded every snapshot of this
-    /// ledger would run it, and reports the steps it took and how it ended.
-    ///
-    /// `bounds` are the bounds of the whole account: the retained bytes the
-    /// ledger and the walk may hold together, the steps the walk may still
-    /// charge (the steps already charged are not counted) and the depth. The
-    /// answer is that of a collector that had visited the ledger's payloads
-    /// before `walk`: a refusal arrives at the same step, with the same resource.
+/// The net change measurements make to a [`CssSourceLedger`]: each snapshot is one reference
+/// more for every time it was added and one less for every time it was removed.
+///
+/// A payload that is removed and added again, unchanged, leaves no change, so a
+/// ledger need not be touched, or copied, when a record is replaced by one that retains the
+/// same snapshots. Applying a delta adds the snapshots that gain references first, so the
+/// retained bytes of the ledger never pass through a smaller figure than the result needs.
+#[derive(Debug, Default)]
+pub struct CssSourceDelta {
+    entries: HashMap<usize, (CssMeasuredSource, i64), BuildHasherDefault<DefaultHasher>>,
+}
+
+impl CssSourceDelta {
+    /// A delta that changes nothing.
     #[must_use]
-    pub fn replay(
-        &self,
-        bounds: CssSourceBounds,
-        base_depth: usize,
-        walk: impl FnOnce(&mut CssSourceRetention<'_>) -> Result<(), CssSourceRetentionError>,
-    ) -> CssSourceReplay {
-        let held = self.entries.len();
-        let mut collector = CssSourceRetention::with_shared_original_utf16(
-            bounds.bytes,
-            bounds.steps.saturating_add(held),
-            bounds.depth,
-        );
-        for snapshot in self.snapshots() {
-            if let Err(error) = collector.source(snapshot) {
-                return CssSourceReplay {
-                    steps: 0,
-                    result: Err(error),
-                };
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Whether applying the delta changes nothing.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.values().all(|(_, net)| *net == 0)
+    }
+
+    /// Adds the change `other` makes to this one.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::add`].
+    pub fn merge(&mut self, other: &Self) -> Result<(), CssSourceRetentionError> {
+        other
+            .entries
+            .values()
+            .try_for_each(|(source, net)| self.note(source, *net))
+    }
+
+    /// Makes the delta the change that undoes it.
+    pub fn invert(&mut self) {
+        for (_, net) in self.entries.values_mut() {
+            *net = -*net;
+        }
+    }
+
+    fn note(&mut self, source: &CssMeasuredSource, by: i64) -> Result<(), CssSourceRetentionError> {
+        let key = identity(&source.snapshot);
+        if let Some((_, net)) = self.entries.get_mut(&key) {
+            *net = net.checked_add(by).ok_or(CssSourceRetentionError::limit(
+                CssSourceRetentionResource::RetainedBytes,
+            ))?;
+            return Ok(());
+        }
+        self.entries.try_reserve(1).map_err(|_| allocation())?;
+        self.entries.insert(key, (source.clone(), by));
+        Ok(())
+    }
+
+    /// Adds the snapshots of `measurement`, one reference each.
+    ///
+    /// # Errors
+    ///
+    /// [`CssSourceRetentionError::allocation`] when the delta cannot hold a snapshot, and
+    /// [`CssSourceRetentionResource::RetainedBytes`] when a count overflows.
+    pub fn add(
+        &mut self,
+        measurement: &CssSourceMeasurement,
+    ) -> Result<(), CssSourceRetentionError> {
+        measurement
+            .sources
+            .iter()
+            .try_for_each(|source| self.note(source, 1))
+    }
+
+    /// Removes the snapshots of `measurement`, one reference each.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::add`].
+    pub fn remove(
+        &mut self,
+        measurement: &CssSourceMeasurement,
+    ) -> Result<(), CssSourceRetentionError> {
+        measurement
+            .sources
+            .iter()
+            .try_for_each(|source| self.note(source, -1))
+    }
+
+    /// Adds the snapshots `meter` recorded in its last measurement, one reference each.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::add`].
+    pub fn add_metered(&mut self, meter: &CssSourceMeter) -> Result<(), CssSourceRetentionError> {
+        meter
+            .recorded()
+            .iter()
+            .try_for_each(|snapshot| self.note(&CssMeasuredSource::new(snapshot), 1))
+    }
+
+    /// Removes the snapshots `meter` recorded in its last measurement, one reference each.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::add`].
+    pub fn remove_metered(
+        &mut self,
+        meter: &CssSourceMeter,
+    ) -> Result<(), CssSourceRetentionError> {
+        meter
+            .recorded()
+            .iter()
+            .try_for_each(|snapshot| self.note(&CssMeasuredSource::new(snapshot), -1))
+    }
+
+    /// Adds every distinct snapshot `ledger` holds, one reference each.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::add`].
+    pub fn add_ledger(&mut self, ledger: &CssSourceLedger) -> Result<(), CssSourceRetentionError> {
+        ledger
+            .snapshots()
+            .try_for_each(|snapshot| self.note(&CssMeasuredSource::new(snapshot), 1))
+    }
+
+    /// Removes every distinct snapshot `ledger` holds, one reference each.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::add`].
+    pub fn remove_ledger(
+        &mut self,
+        ledger: &CssSourceLedger,
+    ) -> Result<(), CssSourceRetentionError> {
+        ledger
+            .snapshots()
+            .try_for_each(|snapshot| self.note(&CssMeasuredSource::new(snapshot), -1))
+    }
+}
+
+impl CssSourceLedger {
+    /// Applies the net change of `delta`.
+    ///
+    /// A snapshot leaves the ledger when its last reference does. A reference removed that the
+    /// ledger does not hold is ignored.
+    ///
+    /// # Errors
+    ///
+    /// [`CssSourceRetentionResource::RetainedBytes`] when the bytes or a reference count
+    /// overflow, and [`CssSourceRetentionError::allocation`] when a snapshot cannot be
+    /// stored. The ledger then holds part of the change.
+    pub fn apply(&mut self, delta: &CssSourceDelta) -> Result<(), CssSourceRetentionError> {
+        for (source, net) in delta.entries.values() {
+            if *net > 0 {
+                let references = u32::try_from(*net).map_err(|_| {
+                    CssSourceRetentionError::limit(CssSourceRetentionResource::RetainedBytes)
+                })?;
+                self.add_source_references(source, references)?;
             }
         }
-        let result = collector
-            .at_depth(base_depth, walk)
-            .and_then(|()| CssSourceMeasurement::of_collector(&collector, held, base_depth));
-        CssSourceReplay {
-            steps: collector.visits.saturating_sub(held),
-            result,
+        for (source, net) in delta.entries.values() {
+            if *net < 0 {
+                self.remove_source_references(
+                    source,
+                    u32::try_from(net.unsigned_abs()).unwrap_or(u32::MAX),
+                );
+            }
         }
-    }
-}
-
-/// How a walk run on top of a ledger ended: see [`CssSourceLedger::replay`].
-#[derive(Clone, Debug)]
-pub struct CssSourceReplay {
-    steps: usize,
-    result: Result<CssSourceMeasurement, CssSourceRetentionError>,
-}
-
-impl CssSourceReplay {
-    /// Returns the steps the walk charged, the one a limit refused not counted.
-    #[must_use]
-    pub const fn steps(&self) -> usize {
-        self.steps
-    }
-    /// Returns the refusal, or the snapshots the walk recorded that the ledger did not hold.
-    pub const fn result(&self) -> &Result<CssSourceMeasurement, CssSourceRetentionError> {
-        &self.result
+        Ok(())
     }
 }
 

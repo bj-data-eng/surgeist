@@ -64,7 +64,12 @@ pub struct CssomLimits {
     /// Actual shared parse-source backing retained by the selected state and
     /// any additional parse sources held during an edit.
     pub max_retained_source_bytes: usize,
-    /// Actual source payload visits, source snapshots reached and retained-state walk actions.
+    /// The steps of the source walk that reaches every retained payload: one for each
+    /// payload visit, source snapshot reached, linked state and linked input, and
+    /// the steps of the walk of each of the states a context links. The state is
+    /// refused when the walk's figure exceeds the limit, and the measurement of one
+    /// payload part is refused after at most that many steps. A check of the state
+    /// does not walk it, so the limit does not bound the work of a check.
     pub max_source_traversal_steps: usize,
     /// Representation walk depth, independent of CSS semantic nesting.
     pub max_source_traversal_depth: usize,
@@ -790,6 +795,8 @@ pub(crate) struct State {
     pub lists: SharedTable<CssomRuleListId, Vec<CssomRuleId>>,
     pub media: SharedTable<CssomMediaListId, CssMediaQueryList>,
     pub maps: SharedTable<CssomFeatureMapId, CssomFeatureMap>,
+    /// What the records above add up to, which each settle brings up to date.
+    pub figures: crate::figures::Figures,
 }
 impl State {
     pub(crate) fn sheet(&self, id: &CssomSheetId) -> Result<&CssomSheet, CssomError> {
@@ -825,6 +832,7 @@ impl State {
             .inline_context()
             .map_or(&self.context, CssomInlineDeclarationContext::shared_context))
     }
+    #[cfg(test)]
     pub(crate) fn inline_contexts(&self) -> impl Iterator<Item = &CssomContext> {
         self.blocks
             .values()
@@ -947,7 +955,7 @@ impl CssomSnapshot {
         self.rules(&sheet.rules)
     }
 }
-fn lookup<'a, K: Eq + std::hash::Hash, V>(
+fn lookup<'a, K: Eq + std::hash::Hash, V: crate::shared_table::Journaled>(
     map: &'a SharedTable<K, V>,
     id: &K,
     owner: &CssomOwnerId,

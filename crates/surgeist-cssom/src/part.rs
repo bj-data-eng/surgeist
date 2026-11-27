@@ -70,7 +70,7 @@ impl<T> Part<T> {
     pub(crate) fn measurement(
         &self,
         bounds: CssSourceBounds,
-        visit: impl FnOnce(&mut CssSourceRetention<'_>, &T) -> Result<(), CssSourceRetentionError>,
+        visit: impl Fn(&mut CssSourceRetention<'_>, &T) -> Result<(), CssSourceRetentionError>,
     ) -> Result<&CssSourceMeasurement, CssSourceRetentionError> {
         if let Some(measurement) = self.0.measurement.get() {
             return Ok(measurement);
@@ -79,6 +79,7 @@ impl<T> Part<T> {
         crate::state_limits::probe::part_measured();
         let measured =
             CssSourceMeasurement::of(bounds, 0, |sources| visit(sources, &self.0.value))?;
+        crate::operation_work::walked(measured.steps());
         Ok(self.0.measurement.get_or_init(|| measured))
     }
 

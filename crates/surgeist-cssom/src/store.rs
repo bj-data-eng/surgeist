@@ -55,13 +55,14 @@ impl CssomStore {
     /// Each public operation of the store, of its batches and of its rule
     /// handles, and the beginning, finishing and cancelling of a sheet
     /// replacement, runs inside one phase of the host's `cssom` scope and
-    /// charges that scope with what its state census runs and rule formatting
+    /// charges that scope with what its state checks and rule formatting
     /// did:
     /// [`CssWork::CensusRun`](crate::accounting::CssWork::CensusRun),
     /// [`CssWork::CensusObject`](crate::accounting::CssWork::CensusObject),
     /// [`CssWork::CensusEntry`](crate::accounting::CssWork::CensusEntry),
     /// [`CssWork::SourceVisit`](crate::accounting::CssWork::SourceVisit) for
-    /// the steps of the retained-source walks and
+    /// the steps of the retained-source measurements that were not kept from an
+    /// earlier check, and
     /// [`CssWork::RuleFormatNode`](crate::accounting::CssWork::RuleFormatNode).
     /// The charge is made once when the operation returns, or, for an
     /// operation that commits, before each commit publishes and once more for
@@ -131,17 +132,23 @@ impl CssomStore {
             lists: crate::shared_table::SharedTable::new(),
             media: crate::shared_table::SharedTable::new(),
             maps: crate::shared_table::SharedTable::new(),
+            figures: crate::figures::Figures::new(),
         };
         let mut retained = crate::operation_work::Retained::default();
+        let mut state = state;
         let size = crate::operation_work::charged_before_publication(
             state.owner.key(),
             host.as_deref(),
             || {
-                crate::state_limits::Census::of(&state, &limits, std::iter::empty())
-                    .map(|census| census.retained())
+                state.settle(&limits, &[])?;
+                Ok::<_, CssomError>(state.retained())
             },
             |size| retained.changes(*size, true),
         )?;
+        #[cfg(test)]
+        if crate::state_limits::probe::cross_check() {
+            assert_eq!(**state.figures.manifest(), state.input_manifest());
+        }
         crate::operation_work::Acquisition::acquired(host.as_ref(), retained, size)
             .publish(&mut retained);
         Ok(Self {
@@ -212,7 +219,10 @@ impl CssomStore {
             return CssomChanges::FullRecompute(CssomRecomputeReason::FutureRevision);
         }
         if before.revision() == &self.state.revision {
-            return if before.inputs() == self.snapshot().inputs() {
+            return if crate::publication::same_manifest(
+                before.state.figures.manifest(),
+                self.state.figures.manifest(),
+            ) {
                 CssomChanges::Unchanged
             } else {
                 CssomChanges::FullRecompute(CssomRecomputeReason::ContextMismatch)
@@ -227,11 +237,12 @@ impl CssomStore {
             if summary.from != cursor {
                 return CssomChanges::FullRecompute(CssomRecomputeReason::CoverageGap);
             }
-            if result
-                .as_ref()
-                .map_or_else(|| before.inputs(), |v| v.after_inputs.clone())
-                != summary.before_inputs
-            {
+            if !crate::publication::same_manifest(
+                result
+                    .as_ref()
+                    .map_or_else(|| before.state.figures.manifest(), |v| &v.after_inputs),
+                &summary.before_inputs,
+            ) {
                 return CssomChanges::FullRecompute(CssomRecomputeReason::ContextMismatch);
             }
             if let Some(total) = &mut result {
@@ -389,13 +400,13 @@ impl CssomBatch {
         let (owner, host) = (self.staged.owner.key(), self.host.clone());
         let result = crate::operation_work::charged(owner, host.as_deref(), || {
             operation(self).and_then(|value| {
+                let displaced = self
+                    .media_restorations
+                    .values()
+                    .filter_map(crate::media_operations::MediaRestoration::displaced)
+                    .collect::<Vec<_>>();
                 self.staged
-                    .check_limits_with_displaced_media(
-                        &self.limits,
-                        self.media_restorations
-                            .values()
-                            .filter_map(crate::media_operations::MediaRestoration::displaced),
-                    )
+                    .settle(&self.limits, &displaced)
                     .map(|()| value)
                     .map_err(E::from)
             })

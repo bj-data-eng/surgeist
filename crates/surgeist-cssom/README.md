@@ -204,10 +204,18 @@ against the current state's logical quota; this is not process RSS accounting.
 Linked snapshots actively retained by the current context or selector-input
 contexts do count, including their transitive complete retained states. A link's
 selected sheet does not narrow the snapshot's owned data.
-`max_source_traversal_steps` (16 Mi steps) charges payload/state/table visits,
-one step for each source snapshot reached and one for each check of a linked state
-already walked into one cumulative bank; `max_source_traversal_depth`
-(2048) bounds CSS representation walking independently of CSS nesting. These
+`max_source_traversal_steps` (16 Mi steps) is the size of the source walk that
+reaches the retained state: one step for each payload/state/table visit, one for
+each source snapshot reached and one for each check of a linked state already
+walked, with the steps of each linked state counted once. The state is refused when
+that figure exceeds the limit, and so is the measurement of one payload part after
+that many steps; a check of the state does not walk it, so the limit does not bound
+the work of a check. `max_source_traversal_depth`
+(2048) bounds CSS representation walking independently of CSS nesting, and a state
+that several linked inputs reach counts at the deepest of the paths to it. When
+several of the retained-source limits are exceeded at once the refusal is the first
+of the depth, the retained bytes, the steps and the storage; of the linked-input
+depth and visits it is the depth. These
 finite defaults are storage-admission policy, not CSS grammar limits.
 
 Retained construction and owner-attribute results expose
@@ -575,9 +583,13 @@ system OOM. Checked CSS payloads retain their existing provider constraints.
 scope (`surgeist_cssom::accounting`, the CSS accounting schema). Each public
 operation of the store, of its batches and of its rule handles, and the
 beginning, finishing and cancelling of a sheet replacement, runs inside one phase
-of the host's `cssom` scope and charges it once with what its state census runs
-and rule formatting did: census runs, objects and entries examined, source walk
-steps and rule nodes formatted. An operation that another runs adds to the outer
+of the host's `cssom` scope and charges it once with what its state checks
+and rule formatting did: census runs (one for each check of the state), the
+records those checks measured (`CensusObject`), the entry lists their measurement
+examined (`CensusEntry`), the source walk steps they measured (`SourceVisit`, not
+those of a kept measurement) and rule nodes formatted. A check measures the records
+changed since the last one, so what an edit charges does not depend on how many
+rules the store holds. An operation that another runs adds to the outer
 charge, and a commit inside an operation charges the work so far before it
 publishes, so a host refusal (`CssomError::Accounting`) publishes nothing; a batch
 operation it stops poisons the batch. When the host refuses both a finished
@@ -671,14 +683,13 @@ the two smaller sizes, the smallest `max_objects`, `max_entries` and
 `max_string_bytes` at which creation still succeeds. The limits are raised so
 that every size is admitted. Each case also runs on a store built with a host
 of an operation without caps, and those rows give what one call charges: census
-runs, objects, entries and source walk steps.
+runs, records measured, entry lists examined and source walk steps measured.
 
-Adoption checks the limits after each adopted rule. The first check of an
-adoption is the census of the whole state; each later check extends that census
-with the objects the rule inserted, so creating a sheet costs time in proportion
-to its rules. The census of the whole state also runs once at the end of each
-operation and once at commit, so an edit costs time in proportion to the rules
-the store retains. The 100 000-rule creation holds about 1.7 GB while it runs.
+Adoption checks the limits after each adopted rule, and every operation and the
+commit check the state once more. A check measures only the records changed since
+the last one and tests the figures the state keeps, so creating a sheet costs time
+in proportion to its rules and an edit does not depend on how many rules the store
+retains. The 100 000-rule creation holds about 1.7 GB while it runs.
 
 ```sh
 cargo bench --offline --locked -j 1 -p surgeist-cssom --bench store_edits

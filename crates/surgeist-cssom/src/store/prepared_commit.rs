@@ -239,12 +239,14 @@ fn prepare_data(store: &mut CssomStore, mut batch: CssomBatch) -> Result<Ready, 
     // Only the selected rows cross the publication boundary.
     batch.discard_media_restorations();
     let reserved = store.replacement_reservations(batch.terminal_replacement.as_ref())?;
-    let retained = crate::state_limits::Census::of(
-        &batch.staged,
-        &store.replacement_limits(reserved)?,
-        std::iter::empty(),
-    )?
-    .retained();
+    let replacement_limits = store.replacement_limits(reserved)?;
+    #[cfg(test)]
+    if !crate::state_limits::probe::unsettled_publication() {
+        batch.staged.settle(&replacement_limits, &[])?;
+    }
+    #[cfg(not(test))]
+    batch.staged.settle(&replacement_limits, &[])?;
+    let retained = batch.staged.retained();
     if !batch.changed() {
         let (effects, effect_successor) =
             store.reserve_owner_effects(&batch, &store.state.revision)?;
@@ -282,25 +284,43 @@ fn prepare_data(store: &mut CssomStore, mut batch: CssomBatch) -> Result<Ready, 
         owner: store.state.owner.clone(),
         value: revision,
     };
+    // A state is published only once its figures account for every record: no table
+    // journal is left and no settle was refused. Nothing the operations do leaves one,
+    // so a refusal here stops a commit that could publish figures that are not the
+    // state's, before it holds an owner effect's reservation.
+    if !batch.staged.is_settled() {
+        return Err(CssomError::BatchAborted);
+    }
     let (effects, effect_successor) = store.reserve_owner_effects(&batch, &effect_revision)?;
-    let before = store.snapshot();
     let mut next = batch.staged;
     next.revision = CssomRevision {
         owner: next.owner.clone(),
         value: revision,
     };
+    #[cfg(test)]
+    if crate::state_limits::probe::cross_check()
+        && !crate::state_limits::probe::unsettled_publication()
+    {
+        // The comparison builds the manifest of every record, which no commit does.
+        let built = crate::state_limits::probe::manifests();
+        assert_eq!(
+            **next.figures.manifest(),
+            next.input_manifest(),
+            "the manifest the settles keep is the manifest of every record"
+        );
+        crate::state_limits::probe::set_manifests(built);
+    }
+    let before_inputs = store.state.figures.manifest().clone();
+    let after_inputs = next.figures.manifest().clone();
     let next = Arc::new(next);
-    let after = CssomSnapshot {
-        state: next.clone(),
-    };
     let summary = CssomChangeSummary {
         owner: store.state.owner.clone(),
         from: store.state.revision.clone(),
         to: next.revision.clone(),
         categories: batch.categories,
         affected: batch.affected,
-        before_inputs: before.inputs(),
-        after_inputs: after.inputs(),
+        before_inputs,
+        after_inputs,
         full_recompute: batch.full_recompute,
     };
     let history_summary = if store.limits.summary_history > 0 {

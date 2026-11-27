@@ -16,7 +16,8 @@
 //!   by the reference, under the default limits and, for each operation, under
 //!   limits around the smallest value that admits what the operation leaves.
 use super::{Field, fingerprint, version};
-use crate::state_limits::{Census, probe, reference};
+use crate::state_limits::verified::{WholeFigures, is_decision};
+use crate::state_limits::{probe, reference};
 use crate::{model::State, *};
 use std::cell::Cell;
 use std::sync::{Arc, atomic::AtomicBool};
@@ -51,45 +52,19 @@ fn tally(update: impl FnOnce(&mut Tally)) {
 }
 
 // ---------------------------------------------------------------------------
-// One census compared with the reference.
+// One settle compared with the reference.
 
 #[derive(Debug, Eq, PartialEq)]
 enum Answer {
-    Admitted(crate::state_limits::Figures),
+    Admitted(WholeFigures),
     Refused(String),
 }
 
-/// An answer and the work the census charged to get it.
-#[derive(Debug, Eq, PartialEq)]
-struct Measured {
-    answer: Answer,
-    work: probe::Run,
-}
-
-fn measured(state: &State, limits: &CssomLimits, displaced: &[&CssMediaQueryList]) -> Measured {
-    probe::set_reference(false);
-    let census = Census::of(state, limits, displaced.iter().copied());
-    let work = probe::last_run().expect("a census run is recorded");
-    let answer = match census {
+/// The answer of the reference census of the whole state.
+fn frozen(state: &State, limits: &CssomLimits, displaced: &[&CssMediaQueryList]) -> Answer {
+    match reference::of(state, limits, displaced.iter().copied()).result {
         Ok(census) => Answer::Admitted(census.figures()),
         Err(error) => Answer::Refused(format!("{error:?}")),
-    };
-    Measured { answer, work }
-}
-
-fn frozen(state: &State, limits: &CssomLimits, displaced: &[&CssMediaQueryList]) -> Measured {
-    let run = reference::of(state, limits, displaced.iter().copied());
-    let answer = match run.result {
-        Ok(census) => Answer::Admitted(census.figures()),
-        Err(error) => Answer::Refused(format!("{error:?}")),
-    };
-    Measured {
-        answer,
-        work: probe::Run {
-            examined: run.examined,
-            counted: run.counted,
-            steps: run.steps,
-        },
     }
 }
 
@@ -101,15 +76,46 @@ fn limits_with(fields: &[(Field, u64)]) -> CssomLimits {
     limits
 }
 
-/// Compares the census with the reference under `limits`.
+/// Settles `state` from nothing under `limits`, which compares its answer with the
+/// reference's: the figures when both admit it, and the refusal otherwise, a
+/// decision of the settle where they differ.
 fn agree(state: &State, displaced: &[&CssMediaQueryList], fields: &[(Field, u64)], at: &str) {
     let limits = limits_with(fields);
     let reference = frozen(state, &limits, displaced);
-    let census = measured(state, &limits, displaced);
-    assert_eq!(census, reference, "{at}: limits {fields:?}");
+    let mut fresh = state.unsettled_copy();
+    probe::set_cross_check(true);
+    let settled = fresh.settle(&limits, displaced);
+    match (&settled, &reference) {
+        (Ok(()), Answer::Admitted(figures)) => {
+            let mut kept = fresh.whole_figures(displaced);
+            if !displaced.is_empty() {
+                // The displaced lists leave the ledger and the walk once the check is done.
+                kept.retained_bytes = figures.retained_bytes;
+                kept.steps = figures.steps;
+            }
+            assert_eq!(&kept, figures, "{at}: limits {fields:?}");
+        }
+        (Err(error), Answer::Refused(whole)) => {
+            let kept = format!("{error:?}");
+            assert!(
+                &kept == whole || (is_decision(&kept) && is_decision(whole)),
+                "{at}: limits {fields:?}: settled {kept}, reference {whole}"
+            );
+        }
+        (Err(error), Answer::Admitted(_)) => {
+            // A state several linked inputs reach, deeper than the reference's walk found it.
+            assert!(
+                format!("{error:?}").contains("retained source traversal depth"),
+                "{at}: limits {fields:?}: settled {error:?}, reference admits"
+            );
+        }
+        (Ok(()), Answer::Refused(whole)) => {
+            panic!("{at}: limits {fields:?}: settled admits, reference refuses {whole}")
+        }
+    }
     tally(|tally| {
         tally.comparisons += 1;
-        tally.refusals += usize::from(matches!(reference.answer, Answer::Refused(_)));
+        tally.refusals += usize::from(matches!(reference, Answer::Refused(_)));
     });
 }
 
@@ -123,7 +129,7 @@ fn smallest(
 ) -> Option<u64> {
     let admits = |value: u64| {
         matches!(
-            frozen(state, &limits_with(&[(field, value)]), displaced).answer,
+            frozen(state, &limits_with(&[(field, value)]), displaced),
             Answer::Admitted(_)
         )
     };
@@ -145,8 +151,7 @@ fn smallest(
 /// The smallest value of each limit the census checks at which the reference
 /// admits `state`, or an empty list when the default limits refuse it.
 fn thresholds(state: &State, displaced: &[&CssMediaQueryList]) -> Vec<(Field, u64)> {
-    let default = frozen(state, &CssomLimits::default(), displaced);
-    let Answer::Admitted(figures) = default.answer else {
+    let Answer::Admitted(figures) = frozen(state, &CssomLimits::default(), displaced) else {
         return Vec::new();
     };
     let to_u64 = |value: usize| u64::try_from(value).unwrap_or(u64::MAX);
@@ -165,9 +170,27 @@ fn thresholds(state: &State, displaced: &[&CssMediaQueryList]) -> Vec<(Field, u6
     .collect()
 }
 
-/// Compares the census with the reference under the default limits, under
-/// limits around each threshold and under pairs of them.
-fn compare_state(state: &State, displaced: &[&CssMediaQueryList], at: &str) {
+/// Compares the settle with the reference under the default limits, under
+/// limits around each threshold and under pairs of them, and, when `maintained`, the
+/// figures the state keeps with those of the reference.
+fn compare_state(state: &State, displaced: &[&CssMediaQueryList], at: &str, maintained: bool) {
+    if maintained {
+        assert_eq!(
+            **state.figures.manifest(),
+            state.input_manifest(),
+            "{at}: the manifest kept"
+        );
+    }
+    if maintained
+        && displaced.is_empty()
+        && let Answer::Admitted(figures) = frozen(state, &CssomLimits::default(), displaced)
+    {
+        assert_eq!(
+            state.whole_figures(displaced),
+            figures,
+            "{at}: the figures kept"
+        );
+    }
     agree(state, displaced, &[], at);
     let thresholds = thresholds(state, displaced);
     let below = |(field, value): &(Field, u64)| (*field, value.saturating_sub(1));
@@ -370,6 +393,15 @@ fn set_property(
 }
 
 fn inline_context(owner: &str, revision: u64) -> CssomInlineDeclarationContext {
+    inline_context_linking(owner, revision, Vec::new())
+}
+
+/// An inline declaration context that links the snapshots `linked`.
+fn inline_context_linking(
+    owner: &str,
+    revision: u64,
+    linked: Vec<CssomLinkedInput>,
+) -> CssomInlineDeclarationContext {
     let support = CssomDeclarationSupport::try_new(
         ["width", "height"]
             .map(|name| {
@@ -421,7 +453,7 @@ fn inline_context(owner: &str, revision: u64) -> CssomInlineDeclarationContext {
                 },
             },
         ],
-        linked: Vec::new(),
+        linked,
     })
     .unwrap()
 }
@@ -636,6 +668,29 @@ fn operations() -> Vec<(&'static str, Operation)> {
             b.create_inline_declarations(inline_context("element", 1))
                 .map(drop)
         }),
+        ("create inline declarations linking a snapshot", |b, _| {
+            let linked = linked_donor_context().linked;
+            b.create_inline_declarations(inline_context_linking("linking", 1, linked))
+                .map(drop)
+        }),
+        (
+            "link a snapshot from an inline declaration context",
+            |b, _| {
+                let block = inline_block(&b.staged)?;
+                let owner = b
+                    .staged
+                    .block(&block)?
+                    .inline_context()
+                    .map(|context| context.owner().identity.clone())
+                    .ok_or(CssomError::WrongKind)?;
+                let linked = linked_donor_context().linked;
+                b.update_inline_declaration_context(
+                    &block,
+                    inline_context_linking(&owner, 3, linked),
+                )
+                .map(drop)
+            },
+        ),
         ("create and edit inline declarations", |b, _| {
             let ticket = b.create_inline_declarations(inline_context("edited", 1))?;
             let block = b.created_block_id(&ticket)?.clone();
@@ -720,7 +775,6 @@ fn run_scenario(
     compare: bool,
 ) -> (Transcript, Vec<Vec<(Field, u64)>>) {
     let table = operations();
-    probe::set_whole_state(reference_census);
     probe::set_reference(reference_census);
     let mut store = fixture();
     let mut lines = Vec::new();
@@ -779,7 +833,12 @@ fn run_scenario(
         lines.extend(fingerprint(&batch.staged));
         if compare && !reference_census {
             let displaced = displaced_of(&batch);
-            compare_state(&batch.staged, &displaced, &format!("{name}, staged"));
+            compare_state(
+                &batch.staged,
+                &displaced,
+                &format!("{name}, staged"),
+                result.is_ok(),
+            );
             thresholds_after.push(thresholds(&batch.staged, &displaced));
         }
         if result.is_ok() {
@@ -788,15 +847,29 @@ fn run_scenario(
             drop(committed);
             lines.extend(fingerprint(&store.state));
             if compare && !reference_census {
-                compare_state(&store.state, &[], &format!("{name}, published"));
+                compare_state(&store.state, &[], &format!("{name}, published"), true);
             }
         }
         store.limits = original;
         tally(|tally| tally.operations += 1);
     }
-    probe::set_whole_state(false);
     probe::set_reference(false);
     (Transcript { lines }, thresholds_after)
+}
+
+/// Asserts that two transcripts are equal, or differ only on the lines of operations
+/// refused for a limit whose choice among several that are exceeded is a decision of the settle.
+fn assert_transcripts_agree(settled: &Transcript, reference: &Transcript, at: &str) {
+    if settled == reference {
+        return;
+    }
+    assert_eq!(settled.lines.len(), reference.lines.len(), "{at}: lines");
+    for (kept, whole) in settled.lines.iter().zip(&reference.lines) {
+        assert!(
+            kept == whole || (is_decision(kept) && is_decision(whole)),
+            "{at}:\n  settled   {kept}\n  reference {whole}"
+        );
+    }
 }
 
 /// Runs the scenario with the census the crate runs and with the reference,
@@ -805,7 +878,11 @@ fn check_scenario(label: &str, chosen: &[usize]) {
     tally(|tally| tally.scenarios += 1);
     let (crate_run, thresholds) = run_scenario(chosen, false, None, true);
     let (reference_run, _) = run_scenario(chosen, true, None, false);
-    assert_eq!(crate_run, reference_run, "{label}: default limits");
+    assert_transcripts_agree(
+        &crate_run,
+        &reference_run,
+        &format!("{label}: default limits"),
+    );
     let table = operations();
     for (position, index) in chosen.iter().enumerate() {
         let name = table[*index].0;
@@ -821,13 +898,22 @@ fn check_scenario(label: &str, chosen: &[usize]) {
     }
     for (position, fields) in thresholds.iter().enumerate() {
         for (index, (field, value)) in fields.iter().enumerate() {
+            // A store's limits are fixed for its life, so a settle tests the conditions of
+            // the single records it touches: tightening the limit that bounds one record, the
+            // input bytes, for one operation of a store built under a looser one asks what
+            // no store is asked. Stores built under it are compared by the scenarios of the
+            // single and paired limits.
+            if matches!(field, Field::InputBytes) {
+                continue;
+            }
             for value in [value.saturating_sub(1), *value] {
                 let tight = [(*field, value)];
                 let ours = run_scenario(chosen, false, Some((position, &tight)), false).0;
                 let theirs = run_scenario(chosen, true, Some((position, &tight)), false).0;
-                assert_eq!(
-                    ours, theirs,
-                    "{label}: operation {position}, limit {field:?} = {value} ({index})"
+                assert_transcripts_agree(
+                    &ours,
+                    &theirs,
+                    &format!("{label}: operation {position}, limit {field:?} = {value} ({index})"),
                 );
                 tally(|tally| tally.comparisons += 1);
             }
@@ -897,6 +983,16 @@ fn every_class_of_edit_leaves_a_state_the_reference_census_agrees_with() {
             "create and retire inline declarations",
         ],
         &[
+            "create inline declarations linking a snapshot",
+            "update an inline declaration context",
+            "retire inline declarations",
+        ],
+        &[
+            "create inline declarations",
+            "link a snapshot from an inline declaration context",
+            "update an inline declaration context",
+        ],
+        &[
             "update the context without a linked snapshot",
             "update the context linking a snapshot",
         ],
@@ -940,7 +1036,11 @@ fn seeded_sequences_of_edits_leave_states_the_reference_census_agrees_with() {
         let chosen = (0..8).map(|_| generator.below(count)).collect::<Vec<_>>();
         let (crate_run, _) = run_scenario(&chosen, false, None, true);
         let (reference_run, _) = run_scenario(&chosen, true, None, false);
-        assert_eq!(crate_run, reference_run, "seed {seed:#x}: {chosen:?}");
+        assert_transcripts_agree(
+            &crate_run,
+            &reference_run,
+            &format!("seed {seed:#x}: {chosen:?}"),
+        );
         tally(|tally| tally.scenarios += 1);
     }
     let tally = TALLY.with(Cell::get);
@@ -979,4 +1079,39 @@ fn the_fixture_retains_three_distinct_source_snapshots_and_names_each_edit_once(
     }
     let mut names = std::collections::HashSet::new();
     assert!(operations().iter().all(|(name, _)| names.insert(*name)));
+}
+
+#[test]
+fn an_edit_of_a_block_that_keeps_its_linked_context_leaves_the_linked_states_be() {
+    probe::set_cross_check(true);
+    let mut store = fixture();
+    let mut batch = store
+        .batch(CssomEditGuard::from_snapshot(&store.snapshot()))
+        .unwrap();
+    let linked = linked_donor_context().linked;
+    probe::reset();
+    let ticket = batch
+        .create_inline_declarations(inline_context_linking("linking", 1, linked.clone()))
+        .unwrap();
+    let block = batch.created_block_id(&ticket).unwrap().clone();
+    let created = probe::roots();
+    // The linked state and its closure join the states the walk reaches.
+    assert!(created > 0, "{created}");
+    // Changing a declaration of the block settles it again with the context it holds.
+    set_property(&mut batch, &block, "width", "4px").unwrap();
+    assert_eq!(probe::roots(), created, "the context is the same");
+    store.commit(batch).unwrap();
+    // A second batch does the same to the published block.
+    let mut batch = store
+        .batch(CssomEditGuard::from_snapshot(&store.snapshot()))
+        .unwrap();
+    probe::reset();
+    set_property(&mut batch, &block, "width", "5px").unwrap();
+    assert_eq!(probe::roots(), 0);
+    // A new context takes the linked states out and brings them in again.
+    batch
+        .update_inline_declaration_context(&block, inline_context_linking("linking", 2, linked))
+        .unwrap();
+    assert!(probe::roots() >= 2 * created, "{}", probe::roots());
+    store.commit(batch).unwrap();
 }

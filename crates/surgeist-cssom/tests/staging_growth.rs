@@ -51,6 +51,7 @@ fn block(snapshot: &CssomSnapshot, sheet: &CssomSheetId, index: usize) -> CssomB
 // test body inside these global allocation regions.
 #[test]
 fn index_and_touched_payload_costs_are_distinct_from_unrelated_payloads() {
+    let mut repeats = Vec::new();
     for count in [1, 16, 128] {
         let mut store = CssomStore::new(Default::default(), Default::default()).unwrap();
         let mut setup = batch(&store);
@@ -76,16 +77,26 @@ fn index_and_touched_payload_costs_are_distinct_from_unrelated_payloads() {
         ));
         assert_eq!(store.snapshot().revision(), before.revision());
         assert!(opened.bytes_allocated <= 4096);
-        // The repeated edit runs one census, whose source collector records one
-        // snapshot per sheet. Each growth step of its bank and identity index
-        // allocates 8 + 16 bytes for each snapshot of room, and the steps sum to
-        // twice the final room: 48 bytes for each snapshot.
-        assert!(repeated.bytes_allocated <= 48 * count + 1024);
+        // The repeated edit settles the one sheet record it changes: the journal holds what
+        // the record contributed, a few kilobytes, and the record itself is not copied.
+        // Nothing in it grows with the sheets the store holds, whose source snapshots the
+        // ledger of retained snapshots holds.
+        assert!(
+            repeated.bytes_allocated <= 4096,
+            "{} bytes for the repeated edit at {count} sheets",
+            repeated.bytes_allocated
+        );
+        repeats.push(repeated.bytes_allocated);
         report("sheet_index", count, "open", opened);
         // This first mutation legitimately copies the whole touched sheet index.
         report("sheet_index", count, "first_flag_stage", first);
         report("sheet_index", count, "restore_exclusive_record", repeated);
     }
+    // The same edit allocates the same at every number of sheets.
+    assert!(
+        repeats.iter().all(|bytes| *bytes == repeats[0]),
+        "bytes allocated by the repeated edit at 1, 16 and 128 sheets: {repeats:?}"
+    );
 
     for declarations in [1, 64, 256] {
         let mut source = String::from(".target { width: 1px; } .unrelated {");

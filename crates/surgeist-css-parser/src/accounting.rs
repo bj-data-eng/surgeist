@@ -102,11 +102,11 @@ surgeist_ledger::dimensions! {
         ColorInputUnit,
         /// One action of a colour driver.
         ColorAction,
-        /// One run of the CSSOM state census.
+        /// One check of the CSSOM state: a settle of the records changed since the last one.
         CensusRun,
-        /// One object the CSSOM state census examined.
+        /// One record a CSSOM state check measured.
         CensusObject,
-        /// One entry the CSSOM state census examined.
+        /// One entry list the measurement of a record examined.
         CensusEntry,
         /// One node formatted by CSSOM rule serialization.
         RuleFormatNode,
