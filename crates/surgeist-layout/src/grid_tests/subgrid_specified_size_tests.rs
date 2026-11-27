@@ -850,3 +850,85 @@ scalar_tests!(
     stacking_axis_subgrid_request_keeps_its_specified_height,
     assert_stacking_axis_subgrid_request_keeps_its_sizes
 );
+
+// A bordered subgrid and a percentage-sized grandchild in the inherited axis.
+// The grandchild's percentage resolves against the area its tracks span less
+// the subgrid's border (CSS Grid 2, section 9: the edge border acts as extra
+// margin on its items): with a 100px area and 3px borders a 50% grandchild is
+// 47px (50% of 94) at (3, 3), as WebKit (Safari 26.5, Playwright build 2327)
+// also lays it out. With a scrollbar the pinned text does not say how the
+// gutter enters that basis, so only what must hold either way is asserted: a
+// gutter that is reserved (`overflow: scroll`) and one that appears because the
+// content overflows (`overflow: auto`, settled in a second scrollbar pass)
+// give the same extent, which is no larger than the gutter-free one. (WebKit
+// leaves the gutter out of the basis, 47px; the engine takes it out once,
+// 39.5px.)
+fn percentage_grandchild_extent<S: LayoutScalar>(
+    subgrid_columns: bool,
+    overflow: Overflow,
+    overflowing: bool,
+) -> f64 {
+    let mut root = NodeInputOf::<S> {
+        display: Display::Grid,
+        ..NodeInputOf::default()
+    };
+    let mut style = NodeInputOf::<S> {
+        display: Display::Grid,
+        grid_column: lines(1, 2),
+        grid_row: lines(1, 2),
+        border: Edges::all(LengthOf::px(S::from_f64(3.0))),
+        overflow: ComputedOverflow::try_new(overflow, overflow).unwrap(),
+        scrollbar_width: ScrollbarWidthOf::try_new(S::from_f64(15.0)).unwrap(),
+        ..NodeInputOf::default()
+    };
+    let mut leaf = NodeInputOf::<S>::default();
+    let other = if overflowing { 100.0 } else { 10.0 };
+    if subgrid_columns {
+        // The inherited axis is the width. A 30px-high container makes a
+        // 100px-high grandchild overflow it.
+        style.grid_template_columns = subgrid_track_of();
+        if overflowing {
+            style.size.height = PreferredSizeOf::px(S::from_f64(30.0));
+        }
+        leaf.size = Size::new(
+            PreferredSizeOf::percent(S::from_f64(0.5)),
+            PreferredSizeOf::px(S::from_f64(other)),
+        );
+    } else {
+        // The inherited axis is the height of a 100px-high Grid.
+        root.size.height = PreferredSizeOf::px(S::from_f64(100.0));
+        style.grid_template_rows = subgrid_track_of();
+        if overflowing {
+            style.size.width = PreferredSizeOf::px(S::from_f64(30.0));
+        }
+        leaf.size = Size::new(
+            PreferredSizeOf::px(S::from_f64(other * 2.0)),
+            PreferredSizeOf::percent(S::from_f64(0.5)),
+        );
+    }
+    let tree = PublicLayoutTreeOf::<S>::new()
+        .style(0, root)
+        .style(1, style)
+        .style(2, leaf)
+        .children(0, [1])
+        .children(1, [2]);
+    let (x, y, width, height) = used_geometry(&tree, 3)[2];
+    assert_eq!((x, y), (3.0, 3.0), "grandchild position");
+    if subgrid_columns { width } else { height }
+}
+
+fn assert_percentage_grandchild_basis_in_a_bordered_subgrid<S: LayoutScalar>() {
+    for subgrid_columns in [true, false] {
+        let gutter_free =
+            percentage_grandchild_extent::<S>(subgrid_columns, Overflow::Visible, false);
+        assert_eq!(gutter_free, 47.0, "columns {subgrid_columns}, no scrollbar");
+        let reserved = percentage_grandchild_extent::<S>(subgrid_columns, Overflow::Scroll, false);
+        let settled = percentage_grandchild_extent::<S>(subgrid_columns, Overflow::Auto, true);
+        assert_eq!(reserved, settled, "columns {subgrid_columns}, gutter paths");
+        assert!(reserved <= gutter_free, "columns {subgrid_columns}, gutter");
+    }
+}
+scalar_tests!(
+    percentage_grandchild_of_a_bordered_subgrid_resolves_against_the_area_less_its_border,
+    assert_percentage_grandchild_basis_in_a_bordered_subgrid
+);

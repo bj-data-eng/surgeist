@@ -3125,9 +3125,6 @@ struct InheritedGridAxis<S: LayoutScalar = DefaultScalar, Node = ()> {
     parent_start: usize,
     parent_end: usize,
     reversed: bool,
-    /// The content-box extent along this axis when the parent's allocation of
-    /// the span is final; None while the tracks are provisional.
-    content_extent: Option<S>,
 }
 
 impl<S: LayoutScalar, Node> InheritedGridAxis<S, Node> {
@@ -3146,7 +3143,6 @@ impl<S: LayoutScalar, Node> InheritedGridAxis<S, Node> {
             parent_start: self.parent_start,
             parent_end: self.parent_end,
             reversed: self.reversed,
-            content_extent: self.content_extent,
         }
     }
 }
