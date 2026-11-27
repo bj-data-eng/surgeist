@@ -153,6 +153,9 @@ impl Draft {
         self.source_step(cancel)?;
         let receiver = self.resolve(edit.receiver().into())?;
         match edit {
+            Edit::InputFiles { files, .. } => {
+                self.assign_input_files(receiver, files.as_ref(), cancel)
+            }
             Edit::InputStep {
                 direction, count, ..
             } => self.step_input(receiver, *direction, *count, limits, cancel),

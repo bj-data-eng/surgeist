@@ -3095,6 +3095,7 @@ struct Draft {
     base_custody: transaction::StateCustody,
     input_captures: bank::Bank<source::input::InputEntry>,
     input_captures_custody: bank::BankCustody<source::input::InputEntry>,
+    source_file_argument: Option<bank::ObjectCustody>,
     custody_registry: bank::CustodyRegistry,
     /// The blocks this transaction listed in the registry, which it takes back unless it publishes.
     blocks: Arc<block_custody::BlockAdoptions>,
@@ -3607,6 +3608,7 @@ impl Draft {
             base_custody: dom.state_custody.clone(),
             input_captures: bank::Bank::default(),
             input_captures_custody: bank::BankCustody::default(),
+            source_file_argument: None,
             blocks: block_custody::BlockAdoptions::new(registry.clone()),
             custody_registry: registry,
             names,

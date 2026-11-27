@@ -210,14 +210,12 @@ pub(super) fn append_native_input_value(
             }
         }
     }
-    let files = state
-        .selected_files_empty
-        .then_some(surgeist_html::elements::input::HtmlInputFileSelection::Empty);
+    let filename = state.selected_files_empty.then_some(&[][..]);
     let units = state
         .flags
         .input_type()
         .value_mode()
-        .readback(internal, content, files)
+        .readback(internal, content, filename)
         .ok_or(SessionError::InputMetadataUnavailable)?;
     destination.extend_units(units, c)?;
     Ok(())

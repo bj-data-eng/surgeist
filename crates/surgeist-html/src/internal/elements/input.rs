@@ -135,29 +135,23 @@ pub enum HtmlInputValueMode {
     Filename,
 }
 impl HtmlInputValueMode {
-    /// Selects the native getter's actual storage; specified empty content wins.
-    /// Filename requires an established selected-resource fact. This borrowed
-    /// rule owns no resource acquisition or identity qualification.
+    /// Selects the native getter's actual storage. Specified empty content wins.
+    /// In Filename mode, `filename` is the caller's established value spelling.
+    /// An empty spelling denotes an empty selection. `None` denotes unavailable
+    /// selection evidence.
     pub fn readback<'a>(
         self,
         internal: &'a [u16],
         content: Option<&'a [u16]>,
-        files: Option<HtmlInputFileSelection>,
+        filename: Option<&'a [u16]>,
     ) -> Option<&'a [u16]> {
         match self {
             Self::Value => Some(internal),
             Self::Default => Some(content.unwrap_or(&[])),
             Self::DefaultOn => Some(content.unwrap_or(&[0x6f, 0x6e])),
-            Self::Filename => files.map(|HtmlInputFileSelection::Empty| &[] as &[u16]),
+            Self::Filename => filename,
         }
     }
-}
-/// An established empty selection, distinct from value content or a synthetic path.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlInputFileSelection {
-    /// No file is selected. This is the only established selection; the getter reads it as the
-    /// empty string and the setter produces it for an empty write.
-    Empty,
 }
 /// Filename setter refusal for a nonempty proposed value. No files are created.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -172,16 +166,12 @@ impl std::fmt::Display for HtmlInputFilenameInvalidState {
     }
 }
 impl std::error::Error for HtmlInputFilenameInvalidState {}
-/// The `Filename`-mode setter rule: an empty proposed value empties the selected files, so it
-/// returns the `Empty` selection. Any nonempty value is refused with
-/// `HtmlInputFilenameInvalidState`, which corresponds to the standard's `InvalidStateError`. The
-/// value is a slice of exact UTF-16 code units, and nothing is allocated or retained. See HTML877d
-/// #dom-input-value-filename.
-pub fn input_filename_setter(
-    value: &[u16],
-) -> Result<HtmlInputFileSelection, HtmlInputFilenameInvalidState> {
+/// Qualifies a Filename-mode write. Success authorizes the caller to clear the selected files.
+/// A nonempty UTF-16 value returns `HtmlInputFilenameInvalidState`, which corresponds to
+/// `InvalidStateError` in HTML877d #dom-input-value-filename.
+pub fn input_filename_setter(value: &[u16]) -> Result<(), HtmlInputFilenameInvalidState> {
     if value.is_empty() {
-        Ok(HtmlInputFileSelection::Empty)
+        Ok(())
     } else {
         Err(HtmlInputFilenameInvalidState)
     }

@@ -1,7 +1,7 @@
 //! Attached Input accessors observe the canonical value modes and live flags.
 
 use super::*;
-use surgeist_html::{attributes::HtmlInputType, elements::input::HtmlInputFileSelection};
+use surgeist_html::attributes::HtmlInputType;
 
 pub(super) fn attached_input_exposes_canonical_value_modes_and_checkedness() {
     let (session, top) = setup();
@@ -210,10 +210,7 @@ pub(super) fn attached_input_exposes_canonical_value_modes_and_checkedness() {
     assert!(input(&before, other).state().flags().checkedness());
     let empty_file = input(&before, file).state();
     assert_eq!(empty_file.input_type(), HtmlInputType::File);
-    assert_eq!(
-        empty_file.selected_files(),
-        Some(HtmlInputFileSelection::Empty)
-    );
+    assert!(empty_file.selected_files().unwrap().is_empty());
 
     observe(
         &mut host,

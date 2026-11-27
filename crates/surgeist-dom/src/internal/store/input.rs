@@ -25,6 +25,48 @@ impl Charge<HtmlWork, HtmlResource> for StepMeter<'_> {
 }
 
 impl Draft {
+    pub(super) fn assign_input_files(
+        &mut self,
+        key: Key,
+        files: Option<&files::DomFileList>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        let state = self.input_state(key)?;
+        let Some(files) = files.filter(|_| state.input_type() == HtmlInputType::File) else {
+            return Ok(());
+        };
+        if state.selected_files() != Some(files) {
+            self.with_input_state(key, cancel, |state| state.files = Some(files.clone()))?;
+        }
+        Ok(())
+    }
+
+    fn empty_input_files(
+        &self,
+        cancel: &AtomicBool,
+    ) -> Result<(files::DomFileList, bank::ObjectCustody), DomError> {
+        let budget = source::formation::Formation::new(self, cancel)?;
+        files::DomFileList::controlled_empty(
+            self.custody_registry(),
+            budget.as_ref(),
+            &mut |usage| self.admit_custody_usage(usage, cancel),
+        )
+    }
+
+    fn clear_input_files(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        if self
+            .input_state(key)?
+            .selected_files()
+            .is_some_and(|files| !files.is_empty())
+        {
+            let (empty, _control) = self.empty_input_files(cancel)?;
+            self.with_input_state(key, cancel, |state| state.files = Some(empty))?;
+        }
+        Ok(())
+    }
+
     pub(super) fn step_input(
         &mut self,
         key: Key,
@@ -430,11 +472,9 @@ impl Draft {
             }
             HtmlInputValueSetterStart::SetFilename => {
                 self.source_step(cancel)?;
-                let files =
-                    surgeist_html::elements::input::input_filename_setter(value.code_units())
-                        .map_err(|_| DomError::InputFilenameInvalidState)?;
-                self.with_input_state(key, cancel, |state| state.files = files)?;
-                Ok(())
+                surgeist_html::elements::input::input_filename_setter(value.code_units())
+                    .map_err(|_| DomError::InputFilenameInvalidState)?;
+                self.clear_input_files(key, cancel)
             }
             HtmlInputValueSetterStart::SetCurrentValue(flags) => {
                 let old = self.input_shared(&self.input_state(key)?.current, cancel)?;
@@ -539,11 +579,7 @@ impl Draft {
                     self.with_input_state(key, cancel, |state| state.flags = flags)?;
                     self.input_radio_normalize(key, HtmlRadioTrigger::Checkedness, cancel)?;
                 }
-                Effect::EmptySelectedFiles => {
-                    self.with_input_state(key, cancel, |state| {
-                        state.files = surgeist_html::elements::input::HtmlInputFileSelection::Empty
-                    })?;
-                }
+                Effect::EmptySelectedFiles => self.clear_input_files(key, cancel)?,
                 Effect::Sanitize(_) => self.input_sanitize(key, limits, cancel)?,
             }
         }
@@ -569,7 +605,16 @@ impl Draft {
             state.current.len(),
         );
         let flags = state.flags.type_changed(next);
-        self.with_input_state(key, cancel, |state| state.flags = flags)?;
+        let (files, _control) = if next == HtmlInputType::File {
+            let (files, control) = self.empty_input_files(cancel)?;
+            (Some(files), Some(control))
+        } else {
+            (None, None)
+        };
+        self.with_input_state(key, cancel, |state| {
+            state.flags = flags;
+            state.files = files;
+        })?;
         if next != HtmlInputType::Email {
             self.with_input_state(key, cancel, |state| state.email_count = None)?;
         }

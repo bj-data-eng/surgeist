@@ -1262,7 +1262,7 @@ pub fn surgeist_html_parser::HtmlParseMetadata<'a>::form_parser_inserted(&self) 
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_creation_writeback(&self) -> core::option::Option<bool>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_cursor(&self) -> core::option::Option<usize>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_email_value_count(&self) -> core::option::Option<usize>
-pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_file_selection(&self) -> core::option::Option<surgeist_html::internal::elements::input::HtmlInputFileSelection>
+pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_file_selection(&self) -> core::option::Option<surgeist_html_parser::HtmlParsedEmptyFileSelection>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_flags(&self) -> core::option::Option<&'a surgeist_html::internal::elements::input::HtmlInputFlags>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_image_coordinate(&self) -> core::option::Option<surgeist_html::internal::elements::input::HtmlInputImageCoordinate>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_image_source(&self) -> core::option::Option<surgeist_html_parser::HtmlInputImageSource<'a>>
@@ -1414,6 +1414,7 @@ pub fn surgeist_html_parser::HtmlParseUsage::largest_atomic_layout(&self) -> u64
 impl surgeist_html_parser::HtmlParseUsage
 pub fn surgeist_html_parser::HtmlParseUsage::resource(&self, resource: surgeist_html_parser::HtmlParseResource) -> surgeist_html_parser::HtmlParseResourceUsage
 pub fn surgeist_html_parser::HtmlParseUsage::work(&self, category: surgeist_html_parser::HtmlParseWorkCategory) -> u64
+pub struct surgeist_html_parser::HtmlParsedEmptyFileSelection(_)
 pub struct surgeist_html_parser::HtmlSource
 impl surgeist_html_parser::HtmlSource
 pub fn surgeist_html_parser::HtmlSource::as_utf16(&self) -> core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>

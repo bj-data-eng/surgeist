@@ -1,11 +1,13 @@
 //! Native Input intrinsic storage; canonical identities stay with Node/Draft.
-use crate::internal::{form::DomForm, identity::NodeId, snapshot::DomNode, store::DomError};
+use crate::{
+    file::DomFileList,
+    internal::{form::DomForm, identity::NodeId, snapshot::DomNode, store::DomError},
+};
 use surgeist_html::values::DocumentString;
 use surgeist_html::{
     attributes::HtmlInputType,
     elements::input::{
-        HtmlInputFileSelection, HtmlInputFlags, HtmlInputImageHistory, HtmlInputSelection,
-        HtmlInputValueMode,
+        HtmlInputFlags, HtmlInputImageHistory, HtmlInputSelection, HtmlInputValueMode,
     },
 };
 
@@ -16,7 +18,7 @@ pub struct DomInputState {
     pub(crate) flags: HtmlInputFlags,
     pub(crate) current: DocumentString,
     pub(crate) selection: HtmlInputSelection,
-    pub(crate) files: HtmlInputFileSelection,
+    pub(crate) files: Option<DomFileList>,
     pub(crate) image: HtmlInputImageHistory<DocumentString>,
     pub(crate) email_count: Option<usize>,
 }
@@ -27,7 +29,7 @@ impl DomInputState {
             flags: HtmlInputFlags::fresh(),
             current: "".into(),
             selection: HtmlInputSelection::initial(platform.none_direction()),
-            files: HtmlInputFileSelection::Empty,
+            files: None,
             image: HtmlInputImageHistory::NeverEntered,
             email_count: None,
         }
@@ -45,8 +47,9 @@ impl DomInputState {
     pub fn selection(&self) -> Option<HtmlInputSelection> {
         self.input_type().is_selectable().then_some(self.selection)
     }
-    pub fn selected_files(&self) -> Option<HtmlInputFileSelection> {
-        (self.input_type() == HtmlInputType::File).then_some(self.files)
+    /// The exact native FileList in File Upload state, including an empty list.
+    pub fn selected_files(&self) -> Option<&DomFileList> {
+        self.files.as_ref()
     }
     pub fn image_history(&self) -> &HtmlInputImageHistory<DocumentString> {
         &self.image
@@ -121,7 +124,7 @@ impl<'a> DomInput<'a> {
         Ok(self.state_with(step)?.input_type())
     }
 
-    /// HTML's value-mode getter: exact current/default/on/empty-file readback.
+    /// HTML's value-mode getter over the exact current, default, on or file value.
     pub fn value(self) -> &'a [u16] {
         self.value_with(|| Ok::<_, DomError>(()))
             .expect("native Input value state is established")
@@ -161,7 +164,11 @@ impl<'a> DomInput<'a> {
                     .map(|attribute| attribute.value().code_units());
                 (&[][..], content, None)
             }
-            HtmlInputValueMode::Filename => (&[][..], None, Some(state.files)),
+            HtmlInputValueMode::Filename => (
+                &[][..],
+                None,
+                state.selected_files().map(DomFileList::filename_value),
+            ),
         };
         mode.readback(current, content, files)
             .ok_or_else(|| DomError::WrongNodeKind.into())

@@ -4677,8 +4677,6 @@ pub surgeist_html::elements::input::HtmlInputEmailMode::Single
 pub enum surgeist_html::elements::input::HtmlInputEmptySelectionSupport
 pub surgeist_html::elements::input::HtmlInputEmptySelectionSupport::Supported
 pub surgeist_html::elements::input::HtmlInputEmptySelectionSupport::Unsupported
-pub enum surgeist_html::elements::input::HtmlInputFileSelection
-pub surgeist_html::elements::input::HtmlInputFileSelection::Empty
 pub enum surgeist_html::elements::input::HtmlInputImageHistory<S>
 pub surgeist_html::elements::input::HtmlInputImageHistory::Last
 pub surgeist_html::elements::input::HtmlInputImageHistory::Last::coordinate: surgeist_html::elements::input::HtmlInputImageCoordinate
@@ -4761,7 +4759,7 @@ pub surgeist_html::elements::input::HtmlInputValueMode::DefaultOn
 pub surgeist_html::elements::input::HtmlInputValueMode::Filename
 pub surgeist_html::elements::input::HtmlInputValueMode::Value
 impl surgeist_html::elements::input::HtmlInputValueMode
-pub fn surgeist_html::elements::input::HtmlInputValueMode::readback<'a>(self, internal: &'a [u16], content: core::option::Option<&'a [u16]>, files: core::option::Option<surgeist_html::elements::input::HtmlInputFileSelection>) -> core::option::Option<&'a [u16]>
+pub fn surgeist_html::elements::input::HtmlInputValueMode::readback<'a>(self, internal: &'a [u16], content: core::option::Option<&'a [u16]>, filename: core::option::Option<&'a [u16]>) -> core::option::Option<&'a [u16]>
 pub enum surgeist_html::elements::input::HtmlInputValueSanitization
 pub surgeist_html::elements::input::HtmlInputValueSanitization::Color
 pub surgeist_html::elements::input::HtmlInputValueSanitization::Range
@@ -4944,7 +4942,7 @@ pub const fn surgeist_html::elements::input::HtmlRangeTextPlan::selection(&self)
 pub const surgeist_html::elements::input::HTML_INPUT_FILENAME_PREFIX: &[u16]
 pub const fn surgeist_html::elements::input::input_color_standard_failure_fallback() -> surgeist_html::microsyntax::color::HtmlLegacyColor
 pub const fn surgeist_html::elements::input::input_color_value_source(dirty_value: bool) -> surgeist_html::elements::input::HtmlInputColorValueSource
-pub fn surgeist_html::elements::input::input_filename_setter(value: &[u16]) -> core::result::Result<surgeist_html::elements::input::HtmlInputFileSelection, surgeist_html::elements::input::HtmlInputFilenameInvalidState>
+pub fn surgeist_html::elements::input::input_filename_setter(value: &[u16]) -> core::result::Result<(), surgeist_html::elements::input::HtmlInputFilenameInvalidState>
 pub fn surgeist_html::elements::input::input_value_setter_finish(kind: surgeist_html::attributes::HtmlInputType, comparison: surgeist_html::elements::input::HtmlInputValueComparison, post_clamp: surgeist_html::elements::input::HtmlInputSelection) -> surgeist_html::elements::form::HtmlTextControlValueSetterFinish
 pub mod surgeist_html::elements::link
 pub enum surgeist_html::elements::link::HtmlHyperlinkAttributeEffect

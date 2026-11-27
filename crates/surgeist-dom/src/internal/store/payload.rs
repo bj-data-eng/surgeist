@@ -303,10 +303,23 @@ pub(crate) fn form_group<T>(
     admit: &mut dyn FnMut(Usage) -> Result<(), DomError>,
     build: impl FnOnce() -> Result<T, DomError>,
 ) -> Result<Sealed<T>, DomError> {
+    form_group_with_dependency(registry, budget, original, own_usage, admit, None, build)
+}
+
+pub(crate) fn form_group_with_dependency<T>(
+    registry: &bank::CustodyRegistry,
+    budget: Option<&super::source::formation::Formation>,
+    original: super::source::storage::Payload,
+    own_usage: Usage,
+    admit: &mut dyn FnMut(Usage) -> Result<(), DomError>,
+    dependency: Option<bank::Dependency>,
+    build: impl FnOnce() -> Result<T, DomError>,
+) -> Result<Sealed<T>, DomError> {
     let reserved = Reserved::new()?;
     struct Building<F> {
         build: F,
         debit: custody::Debit,
+        dependency: Option<bank::Dependency>,
     }
     let debit = match budget {
         Some(budget) => {
@@ -318,18 +331,26 @@ pub(crate) fn form_group<T>(
         None => None,
     }
     .map_or_else(|| registry.ledger().retain(Usage::ZERO, &mut *admit), Ok)?;
-    let mut building = Building { build, debit };
+    let mut building = Building {
+        build,
+        debit,
+        dependency,
+    };
     assert!(
         building.debit.belongs_to(registry.ledger()),
         "formed leaf retains its original custody ledger"
     );
     let extra = own_usage.checked_sub(building.debit.usage())?;
     building.debit.grow(extra, &mut *admit)?;
-    let Building { build, debit } = building;
+    let Building {
+        build,
+        debit,
+        dependency,
+    } = building;
     let incoming = custody::Held::new(build()?, debit);
     reserved
         .materialize(incoming, own_usage, &mut *admit)?
-        .seal(registry, admit)
+        .seal_with_children(registry, dependency, admit)
 }
 
 struct NameChildren {
@@ -465,7 +486,12 @@ pub(in crate::internal::store) fn element_dependency(
             Some(children::leaf(value, registry, &mut admit)?)
         }
         crate::internal::element::NativeFamily::Input(value) => {
-            Some(children::leaf(value, registry, &mut admit)?)
+            Some(registry.adopt_object_with_children(
+                value.identity,
+                value.own_usage,
+                |admit| super::files::input_dependency(&value.value, registry, admit),
+                &mut admit,
+            )?)
         }
         crate::internal::element::NativeFamily::Textarea(value) => {
             Some(children::leaf(value, registry, &mut admit)?)

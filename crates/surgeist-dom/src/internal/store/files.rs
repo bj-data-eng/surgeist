@@ -1,6 +1,9 @@
 //! Immutable File and FileList objects used by native File Upload controls.
 
-use super::{DomError, custody, payload, source::storage};
+use super::{
+    DomError, bank, custody, payload,
+    source::{formation::Formation, storage},
+};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -181,6 +184,91 @@ impl DomFileList {
             .as_ref()
             .map_or(&[], DocumentString::code_units)
     }
+
+    pub(crate) fn controlled_empty(
+        registry: &bank::CustodyRegistry,
+        budget: Option<&Formation>,
+        admit: &mut dyn FnMut(custody::Usage) -> Result<(), DomError>,
+    ) -> Result<(Self, bank::ObjectCustody), DomError> {
+        let empty = storage::Payload::default();
+        let formed = payload::form_group(
+            registry,
+            budget,
+            empty,
+            storage::typed::<ListData>(empty)?,
+            admit,
+            || {
+                Ok(ListData {
+                    identity: DomFileListId(object_identity()?),
+                    files: Vec::new(),
+                    filename_value: None,
+                })
+            },
+        )?;
+        Ok((Self(formed.value), formed.custody))
+    }
+
+    pub(in crate::internal::store) fn adopt(
+        &self,
+        registry: &bank::CustodyRegistry,
+        admit: &mut dyn FnMut(custody::Usage) -> Result<(), DomError>,
+    ) -> Result<bank::ObjectCustody, DomError> {
+        registry.adopt_object_with_children(
+            self.0.identity,
+            self.0.own_usage,
+            |admit| self.file_dependencies(registry, admit),
+            admit,
+        )
+    }
+
+    fn file_dependencies(
+        &self,
+        registry: &bank::CustodyRegistry,
+        admit: &mut dyn FnMut(custody::Usage) -> Result<(), DomError>,
+    ) -> Result<Option<bank::Dependency>, DomError> {
+        type Controls = Vec<bank::ObjectCustody>;
+        if self.is_empty() {
+            return Ok(None);
+        }
+        let usage = |capacity: usize| {
+            capacity
+                .checked_mul(size_of::<bank::ObjectCustody>())
+                .and_then(|bytes| bytes.checked_add(size_of::<Controls>()))
+                .map(|bytes| custody::Usage::new(bytes, 0))
+                .ok_or(DomError::RepresentationExhausted)
+        };
+        let requested = usage(self.len())?;
+        let debit = registry.ledger().retain(requested, &mut *admit)?;
+        let mut controls = custody::Held::new(Controls::new(), debit);
+        controls
+            .value_mut()
+            .try_reserve_exact(self.len())
+            .map_err(|_| DomError::AllocationFailed)?;
+        let actual = usage(controls.value().capacity())?;
+        controls
+            .debit_mut()
+            .grow(actual.checked_sub(requested)?, &mut *admit)?;
+        for file in self.files() {
+            controls.value_mut().push(registry.adopt_object(
+                file.0.identity,
+                file.0.own_usage,
+                &mut *admit,
+            )?);
+        }
+        bank::Dependency::from_retained(controls, actual, admit).map(Some)
+    }
+}
+
+pub(crate) fn input_dependency(
+    value: &crate::internal::input::DomInputState,
+    registry: &bank::CustodyRegistry,
+    admit: &mut dyn FnMut(custody::Usage) -> Result<(), DomError>,
+) -> Result<Option<bank::Dependency>, DomError> {
+    let Some(files) = value.files.as_ref() else {
+        return Ok(None);
+    };
+    let control = files.adopt(registry, admit)?;
+    bank::Dependency::new(control, registry.ledger(), admit).map(Some)
 }
 
 impl std::fmt::Debug for DomFileList {

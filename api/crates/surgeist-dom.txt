@@ -1014,7 +1014,7 @@ pub fn surgeist_dom::form::DomInputState::flags(&self) -> surgeist_html::interna
 pub fn surgeist_dom::form::DomInputState::image_history(&self) -> &surgeist_html::internal::elements::input_image::HtmlInputImageHistory<surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_dom::form::DomInputState::input_type(&self) -> surgeist_html::internal::attributes::HtmlInputType
 pub fn surgeist_dom::form::DomInputState::parser_inserted(&self) -> bool
-pub fn surgeist_dom::form::DomInputState::selected_files(&self) -> core::option::Option<surgeist_html::internal::elements::input::HtmlInputFileSelection>
+pub fn surgeist_dom::form::DomInputState::selected_files(&self) -> core::option::Option<&surgeist_dom::file::DomFileList>
 pub fn surgeist_dom::form::DomInputState::selection(&self) -> core::option::Option<surgeist_html::internal::elements::input::HtmlInputSelection>
 pub struct surgeist_dom::form::DomOutput<'a>
 impl<'a> surgeist_dom::form::DomOutput<'a>
@@ -3121,6 +3121,7 @@ impl surgeist_dom::source::DomSourceEdit
 pub fn surgeist_dom::source::DomSourceEdit::add_select_option(select: surgeist_dom::identity::NodeId, element: surgeist_dom::identity::NodeId, before: surgeist_dom::form::select::DomSelectOptionBefore) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::after(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::append(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::assign_input_files(input: surgeist_dom::identity::NodeId, files: core::option::Option<surgeist_dom::file::DomFileList>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::before(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::create_html_table_body(table: surgeist_dom::identity::NodeId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::create_html_table_body_in_attachment(table: surgeist_dom::identity::NodeId, fallback: surgeist_dom::script::DomCreationRealmFallback) -> Self

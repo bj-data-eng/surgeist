@@ -104,6 +104,8 @@ pub(in crate::internal::store) struct Operation {
     meta_csp: Option<Box<meta::CspDelivery>>,
     draft: dialog::OperationDraft,
     commands: OperationRoot,
+    // The original command's semantic FileList drops before its receipt.
+    _file_argument_custody: Option<bank::ObjectCustody>,
     index: usize,
     started: bool,
     published: bool,
@@ -508,7 +510,7 @@ impl Dom {
                 .ok_or(DomError::RepresentationExhausted)?;
             Ok((draft, command, aux))
         });
-        let (draft, command_storage, canonical_aux_bytes) = match formed {
+        let (mut draft, command_storage, canonical_aux_bytes) = match formed {
             Ok(formed) => formed,
             Err(error) => {
                 if nested {
@@ -535,6 +537,7 @@ impl Dom {
                 return Err(error);
             }
         };
+        let file_argument_custody = draft.source_file_argument.take();
         let mut op = formation::allocated_box(Operation {
             id,
             entry_scope,
@@ -547,6 +550,7 @@ impl Dom {
             pending_element_queue: None,
             meta_csp: None,
             commands,
+            _file_argument_custody: file_argument_custody,
             index: 0,
             started: false,
             published: false,
@@ -4137,6 +4141,7 @@ impl Dom {
                 pending_element_queue: None,
                 meta_csp: None,
                 commands: OperationRoot::NativeInstallation,
+                _file_argument_custody: None,
                 index: 0,
                 started: false,
                 published: false,
