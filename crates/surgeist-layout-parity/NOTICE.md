@@ -84,12 +84,9 @@ This product depends on surgeist-generator 0.2.0, distributed by bj-data-eng:
 * License: [MIT](licenses/surgeist-generator/LICENSE)
 * Homepage: [surgeist-generator](https://github.com/bj-data-eng/surgeist-generator)
 
-Before the snapshot import, the dependency was pinned to
-[`1e0927a299b405792897a9bf5909e38bb8c58053`](https://github.com/bj-data-eng/surgeist-generator/tree/1e0927a299b405792897a9bf5909e38bb8c58053),
-which remains historical dependency provenance. The current dependency uses the
-local [surgeist-generator crate](../surgeist-generator/Cargo.toml), with default
-features disabled and `browser-corpus` enabled. It supplies shared browser-corpus
-tooling.
+The dependency uses the local [surgeist-generator crate](../surgeist-generator/Cargo.toml)
+with default features disabled. This crate's `browser-corpus` feature enables the
+generator's `browser-corpus` feature, which supplies shared browser-corpus tooling.
 
 ### Taffy
 
