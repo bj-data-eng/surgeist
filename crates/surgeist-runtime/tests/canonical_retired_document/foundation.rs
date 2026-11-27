@@ -711,6 +711,64 @@ fn malformed_foreign_stale_cancelled_and_late_failed_edits_leave_retired_documen
 }
 
 #[test]
+fn retired_factories_retain_detached_frame_and_iframe_realm_and_family() {
+    let mut fixture = HostedFixture::retired();
+    let document = fixture.top.document();
+    let initial = fixture.session.snapshot();
+    let usage = fixture.session.dom().usage();
+    let mut cancelled = DomBatch::new();
+    cancelled.create_element(document, "iframe");
+    assert_eq!(
+        fixture
+            .session
+            .dom()
+            .apply(cancelled, &AtomicBool::new(true))
+            .unwrap_err(),
+        DomError::Cancelled
+    );
+    assert_eq!(fixture.session.snapshot().stamp(), initial.stamp());
+    assert_eq!(fixture.session.dom().usage(), usage);
+
+    let mut batch = DomBatch::new();
+    let iframe = batch.create_element(document, "IFRAME");
+    let frame = batch.create_element_ns(document, Namespace::html(), "owned:frame");
+    let commit = fixture.session.dom().apply(batch, &cancel()).unwrap();
+    let frame = commit.created(&frame).unwrap().unwrap();
+    let iframe = commit.created(&iframe).unwrap().unwrap();
+    let detached = fixture.session.snapshot();
+    for (id, local, is_iframe) in [(frame, "frame", false), (iframe, "iframe", true)] {
+        let node = detached.node(id).unwrap();
+        let element = node.as_element().unwrap();
+        assert_eq!(node.owner_document(), Some(document));
+        assert_eq!(node.relevant_global().unwrap(), Some(fixture.top.global()));
+        assert_eq!(node.parent(), None);
+        assert_eq!(element.name().local_name(), &DocumentString::from(local));
+        assert_eq!(element.child_navigable(), Some(None));
+        assert_eq!(element.iframe_initial_state().is_some(), is_iframe);
+    }
+    let mut batch = DomBatch::new();
+    batch.destroy(frame);
+    batch.destroy(iframe);
+    fixture.session.dom().apply(batch, &cancel()).unwrap();
+    for id in [frame, iframe] {
+        assert!(matches!(
+            fixture.session.snapshot().node(id),
+            Err(DomError::StaleNode)
+        ));
+        assert_eq!(
+            detached
+                .node(id)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .child_navigable(),
+            Some(None)
+        );
+    }
+    fixture.assert_retired();
+}
+
+#[test]
 fn retired_history_does_not_supply_the_independent_never_hosted_svg_script_proof() {
     let mut fixture = HostedFixture::retired();
     let before = fixture.session.snapshot();
