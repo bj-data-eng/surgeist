@@ -4909,6 +4909,7 @@ pub struct surgeist_html::elements::input::HtmlInputStepOperand<'a>
 impl<'a> surgeist_html::elements::input::HtmlInputStepOperand<'a>
 pub fn surgeist_html::elements::input::HtmlInputStepOperand<'a>::coefficient(digits: surgeist_html::bounded::numeric::HtmlNaturalDigits<'a>, scale: usize, negative: bool) -> Self
 pub fn surgeist_html::elements::input::HtmlInputStepOperand<'a>::compare<E>(self, other: Self, tick: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::cmp::Ordering, surgeist_html::elements::input::HtmlInputStepError<E>>
+pub fn surgeist_html::elements::input::HtmlInputStepOperand<'a>::compare_midpoint<E>(self, first: Self, second: Self, tick: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::cmp::Ordering, surgeist_html::elements::input::HtmlInputStepError<E>>
 pub fn surgeist_html::elements::input::HtmlInputStepOperand<'a>::decimal(value: &'a surgeist_html::microsyntax::numeric::HtmlSignedDecimal) -> Self
 pub fn surgeist_html::elements::input::HtmlInputStepOperand<'a>::magnitude(value: &'a surgeist_html::microsyntax::numeric::HtmlNonNegativeDecimal) -> Self
 pub fn surgeist_html::elements::input::HtmlInputStepOperand<'a>::multiplication_cells(self) -> core::option::Option<usize>

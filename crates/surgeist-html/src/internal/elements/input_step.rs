@@ -100,6 +100,47 @@ impl<'a> HtmlInputStepOperand<'a> {
         )
     }
 
+    /// Compares this coordinate to the exact midpoint of two operands.
+    /// The caller admits each reached decimal position.
+    pub fn compare_midpoint<E>(
+        self,
+        first: Self,
+        second: Self,
+        mut tick: impl FnMut() -> Result<(), E>,
+    ) -> Result<Ordering, HtmlInputStepError<E>> {
+        let operands = [self, first, second];
+        let mut integer = 1;
+        let mut scale = 0;
+        for operand in operands {
+            let (whole, fraction) = operand.extent();
+            integer = integer.max(whole);
+            scale = scale.max(fraction);
+        }
+        let width = integer
+            .checked_add(scale)
+            .ok_or(HtmlInputStepError::Workspace)?;
+        let [target, first, second] =
+            operands.map(|operand| operand.quantity(Layout { width, scale }));
+        let mut carry = 0;
+        let mut nonzero = false;
+        for index in 0..width {
+            tick().map_err(HtmlInputStepError::Work)?;
+            let total = 2 * target.signed_digit(index)
+                - first.signed_digit(index)
+                - second.signed_digit(index)
+                + carry;
+            nonzero |= total.rem_euclid(10) != 0;
+            carry = total.div_euclid(10);
+        }
+        Ok(if carry < 0 {
+            Ordering::Less
+        } else if carry > 0 || nonzero {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        })
+    }
+
     /// Scratch cells sufficient for multiplication by any `u32` scale factor.
     pub fn multiplication_cells(self) -> Option<usize> {
         let (whole, scale) = self.extent();
@@ -300,6 +341,11 @@ struct Quantity<'a> {
 }
 
 impl Quantity<'_> {
+    fn signed_digit(self, index: usize) -> i16 {
+        let digit = i16::from(self.digits.digit(index));
+        if self.negative { -digit } else { digit }
+    }
+
     fn negated(self) -> Self {
         Self {
             negative: !self.negative,

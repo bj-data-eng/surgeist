@@ -323,42 +323,7 @@ impl<F: FnMut(StepRead) -> Result<Option<InputValue>, DomError>> Session<'_, F> 
                 .map_err(|_| DomError::InputProcessingProtocol)?;
             self.plain_number(number)?
         } else {
-            let mut minimum = limits
-                .minimum()
-                .map(HtmlInputRangeNumber::from)
-                .ok_or(DomError::InputProcessingProtocol)?;
-            let mut maximum = limits
-                .maximum()
-                .map(HtmlInputRangeNumber::from)
-                .ok_or(DomError::InputProcessingProtocol)?;
-            let prior = current.map_or(0.0, |value| value.value());
-            let prior = HtmlInputRangeNumber::try_from(prior)
-                .map_err(|_| DomError::InputProcessingProtocol)?;
-            match self.input.direction {
-                HtmlInputStepDirection::Up if prior.value() > minimum.value() => minimum = prior,
-                HtmlInputStepDirection::Down if prior.value() < maximum.value() => maximum = prior,
-                _ => (),
-            }
-            if minimum.value() > maximum.value() {
-                return Ok(None);
-            }
-            let allowed = limits
-                .allowed_step()
-                .ok_or(DomError::InputStepInvalidState)?;
-            let Some(value) = lattice(
-                self.meter,
-                &mut self.storage,
-                LatticeInput {
-                    current: rounded,
-                    minimum,
-                    maximum: Some(maximum),
-                    base: limits.step_base().into(),
-                    step: allowed.into(),
-                },
-                self.source,
-                self.cancel,
-            )?
-            else {
+            let Some(value) = self.range_value(projected, rounded, limits, current)? else {
                 return Ok(None);
             };
             best(
@@ -372,6 +337,92 @@ impl<F: FnMut(StepRead) -> Result<Option<InputValue>, DomError>> Session<'_, F> 
         self.meter
             .output(units, None, self.source, self.cancel)
             .map(Some)
+    }
+
+    fn range_value(
+        &mut self,
+        projected: HtmlInputStepCoordinate<'_>,
+        rounded: HtmlInputRangeNumber,
+        limits: &HtmlInputNumericConstraints,
+        current: Option<HtmlFloatingPointNumber>,
+    ) -> Result<Option<HtmlInputRangeNumber>, DomError> {
+        let mut minimum = limits
+            .minimum()
+            .ok_or(DomError::InputProcessingProtocol)?
+            .value();
+        let mut maximum = limits
+            .maximum()
+            .ok_or(DomError::InputProcessingProtocol)?
+            .value();
+        let prior = current.map_or(0.0, |value| value.value());
+        match self.input.direction {
+            HtmlInputStepDirection::Up => minimum = minimum.max(prior),
+            HtmlInputStepDirection::Down => maximum = maximum.min(prior),
+        }
+        let approximate = self.expand(qualified_number(rounded.value())?)?;
+        let target = projected.operand();
+        let position = target
+            .compare(self.operand(&approximate)?, || self.grid_tick())
+            .map_err(grid_error)?;
+        if position == Ordering::Equal {
+            return self.range_lattice(rounded, minimum, maximum, limits);
+        }
+        // Nearest/even gives a bounding pair of adjacent binary64 values.
+        // Search each side independently and compare to the exact projection.
+        let (lower_edge, upper_edge) = if position == Ordering::Less {
+            (rounded.value().next_down(), rounded.value())
+        } else {
+            (rounded.value(), rounded.value().next_up())
+        };
+        let lower = self.range_lattice(rounded, minimum, maximum.min(lower_edge), limits)?;
+        let upper = self.range_lattice(rounded, minimum.max(upper_edge), maximum, limits)?;
+        let (Some(lower), Some(upper)) = (lower, upper) else {
+            return Ok(lower.or(upper));
+        };
+        let lower_exact = self.expand(qualified_number(lower.value())?)?;
+        let upper_exact = self.expand(qualified_number(upper.value())?)?;
+        let order = target
+            .compare_midpoint(
+                self.operand(&lower_exact)?,
+                self.operand(&upper_exact)?,
+                || self.grid_tick(),
+            )
+            .map_err(grid_error)?;
+        Ok(Some(if order == Ordering::Less {
+            lower
+        } else {
+            upper
+        }))
+    }
+
+    fn range_lattice(
+        &mut self,
+        current: HtmlInputRangeNumber,
+        minimum: f64,
+        maximum: f64,
+        limits: &HtmlInputNumericConstraints,
+    ) -> Result<Option<HtmlInputRangeNumber>, DomError> {
+        if minimum > maximum {
+            return Ok(None);
+        }
+        let minimum = HtmlInputRangeNumber::from(qualified_number(minimum)?);
+        let maximum = HtmlInputRangeNumber::from(qualified_number(maximum)?);
+        let allowed = limits
+            .allowed_step()
+            .ok_or(DomError::InputStepInvalidState)?;
+        lattice(
+            self.meter,
+            &mut self.storage,
+            LatticeInput {
+                current,
+                minimum,
+                maximum: Some(maximum),
+                base: limits.step_base().into(),
+                step: allowed.into(),
+            },
+            self.source,
+            self.cancel,
+        )
     }
 
     fn projected_text(&mut self, value: HtmlInputStepCoordinate<'_>) -> Result<Vec<u16>, DomError> {
@@ -524,6 +575,10 @@ impl<F: FnMut(StepRead) -> Result<Option<InputValue>, DomError>> Session<'_, F> 
     fn grid_tick(&mut self) -> Result<(), DomError> {
         self.meter.charge(1, self.source, self.cancel)
     }
+}
+
+fn qualified_number(value: f64) -> Result<HtmlFloatingPointNumber, DomError> {
+    HtmlFloatingPointNumber::try_from(value).map_err(|_| DomError::InputProcessingProtocol)
 }
 
 struct PlainDecimal {
