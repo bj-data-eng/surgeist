@@ -153,6 +153,27 @@ fn reverse_label_lists_follow_adoption_and_refuse_retired_generations() {
 }
 
 #[test]
+fn reverse_implicit_label_follows_the_first_labelable_descendant() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let doc = batch.create_document();
+    let label = batch.create_element_ns(&doc, Namespace::html(), "label");
+    let earlier = append(&mut batch, &doc, &label, "input");
+    let later = append(&mut batch, &doc, &label, "textarea");
+    let created = apply(&mut dom, batch);
+    let [label, earlier, later] =
+        [label, earlier, later].map(|ticket| created.created(&ticket).unwrap().unwrap());
+    let cancel = AtomicBool::new(false);
+    let list = dom.control_labels(later, &cancel).unwrap().unwrap();
+    assert_labels(&dom, &list, &[]);
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(earlier, "type", "hidden");
+    apply(&mut dom, batch);
+    assert_labels(&dom, &list, &[label]);
+}
+
+#[test]
 fn reverse_label_reads_stop_at_the_requested_prefix_and_preserve_refusals() {
     let mut dom = dom();
     let mut batch = DomBatch::new();

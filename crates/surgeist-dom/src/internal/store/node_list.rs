@@ -4,7 +4,7 @@ use std::sync::atomic::AtomicBool;
 use super::collection_read::CollectionRead;
 use super::{DocumentId, DocumentString, Dom, DomError, DomResource, NodeId, admit};
 use crate::internal::names::{in_html_namespace_with, same_code_units};
-use crate::internal::snapshot::{DomNode, DomNodeKind, NonemptyElementId};
+use crate::internal::snapshot::{DomNode, DomNodeKind, LabelTarget};
 
 const NAME: &[u16] = &[0x6e, 0x61, 0x6d, 0x65];
 
@@ -188,31 +188,31 @@ where
             if !label.is_html_label_with(step)? {
                 return Ok(ControlFlow::Continue(()));
             }
-            let associated = if let Some(target) = label.label_for_with(step)? {
-                let Some(target) = NonemptyElementId::new(target.code_units()) else {
-                    return Ok(ControlFlow::Continue(()));
-                };
-                if !target.matches_with(control, step)? {
-                    return Ok(ControlFlow::Continue(()));
-                }
-                match control_has_first_id {
-                    Some(first) => first,
-                    None => {
-                        let first = self.first_element_with_id(root, target)? == Some(control.id());
-                        control_has_first_id = Some(first);
-                        first
+            let Some(target) = label.label_target_with(step)? else {
+                return Ok(ControlFlow::Continue(()));
+            };
+            let resolves_to_control = || -> Result<bool, E> {
+                Ok(target
+                    .resolve_with(label, Some(control.id()), step, &mut &self.view)?
+                    .is_some())
+            };
+            let associated = match target {
+                LabelTarget::Explicit(id) if id.matches_with(control, step)? => {
+                    // Each matching explicit label has the same ID query in
+                    // this view, so its first exact match is shared.
+                    match control_has_first_id {
+                        Some(first) => first,
+                        None => {
+                            let first = resolves_to_control()?;
+                            control_has_first_id = Some(first);
+                            first
+                        }
                     }
                 }
-            } else if label.contains_with(control.id(), step)? {
-                self.view.descendants(label.id(), |node| {
-                    Ok(if node.is_labelable_control_with(step)? {
-                        ControlFlow::Break(node.id())
-                    } else {
-                        ControlFlow::Continue(())
-                    })
-                })? == Some(control.id())
-            } else {
-                false
+                LabelTarget::Implicit if label.contains_with(control.id(), step)? => {
+                    resolves_to_control()?
+                }
+                _ => false,
             };
             if associated {
                 visit(label.id())
@@ -220,28 +220,6 @@ where
                 Ok(ControlFlow::Continue(()))
             }
         })
-    }
-
-    fn first_element_with_id<'read>(
-        &'read self,
-        root: DomNode<'read>,
-        target: NonemptyElementId<'_>,
-    ) -> Result<Option<NodeId>, E> {
-        let first = root.resolve_element_id_with(
-            target,
-            true,
-            || self.view.meter.step(),
-            |mut step| {
-                self.view.descendants(root.id(), |node| {
-                    Ok(if target.matches_with(node, &mut step)? {
-                        ControlFlow::Break(node)
-                    } else {
-                        ControlFlow::Continue(())
-                    })
-                })
-            },
-        )?;
-        Ok(first.map(DomNode::id))
     }
 
     fn walk_named<T>(

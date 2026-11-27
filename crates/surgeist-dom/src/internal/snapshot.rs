@@ -26,7 +26,7 @@ mod reflected_element;
 mod tabindex;
 mod table_rows;
 mod translation;
-pub(crate) use element_id::NonemptyElementId;
+pub(crate) use label::LabelTarget;
 pub use namespace::DomNamespaceUri;
 pub use position::DomDocumentPosition;
 
@@ -44,6 +44,43 @@ enum Descendant<Value> {
     Descend,
     Prune,
     Found(Value),
+}
+
+/// Ordinary descendant search with custody supplied by the caller.
+pub(crate) trait DescendantSearch<'node, E> {
+    fn find<T, Step>(
+        &mut self,
+        root: DomNode<'node>,
+        step: Step,
+        select: impl FnMut(DomNode<'node>, &mut Step) -> Result<Option<T>, E>,
+    ) -> Result<Option<T>, E>
+    where
+        Step: FnMut() -> Result<(), E>;
+}
+
+struct ReservedDescendantSearch<Reserve>(Reserve);
+
+impl<'node, E, Reserve, Backing> DescendantSearch<'node, E> for ReservedDescendantSearch<Reserve>
+where
+    E: From<DomError>,
+    Reserve: FnMut(usize) -> Result<Backing, E>,
+{
+    fn find<T, Step>(
+        &mut self,
+        root: DomNode<'node>,
+        step: Step,
+        mut select: impl FnMut(DomNode<'node>, &mut Step) -> Result<Option<T>, E>,
+    ) -> Result<Option<T>, E>
+    where
+        Step: FnMut() -> Result<(), E>,
+    {
+        root.find_descendant_with(step, &mut self.0, |node, step| {
+            Ok(match select(node, step)? {
+                Some(value) => Descendant::Found(value),
+                None => Descendant::Descend,
+            })
+        })
+    }
 }
 
 /// A borrowed view of a node's immutable payload in one captured snapshot.

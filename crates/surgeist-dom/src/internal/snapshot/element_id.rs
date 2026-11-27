@@ -1,6 +1,6 @@
 //! Exact DOM ID lookup over an ordinary tree.
 
-use super::{Descendant, DomError, DomNode, NodeId};
+use super::{DescendantSearch, DomError, DomNode, NodeId, ReservedDescendantSearch};
 use crate::internal::names::same_code_units;
 
 const ID: &[u16] = &[0x69, 0x64];
@@ -48,7 +48,9 @@ impl DomNode<'_> {
             .element_by_id_with(id, false, step, reserve)?
             .map(DomNode::id))
     }
+}
 
+impl<'node> DomNode<'node> {
     pub(super) fn element_by_id_with<E: From<DomError>, Backing>(
         self,
         id: &[u16],
@@ -59,32 +61,27 @@ impl DomNode<'_> {
         let Some(id) = NonemptyElementId::new(id) else {
             return Ok(None);
         };
-        self.resolve_element_id_with(id, include_root, step, |step| {
-            self.find_descendant_with(step, reserve, |node, step| {
-                if id.matches_with(node, step)? {
-                    return Ok(Descendant::Found(node));
-                }
-                Ok(Descendant::Descend)
-            })
-        })
+        self.resolve_element_id_with(
+            id,
+            include_root,
+            step,
+            &mut ReservedDescendantSearch(reserve),
+        )
     }
 
     /// Resolve the inclusive root before the walk's first matching descendant.
-    /// The walk chooses the traversal backing and uses the same ID matcher.
-    pub(crate) fn resolve_element_id_with<E, Step>(
+    pub(super) fn resolve_element_id_with<E: From<DomError>>(
         self,
         id: NonemptyElementId<'_>,
         include_root: bool,
-        mut step: Step,
-        first_in_descendants: impl FnOnce(Step) -> Result<Option<Self>, E>,
-    ) -> Result<Option<Self>, E>
-    where
-        E: From<DomError>,
-        Step: FnMut() -> Result<(), E>,
-    {
+        mut step: impl FnMut() -> Result<(), E>,
+        search: &mut impl DescendantSearch<'node, E>,
+    ) -> Result<Option<Self>, E> {
         if include_root && id.matches_with(self, &mut step)? {
             return Ok(Some(self));
         }
-        first_in_descendants(step)
+        search.find(self, step, |node, step| {
+            Ok(id.matches_with(node, step)?.then_some(node))
+        })
     }
 }
