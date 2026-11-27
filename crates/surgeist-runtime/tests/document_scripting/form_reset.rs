@@ -527,3 +527,98 @@ pub(super) fn hosted_form_reset_admits_every_removal_before_publication() {
         );
     }
 }
+
+pub(super) fn form_reset_releases_its_lock_when_a_stylesheet_requires_a_separate_join() {
+    use surgeist_cssom::CssomStore;
+    use surgeist_dom::style::DomStyleCssomRoot;
+
+    let (mut session, top) = reset_session();
+    let root = top.document().node();
+    let mut styles = session.style_execution();
+    styles
+        .bind_root(
+            &session.dom(),
+            "form-reset-styles".into(),
+            &mut Some(DomStyleCssomRoot::new(
+                root,
+                CssomStore::new(Default::default(), Default::default()).unwrap(),
+            )),
+            &cancel(),
+        )
+        .unwrap();
+    let mut host = attach_reset_guest(session, top, Arc::new(cancel()));
+    let permit = host.permit().unwrap();
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+        const add = (parent, tag) => parent.appendChild(document.createElement(tag));
+        const form = add(document.body, 'form');
+        const input = add(form, 'input');
+        input.defaultValue = 'default input';
+        input.value = 'dirty input';
+        const output = add(form, 'output');
+        output.defaultValue = 'default output';
+        output.value = 'dirty output';
+        const style = document.createElement('style');
+        style.textContent = 'p { color: red }';
+        output.appendChild(style);
+        globalThis.formWithStyle = form;
+        return 'ok';
+    })()"#
+        ),
+        "ok"
+    );
+    let sheets = styles.snapshot(root).unwrap().unwrap();
+    assert_eq!(sheets.sheets().len(), 1);
+    let before = host.snapshot().unwrap();
+    let result = host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&"formWithStyle.reset()".encode_utf16().collect::<Vec<_>>())
+            .map(drop)
+    });
+    assert!(result.is_err());
+    let after = host.snapshot().unwrap();
+    assert_eq!(
+        after.stamp().revision().get(),
+        before.stamp().revision().get() + 2
+    );
+    assert_eq!(
+        styles.snapshot(root).unwrap().unwrap().sheets(),
+        sheets.sheets()
+    );
+
+    let form = before
+        .nodes()
+        .find(|&id| before.node(id).unwrap().as_form().is_some())
+        .unwrap();
+    let [input, output] = before.node(form).unwrap().children() else {
+        panic!("the original control order");
+    };
+    assert_eq!(
+        String::from_utf16(after.node(*input).unwrap().as_input().unwrap().value()).unwrap(),
+        "dirty input"
+    );
+    assert_eq!(
+        before.node(*output).unwrap().children(),
+        after.node(*output).unwrap().children()
+    );
+    assert!(
+        !after
+            .node(form)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .form_state()
+            .unwrap()
+            .locked_for_reset()
+    );
+    host.with_native(|dom, _, _| {
+        assert!(dom.pending_source_edit().is_none());
+        let mut independent = DomBatch::new();
+        independent.set_attribute(form, "data-after-refusal", "applied");
+        dom.apply(independent, &cancel()).unwrap();
+    })
+    .unwrap();
+}
