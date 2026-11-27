@@ -1,8 +1,282 @@
 //! Identity-bearing Form map transitions in the same canonical draft.
 use super::*;
-use crate::internal::form::FormPastName;
+use crate::internal::{
+    element::DomElementDefinition,
+    form::{FormNamedScope, FormPastName},
+    names::{in_html_namespace_with, same_code_units},
+};
+use surgeist_html::{attributes::HtmlInputType, vocabulary::KnownHtmlAttribute};
+
+enum FormNameMatches {
+    None,
+    One(Key),
+    Multiple,
+}
 
 impl Draft {
+    pub(super) fn set_radio_node_list_value(
+        &mut self,
+        form: Key,
+        scope: FormNamedScope,
+        name: &DocumentString,
+        value: &DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let form = self.require_native_form(form, cancel)?;
+        if scope == FormNamedScope::LegacyImages {
+            return Ok(());
+        }
+        let root = crate::internal::slot::root(self, form, cancel)?;
+        let mut candidate = Some(root);
+        while let Some(key) = candidate {
+            self.source_step(cancel)?;
+            let node = self.node(key)?;
+            if node.control_owner().map(|owner| self.live_key(owner)) == Some(form)
+                && node
+                    .element()
+                    .and_then(|element| element.language().input_state())
+                    .is_some_and(|input| input.input_type() == HtmlInputType::Radio)
+                && self.form_named_attributes_match(key, name, cancel)?
+            {
+                let raw = self.control_attribute(key, KnownHtmlAttribute::Value, cancel)?;
+                let current = HtmlInputType::Radio
+                    .value_mode()
+                    .readback(&[], raw.map(DocumentString::code_units), None)
+                    .ok_or(DomError::InputInapplicable)?;
+                if same_code_units(current, value.code_units(), || self.source_step(cancel))? {
+                    return self.select_radio_from_node_list(key, cancel);
+                }
+            }
+            candidate = crate::internal::slot::next(self, root, key, cancel)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn lookup_form_named(
+        &mut self,
+        form: Key,
+        name: &DocumentString,
+        max_retained_query_units: usize,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let form = self.require_native_form(form, cancel)?;
+        if !name.is_empty() {
+            let root = crate::internal::slot::root(self, form, cancel)?;
+            for scope in [FormNamedScope::Controls, FormNamedScope::LegacyImages] {
+                match self.find_named_form_members(form, root, scope, name, cancel)? {
+                    FormNameMatches::None => {}
+                    FormNameMatches::One(target) => {
+                        self.register_node_ticket(
+                            NodeTicket::FormNamed(target, FormNamedBranch::Element),
+                            cancel,
+                        )?;
+                        return self.record_form_alias(form, name, target, limits, cancel);
+                    }
+                    FormNameMatches::Multiple => {
+                        admit(
+                            name.retained_units(),
+                            max_retained_query_units,
+                            DomResource::HtmlCollectionQueryUnits,
+                        )?;
+                        return self.register_node_ticket(
+                            NodeTicket::FormNamed(form, FormNamedBranch::List(scope)),
+                            cancel,
+                        );
+                    }
+                }
+            }
+            if let Some((_, target, _)) = self.find_form_alias(form, name, cancel)? {
+                self.node(target)?;
+                return self.register_node_ticket(
+                    NodeTicket::FormNamed(target, FormNamedBranch::Element),
+                    cancel,
+                );
+            }
+        }
+        self.register_node_ticket(NodeTicket::FormNamed(form, FormNamedBranch::Absent), cancel)
+    }
+
+    fn require_native_form(&self, form: Key, cancel: &AtomicBool) -> Result<Key, DomError> {
+        self.source_step(cancel)?;
+        let form = self.live_key(form);
+        if !self
+            .node(form)?
+            .element()
+            .is_some_and(|element| element.form_state().is_some())
+        {
+            return Err(DomError::WrongNodeKind);
+        }
+        Ok(form)
+    }
+
+    fn find_named_form_members(
+        &self,
+        form: Key,
+        root: Key,
+        scope: FormNamedScope,
+        name: &DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<FormNameMatches, DomError> {
+        let mut first = None;
+        let mut candidate = Some(root);
+        while let Some(key) = candidate {
+            self.source_step(cancel)?;
+            let node = self.node(key)?;
+            let owner = node.control_owner().map(|owner| self.live_key(owner));
+            if owner.is_none_or(|owner| owner == form)
+                && node.element().is_some()
+                && self.form_named_attributes_match(key, name, cancel)?
+                && self.named_form_member(node, owner == Some(form), scope, cancel)?
+            {
+                if first.is_some() {
+                    return Ok(FormNameMatches::Multiple);
+                }
+                first = Some(key);
+            }
+            candidate = crate::internal::slot::next(self, root, key, cancel)?;
+        }
+        Ok(first.map_or(FormNameMatches::None, FormNameMatches::One))
+    }
+
+    fn named_form_member(
+        &self,
+        node: transaction::NodeRead<'_>,
+        owner_matches: bool,
+        scope: FormNamedScope,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        let Some(element) = node.element() else {
+            return Ok(false);
+        };
+        let element = element.language();
+        if scope == FormNamedScope::LegacyImages {
+            return Ok(owner_matches && node.image().is_some());
+        }
+        if element.native_listed_form_association().is_some() {
+            return Ok(owner_matches
+                && !element
+                    .input_state()
+                    .is_some_and(|input| input.input_type() == HtmlInputType::Image));
+        }
+        if element.form_associated_custom_disabled().is_some() {
+            return Ok(owner_matches);
+        }
+        if let DomElementDefinition::Definition(definition) = element.custom_element_definition()
+            && in_html_namespace_with(element.name(), || self.source_step(cancel))?
+        {
+            let facts = self
+                .creation_registry(definition.registry(), cancel)?
+                .definition(definition.ordinal())
+                .map_err(DomError::SelectCapture)?;
+            if element
+                .matches_autonomous_form_definition_with(facts, || self.source_step(cancel))?
+            {
+                return Err(DomError::IncompleteSourceOperation);
+            }
+        }
+        Ok(false)
+    }
+
+    fn form_named_attributes_match(
+        &self,
+        key: Key,
+        name: &DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        for attribute in [KnownHtmlAttribute::Id, KnownHtmlAttribute::Name] {
+            if let Some(candidate) = self.control_attribute(key, attribute, cancel)?
+                && same_code_units(candidate.code_units(), name.code_units(), || {
+                    self.source_step(cancel)
+                })?
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    fn find_form_alias(
+        &self,
+        form: Key,
+        name: &DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<Option<(usize, Key, usize)>, DomError> {
+        let history = self
+            .node(form)?
+            .form_past_names()
+            .ok_or(DomError::WrongNodeKind)?;
+        for (position, entry) in history.iter().enumerate() {
+            self.source_step(cancel)?;
+            if same_code_units(entry.name.code_units(), name.code_units(), || {
+                self.source_step(cancel)
+            })? {
+                return Ok(Some((
+                    position,
+                    self.live_key(entry.target),
+                    entry.name.len(),
+                )));
+            }
+        }
+        Ok(None)
+    }
+
+    fn record_form_alias(
+        &mut self,
+        form: Key,
+        name: &DocumentString,
+        target: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let source = self
+            .node(form)?
+            .form_past_names()
+            .ok_or(DomError::WrongNodeKind)?;
+        let previous = self.find_form_alias(form, name, cancel)?;
+        if previous.is_some_and(|(position, old, _)| position + 1 == source.len() && old == target)
+        {
+            return Ok(());
+        }
+        let next_units = self
+            .units
+            .checked_sub(previous.map_or(0, |(_, _, units)| units))
+            .and_then(|units| units.checked_add(name.len()))
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(next_units, limits.units, DomResource::StringCodeUnits)?;
+        let count = source
+            .len()
+            .checked_add(usize::from(previous.is_none()))
+            .ok_or(DomError::RepresentationExhausted)?;
+        let formation = source::formation::Formation::new(self, cancel)?;
+        let mut entries = Vec::new();
+        source::formation::reserve(&mut entries, count, formation.as_ref(), cancel)?;
+        if let Some(budget) = &formation {
+            budget.retain_bytes(size_of::<Vec<FormPastName<Key>>>(), cancel)?;
+        }
+        for (position, entry) in source.iter().enumerate() {
+            self.source_step(cancel)?;
+            if previous.is_none_or(|(removed, _, _)| position != removed) {
+                entries.push(FormPastName {
+                    name: source::formation::share(entry.name, formation.as_ref(), cancel)?,
+                    target: entry.target,
+                });
+            }
+        }
+        entries.push(FormPastName {
+            name: source::formation::share(name, formation.as_ref(), cancel)?,
+            target,
+        });
+        let names = transaction::Names::staged(entries, formation, self, cancel)?;
+        {
+            let mut fields = self.form_names_mut(form, cancel)?;
+            *fields = Some(names);
+            fields.commit(cancel)?;
+        }
+        self.units = next_units;
+        Ok(())
+    }
+
     /// HTML877d33343: remove every alias for this exact former control. The
     /// map is read at the intermediate owner state, before any later lookup.
     pub(super) fn remove_form_aliases(
@@ -18,7 +292,7 @@ impl Draft {
         let mut removed_units = 0usize;
         let mut retained = 0usize;
         for entry in source.iter() {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             if entry.target == target {
                 removed_units = removed_units
                     .checked_add(entry.name.len())
@@ -30,9 +304,7 @@ impl Draft {
         if retained == source.len() {
             return Ok(());
         }
-        // Current public fronts cannot grow maps. This replacement cannot
-        // exceed the actual incoming retained extent; there is no unlimited
-        // admission fallback or unrelated Slot-reference quota.
+        // Alias removal never grows the retained map.
         #[cfg(test)]
         let mut entry_writes = crate::internal::store::CopyObservation::default();
         let mut entries = Vec::new();
@@ -44,7 +316,7 @@ impl Draft {
             budget.retain_bytes(size_of::<Vec<FormPastName<Key>>>(), cancel)?;
         }
         for entry in source.iter() {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             if entry.target != target {
                 if let Some(budget) = &formation {
                     let mut payload = source::storage::Payload::default();
@@ -116,6 +388,44 @@ mod tests {
     use super::*;
 
     mod custody_tests;
+
+    #[test]
+    fn alias_pruning_admits_each_examined_entry_even_without_a_match() {
+        use crate::internal::source::DomSourceLimits;
+
+        let (mut dom, document, form, _, _) = fixture();
+        let cancel = AtomicBool::new(false);
+        let mut batch = DomBatch::new();
+        let unrelated =
+            batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "button");
+        batch.insert_before(&unrelated, form, None);
+        let commit = dom.apply(batch, &cancel).unwrap();
+        let unrelated = commit.created(&unrelated).unwrap().unwrap();
+        for work in [2, 3] {
+            let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+            draft.source_limits = Some(DomSourceLimits::new(
+                16_000_000, 1_000_000, work, 8, 8, 16, 1,
+            ));
+            let result =
+                draft.remove_form_aliases(Key::Existing(form), Key::Existing(unrelated), &cancel);
+            if work == 2 {
+                assert_eq!(result, Err(DomError::SourceWorkLimit { limit: 2 }));
+            } else {
+                assert_eq!(result, Ok(()));
+            }
+            assert_eq!(draft.source_work.load(Ordering::Relaxed), work);
+            assert_eq!(
+                draft
+                    .node(Key::Existing(form))
+                    .unwrap()
+                    .form_past_names()
+                    .unwrap()
+                    .len(),
+                3
+            );
+        }
+    }
+
     fn fixture() -> (Dom, DocumentId, NodeId, NodeId, NodeId) {
         let mut dom = Dom::new(
             DomLimits::new(
@@ -149,7 +459,7 @@ mod tests {
         let button = c.created(&button).unwrap().unwrap();
         let field = c.created(&field).unwrap().unwrap();
         // A finite well-formed retained-history fixture, not public history
-        // installation or named lookup. Native APIs admit no entries today.
+        // installation or named lookup.
         let names = vec![
             FormPastName {
                 name: "first".into(),

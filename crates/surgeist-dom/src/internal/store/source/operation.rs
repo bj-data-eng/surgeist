@@ -1595,6 +1595,7 @@ impl Operation {
                     NodeOutputKind::AdjacentElement(_)
                         | NodeOutputKind::ElementAttributePresent(_)
                         | NodeOutputKind::TokenListResult(_)
+                        | NodeOutputKind::FormNamed(_)
                         | NodeOutputKind::ProcessingInstructionAttributePresent(_)
                 )
             );

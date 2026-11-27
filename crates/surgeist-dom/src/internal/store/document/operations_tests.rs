@@ -707,6 +707,17 @@ fn upgrade_test_faces(
     name: &str,
     faces: &[NodeId],
 ) -> DomDocumentScriptRegistration {
+    upgrade_test_faces_with(dom, issuer, owner, name, faces, |_, _| {})
+}
+
+fn upgrade_test_faces_with(
+    dom: &mut Dom,
+    issuer: &DomHostedSource,
+    owner: &DomHostedCreation,
+    name: &str,
+    faces: &[NodeId],
+    mut observe_constructor: impl FnMut(&Dom, NodeId),
+) -> DomDocumentScriptRegistration {
     use crate::internal::store::source::operation::DomSourceCustomElementUpgrade;
     use surgeist_html::{
         elements::native::HtmlCustomElementState,
@@ -776,6 +787,7 @@ fn upgrade_test_faces(
         assert_eq!(request.definition(), definition);
         dom.source_custom_element_callback_step(request, &registration, &cancel)
             .unwrap();
+        observe_constructor(dom, face);
         // The trusted native constructor protocol returns this exact receiver.
         drop(scope);
         let mut lease = dom
@@ -891,6 +903,89 @@ fn successful_form_associated_upgrade_publishes_its_actual_form_owner() {
     let after = dom.snapshot();
     assert_eq!(after.node(face).unwrap().parent(), Some(form));
     assert_face_owner(&after, face, Some(form));
+}
+
+#[test]
+fn form_named_reads_qualify_only_reached_candidates_during_face_upgrade() {
+    use crate::form::DomFormNamedValue;
+    use crate::tree::DomHtmlCollectionLimits;
+
+    for face_name in [None, Some("unsettled")] {
+        let mut dom = dom();
+        let mut issuer = issuer(&mut dom);
+        let owner = hosted(&mut dom, &mut issuer);
+        let document = owner.document();
+        let initial = dom.snapshot();
+        let root = initial
+            .document(document)
+            .unwrap()
+            .document_element()
+            .unwrap();
+        let body = initial.node(root).unwrap().children()[1];
+        let mut batch = DomBatch::new();
+        let form = batch.create_element(document, "form");
+        let name = "x-face-named-probe";
+        let face = batch.create_element(document, name);
+        if let Some(face_name) = face_name {
+            batch.set_attribute(&face, "id", face_name);
+        }
+        let known = batch.create_element(document, "button");
+        batch.set_attribute(&known, "id", "known");
+        batch.insert_before(&form, body, None);
+        batch.insert_before(&face, &form, None);
+        batch.insert_before(&known, &form, None);
+        let made = apply(&mut dom, batch);
+        let [form, face, known] =
+            [form, face, known].map(|node| made.created(&node).unwrap().unwrap());
+        let _registration =
+            upgrade_test_faces_with(&mut dom, &issuer, &owner, name, &[face], |dom, observed| {
+                assert_eq!(observed, face);
+                let cancellation = cancel();
+                let admission = || Ok::<_, DomError>(());
+                let limits = DomHtmlCollectionLimits::new(100_000, 16, 128);
+                let collection = dom.form_elements(form, &cancellation).unwrap();
+                let read = dom
+                    .read_html_form_controls_collection(
+                        &collection,
+                        limits,
+                        admission,
+                        &cancellation,
+                    )
+                    .unwrap();
+                assert!(matches!(
+                    read.named_item(&"known".into(), 0),
+                    Ok(DomFormNamedValue::Element(id)) if id == known
+                ));
+                assert!(matches!(
+                    read.named_item(&"absent".into(), 0),
+                    Ok(DomFormNamedValue::Absent)
+                ));
+                let form_names = dom.form_supported_names(form, limits, admission, &cancellation);
+                if face_name.is_some() {
+                    assert!(matches!(
+                        read.named_item(&"unsettled".into(), 0),
+                        Err(DomError::IncompleteSourceOperation)
+                    ));
+                    assert!(matches!(
+                        read.supported_names(),
+                        Err(DomError::IncompleteSourceOperation)
+                    ));
+                    assert!(matches!(
+                        form_names,
+                        Err(DomError::IncompleteSourceOperation)
+                    ));
+                } else {
+                    assert_eq!(
+                        read.supported_names().unwrap().as_slice(),
+                        &[DocumentString::from("known")]
+                    );
+                    assert_eq!(
+                        form_names.unwrap().as_slice(),
+                        &[DocumentString::from("known")]
+                    );
+                }
+            });
+    }
 }
 
 #[test]

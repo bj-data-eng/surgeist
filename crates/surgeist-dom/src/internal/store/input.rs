@@ -441,6 +441,20 @@ impl Draft {
         self.with_input_state(key, cancel, |state| state.flags = flags)?;
         self.input_radio_normalize(key, HtmlRadioTrigger::Checkedness, cancel)
     }
+    pub(super) fn select_radio_from_node_list(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        let flags = self
+            .input_state(key)?
+            .flags
+            .radio_node_list_selected()
+            .ok_or(DomError::InputInapplicable)?;
+        self.with_input_state(key, cancel, |state| state.flags = flags)?;
+        self.input_radio_normalize(key, HtmlRadioTrigger::Checkedness, cancel)
+    }
     pub(super) fn set_input_indeterminate(
         &mut self,
         key: Key,

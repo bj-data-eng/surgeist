@@ -8,6 +8,7 @@ use super::{
 };
 use crate::internal::{
     document::{DomDocumentClass, DomDocumentMetadata},
+    form::FormNamedScope,
     hosted::{DomHostedBrowsingContextId, DomHostedEntry, DomHostedError, DomHostedGlobalId},
     names::{ascii_lower, in_html_namespace_with, qualified_equals_with, same_code_units},
     snapshot::{DomNode, DomNodeKind, DomSiblingDirection},
@@ -26,6 +27,12 @@ use surgeist_html::{
 const ID: &[u16] = &[0x69, 0x64];
 const NAME: &[u16] = &[0x6e, 0x61, 0x6d, 0x65];
 const WILDCARD: &[u16] = &[0x2a];
+
+mod form_controls;
+pub use form_controls::{
+    DomFormNamedValue, DomHtmlFormControlsCollection, DomHtmlFormControlsCollectionRead,
+    DomRadioNodeList, DomRadioNodeListRead,
+};
 
 fn document_metadata<'a, E: From<DomError>>(
     snapshot: &'a DomSnapshot,
@@ -134,6 +141,13 @@ pub struct DomHtmlCollection {
 #[derive(Debug)]
 enum Filter {
     Children,
+    FormControls,
+    FieldsetControls,
+    NamedForm {
+        name: DocumentString,
+        scope: FormNamedScope,
+    },
+    FormNamedProperties,
     TagName {
         qualified_name: DocumentString,
         class: DomDocumentClass,
@@ -788,15 +802,29 @@ where
     A: Fn() -> Result<(), E>,
     E: From<DomError>,
 {
-    fn walk<T>(
-        &self,
-        mut visit: impl FnMut(DomNode<'_>) -> Result<ControlFlow<T>, E>,
+    fn walk<'read, T>(
+        &'read self,
+        visit: impl FnMut(DomNode<'read>) -> Result<ControlFlow<T>, E>,
+    ) -> Result<Option<T>, E> {
+        self.walk_where(|_| Ok(true), visit)
+    }
+
+    fn walk_where<'read, T>(
+        &'read self,
+        mut can_match: impl FnMut(DomNode<'read>) -> Result<bool, E>,
+        mut visit: impl FnMut(DomNode<'read>) -> Result<ControlFlow<T>, E>,
     ) -> Result<Option<T>, E> {
         if matches!(&self.collection.filter, Filter::Children) {
             let root = self.view.node(self.collection.root)?;
             return self
                 .view
-                .visit_elements(root.children().iter().copied(), visit);
+                .visit_elements(root.children().iter().copied(), |node| {
+                    if can_match(node)? {
+                        visit(node)
+                    } else {
+                        Ok(ControlFlow::Continue(()))
+                    }
+                });
         }
         if matches!(
             &self.collection.filter,
@@ -815,8 +843,10 @@ where
         {
             return Ok(None);
         }
-        self.view.descendants(self.collection.root, |node| {
-            if let Some(element) = node.as_element() {
+        let visit_included = |node: DomNode<'read>| {
+            if let Some(element) = node.as_element()
+                && can_match(node)?
+            {
                 let matches = match &self.collection.filter {
                     Filter::TagName {
                         qualified_name,
@@ -849,7 +879,24 @@ where
                     Filter::DocumentName(name) => self
                         .document_names(node, |candidate| self.name_match(candidate, name, ()))?
                         .is_break(),
-                    Filter::Children | Filter::All => true,
+                    Filter::Children | Filter::All | Filter::FormNamedProperties => true,
+                    Filter::FormControls => node
+                        .is_listed_by_form_with(self.collection.root, || self.view.meter.step())?,
+                    Filter::FieldsetControls => {
+                        node.is_listed_control_with(|| self.view.meter.step())?
+                    }
+                    Filter::NamedForm { name, scope } => {
+                        let step = || self.view.meter.step();
+                        self.element_matches_name(node, name, ElementNameScope::Collection)?
+                            && match scope {
+                                FormNamedScope::Controls => {
+                                    node.is_listed_by_form_with(self.collection.root, step)?
+                                }
+                                FormNamedScope::LegacyImages => {
+                                    node.is_legacy_image_of_form_with(self.collection.root, step)?
+                                }
+                            }
+                    }
                     Filter::AllName(name) => {
                         self.element_matches_name(node, name, ElementNameScope::All)?
                     }
@@ -860,7 +907,19 @@ where
                 }
             }
             Ok(ControlFlow::Continue(()))
-        })
+        };
+        if matches!(
+            &self.collection.filter,
+            Filter::FormControls | Filter::NamedForm { .. } | Filter::FormNamedProperties
+        ) {
+            let root = self
+                .view
+                .node(self.collection.root)?
+                .root_with(false, || self.view.meter.step())?;
+            self.view.inclusive_tree(root, visit_included)
+        } else {
+            self.view.descendants(self.collection.root, visit_included)
+        }
     }
 
     fn matches_classes(&self, node: DomNode<'_>, query: &DocumentString) -> Result<bool, E> {
@@ -902,10 +961,18 @@ where
 
     fn first_two_matches(
         &self,
+        matches: impl FnMut(DomNode<'_>) -> Result<bool, E>,
+    ) -> Result<ElementMatches, E> {
+        self.first_two_matches_where(|_| Ok(true), matches)
+    }
+
+    fn first_two_matches_where(
+        &self,
+        can_match: impl FnMut(DomNode<'_>) -> Result<bool, E>,
         mut matches: impl FnMut(DomNode<'_>) -> Result<bool, E>,
     ) -> Result<ElementMatches, E> {
         let mut first = None;
-        let second = self.walk(|node| {
+        let second = self.walk_where(can_match, |node| {
             if !matches(node)? {
                 return Ok(ControlFlow::Continue(()));
             }
@@ -1120,7 +1187,15 @@ where
     }
 
     fn names_for(&self, scope: ElementNameScope) -> Result<DomHtmlCollectionNames, E> {
-        self.collect_names(|node, output| {
+        self.names_for_where(scope, |_| Ok(true))
+    }
+
+    fn names_for_where(
+        &self,
+        scope: ElementNameScope,
+        can_match: impl FnMut(DomNode<'_>) -> Result<bool, E>,
+    ) -> Result<DomHtmlCollectionNames, E> {
+        self.collect_names_where(can_match, |node, output| {
             self.names(node, scope, |value| {
                 self.append_supported_name(output, value)?;
                 Ok(ControlFlow::Continue(()))
@@ -1130,6 +1205,14 @@ where
 
     fn collect_names(
         &self,
+        collect: impl FnMut(DomNode<'_>, &mut DomHtmlCollectionNames) -> Result<ControlFlow<()>, E>,
+    ) -> Result<DomHtmlCollectionNames, E> {
+        self.collect_names_where(|_| Ok(true), collect)
+    }
+
+    fn collect_names_where(
+        &self,
+        can_match: impl FnMut(DomNode<'_>) -> Result<bool, E>,
         mut collect: impl FnMut(DomNode<'_>, &mut DomHtmlCollectionNames) -> Result<ControlFlow<()>, E>,
     ) -> Result<DomHtmlCollectionNames, E> {
         let mut output = DomHtmlCollectionNames {
@@ -1138,8 +1221,16 @@ where
             text_backing: None,
             retained_units: 0,
         };
-        self.walk(|node| collect(node, &mut output))?;
+        self.walk_where(can_match, |node| collect(node, &mut output))?;
         Ok(output)
+    }
+
+    fn has_collection_name(&self, node: DomNode<'_>) -> Result<bool, E> {
+        Ok(self
+            .names(node, ElementNameScope::Collection, |_| {
+                Ok(ControlFlow::Break(()))
+            })?
+            .is_break())
     }
 
     fn append_supported_name(

@@ -716,6 +716,7 @@ impl Draft {
                     NodeOutputKind::AttributeAttachment(*kind)
                 }
                 NodeTicket::TokenListResult(_, result) => NodeOutputKind::TokenListResult(*result),
+                NodeTicket::FormNamed(_, branch) => NodeOutputKind::FormNamed(*branch),
                 NodeTicket::ElementAttributePresent(_, present) => {
                     NodeOutputKind::ElementAttributePresent(*present)
                 }

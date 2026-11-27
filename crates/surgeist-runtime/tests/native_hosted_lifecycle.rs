@@ -2616,6 +2616,111 @@ fn canonical_adoption_style_resource_refusal_after_hosted_teardown_preserves_rea
 }
 
 #[test]
+fn native_object_tracks_its_canonical_form_owner_after_source_creation() {
+    use surgeist_html::values::HtmlValueInterpreter;
+    use surgeist_html_semantics::{
+        HtmlCaptureLimits, HtmlFormOwnerOrigin, HtmlSemanticCancellation, HtmlSemanticFact,
+        HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticValue,
+    };
+
+    let mut session = session();
+    let top = create(&mut session);
+    let mut setup = DomBatch::new();
+    let closed = setup.create_html_document(top.document(), None);
+    let commit = session.dom().apply(setup, &cancel()).unwrap();
+    let closed = commit.document(&closed).unwrap();
+    let body = body(&session.snapshot(), closed);
+    let mut setup = DomBatch::new();
+    let nearest = setup.create_element_ns(closed, Namespace::html(), "form");
+    let external = setup.create_element_ns(closed, Namespace::html(), "form");
+    setup.set_attribute(&external, "id", "external");
+    setup.insert_before(&nearest, body, None);
+    setup.insert_before(&external, body, None);
+    let commit = session.dom().apply(setup, &cancel()).unwrap();
+    let [nearest, external] =
+        [nearest, external].map(|form| commit.created(&form).unwrap().unwrap());
+
+    let mut execution = session.source_execution();
+    let limits = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1);
+    let mut apply = |session: &mut DomSession, edit| {
+        let DomSourceDriveProgress::Complete(result) = execution
+            .apply(
+                &mut session.dom(),
+                edit,
+                limits,
+                &mut DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| None,
+                    url: None,
+                },
+                &cancel(),
+            )
+            .unwrap()
+        else {
+            panic!("expected a complete native Object edit");
+        };
+        result
+    };
+    let object = apply(
+        &mut session,
+        DomSourceEdit::create_element_ns(top.document().node(), Namespace::html(), "object"),
+    )
+    .published_node()
+    .unwrap();
+    apply(&mut session, DomSourceEdit::adopt(object, closed.node()));
+    apply(
+        &mut session,
+        DomSourceEdit::insert_before(object, nearest, None),
+    );
+
+    let assert_owner = |snapshot: &DomSnapshot, expected: Option<NodeId>| {
+        let capture = snapshot
+            .html_capture(
+                closed,
+                None,
+                HtmlCaptureLimits::new(128, 512, 512, 100_000, 128, 32, 32, 16_777_216),
+                DomHtmlCaptureLimits::new(128, 1_000_000),
+                &cancel(),
+            )
+            .unwrap();
+        let report = capture
+            .query(
+                &[HtmlSemanticRequest::new(
+                    capture.subject(object).unwrap(),
+                    HtmlSemanticQuery::FormOwner,
+                )],
+                HtmlValueInterpreter::new(32_768),
+                HtmlSemanticLimits::new(1_000_000, 16, 1024, 512, 1_000_000, 1024),
+                HtmlSemanticCancellation::new(),
+            )
+            .unwrap();
+        let fact = report.results()[0].fact();
+        let HtmlSemanticFact::FormOwner(HtmlSemanticValue::Known(owner)) = fact else {
+            panic!("Object must supply its canonical form owner: {fact:?}");
+        };
+        assert_eq!(owner.origin(), HtmlFormOwnerOrigin::EstablishedCurrent);
+        assert_eq!(owner.owner().map(|id| capture.node(id).unwrap()), expected);
+    };
+
+    let under_nearest = session.snapshot();
+    assert_owner(&under_nearest, Some(nearest));
+    apply(
+        &mut session,
+        DomSourceEdit::set_attribute(object, "form", "external"),
+    );
+    let under_external = session.snapshot();
+    assert_owner(&under_external, Some(external));
+    apply(
+        &mut session,
+        DomSourceEdit::set_attribute(external, "id", "renamed"),
+    );
+    assert_owner(&session.snapshot(), None);
+    assert_owner(&under_nearest, Some(nearest));
+    assert_owner(&under_external, Some(external));
+}
+
+#[test]
 fn native_object_creation_queues_its_original_task_on_an_active_host() {
     use surgeist_dom::task::DomElementTaskSourceKind;
     use surgeist_html::elements::object::HtmlObjectRepresentation;

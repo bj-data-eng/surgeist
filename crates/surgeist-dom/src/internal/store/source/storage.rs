@@ -575,6 +575,11 @@ pub(in crate::internal::store) fn commands(
                 payload.string(name)?;
             }
             Command::ToggleAttribute { name, .. } => payload.string(name)?,
+            Command::SetRadioNodeListValue { name, value, .. } => {
+                payload.string(name)?;
+                payload.string(value)?;
+            }
+            Command::LookupFormNamed { name, .. } => payload.string(name)?,
             Command::EditTokenList { edit, .. } => {
                 use crate::internal::token_list::DomTokenListEdit;
                 match edit {

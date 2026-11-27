@@ -136,9 +136,11 @@ use crate::internal::view_transition::*;
 pub(crate) use bank::owned::{EmptyPath, OwnedBank};
 pub(crate) use bank::{Bank, Iter as BankIter};
 pub use html_collection::{
-    DomDescendantQueryRoot, DomDocumentNamedValue, DomHtmlAllCollection, DomHtmlAllCollectionRead,
-    DomHtmlAllNamedValue, DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionNames,
-    DomHtmlCollectionRead, DomWindowNamedElements, DomWindowNamedValue,
+    DomDescendantQueryRoot, DomDocumentNamedValue, DomFormNamedValue, DomHtmlAllCollection,
+    DomHtmlAllCollectionRead, DomHtmlAllNamedValue, DomHtmlCollection, DomHtmlCollectionLimits,
+    DomHtmlCollectionNames, DomHtmlCollectionRead, DomHtmlFormControlsCollection,
+    DomHtmlFormControlsCollectionRead, DomRadioNodeList, DomRadioNodeListRead,
+    DomWindowNamedElements, DomWindowNamedValue,
 };
 pub use node_list::{DomNodeList, DomNodeListRead};
 pub(crate) use shared::SharedVec;
@@ -1743,7 +1745,15 @@ enum NodeOutputKind {
     AttributeAttachment(AttachmentKind),
     ElementAttributePresent(bool),
     TokenListResult(bool),
+    FormNamed(FormNamedBranch),
     ProcessingInstructionAttributePresent(bool),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FormNamedBranch {
+    Absent,
+    Element,
+    List(crate::internal::form::FormNamedScope),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1773,6 +1783,7 @@ enum NodeTicket {
     AttributeAttachment(Key, AttachmentKind),
     ElementAttributePresent(Key, bool),
     TokenListResult(Key, bool),
+    FormNamed(Key, FormNamedBranch),
     ProcessingInstructionAttributePresent(Key, bool),
 }
 
@@ -1785,6 +1796,7 @@ impl NodeTicket {
             | Self::AttributeAttachment(key, _)
             | Self::ElementAttributePresent(key, _)
             | Self::TokenListResult(key, _)
+            | Self::FormNamed(key, _)
             | Self::ProcessingInstructionAttributePresent(key, _) => key,
         }
     }
@@ -1843,6 +1855,7 @@ impl DomCommit {
                 NodeOutputKind::TokenListResult(result) => {
                     crate::internal::source::DomSourceOutput::TokenListResult(*result)
                 }
+                NodeOutputKind::FormNamed(_) => return None,
                 NodeOutputKind::ElementAttributePresent(present) => {
                     crate::internal::source::DomSourceOutput::ElementAttributePresent(*present)
                 }
@@ -4176,6 +4189,23 @@ impl Draft {
             Command::SetInputChecked { node, value } => {
                 let node = self.resolve(node.clone())?;
                 self.set_input_checked(node, *value, cancelled)?;
+            }
+            Command::SetRadioNodeListValue {
+                form,
+                scope,
+                name,
+                value,
+            } => {
+                let form = self.resolve(form.clone())?;
+                self.set_radio_node_list_value(form, *scope, name, value, cancelled)?;
+            }
+            Command::LookupFormNamed {
+                form,
+                name,
+                max_retained_query_units,
+            } => {
+                let form = self.resolve(form.clone())?;
+                self.lookup_form_named(form, name, *max_retained_query_units, limits, cancelled)?;
             }
             Command::SetInputIndeterminate { node, value } => {
                 let node = self.resolve(node.clone())?;

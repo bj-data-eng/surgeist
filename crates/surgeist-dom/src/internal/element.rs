@@ -10,6 +10,7 @@ use std::sync::atomic::AtomicBool;
 use surgeist_html::{elements::native::HtmlCustomElementState, values::DocumentString};
 use surgeist_html::{
     elements::{
+        form::HtmlNativeFormAssociationKind,
         frame::HtmlIframeInitialState,
         marquee::HtmlMarqueeState,
         media::HtmlCanvasNoneState,
@@ -809,6 +810,35 @@ impl DomElement {
             )),
             _ => None,
         }
+    }
+    pub(crate) fn native_listed_form_association(
+        &self,
+    ) -> Option<(HtmlNativeFormAssociationKind, bool)> {
+        if matches!(self.family, NativeFamily::Object(_)) {
+            // Admitted Object construction has no parser-seeded association.
+            return Some((HtmlNativeFormAssociationKind::Object, false));
+        }
+        self.native_control()
+            .filter(|(_, kind)| kind.listed())
+            .map(|(state, kind)| (kind, state.parser_inserted))
+    }
+    pub(crate) fn matches_autonomous_form_definition_with<E>(
+        &self,
+        definition: &surgeist_html_semantics::HtmlCustomElementDefinition,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        use crate::internal::names::same_code_units;
+        Ok(definition.form_associated()
+            && same_code_units(
+                definition.name().code_units(),
+                definition.local_name().code_units(),
+                &mut step,
+            )?
+            && same_code_units(
+                definition.local_name().code_units(),
+                self.name().local_name().code_units(),
+                step,
+            )?)
     }
     pub(crate) fn is_slot(&self) -> bool {
         matches!(self.family, NativeFamily::Slot)

@@ -4757,6 +4757,7 @@ pub fn surgeist_html::elements::input::HtmlInputFlags::from_retained(kind: surge
 pub fn surgeist_html::elements::input::HtmlInputFlags::indeterminate(self) -> bool
 pub fn surgeist_html::elements::input::HtmlInputFlags::indeterminate_setter(self, indeterminate: bool) -> Self
 pub fn surgeist_html::elements::input::HtmlInputFlags::input_type(self) -> surgeist_html::attributes::HtmlInputType
+pub fn surgeist_html::elements::input::HtmlInputFlags::radio_node_list_selected(self) -> core::option::Option<Self>
 pub fn surgeist_html::elements::input::HtmlInputFlags::radio_normalization_required(self, trigger: surgeist_html::elements::input::HtmlRadioTrigger) -> bool
 pub fn surgeist_html::elements::input::HtmlInputFlags::radio_peer_unchecked(self) -> Self
 pub fn surgeist_html::elements::input::HtmlInputFlags::reset_begin(self) -> Self

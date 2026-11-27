@@ -16,14 +16,15 @@ empty form attribute is distinct from absence. ID-bearing removal uses the actua
 post-removal non-Document-tree predicate, without an old-connected prerequisite.
 Native HTML Form retains HTML's three fresh false scalar values and an actual
 past names map. `DomNode::as_form()` reads its scalars and retained exact-name
-aliases. Native creation/clone starts the map empty. The current public fronts
-cannot insert past-name history or perform named-property lookup; map cleanup
-handles actual retained aliases without treating the map as permanently empty.
+aliases. Native creation and cloning start the map empty. The Form's own
+`form_named_item` Source operation selects current listed controls, then
+associated legacy Images, then an exact past alias. It installs or replaces
+the alias only for a reached current singleton.
 Every owner change removes all aliases for the control from its former Form at
 the intermediate owner state, before later lookup or reassociation. Thus even an
 A→null→A reset can change the Form map. Ordinary nearest-owner retention and
 unrelated name edits preserve aliases. Retained name units count independently
-of attributes; the public API has no growing-history front.
+of attributes.
 
 Form owners live once in the canonical Node/Draft relation, using real NodeIds
 and staged Keys respectively. Same-batch/private imported Forms resolve through
@@ -34,6 +35,11 @@ copied controls acquire their new actual Form. Adoption preserves retained state
 and runs actual split-tree resets. Explicit retirement clears surviving owners
 and aliases for exact retired identities without following generation reuse.
 Snapshots preserve the old relations/maps and ElementState covers their changes.
+
+An admitted native Object joins the same owner relation and listed participant
+index. Tree transitions and exact `form` and ID edits resolve its current owner
+through the shared reset cursor. Capture exposes that established association.
+The original [Object task admission](embedded-content.md) governs construction.
 
 `set_custom_validity` applies to native Fieldset and Button. It uses HTML's unit-fed
 CRLF/CR-to-LF rule before replacing the stored message, preserving every other
@@ -65,6 +71,30 @@ The finite subject and work budgets admit these records and their context
 validation.
 Fieldset collections, Legend delegation, first-Legend disabledness and constraint
 candidacy are HTML semantic queries over the current captured tree.
+
+The live `Dom::form_elements` collection follows its exact Form into its current
+ordinary root. It uses stored ownership, including associated controls outside
+the Form's descendants. Image Button Inputs are excluded. The current
+collection length, index and supported names share one read allowance.
+`Dom::fieldset_elements` forms an HTMLCollection of listed ordinary
+descendants, including Image Button Inputs and those owned by another Form.
+A retained collection can reopen after edits or adoption and refuses a retired
+receiver.
+
+The Form collection's `named_item` selects exact nonempty IDs and names.
+A multiple result retains its full query backing and follows the Form as the
+matched members change. Its RadioNodeList value borrows the first checked Radio
+Button's exact current value, including the default `on` for absent attributes.
+The value setter is a Source edit that selects the first exact matching Radio
+Button in current tree order and normalizes its native radio group. Existing
+dirty checkedness flags follow their own Input transitions.
+
+The Form's `form_supported_names` read combines current IDs, names and past
+aliases in element tree order. Within one element it emits ID, name and past
+aliases in age order. It retains the first occurrence of each nonempty value.
+A multiple named property result retains the selected current filter, including
+the legacy Image tier.
+
 `DomNode::html_will_validate_with` reads live candidacy for Button, Input,
 Select and TextArea from the caller's current published Source segment. It
 uses ordinary ancestry and the shared first-Legend disabledness rule. Slot

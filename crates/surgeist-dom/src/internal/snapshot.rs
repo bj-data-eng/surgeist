@@ -17,6 +17,7 @@ mod document_title;
 mod editability;
 mod element_id;
 mod equality;
+mod form_association;
 mod input_list;
 mod label;
 mod namespace;

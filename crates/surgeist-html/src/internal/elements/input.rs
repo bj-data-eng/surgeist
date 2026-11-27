@@ -713,9 +713,8 @@ impl HtmlInputFlags {
     }
     /// Source peer normalization changes only checkedness, never dirty state,
     /// default checked presence, indeterminateness or user validity.
-    pub fn radio_peer_unchecked(mut self) -> Self {
-        self.checkedness = false;
-        self
+    pub fn radio_peer_unchecked(self) -> Self {
+        self.with_checkedness(false)
     }
     /// HTML indeterminate setter changes only the actual indeterminateness.
     pub fn indeterminate_setter(mut self, indeterminate: bool) -> Self {
@@ -732,8 +731,16 @@ impl HtmlInputFlags {
     /// Sets the checkedness to `actual_checked_presence`, the presence of the `checked` content
     /// attribute. It is the checkedness step of the reset algorithm and leaves every other flag
     /// unchanged.
-    pub fn reset_checkedness(mut self, actual_checked_presence: bool) -> Self {
-        self.checkedness = actual_checked_presence;
+    pub fn reset_checkedness(self, actual_checked_presence: bool) -> Self {
+        self.with_checkedness(actual_checked_presence)
+    }
+    /// The RadioNodeList value setter selects a Radio Button by changing
+    /// only its checkedness. The adapter normalizes its actual radio group.
+    pub fn radio_node_list_selected(self) -> Option<Self> {
+        (self.kind == HtmlInputType::Radio).then(|| self.with_checkedness(true))
+    }
+    fn with_checkedness(mut self, checked: bool) -> Self {
+        self.checkedness = checked;
         self
     }
     /// Actual state transition only. Attribute spelling changes within one state
