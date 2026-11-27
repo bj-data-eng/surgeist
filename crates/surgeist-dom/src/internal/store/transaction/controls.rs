@@ -791,7 +791,7 @@ impl Controls {
 
 fn listed(kind: KindRead<'_>) -> bool {
     matches!(kind, KindRead::Element(element) if
-        element.native_control().is_some_and(|(_, kind)| kind.listed())
+        element.native_listed_form_association().is_some()
         || element.language().form_associated_custom_disabled().is_some()
     )
 }

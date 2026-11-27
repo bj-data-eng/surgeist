@@ -35,6 +35,11 @@ and runs actual split-tree resets. Explicit retirement clears surviving owners
 and aliases for exact retired identities without following generation reuse.
 Snapshots preserve the old relations/maps and ElementState covers their changes.
 
+An admitted native Object joins the same owner relation and listed participant
+index. Tree transitions and exact `form` and ID edits resolve its current owner
+through the shared reset cursor. Capture exposes that established association.
+The original [Object task admission](embedded-content.md) governs construction.
+
 `set_custom_validity` applies to native Fieldset and Button. It uses HTML's unit-fed
 CRLF/CR-to-LF rule before replacing the stored message, preserving every other
 exact UTF-16 unit. Raw batch operands are caller-owned; normalized output scratch

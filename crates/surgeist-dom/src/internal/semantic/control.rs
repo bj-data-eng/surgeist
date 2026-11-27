@@ -68,7 +68,7 @@ pub(super) fn with_native_state(
         }
         let Some(_) = node
             .as_element()
-            .and_then(crate::internal::element::DomElement::native_control)
+            .and_then(crate::internal::element::DomElement::native_listed_form_association)
             .map(|_| ())
             .or_else(|| node.as_img().map(|_| ()))
             .or_else(|| {

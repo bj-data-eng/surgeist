@@ -38,8 +38,11 @@ fn state<'a>(
 // Standalone Img is nonlisted and has a real parser flag/form owner, but cannot
 // acquire a custom validity message through this join.
 fn association(node: &transaction::NodeRead<'_>) -> Option<(bool, AssociationKind)> {
-    if let Some((control, kind)) = state(node.kind()) {
-        return Some((control.parser_inserted, AssociationKind::Native(kind)));
+    if let Some((kind, parser_inserted)) = node
+        .element()
+        .and_then(|element| element.language().native_listed_form_association())
+    {
+        return Some((parser_inserted, AssociationKind::Native(kind)));
     }
     if let Some(image) = node.image() {
         return Some((image.parser_inserted, AssociationKind::Native(Kind::Image)));
@@ -253,6 +256,8 @@ impl Draft {
                                 .parser_inserted = false;
                             image.commit(cancel)?;
                         }
+                        // The admitted Object family has no parser insertion flag.
+                        AssociationKind::Native(Kind::Object) => {}
                         AssociationKind::Native(_) => {
                             self.with_control(key, cancel, |control| {
                                 control.parser_inserted = false
