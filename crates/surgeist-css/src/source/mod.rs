@@ -29,8 +29,9 @@ pub use provenance::same_provenance;
 pub(crate) use provenance::{Layout, LayoutEq, Provenance, Uncompared, Verbatim, VerbatimEq};
 #[doc(inline)]
 pub use source_retention::{
-    CssRetainedPayloadError, CssRetainedSources, CssSourceRetention, CssSourceRetentionAction,
-    CssSourceRetentionError, CssSourceRetentionResource,
+    CssRetainedPayloadError, CssRetainedSources, CssSourceBounds, CssSourceLedger,
+    CssSourceMeasurement, CssSourceMeter, CssSourceReplay, CssSourceRetention,
+    CssSourceRetentionAction, CssSourceRetentionError, CssSourceRetentionResource,
 };
 #[doc(inline)]
 pub use stylesheet_input::{CssDecodedStylesheetInput, CssInputDecodeError, CssStylesheetLocation};

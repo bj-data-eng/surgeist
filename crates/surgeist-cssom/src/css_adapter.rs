@@ -1,5 +1,6 @@
 //! CSS-owned checked syntax enters one live owner without text reconstruction.
 use crate::parser_resources::check_resource_diagnostics;
+use crate::part::Part;
 #[cfg(test)]
 use crate::state_limits::probe;
 use crate::state_limits::{Census, Extension, Inserted};
@@ -94,9 +95,9 @@ impl State {
                 flags,
                 data: data.into(),
                 admission_inputs: std::sync::Arc::new(Vec::new()),
-                counter_edits: std::sync::Arc::new(Vec::new()),
+                counter_edits: Part::new(Vec::new()),
                 replacement_input: None,
-                selected_font_face: selected_font_face.map(std::sync::Arc::new),
+                selected_font_face: selected_font_face.map(Part::new),
             },
         );
         Ok(id)
@@ -345,7 +346,7 @@ impl Adoption<'_> {
                 selector_input: None,
                 selector_inputs: None,
                 selector_namespaces: None,
-                admission_diagnostics: std::sync::Arc::new(Vec::new()),
+                admission_diagnostics: Part::new(Vec::new()),
             },
         );
         self.check()?;
@@ -454,7 +455,7 @@ impl Adoption<'_> {
             let mut map = CssomFeatureMap {
                 kind,
                 entries: Vec::new(),
-                authored: std::sync::Arc::new(Vec::new()),
+                authored: Part::new(Vec::new()),
             };
             for item in v.items() {
                 if let CssFontFeatureValuesItem::Block(block) = item {
@@ -462,7 +463,7 @@ impl Adoption<'_> {
                         continue;
                     }
                     for definition in block.definitions() {
-                        std::sync::Arc::make_mut(&mut map.authored).push(definition.clone());
+                        Part::make_mut(&mut map.authored).push(definition.clone());
                         let value = match definition.value().view() {
                             CssFontFeatureValueRef::Indexes(indexes) => indexes
                                 .iter()

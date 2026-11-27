@@ -203,6 +203,27 @@ mix of the identity address, no hash seed), so the work behind a step is
 bounded. The indexes are collector storage that `CssSourceRetentionAction::Scratch`
 reports with the bank.
 
+`CssSourceMeasurement::of` measures one payload alone: the steps it charges, the
+deepest nesting below its base depth and the distinct snapshots it records,
+which are the figures a collector reports for that payload. A measurement is a
+value that can be kept.
+`CssSourceLedger` counts the distinct snapshots of many measurements by
+reference and totals their retained bytes with the collector's rule: the bytes
+of a snapshot once, and of a shared original UTF16 backing once however many
+distinct snapshots share it. The total does not depend on the order of `add` and
+`remove`. `CssSourceLedger::replay` runs a walk as a collector that had visited
+the ledger's snapshots would, so a refusal arrives at the same step with the
+same resource.
+
+`CssSourceMeter` measures payloads one after another on a single collector it
+clears before each, so that a run of payloads that record few snapshots measures
+without allocating. A payload measured after another sees nothing the other
+recorded: a snapshot or original backing shared by two payloads is counted in
+each payload's own figure, and once in a ledger that holds both
+(`CssSourceLedger::add_metered`). The storage a meter keeps is bounded by the
+largest payload it measured, up to a bank of 256 snapshots, and a refused
+measurement leaves it empty.
+
 Authored Shapes 1 retains `shape-outside` with images, the eight shared basic
 shapes and four reference boxes; `shape-image-threshold` keeps unrestricted
 number/percentage values; `shape-margin` keeps exact nonnegative literals and

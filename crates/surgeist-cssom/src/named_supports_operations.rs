@@ -297,106 +297,171 @@ impl CssomSnapshot {
     }
 }
 
-/// Count actual retained payload entries without interpreting CSS grammar or
-/// estimating the native writer's tariff. Source bytes are charged per retained
-/// direct occurrence, as a logical input bound rather than allocator accounting.
-pub(crate) fn test_child_storage(
-    child: CssSupportsTestChildRef<'_>,
-    limits: &CssomLimits,
-) -> Result<(usize, usize), CssomError> {
-    enum Entry<'a> {
-        Child(CssSupportsTestChildRef<'a>),
-        Component(&'a CssComponentValue),
+/// What the traversal of one test child found, which depends on the child alone.
+///
+/// The traversal counts the entries of the child and the entries it has queued
+/// beside them. A limit refuses when the entries it counts, or those and the
+/// queued ones, exceed it, so `need` is the smallest limit that is not refused.
+#[derive(Clone, Debug)]
+pub(crate) struct TestStorage {
+    /// The source bytes of the child's origin.
+    bytes: usize,
+    /// The entries counted when the traversal ended or stopped.
+    entries: usize,
+    /// The smallest entry limit the traversal is not refused under before it ends or stops.
+    need: usize,
+    stop: Option<Stop>,
+}
+
+/// Why a traversal stopped before it ended.
+#[derive(Clone, Copy, Debug)]
+enum Stop {
+    /// The child is of a kind this CSSOM does not know.
+    Child,
+    /// A child it contains is of such a kind.
+    Unsupported,
+    /// The queue of entries could not be stored.
+    Capacity,
+}
+
+impl TestStorage {
+    /// The entries of the child.
+    pub(crate) const fn entries(&self) -> usize {
+        self.entries
     }
-    let mut pending = Vec::new();
-    let mut entries = 0usize;
-    fn push<'a>(
-        pending: &mut Vec<Entry<'a>>,
-        entry: Entry<'a>,
-        entries: usize,
-        limits: &CssomLimits,
-    ) -> Result<(), CssomError> {
-        if pending.len().saturating_add(entries) >= limits.max_entries {
+    /// The source bytes of the child's origin.
+    pub(crate) const fn bytes(&self) -> usize {
+        self.bytes
+    }
+    /// The entries and source bytes of the child, or the refusal `limits` give it.
+    pub(crate) fn check(&self, limits: &CssomLimits) -> Result<(usize, usize), CssomError> {
+        if matches!(self.stop, Some(Stop::Child)) {
+            return Err(unsupported_test_child());
+        }
+        if self.bytes > limits.max_input_bytes {
+            return Err(CssomError::Limit {
+                resource: "retained test input bytes",
+                maximum: limits.max_input_bytes,
+            });
+        }
+        if self.need > limits.max_entries {
             return Err(CssomError::Limit {
                 resource: "test payload entries",
                 maximum: limits.max_entries,
             });
         }
-        pending.try_reserve(1).map_err(|_| CssomError::Limit {
-            resource: "test payload capacity",
-            maximum: limits.max_entries,
-        })?;
-        pending.push(entry);
-        Ok(())
+        match self.stop {
+            None => Ok((self.entries, self.bytes)),
+            Some(Stop::Child | Stop::Unsupported) => Err(unsupported_test_child()),
+            Some(Stop::Capacity) => Err(CssomError::Limit {
+                resource: "test payload capacity",
+                maximum: limits.max_entries,
+            }),
+        }
+    }
+}
+
+/// Count actual retained payload entries without interpreting CSS grammar or
+/// estimating the native writer's tariff. Source bytes are charged per retained
+/// direct occurrence, as a logical input bound rather than allocator accounting.
+pub(crate) fn measure_test_child(child: CssSupportsTestChildRef<'_>) -> TestStorage {
+    enum Entry<'a> {
+        Child(CssSupportsTestChildRef<'a>),
+        Component(&'a CssComponentValue),
     }
     let origin = match child {
         CssSupportsTestChildRef::Declaration(v) => v.origin(),
         CssSupportsTestChildRef::QualifiedRule(v) => v.origin(),
         CssSupportsTestChildRef::AtRule(v) => v.origin(),
-        _ => return Err(unsupported_test_child()),
+        _ => {
+            return TestStorage {
+                bytes: 0,
+                entries: 0,
+                need: 0,
+                stop: Some(Stop::Child),
+            };
+        }
     };
-    let bytes = retained_test_input_bytes(origin, limits)?;
-    push(&mut pending, Entry::Child(child), entries, limits)?;
-    while let Some(entry) = pending.pop() {
-        entries = entries
-            .checked_add(1)
-            .filter(|n| *n <= limits.max_entries)
-            .ok_or(CssomError::Limit {
-                resource: "test payload entries",
-                maximum: limits.max_entries,
-            })?;
-        let (values, body) = match entry {
-            Entry::Child(CssSupportsTestChildRef::Declaration(v)) => (v.components(), None),
-            Entry::Child(CssSupportsTestChildRef::QualifiedRule(v)) => {
-                (v.prelude().items(), Some(v.body()))
-            }
-            Entry::Child(CssSupportsTestChildRef::AtRule(v)) => {
-                push(
-                    &mut pending,
-                    Entry::Component(v.at_keyword()),
-                    entries,
-                    limits,
-                )?;
-                (v.prelude().items(), v.body())
-            }
-            Entry::Child(_) => return Err(unsupported_test_child()),
-            Entry::Component(v) => (
-                match v.view() {
-                    CssComponentValueRef::Function(v) => v.values().items(),
-                    CssComponentValueRef::Block(v) => v.values().items(),
-                    _ => &[],
-                },
-                None,
-            ),
-        };
-        for value in values {
-            push(&mut pending, Entry::Component(value), entries, limits)?;
-        }
-        if let Some(body) = body {
-            entries = entries
-                .checked_add(body.local_recovery_origins().len())
-                .filter(|n| *n <= limits.max_entries)
-                .ok_or(CssomError::Limit {
-                    resource: "test payload entries",
-                    maximum: limits.max_entries,
-                })?;
-            for child in body.children() {
-                push(&mut pending, Entry::Child(child), entries, limits)?;
-            }
-        }
+    let mut storage = TestStorage {
+        bytes: test_input_bytes(origin),
+        entries: 0,
+        need: 0,
+        stop: None,
+    };
+    let mut pending = Vec::new();
+    fn push<'a>(
+        pending: &mut Vec<Entry<'a>>,
+        entry: Entry<'a>,
+        storage: &mut TestStorage,
+    ) -> Result<(), Stop> {
+        // The queue and the entries counted must stay below the limit.
+        storage.need = storage.need.max(
+            pending
+                .len()
+                .saturating_add(storage.entries)
+                .saturating_add(1),
+        );
+        pending.try_reserve(1).map_err(|_| Stop::Capacity)?;
+        pending.push(entry);
+        Ok(())
     }
-    Ok((entries, bytes))
+    let walked = (|| {
+        push(&mut pending, Entry::Child(child), &mut storage)?;
+        while let Some(entry) = pending.pop() {
+            storage.entries = storage.entries.saturating_add(1);
+            storage.need = storage.need.max(storage.entries);
+            let (values, body) = match entry {
+                Entry::Child(CssSupportsTestChildRef::Declaration(v)) => (v.components(), None),
+                Entry::Child(CssSupportsTestChildRef::QualifiedRule(v)) => {
+                    (v.prelude().items(), Some(v.body()))
+                }
+                Entry::Child(CssSupportsTestChildRef::AtRule(v)) => {
+                    push(&mut pending, Entry::Component(v.at_keyword()), &mut storage)?;
+                    (v.prelude().items(), v.body())
+                }
+                Entry::Child(_) => return Err(Stop::Unsupported),
+                Entry::Component(v) => (
+                    match v.view() {
+                        CssComponentValueRef::Function(v) => v.values().items(),
+                        CssComponentValueRef::Block(v) => v.values().items(),
+                        _ => &[],
+                    },
+                    None,
+                ),
+            };
+            for value in values {
+                push(&mut pending, Entry::Component(value), &mut storage)?;
+            }
+            if let Some(body) = body {
+                storage.entries = storage
+                    .entries
+                    .saturating_add(body.local_recovery_origins().len());
+                storage.need = storage.need.max(storage.entries);
+                for child in body.children() {
+                    push(&mut pending, Entry::Child(child), &mut storage)?;
+                }
+            }
+        }
+        Ok(())
+    })();
+    storage.stop = walked.err();
+    storage
+}
+
+/// The bytes of the source a test input retains.
+pub(crate) fn test_input_bytes(origin: &CssValueOrigin) -> usize {
+    match origin {
+        CssValueOrigin::Parsed(v) => v.source().as_str().len(),
+        CssValueOrigin::ImplicitClosure { opening, .. } => opening.source().as_str().len(),
+        _ => 0,
+    }
 }
 
 pub(crate) fn retained_test_input_bytes(
     origin: &CssValueOrigin,
     limits: &CssomLimits,
 ) -> Result<usize, CssomError> {
-    let bytes = match origin {
-        CssValueOrigin::Parsed(v) => v.source().as_str().len(),
-        CssValueOrigin::ImplicitClosure { opening, .. } => opening.source().as_str().len(),
-        _ => 0,
-    };
+    let bytes = test_input_bytes(origin);
     if bytes > limits.max_input_bytes {
         return Err(CssomError::Limit {
             resource: "retained test input bytes",

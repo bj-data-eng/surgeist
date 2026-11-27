@@ -521,8 +521,8 @@ impl CssomBatch {
                 media,
                 owner_rule: None,
                 namespaces: Arc::new(namespaces),
-                authored: Arc::new(authored),
-                diagnostics: Arc::new(diagnostics),
+                authored: crate::part::Part::new(authored),
+                diagnostics: crate::part::Part::new(diagnostics),
             },
         );
         if register {
@@ -878,8 +878,8 @@ impl CssomBatch {
         let sheet = self.staged.sheets.get_mut(id).expect("checked sheet");
         // Imports do not affect namespace bindings; source occurrences are retained.
         sheet.namespaces = Arc::new(CssNamespaceContext::from_sheet(&authored));
-        sheet.authored = Arc::new(authored);
-        sheet.diagnostics = Arc::new(diagnostics);
+        sheet.authored = crate::part::Part::new(authored);
+        sheet.diagnostics = crate::part::Part::new(diagnostics);
         self.affect(
             CssomObjectId::Sheet(id.clone()),
             &[

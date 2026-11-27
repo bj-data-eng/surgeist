@@ -210,10 +210,11 @@ impl CssomBatch {
         let selected =
             CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&winners, budget.provider()?)?;
         let block = self.staged.blocks.get_mut(id).expect("owned block");
-        block.data = std::sync::Arc::new(CssomBlockData::FontFace(CssFontFaceDescriptors::new(
+        block.data = crate::part::Part::new(CssomBlockData::FontFace(CssFontFaceDescriptors::new(
             entries,
         )));
-        block.selected_font_face = Some(std::sync::Arc::new(CssomProjection::Available(selected)));
+        block.selected_font_face =
+            Some(crate::part::Part::new(CssomProjection::Available(selected)));
         Ok(())
     }
     fn replace_font_selected(
@@ -228,7 +229,8 @@ impl CssomBatch {
             .blocks
             .get_mut(id)
             .expect("owned block")
-            .selected_font_face = Some(std::sync::Arc::new(CssomProjection::Available(selected)));
+            .selected_font_face =
+            Some(crate::part::Part::new(CssomProjection::Available(selected)));
         Ok(())
     }
     pub(super) fn set_descriptor(
