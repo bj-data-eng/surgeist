@@ -4,6 +4,9 @@ use super::super::*;
 use super::{NodeRead, records::Overlay, staged::*};
 use canonical::*;
 
+#[cfg(test)]
+mod previous_focus_tests;
+
 pub(in crate::internal::store) enum FieldUndo {
     Unchanged,
     AutofocusProcessed(bool),
