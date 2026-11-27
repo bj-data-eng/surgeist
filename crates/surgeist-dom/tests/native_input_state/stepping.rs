@@ -165,6 +165,21 @@ fn range_and_calendar_serialize_through_the_live_type_at_invocation() {
 }
 
 #[test]
+fn range_chooses_the_larger_finite_lattice_point_at_an_exact_tie() {
+    let (mut dom, input) = setup(
+        "range",
+        &[
+            ("min", "9007199254740992"),
+            ("max", "9007199254740994"),
+            ("step", "1"),
+            ("value", "9007199254740992"),
+        ],
+    );
+    step(&mut dom, input, Direction::Up, 1, 10_000_000).unwrap();
+    assert_eq!(value(&dom, input), "9007199254740994");
+}
+
+#[test]
 fn any_precedes_the_interval_and_a_reversed_time_interval_is_a_noop() {
     let edges = [("min", "23:00"), ("max", "02:00"), ("value", "00:30")];
     let (mut dom, input) = setup("time", &edges);
