@@ -61,7 +61,7 @@ pub(super) fn attached_table_edits_use_the_original_source() {
         const foot = bare.appendChild(element('tfoot'));
         const footRow = foot.insertRow();
         const direct = bare.appendChild(element('tr'));
-        const body = bare.createTBody();
+        const body = bare.createTBody(Symbol());
         if (body === implicit || body.localName !== 'tbody' || implicit.nextSibling !== body ||
             body.nextSibling !== comment || body.ownerDocument !== document) return 'fresh body after direct body';
         if (bare.createTBody() === body || body.nextSibling === comment) return 'another fresh body';
@@ -89,6 +89,37 @@ pub(super) fn attached_table_edits_use_the_original_source() {
         if (ending.deleteCell(-1) !== undefined || ending.lastChild !== reentered ||
             !check(() => ending.deleteCell(-2), 'IndexSizeError') ||
             !check(() => ending.deleteCell(2), 'IndexSizeError')) return 'cell deletion boundaries';
+
+        const inert = document.implementation.createHTMLDocument();
+        const inertTable = inert.body.appendChild(inert.createElement('table'));
+        const inertRow = HTMLTableElement.prototype.insertRow.call(inertTable);
+        const inertCell = inertRow.insertCell();
+        if (inertRow.ownerDocument !== inert || inertCell.ownerDocument !== inert ||
+            inertTable.firstChild.firstChild !== inertRow || inertRow.firstChild !== inertCell ||
+            Object.getPrototypeOf(inertCell) !== HTMLTableCellElement.prototype) {
+            return 'canonical receiving document and original fallback realm';
+        }
+
+        const connected = document.body.appendChild(element('table'));
+        const removed = connected.insertRow();
+        const removalBody = removed.parentNode;
+        const removedCell = removed.insertCell();
+        let disconnected = 0;
+        let observed = false;
+        let reentrantRow;
+        customElements.define('x-table-structure-probe', class extends HTMLElement {
+            disconnectedCallback() {
+                disconnected++;
+                observed = !this.isConnected && this.parentNode === removedCell &&
+                    removed.parentNode === null && removalBody.firstChild === null;
+                reentrantRow = connected.insertRow();
+            }
+        });
+        removedCell.appendChild(element('x-table-structure-probe'));
+        if (connected.deleteRow(0) !== undefined || disconnected !== 1 || !observed ||
+            reentrantRow.parentNode !== removalBody || removalBody.firstChild !== reentrantRow) {
+            return 'deletion settles once before its reentrant reaction';
+        }
         return 'ok';
     })()"#;
     let result = host

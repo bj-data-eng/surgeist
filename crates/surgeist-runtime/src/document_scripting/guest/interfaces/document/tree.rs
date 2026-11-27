@@ -6,7 +6,7 @@ use crate::{
     internal::dom_source::DomSourceRuntimeError,
 };
 use surgeist_bindings_js::{ValueKind, dom_exception::DomExceptionName};
-use surgeist_dom::source::{DomSourceEdit, DomSourceRequest, DomSourceStatus};
+use surgeist_dom::source::{DomSourceEdit, DomSourceOutput, DomSourceRequest, DomSourceStatus};
 
 mod clone;
 mod comparison;
@@ -311,6 +311,35 @@ impl Capture {
             drive.progress,
             (drive.parent, drive.pending),
             |_, _| Ok(completion),
+        )
+    }
+
+    pub(super) fn apply_tree_node_edit<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        edit: DomSourceEdit,
+    ) -> Result<Completion<'scope>, DocumentGuestEventError> {
+        let drive =
+            self.drive_guest_tree_edit(owner, events, scope.realm_authority()?.identity(), edit)?;
+        self.finish_guest_tree_edit(
+            scope,
+            owner,
+            events,
+            drive.progress,
+            (drive.parent, drive.pending),
+            |scope, completion| {
+                let Some(DomSourceOutput::Node(node)) = completion.output() else {
+                    return Err(DocumentScriptNativeError::ProjectionCustody.into());
+                };
+                Ok(Completion::Return(self.project_observation(
+                    scope,
+                    owner,
+                    events,
+                    Observation::Node(Some(node)),
+                )?))
+            },
         )
     }
 

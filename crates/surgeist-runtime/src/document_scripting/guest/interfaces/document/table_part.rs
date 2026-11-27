@@ -2,10 +2,7 @@
 
 use super::{reflection::Receiver, table_legacy::TableFamily, *};
 use surgeist_bindings_js::ValueKind;
-use surgeist_dom::{
-    source::{DomSourceEdit, DomSourceOutput},
-    tree::DomHtmlTablePart,
-};
+use surgeist_dom::{source::DomSourceEdit, tree::DomHtmlTablePart};
 
 struct Members {
     part: DomHtmlTablePart,
@@ -225,30 +222,7 @@ impl Capture {
                         part,
                         creation_realm_fallback(&owner)?,
                     );
-                    let drive = self.drive_guest_tree_edit(
-                        &owner,
-                        &events,
-                        scope.realm_authority()?.identity(),
-                        edit,
-                    )?;
-                    return self.finish_guest_tree_edit(
-                        scope,
-                        &owner,
-                        &events,
-                        drive.progress,
-                        (drive.parent, drive.pending),
-                        |scope, completion| {
-                            let Some(DomSourceOutput::Node(node)) = completion.output() else {
-                                return Err(DocumentScriptNativeError::ProjectionCustody.into());
-                            };
-                            Ok(Completion::Return(self.project_observation(
-                                scope,
-                                &owner,
-                                &events,
-                                Observation::Node(Some(node)),
-                            )?))
-                        },
-                    );
+                    return self.apply_tree_node_edit(scope, &owner, &events, edit);
                 }
             };
             self.apply_tree_edit(scope, &owner, &events, edit, Completion::Undefined)
