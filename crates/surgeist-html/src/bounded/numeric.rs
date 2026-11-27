@@ -18,6 +18,7 @@ pub use crate::internal::microsyntax::numeric::natural_ratio::{
     HtmlNaturalProduct, HtmlRationalIntegerMaterializationFailure,
 };
 pub use crate::internal::microsyntax::numeric::range::best::HtmlBestFiniteNumberCursor;
+pub use crate::internal::microsyntax::numeric::range::expansion::HtmlFiniteDecimalExpansionCursor;
 pub use crate::internal::microsyntax::numeric::range::ingress::HtmlFiniteDecimalIngressCursor;
 pub use crate::internal::microsyntax::numeric::range::lattice::{
     HtmlRangeLatticeCursor, HtmlRangeMidpointCursor,

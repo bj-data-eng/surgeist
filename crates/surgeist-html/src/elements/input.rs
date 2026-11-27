@@ -25,5 +25,5 @@ pub use crate::internal::elements::input_selection::{
 };
 pub use crate::internal::elements::input_step::{
     HtmlInputStepBounds, HtmlInputStepCoordinate, HtmlInputStepDirection, HtmlInputStepError,
-    HtmlInputStepGrid,
+    HtmlInputStepGrid, HtmlInputStepOperand,
 };

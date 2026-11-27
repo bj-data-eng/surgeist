@@ -245,7 +245,7 @@ impl<'a> HtmlNaturalDigits<'a> {
     pub const fn is_empty(self) -> bool {
         false
     }
-    fn digit(self, i: usize) -> u8 {
+    pub(crate) fn digit(self, i: usize) -> u8 {
         match self.repr {
             NaturalDigitsRepr::Integer(v) => v.digits.as_bytes()[v.digits.len() - 1 - i] - b'0',
             NaturalDigitsRepr::Little(v) => v[i],

@@ -4,7 +4,9 @@
 //! size workspace and a charge for each reached digit action. The grid
 //! keeps the projection exact until the state-specific serialization step.
 
-use crate::internal::microsyntax::numeric::{HtmlNonNegativeDecimal, HtmlSignedDecimal};
+use crate::internal::microsyntax::numeric::{
+    HtmlNonNegativeDecimal, HtmlSignedDecimal, natural_ratio::HtmlNaturalDigits,
+};
 use std::cmp::Ordering;
 
 /// The invoked stepping method, independent of the sign of its count.
@@ -20,20 +22,167 @@ pub enum HtmlInputStepDirection {
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlInputStepBounds<'a> {
     /// Effective minimum, when supplied by the Input state.
-    pub minimum: Option<&'a HtmlSignedDecimal>,
+    pub minimum: Option<HtmlInputStepOperand<'a>>,
     /// Effective maximum, when supplied by the Input state.
-    pub maximum: Option<&'a HtmlSignedDecimal>,
+    pub maximum: Option<HtmlInputStepOperand<'a>>,
     /// Origin of the grid selected by the shared attribute rules.
-    pub base: &'a HtmlSignedDecimal,
+    pub base: HtmlInputStepOperand<'a>,
     /// Positive allowed step in the same coordinate unit.
-    pub step: &'a HtmlNonNegativeDecimal,
+    pub step: HtmlInputStepOperand<'a>,
+}
+
+/// Borrowed exact operand, either a native decimal or an admitted coefficient.
+#[derive(Clone, Copy, Debug)]
+pub struct HtmlInputStepOperand<'a> {
+    representation: OperandRepr<'a>,
+    negative: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum OperandRepr<'a> {
+    Decimal(&'a HtmlNonNegativeDecimal),
+    Coefficient {
+        digits: HtmlNaturalDigits<'a>,
+        scale: usize,
+    },
+    Cells {
+        digits: &'a [u8],
+        scale: usize,
+    },
+}
+
+impl<'a> HtmlInputStepOperand<'a> {
+    /// Borrow an exact signed decimal, retaining its actual sign.
+    pub fn decimal(value: &'a HtmlSignedDecimal) -> Self {
+        Self {
+            representation: OperandRepr::Decimal(value.magnitude()),
+            negative: value.is_negative(),
+        }
+    }
+
+    /// Borrow a nonnegative decimal.
+    pub fn magnitude(value: &'a HtmlNonNegativeDecimal) -> Self {
+        Self {
+            representation: OperandRepr::Decimal(value),
+            negative: false,
+        }
+    }
+
+    /// Borrow already checked coefficient digits and their fractional extent.
+    /// The canonical zero coefficient has positive sign.
+    pub fn coefficient(digits: HtmlNaturalDigits<'a>, scale: usize, negative: bool) -> Self {
+        Self {
+            representation: OperandRepr::Coefficient { digits, scale },
+            negative: negative && !(digits.len() == 1 && digits.digit(0) == 0),
+        }
+    }
+
+    /// Compares exact coordinates without allocating a common coefficient.
+    /// The caller admits each reached digit or scalar comparison.
+    pub fn compare<E>(
+        self,
+        other: Self,
+        mut tick: impl FnMut() -> Result<(), E>,
+    ) -> Result<Ordering, HtmlInputStepError<E>> {
+        let (left, left_scale) = self.extent();
+        let (right, right_scale) = other.extent();
+        let scale = left_scale.max(right_scale);
+        let width = left
+            .max(right)
+            .checked_add(scale)
+            .ok_or(HtmlInputStepError::Workspace)?;
+        let layout = Layout { width, scale };
+        compare(
+            self.quantity(layout),
+            other.quantity(layout),
+            width,
+            &mut tick,
+        )
+    }
+
+    /// Scratch cells sufficient for multiplication by any `u32` scale factor.
+    pub fn multiplication_cells(self) -> Option<usize> {
+        let (whole, scale) = self.extent();
+        whole.checked_add(scale)?.checked_add(10)
+    }
+
+    /// Scales the operand exactly in caller-owned scratch.
+    pub fn multiply<'work, E>(
+        self,
+        factor: u32,
+        scratch: &'work mut [u8],
+        mut tick: impl FnMut() -> Result<(), E>,
+    ) -> Result<HtmlInputStepCoordinate<'work>, HtmlInputStepError<E>> {
+        let width = self
+            .multiplication_cells()
+            .ok_or(HtmlInputStepError::Workspace)?;
+        let scale = self.extent().1;
+        let output = scratch
+            .get_mut(..width)
+            .ok_or(HtmlInputStepError::Workspace)?;
+        write_product(
+            self.quantity(Layout { width, scale }).digits,
+            factor,
+            output,
+            &mut tick,
+        )?;
+        let length = digit_len(Digits::Cells(output), width, &mut tick)?;
+        Ok(HtmlInputStepCoordinate {
+            cells: output
+                .get(..length.max(1))
+                .ok_or(HtmlInputStepError::Workspace)?,
+            scale,
+            negative: self.negative && length != 0,
+        })
+    }
+
+    fn extent(self) -> (usize, usize) {
+        match self.representation {
+            OperandRepr::Decimal(value) => (
+                value.integer_part().decimal_digits().len(),
+                value.fractional_digits().map_or(0, str::len),
+            ),
+            OperandRepr::Coefficient { digits, scale } => {
+                (digits.len().saturating_sub(scale).max(1), scale)
+            }
+            OperandRepr::Cells { digits, scale } => {
+                (digits.len().saturating_sub(scale).max(1), scale)
+            }
+        }
+    }
+
+    fn zero(self) -> bool {
+        match self.representation {
+            OperandRepr::Decimal(value) => value.is_zero(),
+            OperandRepr::Coefficient { digits, .. } => digits.len() == 1 && digits.digit(0) == 0,
+            OperandRepr::Cells { digits, .. } => digits == [0],
+        }
+    }
+
+    fn quantity(self, layout: Layout) -> Quantity<'a> {
+        let digits = match self.representation {
+            OperandRepr::Decimal(value) => decimal_digits(value, layout.scale),
+            OperandRepr::Coefficient { digits, scale } => Digits::Shifted {
+                digits,
+                shift: layout.scale - scale,
+            },
+            OperandRepr::Cells { digits, scale } => Digits::ShiftedCells {
+                digits,
+                shift: layout.scale - scale,
+            },
+        };
+        Quantity {
+            digits,
+            negative: self.negative,
+        }
+    }
 }
 
 /// Failure to construct or execute an exact bounded step grid calculation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlInputStepError<E> {
-    /// The supplied allowed step was zero.
-    ZeroStep,
+    /// The supplied allowed step was zero or negative.
+    NonPositiveStep,
     /// The layout was unrepresentable or the supplied workspace was too short.
     Workspace,
     /// The caller refused reached work.
@@ -43,7 +192,7 @@ pub enum HtmlInputStepError<E> {
 impl<E: std::fmt::Display> std::fmt::Display for HtmlInputStepError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ZeroStep => f.write_str("an allowed Input step must be positive"),
+            Self::NonPositiveStep => f.write_str("an allowed Input step must be positive"),
             Self::Workspace => {
                 f.write_str("the Input step workspace cannot represent the required digits")
             }
@@ -70,6 +219,16 @@ pub struct HtmlInputStepCoordinate<'a> {
 }
 
 impl<'a> HtmlInputStepCoordinate<'a> {
+    /// Uses a previously calculated exact coordinate as an operand.
+    pub fn operand(self) -> HtmlInputStepOperand<'a> {
+        HtmlInputStepOperand {
+            representation: OperandRepr::Cells {
+                digits: self.cells,
+                scale: self.scale,
+            },
+            negative: self.negative,
+        }
+    }
     /// The nonnegative coefficient, least significant digit first.
     pub const fn coefficient(self) -> &'a [u8] {
         self.cells
@@ -93,6 +252,14 @@ enum Digits<'a> {
         fraction: &'a [u8],
         scale: usize,
     },
+    Shifted {
+        digits: HtmlNaturalDigits<'a>,
+        shift: usize,
+    },
+    ShiftedCells {
+        digits: &'a [u8],
+        shift: usize,
+    },
     Cells(&'a [u8]),
 }
 
@@ -112,6 +279,15 @@ impl Digits<'_> {
                     .and_then(|place| integer.get(place))
             }
             .map_or(0, |digit| *digit - b'0'),
+            Self::Shifted { digits, shift } => index
+                .checked_sub(shift)
+                .filter(|position| *position < digits.len())
+                .map_or(0, |position| digits.digit(position)),
+            Self::ShiftedCells { digits, shift } => index
+                .checked_sub(shift)
+                .and_then(|position| digits.get(position))
+                .copied()
+                .unwrap_or(0),
             Self::Cells(cells) => cells.get(index).copied().unwrap_or(0),
         }
     }
@@ -123,14 +299,7 @@ struct Quantity<'a> {
     negative: bool,
 }
 
-impl<'a> Quantity<'a> {
-    fn decimal(value: &'a HtmlSignedDecimal, scale: usize) -> Self {
-        Self {
-            digits: decimal_digits(value.magnitude(), scale),
-            negative: value.is_negative(),
-        }
-    }
-
+impl Quantity<'_> {
     fn negated(self) -> Self {
         Self {
             negative: !self.negative,
@@ -154,17 +323,22 @@ struct Layout {
 }
 
 impl<'input> HtmlInputStepBounds<'input> {
-    fn layout(self, current: Option<&HtmlSignedDecimal>) -> Option<Layout> {
+    fn layout(self, current: Option<HtmlInputStepOperand<'_>>) -> Option<Layout> {
         let mut integer = 1_usize;
         let mut scale = 0;
-        for value in [self.minimum, self.maximum, current, Some(self.base)]
-            .into_iter()
-            .flatten()
-            .map(HtmlSignedDecimal::magnitude)
-            .chain(std::iter::once(self.step))
+        for value in [
+            self.minimum,
+            self.maximum,
+            current,
+            Some(self.base),
+            Some(self.step),
+        ]
+        .into_iter()
+        .flatten()
         {
-            integer = integer.max(value.integer_part().decimal_digits().len());
-            scale = scale.max(value.fractional_digits().map_or(0, str::len));
+            let (whole, fraction) = value.extent();
+            integer = integer.max(whole);
+            scale = scale.max(fraction);
         }
         // An i32 magnitude adds at most ten decimal places. One further
         // place covers carry and the temporary remainder times ten.
@@ -190,13 +364,13 @@ impl<'input> HtmlInputStepBounds<'input> {
         scratch: &mut [u8],
         mut tick: impl FnMut() -> Result<(), E>,
     ) -> Result<Option<HtmlInputStepGrid<'input>>, HtmlInputStepError<E>> {
-        if self.step.is_zero() {
-            return Err(HtmlInputStepError::ZeroStep);
+        if self.step.negative || self.step.zero() {
+            return Err(HtmlInputStepError::NonPositiveStep);
         }
         if let (Some(minimum), Some(maximum)) = (self.minimum, self.maximum) {
             let layout = self.layout(None).ok_or(HtmlInputStepError::Workspace)?;
-            let minimum = Quantity::decimal(minimum, layout.scale);
-            let maximum = Quantity::decimal(maximum, layout.scale);
+            let minimum = minimum.quantity(layout);
+            let maximum = maximum.quantity(layout);
             if compare(minimum, maximum, layout.width, &mut tick)? == Ordering::Greater {
                 return Ok(None);
             }
@@ -216,8 +390,8 @@ impl<'input> HtmlInputStepBounds<'input> {
     ) -> Result<Projection<'input, 'scratch>, HtmlInputStepError<E>> {
         let mut lanes = scratch.chunks_exact_mut(layout.width);
         Ok(Projection {
-            base: Quantity::decimal(self.base, layout.scale),
-            step: decimal_digits(self.step, layout.scale),
+            base: self.base.quantity(layout),
+            step: self.step.quantity(layout).digits,
             gap: lanes.next().ok_or(HtmlInputStepError::Workspace)?,
             remainder: lanes.next().ok_or(HtmlInputStepError::Workspace)?,
             delta: lanes.next().ok_or(HtmlInputStepError::Workspace)?,
@@ -235,7 +409,7 @@ pub struct HtmlInputStepGrid<'a> {
 
 impl HtmlInputStepGrid<'_> {
     /// Size of the reusable scratch for the current coordinate, in byte cells.
-    pub fn scratch_cells(self, current: Option<&HtmlSignedDecimal>) -> Option<usize> {
+    pub fn scratch_cells(self, current: Option<HtmlInputStepOperand<'_>>) -> Option<usize> {
         self.bounds.layout(current)?.width.checked_mul(4)
     }
 
@@ -245,7 +419,7 @@ impl HtmlInputStepGrid<'_> {
     /// Each work call admits one reached decimal position or scalar operation.
     pub fn project<'work, E>(
         self,
-        current: Option<&HtmlSignedDecimal>,
+        current: Option<HtmlInputStepOperand<'_>>,
         direction: HtmlInputStepDirection,
         count: i32,
         scratch: &'work mut [u8],
@@ -256,20 +430,14 @@ impl HtmlInputStepGrid<'_> {
             .layout(current)
             .ok_or(HtmlInputStepError::Workspace)?;
         let mut grid = self.bounds.projection(layout, scratch)?;
-        let minimum = self
-            .bounds
-            .minimum
-            .map(|value| Quantity::decimal(value, layout.scale));
-        let maximum = self
-            .bounds
-            .maximum
-            .map(|value| Quantity::decimal(value, layout.scale));
+        let minimum = self.bounds.minimum.map(|value| value.quantity(layout));
+        let maximum = self.bounds.maximum.map(|value| value.quantity(layout));
         let before = current.map_or(
             Quantity {
                 negative: false,
                 digits: Digits::Cells(&[]),
             },
-            |value| Quantity::decimal(value, layout.scale),
+            |value| value.quantity(layout),
         );
         grid.advance(before, direction, count, &mut tick)?;
         if let Some(minimum) = minimum

@@ -2814,6 +2814,15 @@ pub enum surgeist_html::bounded::input::HtmlInputRangeValue
 pub surgeist_html::bounded::input::HtmlInputRangeValue::ConversionFailed
 pub surgeist_html::bounded::input::HtmlInputRangeValue::Finite(surgeist_html::bounded::input::HtmlInputRangeNumber)
 pub surgeist_html::bounded::input::HtmlInputRangeValue::InvalidGrammar
+pub enum surgeist_html::bounded::input::HtmlInputTemporalStepError<E>
+pub surgeist_html::bounded::input::HtmlInputTemporalStepError::Admission(E)
+pub surgeist_html::bounded::input::HtmlInputTemporalStepError::Inapplicable
+pub surgeist_html::bounded::input::HtmlInputTemporalStepError::Materialization(surgeist_html::bounded::numeric::HtmlNumericMaterializationError)
+pub surgeist_html::bounded::input::HtmlInputTemporalStepError::Representation
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_html::bounded::input::HtmlInputTemporalStepError<E>
+pub fn surgeist_html::bounded::input::HtmlInputTemporalStepError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E: core::fmt::Display> core::fmt::Display for surgeist_html::bounded::input::HtmlInputTemporalStepError<E>
+pub fn surgeist_html::bounded::input::HtmlInputTemporalStepError<E>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::bounded::input::HtmlInputValueAssignment
 pub surgeist_html::bounded::input::HtmlInputValueAssignment::Empty
 pub surgeist_html::bounded::input::HtmlInputValueAssignment::RangeNumber(surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber)
@@ -2851,11 +2860,26 @@ pub struct surgeist_html::bounded::input::HtmlInputRangeSanitizationReplyError
 impl core::error::Error for surgeist_html::bounded::input::HtmlInputRangeSanitizationReplyError
 impl core::fmt::Display for surgeist_html::bounded::input::HtmlInputRangeSanitizationReplyError
 pub fn surgeist_html::bounded::input::HtmlInputRangeSanitizationReplyError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::bounded::input::HtmlInputTemporalStepOutcome<T, E>
+impl<T, E> surgeist_html::bounded::input::HtmlInputTemporalStepOutcome<T, E>
+pub fn surgeist_html::bounded::input::HtmlInputTemporalStepOutcome<T, E>::into_parts(self) -> (core::result::Result<T, surgeist_html::bounded::input::HtmlInputTemporalStepError<E>>, usize, (usize, usize))
+#[non_exhaustive] pub struct surgeist_html::bounded::input::HtmlInputTemporalStepParameters
+pub surgeist_html::bounded::input::HtmlInputTemporalStepParameters::default_base: i128
+pub surgeist_html::bounded::input::HtmlInputTemporalStepParameters::default_step: u32
+pub surgeist_html::bounded::input::HtmlInputTemporalStepParameters::scale: u32
+pub trait surgeist_html::bounded::input::HtmlInputTemporalStepMeter
+pub type surgeist_html::bounded::input::HtmlInputTemporalStepMeter::Stop
+pub fn surgeist_html::bounded::input::HtmlInputTemporalStepMeter::release(&mut self, bytes: usize, utf16_units: usize)
+pub fn surgeist_html::bounded::input::HtmlInputTemporalStepMeter::reserve(&mut self, bytes: usize, utf16_units: usize) -> core::result::Result<(), Self::Stop>
+pub fn surgeist_html::bounded::input::HtmlInputTemporalStepMeter::work(&mut self, units: usize) -> core::result::Result<(), Self::Stop>
+pub fn surgeist_html::bounded::input::decode_input_temporal_step<M: surgeist_html::bounded::input::HtmlInputTemporalStepMeter>(state: surgeist_html::attributes::HtmlInputType, raw: core::option::Option<&[u16]>, max_bytes: usize, meter: &mut M) -> surgeist_html::bounded::input::HtmlInputTemporalStepOutcome<core::option::Option<surgeist_html::microsyntax::numeric::HtmlSignedDecimal>, <M as surgeist_html::bounded::input::HtmlInputTemporalStepMeter>::Stop>
 pub fn surgeist_html::bounded::input::input_colorspace_with<E>(raw: core::option::Option<&[u16]>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::input_colorspace::HtmlInputColorSpace, E>
+pub fn surgeist_html::bounded::input::input_temporal_step_parameters(state: surgeist_html::attributes::HtmlInputType) -> core::option::Option<surgeist_html::bounded::input::HtmlInputTemporalStepParameters>
 pub fn surgeist_html::bounded::input::input_value_as_date<E>(state: surgeist_html::attributes::HtmlInputType, value: &surgeist_html::values::DocumentString, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::bounded::input::HtmlInputDateRead, surgeist_html::bounded::input::HtmlInputValueConversionError<E>>
 pub fn surgeist_html::bounded::input::input_value_as_number<E>(state: surgeist_html::attributes::HtmlInputType, value: &surgeist_html::values::DocumentString, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber>, surgeist_html::bounded::input::HtmlInputValueConversionError<E>>
 pub fn surgeist_html::bounded::input::input_value_from_date<E>(state: surgeist_html::attributes::HtmlInputType, date: core::option::Option<surgeist_html::bounded::input::HtmlInputDateMilliseconds>, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::bounded::input::HtmlInputValueAssignment, surgeist_html::bounded::input::HtmlInputValueConversionError<E>>
 pub fn surgeist_html::bounded::input::input_value_from_number<E>(state: surgeist_html::attributes::HtmlInputType, value: f64, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::bounded::input::HtmlInputValueAssignment, surgeist_html::bounded::input::HtmlInputValueConversionError<E>>
+pub fn surgeist_html::bounded::input::serialize_input_temporal_step<M: surgeist_html::bounded::input::HtmlInputTemporalStepMeter>(state: surgeist_html::attributes::HtmlInputType, coordinate: surgeist_html::elements::input::HtmlInputStepCoordinate<'_>, max_bytes: usize, meter: &mut M) -> surgeist_html::bounded::input::HtmlInputTemporalStepOutcome<alloc::vec::Vec<u16>, <M as surgeist_html::bounded::input::HtmlInputTemporalStepMeter>::Stop>
 pub mod surgeist_html::bounded::lexical
 pub enum surgeist_html::bounded::lexical::HtmlCustomNameScanAction
 pub surgeist_html::bounded::lexical::HtmlCustomNameScanAction::Header
@@ -3213,6 +3237,14 @@ pub fn surgeist_html::bounded::numeric::HtmlBestFiniteNumberCursor::request(&sel
 pub fn surgeist_html::bounded::numeric::HtmlBestFiniteNumberCursor::result(&self) -> core::option::Option<usize>
 impl surgeist_html::bounded::numeric::HtmlBestFiniteNumberCursor
 pub const fn surgeist_html::bounded::numeric::HtmlBestFiniteNumberCursor::layout() -> surgeist_html::bounded::numeric::HtmlRangeNumericLayout
+pub struct surgeist_html::bounded::numeric::HtmlFiniteDecimalExpansionCursor
+impl surgeist_html::bounded::numeric::HtmlFiniteDecimalExpansionCursor
+pub fn surgeist_html::bounded::numeric::HtmlFiniteDecimalExpansionCursor::headers(&self) -> surgeist_html::bounded::numeric::HtmlRangeNumericHeaders
+pub const fn surgeist_html::bounded::numeric::HtmlFiniteDecimalExpansionCursor::layout() -> surgeist_html::bounded::numeric::HtmlRangeNumericLayout
+pub fn surgeist_html::bounded::numeric::HtmlFiniteDecimalExpansionCursor::new(number: surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber, headers: surgeist_html::bounded::numeric::HtmlRangeNumericHeaders) -> core::result::Result<Self, surgeist_html::bounded::numeric::HtmlRangeNumericError>
+pub fn surgeist_html::bounded::numeric::HtmlFiniteDecimalExpansionCursor::reply(&mut self, reply: surgeist_html::bounded::numeric::HtmlRangeNumericReply) -> core::result::Result<(), surgeist_html::bounded::numeric::HtmlRangeNumericError>
+pub fn surgeist_html::bounded::numeric::HtmlFiniteDecimalExpansionCursor::request(&self) -> core::option::Option<surgeist_html::bounded::numeric::HtmlRangeNumericRequest>
+pub fn surgeist_html::bounded::numeric::HtmlFiniteDecimalExpansionCursor::result(&self) -> core::option::Option<(bool, usize)>
 pub struct surgeist_html::bounded::numeric::HtmlFiniteDecimalIngressCursor
 impl surgeist_html::bounded::numeric::HtmlFiniteDecimalIngressCursor
 pub fn surgeist_html::bounded::numeric::HtmlFiniteDecimalIngressCursor::headers(&self) -> surgeist_html::bounded::numeric::HtmlRangeNumericHeaders
@@ -4698,9 +4730,9 @@ pub enum surgeist_html::elements::input::HtmlInputStepDirection
 pub surgeist_html::elements::input::HtmlInputStepDirection::Down
 pub surgeist_html::elements::input::HtmlInputStepDirection::Up
 pub enum surgeist_html::elements::input::HtmlInputStepError<E>
+pub surgeist_html::elements::input::HtmlInputStepError::NonPositiveStep
 pub surgeist_html::elements::input::HtmlInputStepError::Work(E)
 pub surgeist_html::elements::input::HtmlInputStepError::Workspace
-pub surgeist_html::elements::input::HtmlInputStepError::ZeroStep
 impl<E: core::error::Error + 'static> core::error::Error for surgeist_html::elements::input::HtmlInputStepError<E>
 pub fn surgeist_html::elements::input::HtmlInputStepError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl<E: core::fmt::Display> core::fmt::Display for surgeist_html::elements::input::HtmlInputStepError<E>
@@ -4856,10 +4888,10 @@ pub fn surgeist_html::elements::input::HtmlInputSelection::selection(start: usiz
 pub fn surgeist_html::elements::input::HtmlInputSelection::selection_range(self) -> core::option::Option<(usize, usize, surgeist_html::elements::input::HtmlInputSelectionDirection)>
 pub fn surgeist_html::elements::input::HtmlInputSelection::set_direction(self, requested: surgeist_html::elements::input::HtmlInputSelectionDirection, none_support: surgeist_html::elements::input::HtmlInputNoneDirectionSupport) -> Self
 pub struct surgeist_html::elements::input::HtmlInputStepBounds<'a>
-pub surgeist_html::elements::input::HtmlInputStepBounds::base: &'a surgeist_html::microsyntax::numeric::HtmlSignedDecimal
-pub surgeist_html::elements::input::HtmlInputStepBounds::maximum: core::option::Option<&'a surgeist_html::microsyntax::numeric::HtmlSignedDecimal>
-pub surgeist_html::elements::input::HtmlInputStepBounds::minimum: core::option::Option<&'a surgeist_html::microsyntax::numeric::HtmlSignedDecimal>
-pub surgeist_html::elements::input::HtmlInputStepBounds::step: &'a surgeist_html::microsyntax::numeric::HtmlNonNegativeDecimal
+pub surgeist_html::elements::input::HtmlInputStepBounds::base: surgeist_html::elements::input::HtmlInputStepOperand<'a>
+pub surgeist_html::elements::input::HtmlInputStepBounds::maximum: core::option::Option<surgeist_html::elements::input::HtmlInputStepOperand<'a>>
+pub surgeist_html::elements::input::HtmlInputStepBounds::minimum: core::option::Option<surgeist_html::elements::input::HtmlInputStepOperand<'a>>
+pub surgeist_html::elements::input::HtmlInputStepBounds::step: surgeist_html::elements::input::HtmlInputStepOperand<'a>
 impl<'input> surgeist_html::elements::input::HtmlInputStepBounds<'input>
 pub fn surgeist_html::elements::input::HtmlInputStepBounds<'input>::qualification_cells(self) -> core::option::Option<usize>
 pub fn surgeist_html::elements::input::HtmlInputStepBounds<'input>::qualify<E>(self, scratch: &mut [u8], tick: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::elements::input::HtmlInputStepGrid<'input>>, surgeist_html::elements::input::HtmlInputStepError<E>>
@@ -4867,11 +4899,20 @@ pub struct surgeist_html::elements::input::HtmlInputStepCoordinate<'a>
 impl<'a> surgeist_html::elements::input::HtmlInputStepCoordinate<'a>
 pub const fn surgeist_html::elements::input::HtmlInputStepCoordinate<'a>::coefficient(self) -> &'a [u8]
 pub const fn surgeist_html::elements::input::HtmlInputStepCoordinate<'a>::is_negative(self) -> bool
+pub fn surgeist_html::elements::input::HtmlInputStepCoordinate<'a>::operand(self) -> surgeist_html::elements::input::HtmlInputStepOperand<'a>
 pub const fn surgeist_html::elements::input::HtmlInputStepCoordinate<'a>::scale(self) -> usize
 pub struct surgeist_html::elements::input::HtmlInputStepGrid<'a>
 impl surgeist_html::elements::input::HtmlInputStepGrid<'_>
-pub fn surgeist_html::elements::input::HtmlInputStepGrid<'_>::project<'work, E>(self, current: core::option::Option<&surgeist_html::microsyntax::numeric::HtmlSignedDecimal>, direction: surgeist_html::elements::input::HtmlInputStepDirection, count: i32, scratch: &'work mut [u8], tick: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::elements::input::HtmlInputStepCoordinate<'work>>, surgeist_html::elements::input::HtmlInputStepError<E>>
-pub fn surgeist_html::elements::input::HtmlInputStepGrid<'_>::scratch_cells(self, current: core::option::Option<&surgeist_html::microsyntax::numeric::HtmlSignedDecimal>) -> core::option::Option<usize>
+pub fn surgeist_html::elements::input::HtmlInputStepGrid<'_>::project<'work, E>(self, current: core::option::Option<surgeist_html::elements::input::HtmlInputStepOperand<'_>>, direction: surgeist_html::elements::input::HtmlInputStepDirection, count: i32, scratch: &'work mut [u8], tick: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::elements::input::HtmlInputStepCoordinate<'work>>, surgeist_html::elements::input::HtmlInputStepError<E>>
+pub fn surgeist_html::elements::input::HtmlInputStepGrid<'_>::scratch_cells(self, current: core::option::Option<surgeist_html::elements::input::HtmlInputStepOperand<'_>>) -> core::option::Option<usize>
+pub struct surgeist_html::elements::input::HtmlInputStepOperand<'a>
+impl<'a> surgeist_html::elements::input::HtmlInputStepOperand<'a>
+pub fn surgeist_html::elements::input::HtmlInputStepOperand<'a>::coefficient(digits: surgeist_html::bounded::numeric::HtmlNaturalDigits<'a>, scale: usize, negative: bool) -> Self
+pub fn surgeist_html::elements::input::HtmlInputStepOperand<'a>::compare<E>(self, other: Self, tick: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::cmp::Ordering, surgeist_html::elements::input::HtmlInputStepError<E>>
+pub fn surgeist_html::elements::input::HtmlInputStepOperand<'a>::decimal(value: &'a surgeist_html::microsyntax::numeric::HtmlSignedDecimal) -> Self
+pub fn surgeist_html::elements::input::HtmlInputStepOperand<'a>::magnitude(value: &'a surgeist_html::microsyntax::numeric::HtmlNonNegativeDecimal) -> Self
+pub fn surgeist_html::elements::input::HtmlInputStepOperand<'a>::multiplication_cells(self) -> core::option::Option<usize>
+pub fn surgeist_html::elements::input::HtmlInputStepOperand<'a>::multiply<'work, E>(self, factor: u32, scratch: &'work mut [u8], tick: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::elements::input::HtmlInputStepCoordinate<'work>, surgeist_html::elements::input::HtmlInputStepError<E>>
 pub struct surgeist_html::elements::input::HtmlInputTypeChange
 impl surgeist_html::elements::input::HtmlInputTypeChange
 pub fn surgeist_html::elements::input::HtmlInputTypeChange::new(previous: surgeist_html::attributes::HtmlInputType, next: surgeist_html::attributes::HtmlInputType, current_value_len: usize) -> Self
@@ -5973,6 +6014,8 @@ pub fn surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber::try_from(va
 impl core::convert::TryFrom<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber> for surgeist_html::attributes::srcset::HtmlSrcsetDensity
 pub type surgeist_html::attributes::srcset::HtmlSrcsetDensity::Error = surgeist_html::attributes::srcset::HtmlSrcsetDensityError
 pub fn surgeist_html::attributes::srcset::HtmlSrcsetDensity::try_from(value: surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber) -> core::result::Result<Self, Self::Error>
+impl core::fmt::Display for surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber
+pub fn surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::microsyntax::numeric::HtmlInteger
 impl surgeist_html::microsyntax::numeric::HtmlInteger
 pub fn surgeist_html::microsyntax::numeric::HtmlInteger::as_document_string(&self) -> surgeist_html::values::DocumentString

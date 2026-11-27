@@ -3,6 +3,7 @@
 use surgeist_html::{
     elements::input::{
         HtmlInputStepBounds as Bounds, HtmlInputStepDirection as Direction, HtmlInputStepError,
+        HtmlInputStepOperand as Operand,
     },
     microsyntax::numeric::{HtmlNonNegativeDecimal, HtmlNonNegativeInteger, HtmlSignedDecimal},
     values::DocumentString,
@@ -37,27 +38,26 @@ fn project(
     let min = range.0.map(decimal);
     let max = range.1.map(decimal);
     let bounds = Bounds {
-        minimum: min.as_ref(),
-        maximum: max.as_ref(),
-        base: &base,
-        step: step.magnitude(),
+        minimum: min.as_ref().map(Operand::decimal),
+        maximum: max.as_ref().map(Operand::decimal),
+        base: Operand::decimal(&base),
+        step: Operand::magnitude(step.magnitude()),
     };
+    let current = current.as_ref().map(Operand::decimal);
     let mut qualification = vec![255; bounds.qualification_cells().unwrap()];
     let grid = bounds
         .qualify(&mut qualification, || Ok::<_, ()>(()))
         .unwrap()?;
-    let mut scratch = vec![255; grid.scratch_cells(current.as_ref()).unwrap()];
-    grid.project(current.as_ref(), direction, count, &mut scratch, || {
-        Ok::<_, ()>(())
-    })
-    .unwrap()
-    .map(|value| {
-        (
-            value.is_negative(),
-            value.coefficient().to_vec(),
-            value.scale(),
-        )
-    })
+    let mut scratch = vec![255; grid.scratch_cells(current).unwrap()];
+    grid.project(current, direction, count, &mut scratch, || Ok::<_, ()>(()))
+        .unwrap()
+        .map(|value| {
+            (
+                value.is_negative(),
+                value.coefficient().to_vec(),
+                value.scale(),
+            )
+        })
 }
 
 #[test]
@@ -133,8 +133,8 @@ fn projection_refuses_short_workspace_and_preserves_the_first_work_stop() {
     let bounds = Bounds {
         minimum: None,
         maximum: None,
-        base: &base,
-        step: step.magnitude(),
+        base: Operand::decimal(&base),
+        step: Operand::magnitude(step.magnitude()),
     };
     let grid = bounds
         .qualify(&mut [], || Ok::<_, ()>(()))
