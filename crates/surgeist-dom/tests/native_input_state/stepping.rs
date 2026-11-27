@@ -257,3 +257,39 @@ fn work_refusal_and_cancellation_preserve_the_snapshot_and_allow_retry() {
     step(&mut dom, input, Direction::Up, 1, 10_000_000).unwrap();
     assert_eq!(value(&dom, input), "2000-02-29");
 }
+
+#[test]
+fn long_invalid_temporal_attribute_requires_more_original_source_work() {
+    let probe = |work| {
+        let (mut dom, input) = setup("date", &[("min", "1111x"), ("value", "2000-02-28")]);
+        match step(&mut dom, input, Direction::Up, 1, work) {
+            Ok(DomSourceProgress::Complete(_)) => true,
+            Err(DomError::SourceWorkLimit { limit }) if limit == work => false,
+            other => panic!("unexpected short temporal stepping outcome: {other:?}"),
+        }
+    };
+    let mut accepts = 10_000_000;
+    let mut refuses = 0;
+    assert!(probe(accepts));
+    while accepts - refuses > 1 {
+        let candidate = refuses + (accepts - refuses) / 2;
+        if probe(candidate) {
+            accepts = candidate;
+        } else {
+            refuses = candidate;
+        }
+    }
+
+    let raw = format!("{}x", "1".repeat(4096));
+    let (mut dom, input) = setup("date", &[("min", &raw), ("value", "2000-02-28")]);
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    let actual = step(&mut dom, input, Direction::Up, 1, accepts);
+    assert!(
+        matches!(actual, Err(DomError::SourceWorkLimit { limit }) if limit == accepts),
+        "the short-input allowance {accepts} admitted {actual:?}"
+    );
+    super::unchanged(&dom, &before, usage);
+    step(&mut dom, input, Direction::Up, 1, 10_000_000).unwrap();
+    assert_eq!(value(&dom, input), "2000-02-29");
+}
