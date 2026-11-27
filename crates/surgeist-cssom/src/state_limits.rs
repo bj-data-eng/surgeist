@@ -592,6 +592,7 @@ pub(crate) mod probe {
         static STEPS: Cell<usize> = const { Cell::new(0) };
         static ENTRIES: Cell<usize> = const { Cell::new(0) };
         static ROOTS: Cell<usize> = const { Cell::new(0) };
+        static MANIFESTS: Cell<usize> = const { Cell::new(0) };
         static RUNS: Cell<usize> = const { Cell::new(0) };
         static CROSS_CHECK: Cell<bool> = const { Cell::new(true) };
         static REFERENCE: Cell<bool> = const { Cell::new(false) };
@@ -661,6 +662,14 @@ pub(crate) mod probe {
     pub(crate) fn roots() -> usize {
         ROOTS.with(Cell::get)
     }
+    /// The input manifest of a whole state has been built from nothing.
+    pub(crate) fn manifest_built() {
+        MANIFESTS.with(|total| total.set(total.get().saturating_add(1)));
+    }
+    /// The input manifests built from nothing on this thread since the last reset.
+    pub(crate) fn manifests() -> usize {
+        MANIFESTS.with(Cell::get)
+    }
 
     /// One check that examined `entries` entry lists.
     pub(crate) fn ran(entries: usize) {
@@ -680,6 +689,7 @@ pub(crate) mod probe {
         ENTRIES.with(|total| total.set(0));
         ROOTS.with(|total| total.set(0));
         RUNS.with(|total| total.set(0));
+        MANIFESTS.with(|total| total.set(0));
         PARTS.with(|total| total.set(0));
     }
     pub(crate) fn read() -> Work {

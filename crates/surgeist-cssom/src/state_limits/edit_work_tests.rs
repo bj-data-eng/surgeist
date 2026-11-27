@@ -125,3 +125,55 @@ fn a_batch_of_eight_operations_examines_objects_in_proportion_to_its_operations(
         "objects examined by eight operations at 100 and 400 rules: {counts:?}"
     );
 }
+
+/// Opens a batch on a store of `rules` rules, runs `edit` and commits it.
+fn committed(
+    rules: usize,
+    edit: impl FnOnce(&mut CssomBatch, &CssomSheetId) -> Result<(), CssomError>,
+) -> (CssomStore, CssomSheetId, CssomCommit) {
+    let (mut store, sheet) = store_with_rules(rules);
+    let mut batch = store.batch(guard(&store)).unwrap();
+    probe::reset();
+    edit(&mut batch, &sheet).unwrap();
+    let commit = store.commit(batch).unwrap();
+    (store, sheet, commit)
+}
+
+#[test]
+fn a_commit_builds_no_input_manifest_from_the_whole_state() {
+    for rules in [100, 400] {
+        let (..) = committed(rules, |batch, sheet| {
+            assert!(batch.set_disabled(sheet, true)?);
+            Ok(())
+        });
+        assert_eq!(
+            probe::manifests(),
+            0,
+            "input manifests built from every record by one set_disabled commit at {rules} rules"
+        );
+    }
+    let (..) = committed(100, eight_operations);
+    assert_eq!(
+        probe::manifests(),
+        0,
+        "input manifests built from every record by a batch of eight operations"
+    );
+}
+
+#[test]
+fn a_commit_that_changes_no_input_row_publishes_one_manifest_as_before_and_after() {
+    let (store, _, commit) = committed(100, |batch, sheet| {
+        assert!(batch.set_disabled(sheet, true)?);
+        Ok(())
+    });
+    let CssomPublication::Changed(summary) = commit.publication() else {
+        panic!("a changed commit")
+    };
+    // The flag is no input: the manifest the commit leaves is the one it started from,
+    // so the summary holds one value for both.
+    assert!(std::ptr::eq(
+        summary.before_inputs(),
+        summary.after_inputs()
+    ));
+    assert_eq!(summary.after_inputs(), &store.snapshot().inputs());
+}

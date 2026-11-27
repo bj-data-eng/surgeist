@@ -42,6 +42,8 @@ pub struct CssomInputManifest {
 }
 impl crate::model::State {
     pub(crate) fn input_manifest(&self) -> CssomInputManifest {
+        #[cfg(test)]
+        crate::state_limits::probe::manifest_built();
         let mut sheets = self
             .sheets
             .iter()
