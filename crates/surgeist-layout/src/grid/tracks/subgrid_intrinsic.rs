@@ -186,6 +186,7 @@ pub(in crate::grid) enum IntrinsicChildRequest<'input, Node, S: LayoutScalar> {
 
 // The real child/subgrid query is shared by content suggestions and the final
 // used-minimum query; neither route synthesizes a measured output.
+#[cfg(test)]
 pub(in crate::grid) fn compute_prepared_intrinsic_grid_child<'input, Tree, M>(
     tree: &mut Tree,
     child: Tree::Node,

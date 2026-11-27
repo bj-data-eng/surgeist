@@ -21,7 +21,7 @@ use super::contracts::{
     CacheAccess, ChildCacheRequest, Compute, Round, UnroundedInlineFragmentState,
 };
 use super::entry_staging::{self, Rows};
-use super::hidden::HiddenRequest;
+use super::hidden::{HiddenInput, HiddenRequest};
 use crate::accounting::{LayoutWork, Meter};
 use crate::error::{
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation,
@@ -56,15 +56,53 @@ enum ChildAdmission<Node, S: LayoutScalar> {
     Ready(ComputeOutputOf<S>),
     Hidden(HiddenRequest<Node>),
     Uncached {
+        kind: UncachedKind,
         input: ComputeInputOf<S>,
         cache: Option<ChildCacheRequest<Node, S>>,
         memo: Option<memo::RequestKey<S>>,
     },
 }
 
-struct UncachedLayout<'input, S: LayoutScalar> {
-    style: &'input NodeInputOf<S>,
-    leaf: bool,
+/// What an uncached child is, which decides how its computation begins. Only a
+/// leaf the host measures can be computed without the request executor, and
+/// only `UncachedKind::of` makes one.
+#[derive(Clone, Copy)]
+enum UncachedKind {
+    Leaf(UncachedLeaf),
+    Block,
+    Flex,
+    Grid,
+}
+
+/// The witness that a node is a leaf the host measures.
+#[derive(Clone, Copy)]
+struct UncachedLeaf(());
+
+impl UncachedKind {
+    /// The kind of a node with `display`, or `None` for a box that generates
+    /// no layout: `Display::None`.
+    fn of(display: Display, leaf: bool) -> Option<Self> {
+        if display == Display::None {
+            return None;
+        }
+        if leaf {
+            return Some(Self::Leaf(UncachedLeaf(())));
+        }
+        match display.inner_display() {
+            Display::Block => Some(Self::Block),
+            Display::Flex => Some(Self::Flex),
+            Display::Grid | Display::GridLanes => Some(Self::Grid),
+            Display::None => None,
+            Display::InlineBlock | Display::InlineGrid | Display::InlineGridLanes => {
+                unreachable!("inner_display removes inline display variants")
+            }
+        }
+    }
+}
+
+enum HiddenAdmission<Node, S: LayoutScalar> {
+    Ready(ComputeOutputOf<S>),
+    Hidden(HiddenRequest<Node>),
 }
 
 type CanonicalFrames<Tree> = Vec<
@@ -1837,44 +1875,82 @@ where
         Ok(input)
     }
 
+    /// The geometry of a text or text control child, which sizes itself, or
+    /// `None` for any other child.
+    fn admit_text_child(
+        &self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+    ) -> SessionResult<Tree, Option<ComputeOutputOf<Tree::Scalar>>> {
+        if self.tree.layout_input(node).as_inline_text().is_none()
+            && self.tree.layout_input(node).as_text_control().is_none()
+        {
+            return Ok(None);
+        }
+        if self.text.is_none() {
+            return Err(LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::MissingContext(crate::error::LayoutMissingContext::TextCapture),
+            ));
+        }
+        let known = input.known();
+        let size = Size::new(
+            known.width.unwrap_or(Tree::Scalar::ZERO),
+            known.height.unwrap_or(Tree::Scalar::ZERO),
+        );
+        Ok(Some(ComputeOutputOf::from_sizes(size, size)))
+    }
+
+    /// What an uncached child is. Asking the host whether a node is a measured
+    /// leaf is a measurement query, so it waits until the child is computed.
+    fn uncached_kind(&self, node: Tree::Node, display: Display) -> Option<UncachedKind> {
+        UncachedKind::of(display, self.tree.has_leaf_measurement(node))
+    }
+
+    /// Admits a child of a hidden node: it is laid out hidden, whatever it is.
+    fn admit_hidden_child(
+        &mut self,
+        node: Tree::Node,
+        input: HiddenInput<Tree::Scalar>,
+    ) -> SessionResult<Tree, HiddenAdmission<Tree::Node, Tree::Scalar>> {
+        let input = input.into_input();
+        if let Some(output) = self.admit_text_child(node, input)? {
+            return Ok(HiddenAdmission::Ready(output));
+        }
+        let input = self.prepare_child_input(node, input)?;
+        Ok(HiddenAdmission::Hidden(self.hidden_admission(node, input)))
+    }
+
+    fn hidden_admission(
+        &self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+    ) -> HiddenRequest<Tree::Node> {
+        #[cfg(test)]
+        HIDDEN_COMPUTE_SESSION_REQUESTS.with(|requests| {
+            requests.borrow_mut().push((
+                input.settled_auto_scrollbars(),
+                input.containing_auto_scrollbar_pass(),
+            ));
+        });
+        self.hidden_request(node, input)
+    }
+
     fn admit_child(
         &mut self,
         node: Tree::Node,
         input: ComputeInputOf<Tree::Scalar>,
     ) -> SessionResult<Tree, ChildAdmission<Tree::Node, Tree::Scalar>> {
-        if self.tree.layout_input(node).as_inline_text().is_some()
-            || self.tree.layout_input(node).as_text_control().is_some()
-        {
-            if self.text.is_none() {
-                return Err(LayoutErrorOf::new(
-                    LayoutErrorSiteOf::Node(node),
-                    LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::MissingContext(
-                        crate::error::LayoutMissingContext::TextCapture,
-                    ),
-                ));
-            }
-            let known = input.known();
-            let size = Size::new(
-                known.width.unwrap_or(Tree::Scalar::ZERO),
-                known.height.unwrap_or(Tree::Scalar::ZERO),
-            );
-            return Ok(ChildAdmission::Ready(ComputeOutputOf::from_sizes(
-                size, size,
-            )));
+        if let Some(output) = self.admit_text_child(node, input)? {
+            return Ok(ChildAdmission::Ready(output));
         }
 
         let input = self.prepare_child_input(node, input)?;
         let style = self.tree.node_input(node);
-        if input.run_mode() == RunMode::PerformHiddenLayout || style.display == Display::None {
-            #[cfg(test)]
-            HIDDEN_COMPUTE_SESSION_REQUESTS.with(|requests| {
-                requests.borrow_mut().push((
-                    input.settled_auto_scrollbars(),
-                    input.containing_auto_scrollbar_pass(),
-                ));
-            });
-            return Ok(ChildAdmission::Hidden(self.hidden_request(node, input)));
+        let display = style.display;
+        if input.run_mode() == RunMode::PerformHiddenLayout || display == Display::None {
+            return Ok(ChildAdmission::Hidden(self.hidden_admission(node, input)));
         }
 
         if let Some(memo) = &self.entry_sources {
@@ -1891,7 +1967,11 @@ where
                     )
                 })?;
             if measured {
+                let Some(kind) = self.uncached_kind(node, display) else {
+                    return Ok(ChildAdmission::Hidden(self.hidden_admission(node, input)));
+                };
                 return Ok(ChildAdmission::Uncached {
+                    kind,
                     input,
                     cache: None,
                     memo: None,
@@ -1948,7 +2028,11 @@ where
             // scrollbar pass. Hidden traversal and ready hits returned above.
             observer.record_uncached_admission(node, input, admission_context);
         }
+        let Some(kind) = self.uncached_kind(node, display) else {
+            return Ok(ChildAdmission::Hidden(self.hidden_admission(node, input)));
+        };
         Ok(ChildAdmission::Uncached {
+            kind,
             input: uncached_input,
             cache,
             memo,
@@ -1968,33 +2052,7 @@ where
         }
     }
 
-    fn complete_admitted_child(
-        &mut self,
-        node: Tree::Node,
-        input: ComputeInputOf<Tree::Scalar>,
-        cache: Option<ChildCacheRequest<Tree::Node, Tree::Scalar>>,
-    ) -> SessionResult<Tree, ComputeOutputOf<Tree::Scalar>> {
-        let output = self.compute_child_uncached(node, input)?;
-        if let Some(cache) = cache {
-            cache.store(self, output)?;
-        }
-        Ok(output)
-    }
-
-    fn compute_child_uncached(
-        &mut self,
-        node: Tree::Node,
-        input: ComputeInputOf<Tree::Scalar>,
-    ) -> LayoutResultOf<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, Tree::MeasureError>
-    {
-        super::block_scope::ordinary(self.compute_child_uncached_scoped(node, input))
-    }
-
-    fn begin_uncached_layout(
-        &mut self,
-        node: Tree::Node,
-        input: ComputeInputOf<Tree::Scalar>,
-    ) -> UncachedLayout<'a, Tree::Scalar> {
+    fn begin_uncached_layout(&mut self, node: Tree::Node, input: ComputeInputOf<Tree::Scalar>) {
         if input.run_mode().is_perform_layout() {
             if self.text.is_some() {
                 // Text placement is staged by the node it places and written
@@ -2013,10 +2071,6 @@ where
                 // earlier scrollbar/size trial. Intrinsic probes do not clear them.
                 self.reset_native_family(index);
             }
-        }
-        UncachedLayout {
-            style: self.tree.node_input(node),
-            leaf: self.tree.has_leaf_measurement(node),
         }
     }
 
@@ -2218,88 +2272,30 @@ where
         self.child_staging(query.node, FloatChildTrial::InFlow, query.incoming.clone())
     }
 
-    fn compute_child_uncached_scoped(
+    /// Computes a leaf the host measures. A leaf is the one node an uncached
+    /// child can be computed for without the request executor, and its witness
+    /// comes only from `UncachedKind::of`.
+    fn compute_leaf_uncached(
         &mut self,
+        _leaf: UncachedLeaf,
         node: Tree::Node,
         input: ComputeInputOf<Tree::Scalar>,
-    ) -> super::block_scope::ComputeResult<
-        Tree::Node,
-        ComputeOutputOf<Tree::Scalar>,
-        Tree::Scalar,
-        Tree::MeasureError,
-    > {
-        let initial = self.begin_uncached_layout(node, input);
-        self.compute_uncached_layout_body(node, input, initial)
-    }
-
-    fn compute_uncached_layout_body(
-        &mut self,
-        node: Tree::Node,
-        input: ComputeInputOf<Tree::Scalar>,
-        initial: UncachedLayout<'a, Tree::Scalar>,
-    ) -> super::block_scope::ComputeResult<
-        Tree::Node,
-        ComputeOutputOf<Tree::Scalar>,
-        Tree::Scalar,
-        Tree::MeasureError,
-    > {
-        let UncachedLayout { style, leaf } = initial;
-        if leaf {
-            let icb = self.fragment_intrinsics().map(|context| {
-                context
-                    .request
-                    .sizing_request()
-                    .orthogonal_fallback()
-                    .initial_containing_block()
-                    .map(|value| {
-                        value.expect("native intrinsic context has first-frame ICB authority")
-                    })
-            });
-            let result = if let Some(memo) = &self.entry_sources {
-                let funding = self.entry_funding(node)?;
-                crate::measurement::compute_leaf_with_sampler(node, input, style, icb, |request| {
-                    let mut memo = memo
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    let error = |error| {
-                        crate::error::staging_text_error(
-                            LayoutErrorSiteOf::Node(node),
-                            LayoutOperation::ChildLayout,
-                            error,
-                        )
-                    };
-                    if let Some(result) =
-                        memo.find(node, request, funding.as_ref()).map_err(error)?
-                    {
-                        return Ok(result);
-                    }
-                    memo.reserve(funding.as_ref()).map_err(error)?;
-                    let result = crate::measurement::sample_tree_leaf(self.tree, node, request)?;
-                    let result = crate::measurement::validate_native_sample(node, result)?;
-                    memo.record(node, request, result, funding.as_ref())
-                        .map_err(error)?;
-                    Ok(result)
-                })
-            } else if self.memo.as_ref().is_some_and(memo::Memo::shares_samples) {
-                crate::measurement::compute_leaf_with_sampler(node, input, style, icb, |request| {
-                    self.memo_sample(node, request)
-                })
-            } else if let Some(icb) = icb {
-                crate::measurement::compute_tree_leaf_with_intrinsic_icb(
-                    self.tree,
-                    node,
-                    input,
-                    style,
-                    Some(icb),
-                )
-            } else {
-                crate::measurement::compute_tree_leaf(self.tree, node, input, style)
-            };
-            if result.is_ok()
-                && let Some(text) = &mut self.text
-            {
-                let anonymous =
-                    style.block_generation == crate::node_input::BlockGeneration::Anonymous;
+    ) -> SessionResult<Tree, ComputeOutputOf<Tree::Scalar>> {
+        let style = self.tree.node_input(node);
+        let icb = self.fragment_intrinsics().map(|context| {
+            context
+                .request
+                .sizing_request()
+                .orthogonal_fallback()
+                .initial_containing_block()
+                .map(|value| value.expect("native intrinsic context has first-frame ICB authority"))
+        });
+        let result = if let Some(memo) = &self.entry_sources {
+            let funding = self.entry_funding(node)?;
+            crate::measurement::compute_leaf_with_sampler(node, input, style, icb, |request| {
+                let mut memo = memo
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 let error = |error| {
                     crate::error::staging_text_error(
                         LayoutErrorSiteOf::Node(node),
@@ -2307,39 +2303,58 @@ where
                         error,
                     )
                 };
-                if text
-                    .formatted_begin_block(node, input, anonymous)
-                    .map_err(error)?
-                {
-                    // The actual host leaf operation emits no line-box API.
-                    // A positive measured size is not a formatted line.
-                    let flow = text.formatted_new_flow();
-                    text.formatted_record_flow(&flow).map_err(error)?;
-                    text.formatted_end_block(node, input, anonymous, true)
-                        .map_err(error)?;
+                if let Some(result) = memo.find(node, request, funding.as_ref()).map_err(error)? {
+                    return Ok(result);
                 }
+                memo.reserve(funding.as_ref()).map_err(error)?;
+                let result = crate::measurement::sample_tree_leaf(self.tree, node, request)?;
+                let result = crate::measurement::validate_native_sample(node, result)?;
+                memo.record(node, request, result, funding.as_ref())
+                    .map_err(error)?;
+                Ok(result)
+            })
+        } else if self.memo.as_ref().is_some_and(memo::Memo::shares_samples) {
+            crate::measurement::compute_leaf_with_sampler(node, input, style, icb, |request| {
+                self.memo_sample(node, request)
+            })
+        } else if let Some(icb) = icb {
+            crate::measurement::compute_tree_leaf_with_intrinsic_icb(
+                self.tree,
+                node,
+                input,
+                style,
+                Some(icb),
+            )
+        } else {
+            crate::measurement::compute_tree_leaf(self.tree, node, input, style)
+        };
+        if result.is_ok()
+            && let Some(text) = &mut self.text
+        {
+            let anonymous = style.block_generation == crate::node_input::BlockGeneration::Anonymous;
+            let error = |error| {
+                crate::error::staging_text_error(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    error,
+                )
+            };
+            if text
+                .formatted_begin_block(node, input, anonymous)
+                .map_err(error)?
+            {
+                // The actual host leaf operation emits no line-box API.
+                // A positive measured size is not a formatted line.
+                let flow = text.formatted_new_flow();
+                text.formatted_record_flow(&flow).map_err(error)?;
+                text.formatted_end_block(node, input, anonymous, true)
+                    .map_err(error)?;
             }
-            if let Ok(output) = &result {
-                self.record_block_body(node, input, *output)?;
-            }
-            return result.map_err(Into::into);
         }
-
-        let output = match style.display.inner_display() {
-            Display::Block => crate::block::compute_block_scoped(self, node, input),
-            Display::Flex => crate::flex::compute_flex(self, node, input).map_err(Into::into),
-            Display::Grid | Display::GridLanes => {
-                crate::grid::compute_grid(self, node, input).map_err(Into::into)
-            }
-            Display::None => self
-                .drive_hidden(self.hidden_request(node, input))
-                .map_err(Into::into),
-            Display::InlineBlock | Display::InlineGrid | Display::InlineGridLanes => {
-                unreachable!("inner_display removes inline display variants")
-            }
-        }?;
-        self.finish_uncached_layout(node, input, output)?;
-        Ok(output)
+        if let Ok(output) = &result {
+            self.record_block_body(node, input, *output)?;
+        }
+        result
     }
 }
 
@@ -2363,7 +2378,9 @@ type ScopedChildResult<Tree> = super::block_scope::ComputeResult<
     <Tree as LayoutTree>::MeasureError,
 >;
 
-/// A scoped Block box whose frame was pushed at `depth`.
+/// A scoped Block container whose frame was pushed at `depth`. Only
+/// `begin_scoped_child`, which checks that the node is a Block container,
+/// makes one.
 pub(super) struct ScopedChild<Node, S: LayoutScalar> {
     pub(super) node: Node,
     pub(super) input: ComputeInputOf<S>,
@@ -2497,11 +2514,16 @@ where
         node: Self::Node,
         input: ComputeInputOf<Self::Scalar>,
     ) -> SessionResult<Tree, ComputeOutputOf<Self::Scalar>> {
-        if !self.tree.has_leaf_measurement(node) {
+        let Some(UncachedKind::Leaf(leaf)) = UncachedKind::of(
+            self.tree.node_input(node).display,
+            self.tree.has_leaf_measurement(node),
+        ) else {
             return Err(crate::block::float_context::missing(node));
-        }
+        };
         let input = self.prepare_child_input(node, input)?;
-        self.compute_child_uncached(node, input.with_run_mode(RunMode::ComputeSize))
+        let input = input.with_run_mode(RunMode::ComputeSize);
+        self.begin_uncached_layout(node, input);
+        self.compute_leaf_uncached(leaf, node, input)
     }
     fn block_float_work(&self, node: Self::Node) -> bool {
         if let Some(graph) = self.flow_graph {

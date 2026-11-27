@@ -7,6 +7,7 @@ use crate::{
     node_input::{NodeInputOf, SizeContainment},
     sizing::MaxSizeOf,
 };
+use lanes::{LaneAction, LaneEntered, LaneEnv, LaneSeed, NestedLaneVisit};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct GridSubgridReport<Node> {
@@ -2335,9 +2336,7 @@ struct WrapperFrame<'input, Node, S: LayoutScalar> {
 /// suspended while the subgrid items it traverses are visited.
 struct PrepareFrame<'input, Node, S: LayoutScalar> {
     pending: Box<PendingLevel<'input, Node, S>>,
-    tail: WrapperTail<S>,
-    /// The fold of the traversal this wrapper belongs to.
-    fold_slot: usize,
+    kind: PrepareKind<Node, S>,
     /// The fold of the traversal the resolution waits on, once it has started
     /// one.
     active_fold: Option<usize>,
@@ -2346,10 +2345,24 @@ struct PrepareFrame<'input, Node, S: LayoutScalar> {
     finishing: bool,
 }
 
+/// What the level a preparation begins is visited for.
+enum PrepareKind<Node, S: LayoutScalar> {
+    /// The traversal of subgrid items.
+    Traversal {
+        tail: WrapperTail<S>,
+        /// The fold of the traversal this wrapper belongs to.
+        fold_slot: usize,
+    },
+    /// The collection of the lane contributions of a Grid Lanes container.
+    Lane(Box<LaneSeed<Node, S>>),
+}
+
 /// A frame of the traversal's stack.
 enum LevelFrame<'input, Node, S: LayoutScalar> {
     Prepare(PrepareFrame<'input, Node, S>),
     Visit(Box<WrapperFrame<'input, Node, S>>),
+    /// A wrapper whose items a Grid Lanes collection visits.
+    Lane(Box<NestedLaneVisit<'input, Node, S>>),
 }
 
 /// The fold of `slot`: the one the traversal was started with, or one of the
@@ -2458,12 +2471,19 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperFrames<'input, Node, S> {
         &mut self,
         tree: &mut Tree,
         outer: &mut SubgridIntrinsicFold<'input, Node, S>,
+        lane: Option<&mut LaneEnv<'_, Node, S>>,
     ) -> LayoutResultOf<Node, FrameStep<'input, Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         let request = match self.frames.last() {
             None => return Ok(FrameStep::Idle),
+            Some(LevelFrame::Lane(frame)) => {
+                let Some(env) = lane else {
+                    return Err(minimum_source_error(frame.node()));
+                };
+                return self.step_lane::<Tree, M>(tree, env);
+            }
             Some(LevelFrame::Visit(_)) => {
                 step_visit::<Tree, M>(tree, &mut self.frames, &mut self.folds, outer)?
                     .map(|request| (TrackChildRequest::context(request), FrameWait::Probe))
@@ -2479,6 +2499,64 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperFrames<'input, Node, S> {
             }
             None => FrameStep::Continue,
         })
+    }
+
+    /// Pushes the frame of a wrapper a Grid Lanes collection entered.
+    pub(super) fn enter_lane<M>(
+        &mut self,
+        entered: LaneEntered<'input, Node, S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let LaneEntered { begun, seed } = entered;
+        let node = seed.wrapper();
+        self.frames
+            .try_reserve(1)
+            .map_err(|_| allocation_error(node))?;
+        match begun {
+            LevelBegun::Empty => {}
+            LevelBegun::Ready(level) => {
+                self.frames
+                    .push(LevelFrame::Lane(Box::new(NestedLaneVisit::new(
+                        *level, seed,
+                    ))))
+            }
+            LevelBegun::Resolving(pending) => self.frames.push(LevelFrame::Prepare(PrepareFrame {
+                pending,
+                kind: PrepareKind::Lane(Box::new(seed)),
+                active_fold: None,
+                finishing: false,
+            })),
+        }
+        Ok(())
+    }
+
+    /// Steps the wrapper of a Grid Lanes collection the innermost frame
+    /// visits.
+    fn step_lane<Tree, M>(
+        &mut self,
+        tree: &mut Tree,
+        env: &mut LaneEnv<'_, Node, S>,
+    ) -> LayoutResultOf<Node, FrameStep<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let Some(LevelFrame::Lane(frame)) = self.frames.last_mut() else {
+            return Ok(FrameStep::Idle);
+        };
+        match frame.step::<Tree, M>(tree, env)? {
+            LaneAction::Done => {
+                self.frames.pop();
+                Ok(FrameStep::Continue)
+            }
+            LaneAction::Continue => Ok(FrameStep::Continue),
+            LaneAction::Enter(entered) => {
+                self.enter_lane::<M>(*entered)?;
+                Ok(FrameStep::Continue)
+            }
+            LaneAction::Request(request) => {
+                self.waiting = Some(FrameWait::Output);
+                Ok(FrameStep::Request(request))
+            }
+        }
     }
 
     /// Accepts the output of the computation the stack waits on. The gutter a
@@ -2506,6 +2584,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperFrames<'input, Node, S> {
                 frame.probe.accept(gutter);
                 Ok(())
             }
+            (Some(LevelFrame::Lane(frame)), Some(FrameWait::Output)) => frame.accept::<M>(output),
             _ => unreachable!("a wrapper traversal accepts what it waits on"),
         }
     }
@@ -2534,7 +2613,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperFrames<'input, Node, S> {
     {
         self.enter::<Tree, M>(tree, outer, root)?;
         loop {
-            match self.step::<Tree, M>(tree, outer)? {
+            match self.step::<Tree, M>(tree, outer, None)? {
                 FrameStep::Idle => return Ok(()),
                 FrameStep::Continue => {}
                 FrameStep::Request(request) => {
@@ -2594,8 +2673,7 @@ where
         }))),
         LevelBegun::Resolving(pending) => frames.push(LevelFrame::Prepare(PrepareFrame {
             pending,
-            tail,
-            fold_slot,
+            kind: PrepareKind::Traversal { tail, fold_slot },
             active_fold: None,
             finishing: false,
         })),
@@ -2801,14 +2879,9 @@ where
             let Some(LevelFrame::Prepare(prepare)) = frames.pop() else {
                 return Ok(None);
             };
-            let PrepareFrame {
-                pending,
-                tail,
-                fold_slot,
-                ..
-            } = prepare;
-            match pending.finish::<Tree, M>(tree)? {
-                Some(level) => {
+            let PrepareFrame { pending, kind, .. } = prepare;
+            match (pending.finish::<Tree, M>(tree)?, kind) {
+                (Some(level), PrepareKind::Traversal { tail, fold_slot }) => {
                     frames.try_reserve(1).map_err(|_| allocation_error(node))?;
                     frames.push(LevelFrame::Visit(Box::new(WrapperFrame {
                         level,
@@ -2819,9 +2892,17 @@ where
                         probe: EnterProbe::Fresh,
                     })));
                 }
-                None => {
+                (None, PrepareKind::Traversal { tail, fold_slot }) => {
                     leave_empty_wrapper::<Tree, M>(frames, folds, outer, node, tail, fold_slot)?
                 }
+                (Some(level), PrepareKind::Lane(seed)) => {
+                    frames.try_reserve(1).map_err(|_| allocation_error(node))?;
+                    frames.push(LevelFrame::Lane(Box::new(NestedLaneVisit::new(
+                        level, *seed,
+                    ))));
+                }
+                // A wrapper with no items to visit contributes nothing.
+                (None, PrepareKind::Lane(_)) => {}
             }
         }
     }
@@ -3978,35 +4059,8 @@ pub(super) struct WrapperLevel<'input, Node, S: LayoutScalar> {
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperLevel<'input, Node, S> {
     /// The number of child areas the level visits, in order.
-    fn child_slots(&self) -> usize {
+    pub(super) fn child_slots(&self) -> usize {
         self.areas.len()
-    }
-
-    /// The wrapper's visit up to its children, with the track resolution it may
-    /// need run to completion on the native stack.
-    fn prepare<Tree, M>(
-        tree: &mut Tree,
-        node: Node,
-        request: GridMinimumWrapperInput<'input, '_, Node, S>,
-    ) -> LayoutResultOf<Node, Option<Self>, S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        match Self::begin::<Tree, M>(tree, node, request)? {
-            LevelBegun::Empty => Ok(None),
-            LevelBegun::Ready(level) => Ok(Some(*level)),
-            LevelBegun::Resolving(mut pending) => {
-                let node = pending.node();
-                let (input, _) = pending.resolving.parts();
-                let resolved = intrinsic_stage::resolve_tracks(
-                    tree,
-                    node,
-                    input,
-                    intrinsic_stage::GridTrackRun::Intrinsic,
-                );
-                pending.conclude(tree, resolved)
-            }
-        }
     }
 
     fn node(&self) -> Node {
@@ -4016,7 +4070,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperLevel<'input, Node, S> {
     /// The wrapper's visit up to its children: its resolution when it is
     /// reused or needs no track sizing, and otherwise the preparation that
     /// computes it, with its effect capture open.
-    fn begin<Tree, M>(
+    pub(super) fn begin<Tree, M>(
         tree: &mut Tree,
         node: Node,
         request: GridMinimumWrapperInput<'input, '_, Node, S>,
@@ -4322,7 +4376,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperLevel<'input, Node, S> {
 
     /// The view of the child at `slot`, or `None` when the traversal skips it.
     /// Everything the view borrows lives in the level.
-    fn child<Tree, M>(
+    pub(super) fn child<Tree, M>(
         &self,
         slot: usize,
     ) -> LayoutResultOf<Node, Option<GridMinimumWrapperChild<'input, '_, Node, S>>, S, M>
@@ -4474,41 +4528,6 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> WrapperLevel<'input, Node, S> {
             row_geometry: &self.row_geometry,
         }))
     }
-}
-
-pub(super) fn visit_grid_minimum_wrapper_children<'input, Tree, M, T>(
-    tree: &mut Tree,
-    node: Tree::Node,
-    request: GridMinimumWrapperInput<'input, '_, Tree::Node, Tree::Scalar>,
-    mut visit: impl FnMut(
-        &mut Tree,
-        GridMinimumWrapperChild<'input, '_, Tree::Node, Tree::Scalar>,
-    ) -> LayoutResultOf<Tree::Node, Option<T>, Tree::Scalar, M>,
-) -> LayoutResultOf<Tree::Node, Vec<T>, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let Some(level) = WrapperLevel::prepare::<Tree, M>(tree, node, request)? else {
-        return Ok(Vec::new());
-    };
-    let mut traversal_children = Vec::new();
-    for slot in 0..level.child_slots() {
-        let Some(child) = level.child::<Tree, M>(slot)? else {
-            continue;
-        };
-        if let Some(child) = visit(tree, child)? {
-            traversal_children.try_reserve(1).map_err(|_| {
-                LayoutErrorOf::new(
-                    LayoutErrorSiteOf::Node(node),
-                    LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::Allocation,
-                )
-            })?;
-            traversal_children.push(child);
-        }
-    }
-
-    Ok(traversal_children)
 }
 
 pub(super) fn inherited_subgrid_axis_for_parent_axis<Node>(

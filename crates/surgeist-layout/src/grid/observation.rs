@@ -1,6 +1,97 @@
 //! Ordinary child observation retains its source across disposable execution.
 use super::*;
 
+/// The child placement of a Grid sized without layout, retained while the
+/// request executor runs it in a disposable observation session.
+pub(crate) enum GridObservation<'input, Node, S: LayoutScalar> {
+    Ordinary(Box<OrdinaryGridObservation<'input, Node, S>>),
+    Lanes(Box<LanesGridObservation<'input, Node, S>>),
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> GridObservation<'input, Node, S> {
+    pub(crate) fn node(&self) -> Node {
+        match self {
+            Self::Ordinary(observation) => observation.node(),
+            Self::Lanes(observation) => observation.node(),
+        }
+    }
+
+    pub(crate) fn begin<Tree, M>(
+        self,
+        tree: &mut Tree,
+    ) -> LayoutResultOf<Node, GridObservationRun<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        match self {
+            Self::Ordinary(observation) => observation.begin(tree),
+            Self::Lanes(observation) => observation.begin(tree),
+        }
+    }
+
+    /// Computes the observation on the native stack, in the session that holds
+    /// the tree.
+    pub(super) fn compute<Tree, M>(self, tree: &mut Tree) -> GridComputeOutcome<Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        match self {
+            Self::Ordinary(observation) => observation.compute(tree),
+            Self::Lanes(observation) => observation.compute(tree),
+        }
+    }
+}
+
+/// A Grid Lanes container sized without layout: its accepted sources and
+/// tracks, from which its lanes place the children.
+pub(crate) struct LanesGridObservation<'input, Node, S: LayoutScalar> {
+    pub(super) source: GridAcceptedSource<'input, Node, S>,
+    pub(super) tracks: FinalGridLayoutTracks<S>,
+}
+
+impl<'input, Node: Copy + Eq, S: LayoutScalar> LanesGridObservation<'input, Node, S> {
+    fn node(&self) -> Node {
+        self.source.output.node
+    }
+
+    fn begin<Tree, M>(
+        self,
+        tree: &mut Tree,
+    ) -> LayoutResultOf<Node, GridObservationRun<'input, Node, S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        let work = match self.source.place(tree, self.tracks, LanesPlacement::Pass)? {
+            GridPlaced::Layout(placed) => GridPass {
+                children: Some(GridPassChildren::EmptyLanes(Box::new(placed.layout))),
+                output: placed.output,
+                scroll_box: placed.scroll_box,
+            },
+            GridPlaced::Pass(pass) => *pass,
+            GridPlaced::Done(_) => unreachable!("a placement pass observes nothing synchronously"),
+        };
+        Ok(GridObservationRun {
+            work: Some(GridPassWork::Placement(Box::new(work))),
+        })
+    }
+
+    fn compute<Tree, M>(self, tree: &mut Tree) -> GridComputeOutcome<Node, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        match self
+            .source
+            .place(tree, self.tracks, LanesPlacement::SynchronousObservation)?
+        {
+            GridPlaced::Layout(placed) => placed
+                .output
+                .finish(Some((placed.scroll_box, placed.layout))),
+            GridPlaced::Pass(pass) => pass.compute(tree),
+            GridPlaced::Done(result) => Ok(*result),
+        }
+    }
+}
+
 pub(crate) struct OrdinaryGridObservation<'input, Node, S: LayoutScalar> {
     pub(super) source_constants: Constants<S>,
     pub(super) source_stage: GridSizingStage,
@@ -9,18 +100,18 @@ pub(crate) struct OrdinaryGridObservation<'input, Node, S: LayoutScalar> {
     pub(super) prepared_available: LogicalSizeOf<AxisSizingRequestOf<S>>,
 }
 
-pub(crate) struct OrdinaryGridObservationRun<'input, Node, S: LayoutScalar> {
+pub(crate) struct GridObservationRun<'input, Node, S: LayoutScalar> {
     work: Option<GridPassWork<'input, Node, S>>,
 }
 
-pub(crate) struct OrdinaryGridObservationCompletion<'input, Node, S: LayoutScalar> {
+pub(crate) struct GridObservationCompletion<'input, Node, S: LayoutScalar> {
     output: GridPassOutput<'input, Node, S>,
     scroll_box: CanonicalScrollBoxOf<S>,
     children: GridChildrenLayout<Node, S>,
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridObservation<'input, Node, S> {
-    pub(crate) fn node(&self) -> Node {
+    fn node(&self) -> Node {
         self.source.output.node
     }
 
@@ -113,7 +204,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridObservation<'input, N
                 receiver,
             }))),
             None => match source.finish(tree, tracks)? {
-                ControlFlow::Continue(pass) => Ok(GridPassWork::Placement(pass)),
+                ControlFlow::Continue(work) => Ok(work),
                 ControlFlow::Break(_) => unreachable!("ordinary placement retains its child owner"),
             },
         }
@@ -122,11 +213,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridObservation<'input, N
     pub(crate) fn begin<Tree, M>(
         self,
         tree: &mut Tree,
-    ) -> LayoutResultOf<Node, OrdinaryGridObservationRun<'input, Node, S>, S, M>
+    ) -> LayoutResultOf<Node, GridObservationRun<'input, Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        Ok(OrdinaryGridObservationRun {
+        Ok(GridObservationRun {
             work: Some(self.prepare(tree)?),
         })
     }
@@ -199,7 +290,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridObservation<'input, N
     }
 }
 
-impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridObservationRun<'input, Node, S> {
+impl<'input, Node: Copy + Eq, S: LayoutScalar> GridObservationRun<'input, Node, S> {
     pub(crate) fn advance<Tree, M>(
         &mut self,
         tree: &mut Tree,
@@ -219,7 +310,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridObservationRun<'input
                         unreachable!()
                     };
                     self.work = Some(match accepted.finish(tree)? {
-                        ControlFlow::Continue(pass) => GridPassWork::Placement(pass),
+                        ControlFlow::Continue(work) => work,
                         ControlFlow::Break(_) => {
                             unreachable!("ordinary placement retains its child owner")
                         }
@@ -279,7 +370,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridObservationRun<'input
 
     pub(crate) fn finish<M>(
         self,
-    ) -> LayoutResultOf<Node, OrdinaryGridObservationCompletion<'input, Node, S>, S, M> {
+    ) -> LayoutResultOf<Node, GridObservationCompletion<'input, Node, S>, S, M> {
         let Some(GridPassWork::Placement(pass)) = self.work else {
             unreachable!("completed ordinary child placement")
         };
@@ -294,7 +385,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridObservationRun<'input
             contributions: children.contributions,
             baselines: children.baselines,
         };
-        Ok(OrdinaryGridObservationCompletion {
+        Ok(GridObservationCompletion {
             output,
             scroll_box,
             children: observation.into_children(),
@@ -302,7 +393,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> OrdinaryGridObservationRun<'input
     }
 }
 
-impl<Node: Copy, S: LayoutScalar> OrdinaryGridObservationCompletion<'_, Node, S> {
+impl<Node: Copy, S: LayoutScalar> GridObservationCompletion<'_, Node, S> {
     pub(crate) fn node(&self) -> Node {
         self.output.node
     }

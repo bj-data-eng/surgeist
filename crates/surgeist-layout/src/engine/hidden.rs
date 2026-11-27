@@ -28,7 +28,17 @@ pub(super) struct HiddenChildren<Node> {
     pass: SettledAutoScrollbarState,
 }
 
-type NextHiddenChild<Node, S, M> = LayoutResultOf<Node, Option<(Node, ComputeInputOf<S>)>, S, M>;
+/// The input of a child of a hidden node: hidden layout of the box, whatever its
+/// display. Only `HiddenChildren` makes one.
+pub(super) struct HiddenInput<S: LayoutScalar>(ComputeInputOf<S>);
+
+impl<S: LayoutScalar> HiddenInput<S> {
+    pub(super) fn into_input(self) -> ComputeInputOf<S> {
+        self.0
+    }
+}
+
+type NextHiddenChild<Node, S, M> = LayoutResultOf<Node, Option<(Node, HiddenInput<S>)>, S, M>;
 
 impl<Node: Copy + Eq> HiddenChildren<Node> {
     pub(super) fn begin<'input, Tree, S, M>(
@@ -71,7 +81,10 @@ impl<Node: Copy + Eq> HiddenChildren<Node> {
                     tree.set_unrounded(LayoutOutputEntryOf::hidden_unrounded(child, source));
                     return Ok(Some((
                         child,
-                        ComputeInputOf::hidden_in_containing_pass(self.context, self.pass),
+                        HiddenInput(ComputeInputOf::hidden_in_containing_pass(
+                            self.context,
+                            self.pass,
+                        )),
                     )));
                 }
                 LayoutInputViewOf::InlineText(_)
@@ -123,7 +136,7 @@ where
         },
     )?;
     while let Some((child, input)) = children.next_box(tree)? {
-        tree.compute_child(child, input)?;
+        tree.compute_child(child, input.into_input())?;
     }
     Ok(crate::output::ComputeOutputOf::HIDDEN)
 }

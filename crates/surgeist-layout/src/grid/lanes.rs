@@ -15,8 +15,13 @@ use crate::{
 use std::collections::TryReserveError;
 use std::ops::Range;
 
+mod nested;
 mod packed;
 mod settlement;
+pub(super) use nested::{
+    CollectorStep, LaneAction, LaneEntered, LaneEnv, LaneRootWrapper, LaneSeed,
+    NestedLaneCollector, NestedLaneVisit,
+};
 use packed::{PackedLaneItem, PackedLanePlacement};
 use settlement::{LaneItemPlacement, stage_lane_items};
 
@@ -881,8 +886,9 @@ where
                 Err(error) => return Ok(Err(error)),
             };
             loop {
-                let output = child.request(input).compute_sync(tree)?.into_output();
-                if role.accept_child(input, &mut child, output)? {
+                let result = child.request(input).compute_sync(tree)?;
+                let gutter = result.effective_gutter();
+                if role.accept_child(input, &mut child, result.into_output(), gutter)? {
                     break;
                 }
             }
@@ -1038,10 +1044,13 @@ fn complete_lane_contribution_rows<Node: Copy, S: LayoutScalar>(
     Ok(result)
 }
 
-pub(super) struct LaneIntrinsicRole<Node, S: LayoutScalar> {
+pub(super) struct LaneIntrinsicRole<'input, Node, S: LayoutScalar> {
     next_child: usize,
     candidates: Option<LaneIntrinsicCandidates<S>>,
     contributions: LanePurposeContributions<Node, S>,
+    /// The collection of the lane child that is a subgrid wrapper, while it
+    /// waits on a computation.
+    collector: Option<Box<NestedLaneCollector<'input, Node, S>>>,
 }
 
 struct LaneIntrinsicCandidates<S: LayoutScalar> {
@@ -1051,7 +1060,7 @@ struct LaneIntrinsicCandidates<S: LayoutScalar> {
     prepared: ComputeInputOf<S>,
 }
 
-pub(super) struct LaneIntrinsicChild<Node, S: LayoutScalar> {
+pub(super) struct LaneIntrinsicChild<'input, Node, S: LayoutScalar> {
     pub(super) node: Node,
     span: GridTrackSpan,
     query: Option<GridMinimumQuery<S>>,
@@ -1060,14 +1069,22 @@ pub(super) struct LaneIntrinsicChild<Node, S: LayoutScalar> {
     /// A nested container that requires a context, so that its queries are
     /// contextual Grid computations.
     contextual: bool,
+    /// The computation a nested wrapper's collection waits on, until it is
+    /// asked for.
+    nested: Option<TrackChildRequest<'input, Node, S>>,
+    /// Whether the child stands for the collection of a nested wrapper.
+    is_nested: bool,
 }
 
-impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicChild<Node, S> {
+impl<'input, Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicChild<'input, Node, S> {
     /// The computation the current query of the child waits on.
-    pub(super) fn request<'input>(
-        &self,
+    pub(super) fn request(
+        &mut self,
         input: LaneIntrinsicTrackSizeInput<'input, '_, Node, S>,
     ) -> TrackChildRequest<'input, Node, S> {
+        if let Some(request) = self.nested.take() {
+            return request;
+        }
         let query_input = self.query.as_ref().expect("active lane query").input();
         if !self.contextual {
             return TrackChildRequest::child(self.node, query_input);
@@ -1093,11 +1110,15 @@ impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicChild<Node, S> {
     }
 }
 
-type LaneIntrinsicStep<Node, S, M> =
-    LayoutResultOf<Node, Result<Option<LaneIntrinsicChild<Node, S>>, LanePlacementError>, S, M>;
+type LaneIntrinsicStep<'input, Node, S, M> = LayoutResultOf<
+    Node,
+    Result<Option<LaneIntrinsicChild<'input, Node, S>>, LanePlacementError>,
+    S,
+    M,
+>;
 
-impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicRole<Node, S> {
-    pub(super) fn begin<'input, Tree, M>(
+impl<'input, Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicRole<'input, Node, S> {
+    pub(super) fn begin<Tree, M>(
         tree: &Tree,
         node: Node,
         input: LaneIntrinsicTrackSizeInput<'input, '_, Node, S>,
@@ -1121,16 +1142,25 @@ impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicRole<Node, S> {
             next_child,
             candidates: None,
             contributions: LanePurposeContributions::empty(),
+            collector: None,
         }
     }
 
-    pub(super) fn next<'input, Tree, M>(
+    /// Takes the frames of the collection the role waits on and adds to
+    /// `starts` where the effect capture of each waiting preparation began.
+    pub(super) fn take_captures(&mut self, starts: &mut Vec<usize>) {
+        if let Some(collector) = self.collector.as_mut() {
+            collector.take_captures(starts);
+        }
+    }
+
+    pub(super) fn next<Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
         input: LaneIntrinsicTrackSizeInput<'input, '_, Node, S>,
         purpose: GridContributionPurpose,
-    ) -> LaneIntrinsicStep<Node, S, M>
+    ) -> LaneIntrinsicStep<'input, Node, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
@@ -1146,8 +1176,34 @@ impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicRole<Node, S> {
             ..
         } = input;
         loop {
-            if self.candidates.is_none() && !self.prepare_candidates(tree, node, input, purpose)? {
+            if let Some(collector) = self.collector.as_mut() {
+                match collector.step::<Tree, M>(tree, input, purpose, &mut self.contributions)? {
+                    CollectorStep::Request(request) => {
+                        let query_input = request.input;
+                        return Ok(Ok(Some(LaneIntrinsicChild {
+                            node: request.node,
+                            span: GridTrackSpan::new(1, 1),
+                            query: None,
+                            prepared: query_input,
+                            source_slot: 0,
+                            contextual: false,
+                            nested: Some(request),
+                            is_nested: true,
+                        })));
+                    }
+                    CollectorStep::Done => {
+                        if let Some(collector) = self.collector.take() {
+                            collector.finish(&mut self.contributions.base_floors);
+                        }
+                        continue;
+                    }
+                }
+            }
+            if self.candidates.is_none() && !self.prepare_candidates(tree, node, input)? {
                 return Ok(Ok(None));
+            }
+            if self.collector.is_some() {
+                continue;
             }
             let candidates = self.candidates.as_mut().expect("active lane candidates");
             let Some(start) = candidates.starts.next() else {
@@ -1209,16 +1265,17 @@ impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicRole<Node, S> {
                 prepared,
                 source_slot,
                 contextual,
+                nested: None,
+                is_nested: false,
             })));
         }
     }
 
-    fn prepare_candidates<'input, Tree, M>(
+    fn prepare_candidates<Tree, M>(
         &mut self,
         tree: &mut Tree,
         node: Node,
         input: LaneIntrinsicTrackSizeInput<'input, '_, Node, S>,
-        purpose: GridContributionPurpose,
     ) -> LayoutResultOf<Node, bool, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
@@ -1228,7 +1285,6 @@ impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicRole<Node, S> {
             constants,
             axis,
             tracks,
-            gap,
             gutters,
             lines,
             placements,
@@ -1279,29 +1335,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicRole<Node, S> {
                     constants.node_inner_size,
                     child_axis,
                 )?;
-                let functions = grid
-                    .minimum_functions
+                // Qualify the source before the collection begins.
+                grid.minimum_functions
                     .for_axis(axis)
                     .ok_or_else(|| minimum_source_error(child))?;
-                let geometry = gutters.map_or_else(
-                    || {
-                        UsedGridAxisGeometryOf::new(
-                            vec![S::ZERO; tracks.len()],
-                            vec![false; tracks.len()],
-                            gap,
-                        )
-                    },
-                    |gutters| {
-                        UsedGridAxisGeometryOf::from_sizing_gutters(
-                            vec![S::ZERO; tracks.len()],
-                            gutters,
-                        )
-                    },
-                );
-                let named_lines = match axis {
-                    GridAxisKind::Column => grid.named_columns,
-                    GridAxisKind::Row => grid.named_rows,
-                };
                 let prepared = prepare_grid_lanes_intrinsic_child_input(
                     child_style,
                     constants.flow_axes,
@@ -1333,72 +1370,17 @@ impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicRole<Node, S> {
                         })?;
                     contributions.base_floors.resize(tracks.len(), S::ZERO);
                 }
-                let mut memo = NestedLaneTraversalMemoOf::new();
-                for start in wrapper_starts {
-                    let inherited = intrinsic_subgrid_axis_parent_context_for_span(
-                        axis_report,
-                        GridTrackSpan::new(start + 1, start + wrapper_span + 1),
-                        gap,
-                        SubgridInheritedAxisSource {
-                            baseline_reference: grid_baseline_reference(
-                                grid.style.baseline_references,
-                                axis,
-                            ),
-                            geometry: Some(&geometry),
-                            allocated: match axis {
-                                GridAxisKind::Column => grid.query.columns,
-                                GridAxisKind::Row => grid.query.rows,
-                            },
-                            minimum_functions: Some(functions),
-                        },
-                        named_lines,
-                        grid.area_facts,
-                    )
-                    .map_err(|error| subgrid_child_context_error(child, error))?;
-                    let mut parent_context = GridParentContext::none();
-                    match child_axis {
-                        GridAxisKind::Column => parent_context.columns = inherited,
-                        GridAxisKind::Row => parent_context.rows = inherited,
-                    }
-                    collect_nested_lane_intrinsic_items(
-                        tree,
-                        child,
-                        GridMinimumWrapperInput {
-                            axis: child_axis,
-                            container: placements
-                                .child_input(source_slot)
-                                .nested_container()
-                                .expect(
-                                    "an inherited Lane wrapper retains its actual container input",
-                                ),
-                            parent_context: &parent_context,
-                            prepared,
-                            containing_flow_axes: constants.flow_axes,
-                            content_box_estimate: None,
-                            known_extent: Size::NONE,
-                            traversal: GridMinimumWrapperTraversal::LaneCandidates,
-                            query: grid.query,
-                        },
-                        NestedLaneIntrinsicProjectionOf {
-                            root_track_count: tracks.len(),
-                            axis: child_axis,
-                            wrapper_span,
-                            wrapper_starts: vec![start],
-                            hypothetical_descendants: definite_grid_axis_start.is_none(),
-                            envelope_empty_leaf: false,
-                            reversed,
-                            parent_gap: gap,
-                            interior_half_gap: S::ZERO,
-                            accumulated_edges: LaneIntrinsicEdgeFactsOf::default(),
-                            wrapper_edges,
-                        },
-                        &mut memo,
-                        purpose,
-                        contributions,
-                    )?;
-                }
-                memo.emit_empty_leaf_floors(&mut contributions.base_floors);
-                continue;
+                self.collector = Some(Box::new(NestedLaneCollector::new(LaneRootWrapper {
+                    source_slot,
+                    child_axis,
+                    wrapper_span,
+                    starts: wrapper_starts,
+                    hypothetical_descendants: definite_grid_axis_start.is_none(),
+                    reversed,
+                    wrapper_edges,
+                    prepared,
+                })));
+                return Ok(true);
             }
             let span = if definite_grid_axis_start.is_some() {
                 grid_axis_span
@@ -1449,9 +1431,18 @@ impl<Node: Copy + Eq, S: LayoutScalar> LaneIntrinsicRole<Node, S> {
     pub(super) fn accept_child<M>(
         &mut self,
         input: LaneIntrinsicTrackSizeInput<'_, '_, Node, S>,
-        child: &mut LaneIntrinsicChild<Node, S>,
+        child: &mut LaneIntrinsicChild<'input, Node, S>,
         output: ComputeOutputOf<S>,
+        gutter: Option<Edges<S>>,
     ) -> LayoutResultOf<Node, bool, S, M> {
+        if child.is_nested {
+            let collector = self
+                .collector
+                .as_mut()
+                .ok_or_else(|| minimum_source_error(child.node))?;
+            collector.accept::<M>(output, gutter)?;
+            return Ok(true);
+        }
         let query = child.query.take().expect("active lane query");
         match query.accept(child.node, output)? {
             ControlFlow::Break(output) => {
@@ -1549,7 +1540,7 @@ pub(super) struct NestedLaneIntrinsicProjectionOf<S: LayoutScalar = DefaultScala
 
 // A source slot has the same authored container input for the whole
 // contribution pass. Retain a separate memo for each descendant slot.
-struct NestedLaneTraversalMemoOf<S: LayoutScalar, Node> {
+pub(super) struct NestedLaneTraversalMemoOf<S: LayoutScalar, Node> {
     states: Vec<NestedLaneTraversalStateOf<S, Node>>,
     children: Vec<(crate::output::SourceIndex, Self)>,
     empty_leaf: Option<LaneEmptyLeafFloorOf<S>>,
@@ -1604,6 +1595,18 @@ impl<S: LayoutScalar, Node: Copy + Eq> NestedLaneTraversalMemoOf<S, Node> {
         for (_, child) in self.children {
             child.emit_empty_leaf_floors(floors);
         }
+    }
+
+    /// The memo of the wrapper `path` leads to from this one.
+    pub(super) fn at(
+        &mut self,
+        path: &[crate::output::SourceIndex],
+    ) -> Result<&mut Self, TryReserveError> {
+        let mut memo = self;
+        for &source_index in path {
+            memo = memo.child(source_index)?;
+        }
+        Ok(memo)
     }
 
     fn child(
@@ -1874,275 +1877,6 @@ where
     Ok(())
 }
 
-fn collect_nested_lane_intrinsic_items<'input, Tree, M>(
-    tree: &mut Tree,
-    wrapper: Tree::Node,
-    request: GridMinimumWrapperInput<'input, '_, Tree::Node, Tree::Scalar>,
-    projection: NestedLaneIntrinsicProjectionOf<Tree::Scalar>,
-    memo: &mut NestedLaneTraversalMemoOf<Tree::Scalar, Tree::Node>,
-    purpose: GridContributionPurpose,
-    contributions: &mut LanePurposeContributions<Tree::Node, Tree::Scalar>,
-) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    if projection.wrapper_starts.is_empty() || projection.wrapper_span == 0 {
-        return Ok(());
-    }
-    if projection.hypothetical_descendants
-        && !memo
-            .record(&request, &projection)
-            .map_err(|_| grid_track_sizing_error(wrapper, SpanningContributionError::Allocation))?
-    {
-        return Ok(());
-    }
-    if grid_minimum_wrapper_contained(tree.node_input(wrapper), projection.axis)
-        || tree.children(wrapper).all(|child| {
-            !is_in_flow_grid_child(GridChildInput::from_node(tree.node_input(child)).item())
-        })
-    {
-        return collect_empty_lane_subgrid_edges(
-            tree,
-            wrapper,
-            &request,
-            &projection,
-            memo,
-            &mut contributions.base_floors,
-        );
-    }
-    let _: Vec<()> = visit_grid_minimum_wrapper_children(tree, wrapper, request, |tree, view| {
-        let child = view.node;
-        let child_style = view.execution.child_style;
-        // Inherited track geometry keeps the ancestor gutters. Authored gap
-        // differences remain edge adjustments, resolved in this wrapper's
-        // actual property frame rather than in the outer Lane container.
-        let gap = child::child_subgrid_gap(
-            view.execution.grid.style,
-            projection.axis,
-            view.execution.grid.constants.node_inner_size,
-        )
-        .map_err(|status| crate::error::value_resolution_error(wrapper, status))?;
-        let wrapper_gap = match gap {
-            ResolvedSubgridGap::Normal => projection.parent_gap,
-            ResolvedSubgridGap::Length(value) => value,
-        };
-        let mut local_projection = projection.clone();
-        local_projection.wrapper_edges =
-            lane_wrapper_edges_with_gutter(&projection, view.execution.grid.constants);
-        let half_gap_difference =
-            (wrapper_gap - projection.parent_gap) / Tree::Scalar::from_f64(2.0);
-        local_projection.interior_half_gap = projection.interior_half_gap + half_gap_difference;
-        let placement = view.execution.grid.placements.items[view.source_index.get()];
-        let placement = match projection.axis {
-            GridAxisKind::Column => placement.column,
-            GridAxisKind::Row => placement.row,
-        };
-        let explicit_range =
-            signed_definite_axis_range(placement, projection.wrapper_span, projection.axis)
-                .map_err(|error| grid_placement_demand_error(child, error))?
-                .map(|(start, end)| {
-                    clamp_subgrid_axis_range(
-                        start.max(0) as usize,
-                        end.max(0) as usize,
-                        projection.wrapper_span,
-                    )
-                });
-        let child_span = explicit_range.map_or_else(
-            || {
-                placement
-                    .span()
-                    .map_or(1, crate::value::GridSpan::get)
-                    .min(projection.wrapper_span)
-            },
-            |(start, end)| end - start,
-        );
-        let explicit_local_start = explicit_range.map(|(start, _)| start);
-        let local_starts = if let Some(start) = explicit_local_start
-            && !projection.hypothetical_descendants
-        {
-            vec![start]
-        } else {
-            candidate_starts(projection.wrapper_span, child_span).collect()
-        };
-        for start in local_starts {
-            let end = start + child_span;
-            let groups = nested_lane_candidate_groups(
-                &local_projection,
-                child_span,
-                std::iter::once(start),
-                explicit_local_start,
-            );
-            if groups.is_empty() {
-                continue;
-            }
-            let mut execution = view.execution;
-            match projection.axis {
-                GridAxisKind::Column => {
-                    execution.area.column = start;
-                    execution.area.column_end = end;
-                    execution.area.size.inline = view.column_geometry.span_extent(start, end);
-                }
-                GridAxisKind::Row => {
-                    execution.area.row = start;
-                    execution.area.row_end = end;
-                    execution.area.size.block = view.row_geometry.span_extent(start, end);
-                }
-            }
-            let prepared = intrinsic_stage_child_input::<Tree, M>(child, &execution)?;
-            let item_report = execution
-                .subgrid_item
-                .expect("canonical wrapper preparation retains each actual item report");
-            if let Some(child_axis) =
-                inherited_subgrid_axis_for_parent_axis(item_report, projection.axis)
-            {
-                let axis_report = match child_axis {
-                    GridAxisKind::Column => item_report.column,
-                    GridAxisKind::Row => item_report.row,
-                };
-                let mut parent_context = GridParentContext {
-                    columns: intrinsic_subgrid_axis_parent_context(
-                        item_report.column,
-                        execution.area,
-                        view.minimum_source.gap,
-                        view.minimum_source,
-                        execution.grid.named_columns,
-                        execution.grid.named_rows,
-                        execution.grid.area_facts,
-                    )
-                    .map_err(|error| subgrid_child_context_error(child, error))?,
-                    rows: intrinsic_subgrid_axis_parent_context(
-                        item_report.row,
-                        execution.area,
-                        view.minimum_source.gap,
-                        view.minimum_source,
-                        execution.grid.named_columns,
-                        execution.grid.named_rows,
-                        execution.grid.area_facts,
-                    )
-                    .map_err(|error| subgrid_child_context_error(child, error))?,
-                };
-                if projection.hypothetical_descendants {
-                    let inherited = match child_axis {
-                        GridAxisKind::Column => parent_context.columns.as_mut(),
-                        GridAxisKind::Row => parent_context.rows.as_mut(),
-                    };
-                    let placed = view.execution.area;
-                    let named_range = explicit_range.unwrap_or(match projection.axis {
-                        GridAxisKind::Column => (placed.column, placed.column_end),
-                        GridAxisKind::Row => (placed.row, placed.row_end),
-                    });
-                    // A clipped automatic placement can be shorter than the
-                    // candidate geometry. Its local names still use the candidate span.
-                    if let Some(inherited) = inherited
-                        && named_range.1 - named_range.0 == child_span
-                    {
-                        (inherited.parent_start, inherited.parent_end) = named_range;
-                    }
-                }
-                let wrapper_edges = lane_child_edge_facts(
-                    tree,
-                    child,
-                    child_style,
-                    prepared.containing_flow_axes(),
-                    prepared.parent(),
-                    child_axis,
-                )?;
-                let child_memo = if projection.hypothetical_descendants {
-                    memo.child(view.source_index).map_err(|_| {
-                        grid_track_sizing_error(child, SpanningContributionError::Allocation)
-                    })?
-                } else {
-                    &mut *memo
-                };
-                for group in groups {
-                    collect_nested_lane_intrinsic_items(
-                        tree,
-                        child,
-                        GridMinimumWrapperInput {
-                            axis: child_axis,
-                            container: execution
-                                .child_container
-                                .expect("an inherited child retains its real Grid container"),
-                            parent_context: &parent_context,
-                            prepared,
-                            containing_flow_axes: view.minimum_source.flow_axes,
-                            content_box_estimate: None,
-                            known_extent: Size::NONE,
-                            traversal: GridMinimumWrapperTraversal::LaneCandidates,
-                            query: execution.grid.query,
-                        },
-                        NestedLaneIntrinsicProjectionOf {
-                            root_track_count: projection.root_track_count,
-                            axis: child_axis,
-                            wrapper_span: child_span,
-                            wrapper_starts: group.starts,
-                            hypothetical_descendants: projection.hypothetical_descendants,
-                            envelope_empty_leaf: projection.hypothetical_descendants,
-                            reversed: projection.reversed ^ axis_report.mapping.reversed,
-                            parent_gap: wrapper_gap,
-                            interior_half_gap: local_projection.interior_half_gap,
-                            accumulated_edges: group.edges,
-                            wrapper_edges,
-                        },
-                        child_memo,
-                        purpose,
-                        contributions,
-                    )?;
-                }
-                continue;
-            }
-            let frame = view
-                .minimum_source
-                .frame(child, projection.axis, execution.area, prepared)?
-                .ok_or_else(|| minimum_source_error(child))?;
-            let prepared = frame.prepared();
-            let value = lane_child_contribution(
-                tree,
-                child,
-                GridMinimumContext {
-                    item: child_style,
-                    flow_axes: frame.flow_axes,
-                    axis: frame.axis,
-                    algorithm: frame.algorithm,
-                    prepared,
-                    margin_basis: prepared.parent(),
-                    span: frame.span,
-                    opposite_fixed_max_span: frame.opposite_fixed_max_span,
-                    subgrid_requests: lane_child_subgrid_requests(execution.child_container),
-                    subgridded: Size::new(false, false),
-                },
-                purpose,
-                |tree, input| compute_prepared_intrinsic_grid_child(tree, child, execution, input),
-            )?;
-            for group in groups {
-                let adjustment = group.edges.start_mbp
-                    + group.edges.end_mbp
-                    + group.edges.start_half_gap
-                    + group.edges.end_half_gap;
-                let adjusted = value + adjustment;
-                if !adjusted.is_finite() {
-                    return Err(grid_track_sizing_error(
-                        child,
-                        SpanningContributionError::InvalidNumeric { value: adjusted },
-                    ));
-                }
-                for start in group.starts {
-                    contributions.rows.try_reserve(1).map_err(|_| {
-                        grid_track_sizing_error(child, SpanningContributionError::Allocation)
-                    })?;
-                    contributions.rows.push(LanePurposeContributionOf {
-                        source: child,
-                        span: GridTrackSpan::new(start + 1, start + child_span + 1),
-                        value: adjusted.max(Tree::Scalar::ZERO),
-                    });
-                }
-            }
-        }
-        Ok(None)
-    })?;
-    Ok(())
-}
-
 fn lane_child_edge_facts<'input, Tree, M>(
     tree: &Tree,
     child: <Tree as Traverse>::Node,
@@ -2280,28 +2014,6 @@ fn lane_intrinsic_query_for_role<S: LayoutScalar>(
         input = input.with_block_indent_context(indent);
     }
     input
-}
-
-fn lane_child_contribution<'input, Tree, M>(
-    tree: &mut Tree,
-    child: Tree::Node,
-    minimum: GridMinimumContext<'_, 'input, Tree::Scalar>,
-    purpose: GridContributionPurpose,
-    mut query: impl FnMut(
-        &mut Tree,
-        ComputeInputOf<Tree::Scalar>,
-    )
-        -> LayoutResultOf<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>,
-) -> LayoutResultOf<Tree::Node, Tree::Scalar, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let item = minimum.item;
-    let flow_axes = minimum.flow_axes;
-    let axis = minimum.axis;
-    let (prepared, planned) = prepare_lane_contribution(child, minimum, purpose)?;
-    let output = planned.compute(child, |input| query(tree, input))?;
-    lane_contribution_value(child, item, flow_axes, axis, prepared, output)
 }
 
 type PreparedLaneContribution<S> = (ComputeInputOf<S>, GridMinimumQuery<S>);
