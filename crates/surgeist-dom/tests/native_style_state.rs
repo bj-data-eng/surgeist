@@ -2462,6 +2462,11 @@ fn execute_slot_source_edit(
             )) => {
                 panic!("manual Slot assignment has no hosted child phase: {request:?}")
             }
+            surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::HostedRemovals(
+                request,
+            )) => {
+                panic!("manual Slot assignment has no hosted removal group: {request:?}")
+            }
             surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::Event(request)) => {
                 panic!("manual Slot assignment has no event observation: {request:?}")
             }

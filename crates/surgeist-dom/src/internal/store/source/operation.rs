@@ -2460,7 +2460,7 @@ impl DomSourceLease<'_> {
         // An observer may create the first binding after this Source
         // began. Refresh operational membership before any resumed mutation.
         op.refresh_inline_execution(self.dom, execution.resolver.is_some())?;
-        op.cancel_private_form_body(cancel)?;
+        op.close_stopped_form_body(cancel)?;
         if !op.event_exposed
             && let OperationRoot::DialogTask(task) = op.commands
         {
@@ -2802,6 +2802,10 @@ impl DomSourceLease<'_> {
                     checkpoint.restore(&mut op.draft);
                     op.restore_external_receipt(external_applied);
                     op.started = started;
+                    if hosted_removals::unjoined_form_service(&error) {
+                        op.stop_form_body(error, cancel)?;
+                        continue;
+                    }
                     return Err(error.into());
                 }
                 Err(
@@ -3163,6 +3167,10 @@ impl DomSourceLease<'_> {
                             checkpoint.restore(&mut op.draft);
                             op.restore_external_receipt(external_applied);
                             op.started = started;
+                            if matches!(error, DomError::HostedSourceUnavailable) {
+                                op.stop_form_body(error, cancel)?;
+                                continue;
+                            }
                             return Err(error.into());
                         }
                     }
@@ -3272,7 +3280,8 @@ impl DomSourceLease<'_> {
                             checkpoint.restore(&mut op.draft);
                             op.restore_external_receipt(external_applied);
                             op.started = started;
-                            return Err(error.into());
+                            op.stop_form_body(error, cancel)?;
+                            continue;
                         }
                     }
                     let completed_method = matches!(

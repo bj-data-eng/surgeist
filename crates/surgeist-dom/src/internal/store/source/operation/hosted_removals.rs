@@ -31,6 +31,7 @@ struct RemovalWork {
 pub(super) struct ResetBody {
     start: Option<checkpoint::Checkpoint>,
     form: Key,
+    failure: Option<DomError>,
 }
 
 impl ResetBody {
@@ -42,6 +43,7 @@ impl ResetBody {
         Ok(Self {
             start: Some(draft.source_checkpoint(0, 0, cancel)?),
             form,
+            failure: None,
         })
     }
 }
@@ -105,19 +107,71 @@ impl Iterator for DomQueuedSourceHostedRemovals {
 
 impl ExactSizeIterator for DomQueuedSourceHostedRemovals {}
 
+pub(super) fn unjoined_form_service(error: &DomError) -> bool {
+    matches!(
+        error,
+        DomError::StyleCompositionRequired(_)
+            | DomError::StyleOwnerAttributesCompositionRequired
+            | DomError::StyleDisabledCompositionRequired
+            | DomError::StyleProcessingUnavailable
+            | DomError::ScriptPreparationRequired
+            | DomError::MetaCspProcessingRequired
+            | DomError::FullscreenExitHandoffRequired
+            | DomError::DesignModeProcessingUnavailable { .. }
+            | DomError::AutofocusInsertionUnavailable { .. }
+            | DomError::DialogFocusingUnavailable { .. }
+            | DomError::NeedsEventfulOperation { .. }
+            | DomError::DialogProcessingUnavailable { .. }
+    )
+}
+
 impl Operation {
-    pub(super) fn cancel_private_form_body(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
-        if self.cancelled
-            && let Some(body) = self.reset_body.as_mut()
-        {
-            if let Some(checkpoint) = body.start.take() {
-                checkpoint.restore(&mut self.draft);
-                self.hosted_removals = Removals::default();
-            }
-            self.draft.stage_form_reset_tail(body.form, false, cancel)?;
-            self.reset_body = None;
+    pub(super) fn stop_form_body(
+        &mut self,
+        error: DomError,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let body = self
+            .reset_body
+            .as_mut()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        body.failure = Some(error);
+        self.close_stopped_form_body(cancel)
+    }
+
+    pub(super) fn close_stopped_form_body(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
+        let Some(body) = self.reset_body.as_mut() else {
+            return Ok(());
+        };
+        if !self.cancelled && body.failure.is_none() {
+            return Ok(());
         }
-        Ok(())
+        if let Some(checkpoint) = body.start.take() {
+            checkpoint.restore(&mut self.draft);
+            self.hosted_removals = Removals::default();
+        }
+        let form = body.form;
+        let failure = body.failure.clone();
+        let input_bytes = self.input_bytes()?;
+        let checkpoint = self.draft.source_checkpoint(input_bytes, 0, cancel)?;
+        let cleanup = (|| {
+            self.draft.stage_form_reset_tail(form, false, cancel)?;
+            if let Some(error) = failure {
+                self.draft.source_set_method(
+                    Some(crate::internal::store::method::Frame::CompoundFailure(
+                        error,
+                    )),
+                    cancel,
+                )?;
+            }
+            Ok(())
+        })();
+        if cleanup.is_ok() {
+            self.reset_body = None;
+        } else {
+            checkpoint.restore(&mut self.draft);
+        }
+        cleanup
     }
 
     pub(super) fn collect_form_removal(

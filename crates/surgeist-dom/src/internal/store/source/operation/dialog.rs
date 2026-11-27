@@ -2234,8 +2234,14 @@ impl DomSourceLease<'_> {
             operation.command_admitted = false;
         }
         let result = self.advance_operation(&mut operation, execution, None, cancel);
-        if self.complete || matches!(result, Ok(DomSourceProgress::Complete(_))) {
+        if self.complete
+            || matches!(
+                &result,
+                Ok(DomSourceProgress::Complete(_) | DomSourceProgress::Failed(_))
+            )
+        {
             self.complete = true;
+            drop(operation);
             self.dom.source_operation = self.dom.source_parents.pop();
         } else {
             self.dom.source_operation = Some(operation);
