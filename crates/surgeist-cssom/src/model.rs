@@ -64,7 +64,12 @@ pub struct CssomLimits {
     /// Actual shared parse-source backing retained by the selected state and
     /// any additional parse sources held during an edit.
     pub max_retained_source_bytes: usize,
-    /// Actual source payload visits, source snapshots reached and retained-state walk actions.
+    /// The steps of the source walk that reaches every retained payload: one for each
+    /// payload visit, source snapshot reached, linked state and linked input, and
+    /// the steps of the walk of each of the states a context links. The state is
+    /// refused when the walk's figure exceeds the limit, and the measurement of one
+    /// payload part is refused after at most that many steps. A check of the state
+    /// does not walk it, so the limit does not bound the work of a check.
     pub max_source_traversal_steps: usize,
     /// Representation walk depth, independent of CSS semantic nesting.
     pub max_source_traversal_depth: usize,

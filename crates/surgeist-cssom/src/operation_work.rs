@@ -2,8 +2,8 @@
 //! scope.
 //!
 //! An operation of a store that holds a host opens a record on its thread; the
-//! census runs and rule formatting the operation does, including those of the
-//! operations it calls, add to it. When the outermost operation returns, the
+//! checks of the state (settles) and rule formatting the operation does,
+//! including those of the operations it calls, add to it. When the outermost operation returns, the
 //! record is charged as one batch. A commit inside an operation settles the
 //! record before it publishes, so that a refused charge publishes nothing.
 //! With no host no record is open, and adding to it does nothing.
@@ -19,7 +19,7 @@ use surgeist_css::accounting::{
     CssAccount, CssChange, CssFront, CssHostScope, CssResource, CssWork,
 };
 
-/// What the settles and rule formatting of one operation did.
+/// What the checks of the state and rule formatting of one operation did.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct OperationWork {
     runs: usize,

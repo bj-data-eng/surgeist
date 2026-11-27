@@ -11,19 +11,20 @@
 //! median, minimum and maximum time of one call, the time per rule for creation,
 //! the input bytes and the rules read back from the committed snapshot.
 //!
-//! Adoption checks the limits after each adopted rule. The first check of an
-//! adoption is the census of the whole state; each later check extends that
-//! census with the objects the rule inserted, so creation costs time in
-//! proportion to N. The census of the whole state also runs once at the end of
-//! each operation and once at commit, so an edit costs time in proportion to the
-//! rules the store retains. The census column gives the smallest value of three
-//! `CssomLimits` fields at which creation still succeeds, found by doubling and
-//! bisection where a probe is cheap enough, and `-` elsewhere.
+//! Adoption checks the limits after each adopted rule, and every operation and the
+//! commit check the state once more. A check measures the records changed since the
+//! last one and tests the figures the state keeps, so creation costs time in
+//! proportion to N and an edit costs time that does not depend on the rules the
+//! store retains. The census column gives the smallest value of three
+//! `CssomLimits` fields at which creation still succeeds, which is the size of
+//! the retained state, found by doubling and bisection where a probe is cheap
+//! enough, and `-` elsewhere.
 //!
 //! Each case also runs on a store built with a host scope of a ledger
 //! operation without caps ("with a host"), whose charged column gives what
-//! one call charges to the `cssom` scope: census runs, objects, entries and
-//! source walk steps.
+//! one call charges to the `cssom` scope: census runs (checks of the state),
+//! the records they measured, the entry lists their measurement examined and the
+//! source walk steps they measured.
 //!
 //! The 100 000-rule creation holds about 1.7 GB while it runs, and the two edit
 //! cases keep their own stores of that size alive for the whole run.

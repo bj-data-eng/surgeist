@@ -55,13 +55,14 @@ impl CssomStore {
     /// Each public operation of the store, of its batches and of its rule
     /// handles, and the beginning, finishing and cancelling of a sheet
     /// replacement, runs inside one phase of the host's `cssom` scope and
-    /// charges that scope with what its state census runs and rule formatting
+    /// charges that scope with what its state checks and rule formatting
     /// did:
     /// [`CssWork::CensusRun`](crate::accounting::CssWork::CensusRun),
     /// [`CssWork::CensusObject`](crate::accounting::CssWork::CensusObject),
     /// [`CssWork::CensusEntry`](crate::accounting::CssWork::CensusEntry),
     /// [`CssWork::SourceVisit`](crate::accounting::CssWork::SourceVisit) for
-    /// the steps of the retained-source walks and
+    /// the steps of the retained-source measurements that were not kept from an
+    /// earlier check, and
     /// [`CssWork::RuleFormatNode`](crate::accounting::CssWork::RuleFormatNode).
     /// The charge is made once when the operation returns, or, for an
     /// operation that commits, before each commit publishes and once more for
