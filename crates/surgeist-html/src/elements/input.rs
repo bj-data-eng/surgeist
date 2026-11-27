@@ -6,15 +6,20 @@ pub use crate::internal::elements::input::{
     HtmlInputEmptySelectionSupport, HtmlInputFileSelection, HtmlInputFilenameInvalidState,
     HtmlInputFlags, HtmlInputImageCoordinate, HtmlInputInvalidSelectionRange,
     HtmlInputNoneDirectionSupport, HtmlInputReset, HtmlInputResetEffect, HtmlInputRetainedRange,
-    HtmlInputSanitization, HtmlInputSanitizationCursor, HtmlInputSelection,
+    HtmlInputSanitization, HtmlInputSanitizationCursor, HtmlInputSelectMethod, HtmlInputSelection,
     HtmlInputSelectionDirection, HtmlInputTemporalFormat, HtmlInputTypeChange, HtmlInputTypeCursor,
     HtmlInputTypeEffect, HtmlInputValueAttributeEffect, HtmlInputValueComparison,
     HtmlInputValueComparisonCursor, HtmlInputValueMode, HtmlInputValueSanitization,
-    HtmlInputValueSetterStart, HtmlRadioTrigger, input_filename_setter, input_value_setter_finish,
+    HtmlInputValueSetterStart, HtmlRadioTrigger, HtmlTextSelectionEdit, input_filename_setter,
+    input_value_setter_finish,
 };
 pub use crate::internal::elements::input_color::{
     HtmlInputColorValueSource, input_color_standard_failure_fallback, input_color_value_source,
 };
 pub use crate::internal::elements::input_image::{
     HtmlInputImageHistory, HtmlInputImageUpdateGuard, HtmlInputImagesDisabled,
+};
+pub use crate::internal::elements::input_selection::{
+    HtmlRangeTextBounds, HtmlRangeTextError, HtmlRangeTextMode, HtmlRangeTextPlan,
+    HtmlRangeTextTarget,
 };

@@ -2208,6 +2208,7 @@ pub fn surgeist_html::attributes::HtmlInputType::into_attribute(self) -> surgeis
 impl surgeist_html::attributes::HtmlInputType
 pub fn surgeist_html::attributes::HtmlInputType::is_selectable(self) -> bool
 pub fn surgeist_html::attributes::HtmlInputType::sanitization(self) -> surgeist_html::elements::input::HtmlInputValueSanitization
+pub fn surgeist_html::attributes::HtmlInputType::select_method(self) -> surgeist_html::elements::input::HtmlInputSelectMethod
 pub const fn surgeist_html::attributes::HtmlInputType::uses_current_value_for_directionality(self) -> bool
 pub fn surgeist_html::attributes::HtmlInputType::value_mode(self) -> surgeist_html::elements::input::HtmlInputValueMode
 impl surgeist_html::attributes::HtmlInputType
@@ -4683,6 +4684,10 @@ pub surgeist_html::elements::input::HtmlInputSanitization::StripCrLfAndTrim
 pub surgeist_html::elements::input::HtmlInputSanitization::Temporal(surgeist_html::elements::input::HtmlInputTemporalFormat)
 impl surgeist_html::elements::input::HtmlInputSanitization
 pub fn surgeist_html::elements::input::HtmlInputSanitization::retain_unit(self, unit: u16) -> bool
+pub enum surgeist_html::elements::input::HtmlInputSelectMethod
+pub surgeist_html::elements::input::HtmlInputSelectMethod::ConditionalControlText
+pub surgeist_html::elements::input::HtmlInputSelectMethod::CurrentValue
+pub surgeist_html::elements::input::HtmlInputSelectMethod::Inapplicable
 pub enum surgeist_html::elements::input::HtmlInputSelectionDirection
 pub surgeist_html::elements::input::HtmlInputSelectionDirection::Backward
 pub surgeist_html::elements::input::HtmlInputSelectionDirection::Forward
@@ -4727,6 +4732,34 @@ pub surgeist_html::elements::input::HtmlRadioTrigger::Connected
 pub surgeist_html::elements::input::HtmlRadioTrigger::FormOwner
 pub surgeist_html::elements::input::HtmlRadioTrigger::Name
 pub surgeist_html::elements::input::HtmlRadioTrigger::Type
+pub enum surgeist_html::elements::input::HtmlRangeTextError
+pub surgeist_html::elements::input::HtmlRangeTextError::ExtentOverflow
+pub surgeist_html::elements::input::HtmlRangeTextError::Reversed
+impl core::error::Error for surgeist_html::elements::input::HtmlRangeTextError
+impl core::fmt::Display for surgeist_html::elements::input::HtmlRangeTextError
+pub fn surgeist_html::elements::input::HtmlRangeTextError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::elements::input::HtmlRangeTextMode
+pub surgeist_html::elements::input::HtmlRangeTextMode::End
+pub surgeist_html::elements::input::HtmlRangeTextMode::Preserve
+pub surgeist_html::elements::input::HtmlRangeTextMode::Select
+pub surgeist_html::elements::input::HtmlRangeTextMode::Start
+pub enum surgeist_html::elements::input::HtmlRangeTextTarget
+pub surgeist_html::elements::input::HtmlRangeTextTarget::CurrentSelection
+pub surgeist_html::elements::input::HtmlRangeTextTarget::Offsets
+pub surgeist_html::elements::input::HtmlRangeTextTarget::Offsets::end: usize
+pub surgeist_html::elements::input::HtmlRangeTextTarget::Offsets::mode: surgeist_html::elements::input::HtmlRangeTextMode
+pub surgeist_html::elements::input::HtmlRangeTextTarget::Offsets::start: usize
+impl surgeist_html::elements::input::HtmlRangeTextTarget
+pub fn surgeist_html::elements::input::HtmlRangeTextTarget::resolve(self, selection: surgeist_html::elements::input::HtmlInputSelection) -> core::result::Result<surgeist_html::elements::input::HtmlRangeTextBounds, surgeist_html::elements::input::HtmlRangeTextError>
+pub enum surgeist_html::elements::input::HtmlTextSelectionEdit
+pub surgeist_html::elements::input::HtmlTextSelectionEdit::All
+pub surgeist_html::elements::input::HtmlTextSelectionEdit::Direction(surgeist_html::elements::input::HtmlInputSelectionDirection)
+pub surgeist_html::elements::input::HtmlTextSelectionEdit::End(core::option::Option<usize>)
+pub surgeist_html::elements::input::HtmlTextSelectionEdit::Range
+pub surgeist_html::elements::input::HtmlTextSelectionEdit::Range::direction: surgeist_html::elements::input::HtmlInputSelectionDirection
+pub surgeist_html::elements::input::HtmlTextSelectionEdit::Range::end: usize
+pub surgeist_html::elements::input::HtmlTextSelectionEdit::Range::start: usize
+pub surgeist_html::elements::input::HtmlTextSelectionEdit::Start(core::option::Option<usize>)
 pub struct surgeist_html::elements::input::HtmlInputChargedStep<'c, 'a>
 impl surgeist_html::elements::input::HtmlInputChargedStep<'_, '_>
 pub fn surgeist_html::elements::input::HtmlInputChargedStep<'_, '_>::advance(self) -> core::option::Option<surgeist_html::elements::input::HtmlInputRetainedRange>
@@ -4760,6 +4793,7 @@ pub fn surgeist_html::elements::input::HtmlInputFlags::input_type(self) -> surge
 pub fn surgeist_html::elements::input::HtmlInputFlags::radio_node_list_selected(self) -> core::option::Option<Self>
 pub fn surgeist_html::elements::input::HtmlInputFlags::radio_normalization_required(self, trigger: surgeist_html::elements::input::HtmlRadioTrigger) -> bool
 pub fn surgeist_html::elements::input::HtmlInputFlags::radio_peer_unchecked(self) -> Self
+pub fn surgeist_html::elements::input::HtmlInputFlags::range_text_started(self) -> core::option::Option<Self>
 pub fn surgeist_html::elements::input::HtmlInputFlags::reset_begin(self) -> Self
 pub fn surgeist_html::elements::input::HtmlInputFlags::reset_checkedness(self, actual_checked_presence: bool) -> Self
 pub fn surgeist_html::elements::input::HtmlInputFlags::type_changed(self, next: surgeist_html::attributes::HtmlInputType) -> Self
@@ -4804,7 +4838,9 @@ pub fn surgeist_html::elements::input::HtmlInputSelection::clamp(self, actual_va
 pub fn surgeist_html::elements::input::HtmlInputSelection::cursor(offset: usize, direction: surgeist_html::elements::input::HtmlInputSelectionDirection) -> Self
 pub fn surgeist_html::elements::input::HtmlInputSelection::cursor_position(self) -> core::option::Option<usize>
 pub fn surgeist_html::elements::input::HtmlInputSelection::direction(self) -> surgeist_html::elements::input::HtmlInputSelectionDirection
+pub fn surgeist_html::elements::input::HtmlInputSelection::edit(self, edit: surgeist_html::elements::input::HtmlTextSelectionEdit, value_len: usize, empty: surgeist_html::elements::input::HtmlInputEmptySelectionSupport, none: surgeist_html::elements::input::HtmlInputNoneDirectionSupport) -> Self
 pub fn surgeist_html::elements::input::HtmlInputSelection::initial(none_support: surgeist_html::elements::input::HtmlInputNoneDirectionSupport) -> Self
+pub const fn surgeist_html::elements::input::HtmlInputSelection::offsets(self) -> (usize, usize)
 pub fn surgeist_html::elements::input::HtmlInputSelection::selection(start: usize, end: usize, direction: surgeist_html::elements::input::HtmlInputSelectionDirection) -> core::result::Result<Self, surgeist_html::elements::input::HtmlInputInvalidSelectionRange>
 pub fn surgeist_html::elements::input::HtmlInputSelection::selection_range(self) -> core::option::Option<(usize, usize, surgeist_html::elements::input::HtmlInputSelectionDirection)>
 pub fn surgeist_html::elements::input::HtmlInputSelection::set_direction(self, requested: surgeist_html::elements::input::HtmlInputSelectionDirection, none_support: surgeist_html::elements::input::HtmlInputNoneDirectionSupport) -> Self
@@ -4825,6 +4861,14 @@ impl<'a> surgeist_html::elements::input::HtmlInputValueComparisonCursor<'a>
 pub fn surgeist_html::elements::input::HtmlInputValueComparisonCursor<'a>::advance<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&mut self, charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
 pub fn surgeist_html::elements::input::HtmlInputValueComparisonCursor<'a>::new(old: &'a [u16], current: &'a [u16]) -> Self
 pub fn surgeist_html::elements::input::HtmlInputValueComparisonCursor<'a>::result(&self) -> core::option::Option<surgeist_html::elements::input::HtmlInputValueComparison>
+pub struct surgeist_html::elements::input::HtmlRangeTextBounds
+impl surgeist_html::elements::input::HtmlRangeTextBounds
+pub fn surgeist_html::elements::input::HtmlRangeTextBounds::plan(self, value_len: usize, replacement_len: usize) -> core::result::Result<surgeist_html::elements::input::HtmlRangeTextPlan, surgeist_html::elements::input::HtmlRangeTextError>
+pub struct surgeist_html::elements::input::HtmlRangeTextPlan
+impl surgeist_html::elements::input::HtmlRangeTextPlan
+pub const fn surgeist_html::elements::input::HtmlRangeTextPlan::output_len(&self) -> usize
+pub fn surgeist_html::elements::input::HtmlRangeTextPlan::replaced(&self) -> core::ops::range::Range<usize>
+pub const fn surgeist_html::elements::input::HtmlRangeTextPlan::selection(&self) -> surgeist_html::elements::input::HtmlTextSelectionEdit
 pub const fn surgeist_html::elements::input::input_color_standard_failure_fallback() -> surgeist_html::microsyntax::color::HtmlLegacyColor
 pub const fn surgeist_html::elements::input::input_color_value_source(dirty_value: bool) -> surgeist_html::elements::input::HtmlInputColorValueSource
 pub fn surgeist_html::elements::input::input_filename_setter(value: &[u16]) -> core::result::Result<surgeist_html::elements::input::HtmlInputFileSelection, surgeist_html::elements::input::HtmlInputFilenameInvalidState>
