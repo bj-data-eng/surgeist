@@ -564,7 +564,7 @@ pub(super) fn form_reset_releases_its_lock_when_a_stylesheet_requires_a_separate
         const style = document.createElement('style');
         style.textContent = 'p { color: red }';
         output.appendChild(style);
-        globalThis.formWithStyle = form;
+        globalThis.refusedFormReset = form;
         return 'ok';
     })()"#
         ),
@@ -572,10 +572,99 @@ pub(super) fn form_reset_releases_its_lock_when_a_stylesheet_requires_a_separate
     );
     let sheets = styles.snapshot(root).unwrap().unwrap();
     assert_eq!(sheets.sheets().len(), 1);
+    assert_refused_form_reset_releases_source(&mut host, &permit);
+    assert_eq!(
+        styles.snapshot(root).unwrap().unwrap().sheets(),
+        sheets.sheets()
+    );
+}
+
+pub(super) fn form_reset_releases_its_lock_after_object_activity_refusal() {
+    let (session, top) = reset_session();
+    let mut host = attach_reset_guest(session, top, Arc::new(cancel()));
+    let permit = host.permit().unwrap();
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+                const add = (parent, tag) => parent.appendChild(document.createElement(tag));
+                const form = add(document.body, 'form');
+                const input = add(form, 'input');
+                input.defaultValue = 'default input';
+                input.value = 'dirty input';
+                const output = add(form, 'output');
+                output.defaultValue = 'default output';
+                output.value = 'dirty output';
+                const frame = add(output, 'iframe');
+                if (frame.contentDocument === null) return 'the real child Document is required';
+                globalThis.refusedFormReset = form;
+                return 'ok';
+            })()"#,
+        ),
+        "ok"
+    );
+    let original = host.snapshot().unwrap();
+    let child = original
+        .nodes()
+        .find_map(|id| {
+            original
+                .node(id)
+                .ok()?
+                .as_element()?
+                .child_navigable()
+                .flatten()
+        })
+        .unwrap();
+    let document = original
+        .hosted_navigable(child)
+        .unwrap()
+        .active_document()
+        .unwrap();
+    host.with_native(|dom, _, mut source| {
+        let mut services = DomSourceServices {
+            meta: None,
+            execution_scope: None,
+            style_policy: &mut |_| None,
+            url: None,
+        };
+        let DomSourceDriveProgress::Complete(created) = source
+            .apply(
+                dom,
+                DomSourceEdit::create_element_ns(document.node(), Namespace::html(), "object"),
+                DomSourceLimits::new(32_000_000, 1_000_000, 1_000_000, 16, 512, 512, 16),
+                &mut services,
+                &cancel(),
+            )
+            .unwrap()
+        else {
+            panic!("the original Object task must be admitted");
+        };
+        let snapshot = dom.snapshot();
+        let object = snapshot.node(created.published_node().unwrap()).unwrap();
+        assert_eq!(object.owner_document(), Some(document));
+        assert!(!object.is_connected());
+    })
+    .unwrap();
+    assert_refused_form_reset_releases_source(&mut host, &permit);
+    let after = host.snapshot().unwrap();
+    let nav = after.hosted_navigable(child).unwrap();
+    assert_eq!(nav.active_document(), Some(document));
+    assert!(!nav.is_retiring());
+}
+
+fn assert_refused_form_reset_releases_source(
+    host: &mut DocumentScriptHost,
+    permit: &DocumentScriptPermit,
+) {
     let before = host.snapshot().unwrap();
-    let result = host.in_document(&permit, |scope| {
+    let result = host.in_document(permit, |scope| {
         scope
-            .evaluate(&"formWithStyle.reset()".encode_utf16().collect::<Vec<_>>())
+            .evaluate(
+                &"refusedFormReset.reset()"
+                    .encode_utf16()
+                    .collect::<Vec<_>>(),
+            )
             .map(drop)
     });
     assert!(result.is_err());
@@ -583,10 +672,6 @@ pub(super) fn form_reset_releases_its_lock_when_a_stylesheet_requires_a_separate
     assert_eq!(
         after.stamp().revision().get(),
         before.stamp().revision().get() + 2
-    );
-    assert_eq!(
-        styles.snapshot(root).unwrap().unwrap().sheets(),
-        sheets.sheets()
     );
 
     let form = before
