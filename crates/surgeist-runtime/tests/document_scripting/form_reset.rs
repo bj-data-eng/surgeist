@@ -572,7 +572,13 @@ pub(super) fn form_reset_releases_its_lock_when_a_stylesheet_requires_a_separate
     );
     let sheets = styles.snapshot(root).unwrap().unwrap();
     assert_eq!(sheets.sheets().len(), 1);
-    assert_refused_form_reset_releases_source(&mut host, &permit);
+    assert_refused_form_reset_releases_source(
+        &mut host,
+        &permit,
+        DomError::StyleCompositionRequired(
+            surgeist_html::elements::style::HtmlStyleUpdateAction::RemoveAssociatedSheet,
+        ),
+    );
     assert_eq!(
         styles.snapshot(root).unwrap().unwrap().sheets(),
         sheets.sheets()
@@ -646,7 +652,11 @@ pub(super) fn form_reset_releases_its_lock_after_object_activity_refusal() {
         assert!(!object.is_connected());
     })
     .unwrap();
-    assert_refused_form_reset_releases_source(&mut host, &permit);
+    assert_refused_form_reset_releases_source(
+        &mut host,
+        &permit,
+        DomError::ObjectHostedTransitionUnavailable,
+    );
     let after = host.snapshot().unwrap();
     let nav = after.hosted_navigable(child).unwrap();
     assert_eq!(nav.active_document(), Some(document));
@@ -656,6 +666,7 @@ pub(super) fn form_reset_releases_its_lock_after_object_activity_refusal() {
 fn assert_refused_form_reset_releases_source(
     host: &mut DocumentScriptHost,
     permit: &DocumentScriptPermit,
+    expected: DomError,
 ) {
     let before = host.snapshot().unwrap();
     let result = host.in_document(permit, |scope| {
@@ -667,7 +678,18 @@ fn assert_refused_form_reset_releases_source(
             )
             .map(drop)
     });
-    assert!(result.is_err());
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+        panic!("the reset must report its original refusal: {result:?}");
+    };
+    assert!(
+        matches!(
+            failure.cause::<DocumentGuestEventError>(),
+            Some(DocumentGuestEventError::Document(DocumentScriptError::Native(
+                DocumentScriptNativeError::Dom(actual)
+            ))) if *actual == expected
+        ),
+        "the terminal refusal must retain its original cause"
+    );
     let after = host.snapshot().unwrap();
     assert_eq!(
         after.stamp().revision().get(),

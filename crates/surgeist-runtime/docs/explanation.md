@@ -636,9 +636,10 @@ queue destinations before Source publishes the controls and child unlinking
 together. Later tasks run the retained history and destruction continuations.
 A refused admission retains the original reset and its event receipt for
 resumption. A reset that reaches a stylesheet removal outside this
-publication releases its lock and reports the original refusal with the
-control changes discarded. Attached scripting delivers
-`formResetCallback()` after the method releases its reset lock.
+publication or a refused Object activity transition discards its control
+changes, releases its lock, and reports the original refusal. Attached
+scripting delivers `formResetCallback()` after the method releases its reset
+lock.
 
 The standard `close_dialog(receiver, result)` Source operation represents
 `close(optional returnValue)`, whose source is null. It retains omitted versus

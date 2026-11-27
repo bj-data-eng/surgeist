@@ -114,6 +114,9 @@ pub(super) fn unjoined_form_service(error: &DomError) -> bool {
             | DomError::StyleOwnerAttributesCompositionRequired
             | DomError::StyleDisabledCompositionRequired
             | DomError::StyleProcessingUnavailable
+            | DomError::HostedSourceUnavailable
+            | DomError::ObjectHostedTransitionUnavailable
+            | DomError::FocusedAreaDesignationUnavailable { .. }
             | DomError::ScriptPreparationRequired
             | DomError::MetaCspProcessingRequired
             | DomError::FullscreenExitHandoffRequired
