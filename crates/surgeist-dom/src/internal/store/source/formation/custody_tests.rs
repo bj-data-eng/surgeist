@@ -362,7 +362,7 @@ fn actual_typed_family_targets_preserve_snapshot_identity_and_release_after_last
     let draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
     let native = |name: &str| {
         draft
-            .native_element_components(
+            .form_authored_element(
                 &surgeist_html::values::QualifiedName::new(
                     surgeist_html::values::Namespace::html(),
                     None,

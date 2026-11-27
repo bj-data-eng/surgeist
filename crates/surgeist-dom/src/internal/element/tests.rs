@@ -81,6 +81,7 @@ fn native(names: &mut Names, local: &str) -> DomElement {
         crate::internal::document::DomDocumentEnvironment::new(
             crate::internal::document::DomNativeInputPlatform::headless(),
         ),
+        NativeElementPurpose::DetachedFactory,
         ElementFormation::new(
             &names.registry,
             &crate::internal::store::block_custody::BlockAdoptions::new(names.registry.clone()),

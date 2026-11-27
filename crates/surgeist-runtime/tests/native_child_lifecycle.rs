@@ -245,6 +245,93 @@ fn body(snapshot: &DomSnapshot, document: DocumentId) -> NodeId {
     let root = snapshot.node(document.node()).unwrap().children()[0];
     snapshot.node(root).unwrap().children()[1]
 }
+
+#[test]
+fn hosted_factories_create_detached_frames_before_the_child_hook() {
+    let mut session = session();
+    let top = top_level(&mut session);
+    let document = top.document();
+    let parent = body(&session.snapshot(), document);
+    let mut source = session.source_execution();
+    let mut containers = Vec::new();
+    for (edit, local, prefix) in [
+        (
+            DomSourceEdit::create_element(document.node(), "FRAME"),
+            "frame",
+            None,
+        ),
+        (
+            DomSourceEdit::create_element_ns(document.node(), Namespace::html(), "owned:iframe"),
+            "iframe",
+            Some(DocumentString::from("owned")),
+        ),
+    ] {
+        let result = source
+            .apply(
+                &mut session.dom(),
+                edit,
+                DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1),
+                &mut DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| None,
+                    url: None,
+                },
+                &cancel(),
+            )
+            .unwrap();
+        let DomSourceDriveProgress::Complete(complete) = result else {
+            panic!("native detached creation should complete: {result:?}");
+        };
+        let container = complete.published_node().unwrap();
+        let snapshot = session.snapshot();
+        let node = snapshot.node(container).unwrap();
+        let element = node.as_element().unwrap();
+        assert_eq!(node.owner_document(), Some(document));
+        assert_eq!(node.relevant_global().unwrap(), Some(top.global()));
+        assert_eq!(node.parent(), None);
+        assert_eq!(element.name().namespace_uri(), Namespace::html().uri());
+        assert_eq!(element.name().local_name(), &DocumentString::from(local));
+        assert_eq!(element.name().prefix(), prefix.as_ref());
+        assert_eq!(element.child_navigable(), Some(None));
+        if local == "iframe" {
+            let state = element.iframe_initial_state().unwrap();
+            assert!(!state.current_navigation_was_lazy_loaded());
+            assert!(state.pending_resource_timing_start_time_is_null());
+            assert!(state.pending_resource_timing_url_is_null());
+            assert!(state.lazy_load_resumption_is_null());
+        } else {
+            assert!(element.iframe_initial_state().is_none());
+        }
+        containers.push(container);
+    }
+
+    let detached = session.snapshot();
+    assert!(matches!(
+        session
+            .hosted_execution()
+            .run_next(&mut session.dom(), top.navigable(), &cancel())
+            .unwrap(),
+        DomHostedTaskProgress::Idle
+    ));
+    for container in containers {
+        complete_source_edit(
+            &mut session,
+            DomSourceEdit::insert_before(container, parent, None),
+        );
+        assert_initial_child(&session.snapshot(), top, container);
+        assert_eq!(
+            detached
+                .node(container)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .child_navigable(),
+            Some(None)
+        );
+    }
+}
+
 fn detached_siblings(session: &mut DomSession, associated: DocumentId) -> (NodeId, [NodeId; 2]) {
     let mut dom = session.dom();
     let mut batch = DomBatch::new();

@@ -4437,6 +4437,7 @@ impl Draft {
                                 name,
                                 options.is.as_ref(),
                                 metadata.document_environment(),
+                                crate::internal::element::NativeElementPurpose::DetachedFactory,
                                 metadata_formation.as_ref(),
                                 cancelled,
                             )?,
