@@ -1722,3 +1722,285 @@ fn retained_select_collections_follow_membership_and_current_selectedness() {
         Err(DomError::StaleNode)
     ));
 }
+
+fn select_collection_edit(
+    dom: &mut Dom,
+    edit: DomSourceEdit,
+    source_work: u64,
+    source_outputs: usize,
+) -> Result<DomSourceProgress, DomError> {
+    let cancellation = cancel();
+    let limits = DomSourceLimits::new(
+        16_000_000,
+        1_000_000,
+        source_work,
+        128,
+        source_outputs,
+        4096,
+        1,
+    );
+    let mut lease = dom.begin_source_edit(edit, limits, &cancellation)?;
+    lease.advance(&cancellation)
+}
+
+#[test]
+fn source_option_growth_observes_one_fragment_then_the_original_sparse_donor() {
+    let observation = DomChildListObservationLimits::new(2, 16, 16, 64).unwrap();
+    let mut dom = Dom::new(limits().with_child_list_observation(observation)).unwrap();
+    let cancellation = cancel();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let select = batch.create_element_ns(&document, Namespace::html(), "select");
+    let group = batch.create_element_ns(&document, Namespace::html(), "optgroup");
+    let original = batch.create_element_ns(&document, Namespace::html(), "option");
+    let donor = batch.create_element_ns(&document, Namespace::html(), "option");
+    batch.insert_before(&select, &document, None);
+    batch.insert_before(&group, &select, None);
+    batch.insert_before(&original, &group, None);
+    let created = apply(&mut dom, batch);
+    let [select, group, original, donor] =
+        [select, group, original, donor].map(|node| created.created(&node).unwrap().unwrap());
+    let observer = dom.create_child_list_observer(&cancellation).unwrap();
+    dom.observe_child_list(observer, select, false, &cancellation)
+        .unwrap();
+    let before = dom.snapshot();
+    let managed_before = dom.usage().managed_nodes();
+    let edit = |dom: &mut Dom, input| {
+        assert!(matches!(
+            select_collection_edit(dom, input, 10_000_000, 4096).unwrap(),
+            DomSourceProgress::Complete(_)
+        ));
+        dom.take_child_list_records(observer, &cancellation)
+            .unwrap()
+    };
+    assert!(
+        edit(
+            &mut dom,
+            DomSourceEdit::set_select_options_length(select, 100_001)
+        )
+        .is_empty()
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+
+    let growth = edit(
+        &mut dom,
+        DomSourceEdit::set_select_options_length(select, 3),
+    );
+    assert_eq!(growth.len(), 1);
+    assert_eq!(growth[0].target(), select);
+    assert_eq!(growth[0].added_nodes().len(), 2);
+    assert_eq!(dom.usage().managed_nodes(), managed_before + 2);
+    assert!(growth[0].removed_nodes().is_empty());
+    let first_fill = growth[0].added_nodes().to_vec();
+    let after_growth = dom.snapshot();
+    for node in &first_fill {
+        let option = after_growth.node(*node).unwrap();
+        assert!(option.as_option().is_some());
+        assert!(option.children().is_empty());
+        assert!(option.attributes().unwrap().is_empty());
+    }
+
+    let sparse = edit(
+        &mut dom,
+        DomSourceEdit::set_select_option_at(select, 5, Some(donor)),
+    );
+    assert_eq!(sparse.len(), 2);
+    assert_eq!(sparse[0].target(), select);
+    assert_eq!(sparse[0].added_nodes().len(), 2);
+    assert_eq!(sparse[1].target(), select);
+    assert_eq!(sparse[1].added_nodes(), &[donor]);
+    assert_eq!(dom.usage().managed_nodes(), managed_before + 4);
+    let mut suffix = first_fill.clone();
+    suffix.extend_from_slice(sparse[0].added_nodes());
+    suffix.push(donor);
+
+    let shrink = edit(
+        &mut dom,
+        DomSourceEdit::set_select_options_length(select, 1),
+    );
+    assert_eq!(shrink.len(), suffix.len());
+    for (record, node) in shrink.iter().zip(suffix) {
+        assert_eq!(record.target(), select);
+        assert_eq!(record.removed_nodes(), &[node]);
+        assert!(dom.snapshot().node(node).unwrap().parent().is_none());
+    }
+    assert_eq!(dom.snapshot().node(select).unwrap().children(), &[group]);
+    assert_eq!(dom.snapshot().node(group).unwrap().children(), &[original]);
+    assert!(selected(&dom.snapshot(), original));
+}
+
+#[test]
+fn source_option_add_and_replace_use_the_actual_reference_parent() {
+    use surgeist_dom::form::select::DomSelectOptionBefore;
+
+    let mut dom = Dom::new(limits()).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let another = batch.create_document();
+    let select = batch.create_element_ns(&document, Namespace::html(), "select");
+    let group = batch.create_element_ns(&document, Namespace::html(), "optgroup");
+    let original = batch.create_element_ns(&document, Namespace::html(), "option");
+    let marker = batch.create_element_ns(&document, Namespace::html(), "span");
+    let donor = batch.create_element_ns(&another, Namespace::html(), "option");
+    let replacement = batch.create_element_ns(&another, Namespace::html(), "option");
+    batch.insert_before(&select, &document, None);
+    batch.insert_before(&group, &select, None);
+    batch.insert_before(&original, &group, None);
+    batch.insert_before(&marker, &group, None);
+    let created = apply(&mut dom, batch);
+    let document = created.document(&document).unwrap();
+    let [select, group, original, marker, donor, replacement] =
+        [select, group, original, marker, donor, replacement]
+            .map(|node| created.created(&node).unwrap().unwrap());
+    let apply = |dom: &mut Dom, input| {
+        assert!(matches!(
+            select_collection_edit(dom, input, 10_000_000, 4096).unwrap(),
+            DomSourceProgress::Complete(_)
+        ));
+    };
+    apply(
+        &mut dom,
+        DomSourceEdit::add_select_option(select, donor, DomSelectOptionBefore::Element(marker)),
+    );
+    let after_add = dom.snapshot();
+    assert_eq!(
+        after_add.node(group).unwrap().children(),
+        &[original, donor, marker]
+    );
+    assert_eq!(
+        after_add.node(donor).unwrap().owner_document(),
+        Some(document)
+    );
+    apply(
+        &mut dom,
+        DomSourceEdit::add_select_option(select, donor, DomSelectOptionBefore::Element(donor)),
+    );
+    apply(&mut dom, DomSourceEdit::remove_select_option(select, -1));
+    assert_eq!(dom.snapshot().stamp(), after_add.stamp());
+
+    apply(
+        &mut dom,
+        DomSourceEdit::set_select_option_at(select, 1, Some(replacement)),
+    );
+    let after_replace = dom.snapshot();
+    assert_eq!(
+        after_replace.node(group).unwrap().children(),
+        &[original, replacement, marker]
+    );
+    assert!(after_replace.node(donor).unwrap().parent().is_none());
+    apply(
+        &mut dom,
+        DomSourceEdit::set_select_option_at(select, 0, None),
+    );
+    assert_eq!(
+        dom.snapshot().node(group).unwrap().children(),
+        &[replacement, marker]
+    );
+    assert!(dom.snapshot().node(original).unwrap().parent().is_none());
+
+    let stamp = dom.snapshot().stamp();
+    assert!(matches!(
+        select_collection_edit(
+            &mut dom,
+            DomSourceEdit::add_select_option(
+                select,
+                donor,
+                DomSelectOptionBefore::Element(original)
+            ),
+            10_000_000,
+            4096,
+        ),
+        Err(DomError::NotFound)
+    ));
+    assert_eq!(dom.snapshot().stamp(), stamp);
+    apply(
+        &mut dom,
+        DomSourceEdit::add_select_option(select, original, DomSelectOptionBefore::Index(0)),
+    );
+    assert_eq!(
+        dom.snapshot().node(group).unwrap().children(),
+        &[original, replacement, marker]
+    );
+    apply(&mut dom, DomSourceEdit::remove_select_option(select, 0));
+    assert_eq!(
+        dom.snapshot().node(group).unwrap().children(),
+        &[replacement, marker]
+    );
+}
+
+#[test]
+fn sparse_index_hierarchy_failure_preserves_the_original_filler_prefix() {
+    use surgeist_dom::form::select::DomSelectOptionBefore;
+
+    let mut dom = Dom::new(limits()).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let donor = batch.create_element_ns(&document, Namespace::html(), "option");
+    let select = batch.create_element_ns(&document, Namespace::html(), "select");
+    let outside = batch.create_element_ns(&document, Namespace::html(), "span");
+    batch.insert_before(&donor, &document, None);
+    batch.insert_before(&select, &donor, None);
+    let created = apply(&mut dom, batch);
+    let [donor, select, outside] =
+        [donor, select, outside].map(|node| created.created(&node).unwrap().unwrap());
+    let before = dom.snapshot();
+    assert!(matches!(
+        select_collection_edit(
+            &mut dom,
+            DomSourceEdit::add_select_option(
+                select,
+                donor,
+                DomSelectOptionBefore::Element(outside)
+            ),
+            10_000_000,
+            4096,
+        ),
+        Err(DomError::HierarchyRequest)
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+
+    let sparse = || DomSourceEdit::set_select_option_at(select, 2, Some(donor));
+    assert!(matches!(
+        select_collection_edit(&mut dom, sparse(), 0, 4096),
+        Err(DomError::SourceWorkLimit { limit: 0 })
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    let cancellation = cancel();
+    let operation = {
+        let no_publication =
+            DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 0, 4096, 4096, 1);
+        let mut lease = dom
+            .begin_source_edit(sparse(), no_publication, &cancellation)
+            .unwrap();
+        assert!(matches!(
+            lease.advance(&cancellation),
+            Err(DomError::SourcePublicationLimit)
+        ));
+        assert_eq!(lease.snapshot().stamp(), before.stamp());
+        lease.operation()
+    };
+    let status = dom.pending_source_edit().unwrap();
+    assert_eq!(status.operation(), operation);
+    assert!(!status.has_published());
+    let allowed = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 32, 4096, 4096, 1);
+    let mut lease = dom
+        .resume_source_edit(operation, allowed, &cancellation)
+        .unwrap();
+    lease.request_cancel();
+    let DomSourceProgress::Failed(failure) = lease.advance(&cancellation).unwrap() else {
+        panic!("expected the original hierarchy error after filling the gap");
+    };
+    assert_eq!(failure.operation(), operation);
+    assert_eq!(failure.error(), &DomError::HierarchyRequest);
+    let after = lease.snapshot();
+    assert_eq!(after.node(select).unwrap().parent(), Some(donor));
+    assert_eq!(after.node(select).unwrap().children().len(), 2);
+    let fills = after.node(select).unwrap().children();
+    assert!(
+        fills
+            .iter()
+            .all(|id| after.node(*id).unwrap().as_option().is_some())
+    );
+    assert!(selected(&after, fills[0]));
+    assert!(before.node(select).unwrap().children().is_empty());
+}

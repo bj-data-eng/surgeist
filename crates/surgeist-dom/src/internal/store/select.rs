@@ -1075,6 +1075,7 @@ pub(super) enum Effect {
     XmlDocument(super::document::XmlDocumentFrame),
     DocumentTitle(super::compound::document_title::Frame),
     TablePartInsert(super::compound::table_part::Insertion),
+    SelectOptions(super::compound::options::Frame),
     ChildrenChanged {
         parent: Key,
         stage: u8,
@@ -1150,6 +1151,7 @@ impl Effect {
             Self::Update { targets, .. } => targets.freeze(draft, cancel),
             Self::Tree(frame) => frame.freeze_worklists(draft, cancel),
             Self::Compound(frame) => frame.freeze(draft, cancel),
+            Self::SelectOptions(frame) => frame.freeze(draft, cancel),
             Self::Normalize(frame) => frame.freeze(draft, cancel),
             _ => Ok(()),
         }
@@ -1211,6 +1213,7 @@ impl EffectFrame {
             Effect::XmlDocument(frame) => Effect::XmlDocument(frame.clone()),
             Effect::DocumentTitle(frame) => Effect::DocumentTitle(frame.clone()),
             Effect::TablePartInsert(frame) => Effect::TablePartInsert(*frame),
+            Effect::SelectOptions(frame) => Effect::SelectOptions(frame.checkpoint(a, cancel)?),
             Effect::ChildrenChanged { parent, stage } => Effect::ChildrenChanged {
                 parent: *parent,
                 stage: *stage,
@@ -1554,6 +1557,9 @@ impl Draft {
                     }
                     Effect::Tree(frame) => self.tree_effect(frame, limits, cancel)?,
                     Effect::Compound(frame) => self.compound_effect(frame, limits, cancel)?,
+                    Effect::SelectOptions(frame) => {
+                        self.select_options_effect(frame, limits, cancel)?
+                    }
                     Effect::SplitText(frame) => self.split_text_effect(frame, limits, cancel)?,
                     Effect::Normalize(frame) => self.normalize_effect(frame, limits, cancel)?,
                     Effect::CompoundTextCleanup(key) => {
@@ -1914,28 +1920,10 @@ impl Draft {
         selected: bool,
         (limits, cancel): (DomLimits, &AtomicBool),
     ) -> Result<Key, DomError> {
-        use crate::internal::source::{DomElementCreationName, DomElementCreationOptions};
-        use surgeist_html::{elements::form::HtmlOptionFlags, values::Namespace};
+        use surgeist_html::elements::form::HtmlOptionFlags;
 
         let document = self.resolve(document.into())?;
-        let metadata = self.document_metadata(document)?;
-        let operands = source::formation::Formation::new(self, cancel)?;
-        let namespace =
-            source::formation::string("http://www.w3.org/1999/xhtml", operands.as_ref(), cancel)?;
-        let local = source::formation::string(Tag::Option.local_name(), operands.as_ref(), cancel)?;
-        let name = DomElementCreationName::Qualified(Namespace::from_uri(namespace), local);
-        let formation = source::formation::Formation::new(self, cancel)?;
-        let element = self.native_element(
-            &name,
-            &DomElementCreationOptions::default(),
-            metadata,
-            formation.as_ref(),
-            cancel,
-        )?;
-        drop(name);
-        drop(operands);
-        let option = self.allocate_element_formed(element, document, limits, cancel, formation)?;
-        self.initialize_native_element(option, None, limits, cancel)?;
+        let option = self.create_blank_html_option(document, limits, cancel)?;
 
         if !text.is_empty() {
             let (text, payload) = source::formation::shared_string(self, text, cancel)?;
@@ -1964,6 +1952,36 @@ impl Draft {
             state.flags = HtmlOptionFlags::new(selected, false);
             Ok(())
         })??;
+        Ok(option)
+    }
+
+    pub(super) fn create_blank_html_option(
+        &mut self,
+        document: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Key, DomError> {
+        use crate::internal::source::{DomElementCreationName, DomElementCreationOptions};
+        use surgeist_html::values::Namespace;
+
+        let metadata = self.document_metadata(document)?;
+        let operands = source::formation::Formation::new(self, cancel)?;
+        let namespace =
+            source::formation::string("http://www.w3.org/1999/xhtml", operands.as_ref(), cancel)?;
+        let local = source::formation::string(Tag::Option.local_name(), operands.as_ref(), cancel)?;
+        let name = DomElementCreationName::Qualified(Namespace::from_uri(namespace), local);
+        let formation = source::formation::Formation::new(self, cancel)?;
+        let element = self.native_element(
+            &name,
+            &DomElementCreationOptions::default(),
+            metadata,
+            formation.as_ref(),
+            cancel,
+        )?;
+        drop(name);
+        drop(operands);
+        let option = self.allocate_element_formed(element, document, limits, cancel, formation)?;
+        self.initialize_native_element(option, None, limits, cancel)?;
         Ok(option)
     }
 

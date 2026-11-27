@@ -3,6 +3,7 @@ use crate::{
     internal::batch::Command,
     internal::hosted::DomCreationRealmFallback,
     internal::identity::{DocumentId, NodeId},
+    internal::select::{DomSelectOptionBefore, OptionsEdit},
     internal::source::DomSourceEdit,
     internal::table_part::DomHtmlTablePart,
 };
@@ -45,6 +46,10 @@ pub(crate) enum TablePartEdit {
 }
 #[derive(Clone, Debug)]
 pub(crate) enum Edit {
+    SelectOptions {
+        select: NodeId,
+        action: OptionsEdit,
+    },
     TablePart {
         table: NodeId,
         part: DomHtmlTablePart,
@@ -77,6 +82,7 @@ pub(crate) enum Edit {
 impl Edit {
     pub(crate) fn receiver(&self) -> NodeId {
         match self {
+            Self::SelectOptions { select, .. } => *select,
             Self::TablePart { table, .. } => *table,
             Self::DocumentTitle { document, .. } => document.node(),
             Self::Variadic { receiver, .. }
@@ -87,6 +93,37 @@ impl Edit {
     }
 }
 impl DomSourceEdit {
+    /// Set the Select's options length through native insertion or removal.
+    pub fn set_select_options_length(select: NodeId, length: u32) -> Self {
+        Self::select_options_edit(select, OptionsEdit::Length(length))
+    }
+
+    /// Replace or append an Option at this index. A missing value removes
+    /// the current Option. Sparse insertion fills the gap with blank Options.
+    pub fn set_select_option_at(select: NodeId, index: u32, value: Option<NodeId>) -> Self {
+        Self::select_options_edit(select, OptionsEdit::Set { index, value })
+    }
+
+    /// Insert an Option or Optgroup at the selected ordinary reference.
+    pub fn add_select_option(
+        select: NodeId,
+        element: NodeId,
+        before: DomSelectOptionBefore,
+    ) -> Self {
+        Self::select_options_edit(select, OptionsEdit::Add { element, before })
+    }
+
+    /// Remove the Option at this signed position if it currently exists.
+    pub fn remove_select_option(select: NodeId, index: i32) -> Self {
+        Self::select_options_edit(select, OptionsEdit::Remove(index))
+    }
+
+    fn select_options_edit(select: NodeId, action: OptionsEdit) -> Self {
+        Self {
+            command: Command::Compound(Edit::SelectOptions { select, action }),
+        }
+    }
+
     /// Replace the first direct HTML part of this Table through one Source operation.
     ///
     /// A supplied node must be the selected HTML part kind. After the current

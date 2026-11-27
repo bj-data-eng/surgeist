@@ -135,6 +135,14 @@ to the exact Select. Both use its maintained Option order. The selected
 collection filters that order by current selectedness. The same collection
 can reopen after reordering, selection changes or adoption.
 
+Options length, indexed replacement, add and remove are native Source edits.
+Length growth appends fresh blank Options in one fragment. Shrink removes the
+original suffix from the Options' actual parents and keeps their identities.
+A sparse indexed write appends the filler fragment before appending the donor.
+If donor validation then fails, the original Source result retains the
+published filler prefix. Add resolves the actual descendant reference and
+delegates insertion, adoption and native effects to the canonical tree.
+
 `DomSelect::selected_index_with` and `DomOption::index_with` read the maintained
 option list and its order in the captured published segment. The caller admits
 each reached lookup and qualifies live access during Source callbacks. The
