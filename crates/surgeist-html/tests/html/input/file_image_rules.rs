@@ -3,10 +3,10 @@ use surgeist_html::{
     accounting::HtmlWork,
     attributes::HtmlInputType,
     elements::input::{
-        HtmlInputFileSelection, HtmlInputFilenameInvalidState, HtmlInputFlags,
-        HtmlInputImageCoordinate, HtmlInputReset, HtmlInputResetEffect, HtmlInputSanitization,
-        HtmlInputTypeChange, HtmlInputTypeCursor, HtmlInputTypeEffect, HtmlInputValueMode,
-        HtmlInputValueSanitization, HtmlInputValueSetterStart, input_filename_setter,
+        HtmlInputFilenameInvalidState, HtmlInputFlags, HtmlInputImageCoordinate, HtmlInputReset,
+        HtmlInputResetEffect, HtmlInputSanitization, HtmlInputTypeChange, HtmlInputTypeCursor,
+        HtmlInputTypeEffect, HtmlInputValueMode, HtmlInputValueSanitization,
+        HtmlInputValueSetterStart, input_filename_setter,
     },
 };
 
@@ -54,9 +54,14 @@ fn file_and_image_modes_preserve_distinct_resource_and_content_readback() {
     }
     assert_eq!(file.value_mode().readback(&raw, Some(&raw), None), None);
     assert_eq!(
-        file.value_mode()
-            .readback(&raw, Some(&raw), Some(HtmlInputFileSelection::Empty)),
+        file.value_mode().readback(&raw, Some(&raw), Some(&[])),
         Some(&[][..])
+    );
+    let filename: Vec<_> = "C:\\fakepath\\report.txt".encode_utf16().collect();
+    assert_eq!(
+        file.value_mode()
+            .readback(&raw, Some(&raw), Some(&filename)),
+        Some(filename.as_slice())
     );
     assert_eq!(
         image.value_mode().readback(&[], Some(&raw), None),
@@ -70,11 +75,8 @@ fn file_and_image_modes_preserve_distinct_resource_and_content_readback() {
 }
 
 #[test]
-fn filename_setter_rejects_nonempty_before_resource_mutation_and_empty_clears() {
-    assert_eq!(
-        input_filename_setter(&[]),
-        Ok(HtmlInputFileSelection::Empty)
-    );
+fn filename_setter_accepts_only_the_empty_write() {
+    assert_eq!(input_filename_setter(&[]), Ok(()));
     for units in [&[88][..], &[0][..], &[0xd800][..], &[32][..]] {
         assert_eq!(
             input_filename_setter(units),

@@ -2640,6 +2640,27 @@ fn saved_creation_state_is_independent_of_recovered_attribute_merge_and_foreign_
 }
 
 #[test]
+fn parsed_empty_file_observations_establish_distinct_native_file_lists() {
+    let report = parse(HtmlSource::utf8(
+        "<input type=file value=ignored><input type=file>",
+    ));
+    let (mut dom, environment) = setup();
+    let installed = install(&mut dom, report, environment);
+    let snapshot = installed.snapshot();
+    let body = element(&installed, "body");
+    let [first, second]: [NodeId; 2] = snapshot.node(body).unwrap().children().try_into().unwrap();
+    let first = snapshot.node(first).unwrap().as_input().unwrap();
+    let second = snapshot.node(second).unwrap().as_input().unwrap();
+    let first_files = first.state().selected_files().unwrap();
+    let second_files = second.state().selected_files().unwrap();
+    assert!(first_files.is_empty());
+    assert!(second_files.is_empty());
+    assert_ne!(first_files.id(), second_files.id());
+    assert_eq!(first.value(), &[]);
+    assert_eq!(second.value(), &[]);
+}
+
+#[test]
 fn input_current_value_and_parser_owner_survive_then_native_setter_edits_canonical_state() {
     let report = parse(HtmlSource::utf8(
         "<!doctype html><form id=f><input type=text value='initial'></form>",

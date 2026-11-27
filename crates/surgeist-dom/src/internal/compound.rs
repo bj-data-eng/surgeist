@@ -77,6 +77,15 @@ pub(crate) enum TextSelectionEdit {
 }
 #[derive(Clone, Debug)]
 pub(crate) enum Edit {
+    InputFiles {
+        input: NodeId,
+        files: Option<crate::file::DomFileList>,
+    },
+    UserFileSelection {
+        input: NodeId,
+        observed: crate::internal::identity::DomStamp,
+        files: crate::file::DomFileList,
+    },
     InputStep {
         input: NodeId,
         direction: HtmlInputStepDirection,
@@ -126,7 +135,9 @@ pub(crate) enum Edit {
 impl Edit {
     pub(crate) fn receiver(&self) -> NodeId {
         match self {
-            Self::InputStep { input, .. } => *input,
+            Self::InputStep { input, .. }
+            | Self::InputFiles { input, .. }
+            | Self::UserFileSelection { input, .. } => *input,
             Self::SelectOptions { select, .. } => *select,
             Self::TablePart { table, .. } => *table,
             Self::DocumentTitle { document, .. } => document.node(),
@@ -140,6 +151,33 @@ impl Edit {
     }
 }
 impl DomSourceEdit {
+    /// Assign the supplied FileList to File Upload state. A null argument or
+    /// a different Input state leaves the existing selection unchanged.
+    /// This assignment dispatches no input or change event.
+    pub fn assign_input_files(input: NodeId, files: Option<crate::file::DomFileList>) -> Self {
+        Self {
+            command: Command::Compound(Edit::InputFiles { input, files }),
+        }
+    }
+
+    /// Queue files selected by the native host for this exact observed Input.
+    /// Source verifies the observation, mutability and selection cardinality.
+    /// The original user-interaction task installs the list before delivery of
+    /// its input and change events. Picker acquisition is the caller's responsibility.
+    pub fn queue_input_file_selection(
+        input: NodeId,
+        observed: crate::internal::identity::DomStamp,
+        files: crate::file::DomFileList,
+    ) -> Self {
+        Self {
+            command: Command::Compound(Edit::UserFileSelection {
+                input,
+                observed,
+                files,
+            }),
+        }
+    }
+
     /// Invoke native stepUp or stepDown on the current Input state.
     /// `count` is the converted signed long argument.
     pub fn step_input(input: NodeId, direction: HtmlInputStepDirection, count: i32) -> Self {

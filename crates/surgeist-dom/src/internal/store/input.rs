@@ -8,6 +8,8 @@ use surgeist_html::{
 };
 use surgeist_ledger::Charge;
 
+use super::source::operation::element_queue::{DomFileSelectionTask, Kind, Pending};
+
 /// The DOM's meter for the HTML input cursors: one source step for each cursor action, whatever
 /// work the cursor describes. The cursors charge through it before each action they perform.
 pub(super) struct StepMeter<'a>(pub(super) &'a mut dyn FnMut() -> Result<(), DomError>);
@@ -25,6 +27,86 @@ impl Charge<HtmlWork, HtmlResource> for StepMeter<'_> {
 }
 
 impl Draft {
+    pub(super) fn eligible_user_file_selection(
+        &self,
+        key: Key,
+        files: &files::DomFileList,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        self.source_step(cancel)?;
+        match self.input_state(key) {
+            Ok(state) if state.input_type() == HtmlInputType::File => {}
+            Ok(_) | Err(DomError::InputInapplicable | DomError::StaleNode) => return Ok(false),
+            Err(error) => return Err(error),
+        }
+        Ok(!self.control_is_disabled(key, cancel)?
+            && (files.len() <= 1 || self.control_attribute(key, A::Multiple, cancel)?.is_some()))
+    }
+
+    pub(super) fn queue_user_file_selection(
+        &mut self,
+        key: Key,
+        files: &files::DomFileList,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if !self.eligible_user_file_selection(key, files, cancel)? {
+            return Err(DomError::FileSelectionInapplicable);
+        }
+        let association = self
+            .element_task_association(key, cancel)?
+            .ok_or(DomError::FileSelectionTaskSourceUnavailable)?;
+        self.queue_final_element_task(
+            Pending {
+                target: key,
+                association,
+                kind: Kind::FileSelection,
+            },
+            cancel,
+        )
+    }
+
+    pub(super) fn assign_input_files(
+        &mut self,
+        key: Key,
+        files: Option<&files::DomFileList>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        let state = self.input_state(key)?;
+        let Some(files) = files.filter(|_| state.input_type() == HtmlInputType::File) else {
+            return Ok(());
+        };
+        if state.selected_files() != Some(files) {
+            self.with_input_state(key, cancel, |state| state.files = Some(files.clone()))?;
+        }
+        Ok(())
+    }
+
+    fn empty_input_files(
+        &self,
+        cancel: &AtomicBool,
+    ) -> Result<(files::DomFileList, bank::ObjectCustody), DomError> {
+        let budget = source::formation::Formation::new(self, cancel)?;
+        files::DomFileList::controlled_empty(
+            self.custody_registry(),
+            budget.as_ref(),
+            &mut |usage| self.admit_custody_usage(usage, cancel),
+        )
+    }
+
+    fn clear_input_files(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        if self
+            .input_state(key)?
+            .selected_files()
+            .is_some_and(|files| !files.is_empty())
+        {
+            let (empty, _control) = self.empty_input_files(cancel)?;
+            self.with_input_state(key, cancel, |state| state.files = Some(empty))?;
+        }
+        Ok(())
+    }
+
     pub(super) fn step_input(
         &mut self,
         key: Key,
@@ -430,11 +512,9 @@ impl Draft {
             }
             HtmlInputValueSetterStart::SetFilename => {
                 self.source_step(cancel)?;
-                let files =
-                    surgeist_html::elements::input::input_filename_setter(value.code_units())
-                        .map_err(|_| DomError::InputFilenameInvalidState)?;
-                self.with_input_state(key, cancel, |state| state.files = files)?;
-                Ok(())
+                surgeist_html::elements::input::input_filename_setter(value.code_units())
+                    .map_err(|_| DomError::InputFilenameInvalidState)?;
+                self.clear_input_files(key, cancel)
             }
             HtmlInputValueSetterStart::SetCurrentValue(flags) => {
                 let old = self.input_shared(&self.input_state(key)?.current, cancel)?;
@@ -539,11 +619,7 @@ impl Draft {
                     self.with_input_state(key, cancel, |state| state.flags = flags)?;
                     self.input_radio_normalize(key, HtmlRadioTrigger::Checkedness, cancel)?;
                 }
-                Effect::EmptySelectedFiles => {
-                    self.with_input_state(key, cancel, |state| {
-                        state.files = surgeist_html::elements::input::HtmlInputFileSelection::Empty
-                    })?;
-                }
+                Effect::EmptySelectedFiles => self.clear_input_files(key, cancel)?,
                 Effect::Sanitize(_) => self.input_sanitize(key, limits, cancel)?,
             }
         }
@@ -569,7 +645,16 @@ impl Draft {
             state.current.len(),
         );
         let flags = state.flags.type_changed(next);
-        self.with_input_state(key, cancel, |state| state.flags = flags)?;
+        let (files, _control) = if next == HtmlInputType::File {
+            let (files, control) = self.empty_input_files(cancel)?;
+            (Some(files), Some(control))
+        } else {
+            (None, None)
+        };
+        self.with_input_state(key, cancel, |state| {
+            state.flags = flags;
+            state.files = files;
+        })?;
         if next != HtmlInputType::Email {
             self.with_input_state(key, cancel, |state| state.email_count = None)?;
         }
@@ -840,6 +925,71 @@ impl Draft {
         // remain the freshly initialized target's actual values.
         self.units = units;
         self.input_radio_normalize(key, HtmlRadioTrigger::Checkedness, cancel)
+    }
+}
+
+impl Dom {
+    /// Apply the original user file selection once, under the task-bank allowance.
+    /// A retired or ineligible target consumes the permit without installing
+    /// anything. A refusal leaves the permit live and debits actual work.
+    pub fn run_file_selection_task(
+        &mut self,
+        task: &mut Option<DomFileSelectionTask>,
+        mut limits: crate::internal::source::DomSourceLimits,
+        bank_work: &mut u64,
+        cancel: &AtomicBool,
+    ) -> Result<Option<DomCommit>, DomError> {
+        limits.work = limits.work.min(*bank_work);
+        let initial = source::initial::Initial::new(limits);
+        let formed = (|| {
+            initial.step(cancel)?;
+            self.require_sync_source_idle()?;
+            let permit = task.as_ref().ok_or(DomError::InvalidNativeTask)?;
+            self.qualify_element_task(&permit.binding)?;
+            initial.retain(
+                source::storage::Payload {
+                    bytes: size_of::<BatchIdentity>(),
+                    units: 0,
+                },
+                cancel,
+            )?;
+            let draft = Draft::new_formed(
+                self,
+                source::formation::allocated_arc(BatchIdentity),
+                Some(&initial),
+                cancel,
+            )?;
+            Ok((draft, permit))
+        })();
+        let (mut draft, permit) = match formed {
+            Ok(formed) => formed,
+            Err(error) => {
+                *bank_work -= initial.spent_work();
+                return Err(error);
+            }
+        };
+        let result = (|| {
+            let info = permit.info();
+            let key = Key::Existing(info.id().target());
+            if !draft.eligible_user_file_selection(key, &permit.files, cancel)?
+                || draft.element_task_association(key, cancel)? != Some(info.queue_association())
+            {
+                return Ok(None);
+            }
+            draft.assign_input_files(key, Some(&permit.files), cancel)?;
+            let prepared = draft.finish(self, cancel)?;
+            if limits.phases == 0 && prepared.changed_from(&self.state) {
+                return Err(DomError::SourcePublicationLimit);
+            }
+            if limits.outputs == 0 {
+                return Err(DomError::SourceOutputLimit);
+            }
+            self.publish(prepared, cancel).map(Some)
+        })();
+        *bank_work -= draft.source_work.load(Ordering::Relaxed);
+        let commit = result?;
+        task.take();
+        Ok(commit)
     }
 }
 

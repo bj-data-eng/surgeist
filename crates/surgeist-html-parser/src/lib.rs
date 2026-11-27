@@ -53,7 +53,7 @@ pub use source::*;
 
 pub use construction::read::{
     HtmlInputImageSource, HtmlParseRetiredDestination, HtmlParseUnresolvedKind,
-    HtmlParseUnresolvedReference,
+    HtmlParseUnresolvedReference, HtmlParsedEmptyFileSelection,
 };
 pub use construction::{HtmlParseCompletion, HtmlParseDocumentState, HtmlParseReadiness};
 pub use parser::control::{

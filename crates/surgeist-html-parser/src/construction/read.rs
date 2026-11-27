@@ -1029,14 +1029,13 @@ impl<'a> report::HtmlParseMetadata<'a> {
     pub fn input_email_value_count(&self) -> Option<usize> {
         self.input().and_then(|(state, _)| state.email_value_count)
     }
-    /// Established actual File resources. Other input states have no File view.
-    pub fn input_file_selection(
-        &self,
-    ) -> Option<surgeist_html::elements::input::HtmlInputFileSelection> {
+    /// The established empty selection of a parsed File input.
+    /// Returns `None` when the record has no applicable File observation.
+    pub fn input_file_selection(&self) -> Option<HtmlParsedEmptyFileSelection> {
         self.input().and_then(|(state, _)| {
             (state.flags.input_type() == surgeist_html::attributes::HtmlInputType::File
                 && state.selected_files_empty)
-                .then_some(surgeist_html::elements::input::HtmlInputFileSelection::Empty)
+                .then_some(HtmlParsedEmptyFileSelection(()))
         })
     }
     /// Initial selected coordinates of actual Image construction, not geometry.
@@ -1145,6 +1144,10 @@ impl HtmlParseScript<'_> {
         self.state.steps_when_result_ready
     }
 }
+
+/// Evidence that immutable parser construction established an empty File selection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlParsedEmptyFileSelection(());
 
 /// Source-specific immutable Image history; present empty and absence differ.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

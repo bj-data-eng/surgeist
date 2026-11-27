@@ -616,6 +616,17 @@ listeners or inferring a new outcome from a later snapshot. Close and Details
 completion carry no Dialog toggle disposition. Retirement before dispatch retains
 the separate `SkippedTargetDestroyed` outcome and supplies no delivery receipt.
 
+A native File Upload choice enters Source with the Input's observed DOM stamp
+and its selected FileList. An admitted user-interaction task preserves that
+exact list and its original Global. It rechecks current eligibility before
+installing the list, then dispatches a trusted, bubbling, composed `input`
+followed by a trusted, bubbling `change`. Both use the plain Event interface
+and are noncancelable. Refusal retains the exact event cursor and completed
+receipts. The task reaches one checkpoint after delivery. If an input listener
+retires the exact target before change begins, completion returns the input
+receipt and an absent change receipt. Programmatic assignment changes the
+selection silently.
+
 The standard `close_dialog(receiver, result)` Source operation represents
 `close(optional returnValue)`, whose source is null. It retains omitted versus
 supplied-empty result through the original method continuation. Initial absent

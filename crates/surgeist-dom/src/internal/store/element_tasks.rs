@@ -1,9 +1,23 @@
 //! Admission joins for the actual external shared task owner.
 use super::*;
 use crate::internal::element_tasks::{Binding, DomElementTaskRetention, DomElementTaskSource};
-use std::sync::atomic::AtomicUsize;
+use std::sync::{Weak, atomic::AtomicUsize};
 
 impl Dom {
+    pub(super) fn qualify_element_task(&self, binding: &Weak<Binding>) -> Result<(), DomError> {
+        let binding = binding.upgrade().ok_or(DomError::InvalidNativeTask)?;
+        if self
+            .element_tasks
+            .as_ref()
+            .and_then(Weak::upgrade)
+            .is_some_and(|actual| Arc::ptr_eq(&actual, &binding))
+        {
+            Ok(())
+        } else {
+            Err(DomError::InvalidNativeTask)
+        }
+    }
+
     /// Whether a task source was already installed, including an expired one.
     pub fn has_element_task_source(&self) -> bool {
         self.element_tasks.is_some()

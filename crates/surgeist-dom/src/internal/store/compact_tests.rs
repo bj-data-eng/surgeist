@@ -193,6 +193,63 @@ fn plain_graph_dom() -> (Dom, DocumentId) {
     (dom, document)
 }
 
+#[test]
+fn selected_file_allocations_measure_backings_and_shared_custody_once() {
+    use crate::file::{DomFile, DomFileList};
+    use crate::source::{DomSourceEdit, DomSourceLimits, DomSourceProgress};
+    use surgeist_html::values::Namespace;
+
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document) = plain_graph_dom();
+    let mut batch = DomBatch::new();
+    let inputs = std::array::from_fn::<_, 3, _>(|_| {
+        let input = batch.create_element_ns(document, Namespace::html(), "input");
+        batch.set_attribute(&input, "type", "file");
+        batch.set_attribute(&input, "multiple", "");
+        input
+    });
+    let created = dom.apply(batch, &cancel).unwrap();
+    let inputs = inputs.map(|input| created.created(&input).unwrap().unwrap());
+
+    let mut body = Vec::with_capacity(97);
+    body.extend_from_slice(&[0, 4, 255]);
+    let body_bytes = body.capacity();
+    let name = surgeist_html::values::TextBlock::from_utf16(vec![0, 0xd800, 0]);
+    let file =
+        DomFile::from_owned_parts(name.string(1..2).unwrap(), "text/plain".into(), body).unwrap();
+    let mut first_members = Vec::with_capacity(11);
+    first_members.extend([file.clone(), file.clone()]);
+    let second_members = vec![file];
+    let member_bytes =
+        (first_members.capacity() + second_members.capacity()) * size_of::<DomFile>();
+    let first = DomFileList::from_files(first_members).unwrap();
+    let second = DomFileList::from_files(second_members).unwrap();
+    for (input, list) in inputs.into_iter().zip([first.clone(), first, second]) {
+        let progress = dom
+            .begin_source_edit(
+                DomSourceEdit::assign_input_files(input, Some(list)),
+                DomSourceLimits::new(10_000_000, 100_000, 1_000_000, 16, 64, 64, 1),
+                &cancel,
+            )
+            .unwrap()
+            .advance(&cancel)
+            .unwrap();
+        assert!(matches!(progress, DomSourceProgress::Complete(_)));
+    }
+
+    super::oracle_tests::assert_full_canonical(&dom);
+    let semantic = node_storage(&dom.state).summary();
+    assert_eq!(semantic["file.list"].0, 2);
+    assert_eq!(semantic["file.list.members"], (2, member_bytes));
+    assert_eq!(semantic["file.data"].0, 1);
+    assert_eq!(semantic["file.body"], (1, body_bytes));
+    let mut controls = AllocationGraph::default();
+    dom.custody_registry.inspect_raw_allocations(&mut controls);
+    let (buffers, bytes) = controls.summary()["file.list.controls"];
+    assert_eq!(buffers, 2);
+    assert!(bytes >= 3 * size_of::<bank::ObjectCustody>());
+}
+
 fn plain_graph_snapshot(label: &str, dom: &Dom) -> (DomSnapshot, AllocationGraph) {
     let held = dom.snapshot();
     assert_eq!(held.nodes().count(), 129);

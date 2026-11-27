@@ -5,7 +5,7 @@ Input retains its current values and flags in the canonical owner. [Form associa
 ## Values, radio groups and reflected targets
 
 Native HTML Input has a checked `DomNode::as_input()` view over actual flags,
-current value, selection/direction, empty selected-file state, Image history and
+current value, selection/direction, selected-file state, Image history and
 custom error. The view's `value()` applies HTML's current/default/default-on/file
 getter mode; `state().current_value()` reads the separately retained internal
 string. Every shared type state is admitted. Type/default/checked/name/multiple,
@@ -52,8 +52,35 @@ environment. Adoption does not reset selection merely because it reads a Documen
 Native image acquisition is explicitly disabled, with no enabled option. Image
 entry/re-entry and src hooks retain exact absent/empty/nonempty source history and
 selected zero coordinates; no URL validation, fetch/error/event or resource object
-is fabricated. Native File has an actual empty selection; its nonempty value
-setter is a typed refusal, not a synthetic file/path installation.
+is fabricated.
+
+Native File Upload Input exposes its exact `DomFileList`, including the
+fresh empty selection. A FileList keeps its order and File identities.
+`DomSourceEdit::assign_input_files` installs the supplied object in File
+Upload state. A null assignment or a different Input state leaves the
+selection unchanged. Assignment dispatches no input or change event.
+
+A native host submits an actual choice through
+`DomSourceEdit::queue_input_file_selection`. Source qualifies the Input's
+observed DOM stamp, current mutability and permitted file count. The admitted
+user-interaction task owns the exact list. Selection changes only when that
+task executes, before its ordered input and change events. See the
+[Runtime task contract](../../surgeist-runtime/docs/explanation.md#dom-orchestration).
+
+`DomSourceLimits` counts each controlled File and FileList materialization once
+per DOM owner. The retained-byte allowance counts objects, controls and backing
+capacity, including the body and member vectors. The retained UTF-16 allowance
+counts filename, media type and Filename-mode readback backing capacity.
+`DomUsage::string_code_units()` reports the canonical DOM string budget for
+attributes, current control values and other in-tree strings. See the
+[storage and custody contract](storage.md#what-the-admission-budget-counts).
+
+Filename-mode value readback uses the HTML prefix and the first selected
+filename. An empty value write and native reset clear a nonempty selection
+by installing a fresh empty list. Other references to the original list
+still observe its original members. A nonempty value write returns
+`InputFilenameInvalidState`. Adoption preserves the selection. Clone
+and entry into File Upload establish a fresh empty list.
 
 The [shared selection Source edits](text-controls.md#native-selection) apply
 positional selection to Text, Search, Telephone, URL and Password. Other Input

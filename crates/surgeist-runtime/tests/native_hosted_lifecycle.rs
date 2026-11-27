@@ -3007,6 +3007,337 @@ fn retiring_object_cannot_retarget_its_queued_task() {
 }
 
 #[test]
+fn native_file_selection_runs_one_task_and_resumes_between_the_trusted_events() {
+    use surgeist_dom::{
+        file::{DomFile, DomFileList},
+        task::DomElementTaskSourceKind::UserInteraction,
+    };
+    use surgeist_runtime::{
+        element_task::DomElementTask,
+        event::{DomEventDispatchOutcome, DomEventResource},
+        source::{DomSourceDriveError, DomSourceRuntimeError},
+    };
+
+    let mut session = session();
+    let top = create(&mut session);
+    let parent = body(&session.snapshot(), top.document());
+    let control = {
+        let mut batch = DomBatch::new();
+        let control = batch.create_element_ns(top.document(), Namespace::html(), "input");
+        batch.set_attribute(&control, "type", "file");
+        batch.insert_before(&control, parent, None);
+        session
+            .dom()
+            .apply(batch, &cancel())
+            .unwrap()
+            .created(&control)
+            .unwrap()
+            .unwrap()
+    };
+    let read_files = move |snapshot: &DomSnapshot| {
+        snapshot
+            .node(control)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .state()
+            .selected_files()
+            .unwrap()
+            .clone()
+    };
+    let before = session.snapshot();
+    let empty = read_files(&before);
+    assert!(empty.is_empty());
+    let file =
+        DomFile::from_owned_parts("chosen.txt".into(), "text/plain".into(), vec![2, 4]).unwrap();
+    let selection = DomFileList::from_files(vec![file]).unwrap();
+    let selected_id = selection.id();
+
+    let mut execution = session.source_execution();
+    let mut tasks = session.element_task_execution();
+    let task_limits = limits().element_tasks;
+    tasks
+        .set_limits(DomElementTaskRuntimeLimits {
+            tasks: 0,
+            ..task_limits
+        })
+        .unwrap();
+    let mut style_policy = |_: &DomStyleSource| None;
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut style_policy,
+        url: None,
+    };
+    let source = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1);
+    assert!(matches!(
+        execution.apply(
+            &mut session.dom(),
+            DomSourceEdit::queue_input_file_selection(control, before.stamp(), selection),
+            source,
+            &mut services,
+            &cancel(),
+        ),
+        Err(DomSourceDriveError::Source(
+            DomSourceRuntimeError::ElementTasks(DomElementTaskRuntimeError::Admission)
+        ))
+    ));
+    assert_eq!(session.snapshot().stamp(), before.stamp());
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+    let operation = session.dom().pending_source_edit().unwrap().operation();
+    tasks.set_limits(task_limits).unwrap();
+    let DomSourceDriveProgress::Complete(completion) = execution
+        .resume(
+            &mut session.dom(),
+            operation,
+            source,
+            &mut services,
+            &cancel(),
+        )
+        .unwrap()
+    else {
+        panic!("the original source must release exactly one task");
+    };
+    assert_eq!(completion.operation(), operation);
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 1);
+    assert_eq!(read_files(&session.snapshot()).id(), empty.id());
+    let task = tasks.pending_task(UserInteraction, 0).unwrap().unwrap();
+
+    let mut registry = registry();
+    let mut context = Context {
+        element_tasks: tasks.clone(),
+        seen: Vec::new(),
+    };
+    for (kind, label, composed) in [
+        (DomEventType::INPUT, "input", true),
+        (DomEventType::CHANGE, "change", false),
+    ] {
+        registry
+            .add_listener(
+                &mut session.dom(),
+                DomEventTarget::Node(control),
+                kind,
+                DomEventCallback::new(move |dom, _, context: &mut Context, event| {
+                    assert!(event.is_trusted());
+                    assert!(event.bubbles());
+                    assert!(!event.cancelable());
+                    assert_eq!(event.composed(), composed);
+                    assert_eq!(event.target(), Some(DomEventTarget::Node(control)));
+                    let snapshot = dom.snapshot();
+                    assert_eq!(read_files(&snapshot).id(), selected_id);
+                    context.seen.push(Observation {
+                        label,
+                        current: event.current_target(),
+                        target: Some(control),
+                        phase: event.phase(),
+                        payload: None,
+                        bubbles: event.bubbles(),
+                    });
+                    Ok(())
+                }),
+                DomEventListenerOptions::default(),
+            )
+            .unwrap();
+    }
+    let first = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        UserInteraction,
+        &mut registry,
+        &mut context,
+        DomElementTaskRunLimits {
+            dispatch: DomEventDispatchLimits {
+                callbacks: 1,
+                ..event_limits()
+            },
+            source,
+        },
+        &cancel(),
+    )
+    .unwrap();
+    assert!(matches!(first, DomElementTaskProgress::Retained {
+        task: found,
+        dispatch: DomEventDispatchOutcome::Retained(DomEventResource::Callbacks),
+        ..
+    } if found == task));
+    let selected = session.snapshot();
+    assert_eq!(read_files(&selected).id(), selected_id);
+    assert_eq!(tasks.pending_task(UserInteraction, 0).unwrap(), Some(task));
+    assert_eq!(
+        context
+            .seen
+            .iter()
+            .map(|item| item.label)
+            .collect::<Vec<_>>(),
+        ["input"]
+    );
+    let complete = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        UserInteraction,
+        &mut registry,
+        &mut context,
+        DomElementTaskRunLimits {
+            dispatch: event_limits(),
+            source,
+        },
+        &cancel(),
+    )
+    .unwrap();
+    let DomElementTaskProgress::FileSelectionComplete {
+        task: finished,
+        input,
+        change,
+        ..
+    } = complete
+    else {
+        panic!("the resumed task must complete both deliveries")
+    };
+    assert_eq!(DomElementTask::FileSelection(finished), task);
+    let change = change.expect("the original Input remains alive");
+    for (receipt, kind) in [(input, DomEventType::INPUT), (change, DomEventType::CHANGE)] {
+        assert_eq!(receipt.event_type(), kind);
+        assert_eq!(receipt.original_target(), DomEventTarget::Node(control));
+        assert_eq!(receipt.callbacks(), 1);
+        assert!(receipt.failures().is_empty());
+        assert!(!receipt.default_prevented());
+    }
+    assert_eq!(session.snapshot().stamp(), selected.stamp());
+    assert_eq!(
+        context
+            .seen
+            .iter()
+            .map(|item| item.label)
+            .collect::<Vec<_>>(),
+        ["input", "change"]
+    );
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+}
+
+#[test]
+fn native_file_selection_checks_the_observed_basis_and_live_upload_eligibility() {
+    use surgeist_dom::{
+        file::{DomFile, DomFileList},
+        task::DomElementTaskSourceKind::UserInteraction,
+    };
+    use surgeist_runtime::{
+        element_task::DomElementTask,
+        source::{DomSourceDriveError, DomSourceRuntimeError},
+    };
+
+    let mut session = session();
+    let top = create(&mut session);
+    let parent = body(&session.snapshot(), top.document());
+    let (control, legend) = {
+        let mut batch = DomBatch::new();
+        let fieldset = batch.create_element_ns(top.document(), Namespace::html(), "fieldset");
+        let legend = batch.create_element_ns(top.document(), Namespace::html(), "legend");
+        let control = batch.create_element_ns(top.document(), Namespace::html(), "input");
+        batch.set_attribute(&fieldset, "disabled", "");
+        batch.set_attribute(&control, "type", "file");
+        batch.insert_before(&fieldset, parent, None);
+        batch.insert_before(&legend, &fieldset, None);
+        batch.insert_before(&control, &fieldset, None);
+        let commit = session.dom().apply(batch, &cancel()).unwrap();
+        (
+            commit.created(&control).unwrap().unwrap(),
+            commit.created(&legend).unwrap().unwrap(),
+        )
+    };
+    let one = DomFile::from_owned_parts("a".into(), "".into(), vec![1]).unwrap();
+    let two = DomFile::from_owned_parts("b".into(), "".into(), vec![2]).unwrap();
+    let single = DomFileList::from_files(vec![one.clone()]).unwrap();
+    let multiple = DomFileList::from_files(vec![one, two]).unwrap();
+    let mut execution = session.source_execution();
+    let tasks = session.element_task_execution();
+    let mut style_policy = |_: &DomStyleSource| None;
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut style_policy,
+        url: None,
+    };
+    let source = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1);
+    let mut apply = |session: &mut DomSession, stamp, files| match execution.apply(
+        &mut session.dom(),
+        DomSourceEdit::queue_input_file_selection(control, stamp, files),
+        source,
+        &mut services,
+        &cancel(),
+    ) {
+        Ok(DomSourceDriveProgress::Complete(_)) => None,
+        Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(error))) => Some(error),
+        result => panic!("unexpected file selection ingress: {result:?}"),
+    };
+
+    let disabled = session.snapshot().stamp();
+    assert!(matches!(
+        apply(&mut session, disabled, single.clone()),
+        Some(DomError::FileSelectionInapplicable)
+    ));
+    assert_eq!(session.snapshot().stamp(), disabled);
+    assert!(session.dom().pending_source_edit().is_none());
+
+    let mut edit = DomBatch::new();
+    edit.insert_before(control, legend, None);
+    session.dom().apply(edit, &cancel()).unwrap();
+    let enabled = session.snapshot().stamp();
+    assert!(matches!(
+        apply(&mut session, disabled, single),
+        Some(DomError::StaleFileSelection)
+    ));
+    assert!(matches!(
+        apply(&mut session, enabled, multiple.clone()),
+        Some(DomError::FileSelectionInapplicable)
+    ));
+    assert_eq!(session.snapshot().stamp(), enabled);
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+
+    let mut edit = DomBatch::new();
+    edit.set_attribute(control, "multiple", "");
+    session.dom().apply(edit, &cancel()).unwrap();
+    let basis = session.snapshot().stamp();
+    assert!(apply(&mut session, basis, multiple).is_none());
+    let original = tasks.pending_task(UserInteraction, 0).unwrap().unwrap();
+    let mut edit = DomBatch::new();
+    edit.remove_attribute(control, "multiple");
+    session.dom().apply(edit, &cancel()).unwrap();
+    let before = session.snapshot();
+    let mut registry = registry();
+    let mut context = Context {
+        element_tasks: tasks.clone(),
+        seen: Vec::new(),
+    };
+    let run = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        UserInteraction,
+        &mut registry,
+        &mut context,
+        DomElementTaskRunLimits {
+            dispatch: event_limits(),
+            source,
+        },
+        &cancel(),
+    )
+    .unwrap();
+    assert!(
+        matches!(run, DomElementTaskProgress::SkippedFileSelectionIneligible(found)
+        if DomElementTask::FileSelection(found) == original)
+    );
+    assert_eq!(session.snapshot().stamp(), before.stamp());
+    assert!(
+        before
+            .node(control)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .state()
+            .selected_files()
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+}
+
+#[test]
 fn text_selection_uses_atomic_noncoalesced_user_interaction_tasks() {
     use surgeist_dom::task::DomElementTaskSourceKind::UserInteraction;
     use surgeist_html::elements::input::{

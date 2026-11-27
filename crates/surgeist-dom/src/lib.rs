@@ -67,6 +67,7 @@
 //! | [`document`] | Document class, interface, creation cause, environment and metadata. |
 //! | [`edit`] | Operands and results of batch edits, change coverage, child-list observers and node-retirement watches. |
 //! | [`event`] | Event parents, recipients, dispatch custody and the Source event firing protocol. |
+//! | [`file`](mod@file) | Native selected File and FileList values and identities. |
 //! | [`focus`] | Focus requests and observations, autofocus history and the focus-delegate protocol. |
 //! | [`form`] | Form-associated element state: form, button, fieldset, input, output and textarea. |
 //! | [`form::select`] | Select, option and selectedcontent state and the select task protocol. |
@@ -174,6 +175,7 @@ pub mod dialog;
 pub mod document;
 pub mod edit;
 pub mod event;
+pub mod file;
 pub mod focus;
 pub mod form;
 pub mod fullscreen;

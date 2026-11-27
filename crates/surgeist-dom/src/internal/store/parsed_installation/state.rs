@@ -1171,16 +1171,13 @@ fn family(
                 source.observation(&node.id(), c, |r| r.input_cursor())?,
                 node,
             )?;
-            let files = if flags.input_type() == surgeist_html::attributes::HtmlInputType::File {
+            let is_file = flags.input_type() == surgeist_html::attributes::HtmlInputType::File;
+            if is_file {
                 required(
                     source.observation(&node.id(), c, |r| r.input_file_selection())?,
                     node,
-                )?
-            } else {
-                // No selected-File/resource ingress exists in this closed
-                // producer; entering/leaving File cannot install resources.
-                surgeist_html::elements::input::HtmlInputFileSelection::Empty
-            };
+                )?;
+            }
             let coordinate =
                 if flags.input_type() == surgeist_html::attributes::HtmlInputType::Image {
                     required(
@@ -1206,9 +1203,16 @@ fn family(
             // explicitly supplied target platform; it does not import a range.
             let direction = HtmlInputSelection::initial(input.none_direction()).direction();
             let email_count = source.observation(&node.id(), c, |r| r.input_email_value_count())?;
-            NativeFamily::Input(formation.native(
+            let (files, files_dependency) = if is_file {
+                let (files, dependency) = formation.empty_input_files()?;
+                (Some(files), Some(dependency))
+            } else {
+                (None, None)
+            };
+            NativeFamily::Input(formation.native_with_dependency(
                 extra,
                 source::storage::Payload::default(),
+                files_dependency,
                 || {
                     Ok(crate::internal::input::DomInputState {
                         control: control(),

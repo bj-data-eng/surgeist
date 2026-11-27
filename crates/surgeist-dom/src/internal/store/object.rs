@@ -59,18 +59,7 @@ impl Dom {
             initial.step(cancel)?;
             self.require_sync_source_idle()?;
             let permit = task.as_ref().ok_or(DomError::InvalidNativeTask)?;
-            let binding = permit
-                .binding
-                .upgrade()
-                .ok_or(DomError::InvalidNativeTask)?;
-            if !self
-                .element_tasks
-                .as_ref()
-                .and_then(std::sync::Weak::upgrade)
-                .is_some_and(|actual| Arc::ptr_eq(&actual, &binding))
-            {
-                return Err(DomError::InvalidNativeTask);
-            }
+            self.qualify_element_task(&permit.binding)?;
             initial.retain(
                 source::storage::Payload {
                     bytes: size_of::<BatchIdentity>(),

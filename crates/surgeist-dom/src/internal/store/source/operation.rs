@@ -93,6 +93,53 @@ impl<'a> IntoIterator for &'a OperationRoot {
         self.iter()
     }
 }
+
+struct Intake {
+    commands: OperationRoot,
+    // Keep the original semantic argument alive only while its receipt is held.
+    file_argument_custody: Option<bank::ObjectCustody>,
+}
+
+impl Intake {
+    fn admit_files(&mut self, draft: &Draft, cancel: &AtomicBool) -> Result<(), DomError> {
+        use crate::internal::compound::Edit;
+
+        let OperationRoot::Edit([Command::Compound(edit)]) = &mut self.commands else {
+            return Ok(());
+        };
+        let files = match edit {
+            Edit::InputFiles {
+                input,
+                files: Some(files),
+            } => {
+                draft.source_step(cancel)?;
+                let key = draft.resolve((*input).into())?;
+                if draft.input_state(key)?.input_type()
+                    != surgeist_html::attributes::HtmlInputType::File
+                {
+                    if let Edit::InputFiles { files, .. } = edit {
+                        files.take();
+                    }
+                    return Ok(());
+                }
+                files
+            }
+            Edit::UserFileSelection { input, files, .. } => {
+                let key = draft.resolve((*input).into())?;
+                if !draft.eligible_user_file_selection(key, files, cancel)? {
+                    return Err(DomError::FileSelectionInapplicable);
+                }
+                files
+            }
+            _ => return Ok(()),
+        };
+        self.file_argument_custody = Some(files.adopt(draft.custody_registry(), &mut |usage| {
+            draft.admit_custody_usage(usage, cancel)
+        })?);
+        Ok(())
+    }
+}
+
 pub(in crate::internal::store) struct Operation {
     id: DomSourceOperationId,
     entry_scope: EntryScope,
@@ -104,6 +151,8 @@ pub(in crate::internal::store) struct Operation {
     meta_csp: Option<Box<meta::CspDelivery>>,
     draft: dialog::OperationDraft,
     commands: OperationRoot,
+    // The original command's semantic FileList drops before its receipt.
+    file_argument_custody: Option<bank::ObjectCustody>,
     index: usize,
     started: bool,
     published: bool,
@@ -446,9 +495,22 @@ impl Dom {
     ) -> Result<DomSourceLease<'_>, DomError> {
         self.require_source_entry(cancel)?;
         check_cancel(cancel)?;
+        if let [
+            Command::Compound(crate::internal::compound::Edit::UserFileSelection {
+                observed, ..
+            }),
+        ] = &*commands
+            && (observed.owner != self.owner || observed.revision != self.revision)
+        {
+            return Err(DomError::StaleFileSelection);
+        }
+        let mut intake = Intake {
+            commands,
+            file_argument_custody: None,
+        };
         let input_bytes = match input.as_ref() {
             Some(retained) => {
-                let [Command::AssignSlot { incoming, .. }] = &*commands else {
+                let [Command::AssignSlot { incoming, .. }] = &*intake.commands else {
                     return Err(DomError::RepresentationExhausted);
                 };
                 let bytes = incoming
@@ -495,13 +557,14 @@ impl Dom {
         let formed = Draft::new_source_root_with_input(
             self,
             owner,
-            &commands,
-            commands.capacity(),
+            &intake.commands,
+            intake.commands.capacity(),
             input_bytes,
             limits,
             cancel,
         )
         .and_then(|(draft, command)| {
+            intake.admit_files(&draft, cancel)?;
             let aux = self
                 .source_retained_stack_bytes()?
                 .checked_add(self.source_dispatch_custody_bytes(|| draft.source_step(cancel))?)
@@ -523,18 +586,22 @@ impl Dom {
             owner: self.owner,
             serial: self.next_source_operation,
         };
-        let entry_scope = match EntryScope::capture(self, commands.entry_receiver(), &draft, cancel)
-        {
-            Ok(scope) => scope,
-            Err(error) => {
-                if nested {
-                    self.source_operation = self.source_parents.pop();
+        let entry_scope =
+            match EntryScope::capture(self, intake.commands.entry_receiver(), &draft, cancel) {
+                Ok(scope) => scope,
+                Err(error) => {
+                    if nested {
+                        self.source_operation = self.source_parents.pop();
+                    }
+                    #[cfg(test)]
+                    self.observe_source_lifecycle();
+                    return Err(error);
                 }
-                #[cfg(test)]
-                self.observe_source_lifecycle();
-                return Err(error);
-            }
-        };
+            };
+        let Intake {
+            commands,
+            file_argument_custody,
+        } = intake;
         let mut op = formation::allocated_box(Operation {
             id,
             entry_scope,
@@ -547,6 +614,7 @@ impl Dom {
             pending_element_queue: None,
             meta_csp: None,
             commands,
+            file_argument_custody,
             index: 0,
             started: false,
             published: false,
@@ -4137,6 +4205,7 @@ impl Dom {
                 pending_element_queue: None,
                 meta_csp: None,
                 commands: OperationRoot::NativeInstallation,
+                file_argument_custody: None,
                 index: 0,
                 started: false,
                 published: false,

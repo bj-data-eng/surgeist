@@ -25,27 +25,34 @@ impl Draft {
         let Some(previous) = self.form_associated_custom_disabled(node)? else {
             return Ok(());
         };
-        let disabled = if self
-            .control_attribute(node, KnownHtmlAttribute::Disabled, cancel)?
-            .is_some()
-        {
-            true
-        } else {
-            match disabled_by_fieldset(
-                &mut Reader {
-                    draft: self,
-                    cancel,
-                },
-                node,
-            )? {
-                Ok(disabled) => disabled,
-                Err(impossible) => match impossible {},
-            }
-        };
+        let disabled = self.control_is_disabled(node, cancel)?;
         if previous != disabled {
             self.set_form_associated_custom_disabled(node, disabled, cancel)?;
         }
         Ok(())
+    }
+
+    pub(super) fn control_is_disabled(
+        &self,
+        node: Key,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        if self
+            .control_attribute(node, KnownHtmlAttribute::Disabled, cancel)?
+            .is_some()
+        {
+            return Ok(true);
+        }
+        match disabled_by_fieldset(
+            &mut Reader {
+                draft: self,
+                cancel,
+            },
+            node,
+        )? {
+            Ok(disabled) => Ok(disabled),
+            Err(impossible) => match impossible {},
+        }
     }
 
     pub(super) fn form_associated_disabled_attribute_change(

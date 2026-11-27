@@ -659,6 +659,11 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             "stepping is inapplicable or this Input has no allowed step",
         ),
         (
+            "InputFileNameContainsPath",
+            DomError::InputFileNameContainsPath,
+            "a selected file name contains a path component",
+        ),
+        (
             "InputProcessingProtocol",
             DomError::InputProcessingProtocol,
             "the Input processing protocol was violated",
@@ -858,6 +863,21 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             "TextSelectionTaskSourceUnavailable",
             DomError::TextSelectionTaskSourceUnavailable,
             "the text control's select event task source is unavailable",
+        ),
+        (
+            "FileSelectionTaskSourceUnavailable",
+            DomError::FileSelectionTaskSourceUnavailable,
+            "the Input file selection task source is unavailable",
+        ),
+        (
+            "StaleFileSelection",
+            DomError::StaleFileSelection,
+            "the Input file selection observation is stale",
+        ),
+        (
+            "FileSelectionInapplicable",
+            DomError::FileSelectionInapplicable,
+            "the Input cannot accept this user file selection",
         ),
         (
             "ObjectHostedTransitionUnavailable",
@@ -1172,6 +1192,7 @@ variants! {
     InputFilenameInvalidState unit,
     InputSelectionInvalidState unit,
     InputStepInvalidState unit,
+    InputFileNameContainsPath unit,
     InputProcessingProtocol unit,
     InputProcessingWorkLimit named,
     InputNumeric tuple,
@@ -1212,6 +1233,9 @@ variants! {
     TrackMembershipUnavailable unit,
     ObjectTaskSourceUnavailable unit,
     TextSelectionTaskSourceUnavailable unit,
+    FileSelectionTaskSourceUnavailable unit,
+    StaleFileSelection unit,
+    FileSelectionInapplicable unit,
     ObjectHostedTransitionUnavailable unit,
     ImageUpdateExhausted unit,
     HyperlinkProcessingUnavailable unit,

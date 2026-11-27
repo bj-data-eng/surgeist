@@ -21,7 +21,8 @@ pub use crate::internal::select::{
     DomNativeCheckpoint, DomNativeCheckpointLimits, DomNativeTaskId,
 };
 pub use crate::internal::store::source::operation::element_queue::{
-    DomObjectRepresentationTask, DomObjectRepresentationTaskInfo, DomQueuedSourceElementTask,
-    DomQueuedSourceElementTasks, DomSourceElementTaskInfo, DomSourceElementTaskQueueCommit,
-    DomSourceElementTaskQueueRequest, DomTextSelectionTaskInfo,
+    DomFileSelectionTask, DomFileSelectionTaskInfo, DomObjectRepresentationTask,
+    DomObjectRepresentationTaskInfo, DomQueuedSourceElementTask, DomQueuedSourceElementTasks,
+    DomSourceElementTaskInfo, DomSourceElementTaskQueueCommit, DomSourceElementTaskQueueRequest,
+    DomTextSelectionTaskInfo,
 };

@@ -112,15 +112,26 @@ impl<'a> ElementFormation<'a> {
         original: storage::Payload,
         build: impl FnOnce() -> Result<T, DomError>,
     ) -> Result<payload::Sealed<T>, DomError> {
+        self.form_with_dependency(extra, original, None, build)
+    }
+
+    fn form_with_dependency<T>(
+        &mut self,
+        extra: storage::Payload,
+        original: storage::Payload,
+        dependency: Option<bank::Dependency>,
+        build: impl FnOnce() -> Result<T, DomError>,
+    ) -> Result<payload::Sealed<T>, DomError> {
         crate::internal::store::check_cancel(self.cancel)?;
         let usage = Usage::new(size_of::<payload::Payload<T>>(), 0)
             .checked_add(Usage::new(extra.bytes, extra.units))?;
-        payload::form_group(
+        payload::form_group_with_dependency(
             self.registry,
             self.budget,
             original,
             usage,
             &mut *self.admit,
+            dependency,
             build,
         )
     }
@@ -131,10 +142,37 @@ impl<'a> ElementFormation<'a> {
         original: storage::Payload,
         build: impl FnOnce() -> Result<T, DomError>,
     ) -> Result<Arc<payload::Payload<T>>, DomError> {
+        self.native_with_dependency(extra, original, None, build)
+    }
+
+    pub(crate) fn native_with_dependency<T>(
+        &mut self,
+        extra: storage::Payload,
+        original: storage::Payload,
+        dependency: Option<bank::Dependency>,
+        build: impl FnOnce() -> Result<T, DomError>,
+    ) -> Result<Arc<payload::Payload<T>>, DomError> {
         assert!(self.children.native.is_none(), "one selected native family");
-        let formed = self.form(extra, original, build)?;
+        let formed = self.form_with_dependency(extra, original, dependency, build)?;
         self.children.native = Some(formed.custody);
         Ok(formed.value)
+    }
+
+    pub(crate) fn empty_input_files(
+        &mut self,
+    ) -> Result<(crate::file::DomFileList, bank::Dependency), DomError> {
+        // Keep the original controlled pair until the new capsule is ready.
+        let formed = crate::file::DomFileList::controlled_empty(
+            self.registry,
+            self.budget,
+            &mut *self.admit,
+        )?;
+        let dependency = crate::internal::store::files::input_file_list_dependency(
+            formed.1.clone(),
+            self.registry,
+            &mut *self.admit,
+        )?;
+        Ok((formed.0, dependency))
     }
 
     pub(super) fn track_url(

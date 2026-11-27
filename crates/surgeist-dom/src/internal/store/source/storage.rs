@@ -434,6 +434,8 @@ pub(in crate::internal::store) fn commands(
                     }
                 }
                 crate::internal::compound::Edit::InputStep { .. }
+                | crate::internal::compound::Edit::InputFiles { .. }
+                | crate::internal::compound::Edit::UserFileSelection { .. }
                 | crate::internal::compound::Edit::TablePart { .. }
                 | crate::internal::compound::Edit::TableStructure { .. }
                 | crate::internal::compound::Edit::SelectOptions { .. } => {}

@@ -1047,14 +1047,15 @@ the [controlled Color adapter](#controlled-color-input) applies these effects
 through the shared CSS producer. These rules do not own a style context or
 interactive color well.
 
-File uses Filename mode with an established `HtmlInputFileSelection::Empty`,
-separate from its internal value and native value attribute. The native readback
-is empty even when value content is present. `input_filename_setter` rejects
-nonempty proposed values with `HtmlInputFilenameInvalidState`; empty clears the
-selection. Image uses Default mode and preserves exact content, including CR/LF.
-Neither state supports text selection. `HtmlInputValueMode::readback` selects
-borrowed internal/content/file facts without searching attributes or allocating;
-callers explicitly obtain any content evidence from their owning tree.
+File uses Filename mode. `HtmlInputValueMode::readback` borrows the filename
+value supplied by the selection owner. An established empty selection reads as
+the empty string. A nonempty selection reads as `HTML_INPUT_FILENAME_PREFIX`
+followed by the first selected filename. `input_filename_setter` accepts an empty
+write to authorize the selection owner to clear the list. A nonempty write
+returns `HtmlInputFilenameInvalidState`. Image uses Default mode and preserves
+exact value attribute content, including CR/LF. Both states omit text selection.
+Callers supply the appropriate value facts through their owning tree. See
+[native File Upload state](../../crates/surgeist-dom/docs/input.md).
 
 `HtmlInputFlags` retains the actual intrinsic flags; strings, selection
 and form identity remain separately owned. Type/default/checked changes,
@@ -2649,7 +2650,9 @@ reopen execution or alter that snapshot. Its
   empty multiple Email retains `Some(0)`, whitespace-only retains `Some(1)`;
   single Email and other kinds return `None`. It reads the produced count without
   resplitting the joined current value.
-  `input_file_selection()` lends the established empty File selection.
+  `input_file_selection()` returns `HtmlParsedEmptyFileSelection` evidence when
+  construction established an empty selection for a File input. DOM installation
+  forms that input's own empty FileList from the evidence.
   `input_image_coordinate()` and `input_image_source()` lend Image's initial
   `(0,0)` coordinate and independently retained last Image source, distinguishing
   absent from present-empty. Native attributes remain separately traversable.

@@ -7,10 +7,16 @@ use std::ops::{Deref, DerefMut};
 type Getter<T> = for<'a> fn(&'a DomElement) -> Option<&'a Arc<payload::Payload<T>>>;
 type Setter<T> = fn(&mut DomElement, Arc<payload::Payload<T>>);
 type Measure<T> = fn(&T) -> Result<custody::Usage, DomError>;
+type Children<T> = fn(
+    &T,
+    &bank::CustodyRegistry,
+    &mut dyn FnMut(custody::Usage) -> Result<(), DomError>,
+) -> Result<Option<bank::Dependency>, DomError>;
 struct Access<T> {
     get: Getter<T>,
     set: Setter<T>,
     measure: Measure<T>,
+    children: Option<Children<T>>,
 }
 
 /// One selected, admitted mutable native body. The Box is its actual private
@@ -23,6 +29,7 @@ pub(in crate::internal::store) struct NativeMut<'a, T> {
     reserved: Option<payload::Reserved<T>>,
     set: Setter<T>,
     measure: Measure<T>,
+    children: Option<Children<T>>,
 }
 impl<T> Deref for NativeMut<'_, T> {
     type Target = T;
@@ -99,6 +106,14 @@ impl<T> NativeMut<'_, T> {
         reconcile(candidate.debit_mut(), usage, |next| {
             self.draft.admit_custody_usage(next, cancel)
         })?;
+        let dependency = match self.children {
+            Some(children) => children(
+                candidate.value(),
+                self.draft.custody_registry(),
+                &mut |next| self.draft.admit_custody_usage(next, cancel),
+            )?,
+            None => None,
+        };
         let (value, debit) = candidate.into_parts();
         let value = *value; // deallocate the private holder before Arc allocation
         let pending = self
@@ -108,9 +123,10 @@ impl<T> NativeMut<'_, T> {
             .materialize(custody::Held::new(value, debit), usage, |next| {
                 self.draft.admit_custody_usage(next, cancel)
             })?;
-        let native = pending.seal(self.draft.custody_registry(), |next| {
-            self.draft.admit_custody_usage(next, cancel)
-        })?;
+        let native =
+            pending.seal_with_children(self.draft.custody_registry(), dependency, |next| {
+                self.draft.admit_custody_usage(next, cancel)
+            })?;
         self.draft
             .install_native(self.key, native, self.set, cancel)
     }
@@ -150,6 +166,7 @@ impl Draft {
             reserved: Some(reserved),
             set: access.set,
             measure: access.measure,
+            children: access.children,
         })
     }
 
@@ -442,6 +459,7 @@ macro_rules! native_edit {
                         get: DomElement::$get,
                         set: DomElement::$set,
                         measure: source::storage::$measure,
+                        children: None,
                     },
                     cancel,
                 )
@@ -449,13 +467,6 @@ macro_rules! native_edit {
         }
     };
 }
-native_edit!(
-    input_state_mut,
-    input_payload,
-    set_input_payload,
-    input_state,
-    crate::internal::input::DomInputState
-);
 native_edit!(
     textarea_state_mut,
     textarea_payload,
@@ -507,6 +518,23 @@ native_edit!(
 );
 
 impl Draft {
+    pub(in crate::internal::store) fn input_state_mut(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<NativeMut<'_, crate::internal::input::DomInputState>, DomError> {
+        self.native_mut(
+            key,
+            Access {
+                get: DomElement::input_payload,
+                set: DomElement::set_input_payload,
+                measure: source::storage::input_state,
+                children: Some(super::super::files::input_dependency),
+            },
+            cancel,
+        )
+    }
+
     /// Consume a complete preformed Dialog candidate. Its original Formation
     /// includes the raw state body and retained operand occurrences; only the
     /// actual immutable target's residual header is acquired before allocation.
@@ -525,6 +553,7 @@ impl Draft {
                 get: DomElement::dialog_payload,
                 set: DomElement::set_dialog_payload,
                 measure: source::storage::dialog_state,
+                children: None,
             },
             cancel,
         )

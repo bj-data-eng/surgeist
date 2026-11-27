@@ -802,6 +802,34 @@ impl surgeist_dom::event::DomSourceToggleEvent
 pub const fn surgeist_dom::event::DomSourceToggleEvent::new_state(self) -> surgeist_html::internal::elements::dialog::HtmlDialogState
 pub const fn surgeist_dom::event::DomSourceToggleEvent::old_state(self) -> surgeist_html::internal::elements::dialog::HtmlDialogState
 pub const fn surgeist_dom::event::DomSourceToggleEvent::source(self) -> core::option::Option<surgeist_dom::identity::NodeId>
+pub mod surgeist_dom::file
+pub struct surgeist_dom::file::DomFile(_)
+impl surgeist_dom::file::DomFile
+pub fn surgeist_dom::file::DomFile::bytes(&self) -> &[u8]
+pub fn surgeist_dom::file::DomFile::from_owned_parts(name: surgeist_html::internal::values::document_string::DocumentString, media_type: surgeist_html::internal::values::document_string::DocumentString, bytes: alloc::vec::Vec<u8>) -> core::result::Result<Self, surgeist_dom::DomError>
+pub fn surgeist_dom::file::DomFile::id(&self) -> surgeist_dom::file::DomFileId
+pub fn surgeist_dom::file::DomFile::media_type(&self) -> &surgeist_html::internal::values::document_string::DocumentString
+pub fn surgeist_dom::file::DomFile::name(&self) -> &surgeist_html::internal::values::document_string::DocumentString
+impl core::cmp::Eq for surgeist_dom::file::DomFile
+impl core::cmp::PartialEq for surgeist_dom::file::DomFile
+pub fn surgeist_dom::file::DomFile::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_dom::file::DomFile
+pub fn surgeist_dom::file::DomFile::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_dom::file::DomFileId(_)
+pub struct surgeist_dom::file::DomFileList(_)
+impl surgeist_dom::file::DomFileList
+pub fn surgeist_dom::file::DomFileList::filename_value(&self) -> &[u16]
+pub fn surgeist_dom::file::DomFileList::files(&self) -> &[surgeist_dom::file::DomFile]
+pub fn surgeist_dom::file::DomFileList::from_files(files: alloc::vec::Vec<surgeist_dom::file::DomFile>) -> core::result::Result<Self, surgeist_dom::DomError>
+pub fn surgeist_dom::file::DomFileList::id(&self) -> surgeist_dom::file::DomFileListId
+pub fn surgeist_dom::file::DomFileList::is_empty(&self) -> bool
+pub fn surgeist_dom::file::DomFileList::len(&self) -> usize
+impl core::cmp::Eq for surgeist_dom::file::DomFileList
+impl core::cmp::PartialEq for surgeist_dom::file::DomFileList
+pub fn surgeist_dom::file::DomFileList::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_dom::file::DomFileList
+pub fn surgeist_dom::file::DomFileList::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_dom::file::DomFileListId(_)
 pub mod surgeist_dom::focus
 pub enum surgeist_dom::focus::DomFocusObservation
 pub surgeist_dom::focus::DomFocusObservation::Denied
@@ -986,7 +1014,7 @@ pub fn surgeist_dom::form::DomInputState::flags(&self) -> surgeist_html::interna
 pub fn surgeist_dom::form::DomInputState::image_history(&self) -> &surgeist_html::internal::elements::input_image::HtmlInputImageHistory<surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_dom::form::DomInputState::input_type(&self) -> surgeist_html::internal::attributes::HtmlInputType
 pub fn surgeist_dom::form::DomInputState::parser_inserted(&self) -> bool
-pub fn surgeist_dom::form::DomInputState::selected_files(&self) -> core::option::Option<surgeist_html::internal::elements::input::HtmlInputFileSelection>
+pub fn surgeist_dom::form::DomInputState::selected_files(&self) -> core::option::Option<&surgeist_dom::file::DomFileList>
 pub fn surgeist_dom::form::DomInputState::selection(&self) -> core::option::Option<surgeist_html::internal::elements::input::HtmlInputSelection>
 pub struct surgeist_dom::form::DomOutput<'a>
 impl<'a> surgeist_dom::form::DomOutput<'a>
@@ -3093,6 +3121,7 @@ impl surgeist_dom::source::DomSourceEdit
 pub fn surgeist_dom::source::DomSourceEdit::add_select_option(select: surgeist_dom::identity::NodeId, element: surgeist_dom::identity::NodeId, before: surgeist_dom::form::select::DomSelectOptionBefore) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::after(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::append(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::assign_input_files(input: surgeist_dom::identity::NodeId, files: core::option::Option<surgeist_dom::file::DomFileList>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::before(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::create_html_table_body(table: surgeist_dom::identity::NodeId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::create_html_table_body_in_attachment(table: surgeist_dom::identity::NodeId, fallback: surgeist_dom::script::DomCreationRealmFallback) -> Self
@@ -3109,6 +3138,7 @@ pub fn surgeist_dom::source::DomSourceEdit::insert_html_table_cell_in_attachment
 pub fn surgeist_dom::source::DomSourceEdit::insert_html_table_row(receiver: surgeist_dom::identity::NodeId, index: i32) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::insert_html_table_row_in_attachment(receiver: surgeist_dom::identity::NodeId, index: i32, fallback: surgeist_dom::script::DomCreationRealmFallback) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::prepend(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::queue_input_file_selection(input: surgeist_dom::identity::NodeId, observed: surgeist_dom::identity::DomStamp, files: surgeist_dom::file::DomFileList) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::remove_select_option(select: surgeist_dom::identity::NodeId, index: i32) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::replace_children(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::replace_with(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
@@ -3633,9 +3663,11 @@ pub surgeist_dom::task::DomNativeCheckpoint::Idle
 pub surgeist_dom::task::DomNativeCheckpoint::Select(surgeist_dom::form::select::DomSelectTask)
 pub surgeist_dom::task::DomNativeCheckpoint::Slots(surgeist_dom::shadow::DomSlotNotifications)
 pub enum surgeist_dom::task::DomQueuedSourceElementTask
+pub surgeist_dom::task::DomQueuedSourceElementTask::FileSelection(surgeist_dom::task::DomFileSelectionTask)
 pub surgeist_dom::task::DomQueuedSourceElementTask::ObjectRepresentation(surgeist_dom::task::DomObjectRepresentationTask)
 pub surgeist_dom::task::DomQueuedSourceElementTask::TextSelection(surgeist_dom::task::DomTextSelectionTaskInfo)
 pub enum surgeist_dom::task::DomSourceElementTaskInfo
+pub surgeist_dom::task::DomSourceElementTaskInfo::FileSelection(surgeist_dom::task::DomFileSelectionTaskInfo)
 pub surgeist_dom::task::DomSourceElementTaskInfo::ObjectRepresentation(surgeist_dom::task::DomObjectRepresentationTaskInfo)
 pub surgeist_dom::task::DomSourceElementTaskInfo::TextSelection(surgeist_dom::task::DomTextSelectionTaskInfo)
 pub struct surgeist_dom::task::DomElementTaskAssociation
@@ -3662,6 +3694,15 @@ impl surgeist_dom::task::DomElementTaskSource
 pub fn surgeist_dom::task::DomElementTaskSource::retain_payload(&self, dom: &mut surgeist_dom::Dom, bytes: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::task::DomElementTaskRetention, surgeist_dom::DomError>
 impl core::fmt::Debug for surgeist_dom::task::DomElementTaskSource
 pub fn surgeist_dom::task::DomElementTaskSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_dom::task::DomFileSelectionTask
+impl surgeist_dom::task::DomFileSelectionTask
+pub const fn surgeist_dom::task::DomFileSelectionTask::info(&self) -> surgeist_dom::task::DomFileSelectionTaskInfo
+impl core::fmt::Debug for surgeist_dom::task::DomFileSelectionTask
+pub fn surgeist_dom::task::DomFileSelectionTask::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_dom::task::DomFileSelectionTaskInfo
+impl surgeist_dom::task::DomFileSelectionTaskInfo
+pub const fn surgeist_dom::task::DomFileSelectionTaskInfo::id(self) -> surgeist_dom::task::DomElementTaskId
+pub const fn surgeist_dom::task::DomFileSelectionTaskInfo::queue_association(self) -> surgeist_dom::task::DomElementTaskAssociation
 pub struct surgeist_dom::task::DomNativeCheckpointLimits
 impl surgeist_dom::task::DomNativeCheckpointLimits
 pub fn surgeist_dom::task::DomNativeCheckpointLimits::new(scratch_bytes: usize, work: u64, slots: surgeist_dom::shadow::DomSlotQueryLimits) -> core::result::Result<Self, surgeist_dom::DomError>
@@ -4429,6 +4470,8 @@ pub surgeist_dom::DomError::EncodingUrlFacts(surgeist_dom::url::DomEncodingUrlFa
 pub surgeist_dom::DomError::EncodingUrlWorkLimit
 pub surgeist_dom::DomError::EncodingUrlWorkLimit::limit: u64
 pub surgeist_dom::DomError::EventRegistryAlreadyBound
+pub surgeist_dom::DomError::FileSelectionInapplicable
+pub surgeist_dom::DomError::FileSelectionTaskSourceUnavailable
 pub surgeist_dom::DomError::FocusDelegateProtocol(surgeist_html::internal::focus::focus_delegate::HtmlFocusDelegateError)
 pub surgeist_dom::DomError::FocusedAreaDesignationUnavailable
 pub surgeist_dom::DomError::FocusedAreaDesignationUnavailable::document: core::option::Option<surgeist_dom::identity::DocumentId>
@@ -4469,6 +4512,7 @@ pub surgeist_dom::DomError::InlineStyleProfileMissing::element: surgeist_dom::id
 pub surgeist_dom::DomError::InputColorFacts(surgeist_css::color::bounded::CssColorFactDefect)
 pub surgeist_dom::DomError::InputColorUnavailable(surgeist_css::color::bounded::CssColorUnavailable)
 pub surgeist_dom::DomError::InputColorUnsupported(surgeist_css::color::bounded::CssColorUnsupported)
+pub surgeist_dom::DomError::InputFileNameContainsPath
 pub surgeist_dom::DomError::InputFilenameInvalidState
 pub surgeist_dom::DomError::InputInapplicable
 pub surgeist_dom::DomError::InputNumeric(surgeist_html::internal::microsyntax::numeric::range::HtmlRangeNumericError)
@@ -4575,6 +4619,7 @@ pub surgeist_dom::DomError::SourceUrlUnavailable
 pub surgeist_dom::DomError::SourceWorkLimit
 pub surgeist_dom::DomError::SourceWorkLimit::limit: u64
 pub surgeist_dom::DomError::StaleChildListObserver
+pub surgeist_dom::DomError::StaleFileSelection
 pub surgeist_dom::DomError::StaleFullscreenExit
 pub surgeist_dom::DomError::StaleNode
 pub surgeist_dom::DomError::StaleNodeIterator
@@ -4881,6 +4926,8 @@ impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::resume_fullscreen_exit(&mut self, source: &surgeist_dom::hosted::DomHostedSource, job: &mut surgeist_dom::fullscreen::DomFullscreenExitJob, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::fullscreen::DomFullscreenExitStatus, surgeist_dom::DomError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::resume_queued_history<'a>(&'a mut self, source: &mut surgeist_dom::hosted::DomHostedSource, queued: &mut surgeist_dom::hosted::history::DomHostedQueuedHistory, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::history::DomHostedHistoryStep<'a>, surgeist_dom::hosted::DomHostedError>
+impl surgeist_dom::Dom
+pub fn surgeist_dom::Dom::run_file_selection_task(&mut self, task: &mut core::option::Option<surgeist_dom::task::DomFileSelectionTask>, limits: surgeist_dom::source::DomSourceLimits, bank_work: &mut u64, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<core::option::Option<surgeist_dom::DomCommit>, surgeist_dom::DomError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::run_object_representation_task(&mut self, task: &mut core::option::Option<surgeist_dom::task::DomObjectRepresentationTask>, limits: surgeist_dom::source::DomSourceLimits, bank_work: &mut u64, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomCommit, surgeist_dom::DomError>
 impl surgeist_dom::Dom

@@ -1,7 +1,118 @@
 //! Attached Input accessors observe the canonical value modes and live flags.
 
 use super::*;
-use surgeist_html::{attributes::HtmlInputType, elements::input::HtmlInputFileSelection};
+use surgeist_html::attributes::HtmlInputType;
+
+pub(super) fn attached_user_file_task_delivers_plain_trusted_events() {
+    use surgeist_dom::{
+        file::{DomFile, DomFileList},
+        task::DomElementTaskSourceKind::UserInteraction,
+    };
+    use surgeist_runtime::element_task::{DomElementTaskProgress, DomElementTaskRunLimits};
+
+    let (mut session, top) = setup();
+    let cancellation = Arc::new(cancel());
+    let control = {
+        let snapshot = session.snapshot();
+        let root = snapshot
+            .document(top.document())
+            .unwrap()
+            .document_element()
+            .unwrap();
+        let body = *snapshot.node(root).unwrap().children().last().unwrap();
+        let mut batch = DomBatch::new();
+        let control = batch.create_element_ns(top.document(), Namespace::html(), "input");
+        batch.set_attribute(&control, "type", "file");
+        batch.set_attribute(&control, "id", "user-file-input");
+        batch.insert_before(&control, body, None);
+        session
+            .dom()
+            .apply(batch, &cancellation)
+            .unwrap()
+            .created(&control)
+            .unwrap()
+            .unwrap()
+    };
+    let (mut host, _) =
+        attach_event_window_with_work(session, top, cancellation.clone(), 160_000, |_, _, _| {});
+    let permit = host.permit().unwrap();
+    observe(
+        &mut host,
+        &permit,
+        r#"(() => {
+            const control = document.getElementById('user-file-input');
+            if (control.value !== '') return 'initial selection must be empty';
+            globalThis.fileTaskEvents = [];
+            for (const type of ['input', 'change']) {
+                document.body.addEventListener(type, event => {
+                    fileTaskEvents.push(
+                        Object.getPrototypeOf(event) === Event.prototype &&
+                        event.target === control && event.currentTarget === document.body &&
+                        event.type === type && event.isTrusted && event.bubbles &&
+                        !event.cancelable && event.composed === (type === 'input') &&
+                        control.value === String.raw`C:\fakepath\from-host.txt` ? type : 'wrong event'
+                    );
+                });
+            }
+            return 'ok';
+        })()"#,
+    );
+    let file = DomFile::from_owned_parts("from-host.txt".into(), "".into(), vec![42]).unwrap();
+    let list = DomFileList::from_files(vec![file]).unwrap();
+    let source_limits = DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2);
+    let observed = host.snapshot().unwrap().stamp();
+    host.with_native(|dom, _, mut source| {
+        let progress = source
+            .apply(
+                dom,
+                DomSourceEdit::queue_input_file_selection(control, observed, list),
+                source_limits,
+                &mut DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| None,
+                    url: None,
+                },
+                &cancellation,
+            )
+            .unwrap();
+        assert!(matches!(progress, DomSourceDriveProgress::Complete(_)));
+    })
+    .unwrap();
+    assert_eq!(host.snapshot().unwrap().stamp(), observed);
+    let DomElementTaskProgress::FileSelectionComplete {
+        task,
+        input,
+        change,
+        ..
+    } = host
+        .run_attached_element_task(
+            &permit,
+            UserInteraction,
+            DomElementTaskRunLimits {
+                dispatch: DomEventDispatchLimits {
+                    path_items: 16,
+                    snapshot_listeners: 16,
+                    failure_records: 8,
+                    callbacks: 16,
+                    work: 100_000,
+                },
+                source: source_limits,
+            },
+        )
+        .unwrap()
+    else {
+        panic!("the attached task must deliver both guest events")
+    };
+    assert_eq!(task.id().target(), control);
+    assert_eq!(input.callbacks(), 1);
+    assert_eq!(change.unwrap().callbacks(), 1);
+    observe(
+        &mut host,
+        &permit,
+        "fileTaskEvents.join() === 'input,change' ? 'ok' : fileTaskEvents.join()",
+    );
+}
 
 pub(super) fn attached_input_exposes_canonical_value_modes_and_checkedness() {
     let (session, top) = setup();
@@ -210,10 +321,7 @@ pub(super) fn attached_input_exposes_canonical_value_modes_and_checkedness() {
     assert!(input(&before, other).state().flags().checkedness());
     let empty_file = input(&before, file).state();
     assert_eq!(empty_file.input_type(), HtmlInputType::File);
-    assert_eq!(
-        empty_file.selected_files(),
-        Some(HtmlInputFileSelection::Empty)
-    );
+    assert!(empty_file.selected_files().unwrap().is_empty());
 
     observe(
         &mut host,

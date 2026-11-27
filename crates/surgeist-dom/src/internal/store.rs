@@ -40,6 +40,7 @@ pub(crate) mod compact_tests;
 mod control;
 mod csp;
 pub(crate) mod custody;
+pub(crate) mod files;
 pub(crate) use custody::{MaterializationId, Usage as MaterializationUsage};
 mod compound;
 mod design_mode;
@@ -460,6 +461,8 @@ pub enum DomError {
     InputFilenameInvalidState,
     InputSelectionInvalidState,
     InputStepInvalidState,
+    /// A selected File name contains a path component.
+    InputFileNameContainsPath,
     InputProcessingProtocol,
     InputProcessingWorkLimit {
         limit: u64,
@@ -508,6 +511,9 @@ pub enum DomError {
     TrackMembershipUnavailable,
     ObjectTaskSourceUnavailable,
     TextSelectionTaskSourceUnavailable,
+    FileSelectionTaskSourceUnavailable,
+    StaleFileSelection,
+    FileSelectionInapplicable,
     ObjectHostedTransitionUnavailable,
     ImageUpdateExhausted,
     HyperlinkProcessingUnavailable,
@@ -673,6 +679,7 @@ impl std::fmt::Display for DomError {
             Self::InputFilenameInvalidState => f.write_str("a file Input accepts only an empty string as its value"),
             Self::InputSelectionInvalidState => f.write_str("positional selection does not apply to this Input type"),
             Self::InputStepInvalidState => f.write_str("stepping is inapplicable or this Input has no allowed step"),
+            Self::InputFileNameContainsPath => f.write_str("a selected file name contains a path component"),
             Self::InputProcessingProtocol => f.write_str("the Input processing protocol was violated"),
             Self::InputProcessingWorkLimit { limit } => write!(f, "Input processing exhausted its work allowance of {limit}"),
             Self::InputNumeric(..) => f.write_str("Input numeric processing failed"),
@@ -716,6 +723,9 @@ impl std::fmt::Display for DomError {
             Self::TrackMembershipUnavailable => f.write_str("the Track element's media membership is unavailable"),
             Self::ObjectTaskSourceUnavailable => f.write_str("the Object element's representation task source is unavailable"),
             Self::TextSelectionTaskSourceUnavailable => f.write_str("the text control's select event task source is unavailable"),
+            Self::FileSelectionTaskSourceUnavailable => f.write_str("the Input file selection task source is unavailable"),
+            Self::StaleFileSelection => f.write_str("the Input file selection observation is stale"),
+            Self::FileSelectionInapplicable => f.write_str("the Input cannot accept this user file selection"),
             Self::ObjectHostedTransitionUnavailable => f.write_str("the Object element's reached hosted representation transition is unavailable"),
             Self::ImageUpdateExhausted => f.write_str("no image update identities remain"),
             Self::HyperlinkProcessingUnavailable => f.write_str("hyperlink processing is unavailable for this operation"),
@@ -955,6 +965,7 @@ impl std::error::Error for DomError {
             | Self::InputFilenameInvalidState
             | Self::InputSelectionInvalidState
             | Self::InputStepInvalidState
+            | Self::InputFileNameContainsPath
             | Self::InputProcessingProtocol
             | Self::InputProcessingWorkLimit { .. }
             | Self::InputColorUnavailable(..)
@@ -990,6 +1001,9 @@ impl std::error::Error for DomError {
             | Self::TrackMembershipUnavailable
             | Self::ObjectTaskSourceUnavailable
             | Self::TextSelectionTaskSourceUnavailable
+            | Self::FileSelectionTaskSourceUnavailable
+            | Self::StaleFileSelection
+            | Self::FileSelectionInapplicable
             | Self::ObjectHostedTransitionUnavailable
             | Self::ImageUpdateExhausted
             | Self::HyperlinkProcessingUnavailable

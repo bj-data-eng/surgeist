@@ -2,13 +2,13 @@ use crate::parser::support::limits;
 use surgeist_html::{
     attributes::HtmlInputType,
     construction::{HtmlDocumentMode, HtmlNodeKind},
-    elements::input::{HtmlInputFileSelection, HtmlInputValueMode},
+    elements::input::HtmlInputValueMode,
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlInputImageSource,
     HtmlParseFailureReason, HtmlParseMetadataStep, HtmlParseReport, HtmlParseResource,
-    HtmlParseStop, HtmlParseUnsupportedState, HtmlSource,
+    HtmlParseStop, HtmlParseUnsupportedState, HtmlParsedEmptyFileSelection, HtmlSource,
 };
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -95,15 +95,14 @@ fn filename_is_empty_with_exact_raw_and_current_default_fields_and_real_form_own
                             record.input_raw_value().unwrap().code_units(),
                             DocumentString::from(raw).code_units()
                         );
-                        assert_eq!(
-                            record.input_file_selection(),
-                            Some(HtmlInputFileSelection::Empty)
-                        );
+                        let files: Option<HtmlParsedEmptyFileSelection> =
+                            record.input_file_selection();
+                        assert!(files.is_some());
                         assert_eq!(
                             flags.input_type().value_mode().readback(
                                 record.input_raw_value().unwrap().code_units(),
                                 None,
-                                record.input_file_selection(),
+                                files.map(|_| &[][..]),
                             ),
                             Some(&[][..])
                         );
@@ -166,7 +165,7 @@ fn image_initial_coordinates_and_source_are_exact_and_getter_uses_actual_content
                             flags.input_type().value_mode().readback(
                                 record.input_raw_value().unwrap().code_units(),
                                 content.map(|a| a.value().code_units()),
-                                record.input_file_selection(),
+                                None,
                             ),
                             Some(&[65, 13, 66][..])
                         );
@@ -533,18 +532,18 @@ fn native_value_modes_use_explicit_content_and_fixed_qualified_metadata_lenders(
                         .map(|a| a.value().code_units());
                     assert_eq!(content, expected_content);
                     let files = record.input_file_selection();
-                    assert_eq!(
-                        files,
-                        (kind == HtmlInputType::File).then_some(HtmlInputFileSelection::Empty)
-                    );
+                    assert_eq!(files.is_some(), kind == HtmlInputType::File);
                     // Value and Filename consult no content evidence at all.
                     let consulted = match kind.value_mode() {
                         HtmlInputValueMode::Value | HtmlInputValueMode::Filename => None,
                         HtmlInputValueMode::Default | HtmlInputValueMode::DefaultOn => content,
                     };
                     assert_eq!(
-                        kind.value_mode()
-                            .readback(raw.code_units(), consulted, files),
+                        kind.value_mode().readback(
+                            raw.code_units(),
+                            consulted,
+                            files.map(|_| &[][..])
+                        ),
                         Some(expected_value)
                     );
                 }

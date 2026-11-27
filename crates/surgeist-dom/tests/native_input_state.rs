@@ -23,6 +23,10 @@ use surgeist_html::{
     values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
+#[path = "native_input_state/file_objects.rs"]
+mod file_objects;
+#[path = "native_input_state/file_state.rs"]
+mod file_state;
 #[path = "support/input_processing.rs"]
 mod processing_envelope;
 #[path = "native_input_state/stepping.rs"]
@@ -329,10 +333,7 @@ fn type_transfers_default_on_file_and_selection_follow_the_ordered_effects() {
     apply(&mut dom, b);
     let s = dom.snapshot();
     assert_eq!(value(&s, input), "".into());
-    assert_eq!(
-        state(&s, input).selected_files(),
-        Some(surgeist_html::elements::input::HtmlInputFileSelection::Empty)
-    );
+    assert!(state(&s, input).selected_files().unwrap().is_empty());
     let usage = dom.usage();
     let mut b = DomBatch::new();
     b.set_input_value(input, "fake.txt");
