@@ -121,6 +121,13 @@ lifetime, so unrelated issuer progress does not invalidate it. Actual Host
 retirement/reuse, disposed authority or a stale canonical basis still refuses.
 Mutable positive-focus observations are not admitted by this Host profile.
 
+Explicit canonical retirement clears every surviving common HTML
+previous-focus slot that names the retiring Element. The clear and
+retirement share one publication, with element-state change evidence for
+affected survivors. The same rule applies to an unpublished target retired
+within its creating edit. Historical snapshots keep their original reference.
+Detach, adoption and hosted deactivation follow their own source transitions.
+
 Show then captures the receiver's current node-Document in its original
 continuation. The ancestry query reads that Document's qualified raw top layer
 and the members' actual popover visibility. The admitted common state proves
