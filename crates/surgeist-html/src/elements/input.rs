@@ -23,3 +23,7 @@ pub use crate::internal::elements::input_selection::{
     HtmlRangeTextBounds, HtmlRangeTextError, HtmlRangeTextMode, HtmlRangeTextPlan,
     HtmlRangeTextTarget,
 };
+pub use crate::internal::elements::input_step::{
+    HtmlInputStepBounds, HtmlInputStepCoordinate, HtmlInputStepDirection, HtmlInputStepError,
+    HtmlInputStepGrid,
+};

@@ -4694,6 +4694,17 @@ pub surgeist_html::elements::input::HtmlInputSelectionDirection::Forward
 pub surgeist_html::elements::input::HtmlInputSelectionDirection::None
 impl surgeist_html::elements::input::HtmlInputSelectionDirection
 pub fn surgeist_html::elements::input::HtmlInputSelectionDirection::resolve_none(self, support: surgeist_html::elements::input::HtmlInputNoneDirectionSupport) -> Self
+pub enum surgeist_html::elements::input::HtmlInputStepDirection
+pub surgeist_html::elements::input::HtmlInputStepDirection::Down
+pub surgeist_html::elements::input::HtmlInputStepDirection::Up
+pub enum surgeist_html::elements::input::HtmlInputStepError<E>
+pub surgeist_html::elements::input::HtmlInputStepError::Work(E)
+pub surgeist_html::elements::input::HtmlInputStepError::Workspace
+pub surgeist_html::elements::input::HtmlInputStepError::ZeroStep
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_html::elements::input::HtmlInputStepError<E>
+pub fn surgeist_html::elements::input::HtmlInputStepError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E: core::fmt::Display> core::fmt::Display for surgeist_html::elements::input::HtmlInputStepError<E>
+pub fn surgeist_html::elements::input::HtmlInputStepError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::elements::input::HtmlInputTemporalFormat
 pub surgeist_html::elements::input::HtmlInputTemporalFormat::Date
 pub surgeist_html::elements::input::HtmlInputTemporalFormat::LocalDateTime
@@ -4844,6 +4855,23 @@ pub const fn surgeist_html::elements::input::HtmlInputSelection::offsets(self) -
 pub fn surgeist_html::elements::input::HtmlInputSelection::selection(start: usize, end: usize, direction: surgeist_html::elements::input::HtmlInputSelectionDirection) -> core::result::Result<Self, surgeist_html::elements::input::HtmlInputInvalidSelectionRange>
 pub fn surgeist_html::elements::input::HtmlInputSelection::selection_range(self) -> core::option::Option<(usize, usize, surgeist_html::elements::input::HtmlInputSelectionDirection)>
 pub fn surgeist_html::elements::input::HtmlInputSelection::set_direction(self, requested: surgeist_html::elements::input::HtmlInputSelectionDirection, none_support: surgeist_html::elements::input::HtmlInputNoneDirectionSupport) -> Self
+pub struct surgeist_html::elements::input::HtmlInputStepBounds<'a>
+pub surgeist_html::elements::input::HtmlInputStepBounds::base: &'a surgeist_html::microsyntax::numeric::HtmlSignedDecimal
+pub surgeist_html::elements::input::HtmlInputStepBounds::maximum: core::option::Option<&'a surgeist_html::microsyntax::numeric::HtmlSignedDecimal>
+pub surgeist_html::elements::input::HtmlInputStepBounds::minimum: core::option::Option<&'a surgeist_html::microsyntax::numeric::HtmlSignedDecimal>
+pub surgeist_html::elements::input::HtmlInputStepBounds::step: &'a surgeist_html::microsyntax::numeric::HtmlNonNegativeDecimal
+impl<'input> surgeist_html::elements::input::HtmlInputStepBounds<'input>
+pub fn surgeist_html::elements::input::HtmlInputStepBounds<'input>::qualification_cells(self) -> core::option::Option<usize>
+pub fn surgeist_html::elements::input::HtmlInputStepBounds<'input>::qualify<E>(self, scratch: &mut [u8], tick: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::elements::input::HtmlInputStepGrid<'input>>, surgeist_html::elements::input::HtmlInputStepError<E>>
+pub struct surgeist_html::elements::input::HtmlInputStepCoordinate<'a>
+impl<'a> surgeist_html::elements::input::HtmlInputStepCoordinate<'a>
+pub const fn surgeist_html::elements::input::HtmlInputStepCoordinate<'a>::coefficient(self) -> &'a [u8]
+pub const fn surgeist_html::elements::input::HtmlInputStepCoordinate<'a>::is_negative(self) -> bool
+pub const fn surgeist_html::elements::input::HtmlInputStepCoordinate<'a>::scale(self) -> usize
+pub struct surgeist_html::elements::input::HtmlInputStepGrid<'a>
+impl surgeist_html::elements::input::HtmlInputStepGrid<'_>
+pub fn surgeist_html::elements::input::HtmlInputStepGrid<'_>::project<'work, E>(self, current: core::option::Option<&surgeist_html::microsyntax::numeric::HtmlSignedDecimal>, direction: surgeist_html::elements::input::HtmlInputStepDirection, count: i32, scratch: &'work mut [u8], tick: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::elements::input::HtmlInputStepCoordinate<'work>>, surgeist_html::elements::input::HtmlInputStepError<E>>
+pub fn surgeist_html::elements::input::HtmlInputStepGrid<'_>::scratch_cells(self, current: core::option::Option<&surgeist_html::microsyntax::numeric::HtmlSignedDecimal>) -> core::option::Option<usize>
 pub struct surgeist_html::elements::input::HtmlInputTypeChange
 impl surgeist_html::elements::input::HtmlInputTypeChange
 pub fn surgeist_html::elements::input::HtmlInputTypeChange::new(previous: surgeist_html::attributes::HtmlInputType, next: surgeist_html::attributes::HtmlInputType, current_value_len: usize) -> Self

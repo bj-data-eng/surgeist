@@ -19,6 +19,7 @@ pub(crate) mod input_color;
 pub(crate) mod input_image;
 pub(crate) mod input_range;
 pub(crate) mod input_selection;
+pub(crate) mod input_step;
 pub(crate) mod input_value_conversion;
 pub(crate) mod marquee;
 pub(crate) mod media;

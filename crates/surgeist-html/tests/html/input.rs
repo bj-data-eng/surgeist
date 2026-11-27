@@ -7,5 +7,6 @@ mod image_values;
 mod radio_rules;
 mod range_sanitation;
 mod selection_rules;
+mod stepping;
 mod temporal_rules;
 mod value_conversion;
