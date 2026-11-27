@@ -4,7 +4,7 @@ use std::ops::ControlFlow;
 use super::node_iterator::traversal::{OrdinaryTree, following};
 use super::{Dom, DomError, DomResource, DomSnapshot, check_cancel, read_source::ReadSource};
 use crate::internal::identity::{DocumentId, NodeId};
-use crate::internal::snapshot::{DomNode, DomNodeKind};
+use crate::internal::snapshot::{DescendantSearch, DomNode, DomNodeKind};
 use std::sync::atomic::AtomicBool;
 
 pub(super) struct CollectionRead<'dom, A> {
@@ -160,10 +160,10 @@ where
         Ok(None)
     }
 
-    pub(super) fn descendants<T>(
-        &self,
+    pub(super) fn descendants<'read, T>(
+        &'read self,
         root: NodeId,
-        mut visit: impl FnMut(DomNode<'_>) -> Result<ControlFlow<T>, E>,
+        mut visit: impl FnMut(DomNode<'read>) -> Result<ControlFlow<T>, E>,
     ) -> Result<Option<T>, E> {
         let mut at = self.child(root, 0)?;
         while let Some(id) = at {
@@ -177,6 +177,17 @@ where
             };
         }
         Ok(None)
+    }
+
+    pub(super) fn inclusive_tree<T>(
+        &self,
+        root: DomNode<'_>,
+        mut visit: impl FnMut(DomNode<'_>) -> Result<ControlFlow<T>, E>,
+    ) -> Result<Option<T>, E> {
+        if let ControlFlow::Break(value) = visit(root)? {
+            return Ok(Some(value));
+        }
+        self.descendants(root.id(), visit)
     }
 }
 
@@ -199,5 +210,28 @@ where
 
     fn last_child(&self, parent: NodeId) -> Result<Option<NodeId>, E> {
         Ok(self.node(parent)?.children().last().copied())
+    }
+}
+
+impl<'node, A, E> DescendantSearch<'node, E> for &'node CollectionRead<'_, A>
+where
+    A: Fn() -> Result<(), E>,
+    E: From<DomError>,
+{
+    fn find<T, Step>(
+        &mut self,
+        root: DomNode<'node>,
+        mut step: Step,
+        mut select: impl FnMut(DomNode<'node>, &mut Step) -> Result<Option<T>, E>,
+    ) -> Result<Option<T>, E>
+    where
+        Step: FnMut() -> Result<(), E>,
+    {
+        self.descendants(root.id(), |node| {
+            Ok(match select(node, &mut step)? {
+                Some(value) => ControlFlow::Break(value),
+                None => ControlFlow::Continue(()),
+            })
+        })
     }
 }

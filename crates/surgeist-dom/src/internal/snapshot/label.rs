@@ -1,6 +1,9 @@
 //! HTML Label association over the ordinary tree in an admitted snapshot.
 
-use super::{Descendant, DomError, DomNode, NodeId};
+use super::{
+    DescendantSearch, DomError, DomNode, NodeId, ReservedDescendantSearch,
+    element_id::NonemptyElementId,
+};
 use crate::internal::{
     element::DomElementDefinition,
     form::DomForm,
@@ -13,10 +16,57 @@ use surgeist_html::{
 
 const FOR: &[u16] = &[0x66, 0x6f, 0x72];
 
-enum LabeledControl<'a> {
+pub(crate) enum LabeledControl<'a> {
     Native(DomNode<'a>, KnownHtmlElement),
     Custom(DomNode<'a>),
     UnsettledCustom(DomNode<'a>),
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum LabelTarget<'a> {
+    Explicit(NonemptyElementId<'a>),
+    Implicit,
+}
+
+impl<'a> LabelTarget<'a> {
+    /// Resolve this target through the native Label association rules.
+    /// Reverse lookups may require one exact control and avoid qualifying
+    /// an explicit ID match that already proves a different identity.
+    pub(crate) fn resolve_with<E: From<DomError>>(
+        self,
+        label: DomNode<'a>,
+        expected: Option<NodeId>,
+        mut step: impl FnMut() -> Result<(), E>,
+        search: &mut impl DescendantSearch<'a, E>,
+    ) -> Result<Option<LabeledControl<'a>>, E> {
+        match self {
+            Self::Explicit(id) => {
+                let root = label.root_with(false, &mut step)?;
+                let Some(first) = root.resolve_element_id_with(id, true, &mut step, search)? else {
+                    return Ok(None);
+                };
+                if expected.is_some_and(|expected| expected != first.id()) {
+                    return Ok(None);
+                }
+                first.as_labeled_control(&mut step)
+            }
+            Self::Implicit => {
+                let first = search.find(label, step, |node, step| node.as_labeled_control(step))?;
+                Ok(
+                    first
+                        .filter(|control| expected.is_none_or(|expected| expected == control.id())),
+                )
+            }
+        }
+    }
+}
+
+impl LabeledControl<'_> {
+    fn id(&self) -> NodeId {
+        match self {
+            Self::Native(node, _) | Self::Custom(node) | Self::UnsettledCustom(node) => node.id(),
+        }
+    }
 }
 
 impl<'a> DomNode<'a> {
@@ -40,11 +90,7 @@ impl<'a> DomNode<'a> {
     ) -> Result<Option<NodeId>, E> {
         Ok(self
             .labeled_control_with(step, reserve)?
-            .map(|control| match control {
-                LabeledControl::Native(node, _)
-                | LabeledControl::Custom(node)
-                | LabeledControl::UnsettledCustom(node) => node.id(),
-            }))
+            .map(|control| control.id()))
     }
 
     /// Read the stored Form owner of this HTML Label's current labeled control.
@@ -81,6 +127,50 @@ impl<'a> DomNode<'a> {
         mut step: impl FnMut() -> Result<(), E>,
         reserve: impl FnMut(usize) -> Result<Backing, E>,
     ) -> Result<Option<LabeledControl<'a>>, E> {
+        if !self.is_html_label_with(&mut step)? {
+            return Err(DomError::WrongNodeKind.into());
+        }
+        let Some(target) = self.label_target_with(&mut step)? else {
+            return Ok(None);
+        };
+        target.resolve_with(self, None, step, &mut ReservedDescendantSearch(reserve))
+    }
+
+    pub(crate) fn is_html_label_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        step()?;
+        let Some(element) = self.as_element() else {
+            return Ok(false);
+        };
+        let name = element.name();
+        if !in_html_namespace_with(name, &mut step)? {
+            return Ok(false);
+        }
+        step()?;
+        Ok(KnownHtmlElement::from_units(name.local_name().code_units())
+            == Some(KnownHtmlElement::Label))
+    }
+
+    pub(crate) fn label_target_with<E: From<DomError>>(
+        self,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<LabelTarget<'a>>, E> {
+        let attributes = self.attributes().ok_or(DomError::WrongNodeKind)?;
+        match attributes.get_null_namespace_attribute_with(FOR, step)? {
+            Some(attribute) => {
+                Ok(NonemptyElementId::new(attribute.value().code_units())
+                    .map(LabelTarget::Explicit))
+            }
+            None => Ok(Some(LabelTarget::Implicit)),
+        }
+    }
+
+    pub(crate) fn native_label_list_applicable_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
         step()?;
         let element = self.as_element().ok_or(DomError::WrongNodeKind)?;
         let name = element.name();
@@ -88,29 +178,24 @@ impl<'a> DomNode<'a> {
             return Err(DomError::WrongNodeKind.into());
         }
         step()?;
-        if KnownHtmlElement::from_units(name.local_name().code_units())
-            != Some(KnownHtmlElement::Label)
-        {
+        let kind = KnownHtmlElement::from_units(name.local_name().code_units())
+            .ok_or(DomError::WrongNodeKind)?;
+        let labelable = self.native_labelable_with(kind, &mut step)?;
+        if !labelable && kind != KnownHtmlElement::Input {
             return Err(DomError::WrongNodeKind.into());
         }
-        let attributes = self.attributes().ok_or(DomError::WrongNodeKind)?;
-        if let Some(target) = attributes.get_null_namespace_attribute_with(FOR, &mut step)? {
-            let target = target.value().code_units();
-            if target.is_empty() {
-                return Ok(None);
-            }
-            let root = self.root_with(false, &mut step)?;
-            let Some(first) = root.element_by_id_with(target, true, &mut step, reserve)? else {
-                return Ok(None);
-            };
-            return first.as_labeled_control(&mut step);
-        }
+        Ok(labelable)
+    }
 
-        self.find_descendant_with(step, reserve, |node, step| {
-            if let Some(control) = node.as_labeled_control(step)? {
-                return Ok(Descendant::Found(control));
-            }
-            Ok(Descendant::Descend)
+    fn native_labelable_with<E: From<DomError>>(
+        self,
+        kind: KnownHtmlElement,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        native_labelability_with(kind, || {
+            self.as_input()
+                .ok_or(DomError::WrongNodeKind)?
+                .input_type_with(step)
         })
     }
 
@@ -129,11 +214,7 @@ impl<'a> DomNode<'a> {
         step()?;
         let local = name.local_name().code_units();
         if let Some(kind) = KnownHtmlElement::from_units(local) {
-            let labelable = native_labelability_with(kind, || {
-                self.as_input()
-                    .ok_or(DomError::WrongNodeKind)?
-                    .input_type_with(&mut *step)
-            })?;
+            let labelable = self.native_labelable_with(kind, step)?;
             return Ok(labelable.then_some(LabeledControl::Native(self, kind)));
         }
 

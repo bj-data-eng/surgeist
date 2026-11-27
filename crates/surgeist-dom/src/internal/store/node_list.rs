@@ -4,17 +4,18 @@ use std::sync::atomic::AtomicBool;
 use super::collection_read::CollectionRead;
 use super::{DocumentId, DocumentString, Dom, DomError, DomResource, NodeId, admit};
 use crate::internal::names::{in_html_namespace_with, same_code_units};
-use crate::internal::snapshot::{DomNode, DomNodeKind};
+use crate::internal::snapshot::{DomNode, DomNodeKind, LabelTarget};
 
 const NAME: &[u16] = &[0x6e, 0x61, 0x6d, 0x65];
 
-/// A live list of ordinary children or of a Document's named HTML elements.
+/// A live list of ordinary children, named Document elements or native control Labels.
 #[derive(Debug)]
 pub struct DomNodeList(Filter);
 
 #[derive(Debug)]
 enum Filter {
     Children(NodeId),
+    ControlLabels(NodeId),
     DocumentName {
         document: DocumentId,
         name: DocumentString,
@@ -24,7 +25,7 @@ enum Filter {
 impl Filter {
     fn root(&self) -> NodeId {
         match self {
-            Self::Children(node) => *node,
+            Self::Children(node) | Self::ControlLabels(node) => *node,
             Self::DocumentName { document, .. } => document.node(),
         }
     }
@@ -56,6 +57,26 @@ impl Dom {
     pub fn child_nodes(&self, node: NodeId, cancel: &AtomicBool) -> Result<DomNodeList, DomError> {
         self.with_collection_root(node, cancel, |_, _, _| Ok(()))?;
         Ok(DomNodeList(Filter::Children(node)))
+    }
+
+    /// Form the live Label list for an HTML Button, Input, Meter, Output,
+    /// Progress, Select or Textarea. A hidden Input returns `None`.
+    ///
+    /// A retained list follows its control through subsequent ordinary roots
+    /// and is empty while the control is hidden.
+    ///
+    /// # Errors
+    /// Returns an error for a foreign, unavailable or wrong-kind control,
+    /// invalid Source read custody, or cancellation.
+    pub fn control_labels(
+        &self,
+        control: NodeId,
+        cancel: &AtomicBool,
+    ) -> Result<Option<DomNodeList>, DomError> {
+        let applicable = self.with_collection_root(control, cancel, |_, node, step| {
+            node.native_label_list_applicable_with(step)
+        })?;
+        Ok(applicable.then_some(DomNodeList(Filter::ControlLabels(control))))
     }
 
     /// Form a live list of ordinary HTML descendants whose null-namespace
@@ -120,33 +141,85 @@ where
 {
     /// Count the current nodes represented by the list.
     pub fn length(&self) -> Result<usize, E> {
+        let mut count = 0_usize;
+        let visit = |_| {
+            count = count
+                .checked_add(1)
+                .ok_or(DomError::RepresentationExhausted)?;
+            Ok(ControlFlow::<()>::Continue(()))
+        };
         match &self.list.0 {
-            Filter::Children(root) => Ok(self.view.node(*root)?.children().len()),
-            Filter::DocumentName { document, name } => {
-                let mut count = 0_usize;
-                self.walk_named::<()>(*document, name, |_| {
-                    count = count
-                        .checked_add(1)
-                        .ok_or(DomError::RepresentationExhausted)?;
-                    Ok(ControlFlow::Continue(()))
-                })?;
-                Ok(count)
-            }
-        }
+            Filter::Children(root) => return Ok(self.view.node(*root)?.children().len()),
+            Filter::ControlLabels(control) => self.walk_labels(*control, visit)?,
+            Filter::DocumentName { document, name } => self.walk_named(*document, name, visit)?,
+        };
+        Ok(count)
     }
 
     /// Resolve one zero-based index in current ordinary tree order.
     pub fn item(&self, mut index: usize) -> Result<Option<NodeId>, E> {
+        let visit = |node| {
+            if index == 0 {
+                return Ok(ControlFlow::Break(node));
+            }
+            index -= 1;
+            Ok(ControlFlow::Continue(()))
+        };
         match &self.list.0 {
             Filter::Children(root) => Ok(self.view.node(*root)?.children().get(index).copied()),
-            Filter::DocumentName { document, name } => self.walk_named(*document, name, |node| {
-                if index == 0 {
-                    return Ok(ControlFlow::Break(node));
-                }
-                index -= 1;
-                Ok(ControlFlow::Continue(()))
-            }),
+            Filter::ControlLabels(control) => self.walk_labels(*control, visit),
+            Filter::DocumentName { document, name } => self.walk_named(*document, name, visit),
         }
+    }
+
+    fn walk_labels<T>(
+        &self,
+        control: NodeId,
+        mut visit: impl FnMut(NodeId) -> Result<ControlFlow<T>, E>,
+    ) -> Result<Option<T>, E> {
+        let control = self.view.node(control)?;
+        let step = || self.view.meter.step();
+        if !control.native_label_list_applicable_with(step)? {
+            return Ok(None);
+        }
+        let root = control.root_with(false, step)?;
+        let mut control_has_first_id = None;
+        self.view.inclusive_tree(root, |label| {
+            if !label.is_html_label_with(step)? {
+                return Ok(ControlFlow::Continue(()));
+            }
+            let Some(target) = label.label_target_with(step)? else {
+                return Ok(ControlFlow::Continue(()));
+            };
+            let resolves_to_control = || -> Result<bool, E> {
+                Ok(target
+                    .resolve_with(label, Some(control.id()), step, &mut &self.view)?
+                    .is_some())
+            };
+            let associated = match target {
+                LabelTarget::Explicit(id) if id.matches_with(control, step)? => {
+                    // Each matching explicit label has the same ID query in
+                    // this view, so its first exact match is shared.
+                    match control_has_first_id {
+                        Some(first) => first,
+                        None => {
+                            let first = resolves_to_control()?;
+                            control_has_first_id = Some(first);
+                            first
+                        }
+                    }
+                }
+                LabelTarget::Implicit if label.contains_with(control.id(), step)? => {
+                    resolves_to_control()?
+                }
+                _ => false,
+            };
+            if associated {
+                visit(label.id())
+            } else {
+                Ok(ControlFlow::Continue(()))
+            }
+        })
     }
 
     fn walk_named<T>(
