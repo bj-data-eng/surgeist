@@ -840,6 +840,16 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             "the Track element's media membership is unavailable",
         ),
         (
+            "ObjectTaskSourceUnavailable",
+            DomError::ObjectTaskSourceUnavailable,
+            "the Object element's representation task source is unavailable",
+        ),
+        (
+            "ObjectHostedTransitionUnavailable",
+            DomError::ObjectHostedTransitionUnavailable,
+            "the Object element's reached hosted representation transition is unavailable",
+        ),
+        (
             "ImageUpdateExhausted",
             DomError::ImageUpdateExhausted,
             "no image update identities remain",
@@ -1183,6 +1193,8 @@ variants! {
     MediaRemovalStableStateUnavailable unit,
     EmbedSetupUnavailable unit,
     TrackMembershipUnavailable unit,
+    ObjectTaskSourceUnavailable unit,
+    ObjectHostedTransitionUnavailable unit,
     ImageUpdateExhausted unit,
     HyperlinkProcessingUnavailable unit,
     EncodingUrlFacts tuple,

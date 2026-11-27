@@ -235,6 +235,7 @@ pub fn surgeist_runtime::document_scripting::DocumentGuestWork::from_fn<T: surge
 pub fn surgeist_runtime::document_scripting::DocumentGuestWork::get<T: surgeist_ledger::dimension::TableValue>(table: &surgeist_runtime::document_scripting::guest::accounting::WorkTable<T>, key: Self) -> &T
 pub fn surgeist_runtime::document_scripting::DocumentGuestWork::get_mut<T: surgeist_ledger::dimension::TableValue>(table: &mut surgeist_runtime::document_scripting::guest::accounting::WorkTable<T>, key: Self) -> &mut T
 #[non_exhaustive] pub enum surgeist_runtime::document_scripting::DocumentHtmlCompletionError
+pub surgeist_runtime::document_scripting::DocumentHtmlCompletionError::ElementTask(surgeist_runtime::element_task::DomElementTaskRuntimeError)
 pub surgeist_runtime::document_scripting::DocumentHtmlCompletionError::Event(surgeist_runtime::document_scripting::DocumentScriptEventError)
 pub surgeist_runtime::document_scripting::DocumentHtmlCompletionError::Hosted(surgeist_runtime::hosted::DomHostedRuntimeError)
 pub surgeist_runtime::document_scripting::DocumentHtmlCompletionError::MissingContinuation
@@ -254,6 +255,7 @@ pub surgeist_runtime::document_scripting::DocumentHtmlCompletionProgress::Idle
 pub surgeist_runtime::document_scripting::DocumentHtmlCompletionProgress::Interactive
 pub surgeist_runtime::document_scripting::DocumentHtmlCompletionProgress::Loaded
 pub surgeist_runtime::document_scripting::DocumentHtmlCompletionProgress::Retained(surgeist_runtime::event::DomEventDispatchOutcome)
+pub surgeist_runtime::document_scripting::DocumentHtmlCompletionProgress::WaitingForObjectTask(surgeist_dom::internal::element_tasks::DomElementTaskId)
 #[non_exhaustive] pub enum surgeist_runtime::document_scripting::DocumentScriptError
 pub surgeist_runtime::document_scripting::DocumentScriptError::Native(surgeist_runtime::document_scripting::DocumentScriptNativeError)
 pub surgeist_runtime::document_scripting::DocumentScriptError::Script(surgeist_bindings_js::error::Error)
@@ -696,6 +698,7 @@ pub enum surgeist_runtime::element_task::DomElementTask
 pub surgeist_runtime::element_task::DomElementTask::DetailsToggle(surgeist_runtime::element_task::DomDetailsTask)
 pub surgeist_runtime::element_task::DomElementTask::DialogClose(surgeist_dom::internal::store::source::operation::dialog_queue::DomDialogCloseTaskInfo)
 pub surgeist_runtime::element_task::DomElementTask::DialogToggle(surgeist_dom::internal::store::source::operation::dialog_queue::DomDialogToggleTaskInfo)
+pub surgeist_runtime::element_task::DomElementTask::ObjectRepresentation(surgeist_dom::internal::store::source::operation::object_queue::DomObjectRepresentationTaskInfo)
 impl surgeist_runtime::element_task::DomElementTask
 pub fn surgeist_runtime::element_task::DomElementTask::details(self) -> core::option::Option<surgeist_runtime::element_task::DomDetailsTask>
 pub fn surgeist_runtime::element_task::DomElementTask::dialog_close(self) -> core::option::Option<surgeist_dom::internal::store::source::operation::dialog_queue::DomDialogCloseTaskInfo>
@@ -710,6 +713,9 @@ pub surgeist_runtime::element_task::DomElementTaskProgress::Complete::displaced_
 pub surgeist_runtime::element_task::DomElementTaskProgress::Complete::receipt: surgeist_runtime::event::DomEventDispatchReceipt
 pub surgeist_runtime::element_task::DomElementTaskProgress::Complete::task: surgeist_runtime::element_task::DomElementTask
 pub surgeist_runtime::element_task::DomElementTaskProgress::Empty
+pub surgeist_runtime::element_task::DomElementTaskProgress::ObjectRepresentationComplete
+pub surgeist_runtime::element_task::DomElementTaskProgress::ObjectRepresentationComplete::displaced_owner: core::option::Option<surgeist_runtime::element_task::DomElementTaskRuntime>
+pub surgeist_runtime::element_task::DomElementTaskProgress::ObjectRepresentationComplete::task: surgeist_dom::internal::store::source::operation::object_queue::DomObjectRepresentationTaskInfo
 pub surgeist_runtime::element_task::DomElementTaskProgress::Retained
 pub surgeist_runtime::element_task::DomElementTaskProgress::Retained::dispatch: surgeist_runtime::event::DomEventDispatchOutcome
 pub surgeist_runtime::element_task::DomElementTaskProgress::Retained::displaced_owner: core::option::Option<surgeist_runtime::element_task::DomElementTaskRuntime>
@@ -728,6 +734,8 @@ pub surgeist_runtime::element_task::DomElementTaskRuntimeError::OutOfOrderTransf
 pub surgeist_runtime::element_task::DomElementTaskRuntimeError::OwnerDisposed
 pub surgeist_runtime::element_task::DomElementTaskRuntimeError::PretransferredSession
 pub surgeist_runtime::element_task::DomElementTaskRuntimeError::SourceEvent(surgeist_runtime::source::DomSourceEventRuntimeError)
+impl core::convert::From<surgeist_dom::internal::store::DomError> for surgeist_runtime::element_task::DomElementTaskRuntimeError
+pub fn surgeist_runtime::element_task::DomElementTaskRuntimeError::from(error: surgeist_dom::internal::store::DomError) -> Self
 impl core::error::Error for surgeist_runtime::element_task::DomElementTaskRuntimeError
 pub fn surgeist_runtime::element_task::DomElementTaskRuntimeError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_runtime::element_task::DomElementTaskRuntimeError
@@ -2086,6 +2094,7 @@ pub struct surgeist_runtime::source::DomSourceRuntime
 impl surgeist_runtime::source::DomSourceRuntime
 pub fn surgeist_runtime::source::DomSourceRuntime::apply<Backing>(&mut self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, input: impl core::convert::Into<surgeist_dom::internal::source::DomSourceInput<Backing>>, limits: surgeist_dom::internal::source::DomSourceLimits, services: &mut surgeist_runtime::source::DomSourceServices<'_>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::source::DomSourceDriveProgress, surgeist_runtime::source::DomSourceDriveError>
 pub fn surgeist_runtime::source::DomSourceRuntime::apply_with_inline_styles(&mut self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, edit: surgeist_runtime::source::DomSourceInlineStyleEdit, limits: surgeist_dom::internal::source::DomSourceLimits, services: &mut surgeist_runtime::source::DomSourceServices<'_>, resolver: impl core::ops::function::FnMut(&[surgeist_cssom::declaration_support::CssomDeclarationCandidate], &surgeist_cssom::model::CssomContext) -> core::result::Result<surgeist_cssom::object_declarations::CssomAdmission, surgeist_cssom::model::CssomError>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::source::DomSourceDriveProgress, surgeist_runtime::source::DomSourceDriveError>
+pub fn surgeist_runtime::source::DomSourceRuntime::cancel_pending_object_admission(&self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, operation: surgeist_dom::internal::source::DomSourceOperationId) -> core::result::Result<(), surgeist_runtime::source::DomSourceRuntimeError>
 pub fn surgeist_runtime::source::DomSourceRuntime::cancel_script_preparation(&self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, operation: surgeist_dom::internal::source::DomSourceOperationId, limits: surgeist_dom::internal::source::DomSourceLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_runtime::source::DomSourceRuntimeError>
 pub fn surgeist_runtime::source::DomSourceRuntime::complete_select(&mut self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, task: &surgeist_dom::internal::select::DomSelectTask, checkpoint: surgeist_dom::internal::select::DomNativeCheckpointLimits, limits: surgeist_dom::internal::source::DomSourceLimits, services: &mut surgeist_runtime::source::DomSourceServices<'_>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::source::DomSelectCompletionProgress, surgeist_runtime::source::DomSourceDriveError>
 pub fn surgeist_runtime::source::DomSourceRuntime::install_native_html(&mut self, dom: &mut surgeist_runtime::event::DomEventDom<'_>, target: surgeist_dom::internal::installation::DomNativeHtmlInstallTarget, fragment: &surgeist_html::internal::construction::HtmlFragment, budgets: surgeist_dom::internal::source::DomSourceNativeHtmlInstallLimits, services: &mut surgeist_runtime::source::DomSourceServices<'_>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::source::DomSourceDriveProgress, surgeist_runtime::source::DomSourceDriveError>

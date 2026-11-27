@@ -1388,6 +1388,7 @@ impl Draft {
         self.base_attribute_change(node, changed, old_value, new_value, limits, cancelled)?;
         self.image_attribute_change(node, changed, old_value, new_value, cancelled)?;
         self.embedded_attribute_change(node, changed, cancelled)?;
+        self.object_attribute_change(node, changed, cancelled)?;
         self.style_attribute_change(node, changed, limits, cancelled)?;
         self.meta_attribute_changed(node, changed, limits, cancelled)?;
         self.hyperlink_attribute_change(node, changed, old_value, new_value, limits, cancelled)

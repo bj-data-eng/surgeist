@@ -504,6 +504,11 @@ impl DomElement {
                 in_document_history: false,
             },
             Requirement::KnownHtml(KnownHtmlElement::Track) => NativeFamily::Track(None),
+            Requirement::FormAssociated(
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Object,
+            ) => NativeFamily::Object(
+                surgeist_html::elements::object::HtmlObjectRepresentation::Undetermined,
+            ),
             Requirement::KnownHtml(KnownHtmlElement::Audio) => NativeFamily::Media {
                 state: surgeist_html::elements::media::HtmlUnloadedMediaState::new(
                     surgeist_html::elements::media::HtmlInitialMediaState::Audio,
@@ -631,6 +636,24 @@ impl DomElement {
         {
             *in_document_history = true;
         }
+    }
+    /// Current representation for an admitted native Object.
+    pub fn object_representation(
+        &self,
+    ) -> Option<surgeist_html::elements::object::HtmlObjectRepresentation> {
+        match self.family {
+            NativeFamily::Object(representation) => Some(representation),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn show_object_fallback(&mut self) -> Result<(), DomError> {
+        let NativeFamily::Object(representation) = &mut self.family else {
+            return Err(DomError::WrongNodeKind);
+        };
+        *representation =
+            surgeist_html::elements::object::HtmlObjectRepresentation::FallbackContent;
+        Ok(())
     }
     /// Observe the original unloaded Audio or Video initialization.
     /// Use [Self::media_can_autoplay] for the live autoplay eligibility flag.
@@ -831,18 +854,26 @@ impl DomElement {
         &mut self,
         value: Option<Arc<Payload<HostedContent>>>,
     ) -> Result<(), DomError> {
-        if self.child_navigable().is_none() {
+        if !self.is_frame_container() {
             return Err(DomError::WrongNodeKind);
         }
         self.hosted = value;
         Ok(())
     }
-    /// The actual Frame or Iframe content navigable.
+    pub(crate) fn is_frame_container(&self) -> bool {
+        matches!(self.family, NativeFamily::Frame | NativeFamily::Iframe(_))
+    }
+    /// The actual Frame, Iframe or Object content navigable.
     ///
     /// `None` indicates an inapplicable element family. `Some(None)` records a null edge.
     pub fn child_navigable(&self) -> Option<Option<crate::internal::hosted::DomHostedNavigableId>> {
-        matches!(self.family, NativeFamily::Frame | NativeFamily::Iframe(_))
-            .then(|| self.hosted.as_ref().and_then(|value| value.value.navigable))
+        match self.family {
+            NativeFamily::Frame | NativeFamily::Iframe(_) => {
+                Some(self.hosted.as_ref().and_then(|value| value.value.navigable))
+            }
+            NativeFamily::Object(_) => Some(None),
+            _ => None,
+        }
     }
     pub(crate) fn hosted_insertion(
         &self,

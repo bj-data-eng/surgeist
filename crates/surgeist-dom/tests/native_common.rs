@@ -15,7 +15,6 @@ use surgeist_html::{
 };
 use surgeist_html::{
     elements::media::{HtmlInitialMediaState, HtmlMediaResourceEffect},
-    elements::native::HtmlElementClass as Requirement,
     security::nonce::HtmlBrowsingContextPresence,
 };
 
@@ -669,9 +668,7 @@ fn unmet_builtin_profiles_reject_the_whole_batch_with_the_actual_requirement() {
     batch.create_element_ns(&document, Namespace::html(), "object");
     assert_eq!(
         dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
-        DomError::NativeInitializationRequired(Requirement::FormAssociated(
-            surgeist_html::elements::form::HtmlNativeFormAssociationKind::Object,
-        ))
+        DomError::ObjectTaskSourceUnavailable
     );
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(dom.usage().managed_nodes(), 0);

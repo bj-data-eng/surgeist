@@ -70,7 +70,7 @@ impl Draft {
         })
     }
 
-    fn check_embed_setup(&self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
+    pub(super) fn check_embed_setup(&self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
         self.effect_step(cancel)?;
         let NativeFamily::Embed {
             in_document_history,
@@ -110,7 +110,9 @@ impl Draft {
             self.effect_step(cancel)?;
             let node = self.node(parent)?;
             if matches!(node.kind(), transaction::KindRead::Element(element)
-                if element.initial_media_state().is_some())
+                if element.initial_media_state().is_some()
+                    || element.object_representation().is_some_and(|state|
+                        state != surgeist_html::elements::object::HtmlObjectRepresentation::FallbackContent))
             {
                 return Ok(());
             }
@@ -159,6 +161,7 @@ impl Draft {
                 }
                 Ok(())
             }
+            NativeFamily::Object(_) => self.object_tree_change(key, root, old_parent, cancel),
             _ => Ok(()),
         }
     }
@@ -184,8 +187,8 @@ impl Draft {
     }
 
     pub(super) fn embedded_adoption(&self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
-        if matches!(self.node(key)?.kind(), transaction::KindRead::Element(element)
-            if element.is_inactive_embed())
+        if let transaction::KindRead::Element(element) = self.node(key)?.kind()
+            && element.is_inactive_embed()
         {
             self.check_embed_setup(key, cancel)?;
         }

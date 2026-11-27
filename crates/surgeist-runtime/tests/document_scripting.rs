@@ -2701,6 +2701,7 @@ fn main() {
             "window-global-event-target" => window_document::window_uses_the_real_global_event_target(),
             "window-native-oracle" => window_document::qualification_window_oracle(),
             "window-local-html-prefix" => local_html::window_listener_attaches_to_the_visible_prefix_before_eof(),
+            "window-object-load-delay" => local_html::window_load_waits_for_original_object_representation_task(),
             "window-timer-scheduling" => window_timers::window_schedules_and_cancels_after_guest_entry(),
             "native_window_exposes_dom_exception" => native_window_exposes_dom_exception(),
             "dom-exception-error-data" => {
@@ -2903,6 +2904,7 @@ fn main() {
     window_document::window_properties_full_assignment_regression();
     tag_collection::reflects_live_tag_collection_properties();
     local_html::window_listener_attaches_to_the_visible_prefix_before_eof();
+    local_html::window_load_waits_for_original_object_representation_task();
     native_window_exposes_dom_exception();
     native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion();
     native_window_dom_exception_admission_and_hook_collision();

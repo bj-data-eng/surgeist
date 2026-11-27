@@ -22,6 +22,7 @@ pub(crate) mod input_value_conversion;
 pub(crate) mod marquee;
 pub(crate) mod media;
 pub(crate) mod native_initialization;
+pub(crate) mod object;
 pub(crate) mod reflected_element;
 pub(crate) mod rel;
 pub(crate) mod script_flags;

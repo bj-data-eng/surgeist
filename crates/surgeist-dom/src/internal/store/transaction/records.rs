@@ -341,6 +341,7 @@ pub(in crate::internal::store) enum Overlay<'a> {
     },
     AttributeRevision(custody::MaterializationId),
     Metadata(&'a DomDocumentMetadata),
+    NativeObjectCount(&'a usize),
     ShadowState(&'a crate::internal::shadow::DomShadowRootState),
     ProcessingInstruction(&'a crate::internal::node_values::DomProcessingInstruction),
     Text(&'a DocumentString),
@@ -1050,6 +1051,16 @@ impl<'a> NodeRead<'a> {
             Source::Canonical(n) => n.active_range(),
             Source::Staged(DraftNode::Document(n)) => n.value().active_range,
             _ => crate::internal::range::DomActiveRangeState::Unavailable,
+        }
+    }
+    pub fn native_object_count(self) -> Option<usize> {
+        if let Some(Overlay::NativeObjectCount(count)) = self.overlay {
+            return Some(*count);
+        }
+        match self.source {
+            Source::Canonical(Node::Document(node)) => Some(node.value.native_objects),
+            Source::Staged(DraftNode::Document(node)) => Some(node.value().native_objects),
+            _ => None,
         }
     }
     pub fn fullscreen_events(self) -> Events<'a> {

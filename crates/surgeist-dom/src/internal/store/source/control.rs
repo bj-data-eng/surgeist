@@ -404,6 +404,8 @@ pub(in crate::internal::store) struct Snapshot {
     reaction_facts: Option<usize>,
     form_associated_custom_changes: Option<usize>,
     scoped_documents: Option<usize>,
+    object_tasks: Option<usize>,
+    object_changes: bool,
     fullscreen_exit: Option<fullscreen::exit::Frame>,
     hosted_pending: Option<operation::hosted::ChildHook>,
     notification_queued: bool,
@@ -433,6 +435,8 @@ impl Snapshot {
                 .pending_scoped_documents
                 .as_ref()
                 .map(|pending| pending.len()),
+            object_tasks: draft.object_tasks.as_ref().map(|tasks| tasks.len()),
+            object_changes: draft.object_changes,
             fullscreen_exit: draft.fullscreen_exit,
             hosted_pending: draft.hosted_pending,
             notification_queued: draft.notification_queued,
@@ -446,6 +450,15 @@ impl Snapshot {
         }
     }
     pub(in crate::internal::store) fn restore(mut self, draft: &mut Draft) {
+        draft.object_changes = self.object_changes;
+        match self.object_tasks {
+            Some(len) => {
+                if let Some(tasks) = &mut draft.object_tasks {
+                    tasks.truncate(len);
+                }
+            }
+            None => draft.object_tasks = None,
+        }
         match self.scoped_documents {
             Some(len) => {
                 if let Some(pending) = &mut draft.pending_scoped_documents {

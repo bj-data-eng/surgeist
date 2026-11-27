@@ -11,6 +11,33 @@ pub(crate) enum HtmlCompletionTask {
 }
 
 impl HostedRuntime {
+    pub(crate) fn object_task_delaying_local_html_load(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        top: DomHostedTopLevel,
+        cancel: &AtomicBool,
+    ) -> Result<
+        Option<surgeist_dom::task::DomElementTaskId>,
+        crate::internal::element_tasks::DomElementTaskRuntimeError,
+    > {
+        use crate::internal::element_tasks::DomElementTaskRuntimeError as Error;
+        let owner = self.state().map_err(Error::Hosted)?;
+        let tasks = owner
+            .try_borrow()
+            .map_err(|_| Error::Busy)?
+            .element_tasks
+            .clone()
+            .ok_or(Error::Binding)?;
+        let waiting = tasks.object_task_delaying_load(&dom.snapshot(), top.document(), cancel)?;
+        if waiting.is_some() {
+            self.with_current_top_level(dom, top, cancel, |_, _| {
+                Ok::<(), DomHostedRuntimeError>(())
+            })
+            .map_err(Error::Hosted)?;
+        }
+        Ok(waiting)
+    }
+
     pub(crate) fn enter_html_completion_task(
         &self,
         dom: &mut DomEventDom<'_>,

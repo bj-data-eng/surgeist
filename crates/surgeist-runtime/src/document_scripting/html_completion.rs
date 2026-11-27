@@ -22,6 +22,9 @@ pub enum DocumentHtmlCompletionProgress {
     Interactive,
     /// The DOMContentLoaded event and its task-end checkpoint completed.
     DomContentLoaded,
+    /// The original Window load task awaits an Object task in the native
+    /// DOM-manipulation source. Its event loop remains available to that source.
+    WaitingForObjectTask(surgeist_dom::task::DomElementTaskId),
     /// The native Window load task and its committed completion tail finished.
     Loaded,
     /// Native dispatch retains the next step of the same task.
@@ -40,6 +43,8 @@ pub enum DocumentHtmlCompletionError {
     Parser(HtmlParseStop),
     /// The native event registry or a listener operation refused the event.
     Event(DocumentScriptEventError),
+    /// The original element-task bank refused load-delay observation.
+    ElementTask(crate::internal::element_tasks::DomElementTaskRuntimeError),
     /// An original EOF continuation is required before completion can begin.
     MissingContinuation,
 }
@@ -54,6 +59,7 @@ impl fmt::Display for DocumentHtmlCompletionError {
                 "the original parser could not finish its stack: {error:?}"
             ),
             Self::Event(error) => error.fmt(f),
+            Self::ElementTask(error) => error.fmt(f),
             Self::MissingContinuation => {
                 f.write_str("HTML completion requires the original EOF continuation")
             }
@@ -68,6 +74,7 @@ impl std::error::Error for DocumentHtmlCompletionError {
             Self::Hosted(error) => Some(error),
             Self::Parser(_) => None,
             Self::Event(error) => Some(error),
+            Self::ElementTask(error) => Some(error),
             Self::MissingContinuation => None,
         }
     }
@@ -215,6 +222,16 @@ impl HtmlCompletion {
         let owner = host.native.clone();
         let cancel = &owner.cancellation;
         let top = self.original.top_level();
+        if self.task == HtmlCompletionTask::WindowLoad
+            && self.custody.is_none()
+            && let Some(task) = host
+                .with_native(|dom, hosted, _| {
+                    hosted.object_task_delaying_local_html_load(dom, top, cancel)
+                })?
+                .map_err(DocumentHtmlCompletionError::ElementTask)?
+        {
+            return Ok(DocumentHtmlCompletionProgress::WaitingForObjectTask(task));
+        }
         let mut running = host.with_native(|dom, hosted, _| {
             hosted.enter_html_completion_task(dom, top, self.task, &mut self.custody, cancel)
         })??;

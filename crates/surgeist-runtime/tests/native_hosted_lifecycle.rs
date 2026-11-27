@@ -124,7 +124,11 @@ fn create(session: &mut DomSession) -> DomHostedTopLevel {
     top
 }
 fn body(snapshot: &DomSnapshot, document: DocumentId) -> NodeId {
-    let root = snapshot.node(document.node()).unwrap().children()[0];
+    let root = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
     let children = snapshot.node(root).unwrap().children();
     assert_eq!(children.len(), 2);
     children[1]
@@ -2607,6 +2611,7 @@ fn canonical_adoption_style_resource_refusal_after_hosted_teardown_preserves_rea
 #[test]
 fn native_object_creation_queues_its_original_task_on_an_active_host() {
     use surgeist_dom::task::DomElementTaskSourceKind;
+    use surgeist_html::elements::object::HtmlObjectRepresentation;
 
     let mut session = session();
     let top = create(&mut session);
@@ -2639,6 +2644,12 @@ fn native_object_creation_queues_its_original_task_on_an_active_host() {
     let node = snapshot.node(object).unwrap();
     assert!(!node.is_connected());
     assert_eq!(node.owner_document(), Some(top.document()));
+    let element = node.as_element().unwrap();
+    assert_eq!(
+        element.object_representation(),
+        Some(HtmlObjectRepresentation::Undetermined)
+    );
+    assert_eq!(element.child_navigable(), Some(None));
     let task = tasks.pending_task(source, 0).unwrap().unwrap();
     assert_eq!(task.id().target(), object);
     assert_eq!(task.source(), source);
@@ -2646,4 +2657,608 @@ fn native_object_creation_queues_its_original_task_on_an_active_host() {
     assert_eq!(original.document(), top.document());
     assert_eq!(original.global(), top.global());
     assert_eq!(tasks.pending_tasks(source).unwrap(), 1);
+
+    let parent = body(&snapshot, top.document());
+    let mut insertion = DomBatch::new();
+    insertion.set_attribute(parent, "id", "private prefix");
+    insertion.insert_before(object, parent, None);
+    assert_eq!(
+        session.dom().apply(insertion, &cancel()).unwrap_err(),
+        DomError::ObjectHostedTransitionUnavailable
+    );
+    assert_eq!(session.snapshot().stamp(), snapshot.stamp());
+
+    let mut fallback = DomBatch::new();
+    let closed = fallback.create_html_document(top.document(), None);
+    let embed = fallback.create_element_ns(top.document(), Namespace::html(), "embed");
+    fallback.insert_before(&embed, object, None);
+    let commit = session.dom().apply(fallback, &cancel()).unwrap();
+    let embed = commit.created(&embed).unwrap().unwrap();
+    let closed = commit.document(&closed).unwrap();
+    let closed_body = body(&session.snapshot(), closed);
+    for edit in [
+        DomSourceEdit::adopt(object, closed.node()),
+        DomSourceEdit::insert_before(object, closed_body, None),
+    ] {
+        assert!(matches!(
+            execution
+                .apply(&mut session.dom(), edit, limits, &mut services, &cancel())
+                .unwrap(),
+            DomSourceDriveProgress::Complete(_)
+        ));
+    }
+    let before_task = session.snapshot();
+    assert_eq!(
+        before_task.node(object).unwrap().owner_document(),
+        Some(closed)
+    );
+    assert!(before_task.node(object).unwrap().is_connected());
+    assert_eq!(tasks.pending_tasks(source).unwrap(), 3);
+
+    let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 8,
+        pending_events: 4,
+        nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
+    })
+    .unwrap();
+    let mut context = Context {
+        element_tasks: tasks.clone(),
+        seen: Vec::new(),
+    };
+    let no_work = DomSourceLimits::new(16_000_000, 1_000_000, 0, 128, 4096, 4096, 1);
+    let refused = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        source,
+        &mut dispatcher,
+        &mut context,
+        DomElementTaskRunLimits {
+            dispatch: event_limits(),
+            source: no_work,
+        },
+        &cancel(),
+    )
+    .unwrap_err();
+    assert!(matches!(
+        refused,
+        DomElementTaskRuntimeError::Dom(DomError::SourceWorkLimit { limit: 0 })
+    ));
+    assert_eq!(session.snapshot().stamp(), before_task.stamp());
+    assert_eq!(
+        tasks.pending_task(source, 0).unwrap().unwrap().id(),
+        task.id()
+    );
+    let no_storage = DomSourceLimits::new(0, 1_000_000, 10_000_000, 128, 4096, 4096, 1);
+    let refused = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        source,
+        &mut dispatcher,
+        &mut context,
+        DomElementTaskRunLimits {
+            dispatch: event_limits(),
+            source: no_storage,
+        },
+        &cancel(),
+    )
+    .unwrap_err();
+    assert!(matches!(
+        refused,
+        DomElementTaskRuntimeError::Dom(DomError::ResourceLimit {
+            resource: surgeist_dom::limits::DomResource::SourceRetainedBytes,
+            limit: 0,
+        })
+    ));
+    assert_eq!(session.snapshot().stamp(), before_task.stamp());
+    assert_eq!(
+        tasks.pending_task(source, 0).unwrap().unwrap().id(),
+        task.id()
+    );
+    let outcome = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        source,
+        &mut dispatcher,
+        &mut context,
+        DomElementTaskRunLimits {
+            dispatch: event_limits(),
+            source: limits,
+        },
+        &cancel(),
+    )
+    .unwrap();
+    assert!(matches!(outcome,
+        DomElementTaskProgress::ObjectRepresentationComplete { task: info, displaced_owner: None }
+            if info.id() == task.id() && info.queued_node_document() == top.document()
+    ));
+    assert!(context.seen.is_empty());
+    assert_eq!(tasks.pending_tasks(source).unwrap(), 2);
+    let current = session.snapshot();
+    let element = current.node(object).unwrap().as_element().unwrap();
+    assert_eq!(
+        element.object_representation(),
+        Some(HtmlObjectRepresentation::FallbackContent)
+    );
+    assert_eq!(element.child_navigable(), Some(None));
+    assert!(
+        current
+            .node(embed)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .is_inactive_embed()
+    );
+    assert_eq!(
+        snapshot
+            .node(object)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .object_representation(),
+        Some(HtmlObjectRepresentation::Undetermined)
+    );
+}
+
+#[test]
+fn retiring_object_cannot_retarget_its_queued_task() {
+    use surgeist_dom::task::DomElementTaskSourceKind;
+
+    let mut session = session();
+    let top = create(&mut session);
+    let mut runtime = session.source_execution();
+    let tasks = session.element_task_execution();
+    let source = DomElementTaskSourceKind::DomManipulation;
+    let limits = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1);
+    let result = runtime
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::create_element_ns(top.document().node(), Namespace::html(), "object"),
+            limits,
+            &mut DomSourceServices {
+                meta: None,
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceDriveProgress::Complete(result) = result else {
+        panic!("expected original Object creation");
+    };
+    let object = result.published_node().unwrap();
+    let before = session.snapshot();
+    let queued = tasks.pending_task(source, 0).unwrap().unwrap();
+    let mut retire = DomBatch::new();
+    retire.destroy(object);
+    session.dom().apply(retire, &cancel()).unwrap();
+    let mut replacement = DomBatch::new();
+    let node = replacement.create_element(top.document(), "span");
+    let node = session
+        .dom()
+        .apply(replacement, &cancel())
+        .unwrap()
+        .created(&node)
+        .unwrap()
+        .unwrap();
+    assert_ne!(node, object);
+    assert!(matches!(
+        session.snapshot().node(object),
+        Err(DomError::StaleNode)
+    ));
+    let mut context = Context {
+        element_tasks: tasks.clone(),
+        seen: Vec::new(),
+    };
+    let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 8,
+        pending_events: 4,
+        nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
+    })
+    .unwrap();
+    let outcome = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        source,
+        &mut dispatcher,
+        &mut context,
+        DomElementTaskRunLimits {
+            dispatch: event_limits(),
+            source: limits,
+        },
+        &cancel(),
+    )
+    .unwrap();
+    assert!(matches!(outcome,
+        DomElementTaskProgress::SkippedTargetDestroyed(task) if task.id() == queued.id()));
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+    assert!(context.seen.is_empty());
+    assert!(
+        before
+            .node(object)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .object_representation()
+            .is_some()
+    );
+    assert!(
+        session
+            .snapshot()
+            .node(node)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .object_representation()
+            .is_none()
+    );
+}
+
+#[test]
+fn a_full_element_task_bank_refuses_object_before_publishing_and_retries_the_original_edit() {
+    use surgeist_runtime::source::{DomSourceDriveError, DomSourceRuntimeError};
+
+    let mut session = session();
+    let top = create(&mut session);
+    let mut execution = session.source_execution();
+    let mut tasks = session.element_task_execution();
+    let task_limits = limits().element_tasks;
+    tasks
+        .set_limits(DomElementTaskRuntimeLimits {
+            tasks: 0,
+            ..task_limits
+        })
+        .unwrap();
+    let before = session.snapshot();
+    let mut style_policy = |_: &DomStyleSource| None;
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut style_policy,
+        url: None,
+    };
+    let limits = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1);
+    let refusal = execution
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::create_element_ns(top.document().node(), Namespace::html(), "object"),
+            limits,
+            &mut services,
+            &cancel(),
+        )
+        .unwrap_err();
+    assert!(matches!(
+        refusal,
+        DomSourceDriveError::Source(DomSourceRuntimeError::ElementTasks(
+            DomElementTaskRuntimeError::Admission
+        ))
+    ));
+    assert_eq!(session.snapshot().stamp(), before.stamp());
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+    let original = session.dom().pending_source_edit().unwrap().operation();
+    tasks.set_limits(task_limits).unwrap();
+    let result = execution
+        .resume(
+            &mut session.dom(),
+            original,
+            limits,
+            &mut services,
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceDriveProgress::Complete(result) = result else {
+        panic!("the original operation must now complete");
+    };
+    assert_eq!(result.operation(), original);
+    assert!(result.published_node().is_some());
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 1);
+    assert!(session.dom().pending_source_edit().is_none());
+
+    tasks
+        .set_limits(DomElementTaskRuntimeLimits {
+            tasks: 1,
+            ..task_limits
+        })
+        .unwrap();
+    let before_second = session.snapshot();
+    assert!(matches!(
+        execution.apply(
+            &mut session.dom(),
+            DomSourceEdit::create_element_ns(top.document().node(), Namespace::html(), "object"),
+            limits,
+            &mut services,
+            &cancel(),
+        ),
+        Err(DomSourceDriveError::Source(
+            DomSourceRuntimeError::ElementTasks(DomElementTaskRuntimeError::Admission)
+        ))
+    ));
+    let unpublished = session.dom().pending_source_edit().unwrap().operation();
+    execution
+        .cancel_pending_object_admission(&mut session.dom(), unpublished)
+        .unwrap();
+    assert!(session.dom().pending_source_edit().is_none());
+    assert_eq!(session.snapshot().stamp(), before_second.stamp());
+    let source = surgeist_dom::task::DomElementTaskSourceKind::DomManipulation;
+    let first_task = tasks.pending_task(source, 0).unwrap().unwrap();
+    let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 8,
+        pending_events: 4,
+        nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
+    })
+    .unwrap();
+    let mut context = Context {
+        element_tasks: tasks.clone(),
+        seen: Vec::new(),
+    };
+    let progress = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        source,
+        &mut dispatcher,
+        &mut context,
+        DomElementTaskRunLimits {
+            dispatch: event_limits(),
+            source: limits,
+        },
+        &cancel(),
+    )
+    .unwrap();
+    assert!(
+        matches!(progress, DomElementTaskProgress::ObjectRepresentationComplete { task, .. }
+        if task.id() == first_task.id())
+    );
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+}
+
+#[test]
+fn document_activity_refusal_follows_the_adopted_object_even_with_a_foreign_task_global() {
+    use surgeist_dom::task::DomElementTaskSourceKind;
+
+    let mut session = session();
+    let from = create(&mut session);
+    let to = create(&mut session);
+    let mut native = session.source_execution();
+    let tasks = session.element_task_execution();
+    let source = DomElementTaskSourceKind::DomManipulation;
+    let limits = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1);
+    let mut apply = |session: &mut DomSession, edit| {
+        let DomSourceDriveProgress::Complete(result) = native
+            .apply(
+                &mut session.dom(),
+                edit,
+                limits,
+                &mut DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| None,
+                    url: None,
+                },
+                &cancel(),
+            )
+            .unwrap()
+        else {
+            panic!("expected one complete native Source edit")
+        };
+        result
+    };
+    let object = apply(
+        &mut session,
+        DomSourceEdit::create_element_ns(from.document().node(), Namespace::html(), "object"),
+    )
+    .published_node()
+    .unwrap();
+    apply(
+        &mut session,
+        DomSourceEdit::adopt(object, to.document().node()),
+    );
+    let before = session.snapshot();
+    assert_eq!(
+        before.node(object).unwrap().owner_document(),
+        Some(to.document())
+    );
+    assert_eq!(tasks.pending_tasks(source).unwrap(), 1);
+    let original = tasks.pending_task(source, 0).unwrap().unwrap();
+    assert_eq!(
+        original.queue_association().unwrap().global(),
+        from.global()
+    );
+    let mut hosted = session.hosted_execution();
+    assert!(matches!(
+        hosted.destroy_top_level(&mut session.dom(), to.navigable(), &cancel()),
+        Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(
+            DomError::ObjectHostedTransitionUnavailable
+        )))
+    ));
+    assert_eq!(session.snapshot().stamp(), before.stamp());
+    assert_eq!(
+        tasks.pending_task(source, 0).unwrap().unwrap().id(),
+        original.id()
+    );
+
+    let mut retire = DomBatch::new();
+    retire.destroy(object);
+    session.dom().apply(retire, &cancel()).unwrap();
+    hosted
+        .destroy_top_level(&mut session.dom(), to.navigable(), &cancel())
+        .unwrap();
+}
+
+#[test]
+fn object_attribute_and_clone_occurrences_follow_source_precedence_and_fifo() {
+    use surgeist_dom::task::DomElementTaskSourceKind;
+    use surgeist_html::elements::object::HtmlObjectRepresentation;
+
+    let mut session = session();
+    let top = create(&mut session);
+    let mut setup = DomBatch::new();
+    let details = setup.create_element_ns(top.document(), Namespace::html(), "details");
+    setup.set_attribute(&details, "open", "");
+    let details = session
+        .dom()
+        .apply(setup, &cancel())
+        .unwrap()
+        .created(&details)
+        .unwrap()
+        .unwrap();
+    let mut native = session.source_execution();
+    let tasks = session.element_task_execution();
+    let source = DomElementTaskSourceKind::DomManipulation;
+    let mut style_policy = |_: &DomStyleSource| None;
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut style_policy,
+        url: None,
+    };
+    let limits = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1);
+    let mut apply = |session: &mut DomSession, edit: DomSourceEdit| {
+        let result = native
+            .apply(&mut session.dom(), edit, limits, &mut services, &cancel())
+            .unwrap();
+        let DomSourceDriveProgress::Complete(result) = result else {
+            panic!("expected complete native Object operation");
+        };
+        result
+    };
+    let object = apply(
+        &mut session,
+        DomSourceEdit::create_element_ns(top.document().node(), Namespace::html(), "object"),
+    )
+    .published_node()
+    .unwrap();
+    assert_eq!(tasks.pending_tasks(source).unwrap(), 2);
+    assert_eq!(
+        tasks
+            .pending_task(source, 0)
+            .unwrap()
+            .unwrap()
+            .id()
+            .target(),
+        details
+    );
+    assert_eq!(
+        tasks
+            .pending_task(source, 1)
+            .unwrap()
+            .unwrap()
+            .id()
+            .target(),
+        object
+    );
+    assert_eq!(session.dom().pending_details_toggle_intentions(), 0);
+    for (edit, after) in [
+        (
+            DomSourceEdit::set_native_attribute(object, "type", "image/png"),
+            3,
+        ),
+        (DomSourceEdit::set_native_attribute(object, "data", ""), 4),
+        (
+            DomSourceEdit::set_native_attribute(object, "type", "image/svg+xml"),
+            4,
+        ),
+        (
+            DomSourceEdit::set_native_attribute(object, "classid", ""),
+            5,
+        ),
+        (
+            DomSourceEdit::set_native_attribute(object, "classid", ""),
+            6,
+        ),
+        (
+            DomSourceEdit::set_native_attribute(object, "data", "raw"),
+            6,
+        ),
+        (DomSourceEdit::remove_attribute(object, "classid"), 7),
+        (
+            DomSourceEdit::set_native_attribute_ns(
+                object,
+                Namespace::from_uri("urn:other"),
+                "p:classid",
+                "",
+            ),
+            7,
+        ),
+    ] {
+        apply(&mut session, edit);
+        assert_eq!(tasks.pending_tasks(source).unwrap(), after);
+    }
+    let cloned = apply(&mut session, DomSourceEdit::clone_node(object, false))
+        .published_node()
+        .unwrap();
+    assert_ne!(cloned, object);
+    assert_eq!(tasks.pending_tasks(source).unwrap(), 10);
+    for ordinal in 7..10 {
+        assert_eq!(
+            tasks
+                .pending_task(source, ordinal)
+                .unwrap()
+                .unwrap()
+                .id()
+                .target(),
+            cloned
+        );
+    }
+    let mut distinct = Vec::new();
+    for ordinal in 0..10 {
+        let id = tasks.pending_task(source, ordinal).unwrap().unwrap().id();
+        assert!(!distinct.contains(&id));
+        distinct.push(id);
+    }
+    let snapshot = session.snapshot();
+    let cloned = snapshot.node(cloned).unwrap();
+    assert_eq!(cloned.attribute(&"data".into()), Some(&"raw".into()));
+    assert_eq!(
+        cloned.as_element().unwrap().object_representation(),
+        Some(HtmlObjectRepresentation::Undetermined)
+    );
+
+    let mut create = DomBatch::new();
+    let inactive = create.create_html_document(top.document(), None);
+    let inactive = session
+        .dom()
+        .apply(create, &cancel())
+        .unwrap()
+        .document(&inactive)
+        .unwrap();
+    apply(
+        &mut session,
+        DomSourceEdit::adopt(cloned.id(), inactive.node()),
+    );
+    let capture = session.snapshot();
+    let adopted = capture.node(cloned.id()).unwrap();
+    assert_eq!(adopted.owner_document(), Some(inactive));
+    assert_eq!(adopted.as_element().unwrap().child_navigable(), Some(None));
+    assert_eq!(cloned.owner_document(), Some(top.document()));
+    assert_eq!(tasks.pending_tasks(source).unwrap(), 11);
+    let custody = tasks.pending_task(source, 10).unwrap().unwrap();
+    let surgeist_runtime::element_task::DomElementTask::ObjectRepresentation(info) = custody else {
+        panic!("the change of Document activity must queue its own task");
+    };
+    assert_eq!(info.id().target(), cloned.id());
+    assert_eq!(info.queue_association().global(), top.global());
+    assert_eq!(info.queue_association().document(), top.document());
+    assert_eq!(info.queued_node_document(), inactive);
+
+    let closed_body = body(&capture, inactive);
+    apply(
+        &mut session,
+        DomSourceEdit::insert_before(cloned.id(), closed_body, None),
+    );
+    assert!(session.snapshot().node(cloned.id()).unwrap().is_connected());
+    assert_eq!(tasks.pending_tasks(source).unwrap(), 12);
+    apply(&mut session, DomSourceEdit::detach(cloned.id()));
+    assert!(!session.snapshot().node(cloned.id()).unwrap().is_connected());
+    assert_eq!(tasks.pending_tasks(source).unwrap(), 13);
+    for ordinal in 11..13 {
+        let task = tasks.pending_task(source, ordinal).unwrap().unwrap();
+        let surgeist_runtime::element_task::DomElementTask::ObjectRepresentation(info) = task
+        else {
+            panic!("the ordinary closed-Document tree hook queues Object work");
+        };
+        assert_eq!(info.id().target(), cloned.id());
+        assert_eq!(info.queued_node_document(), inactive);
+        assert_eq!(info.queue_association().global(), top.global());
+    }
 }

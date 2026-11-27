@@ -220,6 +220,29 @@ fn complete(
 }
 
 #[test]
+#[cfg(feature = "document-scripting")]
+fn unrelated_element_tasks_do_not_spend_the_windows_object_delay_budget() {
+    let (mut dom, document, details, _) = fixture();
+    let mut context = context(&mut dom);
+    open(&mut dom, details);
+    ingest(&mut dom, &mut context);
+    let tasks = &mut context.element_tasks;
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 1);
+    let work = tasks.work_used().unwrap() + 1;
+    tasks
+        .set_limits(DomElementTaskRuntimeLimits { work, ..limits() })
+        .unwrap();
+    assert_eq!(tasks.work_used().unwrap(), work);
+    assert_eq!(
+        tasks
+            .object_task_delaying_load(&dom.snapshot(), document, &cancel())
+            .unwrap(),
+        None
+    );
+    assert_eq!(tasks.work_used().unwrap(), work);
+}
+
+#[test]
 fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() {
     let (mut dom, document, a, b) = fixture();
     let mut c = context(&mut dom);

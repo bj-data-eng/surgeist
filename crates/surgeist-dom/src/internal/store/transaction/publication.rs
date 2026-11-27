@@ -804,6 +804,7 @@ impl Draft {
                 state_frontiers: candidate.frontiers,
                 root_debit: candidate.retained,
                 semantic_changed,
+                object_changes: self.object_changes,
                 traversal_state_changed: iterators.state_changed || walkers.state_changed,
                 owner: self.owner.clone(),
                 node_outputs,
@@ -858,6 +859,7 @@ impl Draft {
         self.journal.commit(rebase.journal);
         self.media_removals = None;
         self.media_hook_index = 0;
+        self.object_changes = false;
         self.custom_element_reactions = None;
         self.form_associated_custom_changes = None;
         self.pending_scoped_documents = None;

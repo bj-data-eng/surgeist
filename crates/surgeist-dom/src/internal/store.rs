@@ -65,6 +65,7 @@ mod embedded;
 mod image;
 mod import;
 mod inline_style;
+mod object;
 pub use hosted::constructed_sheet::{
     DomHostedSheetConstruction, DomHostedSheetConstructionError,
     DomHostedSheetConstructionPublished,
@@ -501,6 +502,8 @@ pub enum DomError {
     MediaRemovalStableStateUnavailable,
     EmbedSetupUnavailable,
     TrackMembershipUnavailable,
+    ObjectTaskSourceUnavailable,
+    ObjectHostedTransitionUnavailable,
     ImageUpdateExhausted,
     HyperlinkProcessingUnavailable,
     EncodingUrlFacts(crate::internal::hyperlink::DomEncodingUrlFactsError),
@@ -704,6 +707,8 @@ impl std::fmt::Display for DomError {
             Self::MediaRemovalStableStateUnavailable => f.write_str("the stable-state step of media removal is unavailable"),
             Self::EmbedSetupUnavailable => f.write_str("the Embed element's hosted setup is unavailable"),
             Self::TrackMembershipUnavailable => f.write_str("the Track element's media membership is unavailable"),
+            Self::ObjectTaskSourceUnavailable => f.write_str("the Object element's representation task source is unavailable"),
+            Self::ObjectHostedTransitionUnavailable => f.write_str("the Object element's reached hosted representation transition is unavailable"),
             Self::ImageUpdateExhausted => f.write_str("no image update identities remain"),
             Self::HyperlinkProcessingUnavailable => f.write_str("hyperlink processing is unavailable for this operation"),
             Self::EncodingUrlFacts(..) => f.write_str("the encoding and URL facts were refused"),
@@ -973,6 +978,8 @@ impl std::error::Error for DomError {
             | Self::MediaRemovalStableStateUnavailable
             | Self::EmbedSetupUnavailable
             | Self::TrackMembershipUnavailable
+            | Self::ObjectTaskSourceUnavailable
+            | Self::ObjectHostedTransitionUnavailable
             | Self::ImageUpdateExhausted
             | Self::HyperlinkProcessingUnavailable
             | Self::EncodingUrlWorkLimit { .. }
@@ -2629,6 +2636,7 @@ impl Dom {
             state_frontiers: _,
             root_debit: _,
             semantic_changed: _,
+            object_changes,
             traversal_state_changed,
             signal_ack,
             native_ack,
@@ -2702,10 +2710,19 @@ impl Dom {
                 units: 0,
             });
         }
+        let resource_free_object_edit = object_changes
+            && hosted::local_html::qualify_resource_free_object_changes(
+                self.owner,
+                &self.state,
+                &state,
+                &changes,
+                &mut || source::formation::step(formation.as_ref(), cancelled),
+            )?;
         let history_plan = self.history.prepare(
             self,
             &changes,
             changed,
+            resource_free_object_edit,
             |usage| match &formation {
                 Some(budget) => budget.admit_custody_usage(usage, cancelled),
                 None => check_cancel(cancelled),
@@ -3106,6 +3123,8 @@ struct Draft {
     details_intentions: transaction::queues::Details,
     cancelled_details: transaction::queues::CancelledDetails,
     cancelled_images: Option<select::ScratchVec<image::Cancelled>>,
+    object_tasks: Option<select::ScratchVec<object::Pending>>,
+    object_changes: bool,
     effects: Vec<select::EffectFrame>,
     effects_charge: custody::Debit,
     hosted_pending: Option<source::operation::hosted::ChildHook>,
@@ -3211,6 +3230,7 @@ struct Prepared {
     record_ids: Vec<Option<DomViewTransitionRecordId>>,
     changes: Vec<DomChange>,
     semantic_changed: bool,
+    object_changes: bool,
     traversal_state_changed: bool,
     allocation_ids: source::AllocationIds,
     signal_ack: Option<transaction::queues::QueueAck<Key, NodeId>>,
@@ -3380,6 +3400,7 @@ impl Draft {
         {
             self.initialize_input(key, limits, cancel)?;
         }
+        self.object_created(key, cancel)?;
         Ok(())
     }
     fn new(dom: &Dom, owner: Arc<BatchIdentity>, cancelled: &AtomicBool) -> Result<Self, DomError> {
@@ -3628,6 +3649,8 @@ impl Draft {
             details_intentions,
             cancelled_details,
             cancelled_images: None,
+            object_tasks: None,
+            object_changes: false,
             effects: Vec::new(),
             effects_charge,
             hosted_pending: None,

@@ -255,6 +255,14 @@ impl Operation {
         execution: &mut Execution<'_>,
         cancel: &AtomicBool,
     ) -> Result<PublishedSegment, AdvanceError> {
+        if self
+            .draft
+            .object_tasks
+            .as_ref()
+            .is_some_and(|tasks| !tasks.is_empty())
+        {
+            return Err(DomError::ObjectTaskSourceUnavailable.into());
+        }
         let incomplete = !matches!(disposition, Some(meta::Disposition::Complete { .. }));
         let mut segment = self
             .prepare_segment(dom, incomplete, target, None, cancel)

@@ -21,6 +21,7 @@ pub(in crate::internal::store) struct Counts {
     pub templates: usize,
     pub shadow_roots: usize,
     pub slots: usize,
+    pub native_objects: usize,
 }
 
 impl Counts {
@@ -59,6 +60,7 @@ impl Counts {
             ),
             shadow_roots: usize::from(matches!(node.kind(), super::KindRead::ShadowRoot(_))),
             slots: usize::from(crate::internal::slot::is_slot(node.kind().into())),
+            native_objects: node.native_object_count().unwrap_or(0),
             ..Self::default()
         })
     }
@@ -87,6 +89,7 @@ impl Counts {
             templates: add!(templates),
             shadow_roots: add!(shadow_roots),
             slots: add!(slots),
+            native_objects: add!(native_objects),
         })
     }
 
@@ -115,6 +118,7 @@ impl Counts {
             templates: replace!(templates),
             shadow_roots: replace!(shadow_roots),
             slots: replace!(slots),
+            native_objects: replace!(native_objects),
         })
     }
 
