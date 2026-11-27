@@ -360,6 +360,14 @@ pub(in crate::internal::store) fn inspect_slot_typed_custody(
         if let Some(d) = value.inspect_dependency::<FormChildren>() {
             visit(&d._past_names, out);
         }
+        if let Some(d) = value.inspect_dependency::<super::super::files::InputFileListCustody>() {
+            visit(&d._list, out);
+        }
+        if let Some(d) = value.inspect_dependency::<super::super::files::FileListCustody>() {
+            for file in &d.0 {
+                visit(file, out);
+            }
+        }
         if let Some(d) = value.inspect_dependency::<ElementLanguageChildren>() {
             visit(&d._name, out);
             for child in [&d._native, &d._custom, &d._nonce, &d._focus, &d._hosted]

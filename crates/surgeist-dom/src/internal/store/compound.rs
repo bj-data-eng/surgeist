@@ -156,6 +156,9 @@ impl Draft {
             Edit::InputFiles { files, .. } => {
                 self.assign_input_files(receiver, files.as_ref(), cancel)
             }
+            Edit::UserFileSelection { files, .. } => {
+                self.queue_user_file_selection(receiver, files, cancel)
+            }
             Edit::InputStep {
                 direction, count, ..
             } => self.step_input(receiver, *direction, *count, limits, cancel),

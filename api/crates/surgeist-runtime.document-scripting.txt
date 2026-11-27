@@ -698,6 +698,7 @@ pub enum surgeist_runtime::element_task::DomElementTask
 pub surgeist_runtime::element_task::DomElementTask::DetailsToggle(surgeist_runtime::element_task::DomDetailsTask)
 pub surgeist_runtime::element_task::DomElementTask::DialogClose(surgeist_dom::internal::store::source::operation::dialog_queue::DomDialogCloseTaskInfo)
 pub surgeist_runtime::element_task::DomElementTask::DialogToggle(surgeist_dom::internal::store::source::operation::dialog_queue::DomDialogToggleTaskInfo)
+pub surgeist_runtime::element_task::DomElementTask::FileSelection(surgeist_dom::internal::store::source::operation::element_queue::DomFileSelectionTaskInfo)
 pub surgeist_runtime::element_task::DomElementTask::ObjectRepresentation(surgeist_dom::internal::store::source::operation::element_queue::DomObjectRepresentationTaskInfo)
 pub surgeist_runtime::element_task::DomElementTask::TextSelection(surgeist_dom::internal::store::source::operation::element_queue::DomTextSelectionTaskInfo)
 impl surgeist_runtime::element_task::DomElementTask
@@ -714,6 +715,11 @@ pub surgeist_runtime::element_task::DomElementTaskProgress::Complete::displaced_
 pub surgeist_runtime::element_task::DomElementTaskProgress::Complete::receipt: surgeist_runtime::event::DomEventDispatchReceipt
 pub surgeist_runtime::element_task::DomElementTaskProgress::Complete::task: surgeist_runtime::element_task::DomElementTask
 pub surgeist_runtime::element_task::DomElementTaskProgress::Empty
+pub surgeist_runtime::element_task::DomElementTaskProgress::FileSelectionComplete
+pub surgeist_runtime::element_task::DomElementTaskProgress::FileSelectionComplete::change: core::option::Option<surgeist_runtime::event::DomEventDispatchReceipt>
+pub surgeist_runtime::element_task::DomElementTaskProgress::FileSelectionComplete::displaced_owner: core::option::Option<surgeist_runtime::element_task::DomElementTaskRuntime>
+pub surgeist_runtime::element_task::DomElementTaskProgress::FileSelectionComplete::input: surgeist_runtime::event::DomEventDispatchReceipt
+pub surgeist_runtime::element_task::DomElementTaskProgress::FileSelectionComplete::task: surgeist_dom::internal::store::source::operation::element_queue::DomFileSelectionTaskInfo
 pub surgeist_runtime::element_task::DomElementTaskProgress::ObjectRepresentationComplete
 pub surgeist_runtime::element_task::DomElementTaskProgress::ObjectRepresentationComplete::displaced_owner: core::option::Option<surgeist_runtime::element_task::DomElementTaskRuntime>
 pub surgeist_runtime::element_task::DomElementTaskProgress::ObjectRepresentationComplete::task: surgeist_dom::internal::store::source::operation::element_queue::DomObjectRepresentationTaskInfo
@@ -722,6 +728,7 @@ pub surgeist_runtime::element_task::DomElementTaskProgress::Retained::dispatch: 
 pub surgeist_runtime::element_task::DomElementTaskProgress::Retained::displaced_owner: core::option::Option<surgeist_runtime::element_task::DomElementTaskRuntime>
 pub surgeist_runtime::element_task::DomElementTaskProgress::Retained::task: surgeist_runtime::element_task::DomElementTask
 pub surgeist_runtime::element_task::DomElementTaskProgress::Running(surgeist_dom::internal::element_tasks::DomElementTaskId)
+pub surgeist_runtime::element_task::DomElementTaskProgress::SkippedFileSelectionIneligible(surgeist_dom::internal::store::source::operation::element_queue::DomFileSelectionTaskInfo)
 pub surgeist_runtime::element_task::DomElementTaskProgress::SkippedTargetDestroyed(surgeist_runtime::element_task::DomElementTask)
 pub enum surgeist_runtime::element_task::DomElementTaskRuntimeError
 pub surgeist_runtime::element_task::DomElementTaskRuntimeError::Admission
@@ -1031,8 +1038,10 @@ pub struct surgeist_runtime::event::DomEventType(_)
 impl surgeist_runtime::event::DomEventType
 pub const surgeist_runtime::event::DomEventType::BEFORE_TOGGLE: Self
 pub const surgeist_runtime::event::DomEventType::CANCEL: Self
+pub const surgeist_runtime::event::DomEventType::CHANGE: Self
 pub const surgeist_runtime::event::DomEventType::CLOSE: Self
 pub const surgeist_runtime::event::DomEventType::ERROR: Self
+pub const surgeist_runtime::event::DomEventType::INPUT: Self
 pub const surgeist_runtime::event::DomEventType::LOAD: Self
 pub const surgeist_runtime::event::DomEventType::SELECT: Self
 pub const surgeist_runtime::event::DomEventType::TOGGLE: Self

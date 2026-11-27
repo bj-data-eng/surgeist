@@ -2641,6 +2641,7 @@ fn main() {
             "canvas-dimensions" => canvas_dimensions::attached_canvas_dimensions_follow_native_bitmap_and_reflection(),
             "textarea-values" => textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state(),
             "input-state" => input_state::attached_input_exposes_canonical_value_modes_and_checkedness(),
+            "input-file-task" => input_state::attached_user_file_task_delivers_plain_trusted_events(),
             "script-async" => script_async::script_async_keeps_native_flag_and_content_coherent(),
             "source-local-reflections" => source_reflections::local_source_reflections_preserve_canonical_picture_recipients(),
             "source-local-refusal" => source_reflections::local_source_refusal_preserves_attribute_and_waiters(),
@@ -2843,6 +2844,7 @@ fn main() {
     canvas_dimensions::attached_canvas_dimensions_follow_native_bitmap_and_reflection();
     textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state();
     input_state::attached_input_exposes_canonical_value_modes_and_checkedness();
+    input_state::attached_user_file_task_delivers_plain_trusted_events();
     anchor_attributes::anchor_text_and_scalar_attributes_use_live_native_source();
     area_attributes::area_attributes_follow_canonical_source_and_receivers();
     iframe_local_reflections::local_reflections_follow_the_original_iframe_and_attributes();

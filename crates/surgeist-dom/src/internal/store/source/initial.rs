@@ -437,21 +437,6 @@ impl Draft {
             if let Command::Import { snapshot, .. } = command {
                 draft.retain_input_capture(&snapshot.state, cancel)?;
             }
-            if let Command::Compound(crate::internal::compound::Edit::InputFiles {
-                files: Some(files),
-                ..
-            }) = command
-            {
-                // One named FileList edit retains its exact controlled frontier
-                // for both the command and the eventual canonical Input.
-                if draft.source_file_argument.is_some() {
-                    return Err(DomError::InvalidSourceOperation);
-                }
-                draft.source_file_argument =
-                    Some(files.adopt(draft.custody_registry(), &mut |usage| {
-                        draft.admit_custody_usage(usage, cancel)
-                    })?);
-            }
         }
         draft.phase_map = Some(super::PhaseMap {
             ids: super::AllocationIds::default(),

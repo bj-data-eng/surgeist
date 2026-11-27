@@ -2149,6 +2149,7 @@ enum EventData {
     StyleError,
     DialogClose,
     TextSelection,
+    FileSelection(FileSelectionEvent),
     DialogCancel {
         cancelable: bool,
     },
@@ -2190,12 +2191,20 @@ pub(crate) enum NativeEventCause {
     DialogCancel,
     DialogClose,
     TextSelection,
+    FileSelection(FileSelectionEvent),
     SignalAbort,
     #[cfg(feature = "document-scripting")]
     CspViolation,
     #[cfg(feature = "document-scripting")]
     Parsing(ParsingEvent),
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FileSelectionEvent {
+    Input,
+    Change,
+}
+
 impl NativeEventCause {
     fn event_type(self) -> DomEventType {
         match self {
@@ -2206,6 +2215,8 @@ impl NativeEventCause {
             Self::DialogCancel => DomEventType::CANCEL,
             Self::DialogClose => DomEventType::CLOSE,
             Self::TextSelection => DomEventType::SELECT,
+            Self::FileSelection(FileSelectionEvent::Input) => DomEventType::INPUT,
+            Self::FileSelection(FileSelectionEvent::Change) => DomEventType::CHANGE,
             Self::SignalAbort => DomEventType::ABORT,
             #[cfg(feature = "document-scripting")]
             Self::CspViolation => DomEventType::CSP_VIOLATION,
@@ -2844,6 +2855,15 @@ impl EventInvocationOwner {
                     ..default_init
                 },
             ),
+            EventData::FileSelection(event) => (
+                NativeEventCause::FileSelection(event),
+                EventPayload::None,
+                DomEventInit {
+                    bubbles: true,
+                    composed: event == FileSelectionEvent::Input,
+                    ..default_init
+                },
+            ),
             EventData::DialogCancel { cancelable } => (
                 NativeEventCause::DialogCancel,
                 EventPayload::None,
@@ -3234,6 +3254,15 @@ impl NativeDomEvent {
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
         EventInvocationOwner::new(target, EventData::TextSelection, creation, backing)
+    }
+
+    pub(crate) fn file_selection(
+        target: NodeId,
+        event: FileSelectionEvent,
+        creation: Result<EventCreation, DomEventTimestampUnavailable>,
+        backing: EventBodyCustody,
+    ) -> EventInvocationOwner {
+        EventInvocationOwner::new(target, EventData::FileSelection(event), creation, backing)
     }
 
     /// Actual null-source Dialog toggle task payload, including equal states.

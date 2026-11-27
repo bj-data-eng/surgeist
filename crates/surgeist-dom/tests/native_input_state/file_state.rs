@@ -134,6 +134,146 @@ fn custody_reuses_one_backing_for_exact_aliases_and_refuses_distinct_unfunded_by
 }
 
 #[test]
+fn inapplicable_programmatic_file_assignment_ignores_an_unfunded_list() {
+    let (mut dom, upload, _, text) = setup();
+    let bytes = 500_000;
+    let selected = DomFileList::from_files(vec![file(vec![3; 1_000_000])]).unwrap();
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    assert!(matches!(
+        assign(&mut dom, upload, Some(selected.clone()), bytes),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::SourceRetainedBytes,
+            limit: 500_000
+        })
+    ));
+    assert!(matches!(
+        assign(&mut dom, text, Some(selected), bytes).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    super::unchanged(&dom, &before, usage);
+}
+
+#[test]
+fn source_admission_charges_spare_body_bytes_and_borrowed_utf16_capacity() {
+    use surgeist_html::values::{DocumentString, TextBlock};
+
+    let (mut dom, input, _, _) = setup();
+    let cancel = AtomicBool::new(false);
+    let mut body = Vec::with_capacity(1_000_000);
+    body.push(42);
+    let mut units = Vec::with_capacity(120_000);
+    units.extend([0, 0xd800, 0]);
+    let filename = TextBlock::from_utf16(units).string(1..2).unwrap();
+    let file =
+        DomFile::from_owned_parts(filename, DocumentString::from("text/plain"), body).unwrap();
+    let files = DomFileList::from_files(vec![file]).unwrap();
+    let assign = |dom: &mut Dom, bytes, units, files| {
+        dom.begin_source_edit(
+            DomSourceEdit::assign_input_files(input, files),
+            DomSourceLimits::new(bytes, units, 2_000_000, 32, 256, 256, 2),
+            &cancel,
+        )?
+        .advance(&cancel)
+    };
+
+    assert!(matches!(
+        assign(&mut dom, 500_000, 100_000, None).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    for (bytes, units, resource, limit) in [
+        (500_000, 200_000, DomResource::SourceRetainedBytes, 500_000),
+        (
+            2_000_000,
+            100_000,
+            DomResource::SourceRetainedUnits,
+            100_000,
+        ),
+    ] {
+        assert!(matches!(
+            assign(&mut dom, bytes, units, Some(files.clone())),
+            Err(DomError::ResourceLimit { resource: found, limit: actual })
+                if found == resource && actual == limit
+        ));
+        super::unchanged(&dom, &before, usage);
+    }
+
+    assert!(matches!(
+        assign(&mut dom, 2_000_000, 200_000, Some(files.clone())).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    assert_eq!(dom.usage().string_code_units(), usage.string_code_units());
+    let after = dom.snapshot();
+    let selected = state(&after, input).selected_files().unwrap();
+    assert_eq!(selected.id(), files.id());
+    assert_eq!(selected.files()[0].bytes(), &[42]);
+    let mut expected: Vec<u16> = r"C:\fakepath\".encode_utf16().collect();
+    expected.push(0xd800);
+    assert_eq!(value(&after, input).code_units(), expected);
+}
+
+#[test]
+fn historical_import_readmits_retired_file_backing_but_clones_an_empty_selection() {
+    const POLICY: usize = 4_000_000;
+    const SELECTED_BYTES: usize = 16_000_000;
+    const COMPLETE_POLICY: usize = SELECTED_BYTES + POLICY;
+    let (mut dom, input, sibling, _) = setup();
+    let cancel = AtomicBool::new(false);
+    let empty = dom.snapshot();
+    let document = empty.node(input).unwrap().owner_document().unwrap().node();
+    let selected = DomFileList::from_files(vec![file(vec![42; SELECTED_BYTES])]).unwrap();
+    assign(&mut dom, input, Some(selected.clone()), COMPLETE_POLICY).unwrap();
+    let historical = dom.snapshot();
+    let mut retire = DomBatch::new();
+    retire.destroy(input);
+    apply(&mut dom, retire);
+    assert!(matches!(
+        dom.snapshot().node(input),
+        Err(DomError::StaleNode)
+    ));
+    assert!(matches!(
+        assign(&mut dom, sibling, None, POLICY).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+
+    let import = |dom: &mut Dom, snapshot: &super::DomSnapshot, bytes| {
+        dom.begin_source_edit(
+            DomSourceEdit::import_node(snapshot, input, document, false),
+            DomSourceLimits::new(bytes, 100_000, 2_000_000, 32, 256, 256, 2),
+            &cancel,
+        )?
+        .advance(&cancel)
+    };
+    assert!(matches!(
+        import(&mut dom, &empty, POLICY).expect("empty historical capture fits the byte policy"),
+        DomSourceProgress::Complete(_)
+    ));
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    assert!(matches!(
+        import(&mut dom, &historical, POLICY),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::SourceRetainedBytes,
+            limit: POLICY,
+        })
+    ));
+    super::unchanged(&dom, &before, usage);
+
+    let DomSourceProgress::Complete(done) = import(&mut dom, &historical, COMPLETE_POLICY).unwrap()
+    else {
+        panic!("importing the retired File Input requires no external service");
+    };
+    let copy = done.published_node().unwrap();
+    let after = dom.snapshot();
+    let copied = state(&after, copy).selected_files().unwrap();
+    assert!(copied.is_empty());
+    assert_ne!(copied.id(), selected.id());
+    assert_eq!(state(&historical, input).selected_files(), Some(&selected));
+}
+
+#[test]
 fn adoption_preserves_files_while_clone_reset_type_change_and_retirement_keep_exact_lifetimes() {
     let (mut dom, input, _, _) = setup();
     let selected = DomFileList::from_files(vec![file(vec![42])]).unwrap();

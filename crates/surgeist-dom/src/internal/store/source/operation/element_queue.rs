@@ -10,6 +10,7 @@ use crate::internal::{
 pub(in crate::internal::store) enum Kind {
     ObjectRepresentation { node_document: Key },
     TextSelection,
+    FileSelection,
 }
 
 impl Kind {
@@ -17,6 +18,7 @@ impl Kind {
         match self {
             Self::ObjectRepresentation { .. } => DomError::ObjectTaskSourceUnavailable,
             Self::TextSelection => DomError::TextSelectionTaskSourceUnavailable,
+            Self::FileSelection => DomError::FileSelectionTaskSourceUnavailable,
         }
     }
 }
@@ -141,11 +143,54 @@ impl DomTextSelectionTaskInfo {
     }
 }
 
+/// The original Input receiver and relevant Global of an admitted user action.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomFileSelectionTaskInfo {
+    id: DomElementTaskId,
+    association: DomElementTaskAssociation,
+}
+
+impl DomFileSelectionTaskInfo {
+    /// The original task occurrence and exact target generation.
+    pub const fn id(self) -> DomElementTaskId {
+        self.id
+    }
+
+    /// The original relevant Global and its associated Document.
+    pub const fn queue_association(self) -> DomElementTaskAssociation {
+        self.association
+    }
+}
+
+/// Affine permission to install one original native user selection.
+pub struct DomFileSelectionTask {
+    info: DomFileSelectionTaskInfo,
+    pub(in crate::internal::store) binding: std::sync::Weak<Binding>,
+    pub(in crate::internal::store) files: crate::file::DomFileList,
+    _custody: bank::ObjectCustody,
+}
+
+impl DomFileSelectionTask {
+    /// Immutable provenance of the admitted task.
+    pub const fn info(&self) -> DomFileSelectionTaskInfo {
+        self.info
+    }
+}
+
+impl std::fmt::Debug for DomFileSelectionTask {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DomFileSelectionTask")
+            .field("info", &self.info)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Prospective element task data used to admit the actual bank entry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceElementTaskInfo {
     ObjectRepresentation(DomObjectRepresentationTaskInfo),
     TextSelection(DomTextSelectionTaskInfo),
+    FileSelection(DomFileSelectionTaskInfo),
 }
 
 /// Owned task transferred at the original Source publication fence.
@@ -153,6 +198,7 @@ pub enum DomSourceElementTaskInfo {
 pub enum DomQueuedSourceElementTask {
     ObjectRepresentation(DomObjectRepresentationTask),
     TextSelection(DomTextSelectionTaskInfo),
+    FileSelection(DomFileSelectionTask),
 }
 
 impl DomQueuedSourceElementTask {
@@ -162,6 +208,7 @@ impl DomQueuedSourceElementTask {
                 DomSourceElementTaskInfo::ObjectRepresentation(task.info())
             }
             Self::TextSelection(info) => DomSourceElementTaskInfo::TextSelection(*info),
+            Self::FileSelection(task) => DomSourceElementTaskInfo::FileSelection(task.info()),
         }
     }
 }
@@ -410,6 +457,34 @@ impl<'dom> DomSourceLease<'dom> {
                         DomQueuedSourceElementTask::TextSelection(DomTextSelectionTaskInfo {
                             id,
                             association: task.association,
+                        })
+                    }
+                    Kind::FileSelection => {
+                        let [
+                            Command::Compound(crate::internal::compound::Edit::UserFileSelection {
+                                input,
+                                files,
+                                ..
+                            }),
+                        ] = &*op.commands
+                        else {
+                            return Err(DomError::InvalidSourceOperation);
+                        };
+                        if *input != target {
+                            return Err(DomError::InvalidSourceOperation);
+                        }
+                        let custody = op
+                            .file_argument_custody
+                            .clone()
+                            .ok_or(DomError::InvalidSourceOperation)?;
+                        DomQueuedSourceElementTask::FileSelection(DomFileSelectionTask {
+                            info: DomFileSelectionTaskInfo {
+                                id,
+                                association: task.association,
+                            },
+                            binding: Arc::downgrade(&source.binding),
+                            files: files.clone(),
+                            _custody: custody,
                         })
                     }
                 });

@@ -1613,6 +1613,12 @@ impl CustodyRegistry {
                     "control.debit",
                     size_of::<Debit>(),
                 );
+                if let Some(list) = dependency
+                    .value
+                    .downcast_ref::<super::files::FileListCustody>()
+                {
+                    graph.buffer(&list.0, "file.list.controls");
+                }
             }
             if let Some(attachment) = value.attachment.lock().unwrap().as_ref() {
                 let target = attachment.target.upgrade().expect("this baseline observes live attached frontiers; dead erased targets need a separately qualified raw extent");

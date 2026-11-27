@@ -511,6 +511,9 @@ pub enum DomError {
     TrackMembershipUnavailable,
     ObjectTaskSourceUnavailable,
     TextSelectionTaskSourceUnavailable,
+    FileSelectionTaskSourceUnavailable,
+    StaleFileSelection,
+    FileSelectionInapplicable,
     ObjectHostedTransitionUnavailable,
     ImageUpdateExhausted,
     HyperlinkProcessingUnavailable,
@@ -720,6 +723,9 @@ impl std::fmt::Display for DomError {
             Self::TrackMembershipUnavailable => f.write_str("the Track element's media membership is unavailable"),
             Self::ObjectTaskSourceUnavailable => f.write_str("the Object element's representation task source is unavailable"),
             Self::TextSelectionTaskSourceUnavailable => f.write_str("the text control's select event task source is unavailable"),
+            Self::FileSelectionTaskSourceUnavailable => f.write_str("the Input file selection task source is unavailable"),
+            Self::StaleFileSelection => f.write_str("the Input file selection observation is stale"),
+            Self::FileSelectionInapplicable => f.write_str("the Input cannot accept this user file selection"),
             Self::ObjectHostedTransitionUnavailable => f.write_str("the Object element's reached hosted representation transition is unavailable"),
             Self::ImageUpdateExhausted => f.write_str("no image update identities remain"),
             Self::HyperlinkProcessingUnavailable => f.write_str("hyperlink processing is unavailable for this operation"),
@@ -995,6 +1001,9 @@ impl std::error::Error for DomError {
             | Self::TrackMembershipUnavailable
             | Self::ObjectTaskSourceUnavailable
             | Self::TextSelectionTaskSourceUnavailable
+            | Self::FileSelectionTaskSourceUnavailable
+            | Self::StaleFileSelection
+            | Self::FileSelectionInapplicable
             | Self::ObjectHostedTransitionUnavailable
             | Self::ImageUpdateExhausted
             | Self::HyperlinkProcessingUnavailable
@@ -3095,7 +3104,6 @@ struct Draft {
     base_custody: transaction::StateCustody,
     input_captures: bank::Bank<source::input::InputEntry>,
     input_captures_custody: bank::BankCustody<source::input::InputEntry>,
-    source_file_argument: Option<bank::ObjectCustody>,
     custody_registry: bank::CustodyRegistry,
     /// The blocks this transaction listed in the registry, which it takes back unless it publishes.
     blocks: Arc<block_custody::BlockAdoptions>,
@@ -3608,7 +3616,6 @@ impl Draft {
             base_custody: dom.state_custody.clone(),
             input_captures: bank::Bank::default(),
             input_captures_custody: bank::BankCustody::default(),
-            source_file_argument: None,
             blocks: block_custody::BlockAdoptions::new(registry.clone()),
             custody_registry: registry,
             names,

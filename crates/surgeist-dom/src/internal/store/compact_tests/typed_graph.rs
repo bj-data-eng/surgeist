@@ -6,7 +6,7 @@ use crate::internal::store::payload::Payload as Target;
 use surgeist_html::values::DocumentString;
 
 #[derive(Default)]
-struct Raw {
+pub(in crate::internal::store) struct Raw {
     bytes: usize,
     units: usize,
 }
@@ -39,12 +39,17 @@ impl Raw {
         self.units(value.utf16_extent());
     }
 }
-struct Walker<'a> {
+pub(in crate::internal::store) struct Walker<'a> {
     graph: Option<&'a mut AllocationGraph>,
     objects: BTreeMap<custody::MaterializationId, custody::Usage>,
 }
 impl Walker<'_> {
-    fn object<T>(&mut self, value: &Arc<Target<T>>, extra: Raw, label: &'static str) {
+    pub(in crate::internal::store) fn object<T>(
+        &mut self,
+        value: &Arc<Target<T>>,
+        extra: Raw,
+        label: &'static str,
+    ) {
         let expected = custody::Usage::new(size_of::<Target<T>>() + extra.bytes, extra.units);
         assert_eq!(
             value.own_usage, expected,
@@ -72,10 +77,21 @@ impl Walker<'_> {
         // The root is an actual allocation/ID, but its body shares the Slot's
         // affine receipt. It is not an independently registered child object.
     }
-    fn text(&mut self, out: &mut Raw, value: &DocumentString) {
+    pub(in crate::internal::store) fn text(&mut self, out: &mut Raw, value: &DocumentString) {
         out.text(value);
         if let Some(graph) = &mut self.graph {
             graph.string(value);
+        }
+    }
+    pub(in crate::internal::store) fn buffer<T>(
+        &mut self,
+        out: &mut Raw,
+        value: &Vec<T>,
+        label: &'static str,
+    ) {
+        out.bytes(value.capacity().checked_mul(size_of::<T>()).unwrap());
+        if let Some(graph) = &mut self.graph {
+            graph.buffer(value, label);
         }
     }
     fn listed_text(&mut self, out: &mut Raw, value: &DocumentString) {
@@ -212,6 +228,9 @@ impl Walker<'_> {
                     self.text(&mut raw, source);
                 }
                 self.object(value, raw, "native.input");
+                if let Some(files) = value.value.selected_files() {
+                    self.file_list(files);
+                }
             }
             NativeFamily::Textarea(value) => {
                 let mut raw = Raw::default();

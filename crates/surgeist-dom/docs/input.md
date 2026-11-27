@@ -60,6 +60,21 @@ fresh empty selection. A FileList keeps its order and File identities.
 Upload state. A null assignment or a different Input state leaves the
 selection unchanged. Assignment dispatches no input or change event.
 
+A native host submits an actual choice through
+`DomSourceEdit::queue_input_file_selection`. Source qualifies the Input's
+observed DOM stamp, current mutability and permitted file count. The admitted
+user-interaction task owns the exact list. Selection changes only when that
+task executes, before its ordered input and change events. See the
+[Runtime task contract](../../surgeist-runtime/docs/explanation.md#dom-orchestration).
+
+`DomSourceLimits` counts each controlled File and FileList materialization once
+per DOM owner. The retained-byte allowance counts objects, controls and backing
+capacity, including the body and member vectors. The retained UTF-16 allowance
+counts filename, media type and Filename-mode readback backing capacity.
+`DomUsage::string_code_units()` reports the canonical DOM string budget for
+attributes, current control values and other in-tree strings. See the
+[storage and custody contract](storage.md#what-the-admission-budget-counts).
+
 Filename-mode value readback uses the HTML prefix and the first selected
 filename. An empty value write and native reset clear a nonempty selection
 by installing a fresh empty list. Other references to the original list

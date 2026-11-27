@@ -161,13 +161,18 @@ impl<'a> ElementFormation<'a> {
     pub(crate) fn empty_input_files(
         &mut self,
     ) -> Result<(crate::file::DomFileList, bank::Dependency), DomError> {
-        let (files, control) = crate::file::DomFileList::controlled_empty(
+        // Keep the original controlled pair until the new capsule is ready.
+        let formed = crate::file::DomFileList::controlled_empty(
             self.registry,
             self.budget,
             &mut *self.admit,
         )?;
-        let dependency = bank::Dependency::new(control, self.registry.ledger(), &mut *self.admit)?;
-        Ok((files, dependency))
+        let dependency = crate::internal::store::files::input_file_list_dependency(
+            formed.1.clone(),
+            self.registry,
+            &mut *self.admit,
+        )?;
+        Ok((formed.0, dependency))
     }
 
     pub(super) fn track_url(

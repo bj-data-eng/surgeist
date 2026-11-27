@@ -9,7 +9,7 @@ use crate::internal::dom_event::{
     DispatchCall, DispatchFunding, DispatchHost, DispatchUsage, DomEventDispatchError,
     DomEventDispatchLimits, DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher,
     DomEventDom, DomEventTimestampUnavailable, EventDispatchObservation, EventInvocationOwner,
-    NativeDomEvent,
+    FileSelectionEvent, NativeDomEvent,
 };
 use crate::internal::dom_lifecycle::NativeTaskRunning;
 #[cfg(feature = "document-scripting")]
@@ -48,7 +48,9 @@ pub struct DomElementTaskRunLimits {
     /// Original queued-task Source observation, rebase and mandatory cleanup.
     pub source: surgeist_dom::source::DomSourceLimits,
 }
-use surgeist_dom::task::{DomElementTaskId, DomElementTaskSourceKind};
+use surgeist_dom::task::{
+    DomElementTaskId, DomElementTaskSourceKind, DomFileSelectionTask, DomFileSelectionTaskInfo,
+};
 /// One pending source task's immutable queued payload.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomDetailsTask {
@@ -84,6 +86,8 @@ pub enum DomElementTask {
     ObjectRepresentation(surgeist_dom::task::DomObjectRepresentationTaskInfo),
     /// One noncoalesced trusted select event on the user-interaction source.
     TextSelection(surgeist_dom::task::DomTextSelectionTaskInfo),
+    /// One file selection replacement and its ordered input and change events.
+    FileSelection(DomFileSelectionTaskInfo),
 }
 impl DomElementTask {
     /// The HTML task source intrinsic to this payload.
@@ -92,7 +96,7 @@ impl DomElementTask {
             Self::DetailsToggle(_) | Self::DialogToggle(_) | Self::ObjectRepresentation(_) => {
                 DomElementTaskSourceKind::DomManipulation
             }
-            Self::DialogClose(_) | Self::TextSelection(_) => {
+            Self::DialogClose(_) | Self::TextSelection(_) | Self::FileSelection(_) => {
                 DomElementTaskSourceKind::UserInteraction
             }
         }
@@ -113,6 +117,7 @@ impl DomElementTask {
             Self::DialogClose(task) => task.id(),
             Self::ObjectRepresentation(task) => task.id(),
             Self::TextSelection(task) => task.id(),
+            Self::FileSelection(task) => task.id(),
         }
     }
     /// Original relevant Global and its associated Document.
@@ -123,6 +128,7 @@ impl DomElementTask {
             Self::DialogClose(task) => task.queue_association(),
             Self::ObjectRepresentation(task) => Some(task.queue_association()),
             Self::TextSelection(task) => Some(task.queue_association()),
+            Self::FileSelection(task) => Some(task.queue_association()),
         }
     }
     /// The Details payload, when this is a Details task.
@@ -268,6 +274,19 @@ pub enum DomElementTaskProgress {
     },
     /// The exact target was retired before dispatch started.
     SkippedTargetDestroyed(DomElementTask),
+    /// A live target no longer supported the queued File Upload replacement.
+    SkippedFileSelectionIneligible(DomFileSelectionTaskInfo),
+    /// The original File Upload task committed the selection and fired input.
+    FileSelectionComplete {
+        /// Exact original task occurrence.
+        task: DomFileSelectionTaskInfo,
+        /// Actual shared dispatch and listener failure evidence for input.
+        input: DomEventDispatchReceipt,
+        /// Actual change dispatch, absent if the target was destroyed before it started.
+        change: Option<DomEventDispatchReceipt>,
+        /// Original bank if a callback replaced the context's coordinator.
+        displaced_owner: Option<DomElementTaskRuntime>,
+    },
     /// The original Object task completed its native representation update.
     ObjectRepresentationComplete {
         /// Exact task occurrence.
@@ -446,6 +465,7 @@ struct Task {
     running: bool,
     dialog: Option<surgeist_dom::dialog::DomDialogTask>,
     object: Option<surgeist_dom::task::DomObjectRepresentationTask>,
+    file_selection: Option<FileSelectionPhase>,
     publication: Option<surgeist_dom::dialog::DomDialogTaskQueuePublication>,
     task_operation: Option<surgeist_dom::source::DomSourceOperationId>,
     request: Option<surgeist_dom::event::DomSourceEventRequest>,
@@ -454,11 +474,24 @@ struct Task {
     event_accepted: bool,
     dialog_toggle_disposition: Option<surgeist_dom::dialog::DomDialogToggleTaskDisposition>,
 }
+
+enum FileSelectionPhase {
+    Apply(Option<DomFileSelectionTask>),
+    Ineligible,
+    Destroyed,
+    Input,
+    Change(DomEventDispatchReceipt),
+}
+
 impl Task {
     fn has_started(&self) -> bool {
         self.event.as_ref().is_some_and(|event| event.has_started())
             || (matches!(self.value, DomElementTask::ObjectRepresentation(_))
                 && self.object.is_none())
+            || matches!(
+                self.file_selection,
+                Some(FileSelectionPhase::Input | FileSelectionPhase::Change(_))
+            )
     }
 
     fn plan(&self) -> Plan {
@@ -895,6 +928,9 @@ impl DomElementTaskRuntime {
                 DomSourceElementTaskInfo::TextSelection(info) => {
                     DomElementTask::TextSelection(info)
                 }
+                DomSourceElementTaskInfo::FileSelection(info) => {
+                    DomElementTask::FileSelection(info)
+                }
             };
             intake.plan.push(Plan {
                 value,
@@ -909,8 +945,12 @@ impl DomElementTaskRuntime {
         state.install_intake(intake);
         state.object_tasks = object_tasks;
         for (row, task) in state.tasks.iter_mut().skip(first).zip(tasks) {
-            if let DomQueuedSourceElementTask::ObjectRepresentation(task) = task {
-                row.object = Some(task);
+            match task {
+                DomQueuedSourceElementTask::ObjectRepresentation(task) => row.object = Some(task),
+                DomQueuedSourceElementTask::FileSelection(task) => {
+                    row.file_selection = Some(FileSelectionPhase::Apply(Some(task)));
+                }
+                DomQueuedSourceElementTask::TextSelection(_) => {}
             }
         }
         Ok(completion)
@@ -1179,6 +1219,7 @@ impl ElementTaskState {
                     running: false,
                     dialog: None,
                     object: None,
+                    file_selection: None,
                     publication: None,
                     task_operation: None,
                     request: None,
@@ -1412,6 +1453,58 @@ enum PreparedEvent {
     ),
 }
 impl ElementTaskState {
+    fn apply_file_selection(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        index: usize,
+        limits: surgeist_dom::source::DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Option<ElementTaskStep>, DomElementTaskRuntimeError> {
+        let row = self
+            .tasks
+            .get_mut(index)
+            .ok_or(DomElementTaskRuntimeError::Binding)?;
+        let phase = row
+            .file_selection
+            .as_mut()
+            .ok_or(DomElementTaskRuntimeError::Binding)?;
+        let permit = match phase {
+            FileSelectionPhase::Apply(permit) => permit,
+            FileSelectionPhase::Ineligible => return Ok(Some(ElementTaskStep::Ineligible)),
+            FileSelectionPhase::Destroyed => return Ok(Some(ElementTaskStep::Destroyed)),
+            FileSelectionPhase::Input | FileSelectionPhase::Change(_) => return Ok(None),
+        };
+        let available = self.limits.work.saturating_sub(self.work);
+        let mut remaining = available;
+        let applied = dom
+            .raw_mut()
+            .run_file_selection_task(permit, limits, &mut remaining, cancel);
+        self.work += available - remaining;
+        match applied {
+            Ok(Some(_)) => {
+                // Record selection before any dispatch work can refuse.
+                *phase = FileSelectionPhase::Input;
+                Ok(None)
+            }
+            Ok(None) => {
+                if matches!(
+                    dom.snapshot().node(row.value.id().target()),
+                    Err(DomError::StaleNode)
+                ) {
+                    *phase = FileSelectionPhase::Destroyed;
+                    Ok(Some(ElementTaskStep::Destroyed))
+                } else {
+                    *phase = FileSelectionPhase::Ineligible;
+                    Ok(Some(ElementTaskStep::Ineligible))
+                }
+            }
+            Err(DomError::SourceWorkLimit { .. }) if available < limits.work() => {
+                Err(DomElementTaskRuntimeError::Admission)
+            }
+            Err(error) => Err(DomElementTaskRuntimeError::Dom(error)),
+        }
+    }
+
     fn prepare_event<C>(
         &mut self,
         dom: &mut DomEventDom<'_>,
@@ -1429,7 +1522,17 @@ impl ElementTaskState {
         if self.tasks[index].receipt.is_some() {
             return Ok(PreparedEvent::Delivered);
         }
-        if !self.tasks[index].has_started() {
+        let started = if matches!(value, DomElementTask::FileSelection(_)) {
+            // Each notification gets a fresh path for the exact live target.
+            // Once an event starts, its existing path carries the suffix.
+            self.tasks[index]
+                .event
+                .as_ref()
+                .is_some_and(EventInvocationOwner::has_started)
+        } else {
+            self.tasks[index].has_started()
+        };
+        if !started {
             match dom.snapshot().node(value.id().target()) {
                 Err(DomError::StaleNode) => return Ok(PreparedEvent::Destroyed),
                 Err(error) => return Err(DomElementTaskRuntimeError::Dom(error)),
@@ -1443,6 +1546,7 @@ impl ElementTaskState {
                         DomElementTask::TextSelection(_) => {
                             node.as_input().is_some() || node.as_textarea().is_some()
                         }
+                        DomElementTask::FileSelection(_) => node.as_input().is_some(),
                     };
                     if !valid {
                         return Err(DomElementTaskRuntimeError::Binding);
@@ -1563,6 +1667,14 @@ impl ElementTaskState {
                 DomElementTask::TextSelection(_) => {
                     NativeDomEvent::text_selection(value.id().target(), creation, backing)
                 }
+                DomElementTask::FileSelection(_) => {
+                    let event = match &task.file_selection {
+                        Some(FileSelectionPhase::Input) => FileSelectionEvent::Input,
+                        Some(FileSelectionPhase::Change(_)) => FileSelectionEvent::Change,
+                        _ => return Err(DomElementTaskRuntimeError::Binding),
+                    };
+                    NativeDomEvent::file_selection(value.id().target(), event, creation, backing)
+                }
                 DomElementTask::DialogToggle(dialog) => NativeDomEvent::dialog_toggle(
                     value.id().target(),
                     dialog.old_state(),
@@ -1656,7 +1768,8 @@ impl ElementTaskState {
                         DomElementTask::DialogClose(_) => disposition.is_some(),
                         DomElementTask::DetailsToggle(_)
                         | DomElementTask::ObjectRepresentation(_)
-                        | DomElementTask::TextSelection(_) => true,
+                        | DomElementTask::TextSelection(_)
+                        | DomElementTask::FileSelection(_) => true,
                     }
                 {
                     return Err(DomElementTaskRuntimeError::Binding);
@@ -1923,17 +2036,16 @@ impl DomElementTaskRuntime {
                     Err(error) => Err(DomElementTaskRuntimeError::Dom(error)),
                 };
             }
-            let prepared = {
-                let mut owner = state.borrow_mut();
-                owner.prepare_event(dom, dispatcher, value, native_task.as_ref(), limits, cancel)?
-            };
-            let (event, scope, funding) = match prepared {
-                PreparedEvent::Destroyed => return Ok(ElementTaskStep::Destroyed),
-                PreparedEvent::Delivered => return Ok(ElementTaskStep::Complete),
-                PreparedEvent::Dispatch(event, scope, funding) => (event, scope, funding),
-            };
-            #[cfg(not(feature = "document-scripting"))]
-            let _scope = scope;
+            if matches!(value, DomElementTask::FileSelection(_))
+                && let Some(terminal) = state.borrow_mut().apply_file_selection(
+                    dom,
+                    selected_index,
+                    limits.source,
+                    cancel,
+                )?
+            {
+                return Ok(terminal);
+            }
             let mut local_usage = DispatchUsage::default();
             #[cfg(feature = "document-scripting")]
             let (host, usage) = match &mut attachment {
@@ -1942,41 +2054,66 @@ impl DomElementTaskRuntime {
             };
             #[cfg(not(feature = "document-scripting"))]
             let (host, usage) = (DispatchHost::Unavailable, &mut local_usage);
-            let outcome = dispatcher
-                .deliver_with_usage(
-                    dom.raw_mut(),
-                    context,
-                    &event,
-                    DispatchCall {
-                        limits: limits.dispatch,
+            loop {
+                let prepared = {
+                    let mut owner = state.borrow_mut();
+                    owner.prepare_event(
+                        dom,
+                        dispatcher,
+                        value,
+                        native_task.as_ref(),
+                        limits,
                         cancel,
-                        host,
-                        funding,
-                    },
-                    usage,
-                )
-                .map_err(DomElementTaskRuntimeError::Dispatch)?;
-            let mut owner = state.borrow_mut();
-            let task = owner
-                .tasks
-                .iter_mut()
-                .find(|entry| entry.value.id() == value.id())
-                .ok_or(DomElementTaskRuntimeError::Binding)?;
-            match outcome {
-                DomEventDispatchOutcome::Complete(receipt) => {
-                    task.receipt = Some(receipt);
-                    Ok(ElementTaskStep::Complete)
-                }
-                #[cfg(feature = "document-scripting")]
-                DomEventDispatchOutcome::HostInvocation(invocation) => {
-                    if let Some(scope) = scope {
-                        invocation
-                            .retain_source_scope(scope)
-                            .map_err(DomElementTaskRuntimeError::Dispatch)?;
+                    )?
+                };
+                let (event, scope, funding) = match prepared {
+                    PreparedEvent::Destroyed => return Ok(ElementTaskStep::Destroyed),
+                    PreparedEvent::Delivered => return Ok(ElementTaskStep::Complete),
+                    PreparedEvent::Dispatch(event, scope, funding) => (event, scope, funding),
+                };
+                #[cfg(not(feature = "document-scripting"))]
+                let _scope = scope;
+                let outcome = dispatcher
+                    .deliver_with_usage(
+                        dom.raw_mut(),
+                        context,
+                        &event,
+                        DispatchCall {
+                            limits: limits.dispatch,
+                            cancel,
+                            host,
+                            funding,
+                        },
+                        usage,
+                    )
+                    .map_err(DomElementTaskRuntimeError::Dispatch)?;
+                let mut owner = state.borrow_mut();
+                let task = owner
+                    .tasks
+                    .iter_mut()
+                    .find(|entry| entry.value.id() == value.id())
+                    .ok_or(DomElementTaskRuntimeError::Binding)?;
+                match outcome {
+                    DomEventDispatchOutcome::Complete(receipt) => {
+                        if matches!(task.file_selection, Some(FileSelectionPhase::Input)) {
+                            task.file_selection = Some(FileSelectionPhase::Change(receipt));
+                            task.event = None;
+                            continue;
+                        }
+                        task.receipt = Some(receipt);
+                        return Ok(ElementTaskStep::Complete);
                     }
-                    Ok(ElementTaskStep::Selected(invocation, task.request.clone()))
+                    #[cfg(feature = "document-scripting")]
+                    DomEventDispatchOutcome::HostInvocation(invocation) => {
+                        if let Some(scope) = scope {
+                            invocation
+                                .retain_source_scope(scope)
+                                .map_err(DomElementTaskRuntimeError::Dispatch)?;
+                        }
+                        return Ok(ElementTaskStep::Selected(invocation, task.request.clone()));
+                    }
+                    retained => return Ok(ElementTaskStep::Retained(retained)),
                 }
-                retained => Ok(ElementTaskStep::Retained(retained)),
             }
         })();
         // This is arbitrary caller code too. The bank already owns a completed
@@ -1993,7 +2130,9 @@ impl DomElementTaskRuntime {
                     _running: running,
                 }))
             }
-            ElementTaskStep::Complete | ElementTaskStep::Destroyed => {
+            ElementTaskStep::Complete
+            | ElementTaskStep::Destroyed
+            | ElementTaskStep::Ineligible => {
                 if matches!(
                     value,
                     DomElementTask::DialogToggle(_) | DomElementTask::DialogClose(_)
@@ -2031,6 +2170,33 @@ impl DomElementTaskRuntime {
                 }
                 if let Some(native_task) = &mut native_task {
                     native_task.complete();
+                }
+                if let DomElementTask::FileSelection(info) = value {
+                    match task.file_selection.take() {
+                        Some(FileSelectionPhase::Change(mut input)) => {
+                            input.release_producer_retention();
+                            let mut change = task.receipt.take();
+                            if let Some(receipt) = &mut change {
+                                receipt.release_producer_retention();
+                            }
+                            return Ok(ElementTaskRunOutcome::Native(
+                                DomElementTaskProgress::FileSelectionComplete {
+                                    task: info,
+                                    input,
+                                    change,
+                                    displaced_owner: displaced.then(|| Self {
+                                        state: Rc::downgrade(&state),
+                                    }),
+                                },
+                            ));
+                        }
+                        Some(FileSelectionPhase::Ineligible) => {
+                            return Ok(ElementTaskRunOutcome::Native(
+                                DomElementTaskProgress::SkippedFileSelectionIneligible(info),
+                            ));
+                        }
+                        _ => {}
+                    }
                 }
                 if let DomElementTask::ObjectRepresentation(info) = value
                     && task.object.is_none()
@@ -2078,6 +2244,7 @@ impl DomElementTaskRuntime {
 enum ElementTaskStep {
     Complete,
     Destroyed,
+    Ineligible,
     Retained(DomEventDispatchOutcome),
     #[cfg(feature = "document-scripting")]
     Selected(DomEventHostInvocation, Option<DomSourceEventRequest>),

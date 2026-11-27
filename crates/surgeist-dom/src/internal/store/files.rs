@@ -226,30 +226,30 @@ impl DomFileList {
         registry: &bank::CustodyRegistry,
         admit: &mut dyn FnMut(custody::Usage) -> Result<(), DomError>,
     ) -> Result<Option<bank::Dependency>, DomError> {
-        type Controls = Vec<bank::ObjectCustody>;
         if self.is_empty() {
             return Ok(None);
         }
         let usage = |capacity: usize| {
             capacity
                 .checked_mul(size_of::<bank::ObjectCustody>())
-                .and_then(|bytes| bytes.checked_add(size_of::<Controls>()))
+                .and_then(|bytes| bytes.checked_add(size_of::<FileListCustody>()))
                 .map(|bytes| custody::Usage::new(bytes, 0))
                 .ok_or(DomError::RepresentationExhausted)
         };
         let requested = usage(self.len())?;
         let debit = registry.ledger().retain(requested, &mut *admit)?;
-        let mut controls = custody::Held::new(Controls::new(), debit);
+        let mut controls = custody::Held::new(FileListCustody(Vec::new()), debit);
         controls
             .value_mut()
+            .0
             .try_reserve_exact(self.len())
             .map_err(|_| DomError::AllocationFailed)?;
-        let actual = usage(controls.value().capacity())?;
+        let actual = usage(controls.value().0.capacity())?;
         controls
             .debit_mut()
             .grow(actual.checked_sub(requested)?, &mut *admit)?;
         for file in self.files() {
-            controls.value_mut().push(registry.adopt_object(
+            controls.value_mut().0.push(registry.adopt_object(
                 file.0.identity,
                 file.0.own_usage,
                 &mut *admit,
@@ -258,6 +258,8 @@ impl DomFileList {
         bank::Dependency::from_retained(controls, actual, admit).map(Some)
     }
 }
+
+pub(super) struct FileListCustody(pub(super) Vec<bank::ObjectCustody>);
 
 pub(crate) fn input_dependency(
     value: &crate::internal::input::DomInputState,
@@ -268,7 +270,23 @@ pub(crate) fn input_dependency(
         return Ok(None);
     };
     let control = files.adopt(registry, admit)?;
-    bank::Dependency::new(control, registry.ledger(), admit).map(Some)
+    input_file_list_dependency(control, registry, admit).map(Some)
+}
+
+pub(super) struct InputFileListCustody {
+    pub(super) _list: bank::ObjectCustody,
+}
+
+pub(crate) fn input_file_list_dependency(
+    control: bank::ObjectCustody,
+    registry: &bank::CustodyRegistry,
+    admit: &mut dyn FnMut(custody::Usage) -> Result<(), DomError>,
+) -> Result<bank::Dependency, DomError> {
+    bank::Dependency::new(
+        InputFileListCustody { _list: control },
+        registry.ledger(),
+        admit,
+    )
 }
 
 impl std::fmt::Debug for DomFileList {
@@ -287,3 +305,26 @@ impl PartialEq for DomFileList {
     }
 }
 impl Eq for DomFileList {}
+
+#[cfg(test)]
+impl super::compact_tests::typed_graph::Walker<'_> {
+    pub(super) fn file_list(&mut self, list: &DomFileList) {
+        use super::compact_tests::typed_graph::Raw;
+
+        let data = &list.0.value;
+        let mut raw = Raw::default();
+        self.buffer(&mut raw, &data.files, "file.list.members");
+        if let Some(value) = &data.filename_value {
+            self.text(&mut raw, value);
+        }
+        self.object(&list.0, raw, "file.list");
+        for file in &data.files {
+            let data = &file.0.value;
+            let mut raw = Raw::default();
+            self.buffer(&mut raw, &data.bytes, "file.body");
+            self.text(&mut raw, &data.name.block().whole());
+            self.text(&mut raw, &data.media_type.block().whole());
+            self.object(&file.0, raw, "file.data");
+        }
+    }
+}

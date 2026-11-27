@@ -865,6 +865,21 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             "the text control's select event task source is unavailable",
         ),
         (
+            "FileSelectionTaskSourceUnavailable",
+            DomError::FileSelectionTaskSourceUnavailable,
+            "the Input file selection task source is unavailable",
+        ),
+        (
+            "StaleFileSelection",
+            DomError::StaleFileSelection,
+            "the Input file selection observation is stale",
+        ),
+        (
+            "FileSelectionInapplicable",
+            DomError::FileSelectionInapplicable,
+            "the Input cannot accept this user file selection",
+        ),
+        (
             "ObjectHostedTransitionUnavailable",
             DomError::ObjectHostedTransitionUnavailable,
             "the Object element's reached hosted representation transition is unavailable",
@@ -1218,6 +1233,9 @@ variants! {
     TrackMembershipUnavailable unit,
     ObjectTaskSourceUnavailable unit,
     TextSelectionTaskSourceUnavailable unit,
+    FileSelectionTaskSourceUnavailable unit,
+    StaleFileSelection unit,
+    FileSelectionInapplicable unit,
     ObjectHostedTransitionUnavailable unit,
     ImageUpdateExhausted unit,
     HyperlinkProcessingUnavailable unit,

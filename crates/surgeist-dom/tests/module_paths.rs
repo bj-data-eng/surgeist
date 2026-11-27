@@ -1,11 +1,9 @@
-//! Proves that each of the 531 public items resolves at the module path the module plan
-//! assigns it: the imports below fail to compile if an item is missing from, or not
-//! reachable at, its planned module.
+//! Proves that public items resolve at their assigned module paths. The imports
+//! below fail to compile if an item is missing from its assigned module.
 //!
-//! Generated from the approved plan (`items.md` of issue 2919), not from the
-//! implementation. This test does not prove that an item has only one path or that
-//! the crate root holds only its five items; the regenerated public API audit checks
-//! both.
+//! The original path inventory came from the approved plan (`items.md` of issue
+//! 2919). The generated public API audit checks path uniqueness and the five
+//! crate-root items.
 
 #![expect(
     unused_imports,
@@ -63,6 +61,7 @@ use surgeist_dom::event::{
     DomSourceEventOutcome, DomSourceEventPayloadRetention, DomSourceEventPublication,
     DomSourceEventRequest, DomSourceEventRetention, DomSourceEventTime, DomSourceToggleEvent,
 };
+use surgeist_dom::file::{DomFile, DomFileId, DomFileList, DomFileListId};
 use surgeist_dom::focus::{
     DomDocumentAutofocus, DomFocusObservation, DomFocusPreparation, DomFocusPublication,
     DomFocusRequest, DomFocusTarget, DomFocusedAreaDesignation, DomSourceAutofocusInsertionRequest,
@@ -218,7 +217,11 @@ use surgeist_dom::style::{
 };
 use surgeist_dom::task::{
     DomElementTaskAssociation, DomElementTaskId, DomElementTaskRetention, DomElementTaskSource,
-    DomElementTaskSourceKind, DomNativeCheckpoint, DomNativeCheckpointLimits, DomNativeTaskId,
+    DomElementTaskSourceKind, DomFileSelectionTask, DomFileSelectionTaskInfo, DomNativeCheckpoint,
+    DomNativeCheckpointLimits, DomNativeTaskId, DomObjectRepresentationTask,
+    DomObjectRepresentationTaskInfo, DomQueuedSourceElementTask, DomQueuedSourceElementTasks,
+    DomSourceElementTaskInfo, DomSourceElementTaskQueueCommit, DomSourceElementTaskQueueRequest,
+    DomTextSelectionTaskInfo,
 };
 use surgeist_dom::tree::{
     DomAttr, DomAttribute, DomAttributeAttachment, DomDocument, DomDocumentPosition,
@@ -250,6 +253,5 @@ use surgeist_dom::{Dom, DomBatch, DomCommit, DomError, DomSnapshot};
 
 #[test]
 fn every_public_item_resolves_at_its_module_path() {
-    // 531 items in 33 modules and the crate root;
-    // the imports above are checked at compile time.
+    // The imports above are checked at compile time.
 }
