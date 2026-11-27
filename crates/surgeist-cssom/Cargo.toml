@@ -18,3 +18,7 @@ surgeist-ledger = { path = "../surgeist-ledger", version = "=0.1.0" }
 [[bench]]
 name = "store_edits"
 harness = false
+
+[[bench]]
+name = "bootstrap_sheet"
+harness = false
