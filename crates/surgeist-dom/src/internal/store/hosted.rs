@@ -2036,6 +2036,89 @@ mod container_locality_tests;
 #[cfg(test)]
 mod source_formation_tests;
 
+impl State {
+    // Walk only the affected live hosted subtree. Canonical parent and
+    // container identities provide the return cursor without a work stack.
+    pub(super) fn require_no_object_activity_change(
+        &self,
+        owner: DomOwnerId,
+        root: DomHostedNavigableId,
+        mut step: impl FnMut() -> Result<(), DomHostedError>,
+    ) -> Result<(), DomHostedError> {
+        if self.counts.native_objects == 0 {
+            return Ok(());
+        }
+        let graph = self
+            .hosted_history
+            .as_deref()
+            .ok_or(DomHostedError::UnsupportedProfile)?;
+        let mut current = root;
+        let mut after = None;
+        loop {
+            let row = graph.navigable_with(current, &mut step)?;
+            let document = graph.entry_with(row.active, &mut step)?.document;
+            if let Some(document) = document {
+                let doc = self.node_with(owner, document.node(), &mut step)?;
+                let Node::Document(doc) = doc else {
+                    return Err(DomError::WrongDocument.into());
+                };
+                if doc.value.native_objects != 0
+                    && captured_fully_active(graph, document, current, &mut step)?
+                {
+                    return Err(DomError::ObjectHostedTransitionUnavailable.into());
+                }
+                if let Some(child) =
+                    self.next_hosted_child(owner, graph, current, document, after, &mut step)?
+                {
+                    current = child;
+                    after = None;
+                    continue;
+                }
+            }
+            if current == root {
+                return Ok(());
+            }
+            after = Some(row.container.ok_or(DomHostedError::StaleIdentity)?);
+            current = row.parent.ok_or(DomHostedError::StaleIdentity)?;
+        }
+    }
+
+    fn next_hosted_child(
+        &self,
+        owner: DomOwnerId,
+        graph: &history::Graph,
+        parent: DomHostedNavigableId,
+        document: DocumentId,
+        after: Option<NodeId>,
+        step: &mut impl FnMut() -> Result<(), DomHostedError>,
+    ) -> Result<Option<DomHostedNavigableId>, DomHostedError> {
+        let root = Key::Existing(document.node());
+        let order = transaction::ordered_members::OrderView::state(self, owner);
+        let index = &self.container_index;
+        let next = |after, step: &mut _| {
+            containers::with_hosted_step(step, |step| match after {
+                Some(key) => index.after(root, key, order, step),
+                None => index.first(root, step),
+            })
+        };
+        let mut current = next(after.map(Key::Existing), step)?;
+        while let Some(key) = current {
+            let Key::Existing(id) = key else {
+                return Err(DomError::UnavailableCreation.into());
+            };
+            let node = self.node_with(owner, id, step)?;
+            if let DomNodeKind::Element(element) = node.kind()
+                && let Some(Some(child)) = element.child_navigable()
+                && graph.navigable_with(child, &mut *step)?.parent == Some(parent)
+            {
+                return Ok(Some(child));
+            }
+            current = next(Some(key), step)?;
+        }
+        Ok(None)
+    }
+}
+
 impl Dom {
     /// Visits actual content-navigable edges in canonical shadow-including tree
     /// order. No issuer-slot order or later Runtime tree mirror participates.

@@ -686,6 +686,7 @@ impl Draft {
                     DocumentNode<NodeId>,
                     DocumentNode {
                         common: common(&value.common),
+                        native_objects: value.native_objects,
                         metadata: value.metadata.value.clone(),
                         children: children.as_ref().map(|v| v.value.clone()),
                         active_range: value.active_range,

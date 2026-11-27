@@ -152,6 +152,9 @@ impl Initial {
     pub(in crate::internal::store) fn limits(&self) -> crate::internal::source::DomSourceLimits {
         self.limits
     }
+    pub(in crate::internal::store) fn spent_work(&self) -> u64 {
+        self.work.get()
+    }
 
     fn finish_work(&self, work: &Arc<AtomicU64>) {
         if matches!(&self.work, Work::Local(_)) {

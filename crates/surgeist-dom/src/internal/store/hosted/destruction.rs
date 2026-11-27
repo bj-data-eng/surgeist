@@ -744,6 +744,10 @@ impl Dom {
         {
             return self.complete_hosted_invocation(source, id, cancel);
         }
+        self.state
+            .require_no_object_activity_change(self.owner, creation.navigable, || {
+                work.step(cancel)
+            })?;
         let operation =
             self.install_hosted_invocation(source, creation, traversable, work, history, cancel)?;
         self.complete_hosted_invocation(source, operation, cancel)
@@ -1005,6 +1009,11 @@ impl Dom {
                         })?
                         .retiring;
                     if !retiring {
+                        dom.state.require_no_object_activity_change(
+                            dom.owner,
+                            creation.navigable,
+                            || row.request.request.work.step(cancel),
+                        )?;
                         if !row.retiring_reserved {
                             // The issuer ensures total remaining credit: this
                             // mark publication and the final wrapper close each

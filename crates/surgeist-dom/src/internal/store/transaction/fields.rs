@@ -37,6 +37,7 @@ pub(in crate::internal::store) enum FieldUndo {
     Interactive(InteractiveGroup),
     Autofocus(AutofocusGroup),
     ActiveRange(crate::internal::range::DomActiveRangeState),
+    NativeObjectCount(usize),
     Children(Option<Group<NodeSequence<NodeId>, NodeSequenceFields>>),
     FullscreenGroup(
         Option<
@@ -77,6 +78,12 @@ impl FieldUndo {
                 Self::AutofocusProcessed(old)
             }
             Self::Common(v) => Self::Common(std::mem::replace(node.common_mut(), v)),
+            Self::NativeObjectCount(count) => match node.document_fields_mut() {
+                Some(document) => {
+                    Self::NativeObjectCount(std::mem::replace(&mut document.native_objects, count))
+                }
+                None => Self::NativeObjectCount(count),
+            },
             Self::Focus(value) => Self::Focus(std::mem::replace(
                 &mut node.element_fields_mut().expect("Element focus").focus,
                 value,
@@ -814,6 +821,18 @@ scalar_guard!(
         let value = *value;
         drop(debit);
         Ok(FieldUndo::Host(value))
+    }
+);
+scalar_guard!(
+    native_object_count_mut,
+    usize,
+    Overlay::NativeObjectCount,
+    |n| n.native_object_count().ok_or(DomError::WrongDocument),
+    |_draft, _key, incoming, _| {
+        let (value, debit) = incoming.into_parts();
+        let value = *value;
+        drop(debit);
+        Ok(FieldUndo::NativeObjectCount(value))
     }
 );
 scalar_guard!(

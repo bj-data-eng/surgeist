@@ -108,6 +108,215 @@ fn current_script_registration(
     dom.dispatch_script_registration_current_with(registration, || edits.work.step(cancel))
 }
 
+/// Qualify only the actual resource-free Object edit using both canonical sides.
+/// Its proof survives later attr removal, adoption and exact-generation
+/// retirement, when a current-only lookup cannot explain the old delta.
+pub(in crate::internal::store) fn qualify_resource_free_object_changes(
+    owner: DomOwnerId,
+    before: &State,
+    after: &State,
+    changes: &[DomChange],
+    step: &mut impl FnMut() -> Result<(), DomError>,
+) -> Result<bool, DomError> {
+    for change in changes {
+        step()?;
+        let id = match change {
+            DomChange::SourceOperation
+            | DomChange::ChildListObservation
+            | DomChange::DetailsToggleIntentions => continue,
+            DomChange::Created(id)
+            | DomChange::Destroyed(id)
+            | DomChange::NodeDocument(id)
+            | DomChange::Attributes(id)
+            | DomChange::ElementState(id)
+            | DomChange::Data(id)
+            | DomChange::Parent(id)
+            | DomChange::Children(id) => *id,
+            DomChange::AttrValue(id) | DomChange::AttrOwner(id) => id.0,
+            _ => return Ok(false),
+        };
+        if matches!(
+            change,
+            DomChange::Created(_) | DomChange::Destroyed(_) | DomChange::Children(_)
+        ) && qualifies_object_parent(owner, before, after, id, step)?
+        {
+            continue;
+        }
+        let old = object_history_member(owner, before, id, step)?;
+        let new = object_history_member(owner, after, id, step)?;
+        if old == Some(false) || new == Some(false) || old.or(new).is_none() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn qualifies_object_parent(
+    owner: DomOwnerId,
+    before: &State,
+    after: &State,
+    id: NodeId,
+    step: &mut impl FnMut() -> Result<(), DomError>,
+) -> Result<bool, DomError> {
+    let Some(old) = object_parent_children(owner, before, id, step)? else {
+        return Ok(false);
+    };
+    let Some(new) = object_parent_children(owner, after, id, step)? else {
+        return Ok(false);
+    };
+    let mut old = old.iter();
+    let mut new = new.iter();
+    let mut found = false;
+    // Only the qualified Object occurrences can differ. The ordinary parent's
+    // remaining child sequence must be identical across publication.
+    loop {
+        let old = next_non_object_child(owner, before, &mut old, &mut found, step)?;
+        let new = next_non_object_child(owner, after, &mut new, &mut found, step)?;
+        if old != new {
+            return Ok(false);
+        }
+        if old.is_none() {
+            return Ok(found);
+        }
+    }
+}
+
+fn object_parent_children<'a>(
+    owner: DomOwnerId,
+    state: &'a State,
+    id: NodeId,
+    step: &mut impl FnMut() -> Result<(), DomError>,
+) -> Result<Option<&'a [NodeId]>, DomError> {
+    let node = match state.node_with(owner, id, step) {
+        Ok(node) => node,
+        Err(DomError::StaleNode) => return Ok(Some(&[])),
+        Err(error) => return Err(error),
+    };
+    let ordinary = match node.kind() {
+        DomNodeKind::Element(element) => simple_html_element(element, step)?,
+        DomNodeKind::Document(metadata) => {
+            metadata.document_environment().browsing_context()
+                == surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
+        }
+        DomNodeKind::DocumentFragment => true,
+        _ => false,
+    };
+    if ordinary && object_context(owner, state, node, step)? {
+        return Ok(Some(node.children()));
+    }
+    Ok(None)
+}
+
+fn next_non_object_child(
+    owner: DomOwnerId,
+    state: &State,
+    children: &mut std::slice::Iter<'_, NodeId>,
+    found: &mut bool,
+    step: &mut impl FnMut() -> Result<(), DomError>,
+) -> Result<Option<NodeId>, DomError> {
+    for &id in children {
+        step()?;
+        if !is_resource_free_object(owner, state, state.node_with(owner, id, step)?, step)? {
+            return Ok(Some(id));
+        }
+        *found = true;
+    }
+    Ok(None)
+}
+
+fn object_history_member(
+    owner: DomOwnerId,
+    state: &State,
+    id: NodeId,
+    step: &mut impl FnMut() -> Result<(), DomError>,
+) -> Result<Option<bool>, DomError> {
+    let node = match state.node_with(owner, id, step) {
+        Ok(node) => node,
+        Err(DomError::StaleNode) => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    if let Some((attr, parent)) = node.attribute_node() {
+        let name = attr.name();
+        step()?;
+        let ordinary = name.namespace_uri().is_none()
+            && ["id", "class"].iter().any(|attr| {
+                name.local_name()
+                    .code_units()
+                    .iter()
+                    .copied()
+                    .eq(attr.encode_utf16())
+            });
+        if !ordinary && object::resource_attribute_with(name, &mut *step)?.is_none() {
+            return Ok(Some(false));
+        }
+        return Ok(Some(match parent {
+            Some(parent) => {
+                is_resource_free_object(owner, state, state.node_with(owner, parent, step)?, step)?
+            }
+            None => true,
+        }));
+    }
+    let mut current = node;
+    if matches!(node.kind(), DomNodeKind::Text(_) | DomNodeKind::Comment(_))
+        && let Some(parent) = node.parent()
+    {
+        current = state.node_with(owner, parent, step)?;
+    }
+    Ok(Some(is_resource_free_object(owner, state, current, step)?))
+}
+
+fn is_resource_free_object(
+    owner: DomOwnerId,
+    state: &State,
+    node: &Node,
+    step: &mut impl FnMut() -> Result<(), DomError>,
+) -> Result<bool, DomError> {
+    if !node
+        .element()
+        .is_some_and(|element| element.object_representation().is_some())
+    {
+        return Ok(false);
+    }
+    object_context(owner, state, node, step)
+}
+
+fn object_context(
+    owner: DomOwnerId,
+    state: &State,
+    node: &Node,
+    step: &mut impl FnMut() -> Result<(), DomError>,
+) -> Result<bool, DomError> {
+    match object::object_context_with(node.parent().map(Key::Existing), step, |key, step| {
+        let Key::Existing(id) = key else {
+            return Err(DomError::StaleNode);
+        };
+        state
+            .node_with(owner, id, step)
+            .map(transaction::NodeRead::canonical)
+    }) {
+        Ok(_) => Ok(true),
+        Err(DomError::ObjectHostedTransitionUnavailable) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
+fn simple_html_element<E: From<DomError>>(
+    element: &DomElement,
+    step: &mut impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    let name = element.name();
+    Ok(crate::internal::names::in_html_namespace_with(name, step)?
+        && ["html", "head", "body", "div", "span", "p"]
+            .iter()
+            .any(|tag| {
+                name.local_name()
+                    .code_units()
+                    .iter()
+                    .copied()
+                    .eq(tag.encode_utf16())
+            }))
+}
+
 fn resource_free_changes_since(
     dom: &Dom,
     document: DocumentId,
@@ -123,7 +332,10 @@ fn resource_free_changes_since(
         checkpoint.revision,
         dom.revision,
         || work.step(cancel),
-        |change| {
+        |change, resource_free_object_edit| {
+            if resource_free_object_edit {
+                return Ok(true);
+            }
             let id = match change {
                 DomChange::SourceOperation | DomChange::ChildListObservation => {
                     return Ok(true);
@@ -150,17 +362,7 @@ fn resource_free_changes_since(
             }
             Ok(match node.kind() {
                 DomNodeKind::Element(element) => {
-                    let name = element.name();
-                    crate::internal::names::in_html_namespace_with(name, &mut || work.step(cancel))?
-                        && ["html", "head", "body", "div", "span", "p"]
-                            .iter()
-                            .any(|tag| {
-                                name.local_name()
-                                    .code_units()
-                                    .iter()
-                                    .copied()
-                                    .eq(tag.encode_utf16())
-                            })
+                    simple_html_element(element, &mut || work.step(cancel))?
                 }
                 DomNodeKind::Attr(attribute) => {
                     let name = attribute.name();

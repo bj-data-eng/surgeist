@@ -33,12 +33,7 @@ fn parse_limits() -> HtmlParseLimits {
         .unwrap()
 }
 
-pub(super) fn window_listener_attaches_to_the_visible_prefix_before_eof() {
-    let foreign = initial_document_has_no_load_task();
-    let source = HtmlSource::utf16(
-        "<!doctype html><html><head></head><body><div id=p>A😀&amp;β</div></body></html>".into(),
-    );
-    let cancellation = Arc::new(cancel());
+fn session_with_event_recipients() -> DomSession {
     let mut dom = native_dom();
     dom.set_limits(
         dom.limits().with_event_recipients(
@@ -47,7 +42,230 @@ pub(super) fn window_listener_attaches_to_the_visible_prefix_before_eof() {
         ),
     )
     .unwrap();
-    let mut session = DomSession::new(dom, limits()).unwrap();
+    DomSession::new(dom, limits()).unwrap()
+}
+
+pub(super) fn window_load_waits_for_original_object_representation_task() {
+    use surgeist_dom::document::DomDocumentReadiness;
+    use surgeist_html::elements::object::HtmlObjectRepresentation;
+    use surgeist_runtime::element_task::{DomElementTaskProgress, DomElementTaskRunLimits};
+
+    let source = HtmlSource::utf8(
+        "<!doctype html><html><head></head><body><div>completion</div></body></html>",
+    );
+    let cancellation = Arc::new(cancel());
+    let mut session = session_with_event_recipients();
+    let mut hosted = session.hosted_execution();
+    let mut registry = Some(new_registry());
+    let (other, top) = {
+        let mut dom = session.dom();
+        let owner = hosted.create_host(&mut dom, &cancellation).unwrap();
+        let other = hosted
+            .create_top_level(&mut dom, owner, &cancellation)
+            .unwrap();
+        let local = hosted
+            .create_local_html_top_level(&mut dom, owner, &cancellation)
+            .unwrap();
+        (other, local)
+    };
+    let limits = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1);
+    let tasks = session.element_task_execution();
+    let mut parser = {
+        let mut dom = session.dom();
+        let parser = hosted
+            .begin_local_html_parser(&mut dom, top, &source, parse_limits(), &cancellation)
+            .unwrap();
+        registry
+            .as_mut()
+            .unwrap()
+            .bind(&mut dom, &cancellation)
+            .unwrap();
+        parser
+    };
+    let mut host = prepare(session, cancellation.clone())
+        .enable_with_guest_event_registry(top, ALLOW, None, &mut registry, guest_limits())
+        .unwrap();
+    let permit = host.permit().unwrap();
+    eval(
+        &mut host,
+        &permit,
+        "globalThis.loaded = 0; addEventListener('load', () => { loaded += 1 }); 0",
+        0.0,
+    );
+    let mut continuation = host
+        .with_native(|dom, hosted, _| {
+            parser.accept_eof();
+            assert_eq!(
+                parser
+                    .advance(&hosted, dom, NonZeroUsize::new(32).unwrap(), &cancellation)
+                    .unwrap(),
+                HtmlLiveParseProgress::StopParsing
+            );
+            parser
+                .take_stop_parsing(&hosted, dom, &cancellation)
+                .unwrap()
+        })
+        .unwrap();
+    host.begin_html_completion(&permit, &mut continuation)
+        .unwrap();
+    let dispatch = guest_limits().dispatch;
+    assert!(matches!(
+        host.service_html_completion(&permit, dispatch).unwrap(),
+        Progress::Interactive
+    ));
+    assert!(matches!(
+        host.service_html_completion(&permit, dispatch).unwrap(),
+        Progress::DomContentLoaded
+    ));
+    let apply = |host: &mut DocumentScriptHost, edit| {
+        let result = host
+            .with_native(|dom, _, mut source| {
+                source
+                    .apply(
+                        dom,
+                        edit,
+                        limits,
+                        &mut DomSourceServices {
+                            meta: None,
+                            execution_scope: None,
+                            style_policy: &mut |_| None,
+                            url: None,
+                        },
+                        &cancellation,
+                    )
+                    .unwrap()
+            })
+            .unwrap();
+        let DomSourceDriveProgress::Complete(completion) = result else {
+            panic!("the native Object task must be admitted");
+        };
+        completion
+    };
+    let create =
+        || DomSourceEdit::create_element_ns(top.document().node(), Namespace::html(), "object");
+    let object = apply(&mut host, create()).published_node().unwrap();
+    let detached = apply(
+        &mut host,
+        DomSourceEdit::create_element_ns(top.document().node(), Namespace::html(), "div"),
+    )
+    .published_node()
+    .unwrap();
+    apply(
+        &mut host,
+        DomSourceEdit::insert_before(object, detached, None),
+    );
+    apply(
+        &mut host,
+        DomSourceEdit::set_attribute(object, "data", "unfetched"),
+    );
+    apply(&mut host, DomSourceEdit::remove_attribute(object, "data"));
+    let retired = apply(&mut host, create()).published_node().unwrap();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.destroy(retired);
+        dom.apply(batch, &cancellation).unwrap();
+    })
+    .unwrap();
+    let source_kind = DomElementTaskSourceKind::DomManipulation;
+    let queued = tasks.pending_task(source_kind, 0).unwrap().unwrap();
+    assert_eq!(queued.id().target(), object);
+    assert_eq!(tasks.pending_tasks(source_kind).unwrap(), 4);
+    let waiting = host.snapshot().unwrap();
+    assert!(matches!(
+        host.service_html_completion(&permit, dispatch).unwrap(),
+        Progress::WaitingForObjectTask(task) if task == queued.id()
+    ));
+    assert_eq!(host.snapshot().unwrap().stamp(), waiting.stamp());
+    assert_eq!(
+        waiting
+            .document(top.document())
+            .unwrap()
+            .metadata()
+            .readiness(),
+        DomDocumentReadiness::Interactive
+    );
+    eval(&mut host, &permit, "loaded", 0.0);
+    assert!(matches!(
+        host.run_attached_element_task(&permit, source_kind, DomElementTaskRunLimits {
+            dispatch, source: limits,
+        }).unwrap(),
+        DomElementTaskProgress::ObjectRepresentationComplete { task, .. } if task.id() == queued.id()
+    ));
+    assert_eq!(
+        host.snapshot()
+            .unwrap()
+            .node(object)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .object_representation(),
+        Some(HtmlObjectRepresentation::FallbackContent)
+    );
+    for _ in 0..2 {
+        let queued = tasks.pending_task(source_kind, 0).unwrap().unwrap();
+        assert_eq!(queued.id().target(), object);
+        assert!(matches!(
+            host.service_html_completion(&permit, dispatch).unwrap(),
+            Progress::WaitingForObjectTask(task) if task == queued.id()
+        ));
+        assert!(matches!(
+            host.run_attached_element_task(&permit, source_kind, DomElementTaskRunLimits {
+                dispatch, source: limits,
+            }).unwrap(),
+            DomElementTaskProgress::ObjectRepresentationComplete { task, .. } if task.id() == queued.id()
+        ));
+    }
+    assert_eq!(
+        tasks
+            .pending_task(source_kind, 0)
+            .unwrap()
+            .unwrap()
+            .id()
+            .target(),
+        retired
+    );
+    let transferred = apply(
+        &mut host,
+        DomSourceEdit::create_element_ns(other.document().node(), Namespace::html(), "object"),
+    )
+    .published_node()
+    .unwrap();
+    apply(
+        &mut host,
+        DomSourceEdit::adopt(transferred, top.document().node()),
+    );
+    let other_task = tasks.pending_task(source_kind, 1).unwrap().unwrap();
+    assert_eq!(other_task.id().target(), transferred);
+    assert_eq!(
+        other_task.queue_association().unwrap().global(),
+        other.global()
+    );
+    assert!(
+        matches!(host.service_html_completion(&permit, dispatch).unwrap(),
+        Progress::WaitingForObjectTask(task) if task == other_task.id())
+    );
+    apply(
+        &mut host,
+        DomSourceEdit::adopt(transferred, other.document().node()),
+    );
+    assert_eq!(
+        tasks.pending_task(source_kind, 1).unwrap().unwrap().id(),
+        other_task.id()
+    );
+    assert!(matches!(
+        host.service_html_completion(&permit, dispatch).unwrap(),
+        Progress::Loaded
+    ));
+    eval(&mut host, &permit, "loaded", 1.0);
+}
+
+pub(super) fn window_listener_attaches_to_the_visible_prefix_before_eof() {
+    let foreign = initial_document_has_no_load_task();
+    let source = HtmlSource::utf16(
+        "<!doctype html><html><head></head><body><div id=p>A😀&amp;β</div></body></html>".into(),
+    );
+    let cancellation = Arc::new(cancel());
+    let mut session = session_with_event_recipients();
     let mut hosted = session.hosted_execution();
     let mut registry = Some(new_registry());
     let (top, mut parser) = {

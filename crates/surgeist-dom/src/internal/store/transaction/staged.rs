@@ -125,6 +125,7 @@ pub(in crate::internal::store) enum Associations {
 }
 pub(in crate::internal::store) struct DocumentFields {
     pub common: Common<Key>,
+    pub native_objects: usize,
     pub metadata: Controlled<DomDocumentMetadata>,
     pub children: Option<Group<NodeSequence<NodeId>, NodeSequenceFields>>,
     pub active_range: crate::internal::range::DomActiveRangeState,
@@ -487,6 +488,7 @@ impl DraftNode {
                 Self::Document(boxed(registry, &mut admit, || {
                     Ok(DocumentFields {
                         common: common(&value.common),
+                        native_objects: value.native_objects,
                         metadata,
                         children,
                         active_range: value.active_range,
@@ -781,6 +783,7 @@ impl DraftNode {
                 Self::Document(boxed(registry, &mut admit, || {
                     Ok(DocumentFields {
                         common,
+                        native_objects: 0,
                         metadata,
                         children: None,
                         active_range: if native {

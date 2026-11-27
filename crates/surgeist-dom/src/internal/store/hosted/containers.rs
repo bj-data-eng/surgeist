@@ -2,6 +2,7 @@
 //! Null content and graph-parent mismatch remain participants; the query owner
 //! qualifies those facts against the current hosted graph.
 use super::super::*;
+use super::DomHostedError;
 use transaction::ordered_members::{
     Edit, Map, MapCustody, Members, MembersCustody, Membership, Mode, OrderPair, OrderView,
     Qualified, RootHeader,
@@ -73,9 +74,16 @@ fn hosted_work<T>(
     cancel: &AtomicBool,
     run: impl FnOnce(&mut dyn FnMut() -> Result<(), DomError>) -> Result<T, DomError>,
 ) -> Result<T, crate::internal::hosted::DomHostedError> {
+    with_hosted_step(|| work.step(cancel), run)
+}
+
+pub(super) fn with_hosted_step<T>(
+    mut step: impl FnMut() -> Result<(), DomHostedError>,
+    run: impl FnOnce(&mut dyn FnMut() -> Result<(), DomError>) -> Result<T, DomError>,
+) -> Result<T, DomHostedError> {
     let mut original = None;
     let result = run(&mut || {
-        work.step(cancel).map_err(|error| {
+        step().map_err(|error| {
             original = Some(error);
             DomError::Cancelled
         })

@@ -161,7 +161,7 @@ fn exact_fieldset_names_retain_initial_state_without_admitting_other_native_cont
     b.create_element_ns(d, Namespace::html(), "object");
     assert!(matches!(
         dom.apply(b, &cancel()),
-        Err(DomError::NativeInitializationRequired(_))
+        Err(DomError::ObjectTaskSourceUnavailable)
     ));
     assert_eq!(dom.snapshot().stamp(), before.stamp());
 }

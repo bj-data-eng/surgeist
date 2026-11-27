@@ -365,22 +365,28 @@ fn retired_native_installation_keeps_family_cause_and_late_failure_atomic() {
     let mut builder = HtmlFragment::builder(authoring()).unwrap();
     let root = builder.root();
     builder.append_text(&root, "private prefix").unwrap();
-    builder
+    let audio = builder
         .append_element(
             &root,
+            QualifiedName::new(Namespace::html(), None, "audio"),
+            OrderedAttributes::default(),
+        )
+        .unwrap();
+    builder
+        .append_element(
+            &audio,
             QualifiedName::new(Namespace::html(), None, "track"),
             OrderedAttributes::default(),
         )
         .unwrap();
     let source = builder.finish().unwrap();
-    let track = source.root().children().nth(1).unwrap();
+    let audio = source.root().children().nth(1).unwrap();
+    let track = source.node(&audio).unwrap().children().next().unwrap();
     assert!(matches!(
         refused(&mut fixture, &source, target, installation_limits(), &cancel()),
         DomNativeHtmlInstallError::Source {
             subject,
-            error: DomError::NativeInitializationRequired(surgeist_html::elements::native::HtmlElementClass::KnownHtml(
-                surgeist_html::vocabulary::KnownHtmlElement::Track,
-            )),
+            error: DomError::TrackMembershipUnavailable,
         } if subject == track
     ));
     unchanged(&mut fixture, &before, usage);

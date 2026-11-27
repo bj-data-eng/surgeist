@@ -8,7 +8,6 @@ use surgeist_dom::{
     identity::{DocumentId, NodeId},
     limits::{DomLimits, DomResource},
 };
-use surgeist_html::elements::{form::HtmlNativeFormAssociationKind, native::HtmlElementClass};
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_template::dom::{
     TemplateDomError, TemplateDomUnresolvedKind as Unresolved, append_static_html,
@@ -400,9 +399,7 @@ fn real_dom_native_family_admission_is_deferred_to_apply() {
     assert_eq!(roots.len(), 2);
     assert_eq!(
         dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
-        DomError::NativeInitializationRequired(HtmlElementClass::FormAssociated(
-            HtmlNativeFormAssociationKind::Object
-        ))
+        DomError::ObjectTaskSourceUnavailable
     );
     assert_unchanged(&old, &dom, parent, marker);
 }

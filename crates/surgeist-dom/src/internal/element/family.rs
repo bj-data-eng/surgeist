@@ -65,6 +65,7 @@ pub(crate) enum NativeFamily {
         in_document_history: bool,
     },
     Track(Option<Arc<Materialized<DocumentString>>>),
+    Object(surgeist_html::elements::object::HtmlObjectRepresentation),
     Media {
         state: surgeist_html::elements::media::HtmlUnloadedMediaState,
         automatic_track_selection_performed: bool,
@@ -121,6 +122,7 @@ impl NativeFamily {
             | Self::Picture
             | Self::Source
             | Self::Embed { .. }
+            | Self::Object(_)
             | Self::Media { .. }
             | Self::Hyperlink
             | Self::Template

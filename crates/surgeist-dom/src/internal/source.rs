@@ -200,6 +200,7 @@ pub enum DomSourceRequest {
     HostedChild(crate::internal::hosted::DomHostedChildRequest),
     Event(DomSourceEventRequest),
     Dialog(DomSourceDialogRequest),
+    ObjectTaskQueue(crate::internal::store::source::operation::object_queue::DomObjectTaskQueueRequest),
     DialogFocusing(DomSourceDialogFocusingRequest),
     FocusDelegate(DomSourceFocusDelegateRequest),
     AutofocusInsertion(DomSourceAutofocusInsertionRequest),

@@ -1013,6 +1013,73 @@ fn nested_containers(session: &mut DomSession, top: DomHostedTopLevel) -> [NodeI
     containers
 }
 
+#[test]
+fn nested_object_blocks_an_ancestor_activity_change_before_unlinking() {
+    use surgeist_dom::hosted::DomHostedError;
+
+    let mut session = session();
+    let top = top_level(&mut session);
+    let containers = nested_containers(&mut session, top);
+    let snapshot = session.snapshot();
+    let child = child_id(&snapshot, containers[1]);
+    let document = snapshot
+        .hosted_navigable(child)
+        .unwrap()
+        .active_document()
+        .unwrap();
+    let limits = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1);
+    let mut source = session.source_execution();
+    let mut apply = |session: &mut DomSession, edit| {
+        source
+            .apply(
+                &mut session.dom(),
+                edit,
+                limits,
+                &mut DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| None,
+                    url: None,
+                },
+                &cancel(),
+            )
+            .map_err(Box::new)
+    };
+    let DomSourceDriveProgress::Complete(completion) = apply(
+        &mut session,
+        DomSourceEdit::create_element_ns(document.node(), Namespace::html(), "object"),
+    )
+    .unwrap() else {
+        panic!("the detached native Object should be created");
+    };
+    let object = completion.published_node().unwrap();
+    let before = session.snapshot();
+    let mut hosted = session.hosted_execution();
+    assert!(matches!(
+        hosted.destroy_top_level(&mut session.dom(), top.navigable(), &cancel()),
+        Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(
+            DomError::ObjectHostedTransitionUnavailable
+        )))
+    ));
+    assert_eq!(session.snapshot().stamp(), before.stamp());
+    let refusal = apply(&mut session, DomSourceEdit::detach(containers[0])).unwrap_err();
+    assert!(matches!(
+        *refusal,
+        DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+            DomError::ObjectHostedTransitionUnavailable
+        ))
+    ));
+    assert_eq!(session.snapshot().stamp(), before.stamp());
+
+    let mut retire = DomBatch::new();
+    retire.destroy(object);
+    session.dom().apply(retire, &cancel()).unwrap();
+    assert!(matches!(
+        apply(&mut session, DomSourceEdit::detach(containers[0])).unwrap(),
+        DomSourceDriveProgress::Complete(_)
+    ));
+}
+
 fn settle_queued_tasks(
     session: &mut DomSession,
     traversable: DomHostedNavigableId,

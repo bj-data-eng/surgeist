@@ -98,6 +98,34 @@ membership and media-element tasks returns
 [Pinned Embed](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-embed-element) ·
 [Pinned out-of-band text tracks](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#sourcing-out-of-band-text-tracks)
 
+## Object representation and tasks
+
+The native Runtime Source entry creates an Object with an undetermined
+representation and a null content navigable. Creation and qualifying
+null-namespace `classid`, `data` and `type` mutations queue distinct
+DOM-manipulation task occurrences. Clone starts with fresh representation and
+applies the real copied-attribute hooks in order. The canonical edit and the
+original Runtime bank admit their outputs together. A refused bank retains the
+private Source edit for retry or explicit cancellation.
+
+The admitted detached or closed-Document body selects fallback content when
+its task executes. Insertion into or removal from an ordinary Document with
+no browsing context queues the corresponding occurrence under the original
+Global.
+Placement under an ordinary detached ancestor does not add an occurrence.
+The task runs under its original relevant Global. Adoption keeps that
+association and the element identity. A change in the node Document's
+activity queues another occurrence. Window load looks for pending Object
+tasks against each live node's current Document before entering the load task.
+Hosted tree connection, dependent nested representations and resource
+acquisition require additional producers. Hosted retirement also refuses
+before changing activity when the affected Document still owns a native
+Object. This uses the current node Document even when the task belongs to a
+different Global. A plain batch that reaches queueing returns
+`DomError::ObjectTaskSourceUnavailable`.
+
+[Pinned Object representation](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-object-element)
+
 ## Img and Picture/Source updates
 
 Native standalone Img retains HTML's actual fresh request tuple: Unavailable,

@@ -139,6 +139,7 @@ pub(crate) struct FullscreenQueue {
 #[derive(Clone, Debug)]
 pub(crate) struct DocumentNode<K> {
     pub common: Common<K>,
+    pub native_objects: usize,
     pub metadata: Arc<Payload<DomDocumentMetadata>>,
     pub children: Option<Arc<Payload<NodeSequence<K>>>>,
     pub active_range: crate::internal::range::DomActiveRangeState,
@@ -726,6 +727,7 @@ fn same_fullscreen(
 impl<K: PartialEq> PartialEq for DocumentNode<K> {
     fn eq(&self, other: &Self) -> bool {
         self.common == other.common
+            && self.native_objects == other.native_objects
             && same_payload(&self.metadata, &other.metadata)
             && same_children(&self.children, &other.children)
             && self.active_range == other.active_range

@@ -310,6 +310,20 @@ impl std::fmt::Debug for DomSourceRuntime {
     }
 }
 impl DomSourceRuntime {
+    /// Discard the original private Object edit after task admission refused.
+    /// The existing task source can then run without changing its capacity.
+    pub fn cancel_pending_object_admission(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        operation: DomSourceOperationId,
+    ) -> Result<(), DomSourceRuntimeError> {
+        self.element_tasks
+            .validate_view(dom)
+            .map_err(DomSourceRuntimeError::ElementTasks)?;
+        dom.raw_mut()
+            .cancel_pending_object_admission(operation)
+            .map_err(DomSourceRuntimeError::Dom)
+    }
     pub(crate) fn new(
         styles: DomStyleRuntime,
         element_tasks: DomElementTaskRuntime,
@@ -1017,6 +1031,13 @@ impl DomSourceRuntime {
                     self.hosted
                         .service_close_watcher_request(lease, &request, cancel)
                         .map_err(DomSourceRuntimeError::Hosted)?;
+                }
+                DomSourceProgress::Request(DomSourceRequest::ObjectTaskQueue(request)) => {
+                    let completion = self
+                        .element_tasks
+                        .queue_object(lease, request, cancel)
+                        .map_err(DomSourceRuntimeError::ElementTasks)?;
+                    return Ok(DomSourceDriveProgress::Complete(completion));
                 }
                 DomSourceProgress::Request(DomSourceRequest::Dialog(request)) => {
                     if matches!(

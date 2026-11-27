@@ -449,6 +449,7 @@ impl Draft {
                 )?;
             }
             self.embedded_adoption(node, cancelled)?;
+            self.object_adopted(node, old_document, cancelled)?;
             if let Some(contents) =
                 self.template_adoption_target(node, document, limits, cancelled)?
             {
@@ -798,7 +799,7 @@ impl Draft {
         Ok(flagged)
     }
 
-    fn former_ordinary_document(
+    pub(super) fn former_ordinary_document(
         &self,
         key: Key,
         removed: Key,
@@ -927,6 +928,7 @@ impl Draft {
                         self.retire_node_iterator_root(key, cancel)?;
                         self.retire_tree_walker_target(key, cancel)?;
                         self.retire_child_list_target(key, cancel)?;
+                        self.object_retiring(key, cancel)?;
                         let retired = self.retire_node(key, cancel)?;
                         self.retire_form_relations(key, cancel)?;
                         self.slot_retirement(key, retired.document, limits, cancel)?;

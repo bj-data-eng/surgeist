@@ -17,6 +17,7 @@ mod failure;
 mod focus;
 mod inline;
 pub(crate) mod meta;
+pub(crate) mod object_queue;
 use inline::{AdvanceError, Execution};
 #[cfg(test)]
 mod compound_tests;
@@ -99,6 +100,7 @@ pub(in crate::internal::store) struct Operation {
     inline_source: Option<inline::SourceInline>,
     meta_policy: Option<meta::Policy>,
     pending_meta: Option<meta::Pending>,
+    pending_object_queue: Option<object_queue::DomObjectTaskQueueRequest>,
     meta_csp: Option<Box<meta::CspDelivery>>,
     draft: dialog::OperationDraft,
     commands: OperationRoot,
@@ -205,6 +207,7 @@ impl Drop for DomSourceLease<'_> {
                             if draft.compound_failure().is_none() && draft.retained_meta_csp().is_none()
                 )
                 && o.meta_policy.is_none()
+                && o.pending_object_queue.is_none()
         }) {
             self.dom.source_operation = self.dom.source_parents.pop();
         }
@@ -541,6 +544,7 @@ impl Dom {
             inline_source: None,
             meta_policy: None,
             pending_meta: None,
+            pending_object_queue: None,
             meta_csp: None,
             commands,
             index: 0,
@@ -2220,6 +2224,18 @@ impl DomSourceLease<'_> {
         {
             return Err(DomError::InvalidSourceOperation.into());
         }
+        if let Some(operation) = self.dom.source_operation.as_ref()
+            && let Some(request) = operation.pending_object_queue
+        {
+            if operation.cancelled {
+                self.complete = true;
+                self.dom.source_operation = self.dom.source_parents.pop();
+                return Err(DomError::Cancelled.into());
+            }
+            return Ok(DomSourceProgress::Request(
+                DomSourceRequest::ObjectTaskQueue(request),
+            ));
+        }
         if let Some(request) = self
             .dom
             .source_operation
@@ -3166,6 +3182,34 @@ impl DomSourceLease<'_> {
                         op.context = None;
                     }
                     if op.index == op.commands.len() || op.cancelled {
+                        if let Some(tasks) = op.draft.object_tasks.as_ref()
+                            && !tasks.is_empty()
+                        {
+                            if !execution.hosted_events
+                                || op.published
+                                || op.cancelled
+                                || op.installation.is_some()
+                                || op.select.is_some()
+                                || op.draft.compound_failure().is_some()
+                                || op.draft.details_intentions.canonical_backing().is_none()
+                                || execution.native.is_some()
+                                || execution.resolver.is_some()
+                                || execution.synchronous_node.is_some()
+                                || execution.node_output_watch.is_some()
+                            {
+                                checkpoint.restore(&mut op.draft);
+                                op.restore_external_receipt(external_applied);
+                                op.started = started;
+                                op.index = command_index;
+                                return Err(DomError::ObjectTaskSourceUnavailable.into());
+                            }
+                            let request =
+                                object_queue::DomObjectTaskQueueRequest::new(op.id, tasks.len());
+                            op.pending_object_queue = Some(request);
+                            return Ok(DomSourceProgress::Request(
+                                DomSourceRequest::ObjectTaskQueue(request),
+                            ));
+                        }
                         // Complete fallible installation output before touching
                         // tentative Select finalization. These are distinct
                         // named roots, not two completion phases of one root.
@@ -4081,6 +4125,7 @@ impl Dom {
                 inline_source: None,
                 meta_policy: None,
                 pending_meta: None,
+                pending_object_queue: None,
                 meta_csp: None,
                 commands: OperationRoot::NativeInstallation,
                 index: 0,
@@ -7510,6 +7555,9 @@ pub(in crate::internal::store) mod accounting_tests {
                         | DomSourceRequest::AutofocusInsertion(_),
                     )) => {
                         panic!("Slot assignment fixture has no eventful Dialog operation")
+                    }
+                    Ok(DomSourceProgress::Request(DomSourceRequest::ObjectTaskQueue(_))) => {
+                        panic!("Slot assignment fixture has no Object representation task")
                     }
                     Err(error) => {
                         match cut {

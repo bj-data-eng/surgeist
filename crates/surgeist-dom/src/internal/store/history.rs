@@ -10,6 +10,7 @@ type Link = Arc<Mutex<Chunk>>;
 pub(super) struct HistoryEntry {
     from: DomRevision,
     changes: Arc<[DomChange]>,
+    resource_free_object_edit: bool,
     bytes: usize,
     // The inline header is owned by its chunk backing. This token owns the
     // separately retained changes field occurrence.
@@ -84,6 +85,7 @@ impl History {
         dom: &Dom,
         changes: &Arc<[DomChange]>,
         changed: bool,
+        resource_free_object_edit: bool,
         mut admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
         mut step: impl FnMut() -> Result<(), DomError>,
     ) -> Result<Plan, DomError> {
@@ -124,6 +126,7 @@ impl History {
         let entry = HistoryEntry {
             from: dom.revision,
             changes: changes.clone(),
+            resource_free_object_edit,
             bytes: entry_bytes,
             _changes: debit,
         };
@@ -418,7 +421,7 @@ impl History {
         baseline: DomRevision,
         current: DomRevision,
         mut step: impl FnMut() -> Result<(), E>,
-        mut check: impl FnMut(&DomChange) -> Result<bool, E>,
+        mut check: impl FnMut(&DomChange, bool) -> Result<bool, E>,
     ) -> Result<bool, E> {
         let mut expected = current;
         let mut cursor = self.newest.clone();
@@ -434,7 +437,7 @@ impl History {
                 }
                 for change in entry.changes.iter() {
                     step()?;
-                    if !check(change)? {
+                    if !check(change, entry.resource_free_object_edit)? {
                         return Ok(false);
                     }
                 }
@@ -582,6 +585,7 @@ mod tests {
                             &dom,
                             &changes,
                             true,
+                            false,
                             |_| Ok(()),
                             || {
                                 visits.set(visits.get() + 1);
@@ -758,6 +762,7 @@ mod tests {
                 &dom,
                 &changes,
                 true,
+                false,
                 |_| Ok(()),
                 || {
                     visits.set(visits.get() + 1);
@@ -794,6 +799,7 @@ mod tests {
                 &dom,
                 &changes,
                 true,
+                false,
                 |_| Ok(()),
                 || {
                     visits.set(visits.get() + 1);
@@ -822,6 +828,7 @@ mod tests {
                 &dom,
                 &changes,
                 true,
+                false,
                 |usage| admit(usage.bytes(), limit, DomResource::SourceRetainedBytes),
                 || Ok(()),
             );

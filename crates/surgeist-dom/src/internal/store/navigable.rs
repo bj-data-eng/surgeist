@@ -29,8 +29,14 @@ impl Draft {
         let mut containers = self.effect_vec();
         self.containers
             .visit_insertion(document, subtree, self, cancel, |key| {
-                self.select_reserve(&mut containers, 1, cancel)?;
-                containers.push(key);
+                if self
+                    .node(key)?
+                    .element()
+                    .is_some_and(|element| element.is_frame_container())
+                {
+                    self.select_reserve(&mut containers, 1, cancel)?;
+                    containers.push(key);
+                }
                 Ok(())
             })?;
         if containers.is_empty() {
@@ -108,7 +114,7 @@ impl Draft {
         let Some(element) = node.element() else {
             return Ok(());
         };
-        if element.child_navigable().is_none() {
+        if !element.is_frame_container() {
             return Ok(());
         }
         let document = self.document_metadata(node.document())?;
@@ -188,6 +194,14 @@ impl Draft {
             if self.source_limits.is_none() {
                 return Err(DomError::HostedSourceUnavailable);
             }
+            self.base
+                .require_no_object_activity_change(self.store, navigable, || {
+                    self.source_step(cancel).map_err(Into::into)
+                })
+                .map_err(|error| match error {
+                    crate::internal::hosted::DomHostedError::Dom(error) => error,
+                    _ => DomError::HostedSourceUnavailable,
+                })?;
             self.establish_child_navigable(key, None, cancel)?;
             self.hosted_pending =
                 Some(source::operation::hosted::ChildHook::Remove { key, navigable });

@@ -5192,6 +5192,20 @@ pub fn surgeist_html::elements::native::HtmlReflectedElementSetter::next_effect(
 pub const fn surgeist_html::elements::native::HtmlReflectedElementSetter::null() -> Self
 pub const fn surgeist_html::elements::native::custom_element_state_without_definition(is_html_namespace: bool, custom_name_or_saved_is: bool) -> surgeist_html::elements::native::HtmlCustomElementState
 pub fn surgeist_html::elements::native::reflected_element_attribute_change(reflected: surgeist_html::vocabulary::KnownHtmlAttribute, changed: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized) -> bool
+pub mod surgeist_html::elements::object
+pub enum surgeist_html::elements::object::HtmlObjectRepresentation
+pub surgeist_html::elements::object::HtmlObjectRepresentation::FallbackContent
+pub surgeist_html::elements::object::HtmlObjectRepresentation::Undetermined
+pub enum surgeist_html::elements::object::HtmlObjectResourceAttribute
+pub surgeist_html::elements::object::HtmlObjectResourceAttribute::ClassId
+pub surgeist_html::elements::object::HtmlObjectResourceAttribute::Data
+pub surgeist_html::elements::object::HtmlObjectResourceAttribute::Type
+impl surgeist_html::elements::object::HtmlObjectResourceAttribute
+pub const fn surgeist_html::elements::object::HtmlObjectResourceAttribute::queues_representation(self, precedence: surgeist_html::elements::object::HtmlObjectResourcePrecedence) -> bool
+pub enum surgeist_html::elements::object::HtmlObjectResourcePrecedence
+pub surgeist_html::elements::object::HtmlObjectResourcePrecedence::ClassId
+pub surgeist_html::elements::object::HtmlObjectResourcePrecedence::Data
+pub surgeist_html::elements::object::HtmlObjectResourcePrecedence::Neither
 pub mod surgeist_html::elements::range_indicator
 pub struct surgeist_html::elements::range_indicator::HtmlMeterRange
 impl surgeist_html::elements::range_indicator::HtmlMeterRange
