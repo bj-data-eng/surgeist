@@ -11,9 +11,8 @@
 //!
 //! The totals of a ledger do not depend on the order measurements were added or
 //! removed in, so a ledger can follow a state that changes a payload at a time.
-//! [`CssSourceLedger::replay`] answers what the collector would have refused
-//! and after how many steps when a walk the ledger does not admit is run on top
-//! of everything the ledger holds.
+//! A [`CssSourceDelta`] collects the net change of many such steps, and
+//! [`CssSourceLedger::apply`] applies it.
 use super::{CssSourceRetention, CssSourceRetentionError, CssSourceRetentionResource};
 use crate::source::CssSourceSnapshot;
 use std::collections::HashMap;
@@ -124,23 +123,22 @@ impl CssSourceMeasurement {
             bounds.depth,
         );
         collector.at_depth(base_depth, walk)?;
-        Self::of_collector(&collector, 0, base_depth)
+        Self::of_collector(&collector, base_depth)
     }
 
-    /// The measurement of what `collector` recorded after its first `skipped` snapshots.
+    /// The measurement of what `collector` recorded.
     fn of_collector(
         collector: &CssSourceRetention<'_>,
-        skipped: usize,
         base_depth: usize,
     ) -> Result<Self, CssSourceRetentionError> {
-        let recorded = collector.bank.recorded().get(skipped..).unwrap_or_default();
+        let recorded = collector.bank.recorded();
         let mut sources = Vec::new();
         sources
             .try_reserve_exact(recorded.len())
             .map_err(|_| CssSourceRetentionError::allocation())?;
         sources.extend(recorded.iter().map(CssMeasuredSource::new));
         Ok(Self {
-            steps: collector.visits.saturating_sub(skipped),
+            steps: collector.visits,
             depth: collector.deepest().saturating_sub(base_depth),
             sources,
         })
@@ -238,7 +236,7 @@ impl CssSourceMeter {
     /// The last measurement as a value.
     #[cfg(test)]
     fn to_measurement(&self) -> Result<CssSourceMeasurement, CssSourceRetentionError> {
-        CssSourceMeasurement::of_collector(&self.collector, 0, self.base_depth)
+        CssSourceMeasurement::of_collector(&self.collector, self.base_depth)
     }
 }
 
@@ -589,44 +587,6 @@ impl CssSourceLedger {
     fn snapshots(&self) -> impl Iterator<Item = &CssSourceSnapshot> {
         self.entries.iter().map(|held| &held.snapshot)
     }
-
-    /// Runs `walk` as a collector that has recorded every snapshot of this
-    /// ledger would run it, and reports the steps it took and how it ended.
-    ///
-    /// `bounds` are the bounds of the whole account: the retained bytes the
-    /// ledger and the walk may hold together, the steps the walk may still
-    /// charge (the steps already charged are not counted) and the depth. The
-    /// answer is that of a collector that had visited the ledger's payloads
-    /// before `walk`: a refusal arrives at the same step, with the same resource.
-    #[must_use]
-    pub fn replay(
-        &self,
-        bounds: CssSourceBounds,
-        base_depth: usize,
-        walk: impl FnOnce(&mut CssSourceRetention<'_>) -> Result<(), CssSourceRetentionError>,
-    ) -> CssSourceReplay {
-        let held = self.entries.len();
-        let mut collector = CssSourceRetention::with_shared_original_utf16(
-            bounds.bytes,
-            bounds.steps.saturating_add(held),
-            bounds.depth,
-        );
-        for snapshot in self.snapshots() {
-            if let Err(error) = collector.source(snapshot) {
-                return CssSourceReplay {
-                    steps: 0,
-                    result: Err(error),
-                };
-            }
-        }
-        let result = collector
-            .at_depth(base_depth, walk)
-            .and_then(|()| CssSourceMeasurement::of_collector(&collector, held, base_depth));
-        CssSourceReplay {
-            steps: collector.visits.saturating_sub(held),
-            result,
-        }
-    }
 }
 
 /// The net change measurements make to a [`CssSourceLedger`]: each snapshot is one reference
@@ -799,25 +759,6 @@ impl CssSourceLedger {
             }
         }
         Ok(())
-    }
-}
-
-/// How a walk run on top of a ledger ended: see [`CssSourceLedger::replay`].
-#[derive(Clone, Debug)]
-pub struct CssSourceReplay {
-    steps: usize,
-    result: Result<CssSourceMeasurement, CssSourceRetentionError>,
-}
-
-impl CssSourceReplay {
-    /// Returns the steps the walk charged, the one a limit refused not counted.
-    #[must_use]
-    pub const fn steps(&self) -> usize {
-        self.steps
-    }
-    /// Returns the refusal, or the snapshots the walk recorded that the ledger did not hold.
-    pub const fn result(&self) -> &Result<CssSourceMeasurement, CssSourceRetentionError> {
-        &self.result
     }
 }
 

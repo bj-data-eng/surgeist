@@ -30,8 +30,8 @@ pub(crate) use provenance::{Layout, LayoutEq, Provenance, Uncompared, Verbatim, 
 #[doc(inline)]
 pub use source_retention::{
     CssRetainedPayloadError, CssRetainedSources, CssSourceBounds, CssSourceDelta, CssSourceLedger,
-    CssSourceMeasurement, CssSourceMeter, CssSourceReplay, CssSourceRetention,
-    CssSourceRetentionAction, CssSourceRetentionError, CssSourceRetentionResource,
+    CssSourceMeasurement, CssSourceMeter, CssSourceRetention, CssSourceRetentionAction,
+    CssSourceRetentionError, CssSourceRetentionResource,
 };
 #[doc(inline)]
 pub use stylesheet_input::{CssDecodedStylesheetInput, CssInputDecodeError, CssStylesheetLocation};

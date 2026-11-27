@@ -1351,7 +1351,6 @@ mod bank;
 mod measure;
 pub use measure::{
     CssSourceBounds, CssSourceDelta, CssSourceLedger, CssSourceMeasurement, CssSourceMeter,
-    CssSourceReplay,
 };
 #[cfg(test)]
 #[path = "source_retention/charge_walk_tests.rs"]
