@@ -19,6 +19,7 @@ pub(in crate::grid) struct IntrinsicGridChildInput<
     pub(in crate::grid) input: ComputeInputOf<S>,
 }
 
+#[cfg(test)]
 pub(super) fn compute_intrinsic_grid_child<'input, Tree, M>(
     tree: &mut Tree,
     child: <Tree as Traverse>::Node,
@@ -836,6 +837,21 @@ pub(super) struct SubgridContributionFinish<'input, Node, S: LayoutScalar> {
     waiting: Option<WaitingLeaf<'input, Node, S>>,
     /// The second query of the leaf whose first query was accepted.
     next: Option<TrackChildRequest<'input, Node, S>>,
+    /// The next child of the grid to consider for a baseline-aligned item.
+    baseline_cursor: usize,
+    /// The baseline-aligned item whose query is outstanding or about to be
+    /// asked.
+    baseline_waiting: Option<WaitingBaseline<S>>,
+}
+
+/// A baseline-aligned item, in no subgrid, whose query is outstanding.
+struct WaitingBaseline<S: LayoutScalar> {
+    index: usize,
+    area: GridArea<S>,
+    alignment: AlignItems,
+    query: GridMinimumQuery<S>,
+    /// The query has been handed to the executor.
+    requested: bool,
 }
 
 /// How the contributions of an axis's subgrid leaves begin.
@@ -874,12 +890,15 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> SubgridContributionFinish<'input,
             adjustment_path: Vec::new(),
             waiting: None,
             next: None,
+            baseline_cursor: 0,
+            baseline_waiting: None,
         }))
     }
 
-    /// Whether a leaf query is outstanding or about to be asked.
+    /// Whether a leaf or baseline item query is outstanding or about to be
+    /// asked.
     pub(super) fn is_waiting(&self) -> bool {
-        self.waiting.is_some()
+        self.waiting.is_some() || self.baseline_waiting.is_some()
     }
 
     /// The query of the next leaf that has one, or `Break` once every leaf is
@@ -897,7 +916,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> SubgridContributionFinish<'input,
         }
         loop {
             let Some(leaf) = self.leaves.next() else {
-                return Ok(ControlFlow::Break(()));
+                return self.advance_baseline::<Tree, M>(tree, input);
             };
             let child_style = leaf.style.clone();
             if !is_in_flow_grid_child(&child_style) {
@@ -1043,6 +1062,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> SubgridContributionFinish<'input,
         input: &SubgridIntrinsicContributionInput<'input, '_, Node, S>,
         output: ComputeOutputOf<S>,
     ) -> LayoutResultOf<Node, (), S, M> {
+        if self.baseline_waiting.is_some() {
+            return self.accept_baseline(input, output);
+        }
         let WaitingLeaf {
             leaf,
             child_input,
@@ -1139,129 +1161,226 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> SubgridContributionFinish<'input,
         Ok(())
     }
 
-    /// The contributions of the axis, once every leaf is collected: the
-    /// baseline-aligned items that no subgrid contributes, and the
-    /// flattened leaf contributions.
-    pub(super) fn finish<Tree, M>(
-        self,
-        tree: &mut Tree,
-        input: SubgridIntrinsicContributionInput<'input, '_, Node, S>,
-    ) -> SubgridIntrinsicContributionResult<Node, S, M>
+    /// The query of the next baseline-aligned item that no subgrid contributes,
+    /// or `Break` once every item is collected. Only the column axis has them.
+    fn advance_baseline<Tree, M>(
+        &mut self,
+        tree: &Tree,
+        input: &SubgridIntrinsicContributionInput<'input, '_, Node, S>,
+    ) -> LayoutResultOf<Node, ControlFlow<(), TrackChildRequest<'input, Node, S>>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        let Self {
-            flattened_contributions,
-            mut ancestor_baseline_members,
-            ..
-        } = self;
-        if input.axis == GridAxisKind::Column {
-            for (index, (child, area)) in input
-                .children
-                .iter()
-                .copied()
-                .zip(input.placed_areas.iter().copied())
-                .enumerate()
-            {
-                let Some(area) = area else {
-                    continue;
-                };
-                let child_style = input.placements.item_input(index);
-                if !is_in_flow_grid_child(child_style)
-                    || input
-                        .subgrid_report
-                        .items
-                        .get(index)
-                        .is_some_and(|item| item_inherits_parent_axis(*item, GridAxisKind::Column))
-                {
-                    continue;
-                }
-                let alignment = child_style
-                    .justify_self
-                    .or(input.container_style.justify_items)
-                    .unwrap_or(AlignItems::Stretch);
-                if !matches!(alignment, AlignItems::Baseline | AlignItems::LastBaseline) {
-                    continue;
-                }
-                let (start, end) = (area.column, area.column_end);
-                let Some(span_tracks) = input.tracks.get(start..end) else {
-                    continue;
-                };
-                let output = compute_intrinsic_grid_child(
-                    tree,
-                    child,
-                    IntrinsicGridChildInput {
-                        child_style,
-                        child_container: input.placements.nested_container_input(index),
-                        grid: input.grid,
-                        area,
-                        columns: input.column_sizes,
-                        rows: input.row_sizes,
-                        subgrid_item: input.subgrid_report.items.get(index).copied(),
-                        input: ComputeInputOf::for_child(
-                            RunMode::PerformLayout,
-                            SizingMode::InherentSize,
-                            RequestedAxis::Both,
-                            Size::NONE,
-                            input.constants.node_inner_size,
-                            crate::output::ContainingLayoutContext::new(
-                                input.constants.flow_axes,
-                                crate::output::ParentFormattingContext::Grid,
-                            ),
-                            SizingRequestOf::new(
-                                input.available,
-                                input.constants.child_orthogonal_fallback,
-                            ),
+        if input.axis != GridAxisKind::Column {
+            return Ok(ControlFlow::Break(()));
+        }
+        loop {
+            if let Some(waiting) = self.baseline_waiting.as_mut() {
+                let child = input.children[waiting.index];
+                if std::mem::replace(&mut waiting.requested, true) {
+                    return Err(LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(child),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::InternalInvariant(
+                            LayoutInternalInvariant::InvalidGridTrackSizing,
                         ),
-                    },
-                )?;
-                let margin_basis = input
-                    .grid
-                    .column_contribution_margin_basis(span_tracks, input.constants.node_inner_size)
-                    .unwrap_or(input.constants.node_inner_size);
-                let margin = intrinsic_contribution_margin(
-                    child_style,
-                    input.constants.flow_axes,
-                    margin_basis,
-                )
-                .map_err(|status| crate::error::value_resolution_error(child, status))?;
-                let child_flow_axes =
-                    FlowAxes::new(child_style.writing_mode, child_style.direction);
-                let block_auto_margins = block_auto_margins_for_intrinsic_contribution(
-                    child_style,
-                    input.constants.flow_axes,
-                    margin_basis,
-                    child_flow_axes,
-                )
-                .map_err(|status| crate::error::value_resolution_error(child, status))?;
-                if let Some(member) = ancestor_baseline_member(AncestorBaselineMemberInput {
-                    reference: grid_baseline_reference(
-                        input.grid.style.baseline_references,
-                        GridAxisKind::Column,
-                    ),
-                    source: child,
-                    axis: GridAxisKind::Column,
-                    ancestor_span: GridTrackSpan::new(start + 1, end + 1),
-                    alignment_context_reversed: false,
-                    alignment,
-                    block_auto_margins,
-                    synthesized_baseline_cycle: grid_baseline_span_would_cycle(
-                        span_tracks,
-                        input.grid.track_basis.inline,
-                    ),
-                    output,
-                    margin,
-                    child_flow_axes,
-                    containing_flow_axes: input.constants.flow_axes,
-                    start_adjustment: Tree::Scalar::ZERO,
-                    end_adjustment: Tree::Scalar::ZERO,
-                })
-                .map_err(|error| grid_baseline_error(input.owner, child, error))?
-                {
-                    ancestor_baseline_members.push(member);
+                    ));
                 }
+                let args = Self::baseline_args(input, waiting.index, waiting.area);
+                return Ok(ControlFlow::Continue(
+                    match prepare_intrinsic_grid_child_request::<Tree, M>(
+                        tree,
+                        child,
+                        args,
+                        waiting.query.input(),
+                    )? {
+                        IntrinsicChildRequest::Child(input) => {
+                            TrackChildRequest::child(child, input)
+                        }
+                        IntrinsicChildRequest::Context(request) => {
+                            TrackChildRequest::context(request)
+                        }
+                    },
+                ));
+            }
+            let index = self.baseline_cursor;
+            let (Some(&child), Some(&area)) =
+                (input.children.get(index), input.placed_areas.get(index))
+            else {
+                return Ok(ControlFlow::Break(()));
+            };
+            self.baseline_cursor += 1;
+            let Some(area) = area else {
+                continue;
+            };
+            let child_style = input.placements.item_input(index);
+            if !is_in_flow_grid_child(child_style)
+                || input
+                    .subgrid_report
+                    .items
+                    .get(index)
+                    .is_some_and(|item| item_inherits_parent_axis(*item, GridAxisKind::Column))
+            {
+                continue;
+            }
+            let alignment = child_style
+                .justify_self
+                .or(input.container_style.justify_items)
+                .unwrap_or(AlignItems::Stretch);
+            if !matches!(alignment, AlignItems::Baseline | AlignItems::LastBaseline) {
+                continue;
+            }
+            if input.tracks.get(area.column..area.column_end).is_none() {
+                continue;
+            }
+            let args = Self::baseline_args(input, index, area);
+            let query = prepare_intrinsic_grid_child::<Tree, M>(child, &args)?;
+            self.baseline_waiting = Some(WaitingBaseline {
+                index,
+                area,
+                alignment,
+                query,
+                requested: false,
+            });
+        }
+    }
+
+    /// The query input of a baseline-aligned item placed at `area`.
+    fn baseline_args<'a>(
+        input: &SubgridIntrinsicContributionInput<'input, 'a, Node, S>,
+        index: usize,
+        area: GridArea<S>,
+    ) -> IntrinsicGridChildInput<'input, 'a, Node, S> {
+        let placements = input.placements;
+        IntrinsicGridChildInput {
+            child_style: placements.item_input(index),
+            child_container: placements.nested_container_input(index),
+            grid: input.grid,
+            area,
+            columns: input.column_sizes,
+            rows: input.row_sizes,
+            subgrid_item: input.subgrid_report.items.get(index).copied(),
+            input: ComputeInputOf::for_child(
+                RunMode::PerformLayout,
+                SizingMode::InherentSize,
+                RequestedAxis::Both,
+                Size::NONE,
+                input.constants.node_inner_size,
+                crate::output::ContainingLayoutContext::new(
+                    input.constants.flow_axes,
+                    crate::output::ParentFormattingContext::Grid,
+                ),
+                SizingRequestOf::new(input.available, input.constants.child_orthogonal_fallback),
+            ),
+        }
+    }
+
+    /// Accepts the output of the baseline-aligned item's current query. An item
+    /// with a second query leaves it to the next step.
+    fn accept_baseline<M>(
+        &mut self,
+        input: &SubgridIntrinsicContributionInput<'input, '_, Node, S>,
+        output: ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let WaitingBaseline {
+            index,
+            area,
+            alignment,
+            query,
+            ..
+        } = self
+            .baseline_waiting
+            .take()
+            .expect("a baseline item query is outstanding");
+        let child = input.children[index];
+        match query.accept(child, output)? {
+            ControlFlow::Continue(next) => {
+                self.baseline_waiting = Some(WaitingBaseline {
+                    index,
+                    area,
+                    alignment,
+                    query: GridMinimumQuery::Final(next),
+                    requested: false,
+                });
+                Ok(())
+            }
+            ControlFlow::Break(output) => {
+                self.collect_baseline(input, index, area, alignment, output)
             }
         }
+    }
+
+    /// Records the baseline member of an item from the output of its query.
+    fn collect_baseline<M>(
+        &mut self,
+        input: &SubgridIntrinsicContributionInput<'input, '_, Node, S>,
+        index: usize,
+        area: GridArea<S>,
+        alignment: AlignItems,
+        output: ComputeOutputOf<S>,
+    ) -> LayoutResultOf<Node, (), S, M> {
+        let child = input.children[index];
+        let child_style = input.placements.item_input(index);
+        let (start, end) = (area.column, area.column_end);
+        let span_tracks = input
+            .tracks
+            .get(start..end)
+            .expect("a collected baseline item spans tracks of the axis");
+        let margin_basis = input
+            .grid
+            .column_contribution_margin_basis(span_tracks, input.constants.node_inner_size)
+            .unwrap_or(input.constants.node_inner_size);
+        let margin =
+            intrinsic_contribution_margin(child_style, input.constants.flow_axes, margin_basis)
+                .map_err(|status| crate::error::value_resolution_error(child, status))?;
+        let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
+        let block_auto_margins = block_auto_margins_for_intrinsic_contribution(
+            child_style,
+            input.constants.flow_axes,
+            margin_basis,
+            child_flow_axes,
+        )
+        .map_err(|status| crate::error::value_resolution_error(child, status))?;
+        if let Some(member) = ancestor_baseline_member(AncestorBaselineMemberInput {
+            reference: grid_baseline_reference(
+                input.grid.style.baseline_references,
+                GridAxisKind::Column,
+            ),
+            source: child,
+            axis: GridAxisKind::Column,
+            ancestor_span: GridTrackSpan::new(start + 1, end + 1),
+            alignment_context_reversed: false,
+            alignment,
+            block_auto_margins,
+            synthesized_baseline_cycle: grid_baseline_span_would_cycle(
+                span_tracks,
+                input.grid.track_basis.inline,
+            ),
+            output,
+            margin,
+            child_flow_axes,
+            containing_flow_axes: input.constants.flow_axes,
+            start_adjustment: S::ZERO,
+            end_adjustment: S::ZERO,
+        })
+        .map_err(|error| grid_baseline_error(input.owner, child, error))?
+        {
+            self.ancestor_baseline_members.push(member);
+        }
+        Ok(())
+    }
+
+    /// The contributions of the axis, once every leaf and every baseline-aligned
+    /// item is collected.
+    pub(super) fn finish<M>(
+        self,
+        input: SubgridIntrinsicContributionInput<'input, '_, Node, S>,
+    ) -> SubgridIntrinsicContributionResult<Node, S, M> {
+        let Self {
+            flattened_contributions,
+            ancestor_baseline_members,
+            ..
+        } = self;
 
         let ancestor_baseline_group = AncestorBaselineGroup::reduce(
             input.owner,

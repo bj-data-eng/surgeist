@@ -1352,7 +1352,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicTrackBegin<'input, Node,
                 Ok(TraversalProgress::Request(request))
             }
             ControlFlow::Break(()) => {
-                let report = finishing.finish(tree, self.contribution_input(node, grid))?;
+                let report = finishing.finish::<M>(self.contribution_input(node, grid))?;
                 self.finished = Some(report);
                 Ok(TraversalProgress::Done)
             }
