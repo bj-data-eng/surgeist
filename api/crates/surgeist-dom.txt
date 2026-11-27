@@ -870,6 +870,10 @@ pub mod surgeist_dom::form::select
 pub enum surgeist_dom::form::select::DomSelectCompletionStart<'a>
 pub surgeist_dom::form::select::DomSelectCompletionStart::Skipped(surgeist_dom::form::select::DomSelectTaskCompletion)
 pub surgeist_dom::form::select::DomSelectCompletionStart::Source(surgeist_dom::source::DomSourceLease<'a>)
+pub enum surgeist_dom::form::select::DomSelectOptionBefore
+pub surgeist_dom::form::select::DomSelectOptionBefore::Append
+pub surgeist_dom::form::select::DomSelectOptionBefore::Element(surgeist_dom::identity::NodeId)
+pub surgeist_dom::form::select::DomSelectOptionBefore::Index(i32)
 pub enum surgeist_dom::form::select::DomSelectTaskCancellationReason
 pub surgeist_dom::form::select::DomSelectTaskCancellationReason::TargetDestroyed
 pub enum surgeist_dom::form::select::DomSelectTaskOutcome
@@ -3086,6 +3090,25 @@ pub fn surgeist_dom::source::DomSourceCompletion::output(&self) -> core::option:
 pub fn surgeist_dom::source::DomSourceCompletion::published_node(&self) -> core::option::Option<surgeist_dom::identity::NodeId>
 pub struct surgeist_dom::source::DomSourceEdit
 impl surgeist_dom::source::DomSourceEdit
+pub fn surgeist_dom::source::DomSourceEdit::add_select_option(select: surgeist_dom::identity::NodeId, element: surgeist_dom::identity::NodeId, before: surgeist_dom::form::select::DomSelectOptionBefore) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::after(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::append(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::before(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::create_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::create_html_table_part_in_attachment(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart, fallback: surgeist_dom::script::DomCreationRealmFallback) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::delete_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::insert_adjacent_element(receiver: surgeist_dom::identity::NodeId, position: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, element: surgeist_dom::identity::NodeId) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::insert_adjacent_text(element: surgeist_dom::identity::NodeId, position: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, data: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::prepend(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::remove_select_option(select: surgeist_dom::identity::NodeId, index: i32) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::replace_children(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::replace_with(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::set_document_title(document: surgeist_dom::identity::DocumentId, value: surgeist_html::internal::values::document_string::DocumentString) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::set_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart, value: core::option::Option<surgeist_dom::identity::NodeId>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::set_select_option_at(select: surgeist_dom::identity::NodeId, index: u32, value: core::option::Option<surgeist_dom::identity::NodeId>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::set_select_options_length(select: surgeist_dom::identity::NodeId, length: u32) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::set_text_content(node: surgeist_dom::identity::NodeId, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
+impl surgeist_dom::source::DomSourceEdit
 pub fn surgeist_dom::source::DomSourceEdit::adopt(node: surgeist_dom::identity::NodeId, document: surgeist_dom::identity::NodeId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::append_view_transition_record(basis: surgeist_dom::identity::DomDocumentStamp, transition: surgeist_dom::view_transition::DomViewTransitionId, name: surgeist_css::values::view_transition::transitions::CssViewTransitionIdent) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::assign_slot(slot: surgeist_dom::identity::NodeId, incoming: alloc::vec::Vec<surgeist_dom::identity::NodeId>) -> Self
@@ -3188,21 +3211,6 @@ pub fn surgeist_dom::source::DomSourceEdit::toggle_attribute(node: surgeist_dom:
 pub fn surgeist_dom::source::DomSourceEdit::unfullscreen_document_model(document: surgeist_dom::identity::DocumentId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::unfullscreen_element_model(node: surgeist_dom::identity::NodeId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::upgrade_custom_element_registry(root: surgeist_dom::identity::NodeId, registry: surgeist_dom::custom_element::DomRegistryId) -> Self
-impl surgeist_dom::source::DomSourceEdit
-pub fn surgeist_dom::source::DomSourceEdit::after(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
-pub fn surgeist_dom::source::DomSourceEdit::append(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
-pub fn surgeist_dom::source::DomSourceEdit::before(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
-pub fn surgeist_dom::source::DomSourceEdit::create_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart) -> Self
-pub fn surgeist_dom::source::DomSourceEdit::create_html_table_part_in_attachment(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart, fallback: surgeist_dom::script::DomCreationRealmFallback) -> Self
-pub fn surgeist_dom::source::DomSourceEdit::delete_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart) -> Self
-pub fn surgeist_dom::source::DomSourceEdit::insert_adjacent_element(receiver: surgeist_dom::identity::NodeId, position: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, element: surgeist_dom::identity::NodeId) -> Self
-pub fn surgeist_dom::source::DomSourceEdit::insert_adjacent_text(element: surgeist_dom::identity::NodeId, position: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, data: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
-pub fn surgeist_dom::source::DomSourceEdit::prepend(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
-pub fn surgeist_dom::source::DomSourceEdit::replace_children(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
-pub fn surgeist_dom::source::DomSourceEdit::replace_with(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
-pub fn surgeist_dom::source::DomSourceEdit::set_document_title(document: surgeist_dom::identity::DocumentId, value: surgeist_html::internal::values::document_string::DocumentString) -> Self
-pub fn surgeist_dom::source::DomSourceEdit::set_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart, value: core::option::Option<surgeist_dom::identity::NodeId>) -> Self
-pub fn surgeist_dom::source::DomSourceEdit::set_text_content(node: surgeist_dom::identity::NodeId, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 impl surgeist_dom::source::DomSourceEdit
 pub fn surgeist_dom::source::DomSourceEdit::set_radio_node_list_value(list: &surgeist_dom::form::DomRadioNodeList, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> core::result::Result<Self, surgeist_dom::DomError>
 impl core::convert::From<surgeist_dom::source::DomSourceEdit> for surgeist_dom::source::DomSourceInput
@@ -4725,6 +4733,8 @@ pub fn surgeist_dom::Dom::html_all_collection(&self, document: surgeist_dom::ide
 pub fn surgeist_dom::Dom::read_element_sibling<E: core::convert::From<surgeist_dom::DomError>>(&self, node: surgeist_dom::identity::NodeId, direction: surgeist_dom::tree::DomSiblingDirection, work_limit: u64, admission: impl core::ops::function::Fn() -> core::result::Result<(), E>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
 pub fn surgeist_dom::Dom::read_html_all_collection<'dom, A, E>(&'dom self, collection: &'dom surgeist_dom::tree::DomHtmlAllCollection, limits: surgeist_dom::tree::DomHtmlCollectionLimits, admission: A, cancel: &'dom core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomHtmlAllCollectionRead<'dom, A>, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::read_html_collection<'dom, A, E>(&'dom self, collection: &'dom surgeist_dom::tree::DomHtmlCollection, limits: surgeist_dom::tree::DomHtmlCollectionLimits, admission: A, cancel: &'dom core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomHtmlCollectionRead<'dom, A>, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::select_options(&self, select: surgeist_dom::identity::NodeId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomHtmlCollection, surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::selected_options(&self, select: surgeist_dom::identity::NodeId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomHtmlCollection, surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::window_named_elements<A, E>(&self, document: surgeist_dom::identity::DocumentId, name: surgeist_html::internal::values::document_string::DocumentString, max_retained_query_units: usize, work_limit: u64, admission: A, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomWindowNamedElements, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::window_named_value<E: core::convert::From<surgeist_dom::hosted::DomHostedError>>(&self, global: surgeist_dom::hosted::DomHostedGlobalId, name: surgeist_html::internal::values::document_string::DocumentString, max_retained_query_units: usize, work_limit: u64, admission: impl core::ops::function::Fn() -> core::result::Result<(), E>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomWindowNamedValue, E>
 impl surgeist_dom::Dom

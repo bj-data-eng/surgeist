@@ -69,9 +69,9 @@ use surgeist_dom::focus::{
     DomSourceDialogFocusingRequest, DomSourceFocusDelegateRequest, DomSourceFocusDelegateStep,
 };
 use surgeist_dom::form::select::{
-    DomOption, DomOptionState, DomSelect, DomSelectCompletionStart, DomSelectState, DomSelectTask,
-    DomSelectTaskCancellationReason, DomSelectTaskCompletion, DomSelectTaskOutcome,
-    DomSelectedcontent,
+    DomOption, DomOptionState, DomSelect, DomSelectCompletionStart, DomSelectOptionBefore,
+    DomSelectState, DomSelectTask, DomSelectTaskCancellationReason, DomSelectTaskCompletion,
+    DomSelectTaskOutcome, DomSelectedcontent,
 };
 use surgeist_dom::form::{
     DomButton, DomButtonState, DomFieldset, DomFieldsetState, DomForm, DomFormNamedValue,

@@ -246,6 +246,211 @@ fn dom() -> Dom {
 }
 
 #[test]
+fn option_fill_wrapper_stays_private_at_selectedcontent_sheet_removal() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = Dom::new(
+        dom()
+            .limits()
+            .with_select_processing(32, 4_000_000, 10_000_000)
+            .unwrap(),
+    )
+    .unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let select = batch.create_element_ns(&document, Namespace::html(), "select");
+    let content = batch.create_element_ns(&document, Namespace::html(), "selectedcontent");
+    let style = batch.create_element_ns(&document, Namespace::html(), "style");
+    let text = batch.create_text(&document, "a { color: red }");
+    batch.insert_before(&select, &document, None);
+    batch.insert_before(&content, &select, None);
+    batch.insert_before(&text, &style, None);
+    let created = dom.apply(batch, &cancel).unwrap();
+    let [select, content, style] =
+        [select, content, style].map(|node| created.created(&node).unwrap().unwrap());
+    let (owner, sheet) = connect_option_fill_fixture_style(&mut dom, style, content, &cancel);
+    inspect_option_fill_cut(&mut dom, select, content, style, &owner, &sheet, &cancel);
+}
+
+fn connect_option_fill_fixture_style(
+    dom: &mut Dom,
+    style: surgeist_dom::identity::NodeId,
+    content: surgeist_dom::identity::NodeId,
+    cancel: &AtomicBool,
+) -> (
+    surgeist_dom::style::DomStyleCssomRoot,
+    surgeist_cssom::CssomSheetId,
+) {
+    use surgeist_css::{
+        CssParser, CssParserContext, query::media::CssMediaQueryList, source::CssUtf16InputLimits,
+    };
+    use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
+    use surgeist_dom::{
+        source::DomSourceProgress,
+        style::{
+            DomStyleAction, DomStyleCssomOwnerBinding, DomStyleCssomRoot,
+            DomStyleInlineCspObservation,
+        },
+    };
+
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_before(style, content, None),
+            source_limits(),
+            cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::Style(policy)) =
+        lease.advance(cancel).unwrap()
+    else {
+        panic!("connected Style must reach inline policy")
+    };
+    lease
+        .accept_inline_csp(
+            &policy,
+            &DomStyleInlineCspObservation::complete_empty(policy.source(), 1),
+            cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::Style(create)) =
+        lease.advance(cancel).unwrap()
+    else {
+        panic!("connected Style must request its associated sheet")
+    };
+    assert_eq!(
+        create.action(),
+        DomStyleAction::Update(HtmlStyleUpdateAction::CreateSheet)
+    );
+    let owner = DomStyleCssomRoot::new(create.cssom_root().unwrap(), cssom());
+    lease.bind_cssom_root(&create, &owner, cancel).unwrap();
+    let snapshot = owner.snapshot().unwrap();
+    let create = lease
+        .qualify_cssom(&create, owner.root(), &snapshot)
+        .unwrap();
+    let version = CssomInputVersion {
+        role: CssomInputRole::Owner,
+        identity: "selectedcontent-style".into(),
+        revision: 1,
+    };
+    let binding =
+        DomStyleCssomOwnerBinding::new(&create, version.clone(), "selectedcontent-style".into())
+            .unwrap();
+    lease.bind_cssom_owner(&create, binding, cancel).unwrap();
+    let parser = CssParser::new(CssParserContext::default(), Default::default());
+    let body = parser
+        .parse_sheet_utf16(
+            create.source().text().clone(),
+            CssUtf16InputLimits::default(),
+            || Ok::<_, ()>(()),
+        )
+        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &parser,
+        std::sync::Arc::new(Vec::new()),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap();
+    let mut inputs = CssomSheetInputs::external(version, true);
+    inputs.owner = Some("selectedcontent-style".into());
+    let mut batch = owner
+        .batch(CssomEditGuard::from_snapshot(&snapshot))
+        .unwrap();
+    let sheet = batch
+        .create_parsed_sheet_with_media_reports(body, media, inputs)
+        .unwrap();
+    let commit = owner.commit(&mut Some(batch)).unwrap();
+    let sheet_id = commit.sheet(sheet.ticket()).unwrap().clone();
+    lease
+        .accept_cssom_publication(
+            &create,
+            commit,
+            owner.snapshot().unwrap(),
+            Some(sheet.ticket()),
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    (owner, sheet_id)
+}
+
+fn inspect_option_fill_cut(
+    dom: &mut Dom,
+    select: surgeist_dom::identity::NodeId,
+    content: surgeist_dom::identity::NodeId,
+    style: surgeist_dom::identity::NodeId,
+    owner: &surgeist_dom::style::DomStyleCssomRoot,
+    sheet: &surgeist_cssom::CssomSheetId,
+    cancel: &AtomicBool,
+) {
+    use surgeist_cssom::CssomEditGuard;
+    use surgeist_dom::{source::DomSourceProgress, style::DomStyleAction, tree::DomNodeKind};
+
+    let original = dom.snapshot();
+    let count = dom.usage().managed_nodes();
+    assert_eq!(original.node(style).unwrap().parent(), Some(content));
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_select_options_length(select, 2),
+            source_limits(),
+            cancel,
+        )
+        .unwrap();
+    let operation = lease.operation();
+    let DomSourceProgress::Request(DomSourceRequest::Style(remove)) =
+        lease.advance(cancel).unwrap()
+    else {
+        panic!("selecting the first blank must reach the associated sheet removal")
+    };
+    assert_eq!(
+        remove.action(),
+        DomStyleAction::Update(HtmlStyleUpdateAction::RemoveAssociatedSheet)
+    );
+    assert_eq!(remove.source().element(), style);
+    assert_eq!(remove.sheet().unwrap().id(), sheet);
+    let prefix = lease.snapshot();
+    assert_eq!(prefix.incomplete_source_operation(), Some(operation));
+    assert_eq!(prefix.node(style).unwrap().parent(), None);
+    assert!(
+        !prefix.nodes().any(|id| matches!(
+            prefix.node(id).unwrap().kind(),
+            DomNodeKind::DocumentFragment
+        )),
+        "the option fill wrapper must remain private during the sheet request"
+    );
+    drop(lease);
+
+    let mut lease = dom
+        .resume_source_edit(operation, source_limits(), cancel)
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::Style(retry)) = lease.advance(cancel).unwrap()
+    else {
+        panic!("resume must retain the sheet removal")
+    };
+    assert_eq!(retry.association(), remove.association());
+    let snapshot = owner.snapshot().unwrap();
+    let retry = lease
+        .qualify_cssom(&retry, owner.root(), &snapshot)
+        .unwrap();
+    let mut batch = owner
+        .batch(CssomEditGuard::from_snapshot(&snapshot))
+        .unwrap();
+    assert!(batch.remove_sheet(sheet).unwrap());
+    let commit = owner.commit(&mut Some(batch)).unwrap();
+    lease
+        .accept_cssom_publication(&retry, commit, owner.snapshot().unwrap(), None)
+        .unwrap();
+    assert!(matches!(
+        lease.advance(cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(lease);
+    assert_eq!(dom.usage().managed_nodes(), count + 2);
+    assert_eq!(original.node(style).unwrap().parent(), Some(content));
+}
+
+#[test]
 fn eligible_connected_style_refuses_atomically_at_actual_inline_policy_step() {
     let cancel = AtomicBool::new(false);
     let mut dom = dom();

@@ -263,6 +263,31 @@ pub(crate) enum Edit {
     OptionSelected(bool),
 }
 
+/// The converted reference argument for inserting a Select Option or Optgroup.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomSelectOptionBefore {
+    /// Insert at the end of the Select.
+    Append,
+    /// Insert before this exact HTML descendant.
+    Element(NodeId),
+    /// Insert before the Option at this signed index, or append when absent.
+    Index(i32),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum OptionsEdit {
+    Length(u32),
+    Set {
+        index: u32,
+        value: Option<NodeId>,
+    },
+    Add {
+        element: NodeId,
+        before: DomSelectOptionBefore,
+    },
+    Remove(i32),
+}
+
 /// Exact operation identity, independent of node slots and batch tickets.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomNativeTaskId {

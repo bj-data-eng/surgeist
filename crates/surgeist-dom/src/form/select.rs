@@ -10,7 +10,7 @@
 //! `docs/forms-and-select.md` owns the contract.
 
 pub use crate::internal::select::{
-    DomOption, DomOptionState, DomSelect, DomSelectCompletionStart, DomSelectState, DomSelectTask,
-    DomSelectTaskCancellationReason, DomSelectTaskCompletion, DomSelectTaskOutcome,
-    DomSelectedcontent,
+    DomOption, DomOptionState, DomSelect, DomSelectCompletionStart, DomSelectOptionBefore,
+    DomSelectState, DomSelectTask, DomSelectTaskCancellationReason, DomSelectTaskCompletion,
+    DomSelectTaskOutcome, DomSelectedcontent,
 };

@@ -1,6 +1,7 @@
 //! Source-ordered Select-family adaptation over the canonical staged tree.
 use super::*;
 use crate::internal::select::TaskTargets;
+use std::ops::ControlFlow;
 use surgeist_html::bounded::{
     numeric::HtmlIntegerPrefixScanner,
     select::{
@@ -28,6 +29,28 @@ use surgeist_html::{
 pub(in crate::internal::store) use source::scratch::ScratchVec;
 
 impl State {
+    pub(super) fn visit_select_options_with<T, E, Step>(
+        &self,
+        select: NodeId,
+        step: &mut Step,
+        mut visit: impl FnMut(NodeId, &mut Step) -> Result<ControlFlow<T>, E>,
+    ) -> Result<Option<T>, E>
+    where
+        E: From<DomError>,
+        Step: FnMut() -> Result<(), E>,
+    {
+        let mut result = None;
+        self.family_index
+            .find_option_with(select, step, |id, step| {
+                if let ControlFlow::Break(value) = visit(id, step)? {
+                    result = Some(value);
+                    return Ok(true);
+                }
+                Ok(false)
+            })?;
+        Ok(result)
+    }
+
     pub(crate) fn first_selected_option_with<E: From<DomError>>(
         &self,
         select: NodeId,
@@ -1052,6 +1075,7 @@ pub(super) enum Effect {
     XmlDocument(super::document::XmlDocumentFrame),
     DocumentTitle(super::compound::document_title::Frame),
     TablePartInsert(super::compound::table_part::Insertion),
+    SelectOptions(super::compound::options::Frame),
     ChildrenChanged {
         parent: Key,
         stage: u8,
@@ -1127,6 +1151,7 @@ impl Effect {
             Self::Update { targets, .. } => targets.freeze(draft, cancel),
             Self::Tree(frame) => frame.freeze_worklists(draft, cancel),
             Self::Compound(frame) => frame.freeze(draft, cancel),
+            Self::SelectOptions(frame) => frame.freeze(draft, cancel),
             Self::Normalize(frame) => frame.freeze(draft, cancel),
             _ => Ok(()),
         }
@@ -1188,6 +1213,7 @@ impl EffectFrame {
             Effect::XmlDocument(frame) => Effect::XmlDocument(frame.clone()),
             Effect::DocumentTitle(frame) => Effect::DocumentTitle(frame.clone()),
             Effect::TablePartInsert(frame) => Effect::TablePartInsert(*frame),
+            Effect::SelectOptions(frame) => Effect::SelectOptions(frame.checkpoint(a, cancel)?),
             Effect::ChildrenChanged { parent, stage } => Effect::ChildrenChanged {
                 parent: *parent,
                 stage: *stage,
@@ -1531,6 +1557,9 @@ impl Draft {
                     }
                     Effect::Tree(frame) => self.tree_effect(frame, limits, cancel)?,
                     Effect::Compound(frame) => self.compound_effect(frame, limits, cancel)?,
+                    Effect::SelectOptions(frame) => {
+                        self.select_options_effect(frame, limits, cancel)?
+                    }
                     Effect::SplitText(frame) => self.split_text_effect(frame, limits, cancel)?,
                     Effect::Normalize(frame) => self.normalize_effect(frame, limits, cancel)?,
                     Effect::CompoundTextCleanup(key) => {
@@ -1891,28 +1920,10 @@ impl Draft {
         selected: bool,
         (limits, cancel): (DomLimits, &AtomicBool),
     ) -> Result<Key, DomError> {
-        use crate::internal::source::{DomElementCreationName, DomElementCreationOptions};
-        use surgeist_html::{elements::form::HtmlOptionFlags, values::Namespace};
+        use surgeist_html::elements::form::HtmlOptionFlags;
 
         let document = self.resolve(document.into())?;
-        let metadata = self.document_metadata(document)?;
-        let operands = source::formation::Formation::new(self, cancel)?;
-        let namespace =
-            source::formation::string("http://www.w3.org/1999/xhtml", operands.as_ref(), cancel)?;
-        let local = source::formation::string(Tag::Option.local_name(), operands.as_ref(), cancel)?;
-        let name = DomElementCreationName::Qualified(Namespace::from_uri(namespace), local);
-        let formation = source::formation::Formation::new(self, cancel)?;
-        let element = self.native_element(
-            &name,
-            &DomElementCreationOptions::default(),
-            metadata,
-            formation.as_ref(),
-            cancel,
-        )?;
-        drop(name);
-        drop(operands);
-        let option = self.allocate_element_formed(element, document, limits, cancel, formation)?;
-        self.initialize_native_element(option, None, limits, cancel)?;
+        let option = self.create_blank_html_option(document, limits, cancel)?;
 
         if !text.is_empty() {
             let (text, payload) = source::formation::shared_string(self, text, cancel)?;
@@ -1941,6 +1952,36 @@ impl Draft {
             state.flags = HtmlOptionFlags::new(selected, false);
             Ok(())
         })??;
+        Ok(option)
+    }
+
+    pub(super) fn create_blank_html_option(
+        &mut self,
+        document: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Key, DomError> {
+        use crate::internal::source::{DomElementCreationName, DomElementCreationOptions};
+        use surgeist_html::values::Namespace;
+
+        let metadata = self.document_metadata(document)?;
+        let operands = source::formation::Formation::new(self, cancel)?;
+        let namespace =
+            source::formation::string("http://www.w3.org/1999/xhtml", operands.as_ref(), cancel)?;
+        let local = source::formation::string(Tag::Option.local_name(), operands.as_ref(), cancel)?;
+        let name = DomElementCreationName::Qualified(Namespace::from_uri(namespace), local);
+        let formation = source::formation::Formation::new(self, cancel)?;
+        let element = self.native_element(
+            &name,
+            &DomElementCreationOptions::default(),
+            metadata,
+            formation.as_ref(),
+            cancel,
+        )?;
+        drop(name);
+        drop(operands);
+        let option = self.allocate_element_formed(element, document, limits, cancel, formation)?;
+        self.initialize_native_element(option, None, limits, cancel)?;
         Ok(option)
     }
 

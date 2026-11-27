@@ -95,7 +95,7 @@ impl Draft {
         }
         while self.canonical_key(node) != self.canonical_key(root) {
             self.source_step(cancel)?;
-            if let Some(next) = self.next_sibling(node) {
+            if let Some(next) = self.next_sibling(node, cancel)? {
                 return Ok(Some(next));
             }
             let Some(parent) = self.node(node)?.parent() else {
@@ -231,7 +231,7 @@ impl Draft {
                 mut length,
             } => {
                 // Replacement and all its hooks precede these fresh sibling reads.
-                let mut current = self.next_sibling(node);
+                let mut current = self.next_sibling(node, cancel)?;
                 while let Some(next) = current {
                     self.source_step(cancel)?;
                     let transaction::KindRead::Text(data) = self.node(next)?.kind() else {
@@ -242,7 +242,7 @@ impl Draft {
                     length = length
                         .checked_add(size)
                         .ok_or(DomError::RepresentationExhausted)?;
-                    current = self.next_sibling(next);
+                    current = self.next_sibling(next, cancel)?;
                 }
                 // Select the source's actual removal set after endpoint transfers.
                 let (parent, span, position) = self.exclusive_text_span(node, cancel)?;
@@ -363,7 +363,7 @@ impl Draft {
                 self.insert_validated(
                     frame.new_node,
                     parent,
-                    self.next_sibling(frame.node),
+                    self.next_sibling(frame.node, cancel)?,
                     limits,
                     cancel,
                 )?;
