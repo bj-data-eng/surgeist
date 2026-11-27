@@ -1,4 +1,4 @@
-//! Qualified A/Area set-URL through actual native attribute and tree owners.
+//! Qualified encoding-URL parsing through actual native attribute and tree owners.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     Dom, DomBatch, DomCommit, DomError,
@@ -132,6 +132,109 @@ fn set(dom: &mut Dom, node: NodeId, raw: &str) -> Result<DomCommit, DomError> {
     let mut b = DomBatch::new();
     b.set_attribute(node, "href", raw);
     dom.apply(b, &cancel())
+}
+
+#[test]
+fn disabled_track_stores_qualified_serialization_and_refuses_missing_observations_atomically() {
+    let (mut dom, document, _, _, _) = fixture();
+    let mut creation = DomBatch::new();
+    let destination = creation.create_document();
+    let track = creation.create_element_ns(document, Namespace::html(), "track");
+    let result = dom.apply(creation, &cancel()).unwrap();
+    let destination = result.document(&destination).unwrap();
+    let track = result.created(&track).unwrap().unwrap();
+    let revision = revision();
+    let encoding = HtmlBaseEncoding::fresh();
+    let base = record(&revision, "about:blank", None);
+    bind_base(
+        &mut dom,
+        document,
+        &environment(&revision, &encoding, &base, vec![]),
+    );
+    let serialized = "about:blank#captions";
+    let facts = href_facts(
+        &base,
+        &encoding,
+        &revision,
+        &[
+            ("#captions", Some(record(&revision, serialized, Some(11)))),
+            ("http://[bad-ip", None),
+        ],
+    );
+    bind(&mut dom, document, &facts).unwrap();
+    let set_src = |dom: &mut Dom, value: &str| {
+        let mut batch = DomBatch::new();
+        batch.set_attribute(track, "src", value);
+        dom.apply(batch, &cancel())
+    };
+    set_src(&mut dom, "#captions").unwrap();
+    let retained = dom.snapshot();
+    let text = retained
+        .node(track)
+        .unwrap()
+        .out_of_band_text_track()
+        .unwrap();
+    assert_eq!(text.url(), serialized.encode_utf16().collect::<Vec<_>>());
+    let stamp = retained.stamp();
+    let usage = dom.usage();
+    let mut batch = DomBatch::new();
+    batch.set_attribute(track, "label", "private prefix");
+    batch.set_attribute(track, "src", "#unknown");
+    assert_eq!(
+        dom.apply(batch, &cancel()).unwrap_err(),
+        DomError::EncodingUrlFacts(DomEncodingUrlFactsError::Producer(
+            HtmlEncodingUrlFactsError::MissingObservation,
+        ))
+    );
+    assert_eq!(dom.snapshot().stamp(), stamp);
+    assert_eq!(dom.usage(), usage);
+    let units = usage.string_code_units();
+    dom.set_limits(policy(128, 1_000_000, units)).unwrap();
+    set_src(&mut dom, "http://[bad-ip").unwrap();
+    assert_eq!(
+        dom.usage().string_code_units(),
+        units + "http://[bad-ip".len() - "#captions".len() - serialized.len()
+    );
+    let current = dom.snapshot();
+    assert!(
+        current
+            .node(track)
+            .unwrap()
+            .out_of_band_text_track()
+            .unwrap()
+            .url()
+            .is_empty()
+    );
+    dom.set_limits(policy(128, 1_000_000, 131072)).unwrap();
+    set_src(&mut dom, "#captions").unwrap();
+    let mut batch = DomBatch::new();
+    batch.adopt(track, destination);
+    dom.apply(batch, &cancel()).unwrap();
+    let adopted = dom.snapshot();
+    let adopted = adopted.node(track).unwrap();
+    assert_eq!(adopted.owner_document(), Some(destination));
+    let adopted = adopted.out_of_band_text_track().unwrap();
+    assert_eq!(adopted.id(), text.id());
+    assert_eq!(adopted.url(), text.url());
+    let mut removal = DomBatch::new();
+    removal.remove_attribute(track, "src");
+    dom.apply(removal, &cancel()).unwrap();
+    let current = dom.snapshot();
+    let node = current.node(track).unwrap();
+    assert!(node.attribute(&"src".into()).is_none());
+    assert_eq!(node.out_of_band_text_track().unwrap().url(), text.url());
+    set_src(&mut dom, "").unwrap();
+    let current = dom.snapshot();
+    assert!(
+        current
+            .node(track)
+            .unwrap()
+            .out_of_band_text_track()
+            .unwrap()
+            .url()
+            .is_empty()
+    );
+    assert_eq!(text.url(), serialized.encode_utf16().collect::<Vec<_>>());
 }
 #[test]
 fn detached_success_failure_empty_and_removal_retain_actual_nullable_cache_without_csp_filtering() {

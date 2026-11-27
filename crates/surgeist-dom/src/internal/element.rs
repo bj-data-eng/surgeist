@@ -54,6 +54,11 @@ const FULLSCREEN: u8 = 2;
 const KEYBOARD_LOCK: u8 = 4;
 const FAILED_CONSTRUCTION_INTERFACE: u8 = 8;
 
+pub(crate) enum TrackUrlChange<'a> {
+    Unchanged,
+    Set(Option<&'a DocumentString>),
+}
+
 macro_rules! native_payload {
     ($get:ident, $set:ident, $variant:ident, $state:ty) => {
         pub(crate) fn $get(&self) -> Option<&Arc<Payload<$state>>> {
@@ -316,6 +321,7 @@ impl DomElement {
         attributes: &A,
         changed: &DomQualifiedName,
         nonce: NonceUpdate,
+        track_url: TrackUrlChange<'_>,
         mut formation: ElementFormation<'_>,
     ) -> Result<FormedElement, DomError> {
         crate::internal::store::check_cancel(formation.cancel)?;
@@ -332,6 +338,13 @@ impl DomElement {
             &mut || formation::step(budget, cancel),
             &mut formation,
         )?;
+        let family = match (family, track_url) {
+            (NativeFamily::Track(_), TrackUrlChange::Set(url)) => {
+                NativeFamily::Track(url.map(|value| formation.track_url(value)).transpose()?)
+            }
+            (family, TrackUrlChange::Unchanged) => family,
+            _ => return Err(DomError::WrongNodeKind),
+        };
         let nonce = match nonce {
             NonceUpdate::Unchanged => self.nonce.clone(),
             NonceUpdate::Set(value) => {
@@ -487,6 +500,10 @@ impl DomElement {
             ) => NativeFamily::Img,
             Requirement::KnownHtml(KnownHtmlElement::Picture) => NativeFamily::Picture,
             Requirement::KnownHtml(KnownHtmlElement::Source) => NativeFamily::Source,
+            Requirement::KnownHtml(KnownHtmlElement::Embed) => NativeFamily::Embed {
+                in_document_history: false,
+            },
+            Requirement::KnownHtml(KnownHtmlElement::Track) => NativeFamily::Track(None),
             Requirement::KnownHtml(KnownHtmlElement::Audio) => NativeFamily::Media {
                 state: surgeist_html::elements::media::HtmlUnloadedMediaState::new(
                     surgeist_html::elements::media::HtmlInitialMediaState::Audio,
@@ -602,6 +619,18 @@ impl DomElement {
     }
     pub(crate) fn is_img(&self) -> bool {
         matches!(self.family, NativeFamily::Img)
+    }
+    /// Whether this is an admitted Embed that represents nothing.
+    pub fn is_inactive_embed(&self) -> bool {
+        matches!(self.family, NativeFamily::Embed { .. })
+    }
+    pub(crate) fn note_embed_document_membership(&mut self) {
+        if let NativeFamily::Embed {
+            in_document_history,
+        } = &mut self.family
+        {
+            *in_document_history = true;
+        }
     }
     /// Observe the original unloaded Audio or Video initialization.
     /// Use [Self::media_can_autoplay] for the live autoplay eligibility flag.
@@ -899,8 +928,12 @@ impl DomElement {
             self.flags &= !CAPTURED;
         }
     }
-    pub(crate) fn same_nonattribute_state(&self, other: &Self) -> bool {
-        self.name == other.name
+    pub(crate) fn same_nonattribute_state_with(
+        &self,
+        other: &Self,
+        step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<bool, DomError> {
+        if !(self.name == other.name
             && self.custom_element_registry() == other.custom_element_registry()
             && self.custom_element_definition() == other.custom_element_definition()
             && self.saved_is() == other.saved_is()
@@ -909,11 +942,24 @@ impl DomElement {
             && self.common_scope == other.common_scope
             && self.focus == other.focus
             && self.nonce == other.nonce
-            && self.family == other.family
             && self.hosted == other.hosted
             && self.fullscreen_flag() == other.fullscreen_flag()
             && self.keyboard_lock_flag() == other.keyboard_lock_flag()
-            && self.has_failed_construction_interface() == other.has_failed_construction_interface()
+            && self.has_failed_construction_interface()
+                == other.has_failed_construction_interface())
+        {
+            return Ok(false);
+        }
+        match (&self.family, &other.family) {
+            // The Embed history bit is derived from previously published
+            // topology. Actual departure is covered by the tree changes.
+            // Same-position reinsertion adds no independent native change.
+            (NativeFamily::Embed { .. }, NativeFamily::Embed { .. }) => Ok(true),
+            (NativeFamily::Track(Some(left)), NativeFamily::Track(Some(right))) => {
+                crate::internal::names::same_string(&left.value, &right.value, step)
+            }
+            (left, right) => Ok(left == right),
+        }
     }
     pub fn name(&self) -> &DomQualifiedName {
         &self.name.value.value

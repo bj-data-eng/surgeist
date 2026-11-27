@@ -251,6 +251,11 @@ impl Walker<'_> {
                 self.object(value, raw, "native.dialog");
             }
             NativeFamily::Style(value) => self.fixed(value, "native.style"),
+            NativeFamily::Track(Some(value)) => {
+                let mut raw = Raw::default();
+                self.text(&mut raw, &value.value);
+                self.object(value, raw, "native.track");
+            }
             NativeFamily::Canvas(value) => {
                 let mut raw = Raw::default();
                 for dimension in [value.value.width(), value.value.height()] {

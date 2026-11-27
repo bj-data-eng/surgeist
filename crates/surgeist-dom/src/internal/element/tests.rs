@@ -118,6 +118,7 @@ fn scalar_family_clones_and_refused_attribute_effects_preserve_the_original_stat
         attributes.as_slice(),
         &changed_name,
         NonceUpdate::Unchanged,
+        TrackUrlChange::Unchanged,
         ElementFormation::new(
             &names.registry,
             &crate::internal::store::block_custody::BlockAdoptions::new(names.registry.clone()),
@@ -151,6 +152,7 @@ fn unrelated_attributes_alias_the_name_and_exact_native_group_without_admission(
             attributes.as_slice(),
             &changed,
             NonceUpdate::Unchanged,
+            TrackUrlChange::Unchanged,
             ElementFormation::new(
                 &names.registry,
                 &crate::internal::store::block_custody::BlockAdoptions::new(names.registry.clone()),

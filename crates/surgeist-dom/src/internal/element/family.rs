@@ -61,6 +61,10 @@ pub(crate) enum NativeFamily {
     Img,
     Picture,
     Source,
+    Embed {
+        in_document_history: bool,
+    },
+    Track(Option<Arc<Materialized<DocumentString>>>),
     Media {
         state: surgeist_html::elements::media::HtmlUnloadedMediaState,
         automatic_track_selection_performed: bool,
@@ -105,6 +109,7 @@ impl NativeFamily {
             Self::Canvas(state) => {
                 units(state.value.width()).checked_add(units(state.value.height()))
             }
+            Self::Track(url) => Some(url.as_ref().map_or(0, |url| url.value.len())),
             Self::Form(_)
             | Self::Common
             | Self::Details
@@ -115,6 +120,7 @@ impl NativeFamily {
             | Self::Img
             | Self::Picture
             | Self::Source
+            | Self::Embed { .. }
             | Self::Media { .. }
             | Self::Hyperlink
             | Self::Template

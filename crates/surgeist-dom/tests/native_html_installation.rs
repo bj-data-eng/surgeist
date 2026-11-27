@@ -530,20 +530,76 @@ fn invalid_components_and_late_unadmitted_families_publish_no_partial_identities
     let mut b = HtmlFragment::builder(authoring()).unwrap();
     let root = b.root();
     b.append_text(&root, "private prefix").unwrap();
+    let video = b
+        .append_element(
+            &root,
+            name(Namespace::html(), "video"),
+            OrderedAttributes::default(),
+        )
+        .unwrap();
     b.append_element(
-        &root,
+        &video,
         name(Namespace::html(), "track"),
         OrderedAttributes::default(),
     )
     .unwrap();
     let source = b.finish().unwrap();
-    let id = source.root().children().nth(1).unwrap();
+    let video = source.root().children().nth(1).unwrap();
+    let id = source.node(&video).unwrap().children().next().unwrap();
     let before = dom.snapshot();
     let usage = dom.usage();
     assert!(
-        matches!(dom.install_native_html_fragment(stamp(&dom,d),parent,None,&source,limits(),&AtomicBool::new(false)),Err(DomNativeHtmlInstallError::Source { subject,error:DomError::NativeInitializationRequired(surgeist_html::elements::native::HtmlElementClass::KnownHtml(surgeist_html::vocabulary::KnownHtmlElement::Track)) }) if subject==id)
+        matches!(dom.install_native_html_fragment(stamp(&dom,d),parent,None,&source,limits(),&AtomicBool::new(false)),Err(DomNativeHtmlInstallError::Source { subject,error:DomError::TrackMembershipUnavailable }) if subject==id)
     );
     unchanged(&dom, &before, usage, parent);
+}
+
+#[test]
+fn authored_embed_and_track_install_with_fresh_native_state() {
+    let mut dom = dom();
+    let (document, parent) = setup(&mut dom);
+    let mut builder = HtmlFragment::builder(authoring()).unwrap();
+    let root = builder.root();
+    builder
+        .append_element(
+            &root,
+            name(Namespace::html(), "embed"),
+            OrderedAttributes::new([Attribute::new(
+                name(Namespace::none(), "type"),
+                "image/svg+xml",
+            )])
+            .unwrap(),
+        )
+        .unwrap();
+    builder
+        .append_element(
+            &root,
+            name(Namespace::html(), "track"),
+            OrderedAttributes::new([Attribute::new(name(Namespace::none(), "kind"), "chapters")])
+                .unwrap(),
+        )
+        .unwrap();
+    let authored = builder.finish().unwrap();
+    let mut children = authored.root().children();
+    let embed = children.next().unwrap();
+    let track = children.next().unwrap();
+    let result = install(&mut dom, document, parent, &authored);
+    let current = dom.snapshot();
+    let embed = current.node(result.node_for(&embed).unwrap()).unwrap();
+    assert_eq!(embed.parent(), Some(parent));
+    assert!(embed.as_element().unwrap().is_inactive_embed());
+    let track = current.node(result.node_for(&track).unwrap()).unwrap();
+    assert_eq!(track.parent(), Some(parent));
+    let text = track.out_of_band_text_track().unwrap();
+    assert_eq!(
+        text.kind_with(|| Ok::<(), DomError>(())).unwrap(),
+        surgeist_html::attributes::HtmlTrackKind::Chapters
+    );
+    assert_eq!(
+        text.mode(),
+        surgeist_html::elements::media::HtmlTextTrackMode::Disabled
+    );
+    assert!(text.url().is_empty());
 }
 
 #[test]

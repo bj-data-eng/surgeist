@@ -54,6 +54,7 @@ pub(crate) mod style;
 pub(crate) mod svg_script;
 pub(crate) mod table_part;
 pub(crate) mod template;
+pub(crate) mod text_track;
 pub(crate) mod textarea;
 pub(crate) mod token_list;
 pub(crate) mod top_layer;

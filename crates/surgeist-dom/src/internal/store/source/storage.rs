@@ -271,6 +271,7 @@ pub(crate) fn family_payload(
         NativeFamily::Dialog(value) => value.own_usage,
         NativeFamily::Style(value) => value.own_usage,
         NativeFamily::Canvas(value) => value.own_usage,
+        NativeFamily::Track(Some(value)) => value.own_usage,
         _ => custody::Usage::ZERO,
     };
     Ok(Payload {

@@ -1,10 +1,10 @@
 mod token_list;
 
 use super::*;
-use crate::internal::element::{ElementFormation, FormedElement, NonceUpdate};
+use crate::internal::element::{ElementFormation, FormedElement, NonceUpdate, TrackUrlChange};
 use crate::internal::names::{
     attribute_name, expanded_equals_with, name_units, qualified_equals_with, same_code_units,
-    valid_attribute_local_name,
+    same_string, valid_attribute_local_name,
 };
 use crate::{
     internal::name::DomAttribute as Attribute, internal::name::DomQualifiedName as QualifiedName,
@@ -202,17 +202,6 @@ fn attribute_units(attribute: &Attribute) -> Result<usize, DomError> {
     name_units(attribute.name())
         .and_then(|units| units.checked_add(attribute.value().len()))
         .ok_or(DomError::RepresentationExhausted)
-}
-
-pub(super) fn same_string(
-    left: &DocumentString,
-    right: &DocumentString,
-    step: impl FnMut() -> Result<(), DomError>,
-) -> Result<bool, DomError> {
-    if left.shares_storage_with(right) {
-        return Ok(true);
-    }
-    same_code_units(left.code_units(), right.code_units(), step)
 }
 
 fn retain_string(
@@ -932,6 +921,7 @@ impl Draft {
         );
         let index = position.unwrap_or(previous.len());
         let next = previous.edited(index, position.is_some(), Some(&replacement))?;
+        let track_url = self.track_url_for_attribute_set(node, element, &changed, value, cancel)?;
         let formed = {
             let mut admit = |usage| self.admit_custody_usage(usage, cancel);
             let context = ElementFormation::new(
@@ -941,7 +931,7 @@ impl Draft {
                 cancel,
                 &mut admit,
             );
-            element.with_attribute_effect(&previous, &next, &changed, nonce, context)?
+            element.with_attribute_effect(&previous, &next, &changed, nonce, track_url, context)?
         };
         let final_units = units
             .checked_sub(old_units)
@@ -1181,6 +1171,8 @@ impl Draft {
         )?;
         let index = position.unwrap_or(previous.len());
         let next = previous.edited(index, position.is_some(), Some(replacement))?;
+        let track_url =
+            self.track_url_for_attribute_set(node, element, &changed, replacement.value(), cancel)?;
         let formed = {
             let mut admit = |usage| self.admit_custody_usage(usage, cancel);
             let context = ElementFormation::new(
@@ -1190,7 +1182,7 @@ impl Draft {
                 cancel,
                 &mut admit,
             );
-            element.with_attribute_effect(&previous, &next, &changed, nonce, context)?
+            element.with_attribute_effect(&previous, &next, &changed, nonce, track_url, context)?
         };
         if let Some((record, units)) = verified_record {
             self.replace_attr_value_formed(attr, record, attr_formation, cancel)?;
@@ -1395,6 +1387,7 @@ impl Draft {
         let new_value = hook.new_value.as_ref();
         self.base_attribute_change(node, changed, old_value, new_value, limits, cancelled)?;
         self.image_attribute_change(node, changed, old_value, new_value, cancelled)?;
+        self.embedded_attribute_change(node, changed, cancelled)?;
         self.style_attribute_change(node, changed, limits, cancelled)?;
         self.meta_attribute_changed(node, changed, limits, cancelled)?;
         self.hyperlink_attribute_change(node, changed, old_value, new_value, limits, cancelled)
@@ -1520,7 +1513,14 @@ impl Draft {
                 cancelled,
                 &mut admit,
             );
-            element.with_attribute_effect(&previous, &next, &changed, nonce, context)?
+            element.with_attribute_effect(
+                &previous,
+                &next,
+                &changed,
+                nonce,
+                TrackUrlChange::Unchanged,
+                context,
+            )?
         };
         let attr = self
             .node(node)?

@@ -838,3 +838,135 @@ fn hosted_constructor_scratch_peak_and_each_work_cut_drop_actual_partial_graph()
         assert_eq!(work.spent.load(Ordering::Relaxed), before + allowance);
     }
 }
+
+#[test]
+fn hosted_embed_setup_refuses_attribute_and_tree_publication() {
+    use crate::internal::{
+        shadow::DomShadowRootInit,
+        source::{DomSourceEdit, DomSourceLimits},
+    };
+    use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
+
+    let cancel = cancel();
+    let (mut dom, mut source, mut prepared) = prepared_top_level();
+    let (mut lease, document, _) = publish_local_html_entry(&mut dom, &mut source, &mut prepared);
+    lease.finish(&mut dom, &mut source, &cancel).unwrap();
+    let limits = DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2);
+
+    let mut creation = DomBatch::new();
+    let root = creation.create_element_ns(document, Namespace::html(), "div");
+    let child = creation.create_element_ns(document, Namespace::html(), "embed");
+    let detached = creation.create_element_ns(document, Namespace::html(), "embed");
+    let host = creation.create_element_ns(document, Namespace::html(), "div");
+    let shadow = creation.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+    let shadow_embed = creation.create_element_ns(document, Namespace::html(), "embed");
+    creation.set_attribute(&child, "src", "");
+    creation.set_attribute(&child, "type", "image/svg+xml");
+    creation.set_attribute(&detached, "src", "relative.svg");
+    creation.insert_before(&root, document, None);
+    creation.insert_before(&child, &root, None);
+    creation.insert_before(&host, &root, None);
+    creation.insert_before(&shadow_embed, &shadow, None);
+    creation.set_attribute(&shadow_embed, "src", "relative.svg");
+    let commit = dom.apply(creation, &cancel).unwrap();
+    let root = commit.created(&root).unwrap().unwrap();
+    let child = commit.created(&child).unwrap().unwrap();
+    let host = commit.created(&host).unwrap().unwrap();
+    let detached = commit.created(&detached).unwrap().unwrap();
+    let shadow_embed = commit.created(&shadow_embed).unwrap().unwrap();
+    let before = dom.snapshot();
+    assert!(
+        before
+            .document(document)
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    let usage = dom.usage();
+
+    let edit = DomSourceEdit::set_native_attribute(child, "src", "relative.svg");
+    let refusal = match dom.begin_source_edit(edit, limits, &cancel) {
+        Ok(mut lease) => lease.advance(&cancel).unwrap_err(),
+        Err(error) => error,
+    };
+    assert_eq!(refusal, DomError::EmbedSetupUnavailable);
+    let mut insertion = DomBatch::new();
+    insertion.set_attribute(root, "id", "private prefix");
+    insertion.insert_before(detached, root, None);
+    assert_eq!(
+        dom.apply(insertion, &cancel).unwrap_err(),
+        DomError::EmbedSetupUnavailable
+    );
+    let current = dom.snapshot();
+    assert_eq!(current.stamp(), before.stamp());
+    assert_eq!(dom.usage(), usage);
+    assert!(
+        current
+            .node(root)
+            .unwrap()
+            .attribute(&"id".into())
+            .is_none()
+    );
+    assert!(current.node(detached).unwrap().parent().is_none());
+    let child = current.node(child).unwrap();
+    assert_eq!(child.attribute(&"src".into()), Some(&"".into()));
+    assert!(child.as_element().unwrap().is_inactive_embed());
+    let shadow_embed = current.node(shadow_embed).unwrap();
+    assert!(shadow_embed.is_connected());
+    assert!(shadow_embed.as_element().unwrap().is_inactive_embed());
+    assert_eq!(
+        shadow_embed.attribute(&"src".into()),
+        Some(&"relative.svg".into())
+    );
+
+    let mut same_position = DomBatch::new();
+    same_position.insert_before(child.id(), root, Some(host.into()));
+    dom.apply(same_position, &cancel).unwrap();
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+
+    let mut removal = DomBatch::new();
+    removal.detach(child.id());
+    dom.apply(removal, &cancel).unwrap();
+    let before = dom.snapshot();
+    assert!(!before.node(child.id()).unwrap().is_connected());
+    let usage = dom.usage();
+    let mut later = DomBatch::new();
+    later.set_attribute(child.id(), "src", "late.svg");
+    assert_eq!(
+        dom.apply(later, &cancel).unwrap_err(),
+        DomError::EmbedSetupUnavailable
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.usage(), usage);
+
+    let mut transient = DomBatch::new();
+    let fresh = transient.create_element_ns(document, Namespace::html(), "embed");
+    transient.insert_before(&fresh, root, None);
+    transient.detach(&fresh);
+    transient.set_attribute(&fresh, "src", "relative.svg");
+    let commit = dom.apply(transient, &cancel).unwrap();
+    let fresh = commit.created(&fresh).unwrap().unwrap();
+    let snapshot = dom.snapshot();
+    let node = snapshot.node(fresh).unwrap();
+    assert!(!node.is_connected());
+    assert!(node.as_element().unwrap().is_inactive_embed());
+    assert_eq!(node.attribute(&"src".into()), Some(&"relative.svg".into()));
+    let mut update = DomBatch::new();
+    update.set_attribute(fresh, "src", "second.svg");
+    dom.apply(update, &cancel).unwrap();
+
+    let mut create = DomBatch::new();
+    let idle = create.create_element_ns(document, Namespace::html(), "embed");
+    let idle = dom
+        .apply(create, &cancel)
+        .unwrap()
+        .created(&idle)
+        .unwrap()
+        .unwrap();
+    let before = dom.snapshot();
+    let mut transient = DomBatch::new();
+    transient.insert_before(idle, root, None);
+    transient.detach(idle);
+    dom.apply(transient, &cancel).unwrap();
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+}

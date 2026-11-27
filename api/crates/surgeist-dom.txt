@@ -2545,6 +2545,18 @@ pub fn surgeist_dom::media::DomMediaStableState::mark_scheduled(&self, dom: &mut
 pub fn surgeist_dom::media::DomMediaStableState::next_to_schedule(&self, dom: &surgeist_dom::Dom) -> core::result::Result<core::option::Option<surgeist_dom::media::DomMediaRemoval>, surgeist_dom::DomError>
 pub fn surgeist_dom::media::DomMediaStableState::run_native(&self, dom: &mut surgeist_dom::Dom, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<core::option::Option<surgeist_dom::media::DomMediaRemoval>, surgeist_dom::DomError>
 pub fn surgeist_dom::media::DomMediaStableState::run_scheduled(&self, dom: &mut surgeist_dom::Dom, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<core::option::Option<surgeist_dom::media::DomMediaRemoval>, surgeist_dom::DomError>
+pub struct surgeist_dom::media::DomOutOfBandTextTrack<'a>
+impl<'a> surgeist_dom::media::DomOutOfBandTextTrack<'a>
+pub fn surgeist_dom::media::DomOutOfBandTextTrack<'a>::cue_count(self) -> usize
+pub fn surgeist_dom::media::DomOutOfBandTextTrack<'a>::id(self) -> surgeist_dom::media::DomOutOfBandTextTrackId
+pub fn surgeist_dom::media::DomOutOfBandTextTrack<'a>::identifier_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<&'a [u16], E>
+pub fn surgeist_dom::media::DomOutOfBandTextTrack<'a>::kind_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::internal::attributes::HtmlTrackKind, E>
+pub fn surgeist_dom::media::DomOutOfBandTextTrack<'a>::label_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<&'a [u16], E>
+pub fn surgeist_dom::media::DomOutOfBandTextTrack<'a>::language_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<&'a [u16], E>
+pub fn surgeist_dom::media::DomOutOfBandTextTrack<'a>::mode(self) -> surgeist_html::internal::elements::media::native::HtmlTextTrackMode
+pub fn surgeist_dom::media::DomOutOfBandTextTrack<'a>::readiness(self) -> surgeist_html::internal::elements::media::native::HtmlTextTrackReadiness
+pub fn surgeist_dom::media::DomOutOfBandTextTrack<'a>::url(self) -> &'a [u16]
+pub struct surgeist_dom::media::DomOutOfBandTextTrackId(_)
 pub mod surgeist_dom::meta
 pub enum surgeist_dom::meta::DomDocumentCspState<'a>
 pub surgeist_dom::meta::DomDocumentCspState::Associated(&'a surgeist_html::internal::security::csp_policy::transition::HtmlCspAssociation)
@@ -3768,6 +3780,7 @@ pub fn surgeist_dom::tree::DomElement::iframe_fullscreen_flag(&self) -> core::op
 pub fn surgeist_dom::tree::DomElement::iframe_initial_state(&self) -> core::option::Option<surgeist_html::internal::elements::iframe::HtmlIframeInitialState>
 pub fn surgeist_dom::tree::DomElement::initial_media_state(&self) -> core::option::Option<surgeist_html::internal::elements::media::native::HtmlInitialMediaState>
 pub fn surgeist_dom::tree::DomElement::input_state(&self) -> core::option::Option<&surgeist_dom::form::DomInputState>
+pub fn surgeist_dom::tree::DomElement::is_inactive_embed(&self) -> bool
 pub fn surgeist_dom::tree::DomElement::keyboard_lock_flag(&self) -> bool
 pub fn surgeist_dom::tree::DomElement::marquee_state(&self) -> core::option::Option<surgeist_html::internal::elements::marquee::HtmlMarqueeState>
 pub fn surgeist_dom::tree::DomElement::media_automatic_track_selection_performed(&self) -> core::option::Option<bool>
@@ -3958,6 +3971,8 @@ pub fn surgeist_dom::tree::DomNode<'a>::lookup_namespace_uri_with<E: core::conve
 pub fn surgeist_dom::tree::DomNode<'a>::lookup_prefix_with<E: core::convert::From<surgeist_dom::DomError>>(self, namespace: core::option::Option<&[u16]>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::internal::values::document_string::DocumentString>, E>
 impl<'a> surgeist_dom::tree::DomNode<'a>
 pub fn surgeist_dom::tree::DomNode<'a>::is_equal_node_with<E: core::convert::From<surgeist_dom::DomError>, Backing>(self, other: surgeist_dom::identity::NodeId, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>, reserve: impl core::ops::function::FnMut(usize) -> core::result::Result<Backing, E>) -> core::result::Result<bool, E>
+impl<'a> surgeist_dom::tree::DomNode<'a>
+pub fn surgeist_dom::tree::DomNode<'a>::out_of_band_text_track(self) -> core::option::Option<surgeist_dom::media::DomOutOfBandTextTrack<'a>>
 pub struct surgeist_dom::tree::DomNodeIterator
 impl surgeist_dom::tree::DomNodeIterator
 pub fn surgeist_dom::tree::DomNodeIterator::filter(self) -> surgeist_dom::tree::DomNodeIteratorFilter
@@ -4328,6 +4343,7 @@ pub surgeist_dom::DomError::DispatchCustodyWorkLimit
 pub surgeist_dom::DomError::DispatchCustodyWorkLimit::limit: u64
 pub surgeist_dom::DomError::DocumentConstructor(surgeist_dom::script::DomDocumentConstructorError)
 pub surgeist_dom::DomError::DuplicateViewTransitionName
+pub surgeist_dom::DomError::EmbedSetupUnavailable
 pub surgeist_dom::DomError::EmptyToken
 pub surgeist_dom::DomError::EncodingUrlFacts(surgeist_dom::url::DomEncodingUrlFactsError)
 pub surgeist_dom::DomError::EncodingUrlWorkLimit
@@ -4504,6 +4520,7 @@ pub surgeist_dom::DomError::TopLayerAdoptionUnavailable::subject: core::option::
 pub surgeist_dom::DomError::TopLayerAlreadyActive
 pub surgeist_dom::DomError::TopLayerAlreadyActive::document: surgeist_dom::identity::DocumentId
 pub surgeist_dom::DomError::TopLayerAlreadyActive::subject: surgeist_dom::identity::NodeId
+pub surgeist_dom::DomError::TrackMembershipUnavailable
 pub surgeist_dom::DomError::TreeWalkerFilterActive
 pub surgeist_dom::DomError::TreeWalkerPublicationUnavailable
 pub surgeist_dom::DomError::UnavailableCreation

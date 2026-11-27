@@ -479,6 +479,9 @@ pub(in crate::internal::store) fn element_dependency(
         crate::internal::element::NativeFamily::Canvas(value) => {
             Some(children::leaf(value, registry, &mut admit)?)
         }
+        crate::internal::element::NativeFamily::Track(Some(value)) => {
+            Some(children::leaf(value, registry, &mut admit)?)
+        }
         _ => None,
     };
     let custom = element

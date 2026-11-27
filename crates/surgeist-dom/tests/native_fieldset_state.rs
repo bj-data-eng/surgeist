@@ -156,16 +156,14 @@ fn exact_fieldset_names_retain_initial_state_without_admitting_other_native_cont
                 .is_none()
         );
     }
-    for name in ["object", "track"] {
-        let before = dom.snapshot();
-        let mut b = DomBatch::new();
-        b.create_element_ns(d, Namespace::html(), name);
-        assert!(matches!(
-            dom.apply(b, &cancel()),
-            Err(DomError::NativeInitializationRequired(_))
-        ));
-        assert_eq!(dom.snapshot().stamp(), before.stamp());
-    }
+    let before = dom.snapshot();
+    let mut b = DomBatch::new();
+    b.create_element_ns(d, Namespace::html(), "object");
+    assert!(matches!(
+        dom.apply(b, &cancel()),
+        Err(DomError::NativeInitializationRequired(_))
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
 }
 #[test]
 fn custom_message_normalizes_exact_units_and_reports_only_stored_state() {

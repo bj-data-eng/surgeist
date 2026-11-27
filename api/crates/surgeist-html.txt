@@ -2566,6 +2566,7 @@ pub fn surgeist_html::bounded::attributes::template_shadow_root_mode_keyword_wit
 pub fn surgeist_html::bounded::attributes::template_shadow_root_slot_assignment_keyword_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<&'static str, E>
 pub fn surgeist_html::bounded::attributes::th_scope_state(raw: core::option::Option<&surgeist_html::values::DocumentString>) -> surgeist_html::attributes::table_header_scope::HtmlTableHeaderScopeState
 pub fn surgeist_html::bounded::attributes::th_scope_work_bound(input_units: usize) -> core::option::Option<usize>
+pub fn surgeist_html::bounded::attributes::track_kind_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::HtmlTrackKind, E>
 pub fn surgeist_html::bounded::attributes::translate_processing_with<E>(raw: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::HtmlTranslateState, E>
 pub fn surgeist_html::bounded::attributes::unsigned_long_reflection_with<E>(raw: core::option::Option<&[u16]>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<u32, E>
 pub const fn surgeist_html::bounded::attributes::unsigned_long_setter_value(value: u32) -> u32
@@ -5047,6 +5048,15 @@ pub enum surgeist_html::elements::media::HtmlMetaMediaPlacement
 pub surgeist_html::elements::media::HtmlMetaMediaPlacement::AllowedForThemeColor
 pub surgeist_html::elements::media::HtmlMetaMediaPlacement::Forbidden
 pub surgeist_html::elements::media::HtmlMetaMediaPlacement::NotSpecified
+pub enum surgeist_html::elements::media::HtmlTextTrackMode
+pub surgeist_html::elements::media::HtmlTextTrackMode::Disabled
+pub surgeist_html::elements::media::HtmlTextTrackMode::Hidden
+pub surgeist_html::elements::media::HtmlTextTrackMode::Showing
+pub enum surgeist_html::elements::media::HtmlTextTrackReadiness
+pub surgeist_html::elements::media::HtmlTextTrackReadiness::FailedToLoad
+pub surgeist_html::elements::media::HtmlTextTrackReadiness::Loaded
+pub surgeist_html::elements::media::HtmlTextTrackReadiness::Loading
+pub surgeist_html::elements::media::HtmlTextTrackReadiness::NotLoaded
 pub struct surgeist_html::elements::media::HtmlCanvasNoneState
 impl surgeist_html::elements::media::HtmlCanvasNoneState
 pub const fn surgeist_html::elements::media::HtmlCanvasNoneState::bitmap_is_transparent_black(&self) -> bool

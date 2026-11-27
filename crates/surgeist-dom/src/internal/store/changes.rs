@@ -407,7 +407,10 @@ pub(super) fn sparse_difference(
                     intrinsic_changed(owner, (old, new), (node, current), budget, cancelled)?;
                 if let (DomNodeKind::Element(before), DomNodeKind::Element(after)) =
                     (node.kind(), current.kind())
-                    && ((!std::ptr::eq(before, after) && !before.same_nonattribute_state(after))
+                    && ((!std::ptr::eq(before, after)
+                        && !before.same_nonattribute_state_with(after, || {
+                            source::formation::step(budget, cancelled)
+                        })?)
                         || node.reflected_targets() != current.reflected_targets()
                         || node.control_owner() != current.control_owner()
                         || !same_optional(node.form_past_names(), current.form_past_names())
@@ -734,7 +737,10 @@ pub(super) fn full_difference(
                     intrinsic_changed(owner, (old, new), (node, current), budget, cancelled)?;
                 if let (DomNodeKind::Element(before), DomNodeKind::Element(after)) =
                     (node.kind(), current.kind())
-                    && ((!std::ptr::eq(before, after) && !before.same_nonattribute_state(after))
+                    && ((!std::ptr::eq(before, after)
+                        && !before.same_nonattribute_state_with(after, || {
+                            source::formation::step(budget, cancelled)
+                        })?)
                         || node.reflected_targets() != current.reflected_targets()
                         || node.control_owner() != current.control_owner()
                         || !same_optional(node.form_past_names(), current.form_past_names())

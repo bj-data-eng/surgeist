@@ -137,6 +137,16 @@ impl<'a> ElementFormation<'a> {
         Ok(formed.value)
     }
 
+    pub(super) fn track_url(
+        &mut self,
+        value: &DocumentString,
+    ) -> Result<Arc<payload::Payload<DocumentString>>, DomError> {
+        self.list(value)?;
+        let mut usage = storage::Payload::default();
+        usage.listed_string(value)?;
+        self.native(usage, usage, || Ok(value.clone()))
+    }
+
     pub(crate) fn custom(
         &mut self,
         value: CustomAssociation,
