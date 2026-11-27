@@ -459,6 +459,7 @@ pub enum DomError {
     },
     InputFilenameInvalidState,
     InputSelectionInvalidState,
+    InputStepInvalidState,
     InputProcessingProtocol,
     InputProcessingWorkLimit {
         limit: u64,
@@ -671,6 +672,7 @@ impl std::fmt::Display for DomError {
             Self::TextareaReadWorkLimit { limit } => write!(f, "reading the Textarea exhausted its work allowance of {limit}"),
             Self::InputFilenameInvalidState => f.write_str("a file Input accepts only an empty string as its value"),
             Self::InputSelectionInvalidState => f.write_str("positional selection does not apply to this Input type"),
+            Self::InputStepInvalidState => f.write_str("stepping is inapplicable or this Input has no allowed step"),
             Self::InputProcessingProtocol => f.write_str("the Input processing protocol was violated"),
             Self::InputProcessingWorkLimit { limit } => write!(f, "Input processing exhausted its work allowance of {limit}"),
             Self::InputNumeric(..) => f.write_str("Input numeric processing failed"),
@@ -952,6 +954,7 @@ impl std::error::Error for DomError {
             | Self::TextareaReadWorkLimit { .. }
             | Self::InputFilenameInvalidState
             | Self::InputSelectionInvalidState
+            | Self::InputStepInvalidState
             | Self::InputProcessingProtocol
             | Self::InputProcessingWorkLimit { .. }
             | Self::InputColorUnavailable(..)

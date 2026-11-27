@@ -152,6 +152,9 @@ impl Draft {
         self.source_step(cancel)?;
         let receiver = self.resolve(edit.receiver().into())?;
         match edit {
+            Edit::InputStep {
+                direction, count, ..
+            } => self.step_input(receiver, *direction, *count, limits, cancel),
             Edit::TextSelection { edit, .. } => {
                 self.edit_text_control_selection(receiver, edit, limits, cancel)
             }

@@ -8,7 +8,7 @@ use crate::{
     internal::table_part::DomHtmlTablePart,
 };
 use surgeist_html::{
-    elements::input::{HtmlRangeTextTarget, HtmlTextSelectionEdit},
+    elements::input::{HtmlInputStepDirection, HtmlRangeTextTarget, HtmlTextSelectionEdit},
     values::DocumentString,
 };
 
@@ -57,6 +57,11 @@ pub(crate) enum TextSelectionEdit {
 }
 #[derive(Clone, Debug)]
 pub(crate) enum Edit {
+    InputStep {
+        input: NodeId,
+        direction: HtmlInputStepDirection,
+        count: i32,
+    },
     SelectOptions {
         select: NodeId,
         action: OptionsEdit,
@@ -97,6 +102,7 @@ pub(crate) enum Edit {
 impl Edit {
     pub(crate) fn receiver(&self) -> NodeId {
         match self {
+            Self::InputStep { input, .. } => *input,
             Self::SelectOptions { select, .. } => *select,
             Self::TablePart { table, .. } => *table,
             Self::DocumentTitle { document, .. } => document.node(),
@@ -109,6 +115,18 @@ impl Edit {
     }
 }
 impl DomSourceEdit {
+    /// Invoke native stepUp or stepDown on the current Input state.
+    /// `count` is the converted signed long argument.
+    pub fn step_input(input: NodeId, direction: HtmlInputStepDirection, count: i32) -> Self {
+        Self {
+            command: Command::Compound(Edit::InputStep {
+                input,
+                direction,
+                count,
+            }),
+        }
+    }
+
     /// Edit native selection in an Input or Textarea. Offsets are UTF-16 code
     /// units. A reached event belongs to the original Source continuation.
     pub fn edit_text_selection(receiver: NodeId, edit: HtmlTextSelectionEdit) -> Self {

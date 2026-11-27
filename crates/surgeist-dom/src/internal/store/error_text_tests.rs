@@ -654,6 +654,11 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             "positional selection does not apply to this Input type",
         ),
         (
+            "InputStepInvalidState",
+            DomError::InputStepInvalidState,
+            "stepping is inapplicable or this Input has no allowed step",
+        ),
+        (
             "InputProcessingProtocol",
             DomError::InputProcessingProtocol,
             "the Input processing protocol was violated",
@@ -1166,6 +1171,7 @@ variants! {
     TextareaReadWorkLimit named,
     InputFilenameInvalidState unit,
     InputSelectionInvalidState unit,
+    InputStepInvalidState unit,
     InputProcessingProtocol unit,
     InputProcessingWorkLimit named,
     InputNumeric tuple,

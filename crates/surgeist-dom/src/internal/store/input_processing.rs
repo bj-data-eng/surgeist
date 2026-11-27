@@ -5,10 +5,26 @@
 use super::source::{checkpoint::Charge, formation::Formation, storage::Payload};
 use super::{DomError, DomResource, check_cancel};
 use std::{mem::size_of, sync::atomic::AtomicBool};
-use surgeist_html::attributes::input_colorspace::HtmlInputColorSpace;
 use surgeist_html::values::DocumentString;
+use surgeist_html::{
+    attributes::{HtmlInputType, input_colorspace::HtmlInputColorSpace},
+    elements::input::HtmlInputStepDirection,
+};
 mod color;
 mod range;
+pub(super) struct StepInput {
+    pub(super) kind: HtmlInputType,
+    pub(super) direction: HtmlInputStepDirection,
+    pub(super) count: i32,
+}
+
+pub(super) enum StepRead {
+    Step,
+    Minimum,
+    Maximum,
+    Default,
+    Current,
+}
 pub(super) struct RangeInput<'a> {
     pub(super) current: &'a DocumentString,
     pub(super) min: Option<&'a DocumentString>,
@@ -370,6 +386,20 @@ impl InputProcessing {
         let base = self.live;
         let marker = source_marker(source);
         let result = range::run(self, input, source, cancel);
+        self.live = base;
+        source_cleanup(source, marker);
+        result.map_err(|error| self.fail(error))
+    }
+    pub(super) fn step(
+        &mut self,
+        input: StepInput,
+        source: Option<&Formation>,
+        read: impl FnMut(StepRead) -> Result<Option<InputValue>, DomError>,
+        cancel: &AtomicBool,
+    ) -> Result<Option<InputValue>, DomError> {
+        let base = self.live;
+        let marker = source_marker(source);
+        let result = range::stepping::run(self, input, source, read, cancel);
         self.live = base;
         source_cleanup(source, marker);
         result.map_err(|error| self.fail(error))

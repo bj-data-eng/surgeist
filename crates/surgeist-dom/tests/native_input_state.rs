@@ -25,6 +25,8 @@ use surgeist_html::{
 
 #[path = "support/input_processing.rs"]
 mod processing_envelope;
+#[path = "native_input_state/stepping.rs"]
+mod stepping;
 
 fn limits() -> DomLimits {
     // At most four processing updates occur in any one batch in these cases:

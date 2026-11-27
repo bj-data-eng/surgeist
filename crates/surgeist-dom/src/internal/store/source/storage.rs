@@ -433,7 +433,8 @@ pub(in crate::internal::store) fn commands(
                         payload.string(replacement)?;
                     }
                 }
-                crate::internal::compound::Edit::TablePart { .. }
+                crate::internal::compound::Edit::InputStep { .. }
+                | crate::internal::compound::Edit::TablePart { .. }
                 | crate::internal::compound::Edit::SelectOptions { .. } => {}
                 crate::internal::compound::Edit::Variadic { nodes, .. } => {
                     payload.bank::<crate::internal::compound::DomNodeOrString>(nodes.capacity())?;
