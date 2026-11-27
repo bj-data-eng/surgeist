@@ -173,8 +173,9 @@ impl Dom {
             .ok_or(DomError::WrongNodeKind)?;
         let step = || read.view.meter.step();
         read.collect_names(|node, output| {
-            let current = node.is_listed_by_form_with(form, step)?
-                || node.is_legacy_image_of_form_with(form, step)?;
+            let current = read.has_collection_name(node)?
+                && (node.is_listed_by_form_with(form, step)?
+                    || node.is_legacy_image_of_form_with(form, step)?);
             if current {
                 let _ = read.names(node, ElementNameScope::Collection, |value| {
                     read.append_supported_name(output, value)?;
@@ -298,10 +299,13 @@ where
         if name.is_empty() {
             return Ok(DomFormNamedValue::Absent);
         }
-        match self.0.first_two_matches(|node| {
-            self.0
-                .element_matches_name(node, name, ElementNameScope::Collection)
-        })? {
+        match self.0.first_two_matches_where(
+            |node| {
+                self.0
+                    .element_matches_name(node, name, ElementNameScope::Collection)
+            },
+            |_| Ok(true),
+        )? {
             ElementMatches::Absent => Ok(DomFormNamedValue::Absent),
             ElementMatches::One(node) => Ok(DomFormNamedValue::Element(node)),
             ElementMatches::Multiple => {
@@ -321,7 +325,10 @@ where
 
     /// Return each nonempty ID or name once, in first occurrence order.
     pub fn supported_names(&self) -> Result<DomHtmlCollectionNames, E> {
-        self.0.supported_names()
+        self.0
+            .names_for_where(ElementNameScope::Collection, |node| {
+                self.0.has_collection_name(node)
+            })
     }
 }
 
@@ -345,7 +352,7 @@ where
     pub fn value(&self) -> Result<&[u16], E> {
         let step = || self.0.view.meter.step();
         let value = self.0.walk_where(
-            |node| node.as_input().is_some(),
+            |node| Ok(node.as_input().is_some()),
             |node| {
                 let input = node.as_input().ok_or(DomError::WrongNodeKind)?;
                 if input.input_type_with(step)? != HtmlInputType::Radio {

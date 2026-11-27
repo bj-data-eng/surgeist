@@ -292,7 +292,7 @@ impl Draft {
         let mut removed_units = 0usize;
         let mut retained = 0usize;
         for entry in source.iter() {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             if entry.target == target {
                 removed_units = removed_units
                     .checked_add(entry.name.len())
@@ -316,7 +316,7 @@ impl Draft {
             budget.retain_bytes(size_of::<Vec<FormPastName<Key>>>(), cancel)?;
         }
         for entry in source.iter() {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             if entry.target != target {
                 if let Some(budget) = &formation {
                     let mut payload = source::storage::Payload::default();

@@ -806,12 +806,12 @@ where
         &'read self,
         visit: impl FnMut(DomNode<'read>) -> Result<ControlFlow<T>, E>,
     ) -> Result<Option<T>, E> {
-        self.walk_where(|_| true, visit)
+        self.walk_where(|_| Ok(true), visit)
     }
 
     fn walk_where<'read, T>(
         &'read self,
-        mut can_match: impl FnMut(DomNode<'read>) -> bool,
+        mut can_match: impl FnMut(DomNode<'read>) -> Result<bool, E>,
         mut visit: impl FnMut(DomNode<'read>) -> Result<ControlFlow<T>, E>,
     ) -> Result<Option<T>, E> {
         if matches!(&self.collection.filter, Filter::Children) {
@@ -819,7 +819,7 @@ where
             return self
                 .view
                 .visit_elements(root.children().iter().copied(), |node| {
-                    if can_match(node) {
+                    if can_match(node)? {
                         visit(node)
                     } else {
                         Ok(ControlFlow::Continue(()))
@@ -845,7 +845,7 @@ where
         }
         let visit_included = |node: DomNode<'read>| {
             if let Some(element) = node.as_element()
-                && can_match(node)
+                && can_match(node)?
             {
                 let matches = match &self.collection.filter {
                     Filter::TagName {
@@ -961,10 +961,18 @@ where
 
     fn first_two_matches(
         &self,
+        matches: impl FnMut(DomNode<'_>) -> Result<bool, E>,
+    ) -> Result<ElementMatches, E> {
+        self.first_two_matches_where(|_| Ok(true), matches)
+    }
+
+    fn first_two_matches_where(
+        &self,
+        can_match: impl FnMut(DomNode<'_>) -> Result<bool, E>,
         mut matches: impl FnMut(DomNode<'_>) -> Result<bool, E>,
     ) -> Result<ElementMatches, E> {
         let mut first = None;
-        let second = self.walk(|node| {
+        let second = self.walk_where(can_match, |node| {
             if !matches(node)? {
                 return Ok(ControlFlow::Continue(()));
             }
@@ -1179,7 +1187,15 @@ where
     }
 
     fn names_for(&self, scope: ElementNameScope) -> Result<DomHtmlCollectionNames, E> {
-        self.collect_names(|node, output| {
+        self.names_for_where(scope, |_| Ok(true))
+    }
+
+    fn names_for_where(
+        &self,
+        scope: ElementNameScope,
+        can_match: impl FnMut(DomNode<'_>) -> Result<bool, E>,
+    ) -> Result<DomHtmlCollectionNames, E> {
+        self.collect_names_where(can_match, |node, output| {
             self.names(node, scope, |value| {
                 self.append_supported_name(output, value)?;
                 Ok(ControlFlow::Continue(()))
@@ -1189,6 +1205,14 @@ where
 
     fn collect_names(
         &self,
+        collect: impl FnMut(DomNode<'_>, &mut DomHtmlCollectionNames) -> Result<ControlFlow<()>, E>,
+    ) -> Result<DomHtmlCollectionNames, E> {
+        self.collect_names_where(|_| Ok(true), collect)
+    }
+
+    fn collect_names_where(
+        &self,
+        can_match: impl FnMut(DomNode<'_>) -> Result<bool, E>,
         mut collect: impl FnMut(DomNode<'_>, &mut DomHtmlCollectionNames) -> Result<ControlFlow<()>, E>,
     ) -> Result<DomHtmlCollectionNames, E> {
         let mut output = DomHtmlCollectionNames {
@@ -1197,8 +1221,16 @@ where
             text_backing: None,
             retained_units: 0,
         };
-        self.walk(|node| collect(node, &mut output))?;
+        self.walk_where(can_match, |node| collect(node, &mut output))?;
         Ok(output)
+    }
+
+    fn has_collection_name(&self, node: DomNode<'_>) -> Result<bool, E> {
+        Ok(self
+            .names(node, ElementNameScope::Collection, |_| {
+                Ok(ControlFlow::Break(()))
+            })?
+            .is_break())
     }
 
     fn append_supported_name(
