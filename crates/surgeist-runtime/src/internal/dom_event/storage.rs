@@ -243,6 +243,8 @@ impl DomEventType {
     ]));
     /// Exact `close` spelling.
     pub const CLOSE: Self = Self(EventText::Static(&[99, 108, 111, 115, 101]));
+    /// Exact `select` spelling.
+    pub const SELECT: Self = Self(EventText::Static(&[115, 101, 108, 101, 99, 116]));
     /// Exact `cancel` spelling.
     pub const CANCEL: Self = Self(EventText::Static(&[99, 97, 110, 99, 101, 108]));
     #[cfg(feature = "document-scripting")]

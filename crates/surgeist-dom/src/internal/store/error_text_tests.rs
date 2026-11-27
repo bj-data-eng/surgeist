@@ -649,6 +649,11 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             "a file Input accepts only an empty string as its value",
         ),
         (
+            "InputSelectionInvalidState",
+            DomError::InputSelectionInvalidState,
+            "positional selection does not apply to this Input type",
+        ),
+        (
             "InputProcessingProtocol",
             DomError::InputProcessingProtocol,
             "the Input processing protocol was violated",
@@ -843,6 +848,11 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             "ObjectTaskSourceUnavailable",
             DomError::ObjectTaskSourceUnavailable,
             "the Object element's representation task source is unavailable",
+        ),
+        (
+            "TextSelectionTaskSourceUnavailable",
+            DomError::TextSelectionTaskSourceUnavailable,
+            "the text control's select event task source is unavailable",
         ),
         (
             "ObjectHostedTransitionUnavailable",
@@ -1155,6 +1165,7 @@ variants! {
     OutputProtocol tuple,
     TextareaReadWorkLimit named,
     InputFilenameInvalidState unit,
+    InputSelectionInvalidState unit,
     InputProcessingProtocol unit,
     InputProcessingWorkLimit named,
     InputNumeric tuple,
@@ -1194,6 +1205,7 @@ variants! {
     EmbedSetupUnavailable unit,
     TrackMembershipUnavailable unit,
     ObjectTaskSourceUnavailable unit,
+    TextSelectionTaskSourceUnavailable unit,
     ObjectHostedTransitionUnavailable unit,
     ImageUpdateExhausted unit,
     HyperlinkProcessingUnavailable unit,

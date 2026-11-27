@@ -82,6 +82,8 @@ pub enum DomElementTask {
     DialogClose(surgeist_dom::dialog::DomDialogCloseTaskInfo),
     /// One Object representation task, which runs without an event receipt.
     ObjectRepresentation(surgeist_dom::task::DomObjectRepresentationTaskInfo),
+    /// One noncoalesced trusted select event on the user-interaction source.
+    TextSelection(surgeist_dom::task::DomTextSelectionTaskInfo),
 }
 impl DomElementTask {
     /// The HTML task source intrinsic to this payload.
@@ -90,7 +92,9 @@ impl DomElementTask {
             Self::DetailsToggle(_) | Self::DialogToggle(_) | Self::ObjectRepresentation(_) => {
                 DomElementTaskSourceKind::DomManipulation
             }
-            Self::DialogClose(_) => DomElementTaskSourceKind::UserInteraction,
+            Self::DialogClose(_) | Self::TextSelection(_) => {
+                DomElementTaskSourceKind::UserInteraction
+            }
         }
     }
     /// The plain close notification payload, when this is a Close task.
@@ -108,6 +112,7 @@ impl DomElementTask {
             Self::DialogToggle(task) => task.id(),
             Self::DialogClose(task) => task.id(),
             Self::ObjectRepresentation(task) => task.id(),
+            Self::TextSelection(task) => task.id(),
         }
     }
     /// Original relevant Global and its associated Document.
@@ -117,6 +122,7 @@ impl DomElementTask {
             Self::DialogToggle(task) => task.queue_association(),
             Self::DialogClose(task) => task.queue_association(),
             Self::ObjectRepresentation(task) => Some(task.queue_association()),
+            Self::TextSelection(task) => Some(task.queue_association()),
         }
     }
     /// The Details payload, when this is a Details task.
@@ -822,12 +828,14 @@ impl DomElementTaskRuntime {
             .map_err(DomElementTaskRuntimeError::Dom)
     }
 
-    pub(crate) fn queue_object(
+    pub(crate) fn queue_source_element_tasks(
         &self,
         lease: &mut surgeist_dom::source::DomSourceLease<'_>,
-        request: surgeist_dom::task::DomObjectTaskQueueRequest,
+        request: surgeist_dom::task::DomSourceElementTaskQueueRequest,
         cancel: &AtomicBool,
     ) -> Result<surgeist_dom::source::DomSourceCompletion, DomElementTaskRuntimeError> {
+        use surgeist_dom::task::{DomQueuedSourceElementTask, DomSourceElementTaskInfo};
+
         let owner = self.state()?;
         let mut state = owner
             .try_borrow_mut()
@@ -838,7 +846,7 @@ impl DomElementTaskRuntime {
             .ok_or(DomElementTaskRuntimeError::Binding)?;
         let snapshot = lease.snapshot();
         let actual = lease
-            .object_task_prior_details(request, &snapshot)
+            .element_task_prior_details(request, &snapshot)
             .map_err(DomElementTaskRuntimeError::Dom)?;
         let mut intake = state.plan(
             &snapshot,
@@ -851,10 +859,7 @@ impl DomElementTaskRuntime {
         let count = first
             .checked_add(request.count())
             .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
-        let object_tasks = state
-            .object_tasks
-            .checked_add(request.count())
-            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+        let mut object_tasks = state.object_tasks;
         if count > intake.plan.capacity() || count > state.limits.tasks {
             return Err(DomElementTaskRuntimeError::Admission);
         }
@@ -876,12 +881,23 @@ impl DomElementTaskRuntime {
             )
             .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
         let prepared = lease
-            .prepare_object_task_queue(request, &source, serial, cancel)
+            .prepare_element_task_queue(request, &source, serial, cancel)
             .map_err(DomElementTaskRuntimeError::Dom)?;
         for task in prepared.tasks() {
             state.spend(1, cancel)?;
+            let value = match task {
+                DomSourceElementTaskInfo::ObjectRepresentation(info) => {
+                    object_tasks = object_tasks
+                        .checked_add(1)
+                        .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
+                    DomElementTask::ObjectRepresentation(info)
+                }
+                DomSourceElementTaskInfo::TextSelection(info) => {
+                    DomElementTask::TextSelection(info)
+                }
+            };
             intake.plan.push(Plan {
-                value: DomElementTask::ObjectRepresentation(task),
+                value,
                 started: false,
             });
         }
@@ -893,7 +909,9 @@ impl DomElementTaskRuntime {
         state.install_intake(intake);
         state.object_tasks = object_tasks;
         for (row, task) in state.tasks.iter_mut().skip(first).zip(tasks) {
-            row.object = Some(task);
+            if let DomQueuedSourceElementTask::ObjectRepresentation(task) = task {
+                row.object = Some(task);
+            }
         }
         Ok(completion)
     }
@@ -1422,6 +1440,9 @@ impl ElementTaskState {
                             node.as_dialog().is_some()
                         }
                         DomElementTask::ObjectRepresentation(_) => false,
+                        DomElementTask::TextSelection(_) => {
+                            node.as_input().is_some() || node.as_textarea().is_some()
+                        }
                     };
                     if !valid {
                         return Err(DomElementTaskRuntimeError::Binding);
@@ -1539,6 +1560,9 @@ impl ElementTaskState {
                 DomElementTask::DialogClose(_) => {
                     NativeDomEvent::dialog_close(value.id().target(), creation, backing)
                 }
+                DomElementTask::TextSelection(_) => {
+                    NativeDomEvent::text_selection(value.id().target(), creation, backing)
+                }
                 DomElementTask::DialogToggle(dialog) => NativeDomEvent::dialog_toggle(
                     value.id().target(),
                     dialog.old_state(),
@@ -1630,8 +1654,9 @@ impl ElementTaskState {
                     || match task.value {
                         DomElementTask::DialogToggle(_) => disposition.is_none(),
                         DomElementTask::DialogClose(_) => disposition.is_some(),
-                        DomElementTask::DetailsToggle(_) => true,
-                        DomElementTask::ObjectRepresentation(_) => true,
+                        DomElementTask::DetailsToggle(_)
+                        | DomElementTask::ObjectRepresentation(_)
+                        | DomElementTask::TextSelection(_) => true,
                     }
                 {
                     return Err(DomElementTaskRuntimeError::Binding);

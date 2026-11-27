@@ -55,6 +55,13 @@ selected zero coordinates; no URL validation, fetch/error/event or resource obje
 is fabricated. Native File has an actual empty selection; its nonempty value
 setter is a typed refusal, not a synthetic file/path installation.
 
+The [shared selection Source edits](text-controls.md#native-selection) apply
+positional selection to Text, Search, Telephone, URL and Password. Other Input
+types expose null through the positional getter and reject positional edits
+with `InputSelectionInvalidState`. Select-all follows its own applicability
+rule. The current native profile supplies selectable text for value text
+controls. Picker and other rendered control text have no native producer.
+
 ## Finite numerical and CSS processing
 
 Reached variable Range/CSS/Color processing requires caller-selected
@@ -79,6 +86,6 @@ facts, numerical failures, resource exhaustion and cancellation stay distinct
 typed refusals. Current/default/message/Image-history strings independently
 consume canonical retained UTF-16 admission. Lowering processing limits
 does not erase admitted values. No new pickers, file/image acquisition, numeric
-IDL stepping, selection events or general validation UI is implied.
+IDL stepping or general validation UI is implied.
 
 [Back to surgeist-dom](../README.md).

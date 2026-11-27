@@ -2518,7 +2518,7 @@ fn execute_slot_source_edit(
                 panic!("manual Slot assignment has no fullscreen exit handoff: {request:?}")
             }
             surgeist_dom::source::DomSourceProgress::Request(
-                DomSourceRequest::ObjectTaskQueue(request),
+                DomSourceRequest::ElementTaskQueue(request),
             ) => {
                 panic!("manual Slot assignment has no Object task admission: {request:?}")
             }

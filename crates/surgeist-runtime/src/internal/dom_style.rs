@@ -4421,7 +4421,7 @@ mod tests {
                         panic!("Style fixture cannot request a fullscreen exit handoff")
                     }
                     DomSourceProgress::Request(
-                        surgeist_dom::source::DomSourceRequest::ObjectTaskQueue(_),
+                        surgeist_dom::source::DomSourceRequest::ElementTaskQueue(_),
                     ) => {
                         panic!("Style fixture cannot request Object task admission")
                     }

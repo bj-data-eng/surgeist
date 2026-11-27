@@ -14,7 +14,7 @@ impl Draft {
             .textarea_state()
             .ok_or(DomError::TextareaInapplicable)
     }
-    fn with_textarea_state<R>(
+    pub(super) fn with_textarea_state<R>(
         &mut self,
         key: Key,
         cancel: &AtomicBool,
@@ -37,14 +37,14 @@ impl Draft {
         state.commit_charged(payload, cancel)?;
         Ok(result)
     }
-    fn textarea_put_raw(
+    pub(super) fn textarea_put_raw(
         &mut self,
         key: Key,
         raw: DocumentString,
         payload: Option<source::checkpoint::Charge>,
         limits: DomLimits,
         cancel: &AtomicBool,
-    ) -> Result<(), DomError> {
+    ) -> Result<usize, DomError> {
         struct Raw {
             value: DocumentString,
             payload: Option<source::checkpoint::Charge>,
@@ -78,7 +78,7 @@ impl Draft {
             state.raw = raw;
         })?;
         self.units = units;
-        Ok(())
+        Ok(length)
     }
     fn textarea_child_text(
         &self,
@@ -237,7 +237,8 @@ impl Draft {
         self.textarea_state(key)?;
         self.with_textarea_state(key, cancel, |state| state.flags.reset())?;
         let (raw, payload) = self.textarea_child_text(key, limits, cancel)?;
-        self.textarea_put_raw(key, raw, payload, limits, cancel)
+        self.textarea_put_raw(key, raw, payload, limits, cancel)?;
+        Ok(())
     }
     pub(super) fn clone_textarea_overlay(
         &mut self,

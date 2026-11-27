@@ -1,4 +1,4 @@
-//! The private Source publication joined to actual Object task-bank admission.
+//! Final private Source publication joined to the actual element task bank.
 
 use super::*;
 use crate::internal::{
@@ -6,14 +6,74 @@ use crate::internal::{
     element_tasks::{Binding, DomElementTaskId, DomElementTaskSource},
 };
 
-/// An original, completed private Source edit awaiting its representation tasks.
+#[derive(Clone, Copy)]
+pub(in crate::internal::store) enum Kind {
+    ObjectRepresentation { node_document: Key },
+    TextSelection,
+}
+
+impl Kind {
+    pub(in crate::internal::store) fn unavailable(self) -> DomError {
+        match self {
+            Self::ObjectRepresentation { .. } => DomError::ObjectTaskSourceUnavailable,
+            Self::TextSelection => DomError::TextSelectionTaskSourceUnavailable,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(in crate::internal::store) struct Pending {
+    pub(in crate::internal::store) target: Key,
+    pub(in crate::internal::store) association: DomElementTaskAssociation,
+    pub(in crate::internal::store) kind: Kind,
+}
+
+impl Draft {
+    pub(in crate::internal::store) fn queue_final_element_task(
+        &mut self,
+        pending: Pending,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let mut tasks = self
+            .final_element_tasks
+            .take()
+            .unwrap_or_else(|| self.effect_vec());
+        let admission = self.select_reserve(&mut tasks, 1, cancel);
+        if admission.is_ok() {
+            tasks.push(pending);
+        }
+        self.final_element_tasks = Some(tasks);
+        admission
+    }
+
+    pub(in crate::internal::store) fn queue_text_selection_event(
+        &mut self,
+        target: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        if let Some(association) = self.element_task_association(target, cancel)? {
+            self.queue_final_element_task(
+                Pending {
+                    target,
+                    association,
+                    kind: Kind::TextSelection,
+                },
+                cancel,
+            )?;
+        }
+        Ok(())
+    }
+}
+
+/// An original completed private Source edit awaiting its exact element tasks.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DomObjectTaskQueueRequest {
+pub struct DomSourceElementTaskQueueRequest {
     operation: DomSourceOperationId,
     count: usize,
 }
 
-impl DomObjectTaskQueueRequest {
+impl DomSourceElementTaskQueueRequest {
     pub(super) const fn new(operation: DomSourceOperationId, count: usize) -> Self {
         Self { operation, count }
     }
@@ -64,15 +124,57 @@ impl DomObjectRepresentationTask {
     }
 }
 
+/// One reached select event's immutable target and original task association.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomTextSelectionTaskInfo {
+    id: DomElementTaskId,
+    association: DomElementTaskAssociation,
+}
+
+impl DomTextSelectionTaskInfo {
+    pub const fn id(self) -> DomElementTaskId {
+        self.id
+    }
+
+    pub const fn queue_association(self) -> DomElementTaskAssociation {
+        self.association
+    }
+}
+
+/// Prospective element task data used to admit the actual bank entry.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomSourceElementTaskInfo {
+    ObjectRepresentation(DomObjectRepresentationTaskInfo),
+    TextSelection(DomTextSelectionTaskInfo),
+}
+
+/// Owned task transferred at the original Source publication fence.
+#[derive(Debug)]
+pub enum DomQueuedSourceElementTask {
+    ObjectRepresentation(DomObjectRepresentationTask),
+    TextSelection(DomTextSelectionTaskInfo),
+}
+
+impl DomQueuedSourceElementTask {
+    fn info(&self) -> DomSourceElementTaskInfo {
+        match self {
+            Self::ObjectRepresentation(task) => {
+                DomSourceElementTaskInfo::ObjectRepresentation(task.info())
+            }
+            Self::TextSelection(info) => DomSourceElementTaskInfo::TextSelection(*info),
+        }
+    }
+}
+
 /// Owned transfer of the original tasks to the Runtime bank. The original
 /// temporary backing stays charged until the transfer iterator is dropped.
-pub struct DomQueuedObjectTasks {
-    tasks: std::vec::IntoIter<DomObjectRepresentationTask>,
+pub struct DomQueuedSourceElementTasks {
+    tasks: std::vec::IntoIter<DomQueuedSourceElementTask>,
     _formation: Option<formation::Formation>,
 }
 
-impl Iterator for DomQueuedObjectTasks {
-    type Item = DomObjectRepresentationTask;
+impl Iterator for DomQueuedSourceElementTasks {
+    type Item = DomQueuedSourceElementTask;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.tasks.next()
@@ -83,27 +185,29 @@ impl Iterator for DomQueuedObjectTasks {
     }
 }
 
-impl ExactSizeIterator for DomQueuedObjectTasks {}
+impl ExactSizeIterator for DomQueuedSourceElementTasks {}
 
 /// Exclusive no-callback publication after the actual task bank has prepared
 /// room and work for these exact tasks.
-pub struct DomObjectTaskQueueCommit<'a, 'dom> {
+pub struct DomSourceElementTaskQueueCommit<'a, 'dom> {
     lease: &'a mut DomSourceLease<'dom>,
     segment: Option<SegmentPublication>,
-    tasks: Vec<DomObjectRepresentationTask>,
+    tasks: Vec<DomQueuedSourceElementTask>,
     formation: Option<formation::Formation>,
     checkpoint: Option<checkpoint::Checkpoint>,
 }
 
-impl DomObjectTaskQueueCommit<'_, '_> {
+impl DomSourceElementTaskQueueCommit<'_, '_> {
     /// Prospective payloads for the actual Runtime bank reservation.
-    pub fn tasks(&self) -> impl ExactSizeIterator<Item = DomObjectRepresentationTaskInfo> + '_ {
-        self.tasks.iter().map(DomObjectRepresentationTask::info)
+    pub fn tasks(&self) -> impl ExactSizeIterator<Item = DomSourceElementTaskInfo> + '_ {
+        self.tasks.iter().map(DomQueuedSourceElementTask::info)
     }
 
     /// Complete the canonical edit and transfer exactly its task permits. The
     /// task owner installs its preadmitted rows in the same exclusive fence.
-    pub fn publish(mut self) -> Result<(DomSourceCompletion, DomQueuedObjectTasks), DomError> {
+    pub fn publish(
+        mut self,
+    ) -> Result<(DomSourceCompletion, DomQueuedSourceElementTasks), DomError> {
         let segment = self
             .segment
             .take()
@@ -137,7 +241,7 @@ impl DomObjectTaskQueueCommit<'_, '_> {
         self.lease.dom.observe_source_lifecycle();
         Ok((
             completion,
-            DomQueuedObjectTasks {
+            DomQueuedSourceElementTasks {
                 tasks: std::mem::take(&mut self.tasks).into_iter(),
                 _formation: self.formation.take(),
             },
@@ -145,7 +249,7 @@ impl DomObjectTaskQueueCommit<'_, '_> {
     }
 }
 
-impl Drop for DomObjectTaskQueueCommit<'_, '_> {
+impl Drop for DomSourceElementTaskQueueCommit<'_, '_> {
     fn drop(&mut self) {
         if let Some(checkpoint) = self.checkpoint.take()
             && let Some(op) = self.lease.dom.source_operation.as_mut()
@@ -156,14 +260,14 @@ impl Drop for DomObjectTaskQueueCommit<'_, '_> {
 }
 
 impl Dom {
-    /// Discard one original unpublished Object edit awaiting task admission.
+    /// Discard one original unpublished edit awaiting element task admission.
     /// Existing task-bank entries and earlier canonical state are preserved.
-    pub fn cancel_pending_object_admission(
+    pub fn cancel_pending_element_task_admission(
         &mut self,
         operation: DomSourceOperationId,
     ) -> Result<(), DomError> {
         if !self.source_operation.as_ref().is_some_and(|op| {
-            op.id == operation && !op.published && op.pending_object_queue.is_some()
+            op.id == operation && !op.published && op.pending_element_queue.is_some()
         }) {
             return Err(DomError::InvalidSourceOperation);
         }
@@ -175,16 +279,16 @@ impl Dom {
 }
 
 impl<'dom> DomSourceLease<'dom> {
-    fn qualify_object_task_request(
+    fn qualify_element_task_request(
         &self,
-        request: DomObjectTaskQueueRequest,
+        request: DomSourceElementTaskQueueRequest,
     ) -> Result<(), DomError> {
         if request.operation == self.id
             && self
                 .dom
                 .source_operation
                 .as_ref()
-                .is_some_and(|op| !op.cancelled && op.pending_object_queue == Some(request))
+                .is_some_and(|op| !op.cancelled && op.pending_element_queue == Some(request))
         {
             Ok(())
         } else {
@@ -193,13 +297,13 @@ impl<'dom> DomSourceLease<'dom> {
     }
 
     /// Borrow the exact earlier canonical Details occurrences for task-bank
-    /// intake ahead of the new Object occurrences.
-    pub fn object_task_prior_details<'snapshot>(
+    /// intake ahead of the newly reached occurrences.
+    pub fn element_task_prior_details<'snapshot>(
         &self,
-        request: DomObjectTaskQueueRequest,
+        request: DomSourceElementTaskQueueRequest,
         snapshot: &'snapshot DomSnapshot,
     ) -> Result<&'snapshot [DomDetailsToggleIntention], DomError> {
-        self.qualify_object_task_request(request)?;
+        self.qualify_element_task_request(request)?;
         if snapshot.stamp() != self.dom.snapshot().stamp()
             || !Arc::ptr_eq(&snapshot.state, &self.dom.state)
         {
@@ -210,14 +314,14 @@ impl<'dom> DomSourceLease<'dom> {
 
     /// Prepare canonical publication using the original bank's reserved task
     /// serials. Dropping the fence leaves the private edit and its request live.
-    pub fn prepare_object_task_queue<'a>(
+    pub fn prepare_element_task_queue<'a>(
         &'a mut self,
-        request: DomObjectTaskQueueRequest,
+        request: DomSourceElementTaskQueueRequest,
         source: &DomElementTaskSource,
         first_serial: u64,
         cancel: &AtomicBool,
-    ) -> Result<DomObjectTaskQueueCommit<'a, 'dom>, DomError> {
-        self.qualify_object_task_request(request)?;
+    ) -> Result<DomSourceElementTaskQueueCommit<'a, 'dom>, DomError> {
+        self.qualify_element_task_request(request)?;
         source.qualify(self.dom)?;
         let mut op = self
             .dom
@@ -238,7 +342,7 @@ impl<'dom> DomSourceLease<'dom> {
             let formation = formation::Formation::new(&op.draft, cancel)?;
             if let Some(formation) = &formation {
                 formation.retain_bytes(
-                    size_of::<DomObjectTaskQueueCommit<'_, '_>>()
+                    size_of::<DomSourceElementTaskQueueCommit<'_, '_>>()
                         .checked_sub(size_of::<checkpoint::Checkpoint>())
                         .ok_or(DomError::RepresentationExhausted)?,
                     cancel,
@@ -249,11 +353,18 @@ impl<'dom> DomSourceLease<'dom> {
                 .prepare_segment(self.dom, false, PublicationTarget::None, None, cancel)
                 .map_err(|error| match error {
                     crate::internal::hosted::DomHostedError::Dom(error) => error,
-                    _ => DomError::ObjectTaskSourceUnavailable,
+                    _ => op
+                        .draft
+                        .final_element_tasks
+                        .as_ref()
+                        .and_then(|tasks| tasks.first())
+                        .map_or(DomError::InvalidSourceOperation, |task| {
+                            task.kind.unavailable()
+                        }),
                 })?;
             let staged = op
                 .draft
-                .object_tasks
+                .final_element_tasks
                 .as_ref()
                 .ok_or(DomError::InvalidSourceOperation)?;
             if staged.len() != request.count {
@@ -271,24 +382,36 @@ impl<'dom> DomSourceLease<'dom> {
                         .get(index)
                         .ok_or(DomError::UnavailableCreation)?,
                 };
-                let node_document = op
-                    .draft
-                    .published_id(task.node_document)
-                    .map(DocumentId)
-                    .ok_or(DomError::WrongDocument)?;
                 let serial = first_serial
                     .checked_add(
                         u64::try_from(offset).map_err(|_| DomError::RepresentationExhausted)?,
                     )
                     .ok_or(DomError::RepresentationExhausted)?;
                 let id = source.task_id(serial, target)?;
-                tasks.push(DomObjectRepresentationTask {
-                    info: DomObjectRepresentationTaskInfo {
-                        id,
-                        association: task.association,
-                        node_document,
-                    },
-                    binding: Arc::downgrade(&source.binding),
+                tasks.push(match task.kind {
+                    Kind::ObjectRepresentation { node_document } => {
+                        let node_document = op
+                            .draft
+                            .published_id(node_document)
+                            .map(DocumentId)
+                            .ok_or(DomError::WrongDocument)?;
+                        DomQueuedSourceElementTask::ObjectRepresentation(
+                            DomObjectRepresentationTask {
+                                info: DomObjectRepresentationTaskInfo {
+                                    id,
+                                    association: task.association,
+                                    node_document,
+                                },
+                                binding: Arc::downgrade(&source.binding),
+                            },
+                        )
+                    }
+                    Kind::TextSelection => {
+                        DomQueuedSourceElementTask::TextSelection(DomTextSelectionTaskInfo {
+                            id,
+                            association: task.association,
+                        })
+                    }
                 });
             }
             Ok((segment, tasks, formation))
@@ -296,7 +419,7 @@ impl<'dom> DomSourceLease<'dom> {
         match prepared {
             Ok((segment, tasks, formation)) => {
                 self.dom.source_operation = Some(op);
-                Ok(DomObjectTaskQueueCommit {
+                Ok(DomSourceElementTaskQueueCommit {
                     lease: self,
                     segment: Some(segment),
                     tasks,

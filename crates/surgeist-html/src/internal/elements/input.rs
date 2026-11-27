@@ -52,12 +52,30 @@ impl HtmlInputType {
             _ => HtmlInputValueMode::Value,
         }
     }
-    /// Selection support is distinct from Value mode: Email is not selectable.
+    /// Whether the positional selection properties and range methods apply.
+    /// The select-all method has its own applicability rule.
     pub fn is_selectable(self) -> bool {
         matches!(
             self,
             Self::Text | Self::Search | Self::Telephone | Self::Password | Self::Url
         )
+    }
+    /// Text selection by `select()` has broader applicability than the
+    /// positional properties. Conditional states depend on the actual control.
+    pub fn select_method(self) -> HtmlInputSelectMethod {
+        match self {
+            kind if kind.is_selectable() => HtmlInputSelectMethod::CurrentValue,
+            Self::Email
+            | Self::Date
+            | Self::Month
+            | Self::Week
+            | Self::Time
+            | Self::LocalDateTime
+            | Self::Number
+            | Self::Color
+            | Self::File => HtmlInputSelectMethod::ConditionalControlText,
+            _ => HtmlInputSelectMethod::Inapplicable,
+        }
     }
     fn temporal_format(self) -> Option<HtmlInputTemporalFormat> {
         match self {
@@ -765,10 +783,17 @@ impl HtmlInputFlags {
         } else if self.kind.value_mode() != HtmlInputValueMode::Value {
             HtmlInputValueSetterStart::SetContentValue
         } else {
-            let mut next = self;
-            next.dirty_value = true;
-            HtmlInputValueSetterStart::SetCurrentValue(next)
+            HtmlInputValueSetterStart::SetCurrentValue(self.with_dirty_value())
         }
+    }
+    /// Select the flags at entry to setRangeText. This only marks the
+    /// applicable Input dirty, before checking an explicit range's order.
+    pub fn range_text_started(self) -> Option<Self> {
+        self.kind.is_selectable().then(|| self.with_dirty_value())
+    }
+    fn with_dirty_value(mut self) -> Self {
+        self.dirty_value = true;
+        self
     }
     /// Only the flags specified by input cloning overlay fresh/copied attrs.
     pub fn clone_flags_from(mut self, original: Self) -> Self {
@@ -1328,6 +1353,38 @@ pub struct HtmlInputSelection {
     position: SelectionPosition,
     direction: HtmlInputSelectionDirection,
 }
+/// Text source and applicability of an Input's select-all method.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlInputSelectMethod {
+    /// Select the text control's current value.
+    CurrentValue,
+    /// Select text only when the actual control supplies selectable text.
+    ConditionalControlText,
+    /// The method completes without changing selection.
+    Inapplicable,
+}
+
+/// One requested shared Input or Textarea selection change in UTF-16 units.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlTextSelectionEdit {
+    /// Select the whole relevant value using the platform's default direction.
+    All,
+    /// Set the start, raising the end when needed. Null means zero.
+    Start(Option<usize>),
+    /// Set the end, collapsing a reversed range. Null means zero.
+    End(Option<usize>),
+    /// Set direction for the actual current extent.
+    Direction(HtmlInputSelectionDirection),
+    /// Set all three selection properties in one operation.
+    Range {
+        /// Requested start in UTF-16 code units.
+        start: usize,
+        /// Requested end in UTF-16 code units.
+        end: usize,
+        /// Converted direction. Use `None` for an omitted or unrecognized value.
+        direction: HtmlInputSelectionDirection,
+    },
+}
 /// The refusal of a selection whose start offset is after its end offset. Both offsets are kept as
 /// UTF-16 code unit offsets.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1365,6 +1422,52 @@ pub enum HtmlInputEmptySelectionSupport {
     Unsupported,
 }
 impl HtmlInputSelection {
+    /// The positions exposed by the selection properties. A cursor supplies
+    /// the same UTF-16 offset for both properties.
+    pub const fn offsets(self) -> (usize, usize) {
+        match self.position {
+            SelectionPosition::Cursor(offset) => (offset, offset),
+            SelectionPosition::Selection { start, end } => (start, end),
+        }
+    }
+
+    /// Calculate the shared set-the-selection-range result against the actual
+    /// relevant value length. The adapter qualifies applicability and queues
+    /// the event for an actual change in the selected extent or direction.
+    pub fn edit(
+        self,
+        edit: HtmlTextSelectionEdit,
+        value_len: usize,
+        empty: HtmlInputEmptySelectionSupport,
+        none: HtmlInputNoneDirectionSupport,
+    ) -> Self {
+        let (start, end) = self.offsets();
+        let (start, end, direction) = match edit {
+            HtmlTextSelectionEdit::All => (0, value_len, HtmlInputSelectionDirection::None),
+            HtmlTextSelectionEdit::Start(start) => {
+                let start = start.unwrap_or(0);
+                (start, end.max(start), self.direction)
+            }
+            HtmlTextSelectionEdit::End(end) => (start, end.unwrap_or(0), self.direction),
+            HtmlTextSelectionEdit::Direction(direction) => (start, end, direction),
+            HtmlTextSelectionEdit::Range {
+                start,
+                end,
+                direction,
+            } => (start, end, direction),
+        };
+        let end = end.min(value_len);
+        let start = start.min(end);
+        let direction = direction.resolve_none(none);
+        if start == end && empty == HtmlInputEmptySelectionSupport::Unsupported {
+            Self::cursor(end, direction)
+        } else {
+            Self {
+                position: SelectionPosition::Selection { start, end },
+                direction,
+            }
+        }
+    }
     /// Source initial cursor zero with direction resolved from actual support.
     /// This is not a platform default or a selected headless environment.
     pub fn initial(none_support: HtmlInputNoneDirectionSupport) -> Self {
