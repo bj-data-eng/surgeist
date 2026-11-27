@@ -195,6 +195,80 @@ fn namespace_element_validation_uses_element_context_and_preserves_utf16() {
 }
 
 #[test]
+fn fresh_native_embed_retains_inactive_attributes_through_clone_and_retirement() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let embed = batch.create_element_ns(&document, Namespace::html(), "embed");
+    batch.set_attribute(&embed, "src", "relative.svg");
+    batch.set_attribute(&embed, "type", "image/svg+xml");
+    let commit = apply(&mut dom, batch);
+    let document = commit.document(&document).unwrap();
+    let embed = commit.created(&embed).unwrap().unwrap();
+    let captured = dom.snapshot();
+    let node = captured.node(embed).unwrap();
+    assert_eq!(node.node_name(), "embed".into());
+    assert_eq!(node.owner_document(), Some(document));
+    assert!(!node.is_connected());
+    assert_eq!(node.attribute(&"src".into()), Some(&"relative.svg".into()));
+
+    let mut batch = DomBatch::new();
+    let copy = batch.clone_node(embed, false);
+    batch.destroy(embed);
+    let copy = apply(&mut dom, batch).created(&copy).unwrap().unwrap();
+    assert_ne!(copy, embed);
+    let current = dom.snapshot();
+    assert!(matches!(current.node(embed), Err(DomError::StaleNode)));
+    assert_eq!(
+        current.node(copy).unwrap().attribute(&"type".into()),
+        Some(&"image/svg+xml".into())
+    );
+    assert_eq!(
+        captured.node(embed).unwrap().attribute(&"src".into()),
+        Some(&"relative.svg".into())
+    );
+}
+
+#[test]
+fn fresh_native_track_retains_its_node_across_adoption_and_import_gets_a_new_node() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let source = batch.create_document();
+    let destination = batch.create_document();
+    let track = batch.create_element_ns(&source, Namespace::html(), "track");
+    batch.set_attribute(&track, "kind", "CaPtIoNs");
+    batch.set_attribute(
+        &track,
+        "label",
+        DocumentString::from_utf16(vec![0x43, 0xd800]),
+    );
+    let commit = apply(&mut dom, batch);
+    let source = commit.document(&source).unwrap();
+    let destination = commit.document(&destination).unwrap();
+    let track = commit.created(&track).unwrap().unwrap();
+    let captured = dom.snapshot();
+    assert_eq!(captured.node(track).unwrap().owner_document(), Some(source));
+    assert!(!captured.node(track).unwrap().is_connected());
+
+    let mut batch = DomBatch::new();
+    batch.adopt(track, destination);
+    let copy = batch.import_node(&captured, track, destination, false);
+    let copy = apply(&mut dom, batch).created(&copy).unwrap().unwrap();
+    assert_ne!(copy, track);
+    let current = dom.snapshot();
+    for id in [track, copy] {
+        let node = current.node(id).unwrap();
+        assert_eq!(node.owner_document(), Some(destination));
+        assert_eq!(node.attribute(&"kind".into()), Some(&"CaPtIoNs".into()));
+        assert_eq!(
+            node.attribute(&"label".into()),
+            Some(&DocumentString::from_utf16(vec![0x43, 0xd800]))
+        );
+    }
+    assert_eq!(captured.node(track).unwrap().owner_document(), Some(source));
+}
+
+#[test]
 fn fresh_native_audio_and_video_preserve_exact_namespaces() {
     let mut dom = dom();
     let mut batch = DomBatch::new();
