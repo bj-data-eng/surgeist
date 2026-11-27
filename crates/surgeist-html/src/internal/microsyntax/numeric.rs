@@ -1650,7 +1650,13 @@ impl HtmlFloatingPointNumber {
     /// range sanitization use over caller-owned storage; the two spellings
     /// differ for large and small magnitudes (`1e21`).
     pub fn to_plain_decimal_string(&self) -> DocumentString {
-        DocumentString::from(self.value.to_string())
+        DocumentString::from(self.to_string())
+    }
+}
+
+impl fmt::Display for HtmlFloatingPointNumber {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.value, formatter)
     }
 }
 

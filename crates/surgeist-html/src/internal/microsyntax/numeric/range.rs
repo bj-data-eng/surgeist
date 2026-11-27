@@ -3,6 +3,7 @@
 //! copies only this fixed, ticket-free state and commits after validation.
 
 pub(crate) mod best;
+pub(crate) mod expansion;
 pub(crate) mod ingress;
 pub(crate) mod lattice;
 
@@ -1194,6 +1195,31 @@ mod tests {
     use super::{best::HtmlBestFiniteNumberCursor, ingress::HtmlFiniteDecimalIngressCursor};
 
     type Serialized = (String, Option<(u64, usize, i32)>);
+
+    #[test]
+    fn finite_decimal_expansion_keeps_actual_sign_and_exact_digits() {
+        use super::expansion::HtmlFiniteDecimalExpansionCursor;
+        for (number, sign, scale, expected) in [
+            (0.125, false, 3, &[5, 2, 1][..]),
+            (-1024.0, true, 0, &[4, 2, 0, 1][..]),
+            (0.0, false, 0, &[0][..]),
+        ] {
+            let mut driver = Driver::new("");
+            let number = super::super::HtmlFloatingPointNumber::try_from(number).unwrap();
+            let mut cursor =
+                HtmlFiniteDecimalExpansionCursor::new(number, driver.headers()).unwrap();
+            assert_eq!(cursor.result(), None);
+            while let Some(request) = cursor.request() {
+                cursor.reply(driver.fulfill(request)).unwrap();
+            }
+            assert_eq!(cursor.headers(), driver.headers());
+            assert_eq!(cursor.result(), Some((sign, scale)));
+            assert_eq!(
+                driver.scratch[HtmlRangeScratchRole::Coefficient.index()],
+                expected
+            );
+        }
+    }
 
     struct Driver {
         source: Vec<u16>,

@@ -7,11 +7,14 @@ use super::{
 };
 use crate::internal::microsyntax::temporal::{
     GREGORIAN_CYCLE, HtmlTime, HtmlYear, days_before_year_in_cycle, days_in_month,
+    leap_from_remainder,
 };
 use std::num::NonZeroU32;
 
-const DAYS_IN_CYCLE: NonZeroU32 = NonZeroU32::MIN.saturating_add(146_096);
-const MONTHS_PER_YEAR: NonZeroU32 = NonZeroU32::MIN.saturating_add(11);
+pub(in crate::internal::microsyntax::temporal) const DAYS_IN_CYCLE: NonZeroU32 =
+    NonZeroU32::MIN.saturating_add(146_096);
+pub(in crate::internal::microsyntax::temporal) const MONTHS_PER_YEAR: NonZeroU32 =
+    NonZeroU32::MIN.saturating_add(11);
 
 /// Splits an integral timestamp using a Euclidean day and milliseconds-of-day.
 /// The clock remainder is available even before the first positive HTML year.
@@ -63,20 +66,33 @@ fn positive_origin_difference(
 pub(crate) fn date_at_day(ordinal: &HtmlNonNegativeInteger) -> Option<HtmlDate> {
     let (cycles, day) = ordinal.quotient_remainder(DAYS_IN_CYCLE);
     let cycle_years = GREGORIAN_CYCLE.get();
-    // Leap days add fewer than 365 days in one cycle, so the division can
-    // overestimate by at most one year. Clamp the last day to its own cycle.
-    let estimate = (day / 365).min(cycle_years - 1);
-    let preceding = estimate - u32::from(days_before_year_in_cycle(estimate) > day);
+    let (preceding, day_in_year) = year_and_day_in_cycle(day);
     let years = cycles
         .multiplied_by(cycle_years)
         .added_to(&u128::from(preceding + 1).into());
     let year = HtmlYear::from_number(years).ok()?;
-    let leap = year.is_leap_year();
-    let mut day_in_year = day - days_before_year_in_cycle(preceding);
+    let (month, date) = month_day_in_cycle_year(preceding, day_in_year)?;
+    HtmlDate::new(year, month, date).ok()
+}
+
+/// Zero-based year in the Gregorian cycle and zero-based day of that year.
+pub(in crate::internal::microsyntax::temporal) fn year_and_day_in_cycle(day: u32) -> (u32, u32) {
+    // Leap days add fewer than 365 days in one cycle, so the division can
+    // overestimate by at most one year. Clamp the last day to its own cycle.
+    let estimate = (day / 365).min(GREGORIAN_CYCLE.get() - 1);
+    let preceding = estimate - u32::from(days_before_year_in_cycle(estimate) > day);
+    (preceding, day - days_before_year_in_cycle(preceding))
+}
+
+pub(in crate::internal::microsyntax::temporal) fn month_day_in_cycle_year(
+    preceding: u32,
+    mut day_in_year: u32,
+) -> Option<(u8, u8)> {
+    let leap = leap_from_remainder(((preceding + 1) % GREGORIAN_CYCLE.get()) as u16);
     for month in 1..=12 {
         let length = u32::from(days_in_month(month, leap));
         if day_in_year < length {
-            return HtmlDate::new(year, month, u8::try_from(day_in_year + 1).ok()?).ok();
+            return Some((month, u8::try_from(day_in_year + 1).ok()?));
         }
         day_in_year -= length;
     }

@@ -3110,6 +3110,7 @@ pub fn surgeist_dom::source::DomSourceEdit::set_range_text(receiver: surgeist_do
 pub fn surgeist_dom::source::DomSourceEdit::set_select_option_at(select: surgeist_dom::identity::NodeId, index: u32, value: core::option::Option<surgeist_dom::identity::NodeId>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_select_options_length(select: surgeist_dom::identity::NodeId, length: u32) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_text_content(node: surgeist_dom::identity::NodeId, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::step_input(input: surgeist_dom::identity::NodeId, direction: surgeist_html::internal::elements::input_step::HtmlInputStepDirection, count: i32) -> Self
 impl surgeist_dom::source::DomSourceEdit
 pub fn surgeist_dom::source::DomSourceEdit::adopt(node: surgeist_dom::identity::NodeId, document: surgeist_dom::identity::NodeId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::append_view_transition_record(basis: surgeist_dom::identity::DomDocumentStamp, transition: surgeist_dom::view_transition::DomViewTransitionId, name: surgeist_css::values::view_transition::transitions::CssViewTransitionIdent) -> Self
@@ -4467,6 +4468,7 @@ pub surgeist_dom::DomError::InputProcessingProtocol
 pub surgeist_dom::DomError::InputProcessingWorkLimit
 pub surgeist_dom::DomError::InputProcessingWorkLimit::limit: u64
 pub surgeist_dom::DomError::InputSelectionInvalidState
+pub surgeist_dom::DomError::InputStepInvalidState
 pub surgeist_dom::DomError::InvalidAdjacentPosition
 pub surgeist_dom::DomError::InvalidCharacter
 pub surgeist_dom::DomError::InvalidDestruction

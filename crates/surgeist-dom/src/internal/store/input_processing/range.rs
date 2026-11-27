@@ -1,5 +1,7 @@
 //! Storage/admission adapter for HTML's public finite Range protocols.
 
+pub(super) mod stepping;
+
 use super::{
     BankKind, DomError, Formation, InputProcessing, InputValue, Payload, RangeInput, extent,
     metadata, sum,
@@ -184,7 +186,7 @@ fn frame(layout: HtmlRangeNumericLayout) -> Result<usize, DomError> {
 fn parse(
     meter: &mut InputProcessing,
     storage: &mut Storage,
-    raw: &DocumentString,
+    raw: &[u16],
     mode: HtmlFloatingPointParseMode,
     source: Option<&Formation>,
     cancel: &AtomicBool,
@@ -194,7 +196,7 @@ fn parse(
     let grammar_bytes = size_of::<HtmlFloatingPointGrammarCursor<'_>>();
     meter.fixed(grammar_bytes, grammar_bytes, source, cancel)?;
     let parsed = (|| {
-        let mut grammar = HtmlFloatingPointGrammarCursor::new(raw.code_units(), mode);
+        let mut grammar = HtmlFloatingPointGrammarCursor::new(raw, mode);
         loop {
             meter.inspect(source, cancel)?;
             if grammar.is_finished() {
@@ -252,8 +254,7 @@ fn parse(
             let Some(request) = cursor.request() else {
                 break;
             };
-            let reply =
-                storage.service(meter, raw.code_units(), request, layout, source, cancel)?;
+            let reply = storage.service(meter, raw, request, layout, source, cancel)?;
             cursor.reply(reply).map_err(DomError::InputNumeric)?;
         }
         if cursor.headers() != storage.headers() {
@@ -285,7 +286,7 @@ fn content(
         Some(raw) => match parse(
             meter,
             storage,
-            raw,
+            raw.code_units(),
             HtmlFloatingPointParseMode::Recovery,
             source,
             cancel,
@@ -482,7 +483,7 @@ pub(super) fn run(
     let current_value = parse(
         meter,
         &mut storage,
-        input.current,
+        input.current.code_units(),
         HtmlFloatingPointParseMode::Author,
         source,
         cancel,

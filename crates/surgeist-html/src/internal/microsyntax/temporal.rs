@@ -22,6 +22,7 @@
 pub(crate) mod interpretation;
 
 pub(crate) mod input_coordinate;
+pub(crate) mod input_step;
 
 use crate::{
     internal::microsyntax::numeric::{
@@ -339,16 +340,27 @@ impl HtmlTime {
     pub fn millisecond(self) -> u16 {
         self.millisecond
     }
-    fn spelling(self) -> String {
-        let mut result = format!("{:02}:{:02}", self.hour, self.minute);
+    fn write_spelling(self, output: &mut impl fmt::Write) -> fmt::Result {
+        write!(output, "{:02}:{:02}", self.hour, self.minute)?;
         if self.second != 0 || self.millisecond != 0 {
-            result.push_str(&format!(":{:02}", self.second));
+            write!(output, ":{:02}", self.second)?;
             if self.millisecond != 0 {
-                result.push('.');
-                result.push_str(format!("{:03}", self.millisecond).trim_end_matches('0'));
+                if self.millisecond.is_multiple_of(100) {
+                    write!(output, ".{}", self.millisecond / 100)?;
+                } else if self.millisecond.is_multiple_of(10) {
+                    write!(output, ".{:02}", self.millisecond / 10)?;
+                } else {
+                    write!(output, ".{:03}", self.millisecond)?;
+                }
             }
         }
-        result
+        Ok(())
+    }
+    fn spelling(self) -> String {
+        let mut output = String::new();
+        self.write_spelling(&mut output)
+            .expect("writing to a String cannot fail");
+        output
     }
     /// Produces the shortest valid HTML spelling for this time.
     pub fn to_document_string(self) -> DocumentString {

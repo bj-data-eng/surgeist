@@ -25,6 +25,51 @@ impl Charge<HtmlWork, HtmlResource> for StepMeter<'_> {
 }
 
 impl Draft {
+    pub(super) fn step_input(
+        &mut self,
+        key: Key,
+        direction: surgeist_html::elements::input::HtmlInputStepDirection,
+        count: i32,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        use input_processing::{InputProcessing, StepInput, StepRead};
+
+        self.source_step(cancel)?;
+        let kind = self.input_state(key)?.input_type();
+        if !kind.supports_value_as_number() {
+            return Err(DomError::InputStepInvalidState);
+        }
+        let source = source::formation::Formation::new(self, cancel)?;
+        // Each numeric stage requests the actual canonical operand only
+        // when reached. Keep its original meter outside that local borrow.
+        let mut processing =
+            std::mem::replace(&mut self.input_processing, InputProcessing::new(0, 0));
+        let result = processing.step(
+            StepInput {
+                kind,
+                direction,
+                count,
+            },
+            source.as_ref(),
+            |read| match read {
+                StepRead::Step => self.input_raw(key, A::Step, cancel),
+                StepRead::Minimum => self.input_raw(key, A::Min, cancel),
+                StepRead::Maximum => self.input_raw(key, A::Max, cancel),
+                StepRead::Default => self.input_raw(key, A::Value, cancel),
+                StepRead::Current => self
+                    .input_shared(&self.input_state(key)?.current, cancel)
+                    .map(Some),
+            },
+            cancel,
+        );
+        self.input_processing = processing;
+        if let Some(value) = result? {
+            self.input_put_value(key, value, None, limits, cancel)?;
+        }
+        Ok(())
+    }
+
     fn input_attribute_is(
         &self,
         name: &crate::internal::name::DomQualifiedName,

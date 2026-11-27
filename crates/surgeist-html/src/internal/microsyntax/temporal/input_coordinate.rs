@@ -16,10 +16,10 @@ use std::{error::Error, fmt, num::NonZeroU32};
 
 pub(crate) mod inverse;
 
-const DAYS_IN_WEEK: NonZeroU32 = NonZeroU32::MIN.saturating_add(6);
-const DAYS_BEFORE_EPOCH: u32 = 719162;
-const MONTHS_BEFORE_EPOCH: u32 = 23628;
-const MILLISECONDS_PER_DAY: NonZeroU32 = NonZeroU32::MIN.saturating_add(86_399_999);
+pub(super) const DAYS_IN_WEEK: NonZeroU32 = NonZeroU32::MIN.saturating_add(6);
+pub(super) const DAYS_BEFORE_EPOCH: u32 = 719162;
+pub(super) const MONTHS_BEFORE_EPOCH: u32 = 23628;
+pub(super) const MILLISECONDS_PER_DAY: NonZeroU32 = NonZeroU32::MIN.saturating_add(86_399_999);
 
 fn epoch_milliseconds(ordinal: HtmlNonNegativeInteger) -> HtmlSignedDecimal {
     HtmlSignedDecimal::integer_difference(ordinal, u128::from(DAYS_BEFORE_EPOCH).into())
@@ -78,7 +78,7 @@ impl TemporalState {
         }
     }
     /// The defining clause, the scale factor, the default step and the default step base.
-    fn definition(self) -> (&'static str, u32, u32, i128) {
+    pub(super) fn definition(self) -> (&'static str, u32, u32, i128) {
         macro_rules! source {
             ($anchor:literal) => { concat!("https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#", $anchor) };
         }

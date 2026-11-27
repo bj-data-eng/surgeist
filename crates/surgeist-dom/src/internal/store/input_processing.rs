@@ -5,10 +5,26 @@
 use super::source::{checkpoint::Charge, formation::Formation, storage::Payload};
 use super::{DomError, DomResource, check_cancel};
 use std::{mem::size_of, sync::atomic::AtomicBool};
-use surgeist_html::attributes::input_colorspace::HtmlInputColorSpace;
 use surgeist_html::values::DocumentString;
+use surgeist_html::{
+    attributes::{HtmlInputType, input_colorspace::HtmlInputColorSpace},
+    elements::input::HtmlInputStepDirection,
+};
 mod color;
 mod range;
+pub(super) struct StepInput {
+    pub(super) kind: HtmlInputType,
+    pub(super) direction: HtmlInputStepDirection,
+    pub(super) count: i32,
+}
+
+pub(super) enum StepRead {
+    Step,
+    Minimum,
+    Maximum,
+    Default,
+    Current,
+}
 pub(super) struct RangeInput<'a> {
     pub(super) current: &'a DocumentString,
     pub(super) min: Option<&'a DocumentString>,
@@ -147,12 +163,35 @@ impl InputProcessing {
         source: Option<&Formation>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.own_work(amount, cancel)?;
+        if let Some(source) = source {
+            source.step(cancel).map_err(|error| self.fail(error))?;
+        }
+        Ok(())
+    }
+
+    fn charge_source_work(
+        &mut self,
+        amount: usize,
+        source: Option<&Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let amount = self.own_work(amount, cancel)?;
+        if let Some(source) = source {
+            source
+                .charge_source_work(amount, cancel)
+                .map_err(|error| self.fail(error))?;
+        }
+        Ok(())
+    }
+
+    fn own_work(&mut self, amount: usize, cancel: &AtomicBool) -> Result<u64, DomError> {
         self.poll(cancel)?;
+        let amount =
+            u64::try_from(amount).map_err(|_| self.fail(DomError::RepresentationExhausted))?;
         let next = self
             .work
-            .checked_add(
-                u64::try_from(amount).map_err(|_| self.fail(DomError::RepresentationExhausted))?,
-            )
+            .checked_add(amount)
             .ok_or_else(|| self.fail(DomError::RepresentationExhausted))?;
         if next > self.work_limit {
             return Err(self.fail(DomError::InputProcessingWorkLimit {
@@ -160,10 +199,7 @@ impl InputProcessing {
             }));
         }
         self.work = next;
-        if let Some(source) = source {
-            source.step(cancel).map_err(|error| self.fail(error))?;
-        }
-        Ok(())
+        Ok(amount)
     }
     // A cursor's terminal/request peek is itself a bounded Source read. The
     // original child meter has no additional tariff for that observation.
@@ -370,6 +406,20 @@ impl InputProcessing {
         let base = self.live;
         let marker = source_marker(source);
         let result = range::run(self, input, source, cancel);
+        self.live = base;
+        source_cleanup(source, marker);
+        result.map_err(|error| self.fail(error))
+    }
+    pub(super) fn step(
+        &mut self,
+        input: StepInput,
+        source: Option<&Formation>,
+        read: impl FnMut(StepRead) -> Result<Option<InputValue>, DomError>,
+        cancel: &AtomicBool,
+    ) -> Result<Option<InputValue>, DomError> {
+        let base = self.live;
+        let marker = source_marker(source);
+        let result = range::stepping::run(self, input, source, read, cancel);
         self.live = base;
         source_cleanup(source, marker);
         result.map_err(|error| self.fail(error))

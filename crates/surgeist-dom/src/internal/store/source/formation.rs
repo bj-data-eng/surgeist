@@ -541,11 +541,30 @@ impl Formation {
         if let Some(parsed) = self.work.parsed() {
             return parsed.step(cancel);
         }
+        self.charge_source_counter(1, cancel)?;
+        crate::internal::source::callback::step_ancestors(self.ancestors.as_ref(), cancel)
+    }
+
+    /// Admit an atomic producer action's work envelope against the original
+    /// Source operation and every enclosing Source callback.
+    pub(in crate::internal::store) fn charge_source_work(
+        &self,
+        work: u64,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if self.work.parsed().is_some() {
+            return Err(DomError::InvalidSourceOperation);
+        }
+        self.charge_source_counter(work, cancel)?;
+        crate::internal::source::callback::retain_ancestor_work(self.ancestors.as_ref(), work)
+    }
+
+    fn charge_source_counter(&self, work: u64, cancel: &AtomicBool) -> Result<(), DomError> {
         check_cancel(cancel)?;
         let next = self
             .work
             .load(Ordering::Relaxed)
-            .checked_add(1)
+            .checked_add(work)
             .ok_or(DomError::RepresentationExhausted)?;
         if next > self.work_limit {
             return Err(DomError::SourceWorkLimit {
@@ -554,7 +573,7 @@ impl Formation {
         }
         self.work.store(next, Ordering::Relaxed);
         SourceStorage::record_step();
-        crate::internal::source::callback::step_ancestors(self.ancestors.as_ref(), cancel)
+        Ok(())
     }
     fn admit_total(&self, prospective: custody::Usage) -> Result<(), DomError> {
         if let Some(parsed) = self.work.parsed() {

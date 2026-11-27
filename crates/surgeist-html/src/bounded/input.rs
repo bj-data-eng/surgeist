@@ -14,3 +14,8 @@ pub use crate::internal::elements::input_value_conversion::{
     HtmlInputValueConversionError, input_value_as_date, input_value_as_number,
     input_value_from_date, input_value_from_number,
 };
+pub use crate::internal::microsyntax::temporal::input_step::{
+    HtmlInputTemporalStepError, HtmlInputTemporalStepMeter, HtmlInputTemporalStepOutcome,
+    HtmlInputTemporalStepParameters, decode_input_temporal_step, input_temporal_step_parameters,
+    input_temporal_step_register_bytes, serialize_input_temporal_step,
+};
