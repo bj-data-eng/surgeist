@@ -4941,6 +4941,7 @@ impl surgeist_html::elements::input::HtmlRangeTextPlan
 pub const fn surgeist_html::elements::input::HtmlRangeTextPlan::output_len(&self) -> usize
 pub fn surgeist_html::elements::input::HtmlRangeTextPlan::replaced(&self) -> core::ops::range::Range<usize>
 pub const fn surgeist_html::elements::input::HtmlRangeTextPlan::selection(&self) -> surgeist_html::elements::input::HtmlTextSelectionEdit
+pub const surgeist_html::elements::input::HTML_INPUT_FILENAME_PREFIX: &[u16]
 pub const fn surgeist_html::elements::input::input_color_standard_failure_fallback() -> surgeist_html::microsyntax::color::HtmlLegacyColor
 pub const fn surgeist_html::elements::input::input_color_value_source(dirty_value: bool) -> surgeist_html::elements::input::HtmlInputColorValueSource
 pub fn surgeist_html::elements::input::input_filename_setter(value: &[u16]) -> core::result::Result<surgeist_html::elements::input::HtmlInputFileSelection, surgeist_html::elements::input::HtmlInputFilenameInvalidState>

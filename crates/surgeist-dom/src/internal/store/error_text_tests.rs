@@ -659,6 +659,11 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             "stepping is inapplicable or this Input has no allowed step",
         ),
         (
+            "InputFileNameContainsPath",
+            DomError::InputFileNameContainsPath,
+            "a selected file name contains a path component",
+        ),
+        (
             "InputProcessingProtocol",
             DomError::InputProcessingProtocol,
             "the Input processing protocol was violated",
@@ -1172,6 +1177,7 @@ variants! {
     InputFilenameInvalidState unit,
     InputSelectionInvalidState unit,
     InputStepInvalidState unit,
+    InputFileNameContainsPath unit,
     InputProcessingProtocol unit,
     InputProcessingWorkLimit named,
     InputNumeric tuple,

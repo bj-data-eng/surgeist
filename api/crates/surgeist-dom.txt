@@ -802,6 +802,34 @@ impl surgeist_dom::event::DomSourceToggleEvent
 pub const fn surgeist_dom::event::DomSourceToggleEvent::new_state(self) -> surgeist_html::internal::elements::dialog::HtmlDialogState
 pub const fn surgeist_dom::event::DomSourceToggleEvent::old_state(self) -> surgeist_html::internal::elements::dialog::HtmlDialogState
 pub const fn surgeist_dom::event::DomSourceToggleEvent::source(self) -> core::option::Option<surgeist_dom::identity::NodeId>
+pub mod surgeist_dom::file
+pub struct surgeist_dom::file::DomFile(_)
+impl surgeist_dom::file::DomFile
+pub fn surgeist_dom::file::DomFile::bytes(&self) -> &[u8]
+pub fn surgeist_dom::file::DomFile::from_owned_parts(name: surgeist_html::internal::values::document_string::DocumentString, media_type: surgeist_html::internal::values::document_string::DocumentString, bytes: alloc::vec::Vec<u8>) -> core::result::Result<Self, surgeist_dom::DomError>
+pub fn surgeist_dom::file::DomFile::id(&self) -> surgeist_dom::file::DomFileId
+pub fn surgeist_dom::file::DomFile::media_type(&self) -> &surgeist_html::internal::values::document_string::DocumentString
+pub fn surgeist_dom::file::DomFile::name(&self) -> &surgeist_html::internal::values::document_string::DocumentString
+impl core::cmp::Eq for surgeist_dom::file::DomFile
+impl core::cmp::PartialEq for surgeist_dom::file::DomFile
+pub fn surgeist_dom::file::DomFile::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_dom::file::DomFile
+pub fn surgeist_dom::file::DomFile::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_dom::file::DomFileId(_)
+pub struct surgeist_dom::file::DomFileList(_)
+impl surgeist_dom::file::DomFileList
+pub fn surgeist_dom::file::DomFileList::filename_value(&self) -> &[u16]
+pub fn surgeist_dom::file::DomFileList::files(&self) -> &[surgeist_dom::file::DomFile]
+pub fn surgeist_dom::file::DomFileList::from_files(files: alloc::vec::Vec<surgeist_dom::file::DomFile>) -> core::result::Result<Self, surgeist_dom::DomError>
+pub fn surgeist_dom::file::DomFileList::id(&self) -> surgeist_dom::file::DomFileListId
+pub fn surgeist_dom::file::DomFileList::is_empty(&self) -> bool
+pub fn surgeist_dom::file::DomFileList::len(&self) -> usize
+impl core::cmp::Eq for surgeist_dom::file::DomFileList
+impl core::cmp::PartialEq for surgeist_dom::file::DomFileList
+pub fn surgeist_dom::file::DomFileList::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_dom::file::DomFileList
+pub fn surgeist_dom::file::DomFileList::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_dom::file::DomFileListId(_)
 pub mod surgeist_dom::focus
 pub enum surgeist_dom::focus::DomFocusObservation
 pub surgeist_dom::focus::DomFocusObservation::Denied
@@ -4469,6 +4497,7 @@ pub surgeist_dom::DomError::InlineStyleProfileMissing::element: surgeist_dom::id
 pub surgeist_dom::DomError::InputColorFacts(surgeist_css::color::bounded::CssColorFactDefect)
 pub surgeist_dom::DomError::InputColorUnavailable(surgeist_css::color::bounded::CssColorUnavailable)
 pub surgeist_dom::DomError::InputColorUnsupported(surgeist_css::color::bounded::CssColorUnsupported)
+pub surgeist_dom::DomError::InputFileNameContainsPath
 pub surgeist_dom::DomError::InputFilenameInvalidState
 pub surgeist_dom::DomError::InputInapplicable
 pub surgeist_dom::DomError::InputNumeric(surgeist_html::internal::microsyntax::numeric::range::HtmlRangeNumericError)

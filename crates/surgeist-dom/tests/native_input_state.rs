@@ -23,6 +23,8 @@ use surgeist_html::{
     values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
+#[path = "native_input_state/file_objects.rs"]
+mod file_objects;
 #[path = "support/input_processing.rs"]
 mod processing_envelope;
 #[path = "native_input_state/stepping.rs"]

@@ -162,6 +162,10 @@ pub enum HtmlInputFileSelection {
 /// Filename setter refusal for a nonempty proposed value. No files are created.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlInputFilenameInvalidState;
+/// The exact UTF-16 prefix of an Input Filename-mode value with a selected file.
+pub const HTML_INPUT_FILENAME_PREFIX: &[u16] = &[
+    0x43, 0x3a, 0x5c, 0x66, 0x61, 0x6b, 0x65, 0x70, 0x61, 0x74, 0x68, 0x5c,
+];
 impl std::fmt::Display for HtmlInputFilenameInvalidState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("a file input's value can only be set to the empty string")

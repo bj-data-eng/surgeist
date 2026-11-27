@@ -40,6 +40,7 @@ pub(crate) mod compact_tests;
 mod control;
 mod csp;
 pub(crate) mod custody;
+pub(crate) mod files;
 pub(crate) use custody::{MaterializationId, Usage as MaterializationUsage};
 mod compound;
 mod design_mode;
@@ -460,6 +461,8 @@ pub enum DomError {
     InputFilenameInvalidState,
     InputSelectionInvalidState,
     InputStepInvalidState,
+    /// A selected File name contains a path component.
+    InputFileNameContainsPath,
     InputProcessingProtocol,
     InputProcessingWorkLimit {
         limit: u64,
@@ -673,6 +676,7 @@ impl std::fmt::Display for DomError {
             Self::InputFilenameInvalidState => f.write_str("a file Input accepts only an empty string as its value"),
             Self::InputSelectionInvalidState => f.write_str("positional selection does not apply to this Input type"),
             Self::InputStepInvalidState => f.write_str("stepping is inapplicable or this Input has no allowed step"),
+            Self::InputFileNameContainsPath => f.write_str("a selected file name contains a path component"),
             Self::InputProcessingProtocol => f.write_str("the Input processing protocol was violated"),
             Self::InputProcessingWorkLimit { limit } => write!(f, "Input processing exhausted its work allowance of {limit}"),
             Self::InputNumeric(..) => f.write_str("Input numeric processing failed"),
@@ -955,6 +959,7 @@ impl std::error::Error for DomError {
             | Self::InputFilenameInvalidState
             | Self::InputSelectionInvalidState
             | Self::InputStepInvalidState
+            | Self::InputFileNameContainsPath
             | Self::InputProcessingProtocol
             | Self::InputProcessingWorkLimit { .. }
             | Self::InputColorUnavailable(..)
