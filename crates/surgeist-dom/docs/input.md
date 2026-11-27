@@ -62,9 +62,25 @@ with `InputSelectionInvalidState`. Select-all follows its own applicability
 rule. The current native profile supplies selectable text for value text
 controls. Picker and other rendered control text have no native producer.
 
+## Native stepping
+
+`DomSourceEdit::step_input` invokes the chosen direction with a signed count.
+It reads the live Input type and reached attributes from the same Source
+operation. Number, Range, Date, Month, Week, Time and Local Date and Time
+support stepping. Other types and `step=any` return `InputStepInvalidState`.
+The operation preserves the dirty-value flag and publishes no input or change
+event. [Pinned stepping rules](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-input-stepup)
+
+HTML computes the step grid exactly. Range compares finite lattice candidates
+against the exact target and chooses the larger candidate at a tie. Temporal
+coordinates stay exact through state-specific serialization. Number serializes
+the finite binary64 result and reports a typed numeric overflow if that
+conversion fails. Variable producer work uses both the Source operating
+allowance and the separate Input processing allowance.
+
 ## Finite numerical and CSS processing
 
-Reached variable Range/CSS/Color processing requires caller-selected
+Reached native stepping and variable Range/CSS/Color processing require caller-selected
 `DomLimits::with_input_processing(scratch_bytes, work)`. The seven-argument
 constructor leaves both capacities zero, so fresh empty Text uses no numeric/CSS
 service or invented numerical allocation. Other types remain real Input states;
@@ -85,7 +101,7 @@ Standard-invalid Color parsing alone chooses HTML's black fallback. Missing CSS
 facts, numerical failures, resource exhaustion and cancellation stay distinct
 typed refusals. Current/default/message/Image-history strings independently
 consume canonical retained UTF-16 admission. Lowering processing limits
-does not erase admitted values. No new pickers, file/image acquisition, numeric
-IDL stepping or general validation UI is implied.
+does not erase admitted values. Picker and file/image acquisition remain
+host services. JavaScript callers require a bindings adapter.
 
 [Back to surgeist-dom](../README.md).

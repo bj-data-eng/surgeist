@@ -163,12 +163,35 @@ impl InputProcessing {
         source: Option<&Formation>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        self.own_work(amount, cancel)?;
+        if let Some(source) = source {
+            source.step(cancel).map_err(|error| self.fail(error))?;
+        }
+        Ok(())
+    }
+
+    fn charge_source_work(
+        &mut self,
+        amount: usize,
+        source: Option<&Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let amount = self.own_work(amount, cancel)?;
+        if let Some(source) = source {
+            source
+                .charge_source_work(amount, cancel)
+                .map_err(|error| self.fail(error))?;
+        }
+        Ok(())
+    }
+
+    fn own_work(&mut self, amount: usize, cancel: &AtomicBool) -> Result<u64, DomError> {
         self.poll(cancel)?;
+        let amount =
+            u64::try_from(amount).map_err(|_| self.fail(DomError::RepresentationExhausted))?;
         let next = self
             .work
-            .checked_add(
-                u64::try_from(amount).map_err(|_| self.fail(DomError::RepresentationExhausted))?,
-            )
+            .checked_add(amount)
             .ok_or_else(|| self.fail(DomError::RepresentationExhausted))?;
         if next > self.work_limit {
             return Err(self.fail(DomError::InputProcessingWorkLimit {
@@ -176,10 +199,7 @@ impl InputProcessing {
             }));
         }
         self.work = next;
-        if let Some(source) = source {
-            source.step(cancel).map_err(|error| self.fail(error))?;
-        }
-        Ok(())
+        Ok(amount)
     }
     // A cursor's terminal/request peek is itself a bounded Source read. The
     // original child meter has no additional tariff for that observation.

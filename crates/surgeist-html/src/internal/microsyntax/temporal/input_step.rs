@@ -168,6 +168,12 @@ struct Session<'a, M> {
     live: Storage,
 }
 
+/// The conversion's fixed admission register extent, excluding digit and
+/// UTF-16 backing and the caller's own meter.
+pub const fn input_temporal_step_register_bytes() -> usize {
+    size_of::<Session<'_, ()>>()
+}
+
 impl<M: HtmlInputTemporalStepMeter> Session<'_, M> {
     fn work(&mut self, units: Option<usize>) -> StepResult<(), M> {
         self.meter

@@ -10,8 +10,9 @@ use surgeist_html::{
     },
     bounded::{
         input::{
-            HtmlInputTemporalStepError, HtmlInputTemporalStepMeter, decode_input_temporal_step,
-            input_temporal_step_parameters, serialize_input_temporal_step,
+            HtmlInputTemporalStepError, HtmlInputTemporalStepMeter, HtmlInputTemporalStepOutcome,
+            decode_input_temporal_step, input_temporal_step_parameters,
+            input_temporal_step_register_bytes, serialize_input_temporal_step,
         },
         numeric::{
             HtmlFiniteDecimalExpansionCursor, HtmlIntegerUnitStepError, HtmlNaturalDigits,
@@ -91,7 +92,7 @@ impl Expansion {
     ) -> Result<HtmlInputStepOperand<'_>, DomError> {
         let work = HtmlNaturalDigits::validation_work_bound(self.digits.len())
             .ok_or(DomError::RepresentationExhausted)?;
-        meter.charge(work, source, cancel)?;
+        meter.charge_source_work(work, source, cancel)?;
         let digits = HtmlNaturalDigits::try_little(&self.digits)
             .map_err(|_| DomError::InputProcessingProtocol)?;
         Ok(HtmlInputStepOperand::coefficient(
@@ -145,6 +146,7 @@ impl<F: FnMut(StepRead) -> Result<Option<InputValue>, DomError>> Session<'_, F> 
         let step = allowed
             .multiply(parameters.scale, &mut scaled, || self.grid_tick())
             .map_err(grid_error)?;
+        self.admit_grid_registers()?;
         let bounds = HtmlInputStepBounds {
             minimum: min,
             maximum: max,
@@ -176,16 +178,11 @@ impl<F: FnMut(StepRead) -> Result<Option<InputValue>, DomError>> Session<'_, F> 
         };
         let header = size_of::<Vec<u16>>();
         self.meter.fixed(header, header, self.source, self.cancel)?;
-        let (units, _, _) =
-            serialize_input_temporal_step(kind, projected, usize::MAX, &mut self.temporal_meter())
-                .into_parts();
+        let units = self.with_temporal_meter(|meter| {
+            serialize_input_temporal_step(kind, projected, usize::MAX, meter)
+        })?;
         self.meter
-            .output(
-                units.map_err(temporal_error)?,
-                None,
-                self.source,
-                self.cancel,
-            )
+            .output(units, None, self.source, self.cancel)
             .map(Some)
     }
 
@@ -194,22 +191,39 @@ impl<F: FnMut(StepRead) -> Result<Option<InputValue>, DomError>> Session<'_, F> 
         position: StepRead,
     ) -> Result<Option<HtmlSignedDecimal>, DomError> {
         let raw = (self.read)(position)?;
-        let (value, _, _) = decode_input_temporal_step(
-            self.input.kind,
-            raw.as_ref().map(|value| value.value.code_units()),
-            usize::MAX,
-            &mut self.temporal_meter(),
-        )
-        .into_parts();
-        value.map_err(temporal_error)
+        let kind = self.input.kind;
+        self.with_temporal_meter(|meter| {
+            decode_input_temporal_step(
+                kind,
+                raw.as_ref().map(|value| value.value.code_units()),
+                usize::MAX,
+                meter,
+            )
+        })
     }
 
-    fn temporal_meter(&mut self) -> TemporalMeter<'_> {
-        TemporalMeter {
+    fn with_temporal_meter<T>(
+        &mut self,
+        perform: impl FnOnce(&mut TemporalMeter<'_>) -> HtmlInputTemporalStepOutcome<T, DomError>,
+    ) -> Result<T, DomError> {
+        let fixed = sum(&[
+            size_of::<TemporalMeter<'_>>(),
+            input_temporal_step_register_bytes(),
+        ])?;
+        self.meter.fixed(fixed, fixed, self.source, self.cancel)?;
+        let (result, _, _) = perform(&mut TemporalMeter {
             meter: self.meter,
             source: self.source,
             cancel: self.cancel,
-        }
+        })
+        .into_parts();
+        self.meter.release(fixed, metadata(fixed), self.source);
+        result.map_err(temporal_error)
+    }
+
+    fn admit_grid_registers(&mut self) -> Result<(), DomError> {
+        let bytes = HtmlInputStepBounds::register_bytes();
+        self.meter.fixed(bytes, bytes, self.source, self.cancel)
     }
 
     fn binary64(&mut self, step: HtmlInputNumericStep) -> Result<Option<InputValue>, DomError> {
@@ -251,6 +265,7 @@ impl<F: FnMut(StepRead) -> Result<Option<InputValue>, DomError>> Session<'_, F> 
                 .allowed_step()
                 .ok_or(DomError::InputStepInvalidState)?,
         )?;
+        self.admit_grid_registers()?;
         let bounds = HtmlInputStepBounds {
             minimum: minimum
                 .as_ref()
@@ -481,7 +496,8 @@ impl<F: FnMut(StepRead) -> Result<Option<InputValue>, DomError>> Session<'_, F> 
         self.meter.fixed(fixed, fixed, self.source, self.cancel)?;
         let result = (|| {
             // The finite binary64 plain decimal format has a fixed scalar bound.
-            self.meter.charge(1024, self.source, self.cancel)?;
+            self.meter
+                .charge_source_work(1024, self.source, self.cancel)?;
             let mut spelling = PlainDecimal {
                 units: [0; 327],
                 length: 0,
@@ -611,7 +627,8 @@ impl HtmlInputTemporalStepMeter for TemporalMeter<'_> {
     type Stop = DomError;
 
     fn work(&mut self, units: usize) -> Result<(), Self::Stop> {
-        self.meter.charge(units, self.source, self.cancel)
+        self.meter
+            .charge_source_work(units, self.source, self.cancel)
     }
 
     fn reserve(&mut self, bytes: usize, units: usize) -> Result<(), Self::Stop> {

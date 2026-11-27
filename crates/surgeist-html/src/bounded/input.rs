@@ -17,5 +17,5 @@ pub use crate::internal::elements::input_value_conversion::{
 pub use crate::internal::microsyntax::temporal::input_step::{
     HtmlInputTemporalStepError, HtmlInputTemporalStepMeter, HtmlInputTemporalStepOutcome,
     HtmlInputTemporalStepParameters, decode_input_temporal_step, input_temporal_step_parameters,
-    serialize_input_temporal_step,
+    input_temporal_step_register_bytes, serialize_input_temporal_step,
 };

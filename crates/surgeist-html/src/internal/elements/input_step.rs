@@ -369,6 +369,14 @@ struct Layout {
 }
 
 impl<'input> HtmlInputStepBounds<'input> {
+    /// Fixed grid registers, separate from the caller's digit workspace.
+    pub const fn register_bytes() -> usize {
+        size_of::<Self>()
+            + size_of::<HtmlInputStepGrid<'_>>()
+            + size_of::<Projection<'_, '_>>()
+            + size_of::<HtmlInputStepCoordinate<'_>>()
+    }
+
     fn layout(self, current: Option<HtmlInputStepOperand<'_>>) -> Option<Layout> {
         let mut integer = 1_usize;
         let mut scale = 0;
