@@ -152,6 +152,6 @@ impl TableFamily {
         if matches!(self, Self::Table) {
             super::table_part::install_methods(scope, prototype, capture)?;
         }
-        Ok(())
+        super::table_structure::install(self, scope, prototype, capture)
     }
 }

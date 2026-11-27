@@ -435,6 +435,7 @@ pub(in crate::internal::store) fn commands(
                 }
                 crate::internal::compound::Edit::InputStep { .. }
                 | crate::internal::compound::Edit::TablePart { .. }
+                | crate::internal::compound::Edit::TableStructure { .. }
                 | crate::internal::compound::Edit::SelectOptions { .. } => {}
                 crate::internal::compound::Edit::Variadic { nodes, .. } => {
                     payload.bank::<crate::internal::compound::DomNodeOrString>(nodes.capacity())?;

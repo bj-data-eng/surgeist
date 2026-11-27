@@ -47,6 +47,26 @@ pub(crate) enum TablePartEdit {
         fallback: Option<DomCreationRealmFallback>,
     },
 }
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum TableMember {
+    Row,
+    Cell,
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum TableStructureEdit {
+    CreateBody {
+        fallback: Option<DomCreationRealmFallback>,
+    },
+    Insert {
+        member: TableMember,
+        index: i32,
+        fallback: Option<DomCreationRealmFallback>,
+    },
+    Delete {
+        member: TableMember,
+        index: i32,
+    },
+}
 #[derive(Clone, Debug)]
 pub(crate) enum TextSelectionEdit {
     Selection(HtmlTextSelectionEdit),
@@ -74,6 +94,10 @@ pub(crate) enum Edit {
         table: NodeId,
         part: DomHtmlTablePart,
         action: TablePartEdit,
+    },
+    TableStructure {
+        receiver: NodeId,
+        edit: TableStructureEdit,
     },
     DocumentTitle {
         document: DocumentId,
@@ -107,6 +131,7 @@ impl Edit {
             Self::TablePart { table, .. } => *table,
             Self::DocumentTitle { document, .. } => document.node(),
             Self::TextSelection { receiver, .. }
+            | Self::TableStructure { receiver, .. }
             | Self::Variadic { receiver, .. }
             | Self::TextContent { receiver, .. }
             | Self::AdjacentElement { receiver, .. }
@@ -233,6 +258,105 @@ impl DomSourceEdit {
                 part,
                 action,
             }),
+        }
+    }
+
+    /// Create a fresh direct HTML tbody after the last direct HTML tbody, or
+    /// at the end of the Table. Completion returns the created node.
+    pub fn create_html_table_body(table: NodeId) -> Self {
+        Self::table_structure(table, TableStructureEdit::CreateBody { fallback: None })
+    }
+
+    /// Create a fresh tbody with a qualified fallback for a Document without
+    /// a native Global.
+    pub fn create_html_table_body_in_attachment(
+        table: NodeId,
+        fallback: DomCreationRealmFallback,
+    ) -> Self {
+        Self::table_structure(
+            table,
+            TableStructureEdit::CreateBody {
+                fallback: Some(fallback),
+            },
+        )
+    }
+
+    /// Insert a fresh row through a Table or Table section. The already
+    /// converted index is signed and `-1` selects the append branch.
+    /// Completion returns the created row, including when a tbody was needed.
+    pub fn insert_html_table_row(receiver: NodeId, index: i32) -> Self {
+        Self::insert_table_member(receiver, TableMember::Row, index, None)
+    }
+
+    /// Insert a row using the receiving Document's Global or the supplied
+    /// qualified fallback.
+    pub fn insert_html_table_row_in_attachment(
+        receiver: NodeId,
+        index: i32,
+        fallback: DomCreationRealmFallback,
+    ) -> Self {
+        Self::insert_table_member(receiver, TableMember::Row, index, Some(fallback))
+    }
+
+    /// Remove the indexed row through a Table or Table section. The `-1`
+    /// index removes the last row if one exists.
+    pub fn delete_html_table_row(receiver: NodeId, index: i32) -> Self {
+        Self::table_structure(
+            receiver,
+            TableStructureEdit::Delete {
+                member: TableMember::Row,
+                index,
+            },
+        )
+    }
+
+    /// Insert a fresh HTML td in the Row's ordered direct cells.
+    /// Completion returns the created cell.
+    pub fn insert_html_table_cell(row: NodeId, index: i32) -> Self {
+        Self::insert_table_member(row, TableMember::Cell, index, None)
+    }
+
+    /// Insert a cell using the receiving Document's Global or the supplied
+    /// qualified fallback.
+    pub fn insert_html_table_cell_in_attachment(
+        row: NodeId,
+        index: i32,
+        fallback: DomCreationRealmFallback,
+    ) -> Self {
+        Self::insert_table_member(row, TableMember::Cell, index, Some(fallback))
+    }
+
+    /// Remove the indexed direct HTML cell. The `-1` index removes the last
+    /// cell if one exists.
+    pub fn delete_html_table_cell(row: NodeId, index: i32) -> Self {
+        Self::table_structure(
+            row,
+            TableStructureEdit::Delete {
+                member: TableMember::Cell,
+                index,
+            },
+        )
+    }
+
+    fn insert_table_member(
+        receiver: NodeId,
+        member: TableMember,
+        index: i32,
+        fallback: Option<DomCreationRealmFallback>,
+    ) -> Self {
+        Self::table_structure(
+            receiver,
+            TableStructureEdit::Insert {
+                member,
+                index,
+                fallback,
+            },
+        )
+    }
+
+    fn table_structure(receiver: NodeId, edit: TableStructureEdit) -> Self {
+        Self {
+            command: Command::Compound(Edit::TableStructure { receiver, edit }),
         }
     }
 

@@ -528,3 +528,6 @@ mod row_indexes;
 
 #[path = "native_semantic_tables/table_parts.rs"]
 mod table_parts;
+
+#[path = "native_semantic_tables/table_structure.rs"]
+mod table_structure;

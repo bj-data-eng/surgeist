@@ -4,6 +4,7 @@ use crate::internal::compound::{Edit, Variadic};
 pub(super) mod document_title;
 pub(super) mod options;
 pub(super) mod table_part;
+mod table_structure;
 #[cfg(test)]
 mod tests;
 mod text_selection;
@@ -163,6 +164,9 @@ impl Draft {
             }
             Edit::TablePart { part, action, .. } => {
                 self.edit_html_table_part(receiver, *part, *action, limits, cancel)
+            }
+            Edit::TableStructure { edit, .. } => {
+                self.edit_html_table_structure(receiver, *edit, limits, cancel)
             }
             Edit::DocumentTitle { value, .. } => {
                 self.set_document_title(receiver, value, limits, cancel)

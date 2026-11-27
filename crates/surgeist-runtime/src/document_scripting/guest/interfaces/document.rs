@@ -90,6 +90,7 @@ mod table_cell_column;
 mod table_legacy;
 mod table_part;
 mod table_row_index;
+mod table_structure;
 mod tag_collection;
 mod template;
 mod text;
