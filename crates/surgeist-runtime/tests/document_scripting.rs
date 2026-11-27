@@ -117,6 +117,8 @@ mod fieldset_attributes;
 mod form_associated_custom_elements;
 #[path = "document_scripting/form_attributes.rs"]
 mod form_attributes;
+#[path = "document_scripting/form_reset.rs"]
+mod form_reset;
 #[path = "document_scripting/frame_attributes.rs"]
 mod frame_attributes;
 #[path = "document_scripting/frame_content.rs"]
@@ -2633,6 +2635,12 @@ fn main() {
             "ordinary-reflections" => ordinary_reflections::attached_reflections_preserve_live_attributes_and_creation_realms(),
             "ordinary-reflections-source-refusal" => ordinary_reflections::attached_reflection_setter_preserves_source_refusal(),
             "form-attributes" => form_attributes::attached_form_settings_reflect_live_native_attributes(),
+            "form-reset" => form_reset::attached_form_reset_uses_live_post_event_owners_and_a_per_form_lock(),
+            "form-reset-families" => form_reset::attached_form_reset_restores_all_native_families_before_face_callbacks(),
+            "form-reset-style-refusal" => form_reset::form_reset_releases_its_lock_when_a_stylesheet_requires_a_separate_join(),
+            "form-reset-object-refusal" => form_reset::form_reset_releases_its_lock_after_object_activity_refusal(),
+            "form-reset-hosted-admission" => form_reset::hosted_form_reset_admits_every_removal_before_publication(),
+            "form-reset-hosted-output" => form_reset::attached_form_reset_removes_a_real_hosted_output_child(),
             "fieldset-attributes" => fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity(),
             "output-values" => output_values::attached_output_reads_native_values_and_stores_custom_validity(),
             "button-attributes" => button_attributes::attached_button_attributes_use_live_submitter_and_form_state(),
@@ -2836,6 +2844,12 @@ fn main() {
     ordinary_reflections::attached_reflections_preserve_live_attributes_and_creation_realms();
     ordinary_reflections::attached_reflection_setter_preserves_source_refusal();
     form_attributes::attached_form_settings_reflect_live_native_attributes();
+    form_reset::attached_form_reset_uses_live_post_event_owners_and_a_per_form_lock();
+    form_reset::attached_form_reset_restores_all_native_families_before_face_callbacks();
+    form_reset::attached_form_reset_removes_a_real_hosted_output_child();
+    form_reset::hosted_form_reset_admits_every_removal_before_publication();
+    form_reset::form_reset_releases_its_lock_when_a_stylesheet_requires_a_separate_join();
+    form_reset::form_reset_releases_its_lock_after_object_activity_refusal();
     fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity();
     output_values::attached_output_reads_native_values_and_stores_custom_validity();
     button_attributes::attached_button_attributes_use_live_submitter_and_form_state();

@@ -4396,7 +4396,8 @@ mod tests {
                         action => panic!("unexpected actual source request {action:?}"),
                     },
                     DomSourceProgress::Request(
-                        surgeist_dom::source::DomSourceRequest::HostedChild(_),
+                        surgeist_dom::source::DomSourceRequest::HostedChild(_)
+                        | surgeist_dom::source::DomSourceRequest::HostedRemovals(_),
                     ) => {
                         panic!("Style fixture cannot request a hosted child")
                     }

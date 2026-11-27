@@ -92,6 +92,8 @@ pub enum DomSourceEventKind {
     BeforeToggle,
     /// Synchronous plain cancel fired by the actual original watcher request.
     Cancel,
+    /// Synchronous plain reset fired by the original Form reset method.
+    Reset,
     /// A queued Dialog toggle task with mandatory canonical tracker cleanup.
     Toggle,
     /// Plain queued close notification, without ToggleEvent data.
@@ -131,11 +133,10 @@ impl DomSourceToggleEvent {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum DomSourceEventPayload {
     Toggle(DomSourceToggleEvent),
-    Close,
-    Cancel,
+    Plain,
 }
 /// Immutable actual method/task event data, not dispatch or reply authority.
-/// ToggleEvent data exists only for beforetoggle and toggle; Close is plain.
+/// ToggleEvent data exists only for beforetoggle and toggle.
 #[derive(Clone, Debug)]
 pub struct DomSourceEventRequest {
     pub(crate) work: Arc<CallbackWork>,
@@ -179,11 +180,11 @@ impl DomSourceEventRequest {
     pub fn subject(&self) -> NodeId {
         self.subject
     }
-    /// Actual ToggleEvent data, absent for a plain Close notification.
+    /// Actual ToggleEvent data for a toggle event.
     pub fn toggle_event(&self) -> Option<DomSourceToggleEvent> {
         match self.payload {
             DomSourceEventPayload::Toggle(payload) => Some(payload),
-            DomSourceEventPayload::Close | DomSourceEventPayload::Cancel => None,
+            DomSourceEventPayload::Plain => None,
         }
     }
     pub fn cancelable(&self) -> bool {

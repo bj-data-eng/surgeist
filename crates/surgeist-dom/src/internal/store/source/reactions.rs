@@ -31,6 +31,8 @@ pub enum DomCustomElementReactionKind<'a> {
     FormDisabled {
         disabled: bool,
     },
+    /// The original native reset reached this form-associated custom control.
+    FormReset,
     AttributeChanged {
         local_name: &'a [u16],
         old_value: Option<&'a [u16]>,
@@ -55,6 +57,7 @@ enum ReactionKind<I> {
     FormDisabled {
         disabled: bool,
     },
+    FormReset,
     AttributeChanged {
         local_name: DocumentString,
         old_value: Option<DocumentString>,
@@ -91,6 +94,7 @@ impl Reaction {
             ReactionKind::FormDisabled { disabled } => DomCustomElementReactionKind::FormDisabled {
                 disabled: *disabled,
             },
+            ReactionKind::FormReset => DomCustomElementReactionKind::FormReset,
             ReactionKind::AttributeChanged {
                 local_name,
                 old_value,
@@ -833,9 +837,6 @@ impl Draft {
         change: Change,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if !self.captures_custom_element_reactions() {
-            return Ok(());
-        }
         let (key, kind) = match change {
             Change::Owner { element, owner } => {
                 (element, ReactionKind::FormAssociated { form: owner })
@@ -844,6 +845,26 @@ impl Draft {
                 (element, ReactionKind::FormDisabled { disabled })
             }
         };
+        self.record_form_reaction(key, kind, cancel)
+    }
+
+    pub(in crate::internal::store) fn record_form_reset_reaction(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.record_form_reaction(key, ReactionKind::FormReset, cancel)
+    }
+
+    fn record_form_reaction(
+        &mut self,
+        key: Key,
+        kind: ReactionKind<Key>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if !self.captures_custom_element_reactions() {
+            return Ok(());
+        }
         self.source_step(cancel)?;
         let element = self.node(key)?.element().ok_or(DomError::WrongNodeKind)?;
         let crate::internal::element::DomElementDefinition::Definition(definition) =
@@ -944,6 +965,7 @@ impl Draft {
                     ReactionKind::FormDisabled { disabled } => ReactionKind::FormDisabled {
                         disabled: *disabled,
                     },
+                    ReactionKind::FormReset => ReactionKind::FormReset,
                     ReactionKind::AttributeChanged {
                         local_name,
                         old_value,

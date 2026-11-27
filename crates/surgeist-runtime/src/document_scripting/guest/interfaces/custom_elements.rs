@@ -327,6 +327,7 @@ const FORM: [&[u16]; 4] = [
 ];
 const CALLBACK_COUNT: usize = LIFECYCLE.len() + FORM.len();
 const FORM_ASSOCIATED_CALLBACK: usize = LIFECYCLE.len();
+const FORM_RESET_CALLBACK: usize = LIFECYCLE.len() + 1;
 const FORM_DISABLED_CALLBACK: usize = LIFECYCLE.len() + 2;
 
 struct Definition {
@@ -1722,6 +1723,10 @@ impl Capture {
             Kind::FormAssociated { .. } => (
                 DocumentGuestCustomElementCallback::FormAssociated,
                 FORM_ASSOCIATED_CALLBACK,
+            ),
+            Kind::FormReset => (
+                DocumentGuestCustomElementCallback::FormReset,
+                FORM_RESET_CALLBACK,
             ),
             Kind::FormDisabled { .. } => (
                 DocumentGuestCustomElementCallback::FormDisabled,

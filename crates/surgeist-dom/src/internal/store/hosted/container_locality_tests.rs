@@ -336,7 +336,7 @@ fn ordered_container_discovery_ignores_noncontainers_in_the_same_document() {
         let captured = f
             .inner
             .dom
-            .capture_hosted_children(&f.inner.source, f.top, &f.work, 0, &cancel())
+            .capture_hosted_children(&f.inner.source, f.top, &f.work, 0, None, &cancel())
             .unwrap();
         let steps = f.work.spent.load(Ordering::Relaxed) - before;
         assert_eq!(captured.values, f.expected);
@@ -455,7 +455,7 @@ fn container_order_is_shadow_before_light_and_historical_views_keep_old_edges() 
     let current = f
         .inner
         .dom
-        .capture_hosted_children(&f.inner.source, f.top, &f.work, 0, &cancel())
+        .capture_hosted_children(&f.inner.source, f.top, &f.work, 0, None, &cancel())
         .unwrap();
     assert_eq!(current.values, vec![f.expected[0], f.expected[2]]);
     assert_eq!(
@@ -537,7 +537,7 @@ fn empty_output_steps(unrelated: usize, containers: usize) -> u64 {
     let before = work.spent.load(Ordering::Relaxed);
     let captured = f
         .dom
-        .capture_hosted_children(&f.source, top, &work, 0, &cancel())
+        .capture_hosted_children(&f.source, top, &work, 0, None, &cancel())
         .unwrap();
     let steps = work.spent.load(Ordering::Relaxed) - before;
     assert!(captured.values.is_empty());

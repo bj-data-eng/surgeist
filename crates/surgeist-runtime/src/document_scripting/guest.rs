@@ -396,6 +396,8 @@ pub enum DocumentGuestCustomElementCallback {
     Adopted,
     /// A change of the form-associated element's Form owner.
     FormAssociated,
+    /// A reset of the form-associated element's Form owner.
+    FormReset,
     /// A change of the form-associated element's effective disabledness.
     FormDisabled,
 }

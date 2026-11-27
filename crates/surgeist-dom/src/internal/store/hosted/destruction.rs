@@ -620,7 +620,94 @@ struct PreparedInvocation {
     bank: operations::PreparedRows<'static>,
 }
 
+struct InvocationDestination<'a> {
+    prepared_slot: Option<usize>,
+    projection: operations::Projection,
+    storage: RemovalStorage<'a>,
+}
+
+#[derive(Clone, Copy, Default)]
+pub(in crate::internal::store) struct RemovalStorage<'a> {
+    pub(in crate::internal::store) scratch_base: usize,
+    pub(in crate::internal::store) formation: Option<&'a source::formation::Formation>,
+}
+
+fn request_for(
+    operation: DomHostedOperationId,
+    creation: DomHostedCreation,
+    work: Arc<Work>,
+) -> Request {
+    Request {
+        key: RequestKey {
+            operation,
+            phase: 0,
+        },
+        host: creation.host,
+        context: creation.context,
+        work,
+        parent: None,
+    }
+}
+
+fn cleanup_transfer(
+    bank: operations::PreparedRows<'static>,
+    request: Request,
+    origin: crate::internal::document::DomOpaqueOrigin,
+    creation: DomHostedCreation,
+    children: Arc<CapturedChildren>,
+    invocation: DomHostedOperationId,
+    traversable: DomHostedNavigableId,
+) -> operations::Transfer {
+    let (bank, retained) = bank.into_owned();
+    operations::Transfer::new(
+        bank,
+        Operation {
+            origin,
+            policy: None,
+            phase: CreationPhase::DestroyEnqueue(DomHostedDestructionRequest {
+                request,
+                creation,
+                children,
+                invocation,
+                traversable,
+            }),
+            _retained: retained,
+        },
+    )
+}
+
 impl PreparedInvocation {
+    fn into_transfer(
+        self,
+        request: Request,
+        creation: DomHostedCreation,
+        traversable: DomHostedNavigableId,
+        history: Option<DomHostedOperationId>,
+        cleanup: Option<DomHostedOperationId>,
+    ) -> operations::Transfer {
+        let (bank, retained) = self.bank.into_owned();
+        operations::Transfer::new(
+            bank,
+            Operation {
+                origin: self.origin,
+                policy: None,
+                phase: CreationPhase::Invocation(Invocation {
+                    request: DomHostedDestructionInvocationRequest {
+                        request,
+                        creation,
+                        traversable,
+                        cleanup,
+                        children: self.children,
+                    },
+                    waiters: self.waiters,
+                    history: history.map_or(HistoryDependency::None, HistoryDependency::Pending),
+                    retiring_reserved: false,
+                }),
+                _retained: retained,
+            },
+        )
+    }
+
     fn backing_bytes(&self) -> Result<usize, DomHostedError> {
         let waiters = self
             .waiters
@@ -649,6 +736,18 @@ impl PreparedInvocation {
             .and_then(|bytes| bytes.checked_add(backing))
             .ok_or(DomHostedError::RepresentationExhausted)
     }
+}
+
+pub(in crate::internal::store) struct RemovalDestruction {
+    pub(in crate::internal::store) invocation: operations::Transfer,
+    pub(in crate::internal::store) cleanup: Option<operations::Transfer>,
+    pub(in crate::internal::store) backing: usize,
+}
+
+pub(in crate::internal::store) struct RemovalTarget<'a> {
+    pub(in crate::internal::store) creation: DomHostedCreation,
+    pub(in crate::internal::store) traversable: DomHostedNavigableId,
+    pub(in crate::internal::store) storage: RemovalStorage<'a>,
 }
 
 impl Dom {
@@ -682,6 +781,91 @@ impl Dom {
             _ => None,
         })
     }
+    pub(in crate::internal::store) fn removal_cleanup(
+        &self,
+        source: &DomHostedSource,
+        creation: DomHostedCreation,
+        work: &Work,
+        cancel: &AtomicBool,
+    ) -> Result<Option<DomHostedOperationId>, DomHostedError> {
+        self.state
+            .require_no_object_activity_change(self.owner, creation.navigable, || {
+                work.step(cancel)
+            })?;
+        if let Some(proof) = self.terminal_hosted_proof(source, creation)? {
+            return Ok(Some(proof.operation));
+        }
+        self.hosted_operations.cleanup(creation, work, cancel)
+    }
+
+    pub(in crate::internal::store) fn prepare_removal_destruction(
+        &self,
+        source: &DomHostedSource,
+        target: RemovalTarget<'_>,
+        funding: &crate::internal::hosted::removal_issuance::Funding,
+        ids: crate::internal::hosted::removal_issuance::Ids,
+        cancel: &AtomicBool,
+    ) -> Result<RemovalDestruction, DomHostedError> {
+        let work = &funding.work;
+        let RemovalTarget {
+            creation,
+            traversable,
+            storage,
+        } = target;
+        let mut projection = operations::Projection::invocation(creation, Some(ids.history));
+        projection.without_retry();
+        let destination = InvocationDestination {
+            prepared_slot: Some(ids.invocation.slot),
+            projection,
+            storage,
+        };
+        let prepared = self.prepare_invocation_at(source, creation, work, destination, cancel)?;
+        let mut backing = prepared.backing_bytes()?;
+        let cleanup = if funding.existing_cleanup.is_none() {
+            let cleanup_base = storage
+                .scratch_base
+                .checked_add(prepared.scratch_bytes()?)
+                .ok_or(DomHostedError::RepresentationExhausted)?;
+            let bank = self.prepare_cleanup_at(
+                source,
+                work,
+                Some(ids.cleanup.slot),
+                creation,
+                RemovalStorage {
+                    scratch_base: cleanup_base,
+                    ..storage
+                },
+                cancel,
+            )?;
+            backing = backing
+                .checked_add(bank.backing_bytes()?)
+                .ok_or(DomHostedError::RepresentationExhausted)?;
+            Some(cleanup_transfer(
+                bank,
+                request_for(ids.cleanup, creation, work.clone()),
+                prepared.origin.clone(),
+                creation,
+                prepared.children.clone(),
+                ids.invocation,
+                traversable,
+            ))
+        } else {
+            None
+        };
+        let invocation = prepared.into_transfer(
+            request_for(ids.invocation, creation, work.clone()),
+            creation,
+            traversable,
+            Some(ids.history),
+            Some(ids.cleanup),
+        );
+        Ok(RemovalDestruction {
+            invocation,
+            cleanup,
+            backing,
+        })
+    }
+
     pub fn begin_hosted_top_level_destruction(
         &mut self,
         source: &mut DomHostedSource,
@@ -773,44 +957,13 @@ impl Dom {
             DomHostedResource::ScratchBytes,
         )?;
         let operation = source.begin_operation(&work, 2, scratch, cancel)?;
-        let PreparedInvocation {
-            children,
-            waiters,
-            origin,
-            bank,
-        } = prepared;
-        let (bank, retained) = bank.into_owned();
-        let request = Request {
-            key: RequestKey {
-                operation,
-                phase: 0,
-            },
-            host: creation.host,
-            context: creation.context,
-            work,
-            parent: None,
-        };
         drop(self.hosted_operations.insert_prepared(
-            operations::Transfer::new(
-                bank,
-                Operation {
-                    origin,
-                    policy: None,
-                    phase: CreationPhase::Invocation(Invocation {
-                        request: DomHostedDestructionInvocationRequest {
-                            request,
-                            creation,
-                            traversable,
-                            cleanup: None,
-                            children,
-                        },
-                        waiters,
-                        history:
-                            history.map_or(HistoryDependency::None, HistoryDependency::Pending),
-                        retiring_reserved: false,
-                    }),
-                    _retained: retained,
-                },
+            prepared.into_transfer(
+                request_for(operation, creation, work),
+                creation,
+                traversable,
+                history,
+                None,
             ),
             false,
         ));
@@ -834,8 +987,35 @@ impl Dom {
         history: Option<DomHostedOperationId>,
         cancel: &AtomicBool,
     ) -> Result<PreparedInvocation, DomHostedError> {
-        let header = size_of::<PreparedInvocation>();
-        let children = self.capture_hosted_children(source, creation, work, header, cancel)?;
+        let destination = InvocationDestination {
+            prepared_slot: None,
+            projection: operations::Projection::invocation(creation, history),
+            storage: RemovalStorage::default(),
+        };
+        self.prepare_invocation_at(source, creation, work, destination, cancel)
+    }
+
+    fn prepare_invocation_at(
+        &self,
+        source: &DomHostedSource,
+        creation: DomHostedCreation,
+        work: &Work,
+        destination: InvocationDestination<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<PreparedInvocation, DomHostedError> {
+        let header = destination
+            .storage
+            .scratch_base
+            .checked_add(size_of::<PreparedInvocation>())
+            .ok_or(DomHostedError::RepresentationExhausted)?;
+        let children = self.capture_hosted_children(
+            source,
+            creation,
+            work,
+            header,
+            destination.storage.formation,
+            cancel,
+        )?;
         let captured = children
             .values
             .capacity()
@@ -855,6 +1035,9 @@ impl Dom {
             source.limits().scratch_bytes(),
             DomHostedResource::ScratchBytes,
         )?;
+        if let Some(formation) = destination.storage.formation {
+            formation.retain_bytes(requested, cancel)?;
+        }
         let mut retained = source.retain(
             size_of::<Operation>()
                 .checked_add(requested)
@@ -876,14 +1059,13 @@ impl Dom {
             source.limits().scratch_bytes(),
             DomHostedResource::ScratchBytes,
         )?;
-        retained.append(
-            source.retain(
-                actual
-                    .checked_sub(requested)
-                    .ok_or(DomHostedError::RepresentationExhausted)?,
-                cancel,
-            )?,
-        )?;
+        let extra = actual
+            .checked_sub(requested)
+            .ok_or(DomHostedError::RepresentationExhausted)?;
+        if let Some(formation) = destination.storage.formation {
+            formation.retain_bytes(extra, cancel)?;
+        }
+        retained.append(source.retain(extra, cancel)?)?;
         for _ in &children.values {
             work.step(cancel)?;
             waiters.push(Waiter {
@@ -899,17 +1081,20 @@ impl Dom {
             return Err(DomError::WrongDocument.into());
         };
         let origin = metadata.origin().clone();
+        let slot = destination
+            .prepared_slot
+            .map_or_else(|| source.next_operation_slot(work, cancel), Ok)?;
         let bank = self.hosted_operations.prepare(
-            source.next_operation_slot(work, cancel)?,
+            slot,
             work,
             source,
             captured
                 .checked_add(actual)
                 .and_then(|bytes| bytes.checked_sub(size_of::<operations::PreparedRows>()))
                 .ok_or(DomHostedError::RepresentationExhausted)?,
-            None,
+            destination.storage.formation,
             operations::BodyCredit::Owned(retained),
-            operations::Projection::invocation(creation, history),
+            destination.projection,
             cancel,
         )?;
         Ok(PreparedInvocation {
@@ -929,15 +1114,12 @@ impl Dom {
     ) -> Result<DomHostedOperationId, DomHostedError> {
         let work = &row.request.request.work;
         let creation = row.request.creation;
-        let retained = source.retain(size_of::<Operation>(), cancel)?;
-        let bank = self.hosted_operations.prepare(
-            source.next_operation_slot(work, cancel)?,
-            work,
+        let bank = self.prepare_cleanup_at(
             source,
-            0,
+            work,
             None,
-            operations::BodyCredit::Owned(retained),
-            operations::Projection::cleanup(creation),
+            creation,
+            RemovalStorage::default(),
             cancel,
         )?;
         self.revision
@@ -951,38 +1133,42 @@ impl Dom {
             DomHostedResource::ScratchBytes,
         )?;
         let cleanup = source.begin_operation(work, 4, bank.scratch_bytes()?, cancel)?;
-        let (bank, retained) = bank.into_owned();
-        let request = Request {
-            key: RequestKey {
-                operation: cleanup,
-                phase: 0,
-            },
-            host: creation.host,
-            context: creation.context,
-            work: work.clone(),
-            parent: None,
-        };
-        drop(self.hosted_operations.insert_prepared(
-            operations::Transfer::new(
-                bank,
-                Operation {
-                    origin: origin.clone(),
-                    policy: None,
-                    phase: CreationPhase::DestroyEnqueue(DomHostedDestructionRequest {
-                        request,
-                        creation,
-                        children: row.request.children.clone(),
-                        invocation,
-                        traversable: row.request.traversable,
-                    }),
-                    _retained: retained,
-                },
-            ),
-            false,
-        ));
+        let transfer = cleanup_transfer(
+            bank,
+            request_for(cleanup, creation, work.clone()),
+            origin.clone(),
+            creation,
+            row.request.children.clone(),
+            invocation,
+            row.request.traversable,
+        );
+        drop(self.hosted_operations.insert_prepared(transfer, false));
         self.hosted_revisions += 1;
         Ok(cleanup)
     }
+    fn prepare_cleanup_at(
+        &self,
+        source: &DomHostedSource,
+        work: &Work,
+        prepared_slot: Option<usize>,
+        creation: DomHostedCreation,
+        storage: RemovalStorage<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<operations::PreparedRows<'static>, DomHostedError> {
+        let retained = source.retain(size_of::<Operation>(), cancel)?;
+        let slot = prepared_slot.map_or_else(|| source.next_operation_slot(work, cancel), Ok)?;
+        self.hosted_operations.prepare(
+            slot,
+            work,
+            source,
+            storage.scratch_base,
+            storage.formation,
+            operations::BodyCredit::Owned(retained),
+            operations::Projection::cleanup(creation),
+            cancel,
+        )
+    }
+
     fn complete_hosted_invocation(
         &mut self,
         source: &mut DomHostedSource,

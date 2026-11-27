@@ -1180,6 +1180,13 @@ impl DomSourceRuntime {
                 DomSourceProgress::Failed(failure) => {
                     return Ok(DomSourceDriveProgress::Failed(failure));
                 }
+                DomSourceProgress::Request(DomSourceRequest::HostedRemovals(request)) => {
+                    let completion = self
+                        .hosted
+                        .queue_source_child_removals(lease, request, cancel)
+                        .map_err(DomSourceRuntimeError::Hosted)?;
+                    return Ok(DomSourceDriveProgress::Complete(completion));
+                }
                 DomSourceProgress::Request(DomSourceRequest::HostedChild(request)) => {
                     match self
                         .hosted

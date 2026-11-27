@@ -153,6 +153,7 @@ impl Draft {
         self.source_step(cancel)?;
         let receiver = self.resolve(edit.receiver().into())?;
         match edit {
+            Edit::FormReset { .. } => self.begin_form_reset(receiver, cancel),
             Edit::InputFiles { files, .. } => {
                 self.assign_input_files(receiver, files.as_ref(), cancel)
             }

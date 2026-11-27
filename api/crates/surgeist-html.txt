@@ -4499,7 +4499,9 @@ pub surgeist_html::elements::form::HtmlTextareaRawValueAction::Keep
 pub surgeist_html::elements::form::HtmlTextareaRawValueAction::ReplaceWithChildText
 pub struct surgeist_html::elements::form::HtmlFormNativeState
 impl surgeist_html::elements::form::HtmlFormNativeState
+pub const fn surgeist_html::elements::form::HtmlFormNativeState::begin_reset(self) -> core::option::Option<Self>
 pub const fn surgeist_html::elements::form::HtmlFormNativeState::constructing_entry_list(self) -> bool
+pub const fn surgeist_html::elements::form::HtmlFormNativeState::finish_reset(self) -> Self
 pub const fn surgeist_html::elements::form::HtmlFormNativeState::firing_submission_events(self) -> bool
 pub const fn surgeist_html::elements::form::HtmlFormNativeState::fresh() -> Self
 pub const fn surgeist_html::elements::form::HtmlFormNativeState::locked_for_reset(self) -> bool

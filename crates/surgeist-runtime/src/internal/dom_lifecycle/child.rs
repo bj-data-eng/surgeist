@@ -838,7 +838,7 @@ impl HostedRuntime {
                 .as_mut()
                 .ok_or(DomHostedRuntimeError::Protocol)?
                 .traversal;
-            history::reserve_traversal(queue, retained, *limits, work, cancel)?;
+            history::reserve_traversal(queue, retained, 1, *limits, work, cancel)?;
             spend(work, limits.work, cancel)?;
             let index = queue.rows.len();
             queue.rows.push(history::Queued {
@@ -920,6 +920,83 @@ impl HostedRuntime {
 }
 
 impl HostedRuntime {
+    pub(crate) fn queue_source_child_removals(
+        &self,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
+        request: surgeist_dom::hosted::child::DomSourceHostedRemovalsRequest,
+        cancel: &AtomicBool,
+    ) -> Result<surgeist_dom::source::DomSourceCompletion, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        let (h, t, c, _) = state.find_global(request.parent_global(), cancel, |_| {
+            lease
+                .admit_hosted_runtime_work(1, cancel)
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+        })?;
+        let tasks = {
+            let HostedState {
+                hosts,
+                work,
+                limits,
+                ..
+            } = &mut *state;
+            native_task_count_admitted(hosts, work, limits.work, cancel, || {
+                lease
+                    .admit_hosted_runtime_work(1, cancel)
+                    .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+            })?
+        };
+        let count = request.count();
+        if tasks
+            .checked_add(count)
+            .is_none_or(|total| total > state.limits.tasks)
+        {
+            return Err(DomHostedRuntimeError::Admission);
+        }
+        state.reserve_invocations(count, cancel)?;
+        let retained = state.source_retained_bytes(lease, cancel)?;
+        for _ in 0..count {
+            state.step(cancel)?;
+            lease
+                .admit_hosted_runtime_work(1, cancel)
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
+        }
+        let HostedState {
+            hosts,
+            work,
+            limits,
+            destruction,
+            source,
+            ..
+        } = &mut *state;
+        let group = hosts[h].top_levels[t]
+            .group
+            .as_mut()
+            .ok_or(DomHostedRuntimeError::Protocol)?;
+        if group.traversal.traversable != Some(request.traversable()) {
+            return Err(DomHostedRuntimeError::Binding);
+        }
+        let initiating_loop = group.clusters[c].agent.event_loop.clone();
+        history::reserve_traversal(&mut group.traversal, retained, count, *limits, work, cancel)?;
+        let (completion, handoffs) = lease
+            .publish_hosted_child_removals(source, request, cancel)
+            .map_err(DomHostedRuntimeError::Dom)?;
+        for handoff in handoffs {
+            let (invocation, history) = handoff.into_parts();
+            destruction.retain(invocation, Some(history.operation()));
+            group.traversal.rows.push(history::Queued {
+                operation: history.operation(),
+                initiating_loop: initiating_loop.clone(),
+                continuation: Some(history),
+                publication: None,
+                removal: None,
+            });
+        }
+        Ok(completion)
+    }
+
     fn queue_child_removal(
         &self,
         lease: &mut surgeist_dom::source::DomSourceLease<'_>,
@@ -985,7 +1062,7 @@ impl HostedRuntime {
             if group.traversal.traversable != Some(child.traversable()) {
                 return Err(DomHostedRuntimeError::Binding);
             }
-            history::reserve_traversal(&mut group.traversal, retained, *limits, work, cancel)?;
+            history::reserve_traversal(&mut group.traversal, retained, 1, *limits, work, cancel)?;
             spend(work, limits.work, cancel)?;
             let index = group.traversal.rows.len();
             group.traversal.rows.push(history::Queued {

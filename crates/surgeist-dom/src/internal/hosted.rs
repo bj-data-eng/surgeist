@@ -20,6 +20,7 @@ pub use child::{
     DomHostedEmbedderPolicyInputs, DomHostedPreparedChild,
 };
 mod queue;
+pub(crate) mod removal_issuance;
 pub use queue::{
     DomHostedChildHistoryPublication, DomHostedHistoryJobReceipt, DomHostedHistoryJobRequest,
     DomHostedHistoryStep, DomHostedQueuedHistory,

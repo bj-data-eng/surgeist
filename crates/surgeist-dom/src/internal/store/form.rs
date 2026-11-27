@@ -13,7 +13,179 @@ enum FormNameMatches {
     Multiple,
 }
 
+pub(super) struct ResetFrame {
+    pub(super) form: Key,
+    pub(super) members: select::ScratchVec<Key>,
+    pub(super) next: usize,
+}
+
+#[derive(Clone, Copy)]
+enum Resettable {
+    Input,
+    Textarea,
+    Output,
+    Select,
+    Custom,
+}
+
+impl Resettable {
+    fn from_element(element: &DomElement) -> Option<Self> {
+        if element.input_state().is_some() {
+            Some(Self::Input)
+        } else if element.textarea_state().is_some() {
+            Some(Self::Textarea)
+        } else if element.output_state().is_some() {
+            Some(Self::Output)
+        } else if element.select_state().is_some() {
+            Some(Self::Select)
+        } else if element.form_associated_custom_disabled().is_some() {
+            Some(Self::Custom)
+        } else {
+            None
+        }
+    }
+}
+
 impl Draft {
+    pub(super) fn begin_form_reset(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        let form = self
+            .element(key)?
+            .language()
+            .form_state()
+            .ok_or(DomError::WrongNodeKind)?;
+        let Some(locked) = form.begin_reset() else {
+            return Ok(());
+        };
+        self.with_element_fields(key, cancel, |element| {
+            *element.form_state_mut().ok_or(DomError::WrongNodeKind)? = locked;
+            Ok(())
+        })??;
+        self.source_set_method(Some(method::Frame::FormReset(key)), cancel)
+    }
+
+    pub(super) fn stage_form_reset_tail(
+        &mut self,
+        form: Key,
+        reset: bool,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let members = if reset {
+            self.form_reset_members(form, cancel)?
+        } else {
+            self.effect_vec()
+        };
+        self.push_effect(
+            select::Effect::FormReset(ResetFrame {
+                form,
+                members,
+                next: 0,
+            }),
+            self.effect_scoped,
+            cancel,
+        )
+    }
+
+    fn form_reset_participant(
+        &self,
+        form: Key,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<Option<Resettable>, DomError> {
+        self.source_step(cancel)?;
+        let node = self.node(key)?;
+        if node.control_owner().map(|owner| self.live_key(owner)) != Some(self.live_key(form)) {
+            return Ok(None);
+        }
+        Ok(node
+            .element()
+            .and_then(|element| Resettable::from_element(element.language())))
+    }
+
+    fn form_reset_members(
+        &self,
+        form: Key,
+        cancel: &AtomicBool,
+    ) -> Result<select::ScratchVec<Key>, DomError> {
+        use transaction::ordered_members as order;
+
+        let mut tree = order::Members::default();
+        let mut custody = order::MembersCustody::default();
+        let mut root = order::RootHeader::default();
+        let view = self.order_view();
+        for &key in self.inbound_keys(form, cancel)?.iter() {
+            if self.form_reset_participant(form, key, cancel)?.is_some() {
+                let next = tree.change(
+                    &custody,
+                    root,
+                    order::Membership::Insert(key),
+                    view,
+                    order::Mode::Ordinary,
+                    order::Edit {
+                        registry: self.custody_registry(),
+                        admit: &mut |usage| self.admit_custody_usage(usage, cancel),
+                        step: &mut || self.source_step(cancel),
+                    },
+                )?;
+                tree = next.members;
+                custody = next.custody;
+                root = next.root;
+            }
+        }
+        let mut members = self.effect_vec();
+        let mut step = || self.source_step(cancel);
+        let mut key = tree.first(root, &mut step)?;
+        while let Some(actual) = key {
+            self.select_reserve(&mut members, 1, cancel)?;
+            members.push(actual);
+            key = tree.after(root, actual, view, order::Mode::Ordinary, &mut step)?;
+        }
+        Ok(members)
+    }
+
+    pub(super) fn form_reset_effect(
+        &mut self,
+        mut frame: ResetFrame,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let Some(&key) = frame.members.get(frame.next) else {
+            return self.with_element_fields(frame.form, cancel, |element| {
+                let form = element.form_state_mut().ok_or(DomError::WrongNodeKind)?;
+                *form = form.finish_reset();
+                Ok(())
+            })?;
+        };
+        // The original post-event selection stays intact. An earlier Output
+        // reset can detach a captured control before its own reset runs.
+        self.source_step(cancel)?;
+        let participant = match self.node(key) {
+            Ok(node) => node
+                .element()
+                .and_then(|element| Resettable::from_element(element.language())),
+            Err(DomError::StaleNode) => None,
+            Err(error) => return Err(error),
+        };
+        frame.next += 1;
+        self.push_effect(select::Effect::FormReset(frame), self.effect_scoped, cancel)?;
+        match participant {
+            Some(Resettable::Input) => self.reset_input(key, limits, cancel),
+            Some(Resettable::Textarea) => self.reset_textarea(key, limits, cancel),
+            Some(Resettable::Output) => {
+                self.output_edit(key, &crate::internal::output::Edit::Reset, limits, cancel)
+            }
+            Some(Resettable::Select) => {
+                self.select_edit(key, &crate::internal::select::Edit::Reset, limits, cancel)
+            }
+            Some(Resettable::Custom) => self.record_form_reset_reaction(key, cancel),
+            None => Ok(()),
+        }
+    }
+
     pub(super) fn set_radio_node_list_value(
         &mut self,
         form: Key,

@@ -1,7 +1,7 @@
-//! The durable session's exact Source beforetoggle dispatch custody.
+//! The durable session's exact Source event dispatch custody.
 //!
 //! Canonical Source work, adapter work and dispatcher work are independent
-//! caller-selected domains. This owner neither runs the Dialog tail nor owns a
+//! caller-selected domains. This owner neither runs the operation tail nor owns a
 //! second canonical operation, listener registry or task loop.
 use crate::internal::dom_event::{
     DispatchCall, DispatchFunding, DispatchHost, DispatchUsage, DomEventDispatchError,
@@ -376,6 +376,9 @@ impl State {
                     Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
                     backing,
                 ),
+                surgeist_dom::event::DomSourceEventKind::Reset => {
+                    NativeDomEvent::form_reset(request.subject(), creation, backing)
+                }
             },
             phase: Phase::Ready,
             _retained: retained,
@@ -850,6 +853,9 @@ impl SourceEventRuntime {
                         }
                         surgeist_dom::event::DomSourceEventKind::Cancel => {
                             NativeEventCause::DialogCancel
+                        }
+                        surgeist_dom::event::DomSourceEventKind::Reset => {
+                            NativeEventCause::FormReset
                         }
                     })
             {

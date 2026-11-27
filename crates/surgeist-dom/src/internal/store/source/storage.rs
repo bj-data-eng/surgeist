@@ -433,7 +433,8 @@ pub(in crate::internal::store) fn commands(
                         payload.string(replacement)?;
                     }
                 }
-                crate::internal::compound::Edit::InputStep { .. }
+                crate::internal::compound::Edit::FormReset { .. }
+                | crate::internal::compound::Edit::InputStep { .. }
                 | crate::internal::compound::Edit::InputFiles { .. }
                 | crate::internal::compound::Edit::UserFileSelection { .. }
                 | crate::internal::compound::Edit::TablePart { .. }

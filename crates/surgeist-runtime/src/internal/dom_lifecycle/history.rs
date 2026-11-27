@@ -29,19 +29,20 @@ pub(super) struct Queued {
 pub(super) fn reserve_traversal(
     queue: &mut Traversal,
     retained: usize,
+    additional: usize,
     limits: DomHostedRuntimeLimits,
     work: &mut u64,
     cancel: &AtomicBool,
 ) -> Result<usize, DomHostedRuntimeError> {
     spend(work, limits.work, cancel)?;
-    if queue.rows.len() < queue.rows.capacity() {
-        return Ok(0);
-    }
     let required = queue
         .rows
         .len()
-        .checked_add(1)
+        .checked_add(additional)
         .ok_or(DomHostedRuntimeError::Admission)?;
+    if required <= queue.rows.capacity() {
+        return Ok(0);
+    }
     let requested = required
         .checked_mul(size_of::<Queued>())
         .ok_or(DomHostedRuntimeError::Admission)?;

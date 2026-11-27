@@ -40,7 +40,7 @@ impl Drop for ResumeWorkPolicy {
 )]
 pub(super) enum OperationDraft {
     Segment(Draft),
-    Observed(DialogObservation),
+    Observed(EventObservation),
     AttributeObserved(CallbackObservation),
     CustomElementObserved(CallbackObservation),
 }
@@ -159,7 +159,7 @@ impl Usage {
         Ok(())
     }
 }
-struct DialogFiring {
+struct EventFiring {
     subject: NodeId,
     payload: crate::internal::source::event::DomSourceEventPayload,
     cancelable: bool,
@@ -217,7 +217,7 @@ impl CallbackObservation {
     }
 }
 
-pub(super) struct DialogObservation {
+pub(super) struct EventObservation {
     request: DomSourceEventRequest,
     frame: Option<crate::internal::store::dialog::MethodFrame>,
     source_invocation: u64,
@@ -226,7 +226,7 @@ pub(super) struct DialogObservation {
     receiver: crate::internal::dispatch::DomDispatchCustody,
     time: FiringTime,
 }
-impl DialogObservation {
+impl EventObservation {
     pub(super) fn status(&self, operation: &Operation) -> DomSourceStatus {
         DomSourceStatus {
             operation: operation.id,
@@ -330,7 +330,7 @@ impl Operation {
         }
     }
 
-    pub(super) fn observation(&self) -> Option<&DialogObservation> {
+    pub(super) fn observation(&self) -> Option<&EventObservation> {
         match &self.draft {
             OperationDraft::Observed(observation) => Some(observation),
             OperationDraft::Segment(_)
@@ -338,7 +338,7 @@ impl Operation {
             | OperationDraft::CustomElementObserved(_) => None,
         }
     }
-    fn observation_mut(&mut self) -> Option<&mut DialogObservation> {
+    fn observation_mut(&mut self) -> Option<&mut EventObservation> {
         match &mut self.draft {
             OperationDraft::Observed(observation) => Some(observation),
             OperationDraft::Segment(_)
@@ -433,9 +433,9 @@ impl Operation {
             return Err(DomError::InvalidSourceEvent.into());
         };
         let frame = frame.before_focusing()?;
-        self.observe_dialog_event(
+        self.observe_source_event(
             dom,
-            DialogFiring {
+            EventFiring {
                 subject,
                 payload: crate::internal::source::event::DomSourceEventPayload::Toggle(
                     crate::internal::source::DomSourceToggleEvent { old, new },
@@ -454,9 +454,9 @@ impl Operation {
         task: crate::internal::store::source::operation::dialog_queue::DomDialogTaskInfo,
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, AdvanceError> {
-        self.observe_dialog_event(
+        self.observe_source_event(
             dom,
-            DialogFiring {
+            EventFiring {
                 subject: task.id().target(),
                 payload: match task {
                     crate::internal::store::source::operation::dialog_queue::DomDialogTaskInfo::Toggle(info) => {
@@ -468,7 +468,7 @@ impl Operation {
                         )
                     }
                     crate::internal::store::source::operation::dialog_queue::DomDialogTaskInfo::Close(_) => {
-                        crate::internal::source::event::DomSourceEventPayload::Close
+                        crate::internal::source::event::DomSourceEventPayload::Plain
                     }
                 },
                 cancelable: false,
@@ -493,11 +493,11 @@ impl Operation {
             .request_close
             .as_ref()
             .ok_or(DomError::InvalidSourceOperation)?;
-        self.observe_dialog_event(
+        self.observe_source_event(
             dom,
-            DialogFiring {
+            EventFiring {
                 subject: call.watcher.subject(),
-                payload: crate::internal::source::event::DomSourceEventPayload::Cancel,
+                payload: crate::internal::source::event::DomSourceEventPayload::Plain,
                 cancelable,
                 kind: DomSourceEventKind::Cancel,
                 frame: Some(call.outer.before_focusing()?),
@@ -506,22 +506,49 @@ impl Operation {
             cancel,
         )
     }
-    fn observe_dialog_event(
+    pub(super) fn observe_form_reset(
         &mut self,
         dom: &mut Dom,
-        firing: DialogFiring,
+        form: Key,
         hosted_events: bool,
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, AdvanceError> {
-        let DialogFiring {
+        let subject = self
+            .draft
+            .published_id(form)
+            .ok_or(DomError::InvalidSourceOperation)?;
+        self.observe_source_event(
+            dom,
+            EventFiring {
+                subject,
+                payload: crate::internal::source::event::DomSourceEventPayload::Plain,
+                cancelable: true,
+                kind: DomSourceEventKind::Reset,
+                frame: None,
+            },
+            hosted_events,
+            cancel,
+        )
+    }
+
+    fn observe_source_event(
+        &mut self,
+        dom: &mut Dom,
+        firing: EventFiring,
+        hosted_events: bool,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceProgress, AdvanceError> {
+        let EventFiring {
             subject,
             payload,
             cancelable,
             kind,
             frame,
         } = firing;
-        // Before exposing a callback, protect every publication it can leave
-        // mandatory, including a watcher the callback may establish or replace.
+        let form_reset = kind == DomSourceEventKind::Reset;
+        let minimum = headroom::FINAL_PUBLICATION + u64::from(form_reset);
+        // Protect the closing publication before exposing callbacks. A Form
+        // first publishes the actual reset lock right here.
         let possible = match (kind, frame.as_ref().map(|frame| frame.locals)) {
             (
                 DomSourceEventKind::BeforeToggle,
@@ -540,6 +567,7 @@ impl Operation {
             {
                 headroom::FINAL_PUBLICATION
             }
+            (DomSourceEventKind::Reset, None) => minimum,
             _ => return Err(DomError::InvalidSourceEvent.into()),
         };
         let remaining = self.headroom.as_ref().map_or(possible, |reservation| {
@@ -550,7 +578,7 @@ impl Operation {
         // tail. Fixed canonical revision credit, unlike policy, remains whole.
         let close = self
             .phases
-            .checked_add(headroom::FINAL_PUBLICATION)
+            .checked_add(minimum)
             .ok_or(DomError::RepresentationExhausted)?;
         if close > self.limits.phases {
             return Err(DomError::SourcePublicationLimit.into());
@@ -617,8 +645,39 @@ impl Operation {
             FiringTime::Unavailable
         };
         let prepared = matches!(time, FiringTime::Pending { .. });
+        let form_publication = if form_reset {
+            let previous = self.headroom.replace(headroom::Reservation {
+                remaining_phases: remaining,
+            });
+            let segment = (|| {
+                let segment = self
+                    .prepare_segment(dom, true, PublicationTarget::None, None, cancel)
+                    .map_err(|error| match error {
+                        crate::internal::hosted::DomHostedError::Dom(error) => error,
+                        _ => DomError::HostedSourceUnavailable,
+                    })?;
+                if segment
+                    .prepared
+                    .inline_recording
+                    .as_ref()
+                    .is_some_and(|recording| recording.has_inputs())
+                {
+                    return Err(DomError::IncompleteSourceOperation);
+                }
+                Ok(segment)
+            })();
+            match segment {
+                Ok(segment) => Some(segment),
+                Err(error) => {
+                    self.headroom = previous;
+                    return Err(error.into());
+                }
+            }
+        } else {
+            None
+        };
         let usage = Usage::capture(&mut self.draft, autofocus);
-        let observation = DialogObservation {
+        let observation = EventObservation {
             request: request.clone(),
             frame,
             source_invocation: if self.request_close.is_some() {
@@ -637,11 +696,16 @@ impl Operation {
             receiver,
             time,
         };
+        if let Some(segment) = form_publication {
+            segment.publish(self, dom);
+            self.command_admitted = true;
+        } else {
+            self.headroom = Some(headroom::Reservation {
+                remaining_phases: remaining,
+            });
+        }
         self.event_custody = Some(event_custody);
         self.draft = OperationDraft::Observed(observation);
-        self.headroom = Some(headroom::Reservation {
-            remaining_phases: remaining,
-        });
         if !prepared {
             self.event_exposed = true;
             self.event_work = Arc::downgrade(&request.work);
@@ -686,7 +750,7 @@ impl Operation {
 /// Exclusive acknowledgment of the original issuer's prepared firing.
 #[must_use = "finish the firing or leave its exact observation parked"]
 pub struct DomSourceEventFiringLoan<'a> {
-    observation: &'a mut DialogObservation,
+    observation: &'a mut EventObservation,
     event_exposed: &'a mut bool,
     event_work: &'a mut Weak<CallbackWork>,
     source: &'a crate::internal::hosted::DomHostedSource,
@@ -1843,9 +1907,9 @@ impl DomSourceLease<'_> {
                 )
                 .map_err(Into::into);
         }
-        self.rebase_dialog_observation(None, execution, cancel)
+        self.rebase_event_observation(None, execution, cancel)
     }
-    pub(super) fn advance_dialog_observation(
+    pub(super) fn advance_event_observation(
         &mut self,
         execution: &mut Execution<'_>,
         cancel: &AtomicBool,
@@ -1859,6 +1923,13 @@ impl DomSourceLease<'_> {
         let observation = operation
             .observation()
             .ok_or(DomError::InvalidSourceEvent)?;
+        let form_reset = observation.request.kind() == DomSourceEventKind::Reset;
+        if form_reset
+            && operation.cancelled
+            && observation.request.work.stage.load(Ordering::Relaxed) == 0
+        {
+            return self.rebase_event_observation(None, execution, cancel);
+        }
         if matches!(observation.time, FiringTime::Pending { .. }) {
             if operation.request_close.is_none() && operation.cancelled {
                 return self
@@ -1894,6 +1965,9 @@ impl DomSourceLease<'_> {
         // Replay only this pure local transition on admission retry; the actual
         // dispatch and its consumed receipt are never replayed.
         let outcome = observation.accepted.expect("accepted event");
+        if form_reset {
+            return self.rebase_event_observation(None, execution, cancel);
+        }
         let mut frame = observation
             .frame
             .as_ref()
@@ -1982,7 +2056,7 @@ impl DomSourceLease<'_> {
                 .into());
             }
         }
-        self.rebase_dialog_observation(Some(frame), execution, cancel)
+        self.rebase_event_observation(Some(frame), execution, cancel)
     }
     fn rebase_request_close_cancel(
         &mut self,
@@ -2003,7 +2077,7 @@ impl DomSourceLease<'_> {
             .as_mut()
             .expect("original operation")
             .request_close = Some(call);
-        let result = self.rebase_dialog_observation(Some(frame), execution, cancel);
+        let result = self.rebase_event_observation(Some(frame), execution, cancel);
         if let Some(operation) = self.dom.source_operation.as_mut()
             && operation.observation().is_some()
         {
@@ -2029,9 +2103,9 @@ impl DomSourceLease<'_> {
             call.nested = false;
             call.occurrence = None;
         }
-        self.rebase_dialog_observation(None, execution, cancel)
+        self.rebase_event_observation(None, execution, cancel)
     }
-    fn rebase_dialog_observation(
+    fn rebase_event_observation(
         &mut self,
         frame: Option<crate::internal::store::dialog::MethodFrame>,
         execution: &mut Execution<'_>,
@@ -2047,6 +2121,7 @@ impl DomSourceLease<'_> {
             .observation()
             .ok_or(DomError::InvalidSourceEvent)?;
         let subject = observation.request.subject();
+        let form_reset = observation.request.kind() == DomSourceEventKind::Reset;
         let owner = observation.common.owner.clone();
         let work = observation.common.work.work.clone();
         let limits = self.dom.source_rebase_transferred_limits(
@@ -2080,13 +2155,27 @@ impl DomSourceLease<'_> {
         let key = match draft.resolve(subject.into()) {
             Ok(key) => Some(key),
             Err(DomError::StaleNode)
-                if operation.request_close.is_some() || operation.failure.is_some() =>
+                if form_reset
+                    || operation.request_close.is_some()
+                    || operation.failure.is_some() =>
             {
                 None
             }
             Err(error) => return Err(error.into()),
         };
-        if let Some(mut frame) = frame {
+        let mut reset_body = None;
+        if form_reset {
+            if let Some(key) = key {
+                let reset = !operation.cancelled
+                    && observation.accepted == Some(DomSourceEventOutcome::NotCanceled);
+                if reset {
+                    reset_body = Some(super::hosted_removals::ResetBody::start(
+                        &mut draft, key, cancel,
+                    )?);
+                }
+                draft.stage_form_reset_tail(key, reset, cancel)?;
+            }
+        } else if let Some(mut frame) = frame {
             if let Some(key) = key {
                 frame.subject = key;
                 draft.source_set_method(
@@ -2100,6 +2189,7 @@ impl DomSourceLease<'_> {
         let custody_bytes = self.dom.source_owner_custody_bytes()?;
         let custody_units = self.dom.fullscreen_custody_units()?;
         let mut operation = self.dom.source_operation.take().expect("retained observer");
+        operation.reset_body = reset_body;
         operation.prepare_rebased_inline(self.dom, &mut draft);
         let old = std::mem::replace(&mut operation.draft, OperationDraft::Segment(draft));
         let OperationDraft::Observed(observation) = old else {
@@ -2140,9 +2230,18 @@ impl DomSourceLease<'_> {
             }
         }
         operation.started = true;
+        if form_reset {
+            operation.command_admitted = false;
+        }
         let result = self.advance_operation(&mut operation, execution, None, cancel);
-        if self.complete || matches!(result, Ok(DomSourceProgress::Complete(_))) {
+        if self.complete
+            || matches!(
+                &result,
+                Ok(DomSourceProgress::Complete(_) | DomSourceProgress::Failed(_))
+            )
+        {
             self.complete = true;
+            drop(operation);
             self.dom.source_operation = self.dom.source_parents.pop();
         } else {
             self.dom.source_operation = Some(operation);

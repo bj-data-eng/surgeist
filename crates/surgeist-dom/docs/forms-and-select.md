@@ -117,6 +117,27 @@ from live native facts. Captured Button queries also expose disabledness,
 submitter role, source form settings and constraint candidacy. No activation, submission or event
 execution is introduced.
 
+## Resetting a Form
+
+`DomSourceEdit::reset_form` acquires the exact Form's reset lock and exposes
+its original bubbling, cancelable reset event to Runtime. A same-Form
+invocation reached during delivery returns without a second event. A different
+Form can run its own nested reset. A canceled event releases the lock without
+resetting controls.
+
+After accepted delivery, Source reads the current canonical Form owners and
+captures the resettable controls in tree order, including associated controls
+outside the Form's descendants. The worklist keeps each exact selected
+identity if an earlier control's reset detaches it. Input, Textarea, Output
+and Select run their existing native resets. A reached form-associated custom
+control records its actual reset reaction for delivery after the lock is
+released. These control resets dispatch no user input or change event.
+
+Admission refusal retains the accepted event and the original Source
+continuation. An ordinary local reset publishes its control changes together.
+The [Runtime event adapter](../../surgeist-runtime/docs/explanation.md#dom-orchestration)
+delivers the event and the attached Form method's reactions.
+
 ## Select, Option, Optgroup and Selectedcontent
 
 Native Select, Option, Optgroup and Selectedcontent compose the same canonical
