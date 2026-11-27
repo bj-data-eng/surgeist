@@ -180,6 +180,10 @@ fn days_in_month(month: u8, leap: bool) -> u8 {
     }
 }
 
+fn days_before_year_in_cycle(preceding: u32) -> u32 {
+    preceding * 365 + preceding / 4 - preceding / 100
+}
+
 /// Zero-based day within the 400-year Gregorian cycle that contains the date.
 /// `preceding_remainder` is `(year - 1) mod 400`, so a year divisible by 400
 /// passes 399, and `leap` is the date's own year. Only the within-year month
@@ -191,7 +195,7 @@ fn day_within_cycle(preceding_remainder: u32, month: u8, day: u8, leap: bool) ->
     for earlier in 1..month {
         ordinal += u32::from(days_in_month(earlier, leap));
     }
-    preceding_remainder * 365 + preceding_remainder / 4 - preceding_remainder / 100 + ordinal
+    days_before_year_in_cycle(preceding_remainder) + ordinal
 }
 
 // Shared by the UTC and input-coordinate owners. Gregorian 0001-01-01 has

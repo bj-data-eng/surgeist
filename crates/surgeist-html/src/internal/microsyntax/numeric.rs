@@ -2024,6 +2024,21 @@ impl HtmlSignedDecimal {
         result.into()
     }
 
+    /// Projects the exact decimal directly through the same binary64 conversion as HTML ingress.
+    pub(crate) fn to_floating_point(
+        &self,
+    ) -> Result<HtmlFloatingPointNumber, HtmlNumericParseError> {
+        let magnitude = self.magnitude.decimal_string();
+        let value = convert_floating_point_token(&magnitude)?;
+        Ok(if self.negative && value.value != 0.0 {
+            HtmlFloatingPointNumber {
+                value: -value.value,
+            }
+        } else {
+            value
+        })
+    }
+
     pub(crate) fn added_to(&self, other: &Self) -> Self {
         if self.negative == other.negative {
             return Self::from_magnitude(self.magnitude.added_to(&other.magnitude), self.negative);

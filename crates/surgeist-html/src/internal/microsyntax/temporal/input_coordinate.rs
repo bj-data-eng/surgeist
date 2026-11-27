@@ -14,10 +14,16 @@ use crate::{
 };
 use std::{error::Error, fmt, num::NonZeroU32};
 
+pub(crate) mod inverse;
+
 const DAYS_IN_WEEK: NonZeroU32 = NonZeroU32::MIN.saturating_add(6);
+const DAYS_BEFORE_EPOCH: u32 = 719162;
+const MONTHS_BEFORE_EPOCH: u32 = 23628;
+const MILLISECONDS_PER_DAY: NonZeroU32 = NonZeroU32::MIN.saturating_add(86_399_999);
 
 fn epoch_milliseconds(ordinal: HtmlNonNegativeInteger) -> HtmlSignedDecimal {
-    HtmlSignedDecimal::integer_difference(ordinal, 719162_u128.into()).multiplied_by(86400000)
+    HtmlSignedDecimal::integer_difference(ordinal, u128::from(DAYS_BEFORE_EPOCH).into())
+        .multiplied_by(MILLISECONDS_PER_DAY.get())
 }
 
 /// Units selected by HTML's temporal input string-to-number algorithms.
@@ -52,7 +58,7 @@ pub(crate) enum TemporalState {
     LocalDateTime,
 }
 impl TemporalState {
-    pub(crate) fn of(state: HtmlInputType) -> Option<Self> {
+    pub(crate) const fn of(state: HtmlInputType) -> Option<Self> {
         Some(match state {
             HtmlInputType::Date => Self::Date,
             HtmlInputType::Month => Self::Month,
@@ -233,7 +239,10 @@ impl HtmlMonth {
             .added_to(&u128::from(self.month - 1).into());
         HtmlInputTemporalCoordinate {
             state: TemporalState::Month,
-            value: HtmlSignedDecimal::integer_difference(ordinal, 23628_u128.into()),
+            value: HtmlSignedDecimal::integer_difference(
+                ordinal,
+                u128::from(MONTHS_BEFORE_EPOCH).into(),
+            ),
         }
     }
 }
@@ -242,21 +251,7 @@ impl HtmlWeek {
     /// Returns signed milliseconds to Monday of this ISO week from 1970-01-01
     /// UTC midnight, ignoring leap seconds. Week 1 contains January 4.
     pub fn input_coordinate(&self) -> HtmlInputTemporalCoordinate {
-        let january_four = HtmlDate {
-            month: HtmlMonth {
-                year: self.year.clone(),
-                month: 1,
-            },
-            day: 4,
-        };
-        let ordinal = gregorian_ordinal(&january_four);
-        let monday_offset = ordinal.remainder(DAYS_IN_WEEK);
-        // January 4's ordinal is at least three. Its containing Monday cannot
-        // precede ordinal zero because year 1 begins on Monday.
-        let week_one =
-            HtmlSignedDecimal::integer_difference(ordinal, u128::from(monday_offset).into());
-        debug_assert!(!week_one.is_negative());
-        let monday = week_one
+        let monday = first_iso_monday(&self.year)
             .magnitude()
             .integer_part()
             .added_to(&u128::from(u32::from(self.week - 1) * 7).into());
@@ -265,6 +260,23 @@ impl HtmlWeek {
             value: epoch_milliseconds(monday),
         }
     }
+}
+
+fn monday_of(ordinal: HtmlNonNegativeInteger) -> HtmlSignedDecimal {
+    let offset = ordinal.remainder(DAYS_IN_WEEK);
+    // Ordinal zero is a Monday, so the containing Monday is never negative.
+    HtmlSignedDecimal::integer_difference(ordinal, u128::from(offset).into())
+}
+
+fn first_iso_monday(year: &super::HtmlYear) -> HtmlSignedDecimal {
+    let january_four = HtmlDate {
+        month: HtmlMonth {
+            year: year.clone(),
+            month: 1,
+        },
+        day: 4,
+    };
+    monday_of(gregorian_ordinal(&january_four))
 }
 
 impl HtmlParsedTime {

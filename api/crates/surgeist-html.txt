@@ -2212,6 +2212,9 @@ pub const fn surgeist_html::attributes::HtmlInputType::uses_current_value_for_di
 pub fn surgeist_html::attributes::HtmlInputType::value_mode(self) -> surgeist_html::elements::input::HtmlInputValueMode
 impl surgeist_html::attributes::HtmlInputType
 pub fn surgeist_html::attributes::HtmlInputType::missing_value_default() -> Self
+impl surgeist_html::attributes::HtmlInputType
+pub const fn surgeist_html::attributes::HtmlInputType::supports_value_as_date(self) -> bool
+pub const fn surgeist_html::attributes::HtmlInputType::supports_value_as_number(self) -> bool
 pub enum surgeist_html::attributes::HtmlLinkDestination
 pub surgeist_html::attributes::HtmlLinkDestination::AudioWorklet
 pub surgeist_html::attributes::HtmlLinkDestination::Fetch
@@ -2773,6 +2776,10 @@ pub mod surgeist_html::bounded::frame
 pub fn surgeist_html::bounded::frame::frame_iframe_after_ancestors_with<E>(matches_ancestor: bool, initial_insertion: bool, read_matches_blank: impl core::ops::function::FnOnce() -> core::result::Result<bool, E>) -> core::result::Result<surgeist_html::elements::frame::HtmlFrameIframeAfterAncestors, E>
 pub fn surgeist_html::bounded::frame::frame_iframe_src_with<E>(raw: core::option::Option<&surgeist_html::values::DocumentString>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::elements::frame::HtmlFrameIframeSrcDecision<'_>, E>
 pub mod surgeist_html::bounded::input
+pub enum surgeist_html::bounded::input::HtmlInputDateRead
+pub surgeist_html::bounded::input::HtmlInputDateRead::InvalidTime
+pub surgeist_html::bounded::input::HtmlInputDateRead::Null
+pub surgeist_html::bounded::input::HtmlInputDateRead::Time(surgeist_html::bounded::input::HtmlInputDateMilliseconds)
 pub enum surgeist_html::bounded::input::HtmlInputRangeReplacement
 pub surgeist_html::bounded::input::HtmlInputRangeReplacement::InvalidDefaultMidpoint
 pub surgeist_html::bounded::input::HtmlInputRangeReplacement::InvalidDefaultMinimum
@@ -2805,6 +2812,23 @@ pub enum surgeist_html::bounded::input::HtmlInputRangeValue
 pub surgeist_html::bounded::input::HtmlInputRangeValue::ConversionFailed
 pub surgeist_html::bounded::input::HtmlInputRangeValue::Finite(surgeist_html::bounded::input::HtmlInputRangeNumber)
 pub surgeist_html::bounded::input::HtmlInputRangeValue::InvalidGrammar
+pub enum surgeist_html::bounded::input::HtmlInputValueAssignment
+pub surgeist_html::bounded::input::HtmlInputValueAssignment::Empty
+pub surgeist_html::bounded::input::HtmlInputValueAssignment::RangeNumber(surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber)
+pub surgeist_html::bounded::input::HtmlInputValueAssignment::Text(surgeist_html::values::DocumentString)
+pub enum surgeist_html::bounded::input::HtmlInputValueConversionError<E>
+pub surgeist_html::bounded::input::HtmlInputValueConversionError::Admission(E)
+pub surgeist_html::bounded::input::HtmlInputValueConversionError::Inapplicable
+pub surgeist_html::bounded::input::HtmlInputValueConversionError::Infinite
+pub surgeist_html::bounded::input::HtmlInputValueConversionError::WorkOverflow
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_html::bounded::input::HtmlInputValueConversionError<E>
+pub fn surgeist_html::bounded::input::HtmlInputValueConversionError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E: core::fmt::Display> core::fmt::Display for surgeist_html::bounded::input::HtmlInputValueConversionError<E>
+pub fn surgeist_html::bounded::input::HtmlInputValueConversionError<E>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::bounded::input::HtmlInputDateMilliseconds(_)
+impl surgeist_html::bounded::input::HtmlInputDateMilliseconds
+pub const fn surgeist_html::bounded::input::HtmlInputDateMilliseconds::milliseconds(self) -> i64
+pub const fn surgeist_html::bounded::input::HtmlInputDateMilliseconds::new(milliseconds: i64) -> core::option::Option<Self>
 pub struct surgeist_html::bounded::input::HtmlInputRangeNumber(_)
 impl surgeist_html::bounded::input::HtmlInputRangeNumber
 pub fn surgeist_html::bounded::input::HtmlInputRangeNumber::value(self) -> f64
@@ -2826,6 +2850,10 @@ impl core::error::Error for surgeist_html::bounded::input::HtmlInputRangeSanitiz
 impl core::fmt::Display for surgeist_html::bounded::input::HtmlInputRangeSanitizationReplyError
 pub fn surgeist_html::bounded::input::HtmlInputRangeSanitizationReplyError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub fn surgeist_html::bounded::input::input_colorspace_with<E>(raw: core::option::Option<&[u16]>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::input_colorspace::HtmlInputColorSpace, E>
+pub fn surgeist_html::bounded::input::input_value_as_date<E>(state: surgeist_html::attributes::HtmlInputType, value: &surgeist_html::values::DocumentString, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::bounded::input::HtmlInputDateRead, surgeist_html::bounded::input::HtmlInputValueConversionError<E>>
+pub fn surgeist_html::bounded::input::input_value_as_number<E>(state: surgeist_html::attributes::HtmlInputType, value: &surgeist_html::values::DocumentString, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber>, surgeist_html::bounded::input::HtmlInputValueConversionError<E>>
+pub fn surgeist_html::bounded::input::input_value_from_date<E>(state: surgeist_html::attributes::HtmlInputType, date: core::option::Option<surgeist_html::bounded::input::HtmlInputDateMilliseconds>, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::bounded::input::HtmlInputValueAssignment, surgeist_html::bounded::input::HtmlInputValueConversionError<E>>
+pub fn surgeist_html::bounded::input::input_value_from_number<E>(state: surgeist_html::attributes::HtmlInputType, value: f64, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::bounded::input::HtmlInputValueAssignment, surgeist_html::bounded::input::HtmlInputValueConversionError<E>>
 pub mod surgeist_html::bounded::lexical
 pub enum surgeist_html::bounded::lexical::HtmlCustomNameScanAction
 pub surgeist_html::bounded::lexical::HtmlCustomNameScanAction::Header
