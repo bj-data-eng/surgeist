@@ -1,10 +1,14 @@
-//! Release-mode cost of parsing one real stylesheet, adopting it into a CSSOM
+//! Release-mode cost of parsing one stylesheet, adopting it into a CSSOM
 //! store and editing the store that holds it.
 //!
 //! The stylesheet is read at run time from the path in
 //! `SURGEIST_BENCH_STYLESHEET`; without it the bench prints how to run it and
 //! exits. It was written for Bootstrap's `dist/css/bootstrap.css`, but any
-//! stylesheet with at least one style rule inside a grouping rule works.
+//! stylesheet with at least one style rule inside a grouping rule works. The
+//! whole-text replacements insert one declaration after the first `;` that ends
+//! a line after the middle of the text, and are skipped when there is none; the
+//! report prints the diagnostics of both texts, which differ when the insertion
+//! falls outside a declaration block.
 //!
 //! The report has four parts.
 //!
@@ -33,7 +37,7 @@
 //! reported apart from the rest, whose median and 95th percentile the table
 //! gives. A global counting allocator supplies the memory figures; it adds a few
 //! atomic additions to every allocation. The whole-text replacements of
-//! Bootstrap hold about 1.8 GB by the end of the edits.
+//! Bootstrap hold about 1.5 GiB by the end of the edits.
 //!
 //! Run with
 //! `SURGEIST_BENCH_STYLESHEET=/path/to/bootstrap.css cargo bench --offline --locked -j 1 -p surgeist-cssom --bench bootstrap_sheet`.
@@ -64,7 +68,7 @@ static GLOBAL: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
 /// Timed calls per case after the first.
 const CALLS: usize = 61;
 /// Timed whole-text replacements after the first; each retains its
-/// predecessor's records, about 55 MiB for Bootstrap.
+/// predecessor's records, about 46 MiB for Bootstrap.
 const WHOLE_CALLS: usize = 31;
 /// Timed creations after the first.
 const CREATIONS: usize = 31;
@@ -102,9 +106,10 @@ fn parser(_store: &CssomStore) -> CssParser {
 }
 
 /// The bytes allocated and not freed over a region.
+/// `stats_alloc` adds a reallocation's growth to `bytes_allocated` and its
+/// shrinkage to `bytes_deallocated`, so these two alone give the bytes held.
 fn held(change: &stats_alloc::Stats) -> i64 {
-    change.bytes_allocated as i64 + change.bytes_reallocated as i64
-        - change.bytes_deallocated as i64
+    change.bytes_allocated as i64 - change.bytes_deallocated as i64
 }
 
 fn nanos(duration: Duration) -> f64 {
@@ -432,19 +437,29 @@ fn timed_pair(mut first: impl FnMut(), mut second: impl FnMut()) -> (Summary, Su
     )
 }
 
-/// The text with one declaration added to the style rule whose block holds
-/// the first declaration ending after the middle of the text.
-fn changed_text(text: &str) -> (String, usize) {
-    let middle = text.len() / 2;
-    let at = text[middle..]
-        .find(";\n")
-        .map(|offset| middle + offset + 2)
-        .expect("a declaration after the middle");
+/// The text with one declaration inserted after the first `;` that ends a
+/// line after the middle of the text, and the byte offset of the insertion;
+/// `None` when no such `;` exists. In a formatted stylesheet that `;` ends a
+/// declaration, so one rule changes; `report_edits` prints the diagnostics of
+/// both texts, which differ when the insertion is not a declaration.
+fn changed_text(text: &str) -> Option<(String, usize)> {
+    let middle = (0..=text.len() / 2)
+        .rev()
+        .find(|&i| text.is_char_boundary(i))
+        .unwrap_or(0);
+    let rest = &text[middle..];
+    let at = rest.match_indices(';').find_map(|(offset, _)| {
+        let after = &rest[offset + 1..];
+        ["\n", "\r\n"]
+            .iter()
+            .find(|ending| after.starts_with(**ending))
+            .map(|ending| middle + offset + 1 + ending.len())
+    })?;
     let mut changed = String::with_capacity(text.len() + 32);
     changed.push_str(&text[..at]);
     changed.push_str("  outline-offset: 1px;\n");
     changed.push_str(&text[at..]);
-    (changed, at)
+    Some((changed, at))
 }
 
 fn report_edits(text: &str) {
@@ -629,27 +644,46 @@ fn report_edits(text: &str) {
         replace_control(&mut store),
     ));
 
-    let (changed, at) = changed_text(text);
-    let texts = [changed.as_str(), text];
-    let region = Region::new(GLOBAL);
-    let whole = timed_n(WHOLE_CALLS, |index| {
-        let _ = black_box(
-            sheet
-                .replace_sync(&mut store, texts[index % 2])
-                .expect("replace_sync"),
-        );
-    });
-    let grown = held(&region.change());
-    let replacements = whole.calls + 1;
-    rows.push((
-        "`sheet.replaceSync(text)` with one rule changed".into(),
-        whole,
-    ));
-    rows.push((
-        "control `replaceSync`, one-rule sheet beside the sheet, after the whole-text replacements"
-            .into(),
-        replace_control(&mut store),
-    ));
+    let mut notes = Vec::new();
+    match changed_text(text) {
+        Some((changed, at)) => {
+            let texts = [changed.as_str(), text];
+            let region = Region::new(GLOBAL);
+            let whole = timed_n(WHOLE_CALLS, |index| {
+                let _ = black_box(
+                    sheet
+                        .replace_sync(&mut store, texts[index % 2])
+                        .expect("replace_sync"),
+                );
+            });
+            let grown = held(&region.change());
+            let replacements = whole.calls + 1;
+            rows.push((
+                "`sheet.replaceSync(text)` with one rule changed".into(),
+                whole,
+            ));
+            rows.push((
+                "control `replaceSync`, one-rule sheet beside the sheet, after the whole-text replacements"
+                    .into(),
+                replace_control(&mut store),
+            ));
+            notes.push(format!(
+                "replaceSync change: `outline-offset: 1px;` added at byte {at}, after `{}`; the changed text parses with {} diagnostics, the original with {}",
+                excerpt(&text[..at], at.saturating_sub(60), 60),
+                CssParser::default().parse_sheet(&changed).diagnostics().len(),
+                CssParser::default().parse_sheet(text).diagnostics().len(),
+            ));
+            notes.push(format!(
+                "bytes the store holds in addition after {replacements} whole-text replacements: {grown} ({:.1} MiB, {:.1} MiB per replacement)",
+                grown as f64 / (1024.0 * 1024.0),
+                grown as f64 / (1024.0 * 1024.0) / replacements as f64
+            ));
+        }
+        None => notes.push(
+            "no `;` ends a line after the middle of the text; the whole-text replacements are skipped"
+                .to_owned(),
+        ),
+    }
 
     println!("| edit | first ms | median ms | p95 ms | calls |");
     println!("| --- | ---: | ---: | ---: | ---: |");
@@ -663,15 +697,9 @@ fn report_edits(text: &str) {
         );
     }
     println!();
-    println!(
-        "replaceSync change: `outline-offset: 1px;` added at byte {at}, after `{}`",
-        excerpt(text, at.saturating_sub(60), 60)
-    );
-    println!(
-        "bytes the store holds in addition after {replacements} whole-text replacements: {grown} ({:.1} MiB, {:.1} MiB per replacement)",
-        grown as f64 / (1024.0 * 1024.0),
-        grown as f64 / (1024.0 * 1024.0) / replacements as f64
-    );
+    for note in notes {
+        println!("{note}");
+    }
     let snapshot = store.snapshot();
     assert_eq!(
         all_rules(&snapshot, &sheet_id).len(),
@@ -684,11 +712,30 @@ fn report_edits(text: &str) {
 /// Replaces the whole sheet on a store with the default limits until a limit
 /// refuses, up to 200 replacements.
 fn report_default_replacements(text: &str) {
-    let (changed, _) = changed_text(text);
+    println!("## Whole-text replacements under the default CssomLimits");
+    println!();
+    let Some((changed, _)) = changed_text(text) else {
+        println!("skipped: no `;` ends a line after the middle of the text");
+        println!();
+        return;
+    };
     let texts = [changed.as_str(), text];
     let mut store =
         CssomStore::new(CssomLimits::default(), CssomContext::default()).expect("a store");
-    let id = create(&mut store, text);
+    let mut edit = store
+        .batch(CssomEditGuard::from_snapshot(&store.snapshot()))
+        .expect("a batch");
+    let created = edit
+        .create_parsed_sheet(text, inputs())
+        .and_then(|ticket| Ok(store.commit(edit)?.sheet(&ticket)?.clone()));
+    let id = match created {
+        Ok(id) => id,
+        Err(error) => {
+            println!("skipped: the default limits refuse the sheet: {error:?}");
+            println!();
+            return;
+        }
+    };
     let sheet = store.css_style_sheet(&id).expect("the sheet object");
     let mut refusal = None;
     let mut done = 0;
@@ -701,8 +748,6 @@ fn report_default_replacements(text: &str) {
             }
         }
     }
-    println!("## Whole-text replacements under the default CssomLimits");
-    println!();
     match refusal {
         Some(error) => println!("{done} replacements succeeded; the next was refused: {error}"),
         None => println!("{done} replacements succeeded"),
@@ -742,7 +787,7 @@ fn main() {
         let sheet = store.css_style_sheet(&sheet).expect("the sheet object");
         let control = create(&mut store, ".control { color: red }");
         let control = store.css_style_sheet(&control).expect("the control object");
-        let (changed, _) = changed_text(&text);
+        let (changed, _) = changed_text(&text).expect("a `;` that ends a line after the middle");
         for index in 0..10 {
             let source = if index % 2 == 0 { &changed } else { &text };
             let _ = sheet
