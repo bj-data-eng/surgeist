@@ -679,6 +679,8 @@ pub(crate) mod probe {
 #[cfg(test)]
 mod differential_tests;
 #[cfg(test)]
+mod edit_work_tests;
+#[cfg(test)]
 mod memo_tests;
 #[cfg(test)]
 mod reference;

@@ -167,6 +167,38 @@ fn a_batch_operation_charges_the_census_of_the_state_it_leaves() {
     );
 }
 
+/// What `set_disabled` on the sheet of a store of `rules` rules, and its commit,
+/// charge a host: the census runs, objects, entries and walk steps.
+fn disabling_charge(rules: usize) -> [u64; 4] {
+    let (ledger, host) = open_host();
+    let text = (0..rules)
+        .map(|index| format!(".r{index} {{ color: red; margin: 1px 0 }}\n"))
+        .collect::<String>();
+    let mut store = make(CssomLimits::default(), Some(host)).unwrap();
+    let mut edit = store.batch(guard(&store)).unwrap();
+    let inputs = CssomSheetInputs::constructed(version("document"), "document".into(), None);
+    let ticket = edit.create_parsed_sheet(&text, inputs).unwrap();
+    let sheet = store.commit(edit).unwrap().sheet(&ticket).unwrap().clone();
+    let mut edit = store.batch(guard(&store)).unwrap();
+    let before = charged(&ledger);
+    assert!(edit.set_disabled(&sheet, true).unwrap());
+    store.commit(edit).unwrap();
+    let work = since(before, charged(&ledger));
+    [work[0], work[1], work[2], work[3]]
+}
+
+#[test]
+fn disabling_a_sheet_charges_the_host_the_same_work_whatever_the_rule_count() {
+    let charges = [100, 200, 400].map(disabling_charge);
+    for (dimension, name) in [(1, "objects"), (2, "entries"), (3, "walk steps")] {
+        let counts = charges.map(|charge| charge[dimension]);
+        assert!(
+            counts.iter().all(|count| *count == counts[0]),
+            "{name} charged by one set_disabled commit at 100, 200 and 400 rules: {counts:?}"
+        );
+    }
+}
+
 #[test]
 fn a_sheet_creation_charges_every_census_run_its_adoption_makes() {
     probe::set_cross_check(false);
