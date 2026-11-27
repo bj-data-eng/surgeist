@@ -2,19 +2,47 @@
 
 use super::{
     DomHtmlCollection, DomHtmlCollectionLimits, DomHtmlCollectionNames, DomHtmlCollectionRead,
-    Filter,
+    ElementMatches, ElementNameScope, Filter,
 };
 use crate::internal::{
     identity::NodeId,
-    store::{Dom, DomError},
+    store::{Dom, DomError, DomResource, admit},
 };
-use std::sync::atomic::AtomicBool;
+use std::{ops::ControlFlow, sync::atomic::AtomicBool};
+use surgeist_html::{attributes::HtmlInputType, values::DocumentString};
 
 /// A live HTMLFormControlsCollection tied to one exact native Form.
 ///
 /// Each read resolves the Form's current ordinary tree and its listed controls.
 #[derive(Debug)]
 pub struct DomHtmlFormControlsCollection(DomHtmlCollection);
+
+/// The current result of a named Form or Form collection lookup.
+#[derive(Debug)]
+pub enum DomFormNamedValue {
+    /// The query currently names no element.
+    Absent,
+    /// Exactly one element is returned.
+    Element(NodeId),
+    /// Multiple elements match. The returned RadioNodeList remains live.
+    List(DomRadioNodeList),
+}
+
+/// A live RadioNodeList retaining the exact Form and named filter.
+#[derive(Debug)]
+pub struct DomRadioNodeList(DomHtmlCollection);
+
+/// A qualified read of the RadioNodeList's current members and value.
+pub struct DomRadioNodeListRead<'dom, A>(DomHtmlCollectionRead<'dom, A>);
+
+impl<A> std::fmt::Debug for DomRadioNodeListRead<'_, A> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_tuple("DomRadioNodeListRead")
+            .field(&self.0)
+            .finish()
+    }
+}
 
 /// A qualified read of the Form's current listed controls.
 pub struct DomHtmlFormControlsCollectionRead<'dom, A>(DomHtmlCollectionRead<'dom, A>);
@@ -87,6 +115,25 @@ impl Dom {
         self.read_html_collection(&collection.0, limits, admission, cancel)
             .map(DomHtmlFormControlsCollectionRead)
     }
+
+    /// Reopen the RadioNodeList against its Form's current ordinary tree.
+    ///
+    /// # Errors
+    /// Returns the first Source, identity, caller, cancellation, or work failure.
+    pub fn read_radio_node_list<'dom, A, E>(
+        &'dom self,
+        list: &'dom DomRadioNodeList,
+        limits: DomHtmlCollectionLimits,
+        admission: A,
+        cancel: &'dom AtomicBool,
+    ) -> Result<DomRadioNodeListRead<'dom, A>, E>
+    where
+        A: Fn() -> Result<(), E>,
+        E: From<DomError>,
+    {
+        self.read_html_collection(&list.0, limits, admission, cancel)
+            .map(DomRadioNodeListRead)
+    }
 }
 
 impl<A, E> DomHtmlFormControlsCollectionRead<'_, A>
@@ -104,8 +151,78 @@ where
         self.0.item(index)
     }
 
+    /// Resolve an exact current ID or name. A multiple result retains the
+    /// query backing and uses the same Form for subsequent reads.
+    pub fn named_item(
+        &self,
+        name: &DocumentString,
+        max_retained_query_units: usize,
+    ) -> Result<DomFormNamedValue, E> {
+        self.0.view.meter.step()?;
+        if name.is_empty() {
+            return Ok(DomFormNamedValue::Absent);
+        }
+        match self.0.first_two_matches(|node| {
+            self.0
+                .element_matches_name(node, name, ElementNameScope::Collection)
+        })? {
+            ElementMatches::Absent => Ok(DomFormNamedValue::Absent),
+            ElementMatches::One(node) => Ok(DomFormNamedValue::Element(node)),
+            ElementMatches::Multiple => {
+                admit(
+                    name.retained_units(),
+                    max_retained_query_units,
+                    DomResource::HtmlCollectionQueryUnits,
+                )?;
+                Ok(DomFormNamedValue::List(DomRadioNodeList(
+                    DomHtmlCollection {
+                        root: self.0.collection.root,
+                        filter: Filter::NamedFormControls(name.clone()),
+                    },
+                )))
+            }
+        }
+    }
+
     /// Return each nonempty ID or name once, in first occurrence order.
     pub fn supported_names(&self) -> Result<DomHtmlCollectionNames, E> {
         self.0.supported_names()
+    }
+}
+
+impl<A, E> DomRadioNodeListRead<'_, A>
+where
+    A: Fn() -> Result<(), E>,
+    E: From<DomError>,
+{
+    /// Count all current represented elements.
+    pub fn length(&self) -> Result<usize, E> {
+        self.0.length()
+    }
+
+    /// Read the zero-based member in current ordinary tree order.
+    pub fn item(&self, index: usize) -> Result<Option<NodeId>, E> {
+        self.0.item(index)
+    }
+
+    /// Borrow the first checked Radio Button's current exact value.
+    /// An empty selection yields the empty string.
+    pub fn value(&self) -> Result<&[u16], E> {
+        let step = || self.0.view.meter.step();
+        let value = self.0.walk_where(
+            |node| node.as_input().is_some(),
+            |node| {
+                let input = node.as_input().ok_or(DomError::WrongNodeKind)?;
+                if input.input_type_with(step)? != HtmlInputType::Radio {
+                    return Ok(ControlFlow::Continue(()));
+                }
+                step()?;
+                if input.state().flags().checkedness() {
+                    return Ok(ControlFlow::Break(input.value_with(step)?));
+                }
+                Ok(ControlFlow::Continue(()))
+            },
+        )?;
+        Ok(value.unwrap_or_default())
     }
 }

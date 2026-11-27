@@ -80,6 +80,11 @@ descendants, including Image Button Inputs and those owned by another Form.
 A retained collection can reopen after edits or adoption and refuses a retired
 receiver.
 
+The Form collection's `named_item` selects exact nonempty IDs and names.
+A multiple result retains its full query backing and follows the Form as the
+matched members change. Its RadioNodeList value borrows the first checked Radio
+Button's exact current value, including the default `on` for absent attributes.
+
 `DomNode::html_will_validate_with` reads live candidacy for Button, Input,
 Select and TextArea from the caller's current published Source segment. It
 uses ordinary ancestry and the shared first-Legend disabledness rule. Slot

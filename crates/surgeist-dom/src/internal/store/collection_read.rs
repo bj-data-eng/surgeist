@@ -144,10 +144,10 @@ where
         self.snapshot.node_with(node, || self.meter.step())
     }
 
-    pub(super) fn visit_elements<T>(
-        &self,
+    pub(super) fn visit_elements<'read, T>(
+        &'read self,
         nodes: impl IntoIterator<Item = NodeId>,
-        mut visit: impl FnMut(DomNode<'_>) -> Result<ControlFlow<T>, E>,
+        mut visit: impl FnMut(DomNode<'read>) -> Result<ControlFlow<T>, E>,
     ) -> Result<Option<T>, E> {
         for id in nodes {
             let node = self.node(id)?;
@@ -179,10 +179,10 @@ where
         Ok(None)
     }
 
-    pub(super) fn inclusive_tree<T>(
-        &self,
-        root: DomNode<'_>,
-        mut visit: impl FnMut(DomNode<'_>) -> Result<ControlFlow<T>, E>,
+    pub(super) fn inclusive_tree<'read, T>(
+        &'read self,
+        root: DomNode<'read>,
+        mut visit: impl FnMut(DomNode<'read>) -> Result<ControlFlow<T>, E>,
     ) -> Result<Option<T>, E> {
         if let ControlFlow::Break(value) = visit(root)? {
             return Ok(Some(value));

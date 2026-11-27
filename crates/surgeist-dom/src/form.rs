@@ -19,6 +19,7 @@ pub use crate::internal::form::DomForm;
 pub use crate::internal::input::{DomInput, DomInputState};
 pub use crate::internal::output::{DomOutput, DomOutputState};
 pub use crate::internal::store::{
-    DomHtmlFormControlsCollection, DomHtmlFormControlsCollectionRead,
+    DomFormNamedValue, DomHtmlFormControlsCollection, DomHtmlFormControlsCollectionRead,
+    DomRadioNodeList, DomRadioNodeListRead,
 };
 pub use crate::internal::textarea::{DomTextarea, DomTextareaReadLimits, DomTextareaState};

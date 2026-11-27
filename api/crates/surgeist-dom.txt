@@ -917,6 +917,10 @@ pub struct surgeist_dom::form::select::DomSelectedcontent<'a>
 impl surgeist_dom::form::select::DomSelectedcontent<'_>
 pub fn surgeist_dom::form::select::DomSelectedcontent<'_>::disabled(self) -> bool
 pub fn surgeist_dom::form::select::DomSelectedcontent<'_>::id(self) -> surgeist_dom::identity::NodeId
+pub enum surgeist_dom::form::DomFormNamedValue
+pub surgeist_dom::form::DomFormNamedValue::Absent
+pub surgeist_dom::form::DomFormNamedValue::Element(surgeist_dom::identity::NodeId)
+pub surgeist_dom::form::DomFormNamedValue::List(surgeist_dom::form::DomRadioNodeList)
 pub struct surgeist_dom::form::DomButton<'a>
 impl surgeist_dom::form::DomButton<'_>
 pub fn surgeist_dom::form::DomButton<'_>::type_keyword_with<E: core::convert::From<surgeist_dom::DomError>>(self, step: impl core::ops::function::Fn() -> core::result::Result<(), E>) -> core::result::Result<&'static str, E>
@@ -953,6 +957,7 @@ pub struct surgeist_dom::form::DomHtmlFormControlsCollectionRead<'dom, A>(_)
 impl<A, E> surgeist_dom::form::DomHtmlFormControlsCollectionRead<'_, A> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
 pub fn surgeist_dom::form::DomHtmlFormControlsCollectionRead<'_, A>::item(&self, index: usize) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
 pub fn surgeist_dom::form::DomHtmlFormControlsCollectionRead<'_, A>::length(&self) -> core::result::Result<usize, E>
+pub fn surgeist_dom::form::DomHtmlFormControlsCollectionRead<'_, A>::named_item(&self, name: &surgeist_html::internal::values::document_string::DocumentString, max_retained_query_units: usize) -> core::result::Result<surgeist_dom::form::DomFormNamedValue, E>
 pub fn surgeist_dom::form::DomHtmlFormControlsCollectionRead<'_, A>::supported_names(&self) -> core::result::Result<surgeist_dom::tree::DomHtmlCollectionNames, E>
 impl<A> core::fmt::Debug for surgeist_dom::form::DomHtmlFormControlsCollectionRead<'_, A>
 pub fn surgeist_dom::form::DomHtmlFormControlsCollectionRead<'_, A>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -990,6 +995,14 @@ impl surgeist_dom::form::DomOutputState
 pub fn surgeist_dom::form::DomOutputState::custom_validity_message(&self) -> &surgeist_html::internal::values::document_string::DocumentString
 pub fn surgeist_dom::form::DomOutputState::default_value_override(&self) -> core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_dom::form::DomOutputState::parser_inserted(&self) -> bool
+pub struct surgeist_dom::form::DomRadioNodeList(_)
+pub struct surgeist_dom::form::DomRadioNodeListRead<'dom, A>(_)
+impl<A, E> surgeist_dom::form::DomRadioNodeListRead<'_, A> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
+pub fn surgeist_dom::form::DomRadioNodeListRead<'_, A>::item(&self, index: usize) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, E>
+pub fn surgeist_dom::form::DomRadioNodeListRead<'_, A>::length(&self) -> core::result::Result<usize, E>
+pub fn surgeist_dom::form::DomRadioNodeListRead<'_, A>::value(&self) -> core::result::Result<&[u16], E>
+impl<A> core::fmt::Debug for surgeist_dom::form::DomRadioNodeListRead<'_, A>
+pub fn surgeist_dom::form::DomRadioNodeListRead<'_, A>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_dom::form::DomTextarea<'a>
 impl<'a> surgeist_dom::form::DomTextarea<'a>
 pub fn surgeist_dom::form::DomTextarea<'a>::default_value(self, limits: surgeist_dom::form::DomTextareaReadLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_html::internal::values::document_string::DocumentString, surgeist_dom::DomError>
@@ -4778,6 +4791,7 @@ impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::fieldset_elements(&self, fieldset: surgeist_dom::identity::NodeId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::tree::DomHtmlCollection, surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::form_elements(&self, form: surgeist_dom::identity::NodeId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::form::DomHtmlFormControlsCollection, surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::read_html_form_controls_collection<'dom, A, E>(&'dom self, collection: &'dom surgeist_dom::form::DomHtmlFormControlsCollection, limits: surgeist_dom::tree::DomHtmlCollectionLimits, admission: A, cancel: &'dom core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::form::DomHtmlFormControlsCollectionRead<'dom, A>, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::read_radio_node_list<'dom, A, E>(&'dom self, list: &'dom surgeist_dom::form::DomRadioNodeList, limits: surgeist_dom::tree::DomHtmlCollectionLimits, admission: A, cancel: &'dom core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::form::DomRadioNodeListRead<'dom, A>, E> where A: core::ops::function::Fn() -> core::result::Result<(), E>, E: core::convert::From<surgeist_dom::DomError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::finish_style_notification(&mut self, token: &mut surgeist_dom::style::DomStyleNotificationToken, delivery: surgeist_dom::style::DomStyleNotificationDelivery<'_>, dispatch_work: u64, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::style::DomStyleNotificationCompletion, surgeist_dom::DomError>
 impl surgeist_dom::Dom

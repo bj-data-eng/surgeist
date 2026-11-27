@@ -28,7 +28,10 @@ const NAME: &[u16] = &[0x6e, 0x61, 0x6d, 0x65];
 const WILDCARD: &[u16] = &[0x2a];
 
 mod form_controls;
-pub use form_controls::{DomHtmlFormControlsCollection, DomHtmlFormControlsCollectionRead};
+pub use form_controls::{
+    DomFormNamedValue, DomHtmlFormControlsCollection, DomHtmlFormControlsCollectionRead,
+    DomRadioNodeList, DomRadioNodeListRead,
+};
 
 fn document_metadata<'a, E: From<DomError>>(
     snapshot: &'a DomSnapshot,
@@ -139,6 +142,7 @@ enum Filter {
     Children,
     FormControls,
     FieldsetControls,
+    NamedFormControls(DocumentString),
     TagName {
         qualified_name: DocumentString,
         class: DomDocumentClass,
@@ -793,15 +797,29 @@ where
     A: Fn() -> Result<(), E>,
     E: From<DomError>,
 {
-    fn walk<T>(
-        &self,
-        mut visit: impl FnMut(DomNode<'_>) -> Result<ControlFlow<T>, E>,
+    fn walk<'read, T>(
+        &'read self,
+        visit: impl FnMut(DomNode<'read>) -> Result<ControlFlow<T>, E>,
+    ) -> Result<Option<T>, E> {
+        self.walk_where(|_| true, visit)
+    }
+
+    fn walk_where<'read, T>(
+        &'read self,
+        mut can_match: impl FnMut(DomNode<'read>) -> bool,
+        mut visit: impl FnMut(DomNode<'read>) -> Result<ControlFlow<T>, E>,
     ) -> Result<Option<T>, E> {
         if matches!(&self.collection.filter, Filter::Children) {
             let root = self.view.node(self.collection.root)?;
             return self
                 .view
-                .visit_elements(root.children().iter().copied(), visit);
+                .visit_elements(root.children().iter().copied(), |node| {
+                    if can_match(node) {
+                        visit(node)
+                    } else {
+                        Ok(ControlFlow::Continue(()))
+                    }
+                });
         }
         if matches!(
             &self.collection.filter,
@@ -820,8 +838,10 @@ where
         {
             return Ok(None);
         }
-        let visit_included = |node: DomNode<'_>| {
-            if let Some(element) = node.as_element() {
+        let visit_included = |node: DomNode<'read>| {
+            if let Some(element) = node.as_element()
+                && can_match(node)
+            {
                 let matches = match &self.collection.filter {
                     Filter::TagName {
                         qualified_name,
@@ -860,6 +880,15 @@ where
                     Filter::FieldsetControls => {
                         node.is_listed_control_with(|| self.view.meter.step())?
                     }
+                    Filter::NamedFormControls(name) => {
+                        node.is_listed_by_form_with(self.collection.root, || {
+                            self.view.meter.step()
+                        })? && self.element_matches_name(
+                            node,
+                            name,
+                            ElementNameScope::Collection,
+                        )?
+                    }
                     Filter::AllName(name) => {
                         self.element_matches_name(node, name, ElementNameScope::All)?
                     }
@@ -871,7 +900,10 @@ where
             }
             Ok(ControlFlow::Continue(()))
         };
-        if matches!(&self.collection.filter, Filter::FormControls) {
+        if matches!(
+            &self.collection.filter,
+            Filter::FormControls | Filter::NamedFormControls(_)
+        ) {
             let root = self
                 .view
                 .node(self.collection.root)?
