@@ -26,7 +26,7 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if self.table_part_kind(table, cancel)? != Some(KnownHtmlElement::Table) {
+        if self.table_element_kind(table, cancel)? != Some(KnownHtmlElement::Table) {
             return Err(DomError::WrongNodeKind);
         }
 
@@ -36,8 +36,13 @@ impl Draft {
                     return self.register_ticket(part, cancel);
                 }
                 let document = self.node(table)?.document();
-                let candidate =
-                    self.form_html_table_part(document, part, fallback, limits, cancel)?;
+                let candidate = self.form_html_table_element(
+                    document,
+                    part.element(),
+                    fallback,
+                    limits,
+                    cancel,
+                )?;
                 self.register_ticket(candidate, cancel)?;
                 self.insert_html_table_part(
                     Insertion {
@@ -53,7 +58,7 @@ impl Draft {
                 let candidate = if let Some(value) = value {
                     self.source_step(cancel)?;
                     let node = self.resolve(value.into())?;
-                    if self.table_part_kind(node, cancel)? != Some(part.element()) {
+                    if self.table_element_kind(node, cancel)? != Some(part.element()) {
                         self.prepare_compound_failure_slot(cancel)?;
                         return self.compound_error(DomError::HierarchyRequest);
                     }
@@ -85,7 +90,7 @@ impl Draft {
         }
     }
 
-    fn table_part_kind(
+    pub(super) fn table_element_kind(
         &self,
         key: Key,
         cancel: &AtomicBool,
@@ -105,14 +110,14 @@ impl Draft {
     ) -> Result<Option<Key>, DomError> {
         self.source_step(cancel)?;
         part.first_with(self.node(table)?.children().iter(), |child| {
-            self.table_part_kind(child, cancel)
+            self.table_element_kind(child, cancel)
         })
     }
 
-    fn form_html_table_part(
+    pub(super) fn form_html_table_element(
         &mut self,
         document: Key,
-        part: DomHtmlTablePart,
+        element: KnownHtmlElement,
         fallback: Option<DomCreationRealmFallback>,
         limits: DomLimits,
         cancel: &AtomicBool,
@@ -120,8 +125,7 @@ impl Draft {
         let operands = source::formation::Formation::new(self, cancel)?;
         let uri =
             source::formation::string("http://www.w3.org/1999/xhtml", operands.as_ref(), cancel)?;
-        let local =
-            source::formation::string(part.element().local_name(), operands.as_ref(), cancel)?;
+        let local = source::formation::string(element.local_name(), operands.as_ref(), cancel)?;
         let name = DomElementCreationName::Qualified(Namespace::from_uri(uri), local);
         let formation = source::formation::Formation::new(self, cancel)?;
         let element = self.native_element(

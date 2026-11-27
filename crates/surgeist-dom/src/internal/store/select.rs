@@ -1075,6 +1075,10 @@ pub(super) enum Effect {
     XmlDocument(super::document::XmlDocumentFrame),
     DocumentTitle(super::compound::document_title::Frame),
     TablePartInsert(super::compound::table_part::Insertion),
+    AppendImplicitTableBody {
+        table: Key,
+        body: Key,
+    },
     SelectOptions(super::compound::options::Frame),
     ChildrenChanged {
         parent: Key,
@@ -1213,6 +1217,10 @@ impl EffectFrame {
             Effect::XmlDocument(frame) => Effect::XmlDocument(frame.clone()),
             Effect::DocumentTitle(frame) => Effect::DocumentTitle(frame.clone()),
             Effect::TablePartInsert(frame) => Effect::TablePartInsert(*frame),
+            Effect::AppendImplicitTableBody { table, body } => Effect::AppendImplicitTableBody {
+                table: *table,
+                body: *body,
+            },
             Effect::SelectOptions(frame) => Effect::SelectOptions(frame.checkpoint(a, cancel)?),
             Effect::ChildrenChanged { parent, stage } => Effect::ChildrenChanged {
                 parent: *parent,
@@ -1474,6 +1482,9 @@ impl Draft {
                     }
                     Effect::TablePartInsert(frame) => {
                         self.insert_html_table_part(frame, limits, cancel)?
+                    }
+                    Effect::AppendImplicitTableBody { table, body } => {
+                        self.insert_table_child(body, table, None, limits, cancel)?
                     }
                     Effect::XmlDocument(frame) => {
                         self.xml_document_effect(frame, payload, limits, cancel)?

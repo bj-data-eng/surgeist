@@ -219,6 +219,19 @@ hierarchy error, the completed removal and its notifications remain committed.
 Any native service requested during removal parks that original operation
 before insertion.
 
+Table structural Source edits create a fresh tbody after the last direct HTML
+tbody. Row operations use the shared Table or Section row order and mutate the
+actual row parent. Cell operations visit direct HTML td and th children. Index
+`-1` appends on insertion and selects the last member for deletion. Deleting
+from an empty sequence at `-1` leaves the revision unchanged. Other invalid
+indices return `IndexSize` before creating or removing a node.
+
+Inserting a row into an empty Table without a tbody first inserts the row
+into a newly created body, then appends that body to the Table in the same
+Source. The output identifies the original row. Creation uses the receiver's
+document and its qualified Global. Tree hooks and deletion reactions use
+the same Source as ordinary native insertion and removal.
+
 [Pinned HTML Table algorithms](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-table-element) · [Source protocol](source-and-style.md).
 
 ## Owned snapshots

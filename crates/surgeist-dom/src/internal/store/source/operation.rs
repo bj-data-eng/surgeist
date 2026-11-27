@@ -2431,6 +2431,11 @@ impl DomSourceLease<'_> {
                                     action: crate::internal::compound::TablePartEdit::Create { .. },
                                     ..
                                 }
+                                | crate::internal::compound::Edit::TableStructure {
+                                    edit: crate::internal::compound::TableStructureEdit::CreateBody { .. }
+                                        | crate::internal::compound::TableStructureEdit::Insert { .. },
+                                    ..
+                                }
                         ) | Command::ProcessingInstructionAttribute {
                         edit:
                             crate::internal::source::DomProcessingInstructionAttributeEdit::Toggle { .. },

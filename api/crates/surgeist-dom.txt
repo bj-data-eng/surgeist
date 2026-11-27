@@ -3094,12 +3094,20 @@ pub fn surgeist_dom::source::DomSourceEdit::add_select_option(select: surgeist_d
 pub fn surgeist_dom::source::DomSourceEdit::after(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::append(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::before(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::create_html_table_body(table: surgeist_dom::identity::NodeId) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::create_html_table_body_in_attachment(table: surgeist_dom::identity::NodeId, fallback: surgeist_dom::script::DomCreationRealmFallback) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::create_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::create_html_table_part_in_attachment(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart, fallback: surgeist_dom::script::DomCreationRealmFallback) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::delete_html_table_cell(row: surgeist_dom::identity::NodeId, index: i32) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::delete_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::delete_html_table_row(receiver: surgeist_dom::identity::NodeId, index: i32) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::edit_text_selection(receiver: surgeist_dom::identity::NodeId, edit: surgeist_html::internal::elements::input::HtmlTextSelectionEdit) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::insert_adjacent_element(receiver: surgeist_dom::identity::NodeId, position: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, element: surgeist_dom::identity::NodeId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::insert_adjacent_text(element: surgeist_dom::identity::NodeId, position: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, data: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::insert_html_table_cell(row: surgeist_dom::identity::NodeId, index: i32) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::insert_html_table_cell_in_attachment(row: surgeist_dom::identity::NodeId, index: i32, fallback: surgeist_dom::script::DomCreationRealmFallback) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::insert_html_table_row(receiver: surgeist_dom::identity::NodeId, index: i32) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::insert_html_table_row_in_attachment(receiver: surgeist_dom::identity::NodeId, index: i32, fallback: surgeist_dom::script::DomCreationRealmFallback) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::prepend(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::remove_select_option(select: surgeist_dom::identity::NodeId, index: i32) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::replace_children(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
