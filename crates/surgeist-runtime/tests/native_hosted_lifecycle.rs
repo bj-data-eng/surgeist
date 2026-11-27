@@ -3017,18 +3017,18 @@ fn text_selection_uses_atomic_noncoalesced_user_interaction_tasks() {
     let mut session = session();
     let top = create(&mut session);
     let parent = body(&session.snapshot(), top.document());
-    let control = {
+    let (control, textarea) = {
         let mut batch = DomBatch::new();
         let control = batch.create_element_ns(top.document(), Namespace::html(), "input");
+        let textarea = batch.create_element_ns(top.document(), Namespace::html(), "textarea");
         batch.set_attribute(&control, "value", "abcdef");
         batch.insert_before(&control, parent, None);
-        session
-            .dom()
-            .apply(batch, &cancel())
-            .unwrap()
-            .created(&control)
-            .unwrap()
-            .unwrap()
+        batch.insert_before(&textarea, parent, None);
+        let commit = session.dom().apply(batch, &cancel()).unwrap();
+        (
+            commit.created(&control).unwrap().unwrap(),
+            commit.created(&textarea).unwrap().unwrap(),
+        )
     };
     let mut execution = session.source_execution();
     let mut tasks = session.element_task_execution();
@@ -3039,7 +3039,6 @@ fn text_selection_uses_atomic_noncoalesced_user_interaction_tasks() {
             ..task_limits
         })
         .unwrap();
-    let before = session.snapshot();
     let mut style_policy = |_: &DomStyleSource| None;
     let mut services = DomSourceServices {
         meta: None,
@@ -3048,6 +3047,20 @@ fn text_selection_uses_atomic_noncoalesced_user_interaction_tasks() {
         url: None,
     };
     let source = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1);
+    for (node, edit) in [(control, Edit::End(None)), (textarea, Edit::All)] {
+        let result = execution
+            .apply(
+                &mut session.dom(),
+                DomSourceEdit::edit_text_selection(node, edit),
+                source,
+                &mut services,
+                &cancel(),
+            )
+            .expect("an empty-range representation change does not need a task slot");
+        assert!(matches!(result, DomSourceDriveProgress::Complete(_)));
+    }
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+    let before = session.snapshot();
     let range = Edit::Range {
         start: 1,
         end: 3,

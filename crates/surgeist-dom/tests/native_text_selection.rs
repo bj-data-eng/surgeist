@@ -240,3 +240,89 @@ fn inapplicable_input_has_null_selection_without_dirtying_its_current_value() {
     assert!(!input.flags().dirty_value());
     assert_eq!(input.current_value(), &DocumentString::from("3"));
 }
+
+// Find the public admission boundary of the same literal operation. Each
+// refusal checks the original stamp, value, flags, usage, and operation owner.
+#[test]
+fn range_splice_refuses_one_short_of_its_source_work_or_retained_bytes() {
+    #[derive(Clone, Copy)]
+    enum Allowance {
+        Work,
+        Bytes,
+    }
+    let attempt = |allowance, limit| {
+        let (mut dom, node) = control("textarea", "a\r\nz".into());
+        let cancel = AtomicBool::new(false);
+        let before = dom.snapshot();
+        let usage = dom.usage();
+        let replacement = DocumentString::from_utf16(vec![0xd800; 257]);
+        let (retained_bytes, work) = match allowance {
+            Allowance::Work => (16_000_000, u64::try_from(limit).unwrap()),
+            Allowance::Bytes => (limit, 4_000_000),
+        };
+        let limits = DomSourceLimits::new(retained_bytes, 64_000, work, 64, 512, 512, 1);
+        let edit = DomSourceEdit::set_range_text(
+            node,
+            replacement,
+            Target::Offsets {
+                start: 1,
+                end: 2,
+                mode: Mode::Select,
+            },
+        );
+        let result = dom
+            .begin_source_edit(edit, limits, &cancel)
+            .and_then(|mut lease| lease.advance(&cancel));
+        assert!(dom.pending_source_edit().is_none());
+        let after = dom.snapshot();
+        let state = after.node(node).unwrap().as_textarea().unwrap().state();
+        match result {
+            Ok(DomSourceProgress::Complete(_)) => {
+                let actual = state.raw_value().code_units();
+                assert_eq!(actual.len(), 259);
+                assert_eq!(actual[0], 97);
+                assert!(actual[1..258].iter().all(|unit| *unit == 0xd800));
+                assert_eq!(actual[258], 122);
+                assert_eq!(
+                    state.selection().selection_range(),
+                    Some((1, 258, Direction::None))
+                );
+                assert!(state.flags().dirty_value());
+                true
+            }
+            Err(error) => {
+                let expected = match allowance {
+                    Allowance::Work => DomError::SourceWorkLimit { limit: work },
+                    Allowance::Bytes => DomError::ResourceLimit {
+                        resource: DomResource::SourceRetainedBytes,
+                        limit: retained_bytes,
+                    },
+                };
+                assert_eq!(error, expected);
+                assert_eq!(after.stamp(), before.stamp());
+                assert_eq!(dom.usage(), usage);
+                assert_eq!(state.raw_value().code_units(), [97, 13, 10, 122]);
+                assert_eq!(state.selection().cursor_position(), Some(0));
+                assert!(!state.flags().dirty_value());
+                false
+            }
+            Ok(progress) => panic!("unexpected native Source result: {progress:?}"),
+        }
+    };
+    for (allowance, mut accepted) in [(Allowance::Work, 4_000_000), (Allowance::Bytes, 16_000_000)]
+    {
+        assert!(attempt(allowance, accepted));
+        let mut refused = 1;
+        assert!(!attempt(allowance, refused));
+        while accepted - refused > 1 {
+            let midpoint = refused + (accepted - refused) / 2;
+            if attempt(allowance, midpoint) {
+                accepted = midpoint;
+            } else {
+                refused = midpoint;
+            }
+        }
+        assert!(!attempt(allowance, accepted - 1));
+        assert!(attempt(allowance, accepted));
+    }
+}
