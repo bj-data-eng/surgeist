@@ -1490,6 +1490,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_next_sibling_at_a_late_ordinal_admits_its_lookup() {
+        let cancel = AtomicBool::new(false);
+        let names = crate::internal::name_limits::DomNameLimits::new(
+            16_777_216, 16_384, 4_000_000, 1_048_576,
+        )
+        .unwrap();
+        let mut dom =
+            Dom::new(DomLimits::new(128, 4096, 512, 0, 0, 8, 100_000, names).unwrap()).unwrap();
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        let parent = batch.create_element(&document, "parent");
+        for _ in 0..64 {
+            let child = batch.create_comment(&document, "");
+            batch.insert_before(&child, &parent, None);
+        }
+        let target = batch.create_element(&document, "target");
+        let next = batch.create_element(&document, "next");
+        batch.insert_before(&target, &parent, None);
+        batch.insert_before(&next, &parent, None);
+        let commit = dom.apply(batch, &cancel).unwrap();
+        let target = Key::Existing(commit.created(&target).unwrap().unwrap());
+        let next = Key::Existing(commit.created(&next).unwrap().unwrap());
+        let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+        draft.source_limits = Some(crate::internal::source::DomSourceLimits::new(
+            16_000_000, 10_000, 1, 1, 1, 1, 1,
+        ));
+
+        assert_eq!(draft.next_sibling(target), Some(next));
+        assert_eq!(draft.source_work.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
     fn cancellation_during_common_descendant_insertion_keeps_publication_unchanged() {
         let mut dom = Dom::new(
             DomLimits::new(
