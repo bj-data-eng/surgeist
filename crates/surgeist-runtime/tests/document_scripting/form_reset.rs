@@ -221,3 +221,55 @@ pub(super) fn attached_form_reset_restores_all_native_families_before_face_callb
     );
     assert_eq!(observed, "ok");
 }
+
+pub(super) fn attached_form_reset_removes_a_real_hosted_output_child() {
+    let (session, top) = reset_session();
+    let mut host = attach_reset_guest(session, top, Arc::new(cancel()));
+    let permit = host.permit().unwrap();
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+                const add = (parent, tag) => parent.appendChild(document.createElement(tag));
+                const form = add(document.body, 'form');
+                const input = add(form, 'input');
+                input.defaultValue = 'input default';
+                input.value = 'input dirty';
+                const output = add(form, 'output');
+                output.defaultValue = 'output default';
+                output.value = 'output dirty';
+                const frame = add(output, 'iframe');
+                if (frame.contentWindow === null || frame.parentNode !== output)
+                    return 'hosted child setup';
+                let events = 0;
+                form.addEventListener('reset', () => { events++; });
+                globalThis.hostedFormReset = {form, input, output, frame, count: () => events};
+                return 'ok';
+            })()"#,
+        ),
+        "ok"
+    );
+    let before = host.snapshot().unwrap().stamp().revision().get();
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+                const {form, input, output, frame, count} = hostedFormReset;
+                form.reset();
+                if (count() !== 1 || input.value !== 'input default' || output.value !== 'output default')
+                    return 'reset state';
+                if (frame.parentNode !== null || frame.contentWindow !== null) return 'reached hosted removal';
+                return 'ok';
+            })()"#,
+        ),
+        "ok"
+    );
+    let after = host.snapshot().unwrap().stamp().revision().get();
+    assert_eq!(
+        after - before,
+        2,
+        "publish the lock, then all control resets together"
+    );
+}
