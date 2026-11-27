@@ -7,7 +7,10 @@ use crate::{
     internal::source::DomSourceEdit,
     internal::table_part::DomHtmlTablePart,
 };
-use surgeist_html::values::DocumentString;
+use surgeist_html::{
+    elements::input::{HtmlRangeTextTarget, HtmlTextSelectionEdit},
+    values::DocumentString,
+};
 
 /// An already converted Node-or-DOMString argument. Strings retain exact UTF-16.
 #[derive(Clone, Debug)]
@@ -45,10 +48,22 @@ pub(crate) enum TablePartEdit {
     },
 }
 #[derive(Clone, Debug)]
+pub(crate) enum TextSelectionEdit {
+    Selection(HtmlTextSelectionEdit),
+    RangeText {
+        target: HtmlRangeTextTarget,
+        replacement: DocumentString,
+    },
+}
+#[derive(Clone, Debug)]
 pub(crate) enum Edit {
     SelectOptions {
         select: NodeId,
         action: OptionsEdit,
+    },
+    TextSelection {
+        receiver: NodeId,
+        edit: TextSelectionEdit,
     },
     TablePart {
         table: NodeId,
@@ -85,7 +100,8 @@ impl Edit {
             Self::SelectOptions { select, .. } => *select,
             Self::TablePart { table, .. } => *table,
             Self::DocumentTitle { document, .. } => document.node(),
-            Self::Variadic { receiver, .. }
+            Self::TextSelection { receiver, .. }
+            | Self::Variadic { receiver, .. }
             | Self::TextContent { receiver, .. }
             | Self::AdjacentElement { receiver, .. }
             | Self::AdjacentText { receiver, .. } => *receiver,
@@ -93,6 +109,35 @@ impl Edit {
     }
 }
 impl DomSourceEdit {
+    /// Edit native selection in an Input or Textarea. Offsets are UTF-16 code
+    /// units. A reached event belongs to the original Source continuation.
+    pub fn edit_text_selection(receiver: NodeId, edit: HtmlTextSelectionEdit) -> Self {
+        Self {
+            command: Command::Compound(Edit::TextSelection {
+                receiver,
+                edit: TextSelectionEdit::Selection(edit),
+            }),
+        }
+    }
+
+    /// Replace text in a native Input or Textarea using its current selection
+    /// or an explicit UTF-16 range. The original Source owns the accepted
+    /// value, dirty state, selection and any reached event.
+    pub fn set_range_text(
+        receiver: NodeId,
+        replacement: impl Into<DocumentString>,
+        target: HtmlRangeTextTarget,
+    ) -> Self {
+        Self {
+            command: Command::Compound(Edit::TextSelection {
+                receiver,
+                edit: TextSelectionEdit::RangeText {
+                    target,
+                    replacement: replacement.into(),
+                },
+            }),
+        }
+    }
     /// Set the Select's options length through native insertion or removal.
     pub fn set_select_options_length(select: NodeId, length: u32) -> Self {
         Self::select_options_edit(select, OptionsEdit::Length(length))

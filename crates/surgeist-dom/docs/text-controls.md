@@ -68,7 +68,27 @@ Clone/import copies only raw and dirty into fresh native state before descendant
 ordinary descendant hooks still run. Adoption preserves current state, and
 retirement uses the existing canonical owner cleanup. Native fragment installation
 uses these same actual family/tree hooks. Parser-pop reset, user-edit events,
-selection events, whole-Form reset dispatch and submitted wrapping are separate
+whole-Form reset dispatch and submitted wrapping are separate
 boundaries; none is fabricated by native creation.
+
+## Native selection
+
+`DomSourceEdit::edit_text_selection` applies the shared selection commands to
+the current Input or Textarea. Offsets index UTF-16 code units. Textarea uses
+its newline-normalized API value for those offsets. The node Document's
+platform determines collapsed selection and default direction on a write.
+
+`DomSourceEdit::set_range_text` replaces the current selection or a pair of
+explicit offsets. It marks an applicable control dirty before checking explicit
+order. Reversed offsets complete with `IndexSize` and retain that dirty-state
+effect. The splice uses current value storage and immediately clamps the
+selection against the actual new value. The final explicit selection step
+compares extent and direction after that clamp.
+
+A changed selection with an original relevant Global reaches the hosted task
+bank through the same Source operation. Runtime admits the task before the
+selection publishes. Each occurrence fires a trusted bubbling `select` event
+on the user-interaction source. Native-only controls retain local selection
+without a Global's event queue.
 
 [Back to surgeist-dom](../README.md).

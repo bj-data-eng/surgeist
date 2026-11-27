@@ -424,6 +424,15 @@ pub(in crate::internal::store) fn commands(
         step()?;
         match command {
             Command::Compound(edit) => match edit {
+                crate::internal::compound::Edit::TextSelection { edit, .. } => {
+                    if let crate::internal::compound::TextSelectionEdit::RangeText {
+                        replacement,
+                        ..
+                    } = edit
+                    {
+                        payload.string(replacement)?;
+                    }
+                }
                 crate::internal::compound::Edit::TablePart { .. }
                 | crate::internal::compound::Edit::SelectOptions { .. } => {}
                 crate::internal::compound::Edit::Variadic { nodes, .. } => {

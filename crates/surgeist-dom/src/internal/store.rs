@@ -458,6 +458,7 @@ pub enum DomError {
         limit: u64,
     },
     InputFilenameInvalidState,
+    InputSelectionInvalidState,
     InputProcessingProtocol,
     InputProcessingWorkLimit {
         limit: u64,
@@ -505,6 +506,7 @@ pub enum DomError {
     EmbedSetupUnavailable,
     TrackMembershipUnavailable,
     ObjectTaskSourceUnavailable,
+    TextSelectionTaskSourceUnavailable,
     ObjectHostedTransitionUnavailable,
     ImageUpdateExhausted,
     HyperlinkProcessingUnavailable,
@@ -668,6 +670,7 @@ impl std::fmt::Display for DomError {
             Self::OutputProtocol(..) => f.write_str("the Output protocol was violated"),
             Self::TextareaReadWorkLimit { limit } => write!(f, "reading the Textarea exhausted its work allowance of {limit}"),
             Self::InputFilenameInvalidState => f.write_str("a file Input accepts only an empty string as its value"),
+            Self::InputSelectionInvalidState => f.write_str("positional selection does not apply to this Input type"),
             Self::InputProcessingProtocol => f.write_str("the Input processing protocol was violated"),
             Self::InputProcessingWorkLimit { limit } => write!(f, "Input processing exhausted its work allowance of {limit}"),
             Self::InputNumeric(..) => f.write_str("Input numeric processing failed"),
@@ -710,6 +713,7 @@ impl std::fmt::Display for DomError {
             Self::EmbedSetupUnavailable => f.write_str("the Embed element's hosted setup is unavailable"),
             Self::TrackMembershipUnavailable => f.write_str("the Track element's media membership is unavailable"),
             Self::ObjectTaskSourceUnavailable => f.write_str("the Object element's representation task source is unavailable"),
+            Self::TextSelectionTaskSourceUnavailable => f.write_str("the text control's select event task source is unavailable"),
             Self::ObjectHostedTransitionUnavailable => f.write_str("the Object element's reached hosted representation transition is unavailable"),
             Self::ImageUpdateExhausted => f.write_str("no image update identities remain"),
             Self::HyperlinkProcessingUnavailable => f.write_str("hyperlink processing is unavailable for this operation"),
@@ -947,6 +951,7 @@ impl std::error::Error for DomError {
             | Self::OutputInapplicable
             | Self::TextareaReadWorkLimit { .. }
             | Self::InputFilenameInvalidState
+            | Self::InputSelectionInvalidState
             | Self::InputProcessingProtocol
             | Self::InputProcessingWorkLimit { .. }
             | Self::InputColorUnavailable(..)
@@ -981,6 +986,7 @@ impl std::error::Error for DomError {
             | Self::EmbedSetupUnavailable
             | Self::TrackMembershipUnavailable
             | Self::ObjectTaskSourceUnavailable
+            | Self::TextSelectionTaskSourceUnavailable
             | Self::ObjectHostedTransitionUnavailable
             | Self::ImageUpdateExhausted
             | Self::HyperlinkProcessingUnavailable
@@ -3136,7 +3142,7 @@ struct Draft {
     details_intentions: transaction::queues::Details,
     cancelled_details: transaction::queues::CancelledDetails,
     cancelled_images: Option<select::ScratchVec<image::Cancelled>>,
-    object_tasks: Option<select::ScratchVec<object::Pending>>,
+    final_element_tasks: Option<select::ScratchVec<source::operation::element_queue::Pending>>,
     object_changes: bool,
     effects: Vec<select::EffectFrame>,
     effects_charge: custody::Debit,
@@ -3662,7 +3668,7 @@ impl Draft {
             details_intentions,
             cancelled_details,
             cancelled_images: None,
-            object_tasks: None,
+            final_element_tasks: None,
             object_changes: false,
             effects: Vec::new(),
             effects_charge,

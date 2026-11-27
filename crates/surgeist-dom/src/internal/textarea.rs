@@ -236,7 +236,7 @@ pub(crate) fn output(
 ) -> Result<Vec<u16>, DomError> {
     crate::internal::store::source::formation::utf16_buffer(length, limit, budget, cancel)
 }
-fn visit_normalized_units<E, Step: FnMut() -> Result<(), E>>(
+pub(crate) fn visit_normalized_units<E, Step: FnMut() -> Result<(), E>>(
     raw: &[u16],
     mut step: Step,
     mut visit: impl FnMut(u16, &mut Step) -> Result<(), E>,

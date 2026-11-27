@@ -2148,6 +2148,7 @@ enum EventData {
     StyleLoad,
     StyleError,
     DialogClose,
+    TextSelection,
     DialogCancel {
         cancelable: bool,
     },
@@ -2188,6 +2189,7 @@ pub(crate) enum NativeEventCause {
     DialogToggle,
     DialogCancel,
     DialogClose,
+    TextSelection,
     SignalAbort,
     #[cfg(feature = "document-scripting")]
     CspViolation,
@@ -2203,6 +2205,7 @@ impl NativeEventCause {
             Self::DialogBeforeToggle => DomEventType::BEFORE_TOGGLE,
             Self::DialogCancel => DomEventType::CANCEL,
             Self::DialogClose => DomEventType::CLOSE,
+            Self::TextSelection => DomEventType::SELECT,
             Self::SignalAbort => DomEventType::ABORT,
             #[cfg(feature = "document-scripting")]
             Self::CspViolation => DomEventType::CSP_VIOLATION,
@@ -2833,6 +2836,14 @@ impl EventInvocationOwner {
                 EventPayload::None,
                 default_init,
             ),
+            EventData::TextSelection => (
+                NativeEventCause::TextSelection,
+                EventPayload::None,
+                DomEventInit {
+                    bubbles: true,
+                    ..default_init
+                },
+            ),
             EventData::DialogCancel { cancelable } => (
                 NativeEventCause::DialogCancel,
                 EventPayload::None,
@@ -3215,6 +3226,14 @@ impl NativeDomEvent {
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
         EventInvocationOwner::new(target, EventData::DialogClose, creation, backing)
+    }
+
+    pub(crate) fn text_selection(
+        target: NodeId,
+        creation: Result<EventCreation, DomEventTimestampUnavailable>,
+        backing: EventBodyCustody,
+    ) -> EventInvocationOwner {
+        EventInvocationOwner::new(target, EventData::TextSelection, creation, backing)
     }
 
     /// Actual null-source Dialog toggle task payload, including equal states.

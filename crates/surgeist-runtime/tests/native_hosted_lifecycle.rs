@@ -3007,6 +3007,386 @@ fn retiring_object_cannot_retarget_its_queued_task() {
 }
 
 #[test]
+fn text_selection_uses_atomic_noncoalesced_user_interaction_tasks() {
+    use surgeist_dom::task::DomElementTaskSourceKind::UserInteraction;
+    use surgeist_html::elements::input::{
+        HtmlInputSelectionDirection as Direction, HtmlTextSelectionEdit as Edit,
+    };
+    use surgeist_runtime::source::{DomSourceDriveError, DomSourceRuntimeError};
+
+    let mut session = session();
+    let top = create(&mut session);
+    let parent = body(&session.snapshot(), top.document());
+    let control = {
+        let mut batch = DomBatch::new();
+        let control = batch.create_element_ns(top.document(), Namespace::html(), "input");
+        batch.set_attribute(&control, "value", "abcdef");
+        batch.insert_before(&control, parent, None);
+        session
+            .dom()
+            .apply(batch, &cancel())
+            .unwrap()
+            .created(&control)
+            .unwrap()
+            .unwrap()
+    };
+    let mut execution = session.source_execution();
+    let mut tasks = session.element_task_execution();
+    let task_limits = limits().element_tasks;
+    tasks
+        .set_limits(DomElementTaskRuntimeLimits {
+            tasks: 0,
+            ..task_limits
+        })
+        .unwrap();
+    let before = session.snapshot();
+    let mut style_policy = |_: &DomStyleSource| None;
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut style_policy,
+        url: None,
+    };
+    let source = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1);
+    let range = Edit::Range {
+        start: 1,
+        end: 3,
+        direction: Direction::Backward,
+    };
+    assert!(matches!(
+        execution.apply(
+            &mut session.dom(),
+            DomSourceEdit::edit_text_selection(control, range),
+            source,
+            &mut services,
+            &cancel(),
+        ),
+        Err(DomSourceDriveError::Source(
+            DomSourceRuntimeError::ElementTasks(DomElementTaskRuntimeError::Admission)
+        )),
+    ));
+    assert_eq!(session.snapshot().stamp(), before.stamp());
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+    let operation = session.dom().pending_source_edit().unwrap().operation();
+    tasks.set_limits(task_limits).unwrap();
+    let DomSourceDriveProgress::Complete(completion) = execution
+        .resume(
+            &mut session.dom(),
+            operation,
+            source,
+            &mut services,
+            &cancel(),
+        )
+        .unwrap()
+    else {
+        panic!("the original selection must complete with its admitted task")
+    };
+    assert_eq!(completion.operation(), operation);
+    assert_eq!(
+        session
+            .snapshot()
+            .node(control)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .state()
+            .selection()
+            .unwrap()
+            .selection_range(),
+        Some((1, 3, Direction::Backward)),
+    );
+    let after_first = session.snapshot().stamp();
+    tasks
+        .set_limits(DomElementTaskRuntimeLimits {
+            tasks: 1,
+            ..task_limits
+        })
+        .unwrap();
+    assert!(matches!(
+        execution.apply(
+            &mut session.dom(),
+            DomSourceEdit::edit_text_selection(control, Edit::Direction(Direction::Forward)),
+            source,
+            &mut services,
+            &cancel(),
+        ),
+        Err(DomSourceDriveError::Source(
+            DomSourceRuntimeError::ElementTasks(DomElementTaskRuntimeError::Admission)
+        )),
+    ));
+    let abandoned = session.dom().pending_source_edit().unwrap().operation();
+    execution
+        .cancel_pending_element_task_admission(&mut session.dom(), abandoned)
+        .unwrap();
+    assert_eq!(session.snapshot().stamp(), after_first);
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 1);
+    tasks.set_limits(task_limits).unwrap();
+    for edit in [range, Edit::Direction(Direction::Forward)] {
+        let result = execution
+            .apply(
+                &mut session.dom(),
+                DomSourceEdit::edit_text_selection(control, edit),
+                source,
+                &mut services,
+                &cancel(),
+            )
+            .unwrap();
+        assert!(matches!(result, DomSourceDriveProgress::Complete(_)));
+        if edit == range {
+            assert_eq!(session.snapshot().stamp(), after_first);
+            assert_eq!(tasks.pending_total_tasks().unwrap(), 1);
+        }
+    }
+    let first = tasks.pending_task(UserInteraction, 0).unwrap().unwrap();
+    let second = tasks.pending_task(UserInteraction, 1).unwrap().unwrap();
+    assert_ne!(first.id(), second.id());
+    assert_eq!(first.id().target(), control);
+    assert_eq!(first.queue_association().unwrap().global(), top.global());
+    assert_eq!(second.queue_association(), first.queue_association());
+    assert_pending_text_selection_dispatch(
+        &mut session,
+        tasks,
+        parent,
+        control,
+        [first, second],
+        source,
+    );
+}
+
+fn assert_pending_text_selection_dispatch(
+    session: &mut DomSession,
+    tasks: DomElementTaskRuntime,
+    parent: NodeId,
+    control: NodeId,
+    queued: [surgeist_runtime::element_task::DomElementTask; 2],
+    source: DomSourceLimits,
+) {
+    use surgeist_dom::task::DomElementTaskSourceKind::UserInteraction;
+
+    let mut registry = registry();
+    let mut context = Context {
+        element_tasks: tasks.clone(),
+        seen: Vec::new(),
+    };
+    for (node, label) in [(control, "control"), (parent, "ancestor")] {
+        registry
+            .add_listener(
+                &mut session.dom(),
+                DomEventTarget::Node(node),
+                DomEventType::SELECT,
+                DomEventCallback::new(move |_, _, context: &mut Context, event| {
+                    assert!(event.is_trusted());
+                    assert!(event.bubbles());
+                    assert!(!event.cancelable());
+                    assert!(!event.composed());
+                    assert_eq!(event.target(), Some(DomEventTarget::Node(control)));
+                    assert_eq!(event.current_target(), Some(DomEventTarget::Node(node)));
+                    context.seen.push(Observation {
+                        label,
+                        current: event.current_target(),
+                        target: event.target().and_then(|target| target.node()),
+                        phase: event.phase(),
+                        payload: event.toggle_event().cloned(),
+                        bubbles: event.bubbles(),
+                    });
+                    Ok(())
+                }),
+                DomEventListenerOptions {
+                    capture: false,
+                    once: false,
+                    passive: None,
+                },
+            )
+            .unwrap();
+    }
+    let mut change = DomBatch::new();
+    change.set_attribute(control, "type", "number");
+    session.dom().apply(change, &cancel()).unwrap();
+    assert!(
+        session
+            .snapshot()
+            .node(control)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .state()
+            .selection()
+            .is_none()
+    );
+    assert!(context.seen.is_empty());
+    for occurrence in queued {
+        let run = DomElementTaskRuntime::run_next(
+            &mut session.dom(),
+            UserInteraction,
+            &mut registry,
+            &mut context,
+            DomElementTaskRunLimits {
+                dispatch: event_limits(),
+                source,
+            },
+            &cancel(),
+        )
+        .unwrap();
+        assert!(matches!(run, DomElementTaskProgress::Complete { task, .. } if task == occurrence));
+    }
+    assert_eq!(
+        context
+            .seen
+            .iter()
+            .map(|event| (event.label, event.phase))
+            .collect::<Vec<_>>(),
+        [
+            ("control", DomEventPhase::AtTarget),
+            ("ancestor", DomEventPhase::Bubbling),
+            ("control", DomEventPhase::AtTarget),
+            ("ancestor", DomEventPhase::Bubbling),
+        ],
+    );
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+}
+
+#[test]
+fn select_listener_queues_an_original_range_edit_and_retirement_skips_its_task() {
+    use std::cell::RefCell;
+    use surgeist_dom::task::DomElementTaskSourceKind::UserInteraction;
+    use surgeist_html::elements::input::{
+        HtmlRangeTextMode as Mode, HtmlRangeTextTarget as Target, HtmlTextSelectionEdit as Edit,
+    };
+
+    let mut session = session();
+    let top = create(&mut session);
+    let parent = body(&session.snapshot(), top.document());
+    let mut batch = DomBatch::new();
+    let control = batch.create_element_ns(top.document(), Namespace::html(), "input");
+    batch.set_attribute(&control, "value", "abcd");
+    batch.insert_before(&control, parent, None);
+    let commit = session.dom().apply(batch, &cancel()).unwrap();
+    let control = commit.created(&control).unwrap().unwrap();
+    let tasks = session.element_task_execution();
+    let execution = RefCell::new(session.source_execution());
+    let source = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1);
+    let apply = move |dom: &mut DomEventDom<'_>, edit| {
+        let mut style_policy = |_: &DomStyleSource| None;
+        let mut services = DomSourceServices {
+            meta: None,
+            execution_scope: None,
+            style_policy: &mut style_policy,
+            url: None,
+        };
+        assert!(matches!(
+            execution
+                .borrow_mut()
+                .apply(dom, edit, source, &mut services, &cancel())
+                .unwrap(),
+            DomSourceDriveProgress::Complete(_),
+        ));
+    };
+    apply(
+        &mut session.dom(),
+        DomSourceEdit::edit_text_selection(control, Edit::All),
+    );
+    let first = tasks.pending_task(UserInteraction, 0).unwrap().unwrap();
+    let mut registry = registry();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            DomEventTarget::Node(control),
+            DomEventType::SELECT,
+            DomEventCallback::new(move |dom, _, context: &mut Context, event| {
+                assert!(context.seen.is_empty());
+                assert!(event.is_trusted());
+                apply(
+                    dom,
+                    DomSourceEdit::set_range_text(
+                        control,
+                        "",
+                        Target::Offsets {
+                            start: 2,
+                            end: 4,
+                            mode: Mode::Preserve,
+                        },
+                    ),
+                );
+                apply(
+                    dom,
+                    DomSourceEdit::set_range_text(
+                        control,
+                        "Z",
+                        Target::Offsets {
+                            start: 0,
+                            end: 1,
+                            mode: Mode::Select,
+                        },
+                    ),
+                );
+                context.seen.push(Observation {
+                    label: "selection",
+                    current: event.current_target(),
+                    target: event.target().and_then(|target| target.node()),
+                    phase: event.phase(),
+                    payload: None,
+                    bubbles: event.bubbles(),
+                });
+                Ok(())
+            }),
+            DomEventListenerOptions {
+                capture: false,
+                once: false,
+                passive: None,
+            },
+        )
+        .unwrap();
+    let mut context = Context {
+        element_tasks: tasks.clone(),
+        seen: Vec::new(),
+    };
+    let mut run = |session: &mut DomSession, context: &mut Context| {
+        DomElementTaskRuntime::run_next(
+            &mut session.dom(),
+            UserInteraction,
+            &mut registry,
+            context,
+            DomElementTaskRunLimits {
+                dispatch: event_limits(),
+                source,
+            },
+            &cancel(),
+        )
+        .unwrap()
+    };
+    assert!(
+        matches!(run(&mut session, &mut context), DomElementTaskProgress::Complete { task, .. } if task == first)
+    );
+    let historical = session.snapshot();
+    assert_eq!(
+        historical
+            .node(control)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .value(),
+        [90, 98]
+    );
+    // The preserve edit's final range already matched the value-change
+    // clamp. Only the second edit changed selection in the explicit step.
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 1);
+    let followup = tasks.pending_task(UserInteraction, 0).unwrap().unwrap();
+    assert_ne!(followup.id(), first.id());
+    assert_eq!(followup.id().target(), control);
+    let mut retire = DomBatch::new();
+    retire.detach(control);
+    retire.destroy(control);
+    session.dom().apply(retire, &cancel()).unwrap();
+    assert!(matches!(
+        run(&mut session, &mut context),
+        DomElementTaskProgress::SkippedTargetDestroyed(task) if task == followup,
+    ));
+    assert_eq!(context.seen.len(), 1);
+    assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+    assert!(historical.node(control).is_ok());
+}
+
+#[test]
 fn a_full_element_task_bank_refuses_object_before_publishing_and_retries_the_original_edit() {
     use surgeist_runtime::source::{DomSourceDriveError, DomSourceRuntimeError};
 
@@ -3087,7 +3467,7 @@ fn a_full_element_task_bank_refuses_object_before_publishing_and_retries_the_ori
     ));
     let unpublished = session.dom().pending_source_edit().unwrap().operation();
     execution
-        .cancel_pending_object_admission(&mut session.dom(), unpublished)
+        .cancel_pending_element_task_admission(&mut session.dom(), unpublished)
         .unwrap();
     assert!(session.dom().pending_source_edit().is_none());
     assert_eq!(session.snapshot().stamp(), before_second.stamp());

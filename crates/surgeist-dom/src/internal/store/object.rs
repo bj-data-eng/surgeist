@@ -1,21 +1,14 @@
 //! Reached Object representation occurrences in an unpublished Draft.
 
-use super::source::operation::object_queue::DomObjectRepresentationTask;
+use super::source::operation::element_queue::{DomObjectRepresentationTask, Kind, Pending};
 use super::*;
-use crate::internal::{details::DomElementTaskAssociation, name::DomQualifiedName};
+use crate::internal::name::DomQualifiedName;
 use surgeist_html::{
     elements::object::{
         HtmlObjectResourceAttribute as Attribute, HtmlObjectResourcePrecedence as Precedence,
     },
     vocabulary::KnownHtmlAttribute,
 };
-
-#[derive(Clone, Copy)]
-pub(super) struct Pending {
-    pub(super) target: Key,
-    pub(super) association: DomElementTaskAssociation,
-    pub(super) node_document: Key,
-}
 
 pub(super) fn resource_attribute_with(
     name: &DomQualifiedName,
@@ -387,20 +380,14 @@ impl Draft {
         if self.published_id(node_document).is_none() {
             return Err(DomError::ObjectHostedTransitionUnavailable);
         }
-        let mut tasks = self
-            .object_tasks
-            .take()
-            .unwrap_or_else(|| self.effect_vec());
-        let admission = self.select_reserve(&mut tasks, 1, cancel);
-        if admission.is_ok() {
-            tasks.push(Pending {
+        self.queue_final_element_task(
+            Pending {
                 target: key,
                 association,
-                node_document,
-            });
-        }
-        self.object_tasks = Some(tasks);
-        admission?;
+                kind: Kind::ObjectRepresentation { node_document },
+            },
+            cancel,
+        )?;
         self.object_changes = true;
         Ok(())
     }

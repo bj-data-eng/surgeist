@@ -3056,12 +3056,12 @@ pub surgeist_dom::source::DomSourceRequest::CustomElementConstruction(surgeist_d
 pub surgeist_dom::source::DomSourceRequest::DesignMode(surgeist_dom::range::DomSourceDesignModeRequest)
 pub surgeist_dom::source::DomSourceRequest::Dialog(surgeist_dom::dialog::DomSourceDialogRequest)
 pub surgeist_dom::source::DomSourceRequest::DialogFocusing(surgeist_dom::focus::DomSourceDialogFocusingRequest)
+pub surgeist_dom::source::DomSourceRequest::ElementTaskQueue(surgeist_dom::task::DomSourceElementTaskQueueRequest)
 pub surgeist_dom::source::DomSourceRequest::Event(surgeist_dom::event::DomSourceEventRequest)
 pub surgeist_dom::source::DomSourceRequest::FocusDelegate(surgeist_dom::focus::DomSourceFocusDelegateRequest)
 pub surgeist_dom::source::DomSourceRequest::FullscreenExitHandoff(surgeist_dom::fullscreen::DomSourceFullscreenExitHandoffRequest)
 pub surgeist_dom::source::DomSourceRequest::HostedChild(surgeist_dom::hosted::child::DomHostedChildRequest)
 pub surgeist_dom::source::DomSourceRequest::MetaCsp(surgeist_dom::meta::DomSourceMetaCspRequest)
-pub surgeist_dom::source::DomSourceRequest::ObjectTaskQueue(surgeist_dom::task::DomObjectTaskQueueRequest)
 pub surgeist_dom::source::DomSourceRequest::Script(surgeist_dom::script::DomSourceScriptRequest)
 pub surgeist_dom::source::DomSourceRequest::Style(surgeist_dom::style::DomStyleRequest)
 pub enum surgeist_dom::source::DomSourceStoppedAction
@@ -3097,6 +3097,7 @@ pub fn surgeist_dom::source::DomSourceEdit::before(node: surgeist_dom::identity:
 pub fn surgeist_dom::source::DomSourceEdit::create_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::create_html_table_part_in_attachment(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart, fallback: surgeist_dom::script::DomCreationRealmFallback) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::delete_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::edit_text_selection(receiver: surgeist_dom::identity::NodeId, edit: surgeist_html::internal::elements::input::HtmlTextSelectionEdit) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::insert_adjacent_element(receiver: surgeist_dom::identity::NodeId, position: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, element: surgeist_dom::identity::NodeId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::insert_adjacent_text(element: surgeist_dom::identity::NodeId, position: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, data: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::prepend(parent: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
@@ -3105,6 +3106,7 @@ pub fn surgeist_dom::source::DomSourceEdit::replace_children(parent: surgeist_do
 pub fn surgeist_dom::source::DomSourceEdit::replace_with(node: surgeist_dom::identity::NodeId, nodes: alloc::vec::Vec<surgeist_dom::edit::DomNodeOrString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_document_title(document: surgeist_dom::identity::DocumentId, value: surgeist_html::internal::values::document_string::DocumentString) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_html_table_part(table: surgeist_dom::identity::NodeId, part: surgeist_dom::tree::DomHtmlTablePart, value: core::option::Option<surgeist_dom::identity::NodeId>) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::set_range_text(receiver: surgeist_dom::identity::NodeId, replacement: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>, target: surgeist_html::internal::elements::input_selection::HtmlRangeTextTarget) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_select_option_at(select: surgeist_dom::identity::NodeId, index: u32, value: core::option::Option<surgeist_dom::identity::NodeId>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_select_options_length(select: surgeist_dom::identity::NodeId, length: u32) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_text_content(node: surgeist_dom::identity::NodeId, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
@@ -3329,8 +3331,8 @@ impl<'dom> surgeist_dom::source::DomSourceLease<'dom>
 pub fn surgeist_dom::source::DomSourceLease<'dom>::commit_fullscreen_exit_handoff_with_inline_styles(&mut self, request: &surgeist_dom::fullscreen::DomSourceFullscreenExitHandoffRequest, source: &surgeist_dom::hosted::DomHostedSource, resolver: impl core::ops::function::FnMut(&[surgeist_cssom::declaration_support::CssomDeclarationCandidate], &surgeist_cssom::model::CssomContext) -> core::result::Result<surgeist_cssom::object_declarations::CssomAdmission, surgeist_cssom::model::CssomError>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(surgeist_dom::fullscreen::DomFullscreenExitJob, core::option::Option<surgeist_dom::style::inline::DomInlineStyleSourcePublication>), surgeist_dom::style::inline::DomInlineStyleError>
 pub fn surgeist_dom::source::DomSourceLease<'dom>::prepare_fullscreen_exit_handoff<'a>(&'a mut self, request: &surgeist_dom::fullscreen::DomSourceFullscreenExitHandoffRequest, source: &surgeist_dom::hosted::DomHostedSource, cancel: &'a core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::fullscreen::DomFullscreenExitHandoffCommit<'a, 'dom>, surgeist_dom::DomError>
 impl<'dom> surgeist_dom::source::DomSourceLease<'dom>
-pub fn surgeist_dom::source::DomSourceLease<'dom>::object_task_prior_details<'snapshot>(&self, request: surgeist_dom::task::DomObjectTaskQueueRequest, snapshot: &'snapshot surgeist_dom::DomSnapshot) -> core::result::Result<&'snapshot [surgeist_dom::details::DomDetailsToggleIntention], surgeist_dom::DomError>
-pub fn surgeist_dom::source::DomSourceLease<'dom>::prepare_object_task_queue<'a>(&'a mut self, request: surgeist_dom::task::DomObjectTaskQueueRequest, source: &surgeist_dom::task::DomElementTaskSource, first_serial: u64, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::task::DomObjectTaskQueueCommit<'a, 'dom>, surgeist_dom::DomError>
+pub fn surgeist_dom::source::DomSourceLease<'dom>::element_task_prior_details<'snapshot>(&self, request: surgeist_dom::task::DomSourceElementTaskQueueRequest, snapshot: &'snapshot surgeist_dom::DomSnapshot) -> core::result::Result<&'snapshot [surgeist_dom::details::DomDetailsToggleIntention], surgeist_dom::DomError>
+pub fn surgeist_dom::source::DomSourceLease<'dom>::prepare_element_task_queue<'a>(&'a mut self, request: surgeist_dom::task::DomSourceElementTaskQueueRequest, source: &surgeist_dom::task::DomElementTaskSource, first_serial: u64, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::task::DomSourceElementTaskQueueCommit<'a, 'dom>, surgeist_dom::DomError>
 impl core::ops::drop::Drop for surgeist_dom::source::DomSourceLease<'_>
 pub fn surgeist_dom::source::DomSourceLease<'_>::drop(&mut self)
 pub struct surgeist_dom::source::DomSourceLimits
@@ -3621,6 +3623,12 @@ pub surgeist_dom::task::DomNativeCheckpoint::ChildList(surgeist_dom::edit::DomCh
 pub surgeist_dom::task::DomNativeCheckpoint::Idle
 pub surgeist_dom::task::DomNativeCheckpoint::Select(surgeist_dom::form::select::DomSelectTask)
 pub surgeist_dom::task::DomNativeCheckpoint::Slots(surgeist_dom::shadow::DomSlotNotifications)
+pub enum surgeist_dom::task::DomQueuedSourceElementTask
+pub surgeist_dom::task::DomQueuedSourceElementTask::ObjectRepresentation(surgeist_dom::task::DomObjectRepresentationTask)
+pub surgeist_dom::task::DomQueuedSourceElementTask::TextSelection(surgeist_dom::task::DomTextSelectionTaskInfo)
+pub enum surgeist_dom::task::DomSourceElementTaskInfo
+pub surgeist_dom::task::DomSourceElementTaskInfo::ObjectRepresentation(surgeist_dom::task::DomObjectRepresentationTaskInfo)
+pub surgeist_dom::task::DomSourceElementTaskInfo::TextSelection(surgeist_dom::task::DomTextSelectionTaskInfo)
 pub struct surgeist_dom::task::DomElementTaskAssociation
 impl surgeist_dom::task::DomElementTaskAssociation
 pub const fn surgeist_dom::task::DomElementTaskAssociation::document(self) -> surgeist_dom::identity::DocumentId
@@ -3657,21 +3665,25 @@ impl surgeist_dom::task::DomObjectRepresentationTaskInfo
 pub const fn surgeist_dom::task::DomObjectRepresentationTaskInfo::id(self) -> surgeist_dom::task::DomElementTaskId
 pub const fn surgeist_dom::task::DomObjectRepresentationTaskInfo::queue_association(self) -> surgeist_dom::task::DomElementTaskAssociation
 pub const fn surgeist_dom::task::DomObjectRepresentationTaskInfo::queued_node_document(self) -> surgeist_dom::identity::DocumentId
-pub struct surgeist_dom::task::DomObjectTaskQueueCommit<'a, 'dom>
-impl surgeist_dom::task::DomObjectTaskQueueCommit<'_, '_>
-pub fn surgeist_dom::task::DomObjectTaskQueueCommit<'_, '_>::publish(self) -> core::result::Result<(surgeist_dom::source::DomSourceCompletion, surgeist_dom::task::DomQueuedObjectTasks), surgeist_dom::DomError>
-pub fn surgeist_dom::task::DomObjectTaskQueueCommit<'_, '_>::tasks(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_dom::task::DomObjectRepresentationTaskInfo> + '_
-impl core::ops::drop::Drop for surgeist_dom::task::DomObjectTaskQueueCommit<'_, '_>
-pub fn surgeist_dom::task::DomObjectTaskQueueCommit<'_, '_>::drop(&mut self)
-pub struct surgeist_dom::task::DomObjectTaskQueueRequest
-impl surgeist_dom::task::DomObjectTaskQueueRequest
-pub const fn surgeist_dom::task::DomObjectTaskQueueRequest::count(self) -> usize
-pub struct surgeist_dom::task::DomQueuedObjectTasks
-impl core::iter::traits::exact_size::ExactSizeIterator for surgeist_dom::task::DomQueuedObjectTasks
-impl core::iter::traits::iterator::Iterator for surgeist_dom::task::DomQueuedObjectTasks
-pub type surgeist_dom::task::DomQueuedObjectTasks::Item = surgeist_dom::task::DomObjectRepresentationTask
-pub fn surgeist_dom::task::DomQueuedObjectTasks::next(&mut self) -> core::option::Option<Self::Item>
-pub fn surgeist_dom::task::DomQueuedObjectTasks::size_hint(&self) -> (usize, core::option::Option<usize>)
+pub struct surgeist_dom::task::DomQueuedSourceElementTasks
+impl core::iter::traits::exact_size::ExactSizeIterator for surgeist_dom::task::DomQueuedSourceElementTasks
+impl core::iter::traits::iterator::Iterator for surgeist_dom::task::DomQueuedSourceElementTasks
+pub type surgeist_dom::task::DomQueuedSourceElementTasks::Item = surgeist_dom::task::DomQueuedSourceElementTask
+pub fn surgeist_dom::task::DomQueuedSourceElementTasks::next(&mut self) -> core::option::Option<Self::Item>
+pub fn surgeist_dom::task::DomQueuedSourceElementTasks::size_hint(&self) -> (usize, core::option::Option<usize>)
+pub struct surgeist_dom::task::DomSourceElementTaskQueueCommit<'a, 'dom>
+impl surgeist_dom::task::DomSourceElementTaskQueueCommit<'_, '_>
+pub fn surgeist_dom::task::DomSourceElementTaskQueueCommit<'_, '_>::publish(self) -> core::result::Result<(surgeist_dom::source::DomSourceCompletion, surgeist_dom::task::DomQueuedSourceElementTasks), surgeist_dom::DomError>
+pub fn surgeist_dom::task::DomSourceElementTaskQueueCommit<'_, '_>::tasks(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_dom::task::DomSourceElementTaskInfo> + '_
+impl core::ops::drop::Drop for surgeist_dom::task::DomSourceElementTaskQueueCommit<'_, '_>
+pub fn surgeist_dom::task::DomSourceElementTaskQueueCommit<'_, '_>::drop(&mut self)
+pub struct surgeist_dom::task::DomSourceElementTaskQueueRequest
+impl surgeist_dom::task::DomSourceElementTaskQueueRequest
+pub const fn surgeist_dom::task::DomSourceElementTaskQueueRequest::count(self) -> usize
+pub struct surgeist_dom::task::DomTextSelectionTaskInfo
+impl surgeist_dom::task::DomTextSelectionTaskInfo
+pub const fn surgeist_dom::task::DomTextSelectionTaskInfo::id(self) -> surgeist_dom::task::DomElementTaskId
+pub const fn surgeist_dom::task::DomTextSelectionTaskInfo::queue_association(self) -> surgeist_dom::task::DomElementTaskAssociation
 pub mod surgeist_dom::tree
 pub enum surgeist_dom::tree::DomAttributeAttachment
 pub surgeist_dom::tree::DomAttributeAttachment::Appended(surgeist_dom::identity::DomAttrId)
@@ -4454,6 +4466,7 @@ pub surgeist_dom::DomError::InputNumeric(surgeist_html::internal::microsyntax::n
 pub surgeist_dom::DomError::InputProcessingProtocol
 pub surgeist_dom::DomError::InputProcessingWorkLimit
 pub surgeist_dom::DomError::InputProcessingWorkLimit::limit: u64
+pub surgeist_dom::DomError::InputSelectionInvalidState
 pub surgeist_dom::DomError::InvalidAdjacentPosition
 pub surgeist_dom::DomError::InvalidCharacter
 pub surgeist_dom::DomError::InvalidDestruction
@@ -4571,6 +4584,7 @@ pub surgeist_dom::DomError::StyleProtocol
 pub surgeist_dom::DomError::StyleReceiptMismatch
 pub surgeist_dom::DomError::SvgScriptProcessingUnavailable
 pub surgeist_dom::DomError::TemplateContentsUnavailable
+pub surgeist_dom::DomError::TextSelectionTaskSourceUnavailable
 pub surgeist_dom::DomError::TextareaInapplicable
 pub surgeist_dom::DomError::TextareaReadWorkLimit
 pub surgeist_dom::DomError::TextareaReadWorkLimit::limit: u64
@@ -4715,7 +4729,7 @@ pub fn surgeist_dom::Dom::raise_source_attribute_limits(&mut self, request: surg
 pub fn surgeist_dom::Dom::retain_source_attribute_callback_units(&self, request: surgeist_dom::source::attribute::DomSourceAttributeVerificationRequest, registration: &surgeist_dom::script::DomDocumentScriptRegistration, units: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::source::attribute::DomSourceAttributePayloadRetention, surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::source_attribute_callback_step(&self, request: surgeist_dom::source::attribute::DomSourceAttributeVerificationRequest, registration: &surgeist_dom::script::DomDocumentScriptRegistration, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::DomError>
 impl surgeist_dom::Dom
-pub fn surgeist_dom::Dom::cancel_pending_object_admission(&mut self, operation: surgeist_dom::source::DomSourceOperationId) -> core::result::Result<(), surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::cancel_pending_element_task_admission(&mut self, operation: surgeist_dom::source::DomSourceOperationId) -> core::result::Result<(), surgeist_dom::DomError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::capture_inline_style(&self, element: surgeist_dom::identity::NodeId) -> core::result::Result<core::option::Option<surgeist_dom::style::inline::DomInlineStyleCapture>, surgeist_dom::style::inline::DomInlineStyleError>
 pub fn surgeist_dom::Dom::configure_inline_styles(&mut self, limits: surgeist_dom::style::inline::DomInlineStyleLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::style::inline::DomInlineStyleError>

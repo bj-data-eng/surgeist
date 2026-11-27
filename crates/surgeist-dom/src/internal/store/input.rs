@@ -90,7 +90,7 @@ impl Draft {
             .input_state()
             .ok_or(DomError::InputInapplicable)
     }
-    fn with_input_state<R>(
+    pub(super) fn with_input_state<R>(
         &mut self,
         key: Key,
         cancel: &AtomicBool,
@@ -154,7 +154,7 @@ impl Draft {
             None => self.input_empty(cancel),
         }
     }
-    fn input_put_value(
+    pub(super) fn input_put_value(
         &mut self,
         key: Key,
         value: input_processing::InputValue,

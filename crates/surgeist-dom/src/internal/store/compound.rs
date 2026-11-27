@@ -6,6 +6,7 @@ pub(super) mod options;
 pub(super) mod table_part;
 #[cfg(test)]
 mod tests;
+mod text_selection;
 
 #[derive(Clone, Copy)]
 enum Stage {
@@ -72,6 +73,7 @@ impl Draft {
             | DomError::ForeignOwner
             | DomError::StaleNode
             | DomError::WrongNodeKind
+            | DomError::IndexSize
             | DomError::InvalidAdjacentPosition => {
                 if !matches!(self.method, Some(method::Frame::CompoundFailure(_))) {
                     self.method = Some(method::Frame::CompoundFailure(error));
@@ -150,6 +152,9 @@ impl Draft {
         self.source_step(cancel)?;
         let receiver = self.resolve(edit.receiver().into())?;
         match edit {
+            Edit::TextSelection { edit, .. } => {
+                self.edit_text_control_selection(receiver, edit, limits, cancel)
+            }
             Edit::SelectOptions { action, .. } => {
                 self.edit_select_options(receiver, *action, limits, cancel)
             }

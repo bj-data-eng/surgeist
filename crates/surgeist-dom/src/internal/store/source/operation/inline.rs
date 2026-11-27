@@ -255,13 +255,13 @@ impl Operation {
         execution: &mut Execution<'_>,
         cancel: &AtomicBool,
     ) -> Result<PublishedSegment, AdvanceError> {
-        if self
+        if let Some(task) = self
             .draft
-            .object_tasks
+            .final_element_tasks
             .as_ref()
-            .is_some_and(|tasks| !tasks.is_empty())
+            .and_then(|tasks| tasks.first())
         {
-            return Err(DomError::ObjectTaskSourceUnavailable.into());
+            return Err(task.kind.unavailable().into());
         }
         let incomplete = !matches!(disposition, Some(meta::Disposition::Complete { .. }));
         let mut segment = self
