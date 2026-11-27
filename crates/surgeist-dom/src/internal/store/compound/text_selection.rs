@@ -112,7 +112,12 @@ impl Draft {
                 self.with_textarea_state(key, cancel, |state| state.selection = next)?
             }
         }
-        self.queue_text_selection_event(key, cancel)
+        // Storing an empty selection can replace a cursor without changing
+        // either endpoint or direction. Only those changes raise the event.
+        if previous.offsets() != next.offsets() || previous.direction() != next.direction() {
+            self.queue_text_selection_event(key, cancel)?;
+        }
+        Ok(())
     }
 
     fn replace_text_selection(
