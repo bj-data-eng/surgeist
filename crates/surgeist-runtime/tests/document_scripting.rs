@@ -199,6 +199,8 @@ mod table_legacy_reflections;
 mod table_parts;
 #[path = "document_scripting/table_row_indexes.rs"]
 mod table_row_indexes;
+#[path = "document_scripting/table_structure.rs"]
+mod table_structure;
 #[path = "document_scripting/tag_collection.rs"]
 mod tag_collection;
 #[path = "document_scripting/text_comment.rs"]
@@ -2682,6 +2684,7 @@ fn main() {
             "table-legacy-reflections" => table_legacy_reflections::attached_table_legacy_reflections_use_native_attributes(),
             "table-parts" => table_parts::attached_table_parts_use_native_topology_and_reactions(),
             "table-row-indexes" => table_row_indexes::attached_table_row_indexes_follow_live_ordinary_order(),
+            "table-structure" => table_structure::attached_table_edits_use_the_original_source(),
             "element-mixin" => element_mixin::attached_mixin_accessors_use_their_includers_and_native_state(),
             "dialog-close" => dialog_close::attached_close_drives_beforetoggle_and_resumes_the_original_source(),
             "dialog-methods" => dialog_methods::attached_dialog_methods_use_original_native_events_and_tasks(),
@@ -2883,6 +2886,7 @@ fn main() {
     table_legacy_reflections::attached_table_legacy_reflections_use_native_attributes();
     table_parts::attached_table_parts_use_native_topology_and_reactions();
     table_row_indexes::attached_table_row_indexes_follow_live_ordinary_order();
+    table_structure::attached_table_edits_use_the_original_source();
     element_mixin::attached_mixin_accessors_use_their_includers_and_native_state();
     dialog_close::attached_close_drives_beforetoggle_and_resumes_the_original_source();
     dialog_methods::attached_dialog_methods_use_original_native_events_and_tasks();
