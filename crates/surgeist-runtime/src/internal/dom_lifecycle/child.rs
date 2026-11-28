@@ -375,16 +375,18 @@ impl HostedRuntime {
             hosts,
             children,
             source,
+            window_agents,
             ..
         } = &mut *state;
-        let native = &mut hosts[h].top_levels[t]
+        let agent = &mut hosts[h].top_levels[t]
             .group
             .as_mut()
             .ok_or(DomHostedRuntimeError::Protocol)?
             .clusters[c]
-            .agent
-            .globals[g];
+            .agent;
+        let native = &mut agent.globals[g];
         native.settings.make_active(request.document());
+        window_agents.record(&agent.event_loop);
         if children[index].publication.is_none() {
             children[index].publication = Some(
                 source

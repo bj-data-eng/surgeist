@@ -5,6 +5,14 @@ pub struct DomEventDispatch {
     owner: EventInvocationOwner,
     registry: u64,
 }
+
+pub(crate) struct NativeSlotCheckpoint {
+    pub(crate) signals: surgeist_dom::shadow::DomSlotNotifications,
+    pub(crate) next: usize,
+    pub(crate) dispatch: Option<DomEventDispatch>,
+    registry: u64,
+    _backing: EventAllocation,
+}
 impl std::fmt::Debug for DomEventDispatch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DomEventDispatch")
@@ -15,6 +23,62 @@ impl std::fmt::Debug for DomEventDispatch {
 }
 
 impl<C> DomEventDispatcher<C> {
+    pub(crate) fn take_slot_checkpoint(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        output_limit: usize,
+        cancel: &AtomicBool,
+    ) -> Result<Option<NativeSlotCheckpoint>, DomEventDispatchError> {
+        self.association.validate(dom.raw())?;
+        let count = dom.snapshot().pending_slot_signals().len();
+        let limits = surgeist_dom::shadow::DomSlotQueryLimits::new(output_limit, output_limit)?;
+        self.storage.step(count, cancel)?;
+        // The output Vec and the resulting immutable target slice overlap.
+        let bytes = count
+            .checked_mul(2 * std::mem::size_of::<NodeId>())
+            .and_then(|n| n.checked_add(2 * std::mem::size_of::<usize>()))
+            .ok_or(DomEventDispatchError::Admission(DomEventResource::Storage))?;
+        let backing = self.storage.reserve(dom, bytes, bytes, 0, cancel)?;
+        Ok(dom
+            .raw_mut()
+            .take_native_slot_checkpoint(limits, cancel)?
+            .map(|signals| NativeSlotCheckpoint {
+                signals,
+                next: 0,
+                dispatch: None,
+                registry: self.owner.id,
+                _backing: backing,
+            }))
+    }
+
+    pub(crate) fn qualify_slot_checkpoint(
+        &self,
+        checkpoint: &NativeSlotCheckpoint,
+    ) -> Result<(), DomEventDispatchError> {
+        if self.owner.id == checkpoint.registry {
+            Ok(())
+        } else {
+            Err(DomEventDispatchError::WrongContinuation)
+        }
+    }
+
+    pub(crate) fn prepare_slot_change(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        target: NodeId,
+        creation: Result<EventCreation, DomEventTimestampUnavailable>,
+        cancel: &AtomicBool,
+    ) -> Result<DomEventDispatch, DomEventDispatchError> {
+        self.association.validate(dom.raw())?;
+        self.validate_target(dom.raw(), &target.into(), cancel)?;
+        self.storage.step(1, cancel)?;
+        let backing = EventBodyCustody::owned(dom, &self.storage, cancel)?;
+        Ok(DomEventDispatch {
+            owner: NativeDomEvent::slot_change(target, creation, backing),
+            registry: self.owner.id,
+        })
+    }
+
     /// Prepare fixed custody for one ordinary dispatch. Preparation keeps
     /// the Event idle. Its first admitted advance commits the dispatch flag.
     pub fn prepare_dispatch(
@@ -221,6 +285,10 @@ impl SignalAbortFiring {
 }
 
 impl DomEventDispatch {
+    pub(crate) fn has_started(&self) -> bool {
+        self.owner.has_started()
+    }
+
     /// Drive this same invocation synchronously through the canonical kernel.
     /// A host registration retains the cursor with `RetainedHostUnavailable`.
     pub fn advance<C>(

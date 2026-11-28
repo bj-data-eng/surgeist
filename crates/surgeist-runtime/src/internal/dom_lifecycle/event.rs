@@ -239,7 +239,7 @@ impl AdmittedAbortEventClock {
     }
 }
 
-fn firing_creation_from_sample(
+pub(super) fn firing_creation_from_sample(
     global: DomHostedGlobalId,
     origin: clock::CoarsenedSample,
     sample: Result<clock::Sample, clock::Error>,

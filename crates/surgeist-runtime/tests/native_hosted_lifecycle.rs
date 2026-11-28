@@ -41,7 +41,7 @@ use surgeist_runtime::{
     },
     hosted::{
         DomHostedDestructionQueued, DomHostedRuntimeError, DomHostedRuntimeLimits,
-        DomHostedTaskProgress, DomHostedTopLevel, HostedRuntime,
+        DomHostedTaskProgress, DomHostedTaskWait, DomHostedTopLevel, HostedRuntime,
     },
     session::{DomSessionLimits, DomShutdownOutcome, DomShutdownReason},
     source::{DomSourceDriveProgress, DomSourceServices},
@@ -1029,10 +1029,12 @@ fn destroying_one_top_level_preserves_another_top_level_in_the_same_host() {
 }
 
 #[test]
-fn pending_slot_checkpoint_retains_delivered_task_without_replaying_toggle() {
+fn pending_slot_in_another_agent_preserves_the_delivered_toggle() {
     let mut session = session();
     let top = create(&mut session);
+    let other = create(&mut session);
     let parent = body(&session.snapshot(), top.document());
+    let other_parent = body(&session.snapshot(), other.document());
     let mut context = Context {
         element_tasks: session.element_task_execution(),
         seen: Vec::new(),
@@ -1041,12 +1043,12 @@ fn pending_slot_checkpoint_retains_delivered_task_without_replaying_toggle() {
     let (slot, target, queued) = {
         let mut dom = session.dom();
         let mut batch = DomBatch::new();
-        let host = batch.create_element_ns(top.document(), Namespace::html(), "div");
-        batch.insert_before(&host, parent, None);
+        let host = batch.create_element_ns(other.document(), Namespace::html(), "div");
+        batch.insert_before(&host, other_parent, None);
         let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
-        let slot = batch.create_element_ns(top.document(), Namespace::html(), "slot");
+        let slot = batch.create_element_ns(other.document(), Namespace::html(), "slot");
         batch.insert_before(&slot, &shadow, None);
-        let light = batch.create_text(top.document(), "assigned");
+        let light = batch.create_text(other.document(), "assigned");
         batch.insert_before(&light, &host, None);
         let details = batch.create_element_ns(top.document(), Namespace::html(), "details");
         batch.insert_before(&details, parent, None);
@@ -3532,6 +3534,149 @@ fn native_file_selection_checks_the_observed_basis_and_live_upload_eligibility()
             .is_empty()
     );
     assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
+}
+
+#[test]
+fn skipped_file_selection_retains_its_slot_checkpoint_during_document_destruction() {
+    use surgeist_dom::{
+        file::{DomFile, DomFileList},
+        task::DomElementTaskSourceKind::UserInteraction,
+    };
+    use surgeist_runtime::element_task::DomElementTask;
+
+    let mut session = session();
+    let top = create(&mut session);
+    let document = top.document();
+    let parent = body(&session.snapshot(), document);
+    let mut make = DomBatch::new();
+    let input = make.create_element_ns(document, Namespace::html(), "input");
+    make.set_attribute(&input, "type", "file");
+    make.insert_before(&input, parent, None);
+    let host = make.create_element_ns(document, Namespace::html(), "div");
+    let root = make.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+    let slot = make.create_element_ns(document, Namespace::html(), "slot");
+    make.insert_before(&slot, &root, None);
+    let assigned = make.create_text(document, "detached host assignment");
+    make.insert_before(&assigned, &host, None);
+    let made = session.dom().apply(make, &cancel()).unwrap();
+    let input = made.created(&input).unwrap().unwrap();
+    let slot = made.created(&slot).unwrap().unwrap();
+    let snapshot = session.snapshot();
+    assert_eq!(snapshot.pending_slot_signals(), &[slot]);
+    let files = DomFileList::from_files(vec![
+        DomFile::from_owned_parts("only".into(), "".into(), vec![1]).unwrap(),
+    ])
+    .unwrap();
+    let roomy = DomElementTaskRunLimits {
+        dispatch: event_limits(),
+        source: DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1),
+    };
+    let mut source = session.source_execution();
+    assert!(matches!(
+        source
+            .apply(
+                &mut session.dom(),
+                DomSourceEdit::queue_input_file_selection(input, snapshot.stamp(), files),
+                roomy.source,
+                &mut DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| None,
+                    url: None,
+                },
+                &cancel(),
+            )
+            .unwrap(),
+        DomSourceDriveProgress::Complete(_)
+    ));
+    let tasks = session.element_task_execution();
+    let original = tasks.pending_task(UserInteraction, 0).unwrap().unwrap();
+    let mut change = DomBatch::new();
+    change.set_attribute(input, "type", "text");
+    session.dom().apply(change, &cancel()).unwrap();
+    let mut context = Context {
+        element_tasks: tasks.clone(),
+        seen: Vec::new(),
+    };
+    let mut events = registry();
+    events
+        .add_listener(
+            &mut session.dom(),
+            slot,
+            DomEventType::SLOT_CHANGE,
+            DomEventCallback::new(move |_, _, context: &mut Context, event| {
+                context.seen.push(Observation {
+                    label: "detached Slot",
+                    current: event.current_target(),
+                    target: Some(slot),
+                    phase: event.phase(),
+                    payload: None,
+                    bubbles: event.bubbles(),
+                });
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let mut cut = roomy;
+    cut.dispatch.callbacks = 0;
+    assert!(matches!(
+        DomElementTaskRuntime::run_next(
+            &mut session.dom(), UserInteraction, &mut events, &mut context, cut, &cancel(),
+        )
+        .unwrap(),
+        DomElementTaskProgress::Retained { task, .. } if task == original
+    ));
+    assert!(context.seen.is_empty());
+    assert!(session.snapshot().pending_slot_signals().is_empty());
+
+    let mut hosted = session.hosted_execution();
+    let destruction = hosted
+        .destroy_top_level(&mut session.dom(), top.navigable(), &cancel())
+        .unwrap();
+    let mut progress = hosted
+        .run_next(&mut session.dom(), destruction.traversable(), &cancel())
+        .unwrap();
+    if matches!(
+        progress,
+        DomHostedTaskProgress::Pending {
+            reason: DomHostedTaskWait::Descendants,
+            ..
+        }
+    ) {
+        progress = hosted
+            .run_next(&mut session.dom(), destruction.traversable(), &cancel())
+            .unwrap();
+    }
+    assert!(
+        matches!(
+            progress,
+            DomHostedTaskProgress::Pending {
+                reason: DomHostedTaskWait::CurrentTask,
+                ..
+            }
+        ),
+        "{progress:?}"
+    );
+    assert_eq!(
+        tasks.pending_task(UserInteraction, 0).unwrap(),
+        Some(original)
+    );
+    assert!(matches!(
+        DomElementTaskRuntime::run_next(
+            &mut session.dom(), UserInteraction, &mut events, &mut context, roomy, &cancel(),
+        )
+        .unwrap(),
+        DomElementTaskProgress::SkippedFileSelectionIneligible(found)
+            if DomElementTask::FileSelection(found) == original
+    ));
+    assert_eq!(context.seen.len(), 1);
+    assert_eq!(context.seen[0].current, Some(slot.into()));
+    assert!(context.seen[0].bubbles);
+    assert!(matches!(
+        pump_destruction(&mut hosted, &mut session.dom(), destruction).unwrap(),
+        DomHostedTaskProgress::Complete { operation } if operation == destruction.operation()
+    ));
 }
 
 #[test]

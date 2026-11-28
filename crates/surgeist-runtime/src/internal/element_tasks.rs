@@ -522,6 +522,7 @@ struct Task {
     event: Option<EventInvocationOwner>,
     receipt: Option<DomEventDispatchReceipt>,
     running: bool,
+    slot_checkpoint_started: bool,
     dialog: Option<surgeist_dom::dialog::DomDialogTask>,
     object: Option<surgeist_dom::task::DomObjectRepresentationTask>,
     control_notification: Option<ControlNotification>,
@@ -605,7 +606,8 @@ enum DomSourceTerminal<'a> {
 
 impl Task {
     fn has_started(&self) -> bool {
-        self.event.as_ref().is_some_and(|event| event.has_started())
+        self.slot_checkpoint_started
+            || self.event.as_ref().is_some_and(|event| event.has_started())
             || (matches!(self.value, DomElementTask::ObjectRepresentation(_))
                 && self.object.is_none())
             || self
@@ -1447,6 +1449,7 @@ impl ElementTaskState {
                     event: None,
                     receipt: None,
                     running: false,
+                    slot_checkpoint_started: false,
                     dialog: None,
                     object: None,
                     control_notification: None,
@@ -2369,7 +2372,7 @@ impl DomElementTaskRuntime {
         dispatcher: &mut DomEventDispatcher<C>,
         context: &mut C,
         run: ElementTaskRun<'_, '_>,
-        current_owner: impl FnOnce(&mut C) -> Self,
+        current_owner: impl Fn(&mut C) -> Self,
     ) -> Result<ElementTaskRunOutcome, DomElementTaskRuntimeError> {
         let ElementTaskRun {
             source,
@@ -2380,7 +2383,7 @@ impl DomElementTaskRuntime {
             mut attachment,
         } = run;
         let state = self.state()?;
-        let (value, selected_index) = {
+        let (value, selected_index, resume_checkpoint) = {
             let mut owner = state.borrow_mut();
             if owner.dom != dom.owner() {
                 return Err(DomElementTaskRuntimeError::Binding);
@@ -2457,14 +2460,13 @@ impl DomElementTaskRuntime {
                 cancel,
             )?;
             owner.tasks[index].running = true;
-            (value, index)
+            (value, index, owner.tasks[index].slot_checkpoint_started)
         };
         let running = ElementTaskRunning {
             state: state.clone(),
             id: value.id(),
+            slot_checkpoint_started: Cell::new(false),
         };
-        #[cfg(not(feature = "document-scripting"))]
-        let _running = running;
         let mut native_task = if let Some(association) = value.queue_association() {
             let (hosted, started) = {
                 let owner = state.borrow();
@@ -2500,7 +2502,12 @@ impl DomElementTaskRuntime {
         } else {
             None
         };
+        let mut local_usage = DispatchUsage::default();
         let result = (|| {
+            if resume_checkpoint {
+                // The body (including any skip) already reached its checkpoint.
+                return Ok(ElementTaskStep::Complete);
+            }
             if matches!(value, DomElementTask::ObjectRepresentation(_)) {
                 let mut owner = state.borrow_mut();
                 let ElementTaskState {
@@ -2561,7 +2568,6 @@ impl DomElementTaskRuntime {
                     return Ok(step);
                 }
             }
-            let mut local_usage = DispatchUsage::default();
             #[cfg(feature = "document-scripting")]
             let (host, usage) = match &mut attachment {
                 Some(request) => (DispatchHost::AttachedNative, &mut *request.usage),
@@ -2630,8 +2636,54 @@ impl DomElementTaskRuntime {
         })();
         // This is arbitrary caller code too. The bank already owns a completed
         // receipt if it unwinds, so subsequent execution cannot replay dispatch.
-        let displaced = !Weak::ptr_eq(&Rc::downgrade(&state), &current_owner(context).state);
-        match result? {
+        let mut displaced = !Weak::ptr_eq(&Rc::downgrade(&state), &current_owner(context).state);
+        let step = match result? {
+            terminal @ (ElementTaskStep::Complete
+            | ElementTaskStep::Destroyed
+            | ElementTaskStep::Ineligible) => {
+                if matches!(
+                    value,
+                    DomElementTask::DialogToggle(_) | DomElementTask::DialogClose(_)
+                ) && !resume_checkpoint
+                    && state
+                        .borrow()
+                        .tasks
+                        .iter()
+                        .any(|task| task.value.id() == value.id() && task.receipt.is_some())
+                {
+                    state.borrow_mut().finish_dialog_event(
+                        dom,
+                        value.id(),
+                        limits.source,
+                        cancel,
+                    )?;
+                }
+                #[cfg(feature = "document-scripting")]
+                let native_checkpoint = attachment.is_none();
+                #[cfg(not(feature = "document-scripting"))]
+                let native_checkpoint = true;
+                if native_checkpoint && let Some(native_task) = &native_task {
+                    let callbacks_before = local_usage.callbacks();
+                    let retained = native_task.deliver_slot_checkpoint(
+                        dom,
+                        dispatcher,
+                        context,
+                        (limits, &mut local_usage),
+                        &running.slot_checkpoint_started,
+                        cancel,
+                    )?;
+                    if local_usage.callbacks() != callbacks_before {
+                        displaced =
+                            !Weak::ptr_eq(&Rc::downgrade(&state), &current_owner(context).state);
+                    }
+                    retained.map_or(terminal, ElementTaskStep::Retained)
+                } else {
+                    terminal
+                }
+            }
+            step => step,
+        };
+        match step {
             ElementTaskStep::SelectNotificationBackupReactions => {
                 #[cfg(feature = "document-scripting")]
                 return Ok(ElementTaskRunOutcome::SelectNotificationBackupReactions(
@@ -2653,22 +2705,6 @@ impl DomElementTaskRuntime {
             ElementTaskStep::Complete
             | ElementTaskStep::Destroyed
             | ElementTaskStep::Ineligible => {
-                if matches!(
-                    value,
-                    DomElementTask::DialogToggle(_) | DomElementTask::DialogClose(_)
-                ) && state
-                    .borrow()
-                    .tasks
-                    .iter()
-                    .any(|task| task.value.id() == value.id() && task.receipt.is_some())
-                {
-                    state.borrow_mut().finish_dialog_event(
-                        dom,
-                        value.id(),
-                        limits.source,
-                        cancel,
-                    )?;
-                }
                 if let Some(native_task) = &mut native_task {
                     native_task
                         .checkpoint(dom, cancel)
@@ -2870,6 +2906,7 @@ impl Drop for SelectNotificationLoan<'_> {
 struct ElementTaskRunning {
     state: Rc<RefCell<ElementTaskState>>,
     id: DomElementTaskId,
+    slot_checkpoint_started: Cell<bool>,
 }
 impl Drop for ElementTaskRunning {
     fn drop(&mut self) {
@@ -2882,6 +2919,7 @@ impl Drop for ElementTaskRunning {
             .find(|entry| entry.value.id() == self.id)
         {
             entry.running = false;
+            entry.slot_checkpoint_started |= self.slot_checkpoint_started.get();
         }
     }
 }

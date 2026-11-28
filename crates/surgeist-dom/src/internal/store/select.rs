@@ -416,19 +416,50 @@ impl Dom {
                     },
                 ))
             }
-            Some(Task::MutationNotification) => {
-                let (prepared, targets) = self.prepare_slot_checkpoint(limits.slots, cancel)?;
-                let commit = self.publish(prepared, cancel)?;
-                Ok(crate::internal::select::DomNativeCheckpoint::Slots(
-                    crate::internal::slot::DomSlotNotifications::new(
-                        self.snapshot(),
-                        targets,
-                        commit.changes,
-                    ),
-                ))
-            }
+            Some(Task::MutationNotification) => self
+                .publish_slot_checkpoint(limits.slots, cancel)
+                .map(crate::internal::select::DomNativeCheckpoint::Slots),
         }
     }
+
+    /// Transfer the Slot signals at the front of the native checkpoint FIFO.
+    ///
+    /// A checkpoint with pending observer deliveries or an earlier Select
+    /// occurrence remains available through `native_checkpoint_step`.
+    /// A refusal leaves all original notifications queued.
+    pub fn take_native_slot_checkpoint(
+        &mut self,
+        limits: crate::internal::slot::DomSlotQueryLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Option<crate::internal::slot::DomSlotNotifications>, DomError> {
+        self.require_source_idle()?;
+        check_cancel(cancel)?;
+        if self.child_list_turn.is_some()
+            || !matches!(
+                self.state.native_tasks.first(),
+                Some(Task::MutationNotification)
+            )
+            || self.has_pending_child_lists()
+        {
+            return Ok(None);
+        }
+        self.publish_slot_checkpoint(limits, cancel).map(Some)
+    }
+
+    fn publish_slot_checkpoint(
+        &mut self,
+        limits: crate::internal::slot::DomSlotQueryLimits,
+        cancel: &AtomicBool,
+    ) -> Result<crate::internal::slot::DomSlotNotifications, DomError> {
+        let (prepared, targets) = self.prepare_slot_checkpoint(limits, cancel)?;
+        let commit = self.publish(prepared, cancel)?;
+        Ok(crate::internal::slot::DomSlotNotifications::new(
+            self.snapshot(),
+            targets,
+            commit.changes,
+        ))
+    }
+
     pub fn complete_select_task(
         &mut self,
         task: &crate::internal::select::DomSelectTask,

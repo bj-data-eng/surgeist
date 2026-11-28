@@ -17,6 +17,7 @@ pub use local_html::{DomHostedHtmlError, DomHostedHtmlParser, DomHostedHtmlStopP
 pub(crate) use local_html_load::HtmlCompletionTask;
 mod policy;
 mod records;
+mod slot_checkpoint;
 mod uuid;
 mod watcher;
 pub(crate) use child::SourceProgress as HostedSourceProgress;
@@ -459,6 +460,7 @@ pub(crate) struct HostedState {
     clock: clock::Clock,
     limits: DomHostedRuntimeLimits,
     hosts: Vec<records::Host>,
+    window_agents: records::WindowAgentHistory,
     focus: focus::FocusState,
     work: u64,
     creation: Option<Creation>,
@@ -501,6 +503,7 @@ impl HostedOwner {
                 clock,
                 limits,
                 hosts: Vec::new(),
+                window_agents: records::WindowAgentHistory::default(),
                 focus: focus::FocusState::new(focus_header),
                 work: 0,
                 creation: None,
@@ -1465,6 +1468,7 @@ struct CreationInput<'a> {
     source: &'a mut DomHostedSource,
     clock: &'a mut clock::Clock,
     hosts: &'a mut [records::Host],
+    window_agents: &'a mut records::WindowAgentHistory,
     work: &'a mut u64,
     limits: DomHostedRuntimeLimits,
     retained_before: usize,
@@ -1479,6 +1483,7 @@ fn drive_creation(
         source,
         clock,
         hosts,
+        window_agents,
         work,
         limits,
         retained_before,
@@ -1747,17 +1752,22 @@ fn drive_creation(
             }
             DomHostedCreationStep::MakeActive(request) => {
                 policy_phase = false;
-                let native = host
-                    .group
-                    .as_mut()
-                    .and_then(records::Group::global_mut)
-                    .ok_or(DomHostedRuntimeError::Protocol)?;
+                let group = host.group.as_mut().ok_or(DomHostedRuntimeError::Protocol)?;
+                let loop_owner = group
+                    .clusters
+                    .first()
+                    .ok_or(DomHostedRuntimeError::Protocol)?
+                    .agent
+                    .event_loop
+                    .clone();
+                let native = group.global_mut().ok_or(DomHostedRuntimeError::Protocol)?;
                 if native.id != request.global() {
                     return Err(DomHostedRuntimeError::Protocol);
                 }
                 // Actual settings/BC indirection now select this Document;
                 // readiness is set only after canonical Document creation.
                 native.settings.make_active(request.document());
+                window_agents.record(&loop_owner);
                 if creation.publication.is_none() {
                     creation.publication = Some(
                         source
@@ -1980,6 +1990,7 @@ impl HostedState {
             source,
             clock,
             hosts,
+            window_agents,
             work,
             limits,
             creation,
@@ -1990,6 +2001,7 @@ impl HostedState {
                 source,
                 clock,
                 hosts,
+                window_agents,
                 work,
                 limits: *limits,
                 retained_before,
@@ -2071,7 +2083,8 @@ impl NativeTaskRunning {
         let snapshot = dom.snapshot();
         if snapshot.incomplete_source_operation().is_some()
             || snapshot.incomplete_hosted_operation().is_some()
-            || !snapshot.pending_slot_signals().is_empty()
+            || dom.raw().has_pending_native_slot_checkpoint()
+            || self.event_loop.borrow().slot_checkpoint.is_some()
             || dom.raw().has_pending_media_removals()
         {
             return Err(DomHostedRuntimeError::CheckpointUnavailable);

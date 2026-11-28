@@ -361,6 +361,15 @@ fn retiring_select_in_input_preserves_the_real_receipt() {
 
 #[test]
 fn native_select_checkpoint_delivers_an_author_slot_signal() {
+    select_checkpoint_delivers_author_slot(false);
+}
+
+#[test]
+fn native_slot_checkpoint_retains_the_undelivered_suffix() {
+    select_checkpoint_delivers_author_slot(true);
+}
+
+fn select_checkpoint_delivers_author_slot(cut_before_slot_callback: bool) {
     let cancel = AtomicBool::new(false);
     let Fixture {
         mut session,
@@ -441,16 +450,37 @@ fn native_select_checkpoint_delivers_an_author_slot_signal() {
         notifications: Vec::new(),
         retire_on_input: false,
     };
-    let result = DomElementTaskRuntime::run_next(
+    let mut first_limits = limits();
+    if cut_before_slot_callback {
+        first_limits.dispatch.callbacks = 3;
+    }
+    let mut result = DomElementTaskRuntime::run_next(
         &mut session.dom(),
         DomElementTaskSourceKind::UserInteraction,
         &mut registry,
         &mut context,
-        limits(),
+        first_limits,
         &cancel,
     );
     assert_eq!(context.notifications.first(), Some(&DomEventType::INPUT));
     assert_eq!(context.notifications.get(1), Some(&DomEventType::CHANGE));
+    if cut_before_slot_callback {
+        assert!(matches!(
+            result,
+            Ok(DomElementTaskProgress::Retained { .. })
+        ));
+        assert_eq!(context.notifications.len(), 2);
+        assert_eq!(context.tasks.pending_total_tasks().unwrap(), 1);
+        assert!(session.snapshot().pending_slot_signals().is_empty());
+        result = DomElementTaskRuntime::run_next(
+            &mut session.dom(),
+            DomElementTaskSourceKind::UserInteraction,
+            &mut registry,
+            &mut context,
+            limits(),
+            &cancel,
+        );
+    }
     let Ok(DomElementTaskProgress::SelectNotificationComplete { input, change, .. }) = result
     else {
         panic!(
@@ -827,4 +857,219 @@ fn user_toggle_refuses_stale_foreign_disabled_and_nonmember_observations() {
             .unwrap(),
         0
     );
+}
+
+#[test]
+fn selectedcontent_copy_delivers_its_own_author_slot_signal() {
+    use std::{cell::RefCell, rc::Rc};
+    use surgeist_html::construction::{
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    };
+
+    let cancel = AtomicBool::new(false);
+    let Fixture {
+        mut session,
+        document,
+        select,
+        option,
+    } = fixture(8, &cancel);
+    let mut setup = DomBatch::new();
+    let content = setup.create_element_ns(document, Namespace::html(), "selectedcontent");
+    let host = setup.create_element_ns(document, Namespace::html(), "span");
+    let root = setup.attach_shadow(
+        &host,
+        HtmlShadowRootProperties::new(
+            HtmlShadowRootMode::Open,
+            HtmlSlotAssignment::Named,
+            false,
+            true,
+            false,
+        ),
+    );
+    let slot = setup.create_element_ns(document, Namespace::html(), "slot");
+    let light = setup.create_text(document, "assigned option content");
+    setup.insert_before(&slot, &root, None);
+    setup.insert_before(&light, &host, None);
+    setup.insert_before(&host, option, None);
+    setup.insert_before(&content, select, None);
+    let made = session.dom().apply(setup, &cancel).unwrap();
+    let content = made.created(&content).unwrap().unwrap();
+    let original_host = made.created(&host).unwrap().unwrap();
+    let original_slot = made.created(&slot).unwrap().unwrap();
+    let before = session.snapshot();
+    assert_eq!(before.pending_slot_signals(), &[original_slot]);
+    assert!(before.node(content).unwrap().children().is_empty());
+
+    let mut source = session.source_execution();
+    let edit = DomSourceEdit::toggle_select_option_for_user(select, option, before.stamp());
+    assert!(matches!(
+        source
+            .apply(
+                &mut session.dom(),
+                edit,
+                limits().source,
+                &mut no_services(&mut |_| None),
+                &cancel,
+            )
+            .unwrap(),
+        DomSourceDriveProgress::Complete(_)
+    ));
+    let mut single = DomBatch::new();
+    single.remove_attribute(select, "multiple");
+    session.dom().apply(single, &cancel).unwrap();
+    let (earlier_host, _, earlier_slot) = copied_author_slot(&session.snapshot(), content);
+    assert_ne!(earlier_slot, original_slot);
+    assert_eq!(
+        session.snapshot().pending_slot_signals(),
+        &[original_slot, earlier_slot]
+    );
+
+    let mut registry = listeners(&mut session, select, "original label");
+    let deliveries = Rc::new(RefCell::new(Vec::new()));
+    let observed = deliveries.clone();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            original_slot,
+            DomEventType::SLOT_CHANGE,
+            DomEventCallback::new(move |dom, _, _: &mut Context, event| {
+                assert_eq!(event.target(), Some(original_slot.into()));
+                observed.borrow_mut().push(original_slot);
+                let mut assign = DomBatch::new();
+                let child = assign.create_text(document, "new assignment after capture");
+                assign.insert_before(&child, earlier_host, None);
+                dom.apply(assign, &AtomicBool::new(false)).unwrap();
+                assert_eq!(dom.snapshot().pending_slot_signals(), &[earlier_slot]);
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let observed = deliveries.clone();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            earlier_slot,
+            DomEventType::SLOT_CHANGE,
+            DomEventCallback::new(move |_, _, _: &mut Context, event| {
+                assert_eq!(event.target(), Some(earlier_slot.into()));
+                observed.borrow_mut().push(earlier_slot);
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let observed = deliveries.clone();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            select,
+            DomEventType::INPUT,
+            DomEventCallback::new(move |dom, registry, _: &mut Context, _| {
+                let snapshot = dom.snapshot();
+                let (copy_host, copy_root, copy_slot) = copied_author_slot(&snapshot, content);
+                assert_ne!(copy_host, original_host);
+                assert_ne!(copy_host, earlier_host);
+                assert_eq!(snapshot.node(earlier_host).unwrap().parent(), None);
+                assert_eq!(
+                    snapshot.pending_slot_signals(),
+                    &[original_slot, earlier_slot, copy_slot]
+                );
+                let observed = observed.clone();
+                registry
+                    .add_listener(
+                        dom,
+                        copy_root,
+                        DomEventType::SLOT_CHANGE,
+                        DomEventCallback::new(move |_, _, context: &mut Context, event| {
+                            assert_eq!(event.target(), Some(copy_slot.into()));
+                            assert_eq!(event.current_target(), Some(copy_root.into()));
+                            assert!(event.is_trusted());
+                            assert!(event.bubbles());
+                            assert!(!event.cancelable());
+                            assert!(!event.composed());
+                            observed.borrow_mut().push(copy_slot);
+                            context.notifications.push(event.event_type());
+                            Ok(())
+                        }),
+                        DomEventListenerOptions::default(),
+                    )
+                    .unwrap();
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+
+    let mut context = Context {
+        tasks: session.element_task_execution(),
+        notifications: Vec::new(),
+        retire_on_input: false,
+    };
+    let queued = context
+        .tasks
+        .pending_task(DomElementTaskSourceKind::UserInteraction, 0)
+        .unwrap()
+        .unwrap();
+    let mut finite = limits();
+    finite.dispatch.callbacks = 4;
+    let head = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        DomElementTaskSourceKind::UserInteraction,
+        &mut registry,
+        &mut context,
+        finite,
+        &cancel,
+    )
+    .unwrap();
+    assert!(matches!(head, DomElementTaskProgress::Retained { task, .. } if task == queued));
+    assert_eq!(*deliveries.borrow(), [original_slot]);
+    assert_eq!(session.snapshot().pending_slot_signals(), &[earlier_slot]);
+
+    let result = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        DomElementTaskSourceKind::UserInteraction,
+        &mut registry,
+        &mut context,
+        limits(),
+        &cancel,
+    )
+    .unwrap();
+    let DomElementTaskProgress::SelectNotificationComplete {
+        task,
+        input,
+        change,
+        ..
+    } = result
+    else {
+        panic!("selectedcontent copy must settle its original notification: {result:?}");
+    };
+    assert_eq!(task.id(), queued.id());
+    assert!(input.failures().is_empty());
+    assert!(change.unwrap().failures().is_empty());
+    let (_, _, copy_slot) = copied_author_slot(&session.snapshot(), content);
+    assert_eq!(
+        *deliveries.borrow(),
+        [original_slot, earlier_slot, copy_slot, earlier_slot]
+    );
+    assert_eq!(
+        context.notifications,
+        [
+            DomEventType::INPUT,
+            DomEventType::CHANGE,
+            DomEventType::SLOT_CHANGE,
+        ]
+    );
+    assert!(session.snapshot().pending_slot_signals().is_empty());
+}
+
+fn copied_author_slot(snapshot: &DomSnapshot, content: NodeId) -> (NodeId, NodeId, NodeId) {
+    let [host] = snapshot.node(content).unwrap().children() else {
+        panic!("one selectedcontent child")
+    };
+    let root = snapshot.node(*host).unwrap().shadow_root().unwrap();
+    let [slot] = snapshot.node(root).unwrap().children() else {
+        panic!("one author Slot in the copied root")
+    };
+    (*host, root, *slot)
 }

@@ -65,6 +65,7 @@ mod invocation;
 #[cfg(feature = "document-scripting")]
 pub(crate) use csp::{AuthoredCspViolationInit, CspEventText};
 pub use invocation::DomEventDispatch;
+pub(crate) use invocation::NativeSlotCheckpoint;
 mod target;
 pub use target::{DomEventTarget, DomStandaloneEventTarget};
 mod passive;
@@ -2152,6 +2153,7 @@ enum EventData {
     DialogClose,
     FormReset,
     TextSelection,
+    SlotChange,
     FileSelection(FileSelectionEvent),
     SelectNotification(HtmlSelectNotificationEvent),
     DialogCancel {
@@ -2196,6 +2198,7 @@ pub(crate) enum NativeEventCause {
     DialogClose,
     FormReset,
     TextSelection,
+    SlotChange,
     FileSelection(FileSelectionEvent),
     SelectNotification(HtmlSelectNotificationEvent),
     SignalAbort,
@@ -2222,6 +2225,7 @@ impl NativeEventCause {
             Self::DialogClose => DomEventType::CLOSE,
             Self::FormReset => DomEventType::RESET,
             Self::TextSelection => DomEventType::SELECT,
+            Self::SlotChange => DomEventType::SLOT_CHANGE,
             Self::FileSelection(FileSelectionEvent::Input)
             | Self::SelectNotification(HtmlSelectNotificationEvent::Input) => DomEventType::INPUT,
             Self::FileSelection(FileSelectionEvent::Change)
@@ -2873,6 +2877,14 @@ impl EventInvocationOwner {
                     ..default_init
                 },
             ),
+            EventData::SlotChange => (
+                NativeEventCause::SlotChange,
+                EventPayload::None,
+                DomEventInit {
+                    bubbles: true,
+                    ..default_init
+                },
+            ),
             EventData::FileSelection(event) => (
                 NativeEventCause::FileSelection(event),
                 EventPayload::None,
@@ -3289,6 +3301,14 @@ impl NativeDomEvent {
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
         EventInvocationOwner::new(target, EventData::TextSelection, creation, backing)
+    }
+
+    pub(crate) fn slot_change(
+        target: NodeId,
+        creation: Result<EventCreation, DomEventTimestampUnavailable>,
+        backing: EventBodyCustody,
+    ) -> EventInvocationOwner {
+        EventInvocationOwner::new(target, EventData::SlotChange, creation, backing)
     }
 
     pub(crate) fn file_selection(
@@ -3901,6 +3921,12 @@ fn dispatch_ready(
 pub(crate) struct DispatchUsage {
     work: u64,
     callbacks: usize,
+}
+
+impl DispatchUsage {
+    pub(crate) fn callbacks(&self) -> usize {
+        self.callbacks
+    }
 }
 
 struct Budget<'a> {

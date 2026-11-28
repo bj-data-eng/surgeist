@@ -115,6 +115,15 @@ impl Working {
 }
 
 impl Dom {
+    /// Whether live signals or a captured observer turn still owe Slot delivery.
+    pub fn has_pending_native_slot_checkpoint(&self) -> bool {
+        !self.state.signal_slots.is_empty()
+            || self
+                .child_list_turn
+                .as_ref()
+                .is_some_and(|turn| turn.slots.is_some())
+    }
+
     pub(in crate::internal::store) fn has_pending_child_lists(&self) -> bool {
         self.state
             .child_lists
