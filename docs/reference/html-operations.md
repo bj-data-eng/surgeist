@@ -1243,9 +1243,10 @@ existing admission caps, traversal releases scratch on every result, and termina
 failures preserve the session's sticky, atomic-batch contract. This immutable
 Boolean observation performs no validation or radio-state transition.
 
-`InputTextValueMissing` and `TextareaValueMissing` observe the required,
-mutable, empty-current-value conditions for the six text input states and
-textarea. They reuse the supplied current-string lookup and ordinary disabledness
+`InputValueModeMissing` and `TextareaValueMissing` observe the required,
+mutable, empty-current-value conditions for Text, Search, Telephone, URL, Email,
+Password, Number, Date, Month, Week, Time, Local Date and Time, and Textarea.
+They reuse the supplied current-string lookup and ordinary disabledness
 owner, including fieldset and first-legend rules. Authored value attributes and
 default descendant text do not substitute for current state.
 

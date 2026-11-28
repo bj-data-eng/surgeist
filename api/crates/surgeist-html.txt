@@ -2207,6 +2207,7 @@ pub fn surgeist_html::attributes::HtmlInputType::canonical_keyword(self) -> &'st
 pub fn surgeist_html::attributes::HtmlInputType::into_attribute(self) -> surgeist_html::values::Attribute
 impl surgeist_html::attributes::HtmlInputType
 pub fn surgeist_html::attributes::HtmlInputType::is_selectable(self) -> bool
+pub const fn surgeist_html::attributes::HtmlInputType::required_uses_current_value(self) -> bool
 pub fn surgeist_html::attributes::HtmlInputType::sanitization(self) -> surgeist_html::elements::input::HtmlInputValueSanitization
 pub fn surgeist_html::attributes::HtmlInputType::select_method(self) -> surgeist_html::elements::input::HtmlInputSelectMethod
 pub const fn surgeist_html::attributes::HtmlInputType::uses_current_value_for_directionality(self) -> bool

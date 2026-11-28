@@ -1305,3 +1305,88 @@ fn exact_current_string_capacity_and_non_input_commands_preserve_atomicity() {
         unchanged(&dom, &before, usage);
     }
 }
+
+#[test]
+fn required_number_and_temporal_inputs_observe_canonical_sanitization() {
+    use surgeist_html_semantics::{
+        HtmlInertFactLimits, HtmlLanguageDirectionLimits, HtmlSemanticFact, HtmlSemanticQuery,
+        HtmlSemanticValue,
+    };
+
+    let known = |answer| HtmlSemanticFact::InputValueModeMissing(HtmlSemanticValue::Known(answer));
+    for (kind, valid, invalid) in [
+        ("number", "2.5", "NaN"),
+        ("date", "2024-02-29", "2023-02-29"),
+        ("month", "2024-02", "2024-13"),
+        ("week", "2024-W01", "2021-W53"),
+        ("time", "18:07", "25:00"),
+        ("datetime-local", "2024-02-29T18:07", "2024-02-30T18:07"),
+    ] {
+        let mut dom = owner();
+        let (document, _, input) = setup(&mut dom);
+        let missing = |c: &DomHtmlCapture| fact(c, input, HtmlSemanticQuery::InputValueModeMissing);
+        let mut batch = DomBatch::new();
+        batch.set_attribute(input, "type", kind);
+        batch.set_attribute(input, "required", "");
+        batch.set_attribute(input, "value", valid);
+        apply(&mut dom, batch);
+        let populated = capture(&dom.snapshot(), document);
+        assert_eq!(missing(&populated), known(false), "{kind}");
+
+        let mut batch = DomBatch::new();
+        batch.set_input_value(input, invalid);
+        apply(&mut dom, batch);
+        let snapshot = dom.snapshot();
+        assert_eq!(value(&snapshot, input), "".into(), "{kind}");
+        let empty = capture(&snapshot, document);
+        assert_eq!(missing(&empty), known(true), "{kind}");
+        assert_ne!(empty.basis(), populated.basis());
+        assert_eq!(missing(&populated), known(false), "{kind}");
+
+        let supplemented = capture(&snapshot, document)
+            .with_slot_semantics(
+                DomSlotSemanticLimits::new(
+                    DomSlotQueryLimits::new(512, 2048).unwrap(),
+                    DomHtmlCaptureLimits::new(512, 10000000),
+                    HtmlLanguageDirectionLimits::new(1024, 2048, 131072, 10000000),
+                    HtmlInertFactLimits::new(1024, 10000000),
+                ),
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        assert_eq!(missing(&supplemented), known(true), "{kind}");
+
+        for attribute in ["readonly", "disabled"] {
+            let mut batch = DomBatch::new();
+            batch.set_attribute(input, attribute, "");
+            apply(&mut dom, batch);
+            assert_eq!(
+                missing(&capture(&dom.snapshot(), document)),
+                known(false),
+                "{kind} {attribute}"
+            );
+            let mut batch = DomBatch::new();
+            batch.remove_attribute(input, attribute);
+            apply(&mut dom, batch);
+        }
+
+        let mut batch = DomBatch::new();
+        batch.remove_attribute(input, "required");
+        apply(&mut dom, batch);
+        assert_eq!(
+            missing(&capture(&dom.snapshot(), document)),
+            known(false),
+            "{kind}"
+        );
+        let mut batch = DomBatch::new();
+        batch.set_attribute(input, "type", "checkbox");
+        batch.set_attribute(input, "required", "");
+        apply(&mut dom, batch);
+        assert_eq!(
+            missing(&capture(&dom.snapshot(), document)),
+            HtmlSemanticFact::InputValueModeMissing(HtmlSemanticValue::Inapplicable),
+            "{kind}"
+        );
+        assert_eq!(missing(&empty), known(true), "{kind}");
+    }
+}
