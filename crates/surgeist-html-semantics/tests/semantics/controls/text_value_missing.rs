@@ -842,3 +842,22 @@ fn each_query_retains_its_own_source_clause() {
         "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-textarea-required"
     );
 }
+
+#[test]
+fn captured_number_and_temporal_current_values_are_admitted_as_input_evidence() {
+    for (input_type, current) in [
+        ("number", "2"),
+        ("date", "2026-11-30"),
+        ("month", "2026-11"),
+        ("week", "2026-W48"),
+        ("time", "18:07"),
+        ("datetime-local", "2026-11-30T18:07"),
+    ] {
+        let (capture, subject) = fixture("input", &[("type", input_type), ("required", "")], true);
+        let produced = facts(&capture, &[(subject, Some(current.into()))], 10000);
+        assert!(
+            produced.is_ok(),
+            "the captured {input_type} current value must be admitted: {produced:?}"
+        );
+    }
+}
