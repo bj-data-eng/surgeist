@@ -996,3 +996,155 @@ fn input_range_validity_preserves_unavailable_current_and_sticky_refusal() {
         &HtmlSemanticFact::InputRangeValidity(HtmlSemanticValue::Inapplicable)
     );
 }
+
+fn step_limits(work: usize) -> HtmlSemanticLimits {
+    HtmlSemanticLimits::new(work, 100, 4096, 1000, 1_000_000, 0)
+}
+
+fn step_report(
+    capture: &HtmlCapture,
+    context: &HtmlSemanticContext,
+    subject: &HtmlCaptureSubjectId,
+) -> HtmlSemanticReport {
+    session(
+        capture,
+        context,
+        step_limits(1_000_000),
+        100,
+        HtmlSemanticCancellation::new(),
+    )
+    .query(&[request(subject, HtmlSemanticQuery::InputStepMismatch)])
+    .unwrap()
+}
+
+#[test]
+fn captured_input_step_mismatch_uses_exact_membership_and_authored_origin() {
+    for (kind, minimum, authored, step, current, expected) in [
+        ("number", "0", "0.3", "0.1", "0.2", false),
+        ("number", "0", "0.3", "0.1", "0.3", true),
+        ("number", "0", "0.3", "0.1", "-0.2", false),
+        ("number", ".125", "", ".375", "-.625", false),
+        ("number", ".125", "", ".375", "-.375", true),
+        ("number", ".125", "", "1", "1.125", false),
+        ("number", ".125", "", "1", "1", true),
+        ("number", "invalid", "0.3", "0.1", "0.3", false),
+        ("number", "", "0.25", "-2", "2.25", false),
+        ("number", "", "", " aNy", "1.5", true),
+        ("number", "0", "", "5e-324", "1.7976931348623157e308", false),
+        ("number", "", "", "2", "invalid", false),
+        ("range", "2", "0", "2", "6", false),
+        ("range", "2", "0", "2", "5", true),
+        ("range", "invalid", "1", "2", "3", false),
+        ("date", "", "", "2", "1969-12-30", false),
+        ("date", "", "", "2", "1970-01-02", true),
+        ("month", "", "", "2", "1969-12", true),
+        ("week", "", "", "2", "1970-W01", false),
+        ("week", "", "", "2", "1970-W02", true),
+        ("time", "23:00", "", "5400", "00:30", false),
+        ("time", "23:00", "", "5400", "12:00", true),
+        ("time", "00:00", "", "0.125", "00:00:00.375", false),
+        ("time", "00:00", "", "0.1", "00:00:00.3", true),
+        ("time", "", "", "invalid", "00:01", false),
+        ("time", "", "", "invalid", "00:01:01", true),
+        (
+            "datetime-local",
+            "",
+            "1969-12-31 23:59:59.75",
+            "0.25",
+            "1970-01-01T00:00",
+            false,
+        ),
+    ] {
+        let (capture, id) = fixture(
+            "input",
+            &[
+                ("type", kind),
+                ("min", minimum),
+                ("value", authored),
+                ("step", step),
+                ("max", "01:00"),
+            ],
+            true,
+        );
+        let cx = context(&capture, &[(id.clone(), Some(current.into()))]);
+        assert_eq!(
+            step_report(&capture, &cx, &id).results()[0].fact(),
+            &HtmlSemanticFact::InputStepMismatch(HtmlSemanticValue::Known(expected)),
+            "{kind}: {current}, min {minimum}, authored {authored}, step {step}"
+        );
+    }
+}
+
+#[test]
+fn captured_input_step_mismatch_preserves_missing_and_bounded_temporal_work() {
+    let q = HtmlSemanticQuery::InputStepMismatch;
+    for (raw_step, expected) in [("aNy", Some(false)), ("2", None)] {
+        let (capture, id) = fixture("input", &[("type", "time"), ("step", raw_step)], true);
+        let cx = context(&capture, &[]);
+        let expected = expected.map_or_else(
+            || HtmlSemanticValue::Missing(HtmlSemanticMissing::CurrentValue(id.clone())),
+            HtmlSemanticValue::Known,
+        );
+        assert_eq!(
+            step_report(&capture, &cx, &id).results()[0].fact(),
+            &HtmlSemanticFact::InputStepMismatch(expected)
+        );
+    }
+    let (capture, id) = fixture("input", &[("type", "time"), ("step", ".125")], true);
+    let cx = context(&capture, &[(id.clone(), Some("00:00:00.375".into()))]);
+    let baseline = step_report(&capture, &cx, &id).usage();
+    assert_eq!(baseline.scratch_records(), 0);
+    assert!(baseline.peak_scratch_records() > 0);
+    let mut work_short = session(
+        &capture,
+        &cx,
+        step_limits(baseline.work() - 1),
+        100,
+        HtmlSemanticCancellation::new(),
+    );
+    let stopped = work_short.query(&[request(&id, q)]).unwrap_err();
+    assert!(matches!(
+        stopped.kind(),
+        HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::Work,
+            ..
+        }
+    ));
+    assert_eq!(stopped.usage().scratch_records(), 0);
+    assert_eq!(work_short.query(&[]).unwrap_err(), stopped);
+
+    let small = HtmlSemanticLimits::new(1_000_000, 100, 1_000, 1000, result_record_bytes() + 1, 0);
+    let stopped = session(&capture, &cx, small, 100, HtmlSemanticCancellation::new())
+        .query(&[request(&id, q)])
+        .unwrap_err();
+    assert!(matches!(
+        stopped.kind(),
+        HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::AllocatedBytes,
+            ..
+        }
+    ));
+    assert_eq!(stopped.usage().scratch_records(), 0);
+}
+
+#[test]
+fn temporal_step_validation_refuses_converter_scratch_before_grid_work() {
+    let (capture, id) = fixture("input", &[("type", "time")], true);
+    let cx = context(&capture, &[(id.clone(), Some("00:00:00.3751".into()))]);
+    let limits = HtmlSemanticLimits::new(1_000_000, 100, 2, 1000, 1_000_000, 0);
+    let mut query = session(&capture, &cx, limits, 100, HtmlSemanticCancellation::new());
+    let failure = query
+        .query(&[request(&id, HtmlSemanticQuery::InputStepMismatch)])
+        .unwrap_err();
+    assert_eq!(
+        failure.kind(),
+        &HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::ScratchRecords,
+            limit: 2,
+            required: 3,
+        }
+    );
+    assert_eq!(failure.usage().allocated_bytes(), result_record_bytes() + 3);
+    assert_eq!(failure.usage().scratch_records(), 0);
+    assert_eq!(query.query(&[]).unwrap_err(), failure);
+}

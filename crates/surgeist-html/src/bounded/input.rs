@@ -14,6 +14,7 @@ pub use crate::internal::elements::input_value_conversion::{
     HtmlInputValueConversionError, input_value_as_date, input_value_as_number,
     input_value_from_date, input_value_from_number,
 };
+pub use crate::internal::microsyntax::numeric::range::lattice::input_binary64_step_mismatch_with;
 pub use crate::internal::microsyntax::temporal::input_range::input_temporal_range_validity_with;
 pub use crate::internal::microsyntax::temporal::input_step::{
     HtmlInputTemporalStepError, HtmlInputTemporalStepMeter, HtmlInputTemporalStepOutcome,

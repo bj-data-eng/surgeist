@@ -631,12 +631,17 @@ impl HtmlInputTemporalStepMeter for TemporalMeter<'_> {
             .charge_source_work(units, self.source, self.cancel)
     }
 
-    fn reserve(&mut self, bytes: usize, units: usize) -> Result<(), Self::Stop> {
+    fn reserve(&mut self, bytes: usize, units: usize, _: usize) -> Result<(), Self::Stop> {
         self.meter
             .acquire(bytes, Payload { bytes, units }, self.source, self.cancel)
     }
 
-    fn release(&mut self, bytes: usize, units: usize) {
+    fn observe_allocation(&mut self, _: usize, _: usize) -> Result<(), Self::Stop> {
+        // Native Input processing already holds the live reservation.
+        Ok(())
+    }
+
+    fn release(&mut self, bytes: usize, units: usize, _: usize) {
         self.meter
             .release(bytes, Payload { bytes, units }, self.source);
     }
