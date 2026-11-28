@@ -202,13 +202,17 @@ fn inertness_uses_real_slot_flat_ancestry_and_detached_exclusion_stays_missing()
 
 #[test]
 fn mixed_root_and_host_documents_preserve_real_flat_parent_and_known_empty_blocking() {
+    use surgeist_dom::{DomError, dialog::DomNearestClickedDialog::Found};
     let mut dom = owner();
     let mut b = DomBatch::new();
     let a = b.create_document();
     let d = b.create_document();
+    let open_dialog = b.create_element_ns(&a, Namespace::html(), "dialog");
     let host = b.create_element_ns(&a, Namespace::html(), "div");
+    b.set_attribute(&open_dialog, "open", "");
     b.set_attribute(&host, "inert", "");
-    b.insert_before(&host, &a, None);
+    b.insert_before(&open_dialog, &a, None);
+    b.insert_before(&host, &open_dialog, None);
     let r = b.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
     let target = b.create_element(&d, "Target");
     let old = b.create_comment(&d, "old");
@@ -219,6 +223,7 @@ fn mixed_root_and_host_documents_preserve_real_flat_parent_and_known_empty_block
     b.insert_before(&slot, &r, None);
     let c = apply(&mut dom, b);
     let d = c.document(&d).unwrap();
+    let open_dialog = c.created(&open_dialog).unwrap().unwrap();
     let host = c.created(&host).unwrap().unwrap();
     let slot = c.created(&slot).unwrap().unwrap();
     let s = dom.snapshot();
@@ -227,17 +232,21 @@ fn mixed_root_and_host_documents_preserve_real_flat_parent_and_known_empty_block
         s.node(slot).unwrap().owner_document()
     );
     let c = capture(&s, d);
-    assert_eq!(
-        s.flat_tree(
+    let flat = s
+        .flat_tree(
             s.node(host).unwrap().owner_document().unwrap(),
             DomSlotQueryLimits::new(64, 64).unwrap(),
-            &cancel()
+            &cancel(),
         )
+        .unwrap();
+    assert_eq!(flat.relation(slot).unwrap(), DomFlatRelation::Parent(host));
+    let Found(dialog) = flat
+        .nearest_clicked_dialog_with(slot, || Ok::<_, DomError>(()))
         .unwrap()
-        .relation(slot)
-        .unwrap(),
-        DomFlatRelation::Parent(host)
-    );
+    else {
+        panic!("the captured flat parent route leads to the open Dialog");
+    };
+    assert_eq!(dialog.id(), open_dialog);
     assert_eq!(
         fact(&c, slot, HtmlSemanticQuery::Inertness),
         HtmlSemanticFact::Inertness(HtmlSemanticValue::Known(true))
@@ -264,5 +273,126 @@ fn semantic_composition_is_cancelled_or_bounded_without_partial_capture() {
     assert!(matches!(
         c.with_slot_semantics(limits(), &AtomicBool::new(true)),
         Err(DomHtmlCaptureError::Cancelled)
+    ));
+}
+#[test]
+fn nearest_clicked_dialog_uses_flat_ancestors_and_preserves_held_results() {
+    use surgeist_dom::DomError;
+    use surgeist_dom::dialog::DomNearestClickedDialog::{Absent, Found};
+
+    let mut dom = owner();
+    let mut b = DomBatch::new();
+    let document = b.create_document();
+    let other_document = b.create_document();
+    let outer = b.create_element_ns(&document, Namespace::html(), "dialog");
+    let host = b.create_element_ns(&document, Namespace::html(), "div");
+    b.set_attribute(&outer, "open", "");
+    b.insert_before(&outer, &document, None);
+    b.insert_before(&host, &outer, None);
+    let root = b.attach_shadow(
+        &host,
+        HtmlShadowRootProperties::new(
+            HtmlShadowRootMode::Closed,
+            HtmlSlotAssignment::Manual,
+            false,
+            false,
+            false,
+        ),
+    );
+    let inner = b.create_element_ns(&document, Namespace::html(), "dialog");
+    b.set_attribute(&inner, "open", "");
+    let closed = b.create_element_ns(&document, Namespace::html(), "dialog");
+    b.set_attribute_ns(&closed, Namespace::from_uri("urn:example"), "q:open", "");
+    let slot = b.create_element_ns(&document, Namespace::html(), "slot");
+    b.insert_before(&inner, &root, None);
+    b.insert_before(&closed, &inner, None);
+    b.insert_before(&slot, &closed, None);
+    let assigned = b.create_element_ns(&document, Namespace::html(), "span");
+    let excluded = b.create_element_ns(&document, Namespace::html(), "span");
+    b.insert_before(&assigned, &host, None);
+    b.insert_before(&excluded, &host, None);
+    b.assign_slot(&slot, vec![(&assigned).into()]);
+    let wrong_document = b.create_text(&other_document, "another Document");
+    let commit = apply(&mut dom, b);
+    let document = commit.document(&document).unwrap();
+    let [outer, inner, assigned, excluded, wrong_document] =
+        [outer, inner, assigned, excluded, wrong_document]
+            .map(|ticket| commit.created(&ticket).unwrap().unwrap());
+    let held = dom
+        .snapshot()
+        .flat_tree(
+            document,
+            DomSlotQueryLimits::new(64, 64).unwrap(),
+            &cancel(),
+        )
+        .unwrap();
+    let nearest = |tree: &surgeist_dom::shadow::DomFlatTree, target, expected| {
+        let Found(dialog) = tree
+            .nearest_clicked_dialog_with(target, || Ok::<_, DomError>(()))
+            .unwrap()
+        else {
+            panic!("expected an open Dialog in the actual flat ancestry");
+        };
+        assert_eq!(dialog.id(), expected);
+    };
+    nearest(&held, assigned, inner);
+    nearest(&held, inner, inner);
+    assert!(matches!(
+        held.nearest_clicked_dialog_with(excluded, || Ok::<_, DomError>(())),
+        Ok(Absent)
+    ));
+    assert!(matches!(
+        held.nearest_clicked_dialog_with(wrong_document, || Ok::<_, DomError>(())),
+        Err(DomError::WrongDocument)
+    ));
+    assert!(matches!(
+        held.nearest_clicked_dialog_with(assigned, || Err(DomError::Cancelled)),
+        Err(DomError::Cancelled)
+    ));
+    let mut remaining = 1usize;
+    held.source()
+        .node_with(assigned, || {
+            remaining += 1;
+            Ok::<_, DomError>(())
+        })
+        .unwrap();
+    // Admit the original node lookup and its kind read, then refuse the
+    // first flat relation read.
+    assert!(matches!(
+        held.nearest_clicked_dialog_with(assigned, || {
+            remaining = remaining.checked_sub(1).ok_or(DomError::Cancelled)?;
+            Ok(())
+        }),
+        Err(DomError::Cancelled)
+    ));
+    assert_eq!(remaining, 0);
+
+    let mut b = DomBatch::new();
+    b.remove_attribute(inner, "open");
+    b.detach(excluded);
+    b.destroy(excluded);
+    apply(&mut dom, b);
+    let current = dom
+        .snapshot()
+        .flat_tree(
+            document,
+            DomSlotQueryLimits::new(64, 64).unwrap(),
+            &cancel(),
+        )
+        .unwrap();
+    nearest(&current, assigned, outer);
+    nearest(&held, assigned, inner);
+    assert!(matches!(
+        current.nearest_clicked_dialog_with(excluded, || Ok::<_, DomError>(())),
+        Err(DomError::StaleNode)
+    ));
+
+    let mut unrelated = owner();
+    let mut b = DomBatch::new();
+    let document = b.create_document();
+    let foreign = apply(&mut unrelated, b).document(&document).unwrap().node();
+    assert!(matches!(
+        held.nearest_clicked_dialog_with(foreign, || Ok::<_, DomError>(())),
+        Err(DomError::ForeignOwner)
     ));
 }

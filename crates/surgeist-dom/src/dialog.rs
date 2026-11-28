@@ -12,7 +12,9 @@
 //! edit that reaches a watcher service refuses with `NeedsEventfulOperation` before
 //! publication. `docs/dialogs-and-focus.md` owns the contract.
 
-pub use crate::internal::dialog::{DomCloseWatcherId, DomDialog, DomDialogToggleTracker};
+pub use crate::internal::dialog::{
+    DomCloseWatcherId, DomDialog, DomDialogToggleTracker, DomNearestClickedDialog,
+};
 pub use crate::internal::source::{
     DomCloseWatcherHistoryWindows, DomCloseWatcherRequestPreparation,
     DomCloseWatcherRequestPublication, DomDialogToggleTaskDisposition, DomDialogWatcherPreparation,

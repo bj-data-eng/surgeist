@@ -185,6 +185,13 @@ with its actual root, queried node, step and original operation occurrence.
 Checkpoint refusal, cancellation and lease replacement preserve the original
 traversal and cumulative admission; they do not supply missing facts.
 
+`DomFlatTree::nearest_clicked_dialog_with` follows the actual captured
+flat ancestry from the original pointer target and observes the first open
+Dialog. The exact open modal target requires its own box bounds, even if the
+pointer's original target came from the modal backdrop. An open modal ancestor
+is a complete structural result. The native pointer owner qualifies the capture
+and supplies point-versus-box evidence for the bounds case.
+
 The native adapter can fulfill called
 focusing without changing focus when the subject has applicable own `inert`
 and actual non-root, nondelegating state. The shared HTML rule covers the
