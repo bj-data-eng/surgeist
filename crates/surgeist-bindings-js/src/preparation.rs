@@ -147,7 +147,8 @@ pub(crate) fn charge(owner: &Rc<OwnerState>, work: Work) -> Result<(), Error> {
 /// One reached preparation allocation. Incoming requests preserve one unit of
 /// incoming-capture work each; other work is reported separately through [`Work`].
 /// Bytes describe requested Rust bodies, excluding allocator metadata, tree-node
-/// packing and engine storage. They include the caller's retention body.
+/// packing and engine storage unless specified. They include the caller's
+/// retention body.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Request {
     /// A nonempty selected-argument buffer, before reserving its capacity.
@@ -164,6 +165,9 @@ pub enum Request {
     },
     /// One backend callable registration, excluding the caller's callback body.
     CallableRegistration { bytes: usize },
+    /// One queued host microtask, including its owned callback and the backend
+    /// queue records that hold it through suspension.
+    HostMicrotask { bytes: usize },
     /// One native callback's panic-custody record, before host invocation.
     /// Normal records are released after native frames return. A panic keeps
     /// its record until owner teardown; the user's panic payload is excluded.
@@ -207,6 +211,7 @@ impl Request {
             | Self::RootRecord { bytes }
             | Self::Buffer { bytes, .. }
             | Self::CallableRegistration { bytes }
+            | Self::HostMicrotask { bytes }
             | Self::CallbackFrame { bytes }
             | Self::Process { bytes }
             | Self::Realm { bytes } => bytes,
@@ -228,6 +233,7 @@ impl Request {
                 elements,
             },
             Self::CallableRegistration { .. } => Self::CallableRegistration { bytes },
+            Self::HostMicrotask { .. } => Self::HostMicrotask { bytes },
             Self::CallbackFrame { .. } => Self::CallbackFrame { bytes },
             Self::Process { .. } => Self::Process { bytes },
             Self::Realm { .. } => Self::Realm { bytes },

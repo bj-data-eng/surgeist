@@ -2563,6 +2563,15 @@ fn main() -> Result<(), Error> {
     if std::env::args().nth(1).as_deref() == Some("result-admission") {
         return result_admission::results_admit_before_backend_preparation();
     }
+    if std::env::args().nth(1).as_deref() == Some("host-microtask-release") {
+        return microtask_checkpoint::host_job_release_failure_stops_the_guest_suffix();
+    }
+    if std::env::args().nth(1).as_deref() == Some("host-microtask-panic") {
+        return panic_preparation::host_microtask_panic_payload_waits_for_retirement();
+    }
+    if std::env::args().nth(1).as_deref() == Some("host-microtask-unwind") {
+        return panic_preparation::host_microtask_cleanup_unwind_refuses_further_dispatch();
+    }
     {
         type Regression = fn(&mut Process) -> Result<(), Error>;
         let regression: Option<Regression> = match std::env::args().nth(1).as_deref() {
@@ -2578,6 +2587,9 @@ fn main() -> Result<(), Error> {
             Some("native-language-profile") => Some(language_profile::native_language_profile),
             Some("raw-microtask-throw") => {
                 Some(microtask_checkpoint::raw_guest_throw_keeps_microtask_checkpoint_in_fifo)
+            }
+            Some("suspended-host-microtask") => {
+                Some(microtask_checkpoint::suspended_host_job_keeps_the_original_fifo_position)
             }
             Some("module-loader-policy") => {
                 Some(module_profile::module_resolution_stays_host_owned)
@@ -2648,6 +2660,7 @@ fn main() -> Result<(), Error> {
     guest_creation_realm::dom_exception_slots_do_not_pin_a_retired_realm(&mut process)?;
     language_profile::native_language_profile(&mut process)?;
     microtask_checkpoint::raw_guest_throw_keeps_microtask_checkpoint_in_fifo(&mut process)?;
+    microtask_checkpoint::suspended_host_job_keeps_the_original_fifo_position(&mut process)?;
     module_profile::module_resolution_stays_host_owned(&mut process)?;
     collection_visibility::collection_names_follow_prototype_own_descriptors(&mut process)?;
     native_named_properties::retained_named_properties_stay_on_the_canonical_object(&mut process)?;
@@ -2757,6 +2770,7 @@ fn main() -> Result<(), Error> {
     capture::admission_refusals_and_prior_host_errors_are_terminal()?;
     setup_preparation::setup_preparation_contracts()?;
     panic_preparation::panic_preparation_contracts()?;
+    microtask_checkpoint::host_job_release_failure_stops_the_guest_suffix()?;
     root_custody::root_custody_contracts()?;
     holder_custody::holder_custody_contracts()?;
     println!(

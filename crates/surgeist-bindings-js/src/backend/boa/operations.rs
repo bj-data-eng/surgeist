@@ -3,10 +3,10 @@ use crate::backend::{
     CoercedString, ObjectPrototype, PropertyDefinition, PropertyDescriptor, PropertyKey,
 };
 use crate::preparation::{self, Admitted, BufferKind, Work};
-use crate::{Intrinsic, Primitive, ValueKind, WellKnownSymbol};
+use crate::{HostMicrotaskCallback, Intrinsic, Primitive, ValueKind, WellKnownSymbol};
 use boa_engine::{
     JsObject, JsString, JsSymbol, JsValue, Source,
-    job::{Job, PromiseJob},
+    job::{Job, MicrotaskProgress as BoaMicrotaskProgress, PromiseJob},
     object::builtins::JsArray,
     property::{PropertyDescriptor as BoaPropertyDescriptor, PropertyKey as BoaPropertyKey},
     script::Script,
@@ -359,6 +359,32 @@ impl Operations for Entered<'_> {
                 realm,
             )));
         Ok(())
+    }
+
+    fn host_microtask_storage_bytes(&self) -> usize {
+        Context::host_microtask_storage_bytes()
+            + size_of::<(Weak<State>, RealmKey, Option<Box<HostMicrotaskCallback>>)>()
+    }
+
+    fn enqueue_host_microtask(
+        &mut self,
+        callback: Box<HostMicrotaskCallback>,
+    ) -> Result<(), Error> {
+        self.check_active()?;
+        let owner = self.state.self_weak.clone();
+        let realm = self.realm;
+        let mut callback = Some(callback);
+        self.context
+            .enqueue_host_microtask(move |context| {
+                let state = owner.upgrade().ok_or_else(functions::boa_host_abort)?;
+                functions::invoke_boa_host_microtask(&state, realm, &mut callback, context).map(
+                    |progress| match progress {
+                        MicrotaskProgress::Complete => BoaMicrotaskProgress::Complete,
+                        MicrotaskProgress::Suspended => BoaMicrotaskProgress::Suspended,
+                    },
+                )
+            })
+            .map_err(|_| Error::BackendUnavailable)
     }
 
     fn validate_string_length(&self, units: usize) -> Result<(), Error> {

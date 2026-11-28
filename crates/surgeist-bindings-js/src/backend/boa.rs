@@ -21,8 +21,8 @@ use boa_engine::{
 };
 
 use crate::{
-    EngineInstructionCount, Error, Exception, ExceptionPhase, HeapObservation, Realm, RealmBacking,
-    RealmIdentity, RealmKey, Root, RootBacking, RootIdentity,
+    EngineInstructionCount, Error, Exception, ExceptionPhase, HeapObservation, MicrotaskProgress,
+    Realm, RealmBacking, RealmIdentity, RealmKey, Root, RootBacking, RootIdentity,
     callback_object::CallbackObjectIdentity,
     owner::{BackendLease, OwnerState},
     preparation::{Guard, Request},
@@ -543,12 +543,25 @@ impl super::Engine for Engine {
 
     fn checkpoint(&mut self) -> Result<(), Error> {
         self.state.owner.available()?;
+        if self.context.has_pending_host_microtasks() {
+            return Err(Error::MicrotaskCheckpointRequired);
+        }
         let result = self.context.run_jobs();
         // The host job ends even when there were no queued microtasks.
         self.context.clear_kept_objects();
         self.state.reap();
         self.state.owner.available()?;
         result.map_err(|_| Error::BackendUnavailable)
+    }
+
+    fn checkpoint_microtasks(&mut self) -> Result<MicrotaskProgress, Error> {
+        self.state.owner.available()?;
+        let progress = self.context.run_microtask_checkpoint();
+        self.state.owner.available()?;
+        match progress.map_err(|_| Error::BackendUnavailable)? {
+            boa_engine::job::MicrotaskProgress::Complete => Ok(MicrotaskProgress::Complete),
+            boa_engine::job::MicrotaskProgress::Suspended => Ok(MicrotaskProgress::Suspended),
+        }
     }
 
     fn memory_pressure(&mut self) {
