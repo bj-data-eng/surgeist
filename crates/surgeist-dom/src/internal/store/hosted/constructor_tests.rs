@@ -872,6 +872,194 @@ fn hosted_constructor_scratch_peak_and_each_work_cut_drop_actual_partial_graph()
 }
 
 #[test]
+fn native_select_toggle_publishes_with_its_original_notification() {
+    use crate::internal::{
+        source::{
+            DomSourceAdvance, DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest,
+        },
+        store::source::operation::element_queue::{
+            DomQueuedSourceElementTask, DomSourceElementTaskInfo,
+        },
+    };
+    use surgeist_html::{
+        bounded::select::{HtmlSelectNotificationAction as Action, HtmlSelectNotificationEvent},
+        values::Namespace,
+    };
+
+    let cancel = cancel();
+    let (mut dom, mut hosted, mut prepared) = prepared_top_level();
+    let (mut lease, document, _, _) =
+        publish_local_html_entry(&mut dom, &mut hosted, &mut prepared, false);
+    lease.finish(&mut dom, &mut hosted, &cancel).unwrap();
+    let mut domain = dom
+        .limits()
+        .with_select_processing(16, 1_000_000, 1_000_000)
+        .unwrap();
+    domain.slot_references = 4;
+    dom.set_limits(domain).unwrap();
+    let source = dom.bind_element_task_source(&cancel).unwrap();
+    let mut setup = DomBatch::new();
+    let select = setup.create_element_ns(document, Namespace::html(), "select");
+    let option = setup.create_element_ns(document, Namespace::html(), "option");
+    setup.set_attribute(&select, "multiple", "");
+    setup.set_attribute(&option, "label", "before the task");
+    setup.insert_before(&option, &select, None);
+    setup.insert_before(&select, document, None);
+    let setup = dom.apply(setup, &cancel).unwrap();
+    let select = setup.created(&select).unwrap().unwrap();
+    let option = setup.created(&option).unwrap().unwrap();
+    let before = dom.snapshot();
+    let flags = |snapshot: &DomSnapshot| {
+        snapshot
+            .node(option)
+            .unwrap()
+            .as_option()
+            .unwrap()
+            .state()
+            .flags()
+    };
+    let validity = |snapshot: &DomSnapshot| {
+        snapshot
+            .node(select)
+            .unwrap()
+            .as_select()
+            .unwrap()
+            .state()
+            .flags()
+            .user_validity()
+    };
+    let limits = DomSourceLimits::new(64_000_000, 2_000_000, 10_000_000, 64, 1024, 1024, 4);
+    let edit = DomSourceEdit::toggle_select_option_for_user(select, option, before.stamp());
+    let mut lease = dom.begin_source_edit(edit, limits, &cancel).unwrap();
+    let DomSourceAdvance::Progress(DomSourceProgress::Request(DomSourceRequest::ElementTaskQueue(
+        request,
+    ))) = lease.advance_for_runtime(&cancel).unwrap()
+    else {
+        panic!("accepted user toggle reaches its original handoff")
+    };
+    {
+        let prepared = lease
+            .prepare_element_task_queue(request, &source, 10, &cancel)
+            .unwrap();
+        let mut prospective = prepared.tasks();
+        let Some(DomSourceElementTaskInfo::SelectNotification(info)) = prospective.next() else {
+            panic!("toggle has one notification")
+        };
+        assert_eq!(info.id().target(), select);
+        assert_eq!(info.queue_association().document(), document);
+        assert!(prospective.next().is_none());
+    }
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    assert!(!flags(&lease.snapshot()).selectedness());
+    let (_, mut queued) = lease
+        .prepare_element_task_queue(request, &source, 10, &cancel)
+        .unwrap()
+        .publish()
+        .unwrap();
+    let Some(DomQueuedSourceElementTask::SelectNotification(mut task)) = queued.next() else {
+        panic!("original task transferred with selectedness")
+    };
+    assert!(queued.next().is_none());
+    drop(queued);
+    drop(lease);
+    assert!(flags(&dom.snapshot()).selectedness());
+    assert!(flags(&dom.snapshot()).dirtiness());
+    assert!(!validity(&dom.snapshot()));
+    assert!(!flags(&before).selectedness());
+
+    let mut update = DomBatch::new();
+    update.set_attribute(option, "label", "after the toggle");
+    dom.apply(update, &cancel).unwrap();
+    let staged = dom.snapshot();
+    assert!(matches!(
+        dom.apply_select_notification_local_action(&mut task, limits, &mut 0, &cancel),
+        Err(DomError::SourceWorkLimit { .. })
+    ));
+    assert_eq!(dom.snapshot().stamp(), staged.stamp());
+    assert_eq!(task.action(), Some(Action::MarkUserValidity));
+    let mut work = 10_000_000;
+    dom.apply_select_notification_local_action(&mut task, limits, &mut work, &cancel)
+        .unwrap();
+    assert!(validity(&dom.snapshot()));
+    assert_eq!(task.action(), Some(Action::UpdateSelectedcontent));
+    let mut content = source
+        .select_notification_content(&mut dom, &mut task, limits, &cancel)
+        .unwrap();
+    content.request_cancel();
+    drop(content);
+    assert!(dom.pending_source_edit().is_some());
+    let mut content = source
+        .select_notification_content(&mut dom, &mut task, limits, &cancel)
+        .unwrap();
+    let DomSourceProgress::Complete(done) = content.advance(&cancel).unwrap() else {
+        panic!("multiple Selectedcontent operation returns as specified")
+    };
+    task.accept_content_completion(&done).unwrap();
+    assert!(task.accept_content_completion(&done).is_err());
+    drop(content);
+    dom.apply_select_notification_local_action(&mut task, limits, &mut work, &cancel)
+        .unwrap();
+    let after = dom.snapshot();
+    let root = after.node(select).unwrap().hosted_shadow_root().unwrap();
+    let slot = after.node(root).unwrap().children()[0];
+    let fallback = after.node(slot).unwrap().children()[0];
+    let label = after.node(fallback).unwrap().children()[0];
+    assert!(matches!(
+        after.node(label).unwrap().kind(),
+        crate::internal::snapshot::DomNodeKind::Text(value) if value == &DocumentString::from("after the toggle")
+    ));
+    assert_eq!(
+        task.action(),
+        Some(Action::Dispatch(HtmlSelectNotificationEvent::Input))
+    );
+    assert!(dom.pending_source_edit().is_none());
+
+    // Dropping an admitted notification's cursor leaves the original task
+    // owner able to settle its already opened canonical Source work.
+    let edit = DomSourceEdit::toggle_select_option_for_user(select, option, after.stamp());
+    let mut lease = dom.begin_source_edit(edit, limits, &cancel).unwrap();
+    let DomSourceAdvance::Progress(DomSourceProgress::Request(DomSourceRequest::ElementTaskQueue(
+        request,
+    ))) = lease.advance_for_runtime(&cancel).unwrap()
+    else {
+        panic!("second toggle reaches its own queue admission")
+    };
+    let (_, mut queued) = lease
+        .prepare_element_task_queue(request, &source, 11, &cancel)
+        .unwrap()
+        .publish()
+        .unwrap();
+    let Some(DomQueuedSourceElementTask::SelectNotification(mut abandoned)) = queued.next() else {
+        panic!("second toggle transfers one original task")
+    };
+    drop(queued);
+    drop(lease);
+    dom.apply_select_notification_local_action(&mut abandoned, limits, &mut work, &cancel)
+        .unwrap();
+    let id = abandoned.info().id();
+    let lease = source
+        .select_notification_content(&mut dom, &mut abandoned, limits, &cancel)
+        .unwrap();
+    let operation = lease.operation();
+    drop(lease);
+    drop(abandoned);
+    assert!(matches!(
+        dom.resume_source_edit(operation, limits, &cancel),
+        Err(DomError::InvalidSourceOperation)
+    ));
+    let (original, mut recovery) = source
+        .resume_select_notification_content(&mut dom, operation, limits, &cancel)
+        .unwrap();
+    assert_eq!(original, id);
+    let DomSourceProgress::Complete(settled) = recovery.advance(&cancel).unwrap() else {
+        panic!("exact owner drains the outstanding multiple Select Source operation")
+    };
+    assert_eq!(settled.operation(), operation);
+    drop(recovery);
+    assert!(dom.pending_source_edit().is_none());
+}
+
+#[test]
 fn hosted_embed_setup_refuses_attribute_and_tree_publication() {
     use crate::internal::{
         shadow::DomShadowRootInit,

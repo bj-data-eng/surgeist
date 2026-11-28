@@ -12,6 +12,10 @@ use crate::internal::dom_event::{
     FileSelectionEvent, NativeDomEvent,
 };
 use crate::internal::dom_lifecycle::NativeTaskRunning;
+use crate::internal::dom_source::{
+    DomSourceDriveError, DomSourceDriveProgress, DomSourceRuntime, DomSourceServices,
+};
+use crate::internal::dom_style::DomStyleRuntime;
 #[cfg(feature = "document-scripting")]
 use crate::{
     internal::dom_event::DomEventHostInvocation, internal::dom_lifecycle::DomHostedTopLevel,
@@ -27,8 +31,15 @@ use surgeist_dom::{
     DomError, DomSnapshot,
     details::{DomDetailsToggleIntention, DomDetailsToggleTransfer},
     identity::{DomOwnerId, DomRevision},
+    source::DomSourceProgress,
 };
-use surgeist_html::elements::details::{HtmlDetailsState, HtmlDetailsToggleEvent};
+use surgeist_html::{
+    bounded::select::{
+        HtmlSelectNotificationAction, HtmlSelectNotificationCursor, HtmlSelectNotificationEvent,
+        HtmlSelectNotificationReply,
+    },
+    elements::details::{HtmlDetailsState, HtmlDetailsToggleEvent},
+};
 
 /// Finite bounds for this source task owner, independent of event-path limits.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -49,7 +60,8 @@ pub struct DomElementTaskRunLimits {
     pub source: surgeist_dom::source::DomSourceLimits,
 }
 use surgeist_dom::task::{
-    DomElementTaskId, DomElementTaskSourceKind, DomFileSelectionTask, DomFileSelectionTaskInfo,
+    DomElementTaskId, DomElementTaskSource, DomElementTaskSourceKind, DomFileSelectionTask,
+    DomFileSelectionTaskInfo, DomSelectNotificationTask, DomSelectNotificationTaskInfo,
 };
 /// One pending source task's immutable queued payload.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -88,6 +100,8 @@ pub enum DomElementTask {
     TextSelection(surgeist_dom::task::DomTextSelectionTaskInfo),
     /// One file selection replacement and its ordered input and change events.
     FileSelection(DomFileSelectionTaskInfo),
+    /// One noncoalesced native Select update and its ordered input and change events.
+    SelectNotification(DomSelectNotificationTaskInfo),
 }
 impl DomElementTask {
     /// The HTML task source intrinsic to this payload.
@@ -96,9 +110,10 @@ impl DomElementTask {
             Self::DetailsToggle(_) | Self::DialogToggle(_) | Self::ObjectRepresentation(_) => {
                 DomElementTaskSourceKind::DomManipulation
             }
-            Self::DialogClose(_) | Self::TextSelection(_) | Self::FileSelection(_) => {
-                DomElementTaskSourceKind::UserInteraction
-            }
+            Self::DialogClose(_)
+            | Self::TextSelection(_)
+            | Self::FileSelection(_)
+            | Self::SelectNotification(_) => DomElementTaskSourceKind::UserInteraction,
         }
     }
     /// The plain close notification payload, when this is a Close task.
@@ -118,6 +133,7 @@ impl DomElementTask {
             Self::ObjectRepresentation(task) => task.id(),
             Self::TextSelection(task) => task.id(),
             Self::FileSelection(task) => task.id(),
+            Self::SelectNotification(task) => task.id(),
         }
     }
     /// Original relevant Global and its associated Document.
@@ -129,6 +145,7 @@ impl DomElementTask {
             Self::ObjectRepresentation(task) => Some(task.queue_association()),
             Self::TextSelection(task) => Some(task.queue_association()),
             Self::FileSelection(task) => Some(task.queue_association()),
+            Self::SelectNotification(task) => Some(task.queue_association()),
         }
     }
     /// The Details payload, when this is a Details task.
@@ -173,6 +190,8 @@ pub enum DomElementTaskRuntimeError {
     Dispatch(DomEventDispatchError),
     /// The original trusted Source event executor refused the task step.
     SourceEvent(crate::internal::dom_dialog::DomSourceEventRuntimeError),
+    /// The original selectedcontent Source operation refused its next step.
+    SelectNotificationSource(Box<DomSourceDriveError>),
     /// The actual original native Global/loop owner refused task admission.
     Hosted(crate::internal::dom_lifecycle::DomHostedRuntimeError),
 }
@@ -197,6 +216,7 @@ impl fmt::Display for DomElementTaskRuntimeError {
             }
             Self::Dispatch(_) => "shared event dispatch refused the element task",
             Self::SourceEvent(_) => "the Source event executor refused the element-task step",
+            Self::SelectNotificationSource(_) => "the selectedcontent Source operation refused the notification step",
             Self::Hosted(_) => "the native hosted lifecycle refused the element-task operation",
         })
     }
@@ -207,6 +227,7 @@ impl std::error::Error for DomElementTaskRuntimeError {
             Self::Dom(error) => Some(error),
             Self::Dispatch(error) => Some(error),
             Self::SourceEvent(error) => Some(error),
+            Self::SelectNotificationSource(error) => Some(error.as_ref()),
             Self::Hosted(error) => Some(error),
             Self::PretransferredSession
             | Self::Binding
@@ -285,6 +306,44 @@ pub enum DomElementTaskProgress {
         /// Actual change dispatch, absent if the target was destroyed before it started.
         change: Option<DomEventDispatchReceipt>,
         /// Original bank if a callback replaced the context's coordinator.
+        displaced_owner: Option<DomElementTaskRuntime>,
+    },
+    /// The original Select notification applied its effects and fired input.
+    SelectNotificationComplete {
+        /// Exact original task occurrence and queue association.
+        task: DomSelectNotificationTaskInfo,
+        /// Actual shared dispatch and listener failure evidence for input.
+        input: DomEventDispatchReceipt,
+        /// Actual change dispatch, absent when the target was destroyed before it started.
+        change: Option<DomEventDispatchReceipt>,
+        /// Original bank if a callback replaced the context's coordinator.
+        displaced_owner: Option<DomElementTaskRuntime>,
+    },
+    /// The notification yielded selectedcontent progress and remains queued.
+    SelectNotificationSourcePending {
+        /// Exact original task occurrence.
+        task: DomSelectNotificationTaskInfo,
+        /// Original Source progress, including the unserviced request or joined publication.
+        source: Box<DomSourceDriveProgress>,
+        /// Original bank if the caller's context changed coordinators.
+        displaced_owner: Option<DomElementTaskRuntime>,
+    },
+    /// The selectedcontent operation returned an ordinary failure after publication.
+    SelectNotificationSourceFailed {
+        /// Exact original task occurrence.
+        task: DomSelectNotificationTaskInfo,
+        /// Original Source failure and final publication, including joined Meta outputs.
+        source: Box<DomSourceDriveProgress>,
+        /// Original bank if the caller's context changed coordinators.
+        displaced_owner: Option<DomElementTaskRuntime>,
+    },
+    /// The original selectedcontent operation ended through explicit Script cancellation.
+    SelectNotificationSourceCancelled {
+        /// Exact original task occurrence.
+        task: DomSelectNotificationTaskInfo,
+        /// Original Source cancellation completion and any joined publication.
+        source: Box<DomSourceDriveProgress>,
+        /// Original bank if the caller's context changed coordinators.
         displaced_owner: Option<DomElementTaskRuntime>,
     },
     /// The original Object task completed its native representation update.
@@ -465,7 +524,7 @@ struct Task {
     running: bool,
     dialog: Option<surgeist_dom::dialog::DomDialogTask>,
     object: Option<surgeist_dom::task::DomObjectRepresentationTask>,
-    file_selection: Option<FileSelectionPhase>,
+    control_notification: Option<ControlNotification>,
     publication: Option<surgeist_dom::dialog::DomDialogTaskQueuePublication>,
     task_operation: Option<surgeist_dom::source::DomSourceOperationId>,
     request: Option<surgeist_dom::event::DomSourceEventRequest>,
@@ -473,6 +532,26 @@ struct Task {
     event_publication: Option<surgeist_dom::event::DomSourceEventPublication>,
     event_accepted: bool,
     dialog_toggle_disposition: Option<surgeist_dom::dialog::DomDialogToggleTaskDisposition>,
+}
+
+enum ControlNotification {
+    File(FileSelectionPhase),
+    Select(SelectNotificationPhase),
+}
+
+impl ControlNotification {
+    fn has_started(&self) -> bool {
+        match self {
+            Self::File(FileSelectionPhase::Input | FileSelectionPhase::Change(_))
+            | Self::Select(
+                SelectNotificationPhase::Events { .. } | SelectNotificationPhase::SourceEnded(_),
+            ) => true,
+            Self::Select(SelectNotificationPhase::Effects {
+                task: Some(task), ..
+            }) => task.action() != Some(HtmlSelectNotificationAction::MarkUserValidity),
+            _ => false,
+        }
+    }
 }
 
 enum FileSelectionPhase {
@@ -483,15 +562,91 @@ enum FileSelectionPhase {
     Change(DomEventDispatchReceipt),
 }
 
+enum SelectNotificationPhase {
+    Effects {
+        task: Option<DomSelectNotificationTask>,
+        outcome_storage: Option<TaskPayload>,
+    },
+    Events {
+        cursor: HtmlSelectNotificationCursor,
+        input: Option<DomEventDispatchReceipt>,
+    },
+    SourceEnded(SelectNotificationSourceEnd),
+}
+
+struct SelectNotificationSourceEnd {
+    outcome: Box<DomSourceDriveProgress>,
+    _retained: TaskPayload,
+}
+
+fn selectedcontent_source_result(
+    progress: &DomSourceDriveProgress,
+) -> Option<DomSourceTerminal<'_>> {
+    match progress {
+        DomSourceDriveProgress::Complete(completion) => {
+            Some(DomSourceTerminal::Complete(completion))
+        }
+        DomSourceDriveProgress::Failed(_) => Some(DomSourceTerminal::Failed),
+        DomSourceDriveProgress::MetaSource(outcome) => match outcome.source() {
+            DomSourceProgress::Complete(completion) => {
+                Some(DomSourceTerminal::Complete(completion))
+            }
+            DomSourceProgress::Failed(_) => Some(DomSourceTerminal::Failed),
+            DomSourceProgress::Request(_) => None,
+        },
+        _ => None,
+    }
+}
+
+enum DomSourceTerminal<'a> {
+    Complete(&'a surgeist_dom::source::DomSourceCompletion),
+    Failed,
+}
+
 impl Task {
     fn has_started(&self) -> bool {
         self.event.as_ref().is_some_and(|event| event.has_started())
             || (matches!(self.value, DomElementTask::ObjectRepresentation(_))
                 && self.object.is_none())
-            || matches!(
-                self.file_selection,
-                Some(FileSelectionPhase::Input | FileSelectionPhase::Change(_))
-            )
+            || self
+                .control_notification
+                .as_ref()
+                .is_some_and(ControlNotification::has_started)
+    }
+
+    fn retain_dispatch_receipt(
+        &mut self,
+        receipt: DomEventDispatchReceipt,
+    ) -> Result<bool, DomElementTaskRuntimeError> {
+        if matches!(
+            self.control_notification,
+            Some(ControlNotification::File(FileSelectionPhase::Input))
+        ) {
+            self.control_notification = Some(ControlNotification::File(
+                FileSelectionPhase::Change(receipt),
+            ));
+            self.event = None;
+            return Ok(true);
+        }
+        if let Some(ControlNotification::Select(SelectNotificationPhase::Events {
+            cursor,
+            input,
+        })) = &mut self.control_notification
+        {
+            let Some(HtmlSelectNotificationAction::Dispatch(event)) = cursor.action() else {
+                return Err(DomElementTaskRuntimeError::Binding);
+            };
+            cursor
+                .accept(HtmlSelectNotificationReply::Dispatched(event))
+                .map_err(|_| DomElementTaskRuntimeError::Binding)?;
+            if event == HtmlSelectNotificationEvent::Input {
+                *input = Some(receipt);
+                self.event = None;
+                return Ok(true);
+            }
+        }
+        self.receipt = Some(receipt);
+        Ok(false)
     }
 
     fn plan(&self) -> Plan {
@@ -567,6 +722,7 @@ impl ElementTaskOwner {
                 last_transfer: None,
                 hosted: None,
                 source: None,
+                source_styles: None,
                 tasks_retained: None,
                 trackers_retained: None,
                 owner_retained: None,
@@ -609,6 +765,9 @@ impl ElementTaskOwner {
     pub(crate) fn bind_events(&self, events: crate::internal::dom_dialog::SourceEventRuntime) {
         self.state.borrow_mut().events = Some(events);
     }
+    pub(crate) fn bind_source_styles(&self, styles: DomStyleRuntime) {
+        self.state.borrow_mut().source_styles = Some(styles);
+    }
     pub(crate) fn execution(&self) -> DomElementTaskRuntime {
         DomElementTaskRuntime {
             state: Rc::downgrade(&self.state),
@@ -638,7 +797,8 @@ struct ElementTaskState {
     work: u64,
     last_transfer: Option<DomRevision>,
     hosted: Option<crate::internal::dom_lifecycle::HostedRuntime>,
-    source: Option<Rc<surgeist_dom::task::DomElementTaskSource>>,
+    source: Option<Rc<DomElementTaskSource>>,
+    source_styles: Option<DomStyleRuntime>,
     tasks_retained: Option<surgeist_dom::task::DomElementTaskRetention>,
     trackers_retained: Option<surgeist_dom::task::DomElementTaskRetention>,
     owner_retained: Option<surgeist_dom::task::DomElementTaskRetention>,
@@ -646,6 +806,63 @@ struct ElementTaskState {
     events: Option<crate::internal::dom_dialog::SourceEventRuntime>,
 }
 impl DomElementTaskRuntime {
+    // The ordinary Source driver has already refused generic resumption.
+    // Find the row owning this exact private Source on the same DOM, and lend
+    // only its original lease. The caller must qualify the issued handoff.
+    pub(crate) fn resume_select_notification_source<'dom>(
+        &self,
+        dom: &'dom mut DomEventDom<'_>,
+        operation: surgeist_dom::source::DomSourceOperationId,
+        limits: surgeist_dom::source::DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Option<surgeist_dom::source::DomSourceLease<'dom>>, DomElementTaskRuntimeError>
+    {
+        if !dom
+            .pending_source_edit()
+            .is_some_and(|status| status.operation() == operation)
+        {
+            return Ok(None);
+        }
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomElementTaskRuntimeError::Busy)?;
+        if state.dom != dom.owner() {
+            return Err(DomElementTaskRuntimeError::Binding);
+        }
+        for index in 0..state.tasks.len() {
+            state.spend(1, cancel)?;
+            let row = &state.tasks[index];
+            if !matches!(row.value, DomElementTask::SelectNotification(_))
+                || row.task_operation != Some(operation)
+            {
+                continue;
+            }
+            if row.running {
+                return Err(DomElementTaskRuntimeError::Busy);
+            }
+            let source = state
+                .source
+                .clone()
+                .ok_or(DomElementTaskRuntimeError::Binding)?;
+            let Some(ControlNotification::Select(SelectNotificationPhase::Effects {
+                task: Some(task),
+                ..
+            })) = &mut state.tasks[index].control_notification
+            else {
+                return Err(DomElementTaskRuntimeError::Binding);
+            };
+            if task.content_operation() != Some(operation) {
+                return Err(DomElementTaskRuntimeError::Binding);
+            }
+            return source
+                .select_notification_content(dom.raw_mut(), task, limits, cancel)
+                .map(Some)
+                .map_err(DomElementTaskRuntimeError::Dom);
+        }
+        Ok(None)
+    }
+
     pub(crate) fn validate_view(
         &self,
         dom: &DomEventDom<'_>,
@@ -931,6 +1148,9 @@ impl DomElementTaskRuntime {
                 DomSourceElementTaskInfo::FileSelection(info) => {
                     DomElementTask::FileSelection(info)
                 }
+                DomSourceElementTaskInfo::SelectNotification(info) => {
+                    DomElementTask::SelectNotification(info)
+                }
             };
             intake.plan.push(Plan {
                 value,
@@ -948,7 +1168,17 @@ impl DomElementTaskRuntime {
             match task {
                 DomQueuedSourceElementTask::ObjectRepresentation(task) => row.object = Some(task),
                 DomQueuedSourceElementTask::FileSelection(task) => {
-                    row.file_selection = Some(FileSelectionPhase::Apply(Some(task)));
+                    row.control_notification = Some(ControlNotification::File(
+                        FileSelectionPhase::Apply(Some(task)),
+                    ));
+                }
+                DomQueuedSourceElementTask::SelectNotification(task) => {
+                    row.control_notification = Some(ControlNotification::Select(
+                        SelectNotificationPhase::Effects {
+                            task: Some(task),
+                            outcome_storage: None,
+                        },
+                    ));
                 }
                 DomQueuedSourceElementTask::TextSelection(_) => {}
             }
@@ -1219,7 +1449,7 @@ impl ElementTaskState {
                     running: false,
                     dialog: None,
                     object: None,
-                    file_selection: None,
+                    control_notification: None,
                     publication: None,
                     task_operation: None,
                     request: None,
@@ -1464,10 +1694,9 @@ impl ElementTaskState {
             .tasks
             .get_mut(index)
             .ok_or(DomElementTaskRuntimeError::Binding)?;
-        let phase = row
-            .file_selection
-            .as_mut()
-            .ok_or(DomElementTaskRuntimeError::Binding)?;
+        let Some(ControlNotification::File(phase)) = &mut row.control_notification else {
+            return Err(DomElementTaskRuntimeError::Binding);
+        };
         let permit = match phase {
             FileSelectionPhase::Apply(permit) => permit,
             FileSelectionPhase::Ineligible => return Ok(Some(ElementTaskStep::Ineligible)),
@@ -1522,7 +1751,10 @@ impl ElementTaskState {
         if self.tasks[index].receipt.is_some() {
             return Ok(PreparedEvent::Delivered);
         }
-        let started = if matches!(value, DomElementTask::FileSelection(_)) {
+        let started = if matches!(
+            value,
+            DomElementTask::FileSelection(_) | DomElementTask::SelectNotification(_)
+        ) {
             // Each notification gets a fresh path for the exact live target.
             // Once an event starts, its existing path carries the suffix.
             self.tasks[index]
@@ -1547,6 +1779,7 @@ impl ElementTaskState {
                             node.as_input().is_some() || node.as_textarea().is_some()
                         }
                         DomElementTask::FileSelection(_) => node.as_input().is_some(),
+                        DomElementTask::SelectNotification(_) => node.as_select().is_some(),
                     };
                     if !valid {
                         return Err(DomElementTaskRuntimeError::Binding);
@@ -1668,12 +1901,35 @@ impl ElementTaskState {
                     NativeDomEvent::text_selection(value.id().target(), creation, backing)
                 }
                 DomElementTask::FileSelection(_) => {
-                    let event = match &task.file_selection {
-                        Some(FileSelectionPhase::Input) => FileSelectionEvent::Input,
-                        Some(FileSelectionPhase::Change(_)) => FileSelectionEvent::Change,
+                    let event = match &task.control_notification {
+                        Some(ControlNotification::File(FileSelectionPhase::Input)) => {
+                            FileSelectionEvent::Input
+                        }
+                        Some(ControlNotification::File(FileSelectionPhase::Change(_))) => {
+                            FileSelectionEvent::Change
+                        }
                         _ => return Err(DomElementTaskRuntimeError::Binding),
                     };
                     NativeDomEvent::file_selection(value.id().target(), event, creation, backing)
+                }
+                DomElementTask::SelectNotification(_) => {
+                    let Some(ControlNotification::Select(SelectNotificationPhase::Events {
+                        cursor,
+                        ..
+                    })) = &task.control_notification
+                    else {
+                        return Err(DomElementTaskRuntimeError::Binding);
+                    };
+                    let Some(HtmlSelectNotificationAction::Dispatch(event)) = cursor.action()
+                    else {
+                        return Err(DomElementTaskRuntimeError::Binding);
+                    };
+                    NativeDomEvent::select_notification(
+                        value.id().target(),
+                        event,
+                        creation,
+                        backing,
+                    )
                 }
                 DomElementTask::DialogToggle(dialog) => NativeDomEvent::dialog_toggle(
                     value.id().target(),
@@ -1769,7 +2025,8 @@ impl ElementTaskState {
                         DomElementTask::DetailsToggle(_)
                         | DomElementTask::ObjectRepresentation(_)
                         | DomElementTask::TextSelection(_)
-                        | DomElementTask::FileSelection(_) => true,
+                        | DomElementTask::FileSelection(_)
+                        | DomElementTask::SelectNotification(_) => true,
                     }
                 {
                     return Err(DomElementTaskRuntimeError::Binding);
@@ -1789,10 +2046,24 @@ impl ElementTaskState {
         }
     }
 }
-struct ElementTaskRun<'a> {
+fn default_source_services(
+    style_policy: &mut dyn FnMut(
+        &surgeist_dom::style::DomStyleSource,
+    ) -> Option<surgeist_dom::style::DomStyleInlineCspObservation>,
+) -> DomSourceServices<'_> {
+    DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy,
+        url: None,
+    }
+}
+
+struct ElementTaskRun<'a, 'services> {
     source: DomElementTaskSourceKind,
     limits: DomElementTaskRunLimits,
     cancel: &'a AtomicBool,
+    services: &'a mut DomSourceServices<'services>,
     #[cfg(feature = "document-scripting")]
     attachment: Option<AttachedTaskRequest<'a>>,
 }
@@ -1801,11 +2072,14 @@ struct ElementTaskRun<'a> {
 pub(crate) struct AttachedTaskRequest<'a> {
     pub(crate) target: DomHostedTopLevel,
     pub(crate) expected: Option<DomElementTaskId>,
+    pub(crate) select_backup_ready: Option<DomElementTaskId>,
     pub(crate) usage: &'a mut DispatchUsage,
 }
 
 pub(crate) enum ElementTaskRunOutcome {
     Native(DomElementTaskProgress),
+    #[cfg(feature = "document-scripting")]
+    SelectNotificationBackupReactions(DomElementTaskId),
     #[cfg(feature = "document-scripting")]
     Guest(AttachedElementListener),
 }
@@ -1831,6 +2105,28 @@ impl DomElementTaskRuntime {
         limits: DomElementTaskRunLimits,
         cancel: &AtomicBool,
     ) -> Result<DomElementTaskProgress, DomElementTaskRuntimeError> {
+        Self::run_next_with_source_services(
+            dom,
+            source,
+            dispatcher,
+            context,
+            limits,
+            &mut default_source_services(&mut |_| None),
+            cancel,
+        )
+    }
+
+    /// Run the source's FIFO head with actual services for reached selectedcontent requests.
+    /// Retrying with newly available services resumes the same queued notification.
+    pub fn run_next_with_source_services<C: DomElementTaskEventContext>(
+        dom: &mut DomEventDom<'_>,
+        source: DomElementTaskSourceKind,
+        dispatcher: &mut DomEventDispatcher<C>,
+        context: &mut C,
+        limits: DomElementTaskRunLimits,
+        services: &mut DomSourceServices<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomElementTaskProgress, DomElementTaskRuntimeError> {
         let original = context.element_tasks().clone();
         let outcome = original.run_next_inner(
             dom,
@@ -1840,6 +2136,7 @@ impl DomElementTaskRuntime {
                 source,
                 limits,
                 cancel,
+                services,
                 #[cfg(feature = "document-scripting")]
                 attachment: None,
             },
@@ -1848,7 +2145,10 @@ impl DomElementTaskRuntime {
         match outcome {
             ElementTaskRunOutcome::Native(progress) => Ok(progress),
             #[cfg(feature = "document-scripting")]
-            ElementTaskRunOutcome::Guest(_) => Err(DomElementTaskRuntimeError::Binding),
+            ElementTaskRunOutcome::Guest(_)
+            | ElementTaskRunOutcome::SelectNotificationBackupReactions(_) => {
+                Err(DomElementTaskRuntimeError::Binding)
+            }
         }
     }
 
@@ -1859,6 +2159,7 @@ impl DomElementTaskRuntime {
         dispatcher: &mut DomEventDispatcher<()>,
         (source, limits): (DomElementTaskSourceKind, DomElementTaskRunLimits),
         attachment: AttachedTaskRequest<'_>,
+        services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
     ) -> Result<ElementTaskRunOutcome, DomElementTaskRuntimeError> {
         self.run_next_inner(
@@ -1869,10 +2170,197 @@ impl DomElementTaskRuntime {
                 source,
                 limits,
                 cancel,
+                services,
                 attachment: Some(attachment),
             },
             |_| self.clone(),
         )
+    }
+
+    fn prepare_select_notification(
+        &self,
+        state: &Rc<RefCell<ElementTaskState>>,
+        dom: &mut DomEventDom<'_>,
+        (info, check_backup): (DomSelectNotificationTaskInfo, bool),
+        limits: surgeist_dom::source::DomSourceLimits,
+        services: &mut DomSourceServices<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<Option<ElementTaskStep>, DomElementTaskRuntimeError> {
+        loop {
+            let (runtime, source, mut loan) = {
+                let mut owner = state.borrow_mut();
+                let ElementTaskState {
+                    tasks,
+                    limits: bank_limits,
+                    work,
+                    hosted,
+                    events,
+                    source,
+                    source_styles,
+                    ..
+                } = &mut *owner;
+                let row = tasks
+                    .iter_mut()
+                    .find(|row| row.value.id() == info.id())
+                    .ok_or(DomElementTaskRuntimeError::Binding)?;
+                let Some(ControlNotification::Select(phase)) = &mut row.control_notification else {
+                    return Err(DomElementTaskRuntimeError::Binding);
+                };
+                if check_backup
+                    && matches!(
+                        phase,
+                        SelectNotificationPhase::Events { .. }
+                            | SelectNotificationPhase::SourceEnded(_)
+                    )
+                {
+                    return Ok(Some(ElementTaskStep::SelectNotificationBackupReactions));
+                }
+                let (task_slot, storage_slot) = match phase {
+                    SelectNotificationPhase::Effects {
+                        task,
+                        outcome_storage,
+                    } => (task, outcome_storage),
+                    SelectNotificationPhase::Events { .. } => return Ok(None),
+                    SelectNotificationPhase::SourceEnded(_) => {
+                        return Ok(Some(ElementTaskStep::Complete));
+                    }
+                };
+                let task = task_slot
+                    .as_mut()
+                    .ok_or(DomElementTaskRuntimeError::Binding)?;
+                match task.action() {
+                    Some(HtmlSelectNotificationAction::UpdateFallbackLabel) if check_backup => {
+                        return Ok(Some(ElementTaskStep::SelectNotificationBackupReactions));
+                    }
+                    Some(
+                        HtmlSelectNotificationAction::MarkUserValidity
+                        | HtmlSelectNotificationAction::UpdateFallbackLabel,
+                    ) => {
+                        let available = bank_limits.work.saturating_sub(*work);
+                        let mut remaining = available;
+                        let applied = dom.raw_mut().apply_select_notification_local_action(
+                            task,
+                            limits,
+                            &mut remaining,
+                            cancel,
+                        );
+                        *work += available - remaining;
+                        match applied {
+                            Ok(Some(_)) => continue,
+                            Ok(None) => return Ok(Some(ElementTaskStep::Destroyed)),
+                            Err(DomError::SourceWorkLimit { .. }) if available < limits.work() => {
+                                return Err(DomElementTaskRuntimeError::Admission);
+                            }
+                            Err(error) => return Err(error.into()),
+                        }
+                    }
+                    Some(HtmlSelectNotificationAction::Dispatch(
+                        HtmlSelectNotificationEvent::Input,
+                    )) => {
+                        let cursor = task
+                            .take_event_sequence()
+                            .ok_or(DomElementTaskRuntimeError::Binding)?;
+                        *phase = SelectNotificationPhase::Events {
+                            cursor,
+                            input: None,
+                        };
+                        return Ok(None);
+                    }
+                    Some(HtmlSelectNotificationAction::UpdateSelectedcontent) => {}
+                    _ => return Err(DomElementTaskRuntimeError::Binding),
+                }
+                let runtime = DomSourceRuntime::new(
+                    source_styles
+                        .clone()
+                        .ok_or(DomElementTaskRuntimeError::Binding)?,
+                    self.clone(),
+                    hosted.clone().ok_or(DomElementTaskRuntimeError::Binding)?,
+                    events.clone().ok_or(DomElementTaskRuntimeError::Binding)?,
+                );
+                let source = source.clone().ok_or(DomElementTaskRuntimeError::Binding)?;
+                let task = task_slot
+                    .take()
+                    .ok_or(DomElementTaskRuntimeError::Binding)?;
+                (
+                    runtime,
+                    source,
+                    SelectNotificationLoan {
+                        state,
+                        id: info.id(),
+                        task: Some(task),
+                        outcome_storage: storage_slot.take(),
+                        terminal: None,
+                    },
+                )
+            };
+            // The loan keeps the affine cursor out of the bank during Source
+            // service callbacks. Its destructor restores the exact row on error
+            // or unwind, including a Source operation opened during this call.
+            // A terminal Source result must survive a later native checkpoint
+            // refusal. Reserve its box before opening the Source and keep the
+            // debit across pauses, so retries can raise the Source's old limits.
+            if loan.outcome_storage.is_none() {
+                let owner = state.borrow();
+                let bytes = size_of::<DomSourceDriveProgress>();
+                if owner
+                    .byte_total(0, 0, 0)?
+                    .checked_add(bytes)
+                    .is_none_or(|total| total > owner.limits.storage_bytes)
+                {
+                    return Err(DomElementTaskRuntimeError::Admission);
+                }
+                let retained = source.retain_payload(dom.raw_mut(), bytes, cancel)?;
+                loan.outcome_storage = Some(TaskPayload::new(
+                    owner.payload_bytes.clone(),
+                    bytes,
+                    bytes,
+                    retained,
+                )?);
+            }
+            let progress = runtime
+                .drive_select_notification_content(
+                    dom,
+                    &source,
+                    loan.task
+                        .as_mut()
+                        .ok_or(DomElementTaskRuntimeError::Binding)?,
+                    limits,
+                    services,
+                    cancel,
+                )
+                .map_err(DomElementTaskRuntimeError::SelectNotificationSource)?;
+            match selectedcontent_source_result(&progress) {
+                Some(DomSourceTerminal::Complete(completion))
+                    if !completion.cancellation_requested() =>
+                {
+                    loan.task
+                        .as_mut()
+                        .ok_or(DomElementTaskRuntimeError::Binding)?
+                        .accept_content_completion(completion)?;
+                    loan.outcome_storage = None;
+                    if matches!(progress, DomSourceDriveProgress::Complete(_)) {
+                        continue;
+                    }
+                    // The task owns its advanced cursor. The caller owns the
+                    // original joined Meta publication and output receipts.
+                }
+                Some(DomSourceTerminal::Complete(_) | DomSourceTerminal::Failed) => {
+                    loan.terminal = Some(SelectNotificationSourceEnd {
+                        outcome: Box::new(progress),
+                        _retained: loan
+                            .outcome_storage
+                            .take()
+                            .ok_or(DomElementTaskRuntimeError::Binding)?,
+                    });
+                    return Ok(Some(ElementTaskStep::Complete));
+                }
+                None => {}
+            }
+            return Ok(Some(ElementTaskStep::SelectNotificationSourcePending(
+                info,
+                Box::new(progress),
+            )));
+        }
     }
 
     fn run_next_inner<C>(
@@ -1880,13 +2368,14 @@ impl DomElementTaskRuntime {
         dom: &mut DomEventDom<'_>,
         dispatcher: &mut DomEventDispatcher<C>,
         context: &mut C,
-        run: ElementTaskRun<'_>,
+        run: ElementTaskRun<'_, '_>,
         current_owner: impl FnOnce(&mut C) -> Self,
     ) -> Result<ElementTaskRunOutcome, DomElementTaskRuntimeError> {
         let ElementTaskRun {
             source,
             limits,
             cancel,
+            services,
             #[cfg(feature = "document-scripting")]
             mut attachment,
         } = run;
@@ -1933,6 +2422,12 @@ impl DomElementTaskRuntime {
             {
                 return Err(DomElementTaskRuntimeError::Binding);
             }
+            if head.running {
+                owner.spend(1, cancel)?;
+                return Ok(ElementTaskRunOutcome::Native(
+                    DomElementTaskProgress::Running(value.id()),
+                ));
+            }
             if dom
                 .raw()
                 .pending_source_edit()
@@ -1942,16 +2437,18 @@ impl DomElementTaskRuntime {
                     DomError::SourceOperationPending,
                 ));
             }
-            if head.running {
-                owner.spend(1, cancel)?;
-                return Ok(ElementTaskRunOutcome::Native(
-                    DomElementTaskProgress::Running(value.id()),
-                ));
-            }
             let cleanup = owner
                 .limits
                 .tasks
-                .checked_mul(3)
+                .checked_mul(if matches!(value, DomElementTask::SelectNotification(_)) {
+                    // Four effect lookups and return of the content loan, two
+                    // event preparations and receipt lookups, the final task
+                    // and tracker lookups, and running-guard cleanup. Removing
+                    // the row and tracker can also shift their two suffixes.
+                    14
+                } else {
+                    3
+                })
                 .and_then(|n| n.checked_add(1))
                 .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?;
             owner.spend(
@@ -2046,6 +2543,24 @@ impl DomElementTaskRuntime {
             {
                 return Ok(terminal);
             }
+            if let DomElementTask::SelectNotification(info) = value {
+                #[cfg(feature = "document-scripting")]
+                let check_backup = attachment
+                    .as_ref()
+                    .is_some_and(|request| request.select_backup_ready != Some(info.id()));
+                #[cfg(not(feature = "document-scripting"))]
+                let check_backup = false;
+                if let Some(step) = self.prepare_select_notification(
+                    &state,
+                    dom,
+                    (info, check_backup),
+                    limits.source,
+                    services,
+                    cancel,
+                )? {
+                    return Ok(step);
+                }
+            }
             let mut local_usage = DispatchUsage::default();
             #[cfg(feature = "document-scripting")]
             let (host, usage) = match &mut attachment {
@@ -2095,12 +2610,9 @@ impl DomElementTaskRuntime {
                     .ok_or(DomElementTaskRuntimeError::Binding)?;
                 match outcome {
                     DomEventDispatchOutcome::Complete(receipt) => {
-                        if matches!(task.file_selection, Some(FileSelectionPhase::Input)) {
-                            task.file_selection = Some(FileSelectionPhase::Change(receipt));
-                            task.event = None;
+                        if task.retain_dispatch_receipt(receipt)? {
                             continue;
                         }
-                        task.receipt = Some(receipt);
                         return Ok(ElementTaskStep::Complete);
                     }
                     #[cfg(feature = "document-scripting")]
@@ -2120,6 +2632,14 @@ impl DomElementTaskRuntime {
         // receipt if it unwinds, so subsequent execution cannot replay dispatch.
         let displaced = !Weak::ptr_eq(&Rc::downgrade(&state), &current_owner(context).state);
         match result? {
+            ElementTaskStep::SelectNotificationBackupReactions => {
+                #[cfg(feature = "document-scripting")]
+                return Ok(ElementTaskRunOutcome::SelectNotificationBackupReactions(
+                    value.id(),
+                ));
+                #[cfg(not(feature = "document-scripting"))]
+                return Err(DomElementTaskRuntimeError::Binding);
+            }
             #[cfg(feature = "document-scripting")]
             ElementTaskStep::Selected(invocation, request) => {
                 Ok(ElementTaskRunOutcome::Guest(AttachedElementListener {
@@ -2172,8 +2692,8 @@ impl DomElementTaskRuntime {
                     native_task.complete();
                 }
                 if let DomElementTask::FileSelection(info) = value {
-                    match task.file_selection.take() {
-                        Some(FileSelectionPhase::Change(mut input)) => {
+                    match task.control_notification.take() {
+                        Some(ControlNotification::File(FileSelectionPhase::Change(mut input))) => {
                             input.release_producer_retention();
                             let mut change = task.receipt.take();
                             if let Some(receipt) = &mut change {
@@ -2190,10 +2710,61 @@ impl DomElementTaskRuntime {
                                 },
                             ));
                         }
-                        Some(FileSelectionPhase::Ineligible) => {
+                        Some(ControlNotification::File(FileSelectionPhase::Ineligible)) => {
                             return Ok(ElementTaskRunOutcome::Native(
                                 DomElementTaskProgress::SkippedFileSelectionIneligible(info),
                             ));
+                        }
+                        _ => {}
+                    }
+                }
+                if let DomElementTask::SelectNotification(info) = value {
+                    let displaced_owner = displaced.then(|| Self {
+                        state: Rc::downgrade(&state),
+                    });
+                    match task.control_notification.take() {
+                        Some(ControlNotification::Select(SelectNotificationPhase::Events {
+                            input: Some(mut input),
+                            ..
+                        })) => {
+                            input.release_producer_retention();
+                            let mut change = task.receipt.take();
+                            if let Some(receipt) = &mut change {
+                                receipt.release_producer_retention();
+                            }
+                            return Ok(ElementTaskRunOutcome::Native(
+                                DomElementTaskProgress::SelectNotificationComplete {
+                                    task: info,
+                                    input,
+                                    change,
+                                    displaced_owner,
+                                },
+                            ));
+                        }
+                        Some(ControlNotification::Select(
+                            SelectNotificationPhase::SourceEnded(source),
+                        )) => {
+                            let SelectNotificationSourceEnd { outcome, _retained } = source;
+                            let progress = match selectedcontent_source_result(&outcome) {
+                                Some(DomSourceTerminal::Complete(completion))
+                                    if completion.cancellation_requested() =>
+                                {
+                                    DomElementTaskProgress::SelectNotificationSourceCancelled {
+                                        task: info,
+                                        source: outcome,
+                                        displaced_owner,
+                                    }
+                                }
+                                Some(DomSourceTerminal::Failed) => {
+                                    DomElementTaskProgress::SelectNotificationSourceFailed {
+                                        task: info,
+                                        source: outcome,
+                                        displaced_owner,
+                                    }
+                                }
+                                _ => return Err(DomElementTaskRuntimeError::Binding),
+                            };
+                            return Ok(ElementTaskRunOutcome::Native(progress));
                         }
                         _ => {}
                     }
@@ -2229,6 +2800,17 @@ impl DomElementTaskRuntime {
                     ))
                 }
             }
+            ElementTaskStep::SelectNotificationSourcePending(task, source) => {
+                Ok(ElementTaskRunOutcome::Native(
+                    DomElementTaskProgress::SelectNotificationSourcePending {
+                        task,
+                        source,
+                        displaced_owner: displaced.then(|| Self {
+                            state: Rc::downgrade(&state),
+                        }),
+                    },
+                ))
+            }
             ElementTaskStep::Retained(dispatch) => Ok(ElementTaskRunOutcome::Native(
                 DomElementTaskProgress::Retained {
                     task: value,
@@ -2245,9 +2827,45 @@ enum ElementTaskStep {
     Complete,
     Destroyed,
     Ineligible,
+    SelectNotificationBackupReactions,
+    SelectNotificationSourcePending(DomSelectNotificationTaskInfo, Box<DomSourceDriveProgress>),
     Retained(DomEventDispatchOutcome),
     #[cfg(feature = "document-scripting")]
     Selected(DomEventHostInvocation, Option<DomSourceEventRequest>),
+}
+struct SelectNotificationLoan<'a> {
+    state: &'a RefCell<ElementTaskState>,
+    id: DomElementTaskId,
+    task: Option<DomSelectNotificationTask>,
+    outcome_storage: Option<TaskPayload>,
+    terminal: Option<SelectNotificationSourceEnd>,
+}
+
+impl Drop for SelectNotificationLoan<'_> {
+    fn drop(&mut self) {
+        let mut owner = self.state.borrow_mut();
+        // A running row cannot be removed, including by reentrant intake.
+        let Some(row) = owner.tasks.iter_mut().find(|row| row.value.id() == self.id) else {
+            return;
+        };
+        if let Some(terminal) = self.terminal.take() {
+            row.task_operation = None;
+            row.control_notification = Some(ControlNotification::Select(
+                SelectNotificationPhase::SourceEnded(terminal),
+            ));
+        } else {
+            row.task_operation = self
+                .task
+                .as_ref()
+                .and_then(DomSelectNotificationTask::content_operation);
+            row.control_notification = Some(ControlNotification::Select(
+                SelectNotificationPhase::Effects {
+                    task: self.task.take(),
+                    outcome_storage: self.outcome_storage.take(),
+                },
+            ));
+        }
+    }
 }
 struct ElementTaskRunning {
     state: Rc<RefCell<ElementTaskState>>,

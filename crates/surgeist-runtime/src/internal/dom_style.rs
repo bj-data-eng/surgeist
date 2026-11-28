@@ -2091,12 +2091,16 @@ impl DomSession {
             clock: hosted.event_clock(),
         });
         state.work.set(parsed_work);
+        let state = std::rc::Rc::new(std::cell::RefCell::new(state));
+        details.bind_source_styles(DomStyleRuntime {
+            state: std::rc::Rc::downgrade(&state),
+        });
         Ok(Self {
             dom,
             media_stable_state,
             #[cfg(feature = "document-scripting")]
             trusted_types_csp: None,
-            state: std::rc::Rc::new(std::cell::RefCell::new(state)),
+            state,
             element_tasks: details,
             hosted,
             events,
@@ -2336,6 +2340,7 @@ impl StyleSourceGuard {
 
 /// One actual Style composition owner. Reentry retains this exact private State;
 /// replacing a context handle never redirects an executing task to another bank.
+#[derive(Clone)]
 pub struct DomStyleRuntime {
     state: std::rc::Weak<std::cell::RefCell<StyleState>>,
 }

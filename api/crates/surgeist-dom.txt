@@ -2950,6 +2950,7 @@ pub struct surgeist_dom::script::DomDocumentScriptRegistration(_)
 impl surgeist_dom::script::DomDocumentScriptRegistration
 pub fn surgeist_dom::script::DomDocumentScriptRegistration::creation_realm_fallback(&self) -> surgeist_dom::script::DomCreationRealmFallback
 pub fn surgeist_dom::script::DomDocumentScriptRegistration::custom_element_reaction_segments(&self) -> usize
+pub fn surgeist_dom::script::DomDocumentScriptRegistration::has_backup_custom_element_reactions(&self, work_remaining: &mut u64) -> core::result::Result<bool, surgeist_dom::DomError>
 pub fn surgeist_dom::script::DomDocumentScriptRegistration::is_active(&self) -> bool
 pub fn surgeist_dom::script::DomDocumentScriptRegistration::next_custom_element_receiver(&self, queue: core::option::Option<surgeist_dom::custom_element::DomSynchronousReactionQueue>, work_remaining: &mut u64) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, surgeist_dom::DomError>
 pub fn surgeist_dom::script::DomDocumentScriptRegistration::observe_custom_element_reactions(&self) -> core::result::Result<(), surgeist_dom::DomError>
@@ -3253,6 +3254,7 @@ pub fn surgeist_dom::source::DomSourceEdit::set_select_option_at(select: surgeis
 pub fn surgeist_dom::source::DomSourceEdit::set_select_options_length(select: surgeist_dom::identity::NodeId, length: u32) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::set_text_content(node: surgeist_dom::identity::NodeId, value: impl core::convert::Into<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::step_input(input: surgeist_dom::identity::NodeId, direction: surgeist_html::internal::elements::input_step::HtmlInputStepDirection, count: i32) -> Self
+pub fn surgeist_dom::source::DomSourceEdit::toggle_select_option_for_user(select: surgeist_dom::identity::NodeId, option: surgeist_dom::identity::NodeId, observed: surgeist_dom::identity::DomStamp) -> Self
 impl surgeist_dom::source::DomSourceEdit
 pub fn surgeist_dom::source::DomSourceEdit::adopt(node: surgeist_dom::identity::NodeId, document: surgeist_dom::identity::NodeId) -> Self
 pub fn surgeist_dom::source::DomSourceEdit::append_view_transition_record(basis: surgeist_dom::identity::DomDocumentStamp, transition: surgeist_dom::view_transition::DomViewTransitionId, name: surgeist_css::values::view_transition::transitions::CssViewTransitionIdent) -> Self
@@ -3775,10 +3777,12 @@ pub surgeist_dom::task::DomNativeCheckpoint::Slots(surgeist_dom::shadow::DomSlot
 pub enum surgeist_dom::task::DomQueuedSourceElementTask
 pub surgeist_dom::task::DomQueuedSourceElementTask::FileSelection(surgeist_dom::task::DomFileSelectionTask)
 pub surgeist_dom::task::DomQueuedSourceElementTask::ObjectRepresentation(surgeist_dom::task::DomObjectRepresentationTask)
+pub surgeist_dom::task::DomQueuedSourceElementTask::SelectNotification(surgeist_dom::task::DomSelectNotificationTask)
 pub surgeist_dom::task::DomQueuedSourceElementTask::TextSelection(surgeist_dom::task::DomTextSelectionTaskInfo)
 pub enum surgeist_dom::task::DomSourceElementTaskInfo
 pub surgeist_dom::task::DomSourceElementTaskInfo::FileSelection(surgeist_dom::task::DomFileSelectionTaskInfo)
 pub surgeist_dom::task::DomSourceElementTaskInfo::ObjectRepresentation(surgeist_dom::task::DomObjectRepresentationTaskInfo)
+pub surgeist_dom::task::DomSourceElementTaskInfo::SelectNotification(surgeist_dom::task::DomSelectNotificationTaskInfo)
 pub surgeist_dom::task::DomSourceElementTaskInfo::TextSelection(surgeist_dom::task::DomTextSelectionTaskInfo)
 pub struct surgeist_dom::task::DomElementTaskAssociation
 impl surgeist_dom::task::DomElementTaskAssociation
@@ -3800,6 +3804,9 @@ pub fn surgeist_dom::task::DomElementTaskSource::resume_dialog_task<'a>(&self, d
 impl surgeist_dom::task::DomElementTaskSource
 pub const fn surgeist_dom::task::DomElementTaskSource::binding_payload_bytes() -> usize
 pub fn surgeist_dom::task::DomElementTaskSource::task_id(&self, serial: u64, target: surgeist_dom::identity::NodeId) -> core::result::Result<surgeist_dom::task::DomElementTaskId, surgeist_dom::DomError>
+impl surgeist_dom::task::DomElementTaskSource
+pub fn surgeist_dom::task::DomElementTaskSource::resume_select_notification_content<'dom>(&self, dom: &'dom mut surgeist_dom::Dom, operation: surgeist_dom::source::DomSourceOperationId, limits: surgeist_dom::source::DomSourceLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(surgeist_dom::task::DomElementTaskId, surgeist_dom::source::DomSourceLease<'dom>), surgeist_dom::DomError>
+pub fn surgeist_dom::task::DomElementTaskSource::select_notification_content<'dom>(&self, dom: &'dom mut surgeist_dom::Dom, task: &mut surgeist_dom::task::DomSelectNotificationTask, limits: surgeist_dom::source::DomSourceLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::source::DomSourceLease<'dom>, surgeist_dom::DomError>
 impl surgeist_dom::task::DomElementTaskSource
 pub fn surgeist_dom::task::DomElementTaskSource::retain_payload(&self, dom: &mut surgeist_dom::Dom, bytes: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::task::DomElementTaskRetention, surgeist_dom::DomError>
 impl core::fmt::Debug for surgeist_dom::task::DomElementTaskSource
@@ -3831,6 +3838,17 @@ impl core::iter::traits::iterator::Iterator for surgeist_dom::task::DomQueuedSou
 pub type surgeist_dom::task::DomQueuedSourceElementTasks::Item = surgeist_dom::task::DomQueuedSourceElementTask
 pub fn surgeist_dom::task::DomQueuedSourceElementTasks::next(&mut self) -> core::option::Option<Self::Item>
 pub fn surgeist_dom::task::DomQueuedSourceElementTasks::size_hint(&self) -> (usize, core::option::Option<usize>)
+pub struct surgeist_dom::task::DomSelectNotificationTask
+impl surgeist_dom::task::DomSelectNotificationTask
+pub fn surgeist_dom::task::DomSelectNotificationTask::accept_content_completion(&mut self, completed: &surgeist_dom::source::DomSourceCompletion) -> core::result::Result<(), surgeist_dom::DomError>
+pub fn surgeist_dom::task::DomSelectNotificationTask::action(&self) -> core::option::Option<surgeist_html::internal::elements::select_notification::HtmlSelectNotificationAction>
+pub const fn surgeist_dom::task::DomSelectNotificationTask::content_operation(&self) -> core::option::Option<surgeist_dom::source::DomSourceOperationId>
+pub const fn surgeist_dom::task::DomSelectNotificationTask::info(&self) -> surgeist_dom::task::DomSelectNotificationTaskInfo
+pub fn surgeist_dom::task::DomSelectNotificationTask::take_event_sequence(&mut self) -> core::option::Option<surgeist_html::internal::elements::select_notification::HtmlSelectNotificationCursor>
+pub struct surgeist_dom::task::DomSelectNotificationTaskInfo
+impl surgeist_dom::task::DomSelectNotificationTaskInfo
+pub const fn surgeist_dom::task::DomSelectNotificationTaskInfo::id(self) -> surgeist_dom::task::DomElementTaskId
+pub const fn surgeist_dom::task::DomSelectNotificationTaskInfo::queue_association(self) -> surgeist_dom::task::DomElementTaskAssociation
 pub struct surgeist_dom::task::DomSourceElementTaskQueueCommit<'a, 'dom>
 impl surgeist_dom::task::DomSourceElementTaskQueueCommit<'_, '_>
 pub fn surgeist_dom::task::DomSourceElementTaskQueueCommit<'_, '_>::publish(self) -> core::result::Result<(surgeist_dom::source::DomSourceCompletion, surgeist_dom::task::DomQueuedSourceElementTasks), surgeist_dom::DomError>
@@ -4697,8 +4715,10 @@ pub surgeist_dom::DomError::ScriptPreparationRequired
 pub surgeist_dom::DomError::SelectCapture(surgeist_html_semantics::capture::HtmlCaptureError)
 pub surgeist_dom::DomError::SelectElementValues(surgeist_html_semantics::capture::element_input::HtmlCaptureElementError<core::convert::Infallible>)
 pub surgeist_dom::DomError::SelectInapplicable
+pub surgeist_dom::DomError::SelectNotificationTaskSourceUnavailable
 pub surgeist_dom::DomError::SelectProtocol
 pub surgeist_dom::DomError::SelectSemantic(surgeist_html_semantics::semantics::HtmlSemanticFailure)
+pub surgeist_dom::DomError::SelectUserActionInapplicable
 pub surgeist_dom::DomError::SelectValueQueriesUnconfigured
 pub surgeist_dom::DomError::SelectWorkLimit
 pub surgeist_dom::DomError::SelectWorkLimit::limit: u64
@@ -4736,6 +4756,7 @@ pub surgeist_dom::DomError::StaleFullscreenExit
 pub surgeist_dom::DomError::StaleNode
 pub surgeist_dom::DomError::StaleNodeIterator
 pub surgeist_dom::DomError::StaleRange
+pub surgeist_dom::DomError::StaleSelectUserAction
 pub surgeist_dom::DomError::StaleTreeWalker
 pub surgeist_dom::DomError::StaleViewTransition
 pub surgeist_dom::DomError::StaleViewTransitionPseudo
@@ -4836,6 +4857,8 @@ pub fn surgeist_dom::Dom::set_limits(&mut self, limits: surgeist_dom::limits::Do
 pub fn surgeist_dom::Dom::snapshot(&self) -> surgeist_dom::DomSnapshot
 pub fn surgeist_dom::Dom::usage(&self) -> surgeist_dom::limits::DomUsage
 pub fn surgeist_dom::Dom::with_native_input_platform(limits: surgeist_dom::limits::DomLimits, input: surgeist_dom::document::DomNativeInputPlatform) -> core::result::Result<Self, surgeist_dom::DomError>
+impl surgeist_dom::Dom
+pub fn surgeist_dom::Dom::apply_select_notification_local_action(&mut self, task: &mut surgeist_dom::task::DomSelectNotificationTask, limits: surgeist_dom::source::DomSourceLimits, bank_work: &mut u64, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<core::option::Option<surgeist_dom::DomCommit>, surgeist_dom::DomError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::apply_with_inline_styles(&mut self, batch: surgeist_dom::DomBatch, context: surgeist_dom::style::inline::DomInlineStyleBatchContext, limits: surgeist_dom::style::inline::DomInlineStyleRequestLimits, resolver: impl core::ops::function::FnMut(&[surgeist_cssom::declaration_support::CssomDeclarationCandidate], &surgeist_cssom::model::CssomContext) -> core::result::Result<surgeist_cssom::object_declarations::CssomAdmission, surgeist_cssom::model::CssomError>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::style::inline::DomInlineStyleCommit, surgeist_dom::style::inline::DomInlineStyleError>
 impl surgeist_dom::Dom

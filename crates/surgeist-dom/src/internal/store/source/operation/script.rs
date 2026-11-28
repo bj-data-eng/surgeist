@@ -297,7 +297,7 @@ impl DomSourceLease<'_> {
         let operation = self
             .dom
             .source_operation
-            .as_ref()
+            .as_mut()
             .filter(|operation| operation.id == self.id)
             .ok_or(DomError::InvalidSourceOperation)?;
         if !matches!(&operation.draft, dialog::OperationDraft::Segment(draft)
@@ -306,7 +306,19 @@ impl DomSourceLease<'_> {
             return Err(DomError::InvalidSourceOperation);
         }
         check_cancel(cancel)?;
-        self.request_cancel();
+        if matches!(
+            operation.commands,
+            OperationRoot::SelectNotificationContent(_)
+        ) {
+            // The task can abandon the stopped private Script copy. An
+            // exposed Source tail retains the obligations it already began.
+            if operation.published || operation.event_exposed {
+                return Err(DomError::IncompleteSourceOperation);
+            }
+            operation.cancelled = true;
+        } else {
+            self.request_cancel();
+        }
         Ok(())
     }
 }

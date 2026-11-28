@@ -514,6 +514,9 @@ pub enum DomError {
     FileSelectionTaskSourceUnavailable,
     StaleFileSelection,
     FileSelectionInapplicable,
+    SelectNotificationTaskSourceUnavailable,
+    StaleSelectUserAction,
+    SelectUserActionInapplicable,
     ObjectHostedTransitionUnavailable,
     ImageUpdateExhausted,
     HyperlinkProcessingUnavailable,
@@ -726,6 +729,9 @@ impl std::fmt::Display for DomError {
             Self::FileSelectionTaskSourceUnavailable => f.write_str("the Input file selection task source is unavailable"),
             Self::StaleFileSelection => f.write_str("the Input file selection observation is stale"),
             Self::FileSelectionInapplicable => f.write_str("the Input cannot accept this user file selection"),
+            Self::SelectNotificationTaskSourceUnavailable => f.write_str("the Select user notification task source is unavailable"),
+            Self::StaleSelectUserAction => f.write_str("the Select user action observation is stale"),
+            Self::SelectUserActionInapplicable => f.write_str("the Select cannot accept a user toggle for this Option"),
             Self::ObjectHostedTransitionUnavailable => f.write_str("the Object element's reached hosted representation transition is unavailable"),
             Self::ImageUpdateExhausted => f.write_str("no image update identities remain"),
             Self::HyperlinkProcessingUnavailable => f.write_str("hyperlink processing is unavailable for this operation"),
@@ -1004,6 +1010,9 @@ impl std::error::Error for DomError {
             | Self::FileSelectionTaskSourceUnavailable
             | Self::StaleFileSelection
             | Self::FileSelectionInapplicable
+            | Self::SelectNotificationTaskSourceUnavailable
+            | Self::StaleSelectUserAction
+            | Self::SelectUserActionInapplicable
             | Self::ObjectHostedTransitionUnavailable
             | Self::ImageUpdateExhausted
             | Self::HyperlinkProcessingUnavailable
@@ -4826,56 +4835,7 @@ impl Draft {
             Command::AttachAttribute { .. } => return Err(DomError::InvalidSourceOperation),
             Command::Destroy(node) => {
                 let node = self.resolve(node.clone())?;
-                if self.node(node)?.parent().is_some()
-                    || self.node(node)?.host().is_some()
-                    || self.node(node)?.attr_owner().is_some()
-                    || matches!(
-                        self.node(node)?.kind(),
-                        transaction::KindRead::Document(_) | transaction::KindRead::ShadowRoot(_)
-                    )
-                {
-                    return Err(DomError::InvalidDestruction);
-                }
-                let mut pending = self.effect_vec();
-                let mut closure = self.effect_vec();
-                self.select_reserve(&mut pending, 1, cancelled)?;
-                pending.push(node);
-                while !pending.is_empty() {
-                    self.source_step(cancelled)?;
-                    let key = pending.pop().expect("admitted destruction node");
-                    let current = self.node(key)?;
-                    let contents = self.owned_template_contents(key, cancelled)?;
-                    self.select_reserve(
-                        &mut pending,
-                        current.children().len()
-                            + current.attribute_ids().len()
-                            + usize::from(current.shadow_root().is_some())
-                            + usize::from(contents.is_some()),
-                        cancelled,
-                    )?;
-                    self.select_reserve(&mut closure, 1, cancelled)?;
-                    for child in current.children().iter().rev() {
-                        self.source_step(cancelled)?;
-                        pending.push(child);
-                    }
-                    for attribute in current.attribute_ids().iter().rev() {
-                        self.source_step(cancelled)?;
-                        pending.push(attribute);
-                    }
-                    pending.extend(current.shadow_root());
-                    pending.extend(contents);
-                    closure.push(key);
-                }
-                self.push_effect(
-                    select::Effect::Tree(tree::Frame::Destroy {
-                        closure,
-                        index: 0,
-                        stage: 0,
-                    }),
-                    self.effect_scoped,
-                    cancelled,
-                )?;
-                self.run_effects(limits, cancelled)?;
+                self.destroy_detached_tree(node, limits, cancelled)?;
             }
             Command::ReplaceData {
                 node,

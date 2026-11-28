@@ -250,6 +250,63 @@ pub(super) fn parent_can_have_children(kind: KindRead<'_>) -> bool {
 }
 
 impl Draft {
+    pub(super) fn destroy_detached_tree(
+        &mut self,
+        node: Key,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if self.node(node)?.parent().is_some()
+            || self.node(node)?.host().is_some()
+            || self.node(node)?.attr_owner().is_some()
+            || matches!(
+                self.node(node)?.kind(),
+                transaction::KindRead::Document(_) | transaction::KindRead::ShadowRoot(_)
+            )
+        {
+            return Err(DomError::InvalidDestruction);
+        }
+        let mut pending = self.effect_vec();
+        let mut closure = self.effect_vec();
+        self.select_reserve(&mut pending, 1, cancelled)?;
+        pending.push(node);
+        while let Some(key) = pending.pop() {
+            self.source_step(cancelled)?;
+            let current = self.node(key)?;
+            let contents = self.owned_template_contents(key, cancelled)?;
+            self.select_reserve(
+                &mut pending,
+                current.children().len()
+                    + current.attribute_ids().len()
+                    + usize::from(current.shadow_root().is_some())
+                    + usize::from(contents.is_some()),
+                cancelled,
+            )?;
+            self.select_reserve(&mut closure, 1, cancelled)?;
+            for child in current.children().iter().rev() {
+                self.source_step(cancelled)?;
+                pending.push(child);
+            }
+            for attribute in current.attribute_ids().iter().rev() {
+                self.source_step(cancelled)?;
+                pending.push(attribute);
+            }
+            pending.extend(current.shadow_root());
+            pending.extend(contents);
+            closure.push(key);
+        }
+        self.push_effect(
+            select::Effect::Tree(Frame::Destroy {
+                closure,
+                index: 0,
+                stage: 0,
+            }),
+            self.effect_scoped,
+            cancelled,
+        )?;
+        self.run_effects(limits, cancelled)
+    }
+
     pub(super) fn string_replace_all(
         &mut self,
         key: Key,

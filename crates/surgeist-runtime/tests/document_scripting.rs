@@ -187,6 +187,8 @@ mod range_indicator_bindings;
 mod script_async;
 #[path = "document_scripting/script_preparation.rs"]
 mod script_preparation;
+#[path = "document_scripting/select_notification.rs"]
+mod select_notification;
 #[path = "document_scripting/source_events.rs"]
 mod source_events;
 #[path = "document_scripting/source_reflections.rs"]
@@ -2651,6 +2653,9 @@ fn main() {
             "textarea-values" => textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state(),
             "input-state" => input_state::attached_input_exposes_canonical_value_modes_and_checkedness(),
             "input-file-task" => input_state::attached_user_file_task_delivers_plain_trusted_events(),
+            "select-notification" => select_notification::attached_select_serves_current_content_before_trusted_events(),
+            "select-script-settings" => select_notification::attached_select_serves_actual_script_settings_and_cancellation(),
+            "select-reactions" => select_notification::attached_select_schedules_copied_reactions_before_listener_microtasks(),
             "script-async" => script_async::script_async_keeps_native_flag_and_content_coherent(),
             "source-local-reflections" => source_reflections::local_source_reflections_preserve_canonical_picture_recipients(),
             "source-local-refusal" => source_reflections::local_source_refusal_preserves_attribute_and_waiters(),
@@ -2861,6 +2866,9 @@ fn main() {
     textarea_values::attached_textarea_values_follow_canonical_text_and_dirty_state();
     input_state::attached_input_exposes_canonical_value_modes_and_checkedness();
     input_state::attached_user_file_task_delivers_plain_trusted_events();
+    select_notification::attached_select_serves_current_content_before_trusted_events();
+    select_notification::attached_select_serves_actual_script_settings_and_cancellation();
+    select_notification::attached_select_schedules_copied_reactions_before_listener_microtasks();
     anchor_attributes::anchor_text_and_scalar_attributes_use_live_native_source();
     area_attributes::area_attributes_follow_canonical_source_and_receivers();
     iframe_local_reflections::local_reflections_follow_the_original_iframe_and_attributes();

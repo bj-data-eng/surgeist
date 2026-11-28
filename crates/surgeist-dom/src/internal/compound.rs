@@ -98,6 +98,11 @@ pub(crate) enum Edit {
         select: NodeId,
         action: OptionsEdit,
     },
+    UserSelectToggle {
+        select: NodeId,
+        option: NodeId,
+        observed: crate::internal::identity::DomStamp,
+    },
     TextSelection {
         receiver: NodeId,
         edit: TextSelectionEdit,
@@ -142,7 +147,7 @@ impl Edit {
             Self::InputStep { input, .. }
             | Self::InputFiles { input, .. }
             | Self::UserFileSelection { input, .. } => *input,
-            Self::SelectOptions { select, .. } => *select,
+            Self::SelectOptions { select, .. } | Self::UserSelectToggle { select, .. } => *select,
             Self::TablePart { table, .. } => *table,
             Self::DocumentTitle { document, .. } => document.node(),
             Self::TextSelection { receiver, .. }
@@ -155,6 +160,24 @@ impl Edit {
     }
 }
 impl DomSourceEdit {
+    /// Toggle an Option chosen through native interaction at this exact DOM stamp.
+    ///
+    /// A successful edit publishes the selectedness and dirtiness change with
+    /// its original notification task. Both elements must still be eligible.
+    pub fn toggle_select_option_for_user(
+        select: NodeId,
+        option: NodeId,
+        observed: crate::internal::identity::DomStamp,
+    ) -> Self {
+        Self {
+            command: Command::Compound(Edit::UserSelectToggle {
+                select,
+                option,
+                observed,
+            }),
+        }
+    }
+
     /// Reset the original Form through its cancelable event and current
     /// resettable controls. The original Source executor delivers the event.
     pub fn reset_form(form: NodeId) -> Self {

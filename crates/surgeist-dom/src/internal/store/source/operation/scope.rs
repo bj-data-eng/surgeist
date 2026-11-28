@@ -83,6 +83,7 @@ impl OperationRoot {
                 return Some(*target);
             }
             Self::DialogTask(task) => return Some(task.id().target()),
+            Self::SelectNotificationContent(task) => return Some(task.target()),
             Self::NativeInstallation => return None,
             Self::Edit(commands) => commands.first(),
             #[cfg(test)]

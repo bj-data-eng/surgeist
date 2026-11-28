@@ -8,6 +8,8 @@
 ))]
 
 use std::sync::atomic::AtomicBool;
+#[path = "native_select_completion/user_notification.rs"]
+mod user_notification;
 use surgeist_dom::{
     Dom, DomBatch, DomError,
     edit::DomChange,

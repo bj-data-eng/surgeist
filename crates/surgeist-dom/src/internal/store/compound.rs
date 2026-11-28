@@ -169,6 +169,10 @@ impl Draft {
             Edit::SelectOptions { action, .. } => {
                 self.edit_select_options(receiver, *action, limits, cancel)
             }
+            Edit::UserSelectToggle { option, .. } => {
+                let option = self.resolve((*option).into())?;
+                self.toggle_user_select_option(receiver, option, cancel)
+            }
             Edit::TablePart { part, action, .. } => {
                 self.edit_html_table_part(receiver, *part, *action, limits, cancel)
             }
