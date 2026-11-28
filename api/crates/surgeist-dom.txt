@@ -4954,6 +4954,7 @@ impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::complete_select_task(&mut self, task: &surgeist_dom::form::select::DomSelectTask, limits: surgeist_dom::task::DomNativeCheckpointLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::form::select::DomSelectTaskCompletion, surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::native_checkpoint_step(&mut self, limits: surgeist_dom::task::DomNativeCheckpointLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::task::DomNativeCheckpoint, surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::pending_native_tasks(&self) -> usize
+pub fn surgeist_dom::Dom::take_native_slot_checkpoint(&mut self, limits: surgeist_dom::shadow::DomSlotQueryLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<core::option::Option<alloc::sync::Arc<[surgeist_dom::identity::NodeId]>>, surgeist_dom::DomError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::construct_autonomous_element_with_watch(&mut self, (running, selected): (surgeist_dom::custom_element::DomSourceCustomElementRequest, surgeist_dom::custom_element::DomSourceCustomElementRequest), registration: &surgeist_dom::script::DomDocumentScriptRegistration, callee_global: surgeist_dom::hosted::DomHostedGlobalId, (inbox, key): (&surgeist_dom::edit::DomNodeRetirementInbox, usize), limits: surgeist_dom::edit::DomNodeRetirementLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::edit::DomWatchedNode, surgeist_dom::DomError>
 pub fn surgeist_dom::Dom::construct_registered_element_with_watch(&mut self, (definition, global): (surgeist_dom::custom_element::DomRegistryDefinitionId, surgeist_dom::hosted::DomHostedGlobalId), registration: &surgeist_dom::script::DomDocumentScriptRegistration, (inbox, key, watch_limits): (&surgeist_dom::edit::DomNodeRetirementInbox, usize, surgeist_dom::edit::DomNodeRetirementLimits), limits: surgeist_dom::source::DomSourceLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::edit::DomWatchedNode, surgeist_dom::DomError>
@@ -4990,6 +4991,7 @@ pub fn surgeist_dom::Dom::set_tree_walker_current(&mut self, id: surgeist_dom::t
 pub fn surgeist_dom::Dom::tree_walker(&self, id: surgeist_dom::tree::DomTreeWalkerId) -> core::result::Result<surgeist_dom::tree::DomTreeWalker, surgeist_dom::DomError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::discard_stopped_custom_element_reactions(&mut self, binding: &surgeist_dom::script::DomDocumentScriptBinding) -> core::result::Result<usize, surgeist_dom::DomError>
+pub fn surgeist_dom::Dom::has_active_document_script_registration(&self) -> bool
 pub fn surgeist_dom::Dom::has_pending_custom_element_reactions(&self, binding: &surgeist_dom::script::DomDocumentScriptBinding) -> bool
 pub fn surgeist_dom::Dom::release_document_script_registration(&mut self, binding: &surgeist_dom::script::DomDocumentScriptBinding)
 impl surgeist_dom::Dom
@@ -5022,6 +5024,8 @@ pub fn surgeist_dom::Dom::take_fullscreen_events(&mut self, document: surgeist_d
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::global_document(&self, global: surgeist_dom::hosted::DomHostedGlobalId) -> core::result::Result<surgeist_dom::identity::DocumentId, surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::Dom::relevant_global(&self, node: surgeist_dom::identity::NodeId) -> core::result::Result<core::option::Option<surgeist_dom::hosted::DomHostedGlobalId>, surgeist_dom::hosted::DomHostedError>
+impl surgeist_dom::Dom
+pub fn surgeist_dom::Dom::has_pending_native_slot_checkpoint(&self) -> bool
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::has_transferred_details_toggle_intentions(&self) -> bool
 pub fn surgeist_dom::Dom::pending_details_toggle_intentions(&self) -> usize

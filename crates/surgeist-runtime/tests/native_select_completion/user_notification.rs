@@ -18,6 +18,7 @@ use surgeist_runtime::{
         DomEventCallback, DomEventDispatchLimits, DomEventDispatcher, DomEventListenerOptions,
         DomEventRegistryLimits, DomEventType,
     },
+    hosted::DomHostedRuntimeError,
     source::DomSourceDriveError,
 };
 
@@ -356,6 +357,149 @@ fn retiring_select_in_input_preserves_the_real_receipt() {
         session.snapshot().node(select),
         Err(DomError::StaleNode)
     ));
+    assert_eq!(context.tasks.pending_total_tasks().unwrap(), 0);
+}
+
+#[test]
+fn native_select_checkpoint_delivers_an_author_slot_signal() {
+    select_checkpoint_delivers_author_slot(false);
+}
+
+#[test]
+fn native_slot_checkpoint_retains_its_batch_when_an_unrelated_agent_starts() {
+    select_checkpoint_delivers_author_slot(true);
+}
+
+fn select_checkpoint_delivers_author_slot(cut_before_slot_callback: bool) {
+    let cancel = AtomicBool::new(false);
+    let Fixture {
+        mut session,
+        document,
+        select,
+        option,
+    } = fixture(8, &cancel);
+    let body = session.snapshot().node(select).unwrap().parent().unwrap();
+    let mut batch = DomBatch::new();
+    let host = batch.create_element_ns(document, Namespace::html(), "div");
+    let root = batch.attach_shadow(
+        &host,
+        surgeist_dom::shadow::DomShadowRootInit::new(
+            surgeist_html::construction::HtmlShadowRootMode::Open,
+        ),
+    );
+    let slot = batch.create_element_ns(document, Namespace::html(), "slot");
+    batch.insert_before(&slot, &root, None);
+    batch.insert_before(&host, body, None);
+    let done = session.dom().apply(batch, &cancel).unwrap();
+    let host = done.created(&host).unwrap().unwrap();
+    let slot = done.created(&slot).unwrap().unwrap();
+    assert!(session.snapshot().pending_slot_signals().is_empty());
+
+    let mut registry = listeners(&mut session, select, "original label");
+    registry
+        .add_listener(
+            &mut session.dom(),
+            select,
+            DomEventType::INPUT,
+            DomEventCallback::new(move |dom, _, _: &mut Context, _| {
+                let mut assign = DomBatch::new();
+                let child = assign.create_text(document, "first assigned child");
+                assign.insert_before(&child, host, None);
+                dom.apply(assign, &AtomicBool::new(false)).unwrap();
+                assert_eq!(dom.snapshot().pending_slot_signals(), &[slot]);
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let changed = "slotchange".encode_utf16().collect::<Vec<_>>();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            slot,
+            &changed,
+            DomEventCallback::new(move |_, _, context: &mut Context, event| {
+                assert_eq!(event.target(), Some(slot.into()));
+                assert_eq!(event.current_target(), Some(slot.into()));
+                assert!(event.is_trusted());
+                assert!(event.bubbles());
+                assert!(!event.cancelable());
+                assert!(!event.composed());
+                context.notifications.push(event.event_type());
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let observed = session.snapshot().stamp();
+    let edit = DomSourceEdit::toggle_select_option_for_user(select, option, observed);
+    assert!(matches!(
+        session
+            .source_execution()
+            .apply(
+                &mut session.dom(),
+                edit,
+                limits().source,
+                &mut no_services(&mut |_| None),
+                &cancel,
+            )
+            .unwrap(),
+        DomSourceDriveProgress::Complete(_)
+    ));
+    let mut context = Context {
+        tasks: session.element_task_execution(),
+        notifications: Vec::new(),
+        retire_on_input: false,
+    };
+    let mut first_limits = limits();
+    if cut_before_slot_callback {
+        first_limits.dispatch.callbacks = 3;
+    }
+    let mut result = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        DomElementTaskSourceKind::UserInteraction,
+        &mut registry,
+        &mut context,
+        first_limits,
+        &cancel,
+    );
+    assert_eq!(context.notifications.first(), Some(&DomEventType::INPUT));
+    assert_eq!(context.notifications.get(1), Some(&DomEventType::CHANGE));
+    if cut_before_slot_callback {
+        assert!(matches!(
+            result,
+            Ok(DomElementTaskProgress::Retained { .. })
+        ));
+        assert_eq!(context.notifications.len(), 2);
+        assert_eq!(context.tasks.pending_total_tasks().unwrap(), 1);
+        assert!(session.snapshot().pending_slot_signals().is_empty());
+        let mut hosted = session.hosted_execution();
+        let other = hosted.create_host(&mut session.dom(), &cancel).unwrap();
+        let other = hosted
+            .create_top_level(&mut session.dom(), other, &cancel)
+            .unwrap();
+        assert_ne!(other.document(), document);
+        result = DomElementTaskRuntime::run_next(
+            &mut session.dom(),
+            DomElementTaskSourceKind::UserInteraction,
+            &mut registry,
+            &mut context,
+            limits(),
+            &cancel,
+        );
+    }
+    let Ok(DomElementTaskProgress::SelectNotificationComplete { input, change, .. }) = result
+    else {
+        panic!(
+            "the original task must settle after serving its author Slot; result={result:?}, pending={:?}",
+            session.snapshot().pending_slot_signals(),
+        )
+    };
+    assert_eq!(input.callbacks(), 2);
+    assert_eq!(change.unwrap().callbacks(), 1);
+    assert_eq!(context.notifications.len(), 3);
+    assert_eq!(context.notifications[2].code_units(), &changed);
+    assert!(session.snapshot().pending_slot_signals().is_empty());
     assert_eq!(context.tasks.pending_total_tasks().unwrap(), 0);
 }
 
@@ -720,4 +864,267 @@ fn user_toggle_refuses_stale_foreign_disabled_and_nonmember_observations() {
             .unwrap(),
         0
     );
+}
+
+#[test]
+fn selectedcontent_copy_delivers_its_own_author_slot_signal() {
+    use std::{cell::RefCell, rc::Rc};
+    use surgeist_html::construction::{
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    };
+
+    let cancel = AtomicBool::new(false);
+    let Fixture {
+        mut session,
+        document,
+        select,
+        option,
+    } = fixture(8, &cancel);
+    let mut setup = DomBatch::new();
+    let content = setup.create_element_ns(document, Namespace::html(), "selectedcontent");
+    let host = setup.create_element_ns(document, Namespace::html(), "span");
+    let root = setup.attach_shadow(
+        &host,
+        HtmlShadowRootProperties::new(
+            HtmlShadowRootMode::Open,
+            HtmlSlotAssignment::Named,
+            false,
+            true,
+            false,
+        ),
+    );
+    let slot = setup.create_element_ns(document, Namespace::html(), "slot");
+    let light = setup.create_text(document, "assigned option content");
+    let media = setup.create_element_ns(document, Namespace::html(), "audio");
+    let body = session.snapshot().node(select).unwrap().parent().unwrap();
+    setup.insert_before(&slot, &root, None);
+    setup.insert_before(&light, &host, None);
+    setup.insert_before(&host, option, None);
+    setup.insert_before(&content, select, None);
+    setup.insert_before(&media, body, None);
+    let made = session.dom().apply(setup, &cancel).unwrap();
+    let content = made.created(&content).unwrap().unwrap();
+    let original_host = made.created(&host).unwrap().unwrap();
+    let original_slot = made.created(&slot).unwrap().unwrap();
+    let media = made.created(&media).unwrap().unwrap();
+    let before = session.snapshot();
+    assert_eq!(before.pending_slot_signals(), &[original_slot]);
+    assert!(before.node(content).unwrap().children().is_empty());
+
+    let mut source = session.source_execution();
+    let edit = DomSourceEdit::toggle_select_option_for_user(select, option, before.stamp());
+    assert!(matches!(
+        source
+            .apply(
+                &mut session.dom(),
+                edit,
+                limits().source,
+                &mut no_services(&mut |_| None),
+                &cancel,
+            )
+            .unwrap(),
+        DomSourceDriveProgress::Complete(_)
+    ));
+    let mut single = DomBatch::new();
+    single.remove_attribute(select, "multiple");
+    session.dom().apply(single, &cancel).unwrap();
+    let (earlier_host, _, earlier_slot) = copied_author_slot(&session.snapshot(), content);
+    assert_ne!(earlier_slot, original_slot);
+    assert_eq!(
+        session.snapshot().pending_slot_signals(),
+        &[original_slot, earlier_slot]
+    );
+
+    let mut registry = listeners(&mut session, select, "original label");
+    let deliveries = Rc::new(RefCell::new(Vec::new()));
+    let observed = deliveries.clone();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            original_slot,
+            DomEventType::SLOT_CHANGE,
+            DomEventCallback::new(move |dom, _, _: &mut Context, event| {
+                assert_eq!(event.target(), Some(original_slot.into()));
+                observed.borrow_mut().push(original_slot);
+                let mut remove = DomBatch::new();
+                remove.detach(media);
+                dom.apply(remove, &AtomicBool::new(false)).unwrap();
+                let mut assign = DomBatch::new();
+                let child = assign.create_text(document, "new assignment after capture");
+                assign.insert_before(&child, earlier_host, None);
+                dom.apply(assign, &AtomicBool::new(false)).unwrap();
+                assert_eq!(dom.snapshot().pending_slot_signals(), &[earlier_slot]);
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let observed = deliveries.clone();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            earlier_slot,
+            DomEventType::SLOT_CHANGE,
+            DomEventCallback::new(move |_, _, _: &mut Context, event| {
+                assert_eq!(event.target(), Some(earlier_slot.into()));
+                observed.borrow_mut().push(earlier_slot);
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let observed = deliveries.clone();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            select,
+            DomEventType::INPUT,
+            DomEventCallback::new(move |dom, registry, _: &mut Context, _| {
+                let snapshot = dom.snapshot();
+                let (copy_host, copy_root, copy_slot) = copied_author_slot(&snapshot, content);
+                assert_ne!(copy_host, original_host);
+                assert_ne!(copy_host, earlier_host);
+                assert_eq!(snapshot.node(earlier_host).unwrap().parent(), None);
+                assert_eq!(
+                    snapshot.pending_slot_signals(),
+                    &[original_slot, earlier_slot, copy_slot]
+                );
+                let observed = observed.clone();
+                registry
+                    .add_listener(
+                        dom,
+                        copy_root,
+                        DomEventType::SLOT_CHANGE,
+                        DomEventCallback::new(move |_, _, context: &mut Context, event| {
+                            assert_eq!(event.target(), Some(copy_slot.into()));
+                            assert_eq!(event.current_target(), Some(copy_root.into()));
+                            assert!(event.is_trusted());
+                            assert!(event.bubbles());
+                            assert!(!event.cancelable());
+                            assert!(!event.composed());
+                            observed.borrow_mut().push(copy_slot);
+                            context.notifications.push(event.event_type());
+                            Ok(())
+                        }),
+                        DomEventListenerOptions::default(),
+                    )
+                    .unwrap();
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+
+    let mut context = Context {
+        tasks: session.element_task_execution(),
+        notifications: Vec::new(),
+        retire_on_input: false,
+    };
+    let queued = context
+        .tasks
+        .pending_task(DomElementTaskSourceKind::UserInteraction, 0)
+        .unwrap()
+        .unwrap();
+    let mut finite = limits();
+    finite.dispatch.callbacks = 4;
+    let head = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        DomElementTaskSourceKind::UserInteraction,
+        &mut registry,
+        &mut context,
+        finite,
+        &cancel,
+    )
+    .unwrap();
+    assert!(matches!(head, DomElementTaskProgress::Retained { task, .. } if task == queued));
+    assert_eq!(*deliveries.borrow(), [original_slot]);
+    assert_eq!(session.snapshot().pending_slot_signals(), &[earlier_slot]);
+    assert!(matches!(
+        session.media_checkpoint_step(&cancel),
+        Err(DomError::MediaRemovalStableStateUnavailable)
+    ));
+    #[cfg(feature = "document-scripting")]
+    let mut session = {
+        use surgeist_runtime::document_scripting::{
+            DocumentScriptNativeError, PreparedDocumentScriptHost,
+        };
+
+        let refusal = PreparedDocumentScriptHost::prepare(
+            session,
+            1_000_000,
+            std::sync::Arc::new(AtomicBool::new(false)),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            refusal.error,
+            DocumentScriptNativeError::Hosted(DomHostedRuntimeError::CheckpointUnavailable)
+        ));
+        refusal.session
+    };
+    assert!(matches!(
+        DomElementTaskRuntime::run_next(
+            &mut session.dom(),
+            DomElementTaskSourceKind::UserInteraction,
+            &mut registry,
+            &mut context,
+            limits(),
+            &cancel,
+        ),
+        Err(DomElementTaskRuntimeError::Hosted(
+            DomHostedRuntimeError::CheckpointUnavailable
+        ))
+    ));
+    let (_, _, copy_slot) = copied_author_slot(&session.snapshot(), content);
+    assert_eq!(
+        *deliveries.borrow(),
+        [original_slot, earlier_slot, copy_slot]
+    );
+    let removal = session.media_checkpoint_step(&cancel).unwrap().unwrap();
+    assert_eq!(removal.target(), media);
+
+    let result = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        DomElementTaskSourceKind::UserInteraction,
+        &mut registry,
+        &mut context,
+        limits(),
+        &cancel,
+    )
+    .unwrap();
+    let DomElementTaskProgress::SelectNotificationComplete {
+        task,
+        input,
+        change,
+        ..
+    } = result
+    else {
+        panic!("selectedcontent copy must settle its original notification: {result:?}");
+    };
+    assert_eq!(task.id(), queued.id());
+    assert!(input.failures().is_empty());
+    assert!(change.unwrap().failures().is_empty());
+    assert_eq!(
+        *deliveries.borrow(),
+        [original_slot, earlier_slot, copy_slot, earlier_slot]
+    );
+    assert_eq!(
+        context.notifications,
+        [
+            DomEventType::INPUT,
+            DomEventType::CHANGE,
+            DomEventType::SLOT_CHANGE,
+        ]
+    );
+    assert!(session.snapshot().pending_slot_signals().is_empty());
+}
+
+fn copied_author_slot(snapshot: &DomSnapshot, content: NodeId) -> (NodeId, NodeId, NodeId) {
+    let [host] = snapshot.node(content).unwrap().children() else {
+        panic!("one selectedcontent child")
+    };
+    let root = snapshot.node(*host).unwrap().shadow_root().unwrap();
+    let [slot] = snapshot.node(root).unwrap().children() else {
+        panic!("one author Slot in the copied root")
+    };
+    (*host, root, *slot)
 }

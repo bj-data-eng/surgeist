@@ -976,7 +976,7 @@ impl HostedState {
                 .cancel_document(dom, info.document, cancel)
                 .map_err(manipulation_error)?;
             if !details.has_task(task).map_err(manipulation_error)? {
-                checkpoint(dom, &mut self.work, self.limits.work, cancel)?;
+                checkpoint(dom, &event_loop, &mut self.work, self.limits.work, cancel)?;
                 event_loop.current = None;
                 event_loop.checkpoints = event_loop.next_checkpoint;
             }
@@ -1084,7 +1084,7 @@ impl HostedState {
             .phase
             != records::DestroyPhase::CheckpointComplete
         {
-            match checkpoint(dom, &mut self.work, self.limits.work, cancel) {
+            match checkpoint(dom, &event_loop, &mut self.work, self.limits.work, cancel) {
                 Ok(()) => {}
                 Err(DomHostedRuntimeError::CheckpointUnavailable) => {
                     return Ok(DomHostedTaskProgress::Pending {
@@ -1150,6 +1150,7 @@ impl HostedState {
 
 fn checkpoint(
     dom: &DomEventDom<'_>,
+    event_loop: &records::WindowLoop,
     work: &mut u64,
     limit: u64,
     cancel: &AtomicBool,
@@ -1158,7 +1159,8 @@ fn checkpoint(
     let snapshot = dom.snapshot();
     if snapshot.incomplete_source_operation().is_some()
         || snapshot.incomplete_hosted_operation().is_some()
-        || !snapshot.pending_slot_signals().is_empty()
+        || dom.raw().has_pending_native_slot_checkpoint()
+        || event_loop.slot_checkpoint.is_some()
     {
         return Err(DomHostedRuntimeError::CheckpointUnavailable);
     }

@@ -2768,6 +2768,11 @@ impl Dom {
             .map_or(Ok(0), super::source::reactions::Inbox::discard)
     }
 
+    /// Whether an active document Script registration owns guest execution.
+    pub fn has_active_document_script_registration(&self) -> bool {
+        self.active_script_registration().is_some()
+    }
+
     pub(in crate::internal::store) fn active_script_registration(
         &self,
     ) -> Option<ScriptRegistrationKey> {

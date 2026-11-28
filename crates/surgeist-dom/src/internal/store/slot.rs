@@ -700,13 +700,13 @@ impl Dom {
         cancel: &AtomicBool,
     ) -> Result<(Prepared, Arc<[NodeId]>), DomError> {
         check_cancel(cancel)?;
-        admit(
-            self.state.signal_slots.len(),
-            limits.output_nodes(),
-            DomResource::SlotQueryOutput,
-        )?;
+        let count = self.state.signal_slots.len();
+        admit(count, limits.output_nodes(), DomResource::SlotQueryOutput)?;
         let mut targets = Vec::new();
-        reserve(&mut targets, self.state.signal_slots.len())?;
+        targets
+            .try_reserve_exact(count)
+            .map_err(|_| DomError::AllocationFailed)?;
+        admit(targets.capacity(), count, DomResource::SlotQueryScratch)?;
         for &target in &self.state.signal_slots {
             check_cancel(cancel)?;
             targets.push(target);

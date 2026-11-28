@@ -65,6 +65,33 @@ pub(super) struct NativeAgent {
     pub globals: Vec<Global>,
     pub windows: super::watcher::WindowBank,
 }
+
+#[derive(Default)]
+pub(super) enum WindowAgentHistory {
+    #[default]
+    Empty,
+    One,
+    Multiple,
+}
+
+impl WindowAgentHistory {
+    pub(super) fn record(&mut self, event_loop: &Rc<RefCell<WindowLoop>>) {
+        let mut event_loop = event_loop.borrow_mut();
+        if !event_loop.had_active_document {
+            event_loop.had_active_document = true;
+            *self = match self {
+                Self::Empty => Self::One,
+                Self::One | Self::Multiple => Self::Multiple,
+            };
+        }
+    }
+
+    pub(super) fn is_only(&self, event_loop: &Rc<RefCell<WindowLoop>>) -> bool {
+        // Agent retirement cannot make the session-wide notification queue
+        // qualify for a single agent again.
+        matches!(self, Self::One) && event_loop.borrow().had_active_document
+    }
+}
 pub(super) struct BrowsingContext {
     pub id: DomHostedBrowsingContextId,
     pub group_root: DomHostedBrowsingContextId,
@@ -133,6 +160,8 @@ pub(super) struct WindowLoop {
     pub next_checkpoint: u64,
     pub checkpoints: u64,
     pub navigation: Vec<NavigationTask>,
+    pub slot_checkpoint: Option<crate::internal::dom_event::NativeSlotCheckpoint>,
+    had_active_document: bool,
 }
 impl WindowLoop {
     pub fn new() -> Self {
@@ -142,6 +171,8 @@ impl WindowLoop {
             next_checkpoint: 0,
             checkpoints: 0,
             navigation: Vec::new(),
+            slot_checkpoint: None,
+            had_active_document: false,
         }
     }
 }

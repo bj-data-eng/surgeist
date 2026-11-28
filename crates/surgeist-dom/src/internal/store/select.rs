@@ -417,8 +417,7 @@ impl Dom {
                 ))
             }
             Some(Task::MutationNotification) => {
-                let (prepared, targets) = self.prepare_slot_checkpoint(limits.slots, cancel)?;
-                let commit = self.publish(prepared, cancel)?;
+                let (commit, targets) = self.publish_slot_checkpoint(limits.slots, cancel)?;
                 Ok(crate::internal::select::DomNativeCheckpoint::Slots(
                     crate::internal::slot::DomSlotNotifications::new(
                         self.snapshot(),
@@ -429,6 +428,43 @@ impl Dom {
             }
         }
     }
+
+    /// Transfer the exact Slot targets at the front of the native checkpoint
+    /// FIFO. The list owns only the ordered node identities.
+    ///
+    /// A checkpoint with pending observer deliveries or an earlier Select
+    /// occurrence remains available through `native_checkpoint_step`.
+    /// A refusal leaves all original notifications queued.
+    pub fn take_native_slot_checkpoint(
+        &mut self,
+        limits: crate::internal::slot::DomSlotQueryLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Option<Arc<[NodeId]>>, DomError> {
+        self.require_source_idle()?;
+        check_cancel(cancel)?;
+        if self.child_list_turn.is_some()
+            || !matches!(
+                self.state.native_tasks.first(),
+                Some(Task::MutationNotification)
+            )
+            || self.has_pending_child_lists()
+        {
+            return Ok(None);
+        }
+        let (_, targets) = self.publish_slot_checkpoint(limits, cancel)?;
+        Ok(Some(targets))
+    }
+
+    fn publish_slot_checkpoint(
+        &mut self,
+        limits: crate::internal::slot::DomSlotQueryLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(DomCommit, Arc<[NodeId]>), DomError> {
+        let (prepared, targets) = self.prepare_slot_checkpoint(limits, cancel)?;
+        let commit = self.publish(prepared, cancel)?;
+        Ok((commit, targets))
+    }
+
     pub fn complete_select_task(
         &mut self,
         task: &crate::internal::select::DomSelectTask,

@@ -729,9 +729,14 @@ started beforetoggle retains authentic dispatch; cancellation and the next
 required live read keep their distinct outcomes.
 
 At task completion, the native loop checks the canonical checkpoint state.
-Pending Slot work or media removals retain the started task and its delivered
-event progress with `CheckpointUnavailable`. The native Session can run pending
-media continuations through `DomSession::media_checkpoint_step`. An attached
+When a ready Slot-only turn can be attributed to the sole historical Window
+agent and there is no active guest registration, the original native task
+takes the exact ordered targets and fires trusted `slotchange` events. Retry
+keeps the original task, captured suffix and any already-started event.
+An earlier Select or observer turn or pending media removal can defer a fresh
+transfer. A captured Slot turn can similarly defer a later native media step.
+The native Session runs pending media continuations through
+`DomSession::media_checkpoint_step`. An attached
 document script host assigns them to its guest microtask queue before script
 entry resumes. Terminal heap cleanup releases its scheduled continuations
 and preserves native work the heap never scheduled. When the relevant work

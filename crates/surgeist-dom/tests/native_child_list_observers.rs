@@ -659,6 +659,15 @@ fn one_notification_turn_delivers_observers_before_its_captured_slot_signals() {
         .unwrap()
         .unwrap();
     assert_eq!(dom.pending_native_tasks(), 1);
+    let slots_only = DomSlotQueryLimits::new(64, 64).unwrap();
+    let before = dom.snapshot();
+    assert!(dom.has_pending_native_slot_checkpoint());
+    assert!(
+        dom.take_native_slot_checkpoint(slots_only, &cancel)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
     let DomNativeCheckpoint::ChildList(delivery) =
         dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
     else {
@@ -667,6 +676,13 @@ fn one_notification_turn_delivers_observers_before_its_captured_slot_signals() {
     assert_eq!(delivery.observer(), observer);
     assert_eq!(delivery.records().len(), 1);
     assert_record(&delivery.records()[0], host, &[text], &[], None, None);
+    assert!(dom.snapshot().pending_slot_signals().is_empty());
+    assert!(dom.has_pending_native_slot_checkpoint());
+    assert!(
+        dom.take_native_slot_checkpoint(slots_only, &cancel)
+            .unwrap()
+            .is_none()
+    );
     drop(delivery);
     let DomNativeCheckpoint::Slots(signals) =
         dom.native_checkpoint_step(checkpoint, &cancel).unwrap()
@@ -674,6 +690,7 @@ fn one_notification_turn_delivers_observers_before_its_captured_slot_signals() {
         panic!("original captured Slot signal follows observers");
     };
     assert_eq!(signals.targets(), &[slot]);
+    assert!(!dom.has_pending_native_slot_checkpoint());
     assert!(matches!(
         dom.native_checkpoint_step(checkpoint, &cancel).unwrap(),
         DomNativeCheckpoint::Idle
