@@ -453,6 +453,7 @@ pub(crate) struct Shared {
     bytes: AtomicUsize,
     registries: AtomicUsize,
     pub(crate) runtime_bytes: AtomicUsize,
+    window_navigation_bytes: AtomicUsize,
 }
 
 /// Weak access to the actual counters owned by the original operation. These
@@ -577,6 +578,59 @@ pub struct DomHostedSource {
     pub(crate) shared: Arc<Shared>,
     limits: DomHostedLimits,
     pub(crate) active_work: Weak<Work>,
+}
+
+/// The original native Window's Navigation focus state.
+/// Only the native Window keeps this owner. The DOM receives a qualified weak binding.
+#[derive(Debug)]
+pub struct DomHostedWindowNavigation {
+    global: DomHostedGlobalId,
+    focus_changed: Arc<AtomicBool>,
+    allocation: Arc<WindowNavigationAllocation>,
+}
+
+impl DomHostedWindowNavigation {
+    /// Actual retained extent of the flag and its shared allocation custody.
+    pub const fn allocation_bytes() -> usize {
+        // Arc's two reference counts precede its aligned value.
+        #[repr(C)]
+        struct ArcStorage<T> {
+            counts: [usize; 2],
+            value: T,
+        }
+        size_of::<ArcStorage<AtomicBool>>() + size_of::<ArcStorage<WindowNavigationAllocation>>()
+    }
+
+    /// Observe the original Window's navigation focus flag.
+    pub fn focus_changed(&self) -> bool {
+        self.focus_changed.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_focus_changed_for_test(&self) {
+        self.focus_changed.store(true, Ordering::Relaxed);
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct WindowNavigationBinding {
+    pub(crate) focus_changed: Weak<AtomicBool>,
+    _allocation: Arc<WindowNavigationAllocation>,
+}
+
+#[derive(Debug)]
+struct WindowNavigationAllocation {
+    _canonical: Retained,
+    runtime: DomHostedRuntimeRetention,
+}
+impl Drop for WindowNavigationAllocation {
+    fn drop(&mut self) {
+        if let Some(shared) = self.runtime.shared.upgrade() {
+            shared
+                .window_navigation_bytes
+                .fetch_sub(self.runtime.bytes, Ordering::Relaxed);
+        }
+    }
 }
 
 /// One standard Document-constructor invocation issued by the trusted native
@@ -842,6 +896,7 @@ impl DomHostedSource {
                 bytes: AtomicUsize::new(bytes),
                 registries: AtomicUsize::new(0),
                 runtime_bytes: AtomicUsize::new(0),
+                window_navigation_bytes: AtomicUsize::new(0),
                 issuance: Mutex::new(Issuance {
                     alive: true,
                     revision: DomHostedSourceRevision(0),
@@ -1413,6 +1468,7 @@ pub(crate) enum PublicationValue {
     NativeExecution {
         global: DomHostedGlobalId,
         navigation_start: DomHostedMoment,
+        window_navigation: Option<WindowNavigationBinding>,
     },
     MakeActive,
     FinishLoading(DomHostedMoment),
@@ -1516,11 +1572,98 @@ impl DomHostedSource {
             generation,
         })
     }
+    /// Establish one Window's own Navigation state for the original native creation.
+    /// Create the single Navigation focus flag for this top-level native Window.
+    ///
+    /// Returns a hosted identity or phase error for a stale, foreign or
+    /// already bound Global, and a resource error if admission fails.
+    pub fn create_window_navigation(
+        &self,
+        request: &DomHostedExecutionRequest,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedWindowNavigation, DomHostedError> {
+        if request.parent_global().is_some() {
+            return Err(DomHostedError::WrongPhase);
+        }
+        self.create_window_navigation_with(request, global, cancel, |_| Ok(()))
+    }
+
+    /// Retained native Navigation backing includes the weak tail of a released Window.
+    pub fn retained_window_navigation_bytes(&self) -> usize {
+        self.shared.window_navigation_bytes.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn create_window_navigation_with(
+        &self,
+        request: &DomHostedExecutionRequest,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+        admit: impl FnOnce(usize) -> Result<(), DomError>,
+    ) -> Result<DomHostedWindowNavigation, DomHostedError> {
+        self.validate_request(&request.request, cancel)?;
+        request.request.work.step(cancel)?;
+        if global.source != self.id() {
+            return Err(DomHostedError::ForeignSource);
+        }
+        let bytes = DomHostedWindowNavigation::allocation_bytes();
+        admit(bytes)?;
+        let mut state = self.lock()?;
+        let original = state.banks[Role::Global.index()]
+            .get_mut(global.slot)
+            .filter(|slot| {
+                slot.live
+                    && slot.generation == global.generation
+                    && slot.creator == Some(request.request.key)
+                    && slot.issued == 0
+            })
+            .ok_or(DomHostedError::WrongPhase)?;
+        let canonical = self.retain_locked(bytes, cancel)?;
+        let runtime = self.retain_runtime_payload_counter(bytes)?;
+        self.shared
+            .window_navigation_bytes
+            .fetch_add(bytes, Ordering::Relaxed);
+        let allocation = Arc::new(WindowNavigationAllocation {
+            _canonical: canonical,
+            runtime,
+        });
+        let focus_changed = Arc::new(AtomicBool::new(false));
+        original.issued = 1;
+        Ok(DomHostedWindowNavigation {
+            global,
+            focus_changed,
+            allocation,
+        })
+    }
+
+    pub(crate) fn retain_runtime_payload_counter(
+        &self,
+        bytes: usize,
+    ) -> Result<DomHostedRuntimeRetention, DomError> {
+        self.shared
+            .runtime_bytes
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |used| {
+                used.checked_add(bytes)
+            })
+            .map_err(|_| DomError::RepresentationExhausted)?;
+        Ok(DomHostedRuntimeRetention {
+            shared: Arc::downgrade(&self.shared),
+            bytes,
+        })
+    }
+
+    /// Seal the original Global's native execution and its Navigation binding.
+    ///
+    /// Supply the issued Window for this exact Global. Only a standalone
+    /// producer whose Global has no issued Window may supply `None`.
+    /// Returns a hosted identity or phase error for mismatched evidence, or
+    /// a clock error if the sample lacks the required precision.
     pub fn seal_native_execution(
         &self,
         request: &DomHostedExecutionRequest,
         global: DomHostedGlobalId,
         navigation_start_microseconds: u64,
+        window: Option<&DomHostedWindowNavigation>,
         cancel: &AtomicBool,
     ) -> Result<DomHostedCreationPublication, DomHostedError> {
         let revision = self.validate_request(&request.request, cancel)?;
@@ -1536,6 +1679,22 @@ impl DomHostedSource {
         if !navigation_start_microseconds.is_multiple_of(100) {
             return Err(DomHostedError::InvalidClockSample);
         }
+        let state = self.lock()?;
+        let original = state.banks[Role::Global.index()]
+            .get(global.slot)
+            .filter(|slot| slot.live && slot.generation == global.generation)
+            .ok_or(DomHostedError::StaleIdentity)?;
+        let issued_window = original.issued != 0;
+        let window_navigation = match window {
+            Some(window) if issued_window && window.global == global => {
+                Some(WindowNavigationBinding {
+                    focus_changed: Arc::downgrade(&window.focus_changed),
+                    _allocation: window.allocation.clone(),
+                })
+            }
+            None if !issued_window => None,
+            _ => return Err(DomHostedError::WrongPhase),
+        };
         Ok(DomHostedCreationPublication {
             key: request.request.key,
             revision,
@@ -1545,9 +1704,33 @@ impl DomHostedSource {
                     source: self.id(),
                     microseconds: navigation_start_microseconds,
                 },
+                window_navigation,
             },
         })
     }
+
+    /// Requalify the Window binding paired with a native publication. An
+    /// earlier standalone seal cannot authorize omission after Window issuance.
+    pub(crate) fn validate_window_navigation(
+        &self,
+        global: DomHostedGlobalId,
+        window: Option<&WindowNavigationBinding>,
+    ) -> Result<(), DomHostedError> {
+        if global.source != self.id() {
+            return Err(DomHostedError::ForeignSource);
+        }
+        let state = self.lock()?;
+        let original = state.banks[Role::Global.index()]
+            .get(global.slot)
+            .filter(|slot| slot.live && slot.generation == global.generation)
+            .ok_or(DomHostedError::StaleIdentity)?;
+        match (original.issued != 0, window) {
+            (false, None) => Ok(()),
+            (true, Some(window)) if window.focus_changed.strong_count() != 0 => Ok(()),
+            _ => Err(DomHostedError::WrongPhase),
+        }
+    }
+
     pub fn seal_make_active(
         &self,
         request: &DomHostedMakeActiveRequest,
@@ -1872,6 +2055,7 @@ pub(crate) struct DocumentAssociation {
     pub(crate) host: DomHostedHostId,
     pub(crate) context: DomHostedBrowsingContextId,
     pub(crate) global: DomHostedGlobalId,
+    pub(crate) window_navigation: Option<WindowNavigationBinding>,
     pub(crate) navigation_start: DomHostedMoment,
     pub(crate) policy: DomInitialPermissionsPolicy,
     pub(crate) phase: DocumentPhase,

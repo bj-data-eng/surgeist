@@ -1140,26 +1140,7 @@ impl Draft {
                         // Element-family hooks. Other Node kinds cannot be the
                         // designated area; KnownNull is also a definite false.
                         if matches!(node.kind(), KindRead::Element(_)) {
-                            let document = node.document();
-                            if self.node(document)?.focused_area_designation()
-                                == crate::internal::document::DomFocusedAreaDesignation::Unavailable
-                            {
-                                let subject = self.published_id(key);
-                                let document = self.published_id(document).map(DocumentId);
-                                // A wholly unpublished fresh identity cannot
-                                // equal the published Document's original area.
-                                // Do not extend this to published aliases or a
-                                // private original Document/materialization.
-                                let unexposed_fresh = matches!(key, Key::Created(_))
-                                    && subject.is_none()
-                                    && document.is_some();
-                                if !unexposed_fresh {
-                                    return Err(DomError::FocusedAreaDesignationUnavailable {
-                                        subject,
-                                        document,
-                                    });
-                                }
-                            }
+                            self.focus_removing_element(key, node.document(), cancel)?;
                         }
                     }
                     if stage < 9 || (stage == 9 && self.captures_custom_element_reactions()) {

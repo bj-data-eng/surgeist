@@ -126,6 +126,7 @@ fn child_history_publication_cancellation_restores_graph_and_retries_the_origina
 
     let mut publication = None;
     let mut operation = None;
+    let mut native_window = None;
     for _ in 0..8 {
         let value = match lease.hosted_child_step(&child).unwrap() {
             DomHostedChildStep::PermissionsPolicy(request) => {
@@ -149,9 +150,31 @@ fn child_history_publication_cancellation_restores_graph_and_retries_the_origina
             }
             DomHostedChildStep::NativeExecution(request) => {
                 let global = source.issue_global(request, &cancel).unwrap();
-                source
-                    .seal_native_execution(request, global, 200, &cancel)
-                    .unwrap()
+                let mut outdated = Some(
+                    source
+                        .seal_native_execution(request, global, 200, None, &cancel)
+                        .unwrap(),
+                );
+                let original = lease
+                    .create_hosted_child_window_navigation(&source, &child, global, &cancel)
+                    .unwrap();
+                let valid = source
+                    .seal_native_execution(request, global, 200, Some(&original), &cancel)
+                    .unwrap();
+                native_window = Some(original);
+                let before = lease.snapshot().stamp();
+                assert_eq!(
+                    lease.accept_hosted_child_publication(
+                        &mut source,
+                        &child,
+                        &mut outdated,
+                        &cancel
+                    ),
+                    Err(DomHostedError::WrongPhase)
+                );
+                assert_eq!(lease.snapshot().stamp(), before);
+                assert!(outdated.is_some());
+                valid
             }
             DomHostedChildStep::MakeActive(request) => {
                 source.seal_make_active(request, &cancel).unwrap()
@@ -199,6 +222,7 @@ fn child_history_publication_cancellation_restores_graph_and_retries_the_origina
         assert!(value.is_none());
     }
     let operation = operation.expect("original constructor reaches QueueHistory");
+    assert!(!native_window.as_ref().unwrap().focus_changed());
     let published = lease.snapshot();
     let content = published
         .node(iframe)
@@ -451,7 +475,7 @@ fn inherited_csp_association_is_parked_across_original_work_refusal_and_raised_r
     let global = source.issue_global(request, &cancel).unwrap();
     let mut publication = Some(
         source
-            .seal_native_execution(request, global, 200, &cancel)
+            .seal_native_execution(request, global, 200, None, &cancel)
             .unwrap(),
     );
     let before = lease.snapshot().stamp();
@@ -745,7 +769,7 @@ fn run_to(
             DomHostedChildStep::NativeExecution(request) => {
                 let global = source.issue_global(request, &cancel).unwrap();
                 source
-                    .seal_native_execution(request, global, 200, &cancel)
+                    .seal_native_execution(request, global, 200, None, &cancel)
                     .unwrap()
             }
             DomHostedChildStep::MakeActive(request) => {

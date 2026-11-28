@@ -481,6 +481,7 @@ pub surgeist_dom::edit::DomChange::DocumentAutofocusState(surgeist_dom::identity
 pub surgeist_dom::edit::DomChange::DocumentBase(surgeist_dom::identity::DocumentId)
 pub surgeist_dom::edit::DomChange::DocumentDesignMode(surgeist_dom::identity::DocumentId)
 pub surgeist_dom::edit::DomChange::DocumentEncodingUrlFacts(surgeist_dom::identity::DocumentId)
+pub surgeist_dom::edit::DomChange::DocumentFocusDesignation(surgeist_dom::identity::DocumentId)
 pub surgeist_dom::edit::DomChange::DocumentFullscreenEvents(surgeist_dom::identity::DocumentId)
 pub surgeist_dom::edit::DomChange::DocumentFullscreenState(surgeist_dom::identity::DocumentId)
 pub surgeist_dom::edit::DomChange::DocumentInteractiveState(surgeist_dom::identity::DocumentId)
@@ -874,8 +875,10 @@ pub surgeist_dom::focus::DomFocusTarget::RetiredDocumentWindow::document: surgei
 pub surgeist_dom::focus::DomFocusTarget::RetiredDocumentWindow::global: surgeist_dom::hosted::DomHostedGlobalId
 pub surgeist_dom::focus::DomFocusTarget::RetiredDocumentWindow::host: surgeist_dom::hosted::DomHostedHostId
 pub enum surgeist_dom::focus::DomFocusedAreaDesignation
+pub surgeist_dom::focus::DomFocusedAreaDesignation::Element(surgeist_dom::identity::NodeId)
 pub surgeist_dom::focus::DomFocusedAreaDesignation::KnownNull
 pub surgeist_dom::focus::DomFocusedAreaDesignation::Unavailable
+pub surgeist_dom::focus::DomFocusedAreaDesignation::Viewport
 pub enum surgeist_dom::focus::DomSourceFocusDelegateStep
 pub surgeist_dom::focus::DomSourceFocusDelegateStep::Autofocus(surgeist_html::internal::focus::focus_delegate::HtmlAutofocusDelegateAction)
 pub surgeist_dom::focus::DomSourceFocusDelegateStep::Focus(surgeist_html::internal::focus::focus_delegate::HtmlFocusDelegateAction)
@@ -1591,20 +1594,22 @@ pub fn surgeist_dom::hosted::DomHostedSource::local_html_resource_free_changes_s
 pub fn surgeist_dom::hosted::DomHostedSource::local_html_script_changes_since(&self, dom: &surgeist_dom::Dom, edits: &surgeist_dom::hosted::DomHostedLocalHtmlEdits, checkpoint: surgeist_dom::identity::DomStamp, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<bool, surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::hosted::DomHostedSource::local_html_tree<'a>(&self, dom: &'a mut surgeist_dom::Dom, edits: &'a surgeist_dom::hosted::DomHostedLocalHtmlEdits, cancel: &'a core::sync::atomic::AtomicBool) -> core::result::Result<impl surgeist_html_parser::parser::tree_builder::live::HtmlLiveTree<Node = surgeist_dom::identity::NodeId, Error = surgeist_dom::DomError> + 'a, surgeist_dom::hosted::DomHostedError>
 impl surgeist_dom::hosted::DomHostedSource
+pub fn surgeist_dom::hosted::DomHostedSource::create_window_navigation(&self, request: &surgeist_dom::hosted::DomHostedExecutionRequest, global: surgeist_dom::hosted::DomHostedGlobalId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedWindowNavigation, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::hosted::DomHostedSource::issue_entry(&mut self, request: &surgeist_dom::hosted::history::DomHostedEntryRequest, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::history::DomHostedEntryId, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::hosted::DomHostedSource::issue_global(&mut self, request: &surgeist_dom::hosted::DomHostedExecutionRequest, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedGlobalId, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::hosted::DomHostedSource::issue_navigable(&mut self, request: &surgeist_dom::hosted::history::DomHostedEntryRequest, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedNavigableId, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::hosted::DomHostedSource::retained_window_navigation_bytes(&self) -> usize
+pub fn surgeist_dom::hosted::DomHostedSource::seal_finish_loading(&self, request: &surgeist_dom::hosted::DomHostedFinishLoadingRequest, sampled_microseconds: u64, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedCreationPublication, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::hosted::DomHostedSource::seal_initial_entry(&self, request: &surgeist_dom::hosted::history::DomHostedEntryRequest, entry: surgeist_dom::hosted::history::DomHostedEntryId, navigable: surgeist_dom::hosted::DomHostedNavigableId, initialization: &mut core::option::Option<surgeist_dom::hosted::history::DomHostedEntryInitialization>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedCreationPublication, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::hosted::DomHostedSource::seal_make_active(&self, request: &surgeist_dom::hosted::DomHostedMakeActiveRequest, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedCreationPublication, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::hosted::DomHostedSource::seal_native_execution(&self, request: &surgeist_dom::hosted::DomHostedExecutionRequest, global: surgeist_dom::hosted::DomHostedGlobalId, navigation_start_microseconds: u64, window: core::option::Option<&surgeist_dom::hosted::DomHostedWindowNavigation>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedCreationPublication, surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::hosted::DomHostedSource::seal_permissions_policy(&self, request: &surgeist_dom::hosted::DomHostedPolicyRequest, policy: surgeist_dom::hosted::DomInitialPermissionsPolicy, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedPolicyPublication, surgeist_dom::hosted::DomHostedError>
+impl surgeist_dom::hosted::DomHostedSource
 pub fn surgeist_dom::hosted::DomHostedSource::document_constructor_context(&self, dom: &surgeist_dom::Dom, global: surgeist_dom::hosted::DomHostedGlobalId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::script::DomDocumentConstructorContext, surgeist_dom::hosted::DomHostedError>
 impl surgeist_dom::hosted::DomHostedSource
 pub fn surgeist_dom::hosted::DomHostedSource::id(&self) -> surgeist_dom::hosted::DomHostedSourceId
 pub fn surgeist_dom::hosted::DomHostedSource::limits(&self) -> surgeist_dom::hosted::DomHostedLimits
 pub fn surgeist_dom::hosted::DomHostedSource::revision(&self) -> core::result::Result<surgeist_dom::hosted::DomHostedSourceRevision, surgeist_dom::hosted::DomHostedError>
-impl surgeist_dom::hosted::DomHostedSource
-pub fn surgeist_dom::hosted::DomHostedSource::issue_entry(&mut self, request: &surgeist_dom::hosted::history::DomHostedEntryRequest, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::history::DomHostedEntryId, surgeist_dom::hosted::DomHostedError>
-pub fn surgeist_dom::hosted::DomHostedSource::issue_global(&mut self, request: &surgeist_dom::hosted::DomHostedExecutionRequest, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedGlobalId, surgeist_dom::hosted::DomHostedError>
-pub fn surgeist_dom::hosted::DomHostedSource::issue_navigable(&mut self, request: &surgeist_dom::hosted::history::DomHostedEntryRequest, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedNavigableId, surgeist_dom::hosted::DomHostedError>
-pub fn surgeist_dom::hosted::DomHostedSource::seal_finish_loading(&self, request: &surgeist_dom::hosted::DomHostedFinishLoadingRequest, sampled_microseconds: u64, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedCreationPublication, surgeist_dom::hosted::DomHostedError>
-pub fn surgeist_dom::hosted::DomHostedSource::seal_initial_entry(&self, request: &surgeist_dom::hosted::history::DomHostedEntryRequest, entry: surgeist_dom::hosted::history::DomHostedEntryId, navigable: surgeist_dom::hosted::DomHostedNavigableId, initialization: &mut core::option::Option<surgeist_dom::hosted::history::DomHostedEntryInitialization>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedCreationPublication, surgeist_dom::hosted::DomHostedError>
-pub fn surgeist_dom::hosted::DomHostedSource::seal_make_active(&self, request: &surgeist_dom::hosted::DomHostedMakeActiveRequest, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedCreationPublication, surgeist_dom::hosted::DomHostedError>
-pub fn surgeist_dom::hosted::DomHostedSource::seal_native_execution(&self, request: &surgeist_dom::hosted::DomHostedExecutionRequest, global: surgeist_dom::hosted::DomHostedGlobalId, navigation_start_microseconds: u64, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedCreationPublication, surgeist_dom::hosted::DomHostedError>
-pub fn surgeist_dom::hosted::DomHostedSource::seal_permissions_policy(&self, request: &surgeist_dom::hosted::DomHostedPolicyRequest, policy: surgeist_dom::hosted::DomInitialPermissionsPolicy, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedPolicyPublication, surgeist_dom::hosted::DomHostedError>
 impl surgeist_dom::hosted::DomHostedSource
 pub fn surgeist_dom::hosted::DomHostedSource::issue_host(&mut self, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedHostId, surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::hosted::DomHostedSource::prepare_top_level(&mut self, host: surgeist_dom::hosted::DomHostedHostId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedTopLevelPreparation, surgeist_dom::hosted::DomHostedError>
@@ -1639,6 +1644,10 @@ pub struct surgeist_dom::hosted::DomHostedTopLevelPreparation
 impl surgeist_dom::hosted::DomHostedTopLevelPreparation
 pub const fn surgeist_dom::hosted::DomHostedTopLevelPreparation::browsing_context(&self) -> surgeist_dom::hosted::DomHostedBrowsingContextId
 pub const fn surgeist_dom::hosted::DomHostedTopLevelPreparation::host(&self) -> surgeist_dom::hosted::DomHostedHostId
+pub struct surgeist_dom::hosted::DomHostedWindowNavigation
+impl surgeist_dom::hosted::DomHostedWindowNavigation
+pub const fn surgeist_dom::hosted::DomHostedWindowNavigation::allocation_bytes() -> usize
+pub fn surgeist_dom::hosted::DomHostedWindowNavigation::focus_changed(&self) -> bool
 pub struct surgeist_dom::hosted::DomInitialPermissionsPolicy
 impl surgeist_dom::hosted::DomInitialPermissionsPolicy
 pub const fn surgeist_dom::hosted::DomInitialPermissionsPolicy::inherited_focus_without_user_activation(self) -> surgeist_dom::hosted::DomPermissionsPolicyValue
@@ -3390,6 +3399,7 @@ pub fn surgeist_dom::source::DomSourceLease<'_>::process_hosted_child_attributes
 pub fn surgeist_dom::source::DomSourceLease<'_>::source_url_observation(&self, request: &surgeist_dom::hosted::child::DomHostedChildRequest, stage: surgeist_dom::url::DomSourceUrlStage) -> core::result::Result<core::option::Option<&surgeist_dom::url::DomSourceUrlObservation>, surgeist_dom::DomError>
 impl surgeist_dom::source::DomSourceLease<'_>
 pub fn surgeist_dom::source::DomSourceLease<'_>::accept_hosted_child_publication(&mut self, source: &mut surgeist_dom::hosted::DomHostedSource, request: &surgeist_dom::hosted::child::DomHostedChildRequest, publication: &mut core::option::Option<surgeist_dom::hosted::DomHostedCreationPublication>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::source::DomSourceLease<'_>::create_hosted_child_window_navigation(&self, source: &surgeist_dom::hosted::DomHostedSource, child: &surgeist_dom::hosted::child::DomHostedChildRequest, global: surgeist_dom::hosted::DomHostedGlobalId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::DomHostedWindowNavigation, surgeist_dom::hosted::DomHostedError>
 impl surgeist_dom::source::DomSourceLease<'_>
 pub fn surgeist_dom::source::DomSourceLease<'_>::accept_hosted_child_removal(&mut self, source: &mut surgeist_dom::hosted::DomHostedSource, request: &surgeist_dom::hosted::child::DomHostedChildRequest, publication: &mut core::option::Option<surgeist_dom::hosted::child::DomHostedChildRemovalPublication>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::hosted::child::DomHostedChildRemovalHandoff, surgeist_dom::hosted::DomHostedError>
 pub fn surgeist_dom::source::DomSourceLease<'_>::prepare_hosted_child_removal(&mut self, source: &mut surgeist_dom::hosted::DomHostedSource, request: &surgeist_dom::hosted::child::DomHostedChildRequest, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::hosted::DomHostedError>

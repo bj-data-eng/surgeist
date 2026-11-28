@@ -663,6 +663,7 @@ impl DomHostedCreationLease {
                 PublicationValue::NativeExecution {
                     global,
                     navigation_start,
+                    window_navigation,
                 },
             ) => {
                 source.observe().validate(
@@ -678,11 +679,12 @@ impl DomHostedCreationLease {
                     global.generation,
                     current.key,
                 )?;
+                source.validate_window_navigation(*global, window_navigation.as_ref())?;
                 let (prepared, document) = dom.prepare_hosted_document(
                     operation,
                     source,
                     *global,
-                    *navigation_start,
+                    (*navigation_start, window_navigation.clone()),
                     &execution.inputs,
                     cancel,
                 )?;
@@ -1041,11 +1043,12 @@ impl Dom {
         operation: &Operation,
         source: &DomHostedSource,
         global: DomHostedGlobalId,
-        navigation_start: DomHostedMoment,
+        navigation: (DomHostedMoment, Option<WindowNavigationBinding>),
         inputs: &crate::internal::document::HostedDocumentInputs,
         cancel: &AtomicBool,
     ) -> Result<(Prepared, DocumentId), DomHostedError> {
         let request = operation.request();
+        let (navigation_start, window_navigation) = navigation;
         let (registries, registry) = registry::Bank::form(
             self.state.registries.as_deref(),
             self.owner,
@@ -1075,6 +1078,7 @@ impl Dom {
             host: request.host,
             context: request.context,
             global,
+            window_navigation,
             navigation_start,
             policy,
             phase: DocumentPhase::Constructed,
@@ -1153,6 +1157,7 @@ impl Dom {
             host: old.host,
             context: old.context,
             global: old.global,
+            window_navigation: old.window_navigation.clone(),
             navigation_start: old.navigation_start,
             policy: old.policy,
             phase,
@@ -2333,18 +2338,7 @@ impl DomHostedSource {
     ) -> Result<crate::internal::hosted::DomHostedRuntimeRetention, DomError> {
         dom.validate_hosted_source(self)
             .map_err(|_| DomError::HostedSourceUnavailable)?;
-        self.shared
-            .runtime_bytes
-            .load(Ordering::Relaxed)
-            .checked_add(bytes)
-            .ok_or(DomError::RepresentationExhausted)?;
-        self.shared
-            .runtime_bytes
-            .fetch_add(bytes, Ordering::Relaxed);
-        let retained = crate::internal::hosted::DomHostedRuntimeRetention {
-            shared: Arc::downgrade(&self.shared),
-            bytes,
-        };
+        let retained = self.retain_runtime_payload_counter(bytes)?;
         dom.admit_source_owner_payload(cancel)?;
         Ok(retained)
     }

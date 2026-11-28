@@ -784,12 +784,14 @@ impl Draft {
             }
         }
         let media_removals = self.finish_media_removals(&allocated_ids, cancel)?;
+        let focus_removals = self.finish_focus_removals(cancel)?;
         let semantic_changed = !changes.is_empty();
         Ok((
             Prepared {
                 blocks: self.blocks.clone(),
                 node_retirement_candidates,
                 media_removals,
+                focus_removals,
                 inline_echo: self.inline_echo.clone(),
                 inline_recording: self.inline_recording.clone(),
                 inline_positions: self
@@ -859,6 +861,7 @@ impl Draft {
     ) {
         self.journal.commit(rebase.journal);
         self.media_removals = None;
+        self.focus_removals = None;
         self.media_hook_index = 0;
         self.object_changes = false;
         self.custom_element_reactions = None;

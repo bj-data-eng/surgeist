@@ -27,7 +27,8 @@ pub use crate::internal::hosted::{
     DomHostedPolicyPublication, DomHostedPolicyRequest, DomHostedPreparedTopLevel,
     DomHostedRecordLimits, DomHostedResource, DomHostedRuntimeRetention, DomHostedSource,
     DomHostedSourceId, DomHostedSourceRevision, DomHostedTopLevelPreparation,
-    DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile, DomPermissionsPolicyValue,
+    DomHostedWindowNavigation, DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile,
+    DomPermissionsPolicyValue,
 };
 
 pub use crate::internal::store::DomWindowNamedValue;

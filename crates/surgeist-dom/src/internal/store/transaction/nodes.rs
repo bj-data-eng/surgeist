@@ -1100,7 +1100,8 @@ impl Draft {
 }
 
 impl Draft {
-    pub(in crate::internal::store) fn prepare_output_buffer<T: Copy>(
+    /// Entries must clone their inline value or share existing backing.
+    pub(in crate::internal::store) fn prepare_output_buffer<T: Clone>(
         &self,
         values: &Vec<T>,
         additional: usize,
@@ -1153,7 +1154,7 @@ impl Draft {
         let mut copied = super::sequence::CopyObservation::default();
         for value in values {
             self.source_step(cancel)?;
-            next.push(*value);
+            next.push(value.clone());
             #[cfg(test)]
             copied.pushed::<T>();
         }

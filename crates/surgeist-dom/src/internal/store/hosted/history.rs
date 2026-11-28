@@ -1764,13 +1764,25 @@ pub(super) fn validate_navigable_association(
     association: &DocumentAssociation,
     record: &Navigable,
 ) -> Result<(), DomHostedError> {
+    validate_navigable_document_identity(association, record)?;
+    if record.retiring {
+        return Err(DomHostedError::StaleIdentity);
+    }
+    Ok(())
+}
+
+/// The exact Document/dispatched Global relation can survive the start of
+/// teardown. Callers requiring ongoing navigable activity also check retiring.
+pub(in crate::internal::store) fn validate_navigable_document_identity(
+    association: &DocumentAssociation,
+    record: &Navigable,
+) -> Result<(), DomHostedError> {
     association.validate_live()?;
     if !matches!(association.phase, DocumentPhase::InitialEntry { navigable, .. }
         if navigable == record.id)
         || association.host != record.host
         || association.context != record.context
         || association.global != record.global
-        || record.retiring
         || record.retired
     {
         return Err(DomHostedError::StaleIdentity);

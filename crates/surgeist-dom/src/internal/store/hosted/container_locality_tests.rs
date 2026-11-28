@@ -312,6 +312,7 @@ fn associate(
         host: creation.host,
         context: creation.context,
         global: creation.global,
+        window_navigation: None,
         navigation_start: DomHostedMoment {
             source: source.id(),
             microseconds: 1_000,

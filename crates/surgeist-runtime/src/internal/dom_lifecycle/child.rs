@@ -283,6 +283,11 @@ impl HostedRuntime {
             if retained
                 .checked_add(added)
                 .and_then(|bytes| bytes.checked_add(payload))
+                .and_then(|bytes| {
+                    bytes.checked_add(
+                        surgeist_dom::hosted::DomHostedWindowNavigation::allocation_bytes(),
+                    )
+                })
                 .is_none_or(|bytes| bytes > limits.storage_bytes)
             {
                 return Err(DomHostedRuntimeError::Admission);
@@ -303,12 +308,15 @@ impl HostedRuntime {
             lease
                 .admit_hosted_runtime_work(1, cancel)
                 .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
+            let navigation = lease
+                .create_hosted_child_window_navigation(source, child_request, global, cancel)
+                .map_err(DomHostedRuntimeError::Dom)?;
             let mut context = child.context.take().expect("validated child BC object");
             context.global = Some(global);
             native
                 .windows
                 .rows
-                .push(super::watcher::NativeWindow::fresh(global));
+                .push(super::watcher::NativeWindow::fresh(global, navigation));
             native.globals.push(records::Global {
                 context,
                 id: global,
@@ -323,9 +331,27 @@ impl HostedRuntime {
             });
         }
         if child.publication.is_none() {
+            let navigation = super::watcher::window_navigation(
+                &native.windows,
+                global,
+                work,
+                limits.work,
+                cancel,
+                || {
+                    lease
+                        .admit_hosted_runtime_work(1, cancel)
+                        .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+                },
+            )?;
             child.publication = Some(
                 source
-                    .seal_native_execution(request, global, sample.microseconds, cancel)
+                    .seal_native_execution(
+                        request,
+                        global,
+                        sample.microseconds,
+                        Some(navigation),
+                        cancel,
+                    )
                     .map_err(DomHostedRuntimeError::Dom)?,
             );
         }

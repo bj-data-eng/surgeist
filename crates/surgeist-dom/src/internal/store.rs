@@ -1627,6 +1627,8 @@ pub enum DomChange {
     RangeBoundary(crate::internal::range::DomRangeId),
     RangeRetired(crate::internal::range::DomRangeId),
     DocumentActiveRange(DocumentId),
+    /// The Document's canonical focused-area designation changed.
+    DocumentFocusDesignation(DocumentId),
     DocumentDesignMode(DocumentId),
     SourceOperation,
     HostedOperationState {
@@ -2683,6 +2685,7 @@ impl Dom {
             retirements,
             node_retirement_candidates,
             media_removals,
+            focus_removals,
             state,
             allocation_ids,
             owner,
@@ -2842,12 +2845,19 @@ impl Dom {
             formation.as_ref(),
             cancelled,
         )?;
+        let focus_removals = focus::removal::prepare(
+            focus_removals,
+            self.custody_registry.ledger(),
+            formation.as_ref(),
+            cancelled,
+        )?;
         // Last cancellation observation is the publication boundary. No user
         // callbacks or external effects occur while prepared state is private.
         check_cancel(cancelled)?;
         Ok(PreparedPublication {
             custom_element_reactions: None,
             media_removals,
+            focus_removals,
             name_promotions,
             state_custody,
             allocation_ids,
@@ -2953,6 +2963,7 @@ impl PublicationFields<'_> {
         let PreparedPublication {
             custom_element_reactions,
             media_removals,
+            focus_removals,
             name_promotions,
             state_custody,
             allocation_ids: _,
@@ -2996,6 +3007,7 @@ impl PublicationFields<'_> {
             *self.state = state;
             *self.state_custody = state_custody;
         }
+        focus_removals.publish();
         if changed {
             if let Some(plan) = inline_retirement {
                 plan.publish(
@@ -3139,6 +3151,7 @@ struct Draft {
     source_headroom: Option<source::headroom::Scan>,
     method: Option<method::Frame>,
     media_removals: Option<custody::Held<Vec<media_removal::Pending>>>,
+    focus_removals: Option<focus::removal::Pending>,
     media_scheduler: std::sync::Weak<media_removal::Binding>,
     media_hook_index: usize,
     dispatch_retirements: Vec<(NodeId, Key)>,
@@ -3214,6 +3227,7 @@ struct Draft {
 pub(crate) struct PreparedPublication {
     custom_element_reactions: Option<source::reactions::Publication>,
     media_removals: media_removal::Prepared,
+    focus_removals: focus::removal::Prepared,
     created_ranges: Vec<Option<crate::internal::range::DomRangeId>>,
     state: Arc<State>,
     changed: bool,
@@ -3253,6 +3267,7 @@ pub(crate) struct PreparedPublication {
 struct Prepared {
     node_retirement_candidates: Vec<NodeId>,
     media_removals: Option<custody::Held<Vec<media_removal::DomMediaRemoval>>>,
+    focus_removals: Option<focus::removal::Pending>,
     inline_echo: Option<inline_style::feedback::Echo>,
     state: State,
     inline_positions: Option<transaction::slot_index::PositionChanges>,
@@ -3665,6 +3680,7 @@ impl Draft {
             fullscreen_exit: None,
             fullscreen_work_custody: None,
             media_removals: None,
+            focus_removals: None,
             media_scheduler: dom.media_removals.scheduler(),
             media_hook_index: 0,
             dispatch_retirements: Vec::new(),

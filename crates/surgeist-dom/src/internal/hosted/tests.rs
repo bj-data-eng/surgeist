@@ -683,7 +683,7 @@ fn hosted_global_sealing_rejects_a_live_role_from_the_prior_creating_request() {
     assert!(matches!(
         fixture
             .source
-            .seal_native_execution(&request, prior, 100, &cancel),
+            .seal_native_execution(&request, prior, 100, None, &cancel),
         Err(DomHostedError::StaleIdentity)
     ));
     assert_eq!(fixture.source.revision().unwrap(), revision);
@@ -699,15 +699,95 @@ fn hosted_global_sealing_rejects_a_live_role_from_the_prior_creating_request() {
     assert_eq!(fixture.source.revision().unwrap(), revision);
     let publication = fixture
         .source
-        .seal_native_execution(&request, current, 100, &cancel)
+        .seal_native_execution(&request, current, 100, None, &cancel)
         .unwrap();
     assert_eq!(publication.key, request.request.key);
     assert_eq!(publication.revision, revision);
     assert!(
-        matches!(publication.value, PublicationValue::NativeExecution { global, navigation_start }
+        matches!(publication.value, PublicationValue::NativeExecution { global, navigation_start, .. }
         if global == current && navigation_start.source == fixture.source.id()
             && navigation_start.microseconds() == 100)
     );
+}
+
+#[test]
+fn native_execution_seals_only_its_original_window_without_retaining_it() {
+    let cancel = cancellation();
+    let mut local = issuer_fixture();
+    let request = execution_request(&mut local);
+    let global = local.source.issue_global(&request, &cancel).unwrap();
+    let mut foreign = issuer_fixture();
+    let foreign_request = execution_request(&mut foreign);
+    let foreign_global = foreign
+        .source
+        .issue_global(&foreign_request, &cancel)
+        .unwrap();
+    let foreign_window = foreign
+        .source
+        .create_window_navigation(&foreign_request, foreign_global, &cancel)
+        .unwrap();
+    assert!(matches!(
+        local
+            .source
+            .create_window_navigation(&request, foreign_global, &cancel),
+        Err(DomHostedError::ForeignSource)
+    ));
+    let before = retained(&local.source);
+    let runtime_before = local.source.observe().runtime_bytes();
+    let window = local
+        .source
+        .create_window_navigation(&request, global, &cancel)
+        .unwrap();
+    assert!(matches!(
+        local
+            .source
+            .create_window_navigation(&request, global, &cancel),
+        Err(DomHostedError::WrongPhase)
+    ));
+    for other in [None, Some(&foreign_window)] {
+        assert!(matches!(
+            local
+                .source
+                .seal_native_execution(&request, global, 100, other, &cancel),
+            Err(DomHostedError::WrongPhase)
+        ));
+    }
+    let charged = retained(&local.source);
+    let extent = DomHostedWindowNavigation::allocation_bytes();
+    assert_eq!(charged, before + extent);
+    assert_eq!(local.source.retained_window_navigation_bytes(), extent);
+    assert_eq!(
+        local.source.observe().runtime_bytes(),
+        runtime_before + extent
+    );
+    let publication = local
+        .source
+        .seal_native_execution(&request, global, 100, Some(&window), &cancel)
+        .unwrap();
+    let PublicationValue::NativeExecution {
+        window_navigation: Some(binding),
+        ..
+    } = publication.value
+    else {
+        panic!("the original Window joined its matching Global");
+    };
+    assert!(
+        binding
+            .focus_changed
+            .ptr_eq(&Arc::downgrade(&window.focus_changed))
+    );
+    drop(window);
+    assert!(binding.focus_changed.upgrade().is_none());
+    assert_eq!(retained(&local.source), charged);
+    assert_eq!(local.source.retained_window_navigation_bytes(), extent);
+    assert_eq!(
+        local.source.observe().runtime_bytes(),
+        runtime_before + extent
+    );
+    drop(binding);
+    assert_eq!(retained(&local.source), before);
+    assert_eq!(local.source.retained_window_navigation_bytes(), 0);
+    assert_eq!(local.source.observe().runtime_bytes(), runtime_before);
 }
 
 #[test]

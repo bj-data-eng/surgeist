@@ -651,7 +651,7 @@ fn drive_absent_src_child(
             Step::NativeExecution(request) => {
                 let global = source.issue_global(request, &cancel()).unwrap();
                 source
-                    .seal_native_execution(request, global, 200, &cancel())
+                    .seal_native_execution(request, global, 200, None, &cancel())
                     .unwrap()
             }
             Step::MakeActive(request) => source.seal_make_active(request, &cancel()).unwrap(),

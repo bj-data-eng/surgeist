@@ -79,7 +79,7 @@ fn constructor_with_meta_work(meta_work: u64) -> (Dom, DomHostedSource, Document
             DomHostedCreationStep::NativeExecution(request) => {
                 let global = source.issue_global(request, &cancel()).unwrap();
                 source
-                    .seal_native_execution(request, global, 0, &cancel())
+                    .seal_native_execution(request, global, 0, None, &cancel())
                     .unwrap()
             }
             DomHostedCreationStep::MakeActive(request) => {
