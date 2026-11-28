@@ -866,3 +866,13 @@ fn captured_number_and_temporal_current_values_are_admitted_as_input_evidence() 
         );
     }
 }
+
+#[test]
+fn captured_range_current_value_is_admitted_for_intrinsic_validity() {
+    let (capture, subject) = fixture("input", &[("type", "range")], true);
+    let produced = facts(&capture, &[(subject, Some("51".into()))], 10000);
+    assert!(
+        produced.is_ok(),
+        "the captured Range current value must be admitted: {produced:?}"
+    );
+}
