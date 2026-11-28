@@ -360,6 +360,113 @@ fn retiring_select_in_input_preserves_the_real_receipt() {
 }
 
 #[test]
+fn native_select_checkpoint_delivers_an_author_slot_signal() {
+    let cancel = AtomicBool::new(false);
+    let Fixture {
+        mut session,
+        document,
+        select,
+        option,
+    } = fixture(8, &cancel);
+    let body = session.snapshot().node(select).unwrap().parent().unwrap();
+    let mut batch = DomBatch::new();
+    let host = batch.create_element_ns(document, Namespace::html(), "div");
+    let root = batch.attach_shadow(
+        &host,
+        surgeist_dom::shadow::DomShadowRootInit::new(
+            surgeist_html::construction::HtmlShadowRootMode::Open,
+        ),
+    );
+    let slot = batch.create_element_ns(document, Namespace::html(), "slot");
+    batch.insert_before(&slot, &root, None);
+    batch.insert_before(&host, body, None);
+    let done = session.dom().apply(batch, &cancel).unwrap();
+    let host = done.created(&host).unwrap().unwrap();
+    let slot = done.created(&slot).unwrap().unwrap();
+    assert!(session.snapshot().pending_slot_signals().is_empty());
+
+    let mut registry = listeners(&mut session, select, "original label");
+    registry
+        .add_listener(
+            &mut session.dom(),
+            select,
+            DomEventType::INPUT,
+            DomEventCallback::new(move |dom, _, _: &mut Context, _| {
+                let mut assign = DomBatch::new();
+                let child = assign.create_text(document, "first assigned child");
+                assign.insert_before(&child, host, None);
+                dom.apply(assign, &AtomicBool::new(false)).unwrap();
+                assert_eq!(dom.snapshot().pending_slot_signals(), &[slot]);
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let changed = "slotchange".encode_utf16().collect::<Vec<_>>();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            slot,
+            &changed,
+            DomEventCallback::new(move |_, _, context: &mut Context, event| {
+                assert_eq!(event.target(), Some(slot.into()));
+                assert_eq!(event.current_target(), Some(slot.into()));
+                assert!(event.is_trusted());
+                assert!(event.bubbles());
+                assert!(!event.cancelable());
+                assert!(!event.composed());
+                context.notifications.push(event.event_type());
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let observed = session.snapshot().stamp();
+    let edit = DomSourceEdit::toggle_select_option_for_user(select, option, observed);
+    assert!(matches!(
+        session
+            .source_execution()
+            .apply(
+                &mut session.dom(),
+                edit,
+                limits().source,
+                &mut no_services(&mut |_| None),
+                &cancel,
+            )
+            .unwrap(),
+        DomSourceDriveProgress::Complete(_)
+    ));
+    let mut context = Context {
+        tasks: session.element_task_execution(),
+        notifications: Vec::new(),
+        retire_on_input: false,
+    };
+    let result = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        DomElementTaskSourceKind::UserInteraction,
+        &mut registry,
+        &mut context,
+        limits(),
+        &cancel,
+    );
+    assert_eq!(context.notifications.first(), Some(&DomEventType::INPUT));
+    assert_eq!(context.notifications.get(1), Some(&DomEventType::CHANGE));
+    let Ok(DomElementTaskProgress::SelectNotificationComplete { input, change, .. }) = result
+    else {
+        panic!(
+            "the original task must settle after serving its author Slot; result={result:?}, pending={:?}",
+            session.snapshot().pending_slot_signals(),
+        )
+    };
+    assert_eq!(input.callbacks(), 2);
+    assert_eq!(change.unwrap().callbacks(), 1);
+    assert_eq!(context.notifications.len(), 3);
+    assert_eq!(context.notifications[2].code_units(), &changed);
+    assert!(session.snapshot().pending_slot_signals().is_empty());
+    assert_eq!(context.tasks.pending_total_tasks().unwrap(), 0);
+}
+
+#[test]
 fn current_selectedcontent_resumes_its_original_style_request_before_dispatch() {
     let cancel = AtomicBool::new(false);
     let Fixture {
