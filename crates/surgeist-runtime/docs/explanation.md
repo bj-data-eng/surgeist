@@ -371,6 +371,11 @@ unrelated issuer progress does not invalidate its immutable absence fact. A
 retired/reused Host, disposed authority or stale canonical basis still refuses.
 Future mutable adapters must validate their actual source and scope revisions.
 
+Each native Window retains its own Navigation focus-changed flag, initially
+false. `HostedRuntime::window_focus_changed_during_navigation` reads the exact
+original Window using native lifecycle admission. An inactive retained Window
+keeps its flag. Once the Window record is released, the read refuses.
+
 The following Document capture and popover steps run in DOM's original Source
 continuation. Qualified canonical raw membership and actual hidden popover state
 establish empty Auto and Hint showing lists; nonpopover members do not prevent

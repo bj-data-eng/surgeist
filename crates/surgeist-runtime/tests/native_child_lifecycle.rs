@@ -202,6 +202,14 @@ fn absent_src_insertion_creates_child(local: &str) {
         .expect("actual Frame/Iframe family")
         .expect("connection must create its canonical child before attribute processing");
     assert_ne!(child, top.navigable());
+    let child_global = current.hosted_navigable(child).unwrap().global();
+    assert_ne!(child_global, top.global());
+    for global in [top.global(), child_global] {
+        assert_eq!(
+            hosted.window_focus_changed_during_navigation(&session.dom(), global, &cancel()),
+            Ok(false)
+        );
+    }
     assert!(
         current
             .document(top.document())

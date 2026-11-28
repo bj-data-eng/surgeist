@@ -954,6 +954,8 @@ pub fn surgeist_runtime::hosted::HostedRuntime::set_limits(&mut self, dom: &mut 
 impl surgeist_runtime::hosted::HostedRuntime
 pub fn surgeist_runtime::hosted::HostedRuntime::settings(&self, dom: &surgeist_runtime::event::DomEventDom<'_>, global: surgeist_dom::internal::hosted::DomHostedGlobalId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::hosted::DomHostedSettings, surgeist_runtime::hosted::DomHostedRuntimeError>
 pub fn surgeist_runtime::hosted::HostedRuntime::top_level(&self, dom: &surgeist_runtime::event::DomEventDom<'_>, navigable: surgeist_dom::internal::hosted::DomHostedNavigableId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::hosted::DomHostedTopLevel, surgeist_runtime::hosted::DomHostedRuntimeError>
+impl surgeist_runtime::hosted::HostedRuntime
+pub fn surgeist_runtime::hosted::HostedRuntime::window_focus_changed_during_navigation(&self, dom: &surgeist_runtime::event::DomEventDom<'_>, global: surgeist_dom::internal::hosted::DomHostedGlobalId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<bool, surgeist_runtime::hosted::DomHostedRuntimeError>
 impl core::fmt::Debug for surgeist_runtime::hosted::HostedRuntime
 pub fn surgeist_runtime::hosted::HostedRuntime::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub mod surgeist_runtime::identity

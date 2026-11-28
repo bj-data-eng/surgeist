@@ -37,6 +37,7 @@ impl WindowBank {
 pub(super) struct NativeWindow {
     pub id: DomHostedGlobalId,
     pub retired: bool,
+    focus_changed_during_navigation: bool,
     // HTML's initial positive-infinity timestamp is represented by its exact
     // never-activated state, not a finite zero or a sampled clock. The current
     // native input domain admits no trusted activation-triggering HTML input;
@@ -136,6 +137,7 @@ impl NativeWindow {
         Self {
             id,
             retired: false,
+            focus_changed_during_navigation: false,
             activation: NativeWindowActivation::NeverActivated,
             manager: HtmlCloseWatcherManager::fresh(),
             groups: Vec::new(),
@@ -373,6 +375,39 @@ impl WatcherLocation {
     }
 }
 impl HostedRuntime {
+    /// Read the original Window's Navigation focus-changed flag.
+    ///
+    /// A retained Window remains readable while its original lifecycle record
+    /// exists. The read grants no authority to update focus or the flag.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a foreign Session, an absent Window, cancellation, or exhausted
+    /// hosted work.
+    pub fn window_focus_changed_during_navigation(
+        &self,
+        dom: &DomEventDom<'_>,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        state.step(cancel)?;
+        let (host, top, cluster, window) = state.find_window(global, cancel, || Ok(()))?;
+        let record = state
+            .hosts
+            .get(host)
+            .and_then(|host| host.top_levels.get(top))
+            .and_then(|top| top.group.as_ref())
+            .and_then(|group| group.clusters.get(cluster))
+            .and_then(|cluster| cluster.agent.windows.rows.get(window))
+            .ok_or(DomHostedRuntimeError::Protocol)?;
+        Ok(record.focus_changed_during_navigation)
+    }
+
     pub(crate) fn service_dialog_watcher(
         &self,
         lease: &mut DomSourceLease<'_>,
